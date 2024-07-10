@@ -27,12 +27,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
@@ -463,6 +466,126 @@ ENTRY main {
   // enabling triton gemm
   EXPECT_EQ(triton_enabled_module->computation_count(),
             triton_disabled_module->computation_count());
+}
+
+class FloatNormalizationTest : public GpuCompilerTest,
+                               public ::testing::WithParamInterface<
+                                   std::pair<PrimitiveType, PrimitiveType>> {};
+
+INSTANTIATE_TEST_SUITE_P(
+    Fp8s, FloatNormalizationTest,
+    ::testing::Values(
+        std::make_pair(PrimitiveType::F8E4M3FN, PrimitiveType::F8E4M3FN),
+        std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E4M3FN),
+        std::make_pair(PrimitiveType::F8E4M3FN, PrimitiveType::F8E5M2),
+        std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E5M2)));
+
+TEST_P(FloatNormalizationTest, Fp8Normalization) {
+  // TODO(b/344573710) Make this test not require a GPU when AutotuneCacheKey is
+  // more stable.
+  const PrimitiveType lhs_type = GetParam().first;
+  const PrimitiveType rhs_type = GetParam().second;
+  const std::string lhs_name =
+      primitive_util::LowercasePrimitiveTypeName(lhs_type);
+  const std::string rhs_name =
+      primitive_util::LowercasePrimitiveTypeName(rhs_type);
+  const std::string module_str = absl::Substitute(R"(
+HloModule sch
+
+ENTRY main {
+  parameter = $0[1600,1600]{1,0} parameter(0)
+  parameter.1 = $1[1600,1600]{1,0} parameter(1)
+  neg = $1[1600,1600]{1,0} negate(parameter.1)
+  dot = f16[1600,1600]{1,0} dot(parameter,neg), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  constant = f16[] constant(0)
+  broadcast = f16[1600,1600]{1,0} broadcast(constant), dimensions={}
+  ROOT maximum = f16[1600,1600]{1,0} maximum(dot,broadcast)
+})",
+                                                  lhs_name, rhs_name);
+
+  auto optimize_module = [&](bool enable_triton, bool enable_blas,
+                             bool enable_blas_fallback)
+      -> absl::StatusOr<std::unique_ptr<HloModule>> {
+    HloModuleConfig config;
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(enable_blas_fallback);
+    debug_options.set_xla_gpu_enable_triton_gemm(enable_triton);
+    if (!enable_blas) {
+      debug_options.add_xla_disable_hlo_passes("cublas-gemm-rewriter");
+    }
+    config.set_debug_options(debug_options);
+    config.set_num_partitions(1);
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                        ParseAndReturnVerifiedModule(module_str, config));
+    return GetOptimizedModule(std::move(module));
+  };
+
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+
+  const std::string triton_keep_types = absl::Substitute(
+      R"(CHECK: fusion($0{{[^)]*}}, $1{{[^)]*}}){{.*}}"kind":"__triton_gemm")",
+      lhs_name, rhs_name);
+  const std::string cublaslt_keep_types = absl::Substitute(
+      R"(CHECK: custom-call($0{{[^)]*}}, $1{{[^)]*}}){{.*}}custom_call_target="__cublas$$lt$$matmul$$f8")",
+      lhs_name, rhs_name);
+  const std::string cublas_convert_to_f16 =
+      R"(CHECK: custom-call(f16{{[^)]*}}, f16{{[^)]*}}){{.*}}custom_call_target="__cublas$gemm")";
+  const std::string fallback_convert_to_f16 =
+      R"(CHECK: dot(f16{{[^)]*}}, f16{{[^)]*}}))";
+
+  {
+    // Triton enabled, no fallback.
+    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
+                            optimize_module(/*enable_triton=*/true,
+                                            /*enable_blas=*/true,
+                                            /*enable_blas_fallback=*/false));
+    // Triton supports f8e4m3fn on Hopper and f8e5m2 on Ampere.
+    const std::string triton_expected_check =
+        (cc.IsAtLeastHopper() ||
+         (cc.IsAtLeastAmpere() && lhs_type == F8E5M2 && rhs_type == F8E5M2))
+            ? triton_keep_types
+            : cublas_convert_to_f16;
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matched,
+        RunFileCheck(optimized_module_no_fallback->ToString(),
+                     triton_expected_check));
+    EXPECT_TRUE(filecheck_matched);
+  }
+
+  {
+    // Triton disabled, BLAS enabled.
+    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_triton,
+                            optimize_module(/*enable_triton=*/false,
+                                            /*enable_blas=*/true,
+                                            /*enable_blas_fallback=*/true));
+    // cuBLASlt is only available on Hopper and it doesn't support
+    // f8e5m2×f8e5m2.
+    const std::string blas_expected_check =
+        (cc.IsAtLeastHopper() && !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
+            ? cublaslt_keep_types
+            : cublas_convert_to_f16;
+
+    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                            RunFileCheck(optimized_module_no_triton->ToString(),
+                                         blas_expected_check));
+    EXPECT_TRUE(filecheck_matched);
+  }
+
+  {
+    // Neither Triton nor BLAS enabled, always fall back.
+    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_nothing,
+                            optimize_module(/*enable_triton=*/false,
+                                            /*enable_blas=*/false,
+                                            /*enable_blas_fallback=*/false));
+    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                            RunFileCheck(optimized_module_nothing->ToString(),
+                                         fallback_convert_to_f16));
+    EXPECT_TRUE(filecheck_matched);
+  }
 }
 
 TEST_F(GpuCompilerTest, CollectivePermuteDecompositionAndPipelining) {
