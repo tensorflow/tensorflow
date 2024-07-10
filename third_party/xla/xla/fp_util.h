@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/base/macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
 
@@ -261,6 +262,28 @@ constexpr DstT RoundToPrecision(
 template <typename DstT>
 constexpr std::pair<DstT, DstT> Log2FloatPair(int num_high_trailing_zeros) {
   return SplitToFpPair<DstT>(M_LN2l, num_high_trailing_zeros);
+}
+
+// There are many different definitions of ulp(x) in the literature. Here, we
+// are using the "GoldbergUlp" definition as found in: Jean-Michel Muller. On
+// the definition of ulp(x). [Research Report] RR-5504, LIP RR-2005-09, INRIA,
+// LIP. 2005, pp.16. ⟨inria-00070503⟩
+template <typename T>
+constexpr T GoldbergUlp(T x) {
+  if (IsZero(x) || IsSubnormal(x)) {
+    return GoldbergUlp(std::numeric_limits<T>::min());
+  }
+  std::optional<int> maybe_exponent = LogBase(x);
+  if (maybe_exponent.has_value(); const int exponent = *maybe_exponent) {
+    return ScaleBase(std::numeric_limits<T>::epsilon(), exponent);
+  }
+  if constexpr (std::numeric_limits<T>::has_quiet_NaN) {
+    return std::numeric_limits<T>::quiet_NaN();
+  } else if constexpr (std::numeric_limits<T>::has_infinity) {
+    return std::numeric_limits<T>::infinity();
+  } else {
+    return GoldbergUlp(std::numeric_limits<T>::max());
+  }
 }
 
 }  // namespace xla

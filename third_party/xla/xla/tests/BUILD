@@ -814,6 +814,7 @@ xla_test(
         "//xla:array3d",
         "//xla:array4d",
         "//xla:comparison_util",
+        "//xla:fp_util",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:test",

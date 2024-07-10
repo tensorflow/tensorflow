@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/comparison_util.h"
+#include "xla/fp_util.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
@@ -775,6 +776,29 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantF32s) {
 
   ComputeAndCompareR1<float>(&builder, {-25.0f, 127.5f, 2.25f, -100.0f, -36.0f},
                              {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantF64s) {
+  // Construct a number which would overflow if multiplied by (2^12 + 1) to
+  // catch overflow issues.
+  constexpr float kMax = std::numeric_limits<float>::max();
+  constexpr float kScaleFactor =
+      (1 << (std::numeric_limits<float>::digits / 2)) + 1;
+  constexpr float kScaledMax = kMax / kScaleFactor;
+  static_assert(kScaledMax * kScaleFactor == kMax);
+  constexpr float kUlpOfScaledMax = GoldbergUlp(kScaledMax);
+  constexpr float kNextAfterScaledMax = kScaledMax + kUlpOfScaledMax;
+  static_assert(kNextAfterScaledMax * kScaleFactor ==
+                std::numeric_limits<float>::infinity());
+  static_assert(kNextAfterScaledMax * 2 <
+                std::numeric_limits<float>::infinity());
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<double>(&builder, {kScaledMax, kNextAfterScaledMax});
+  auto b = ConstantR1<double>(&builder, {2.0f, 2.0f});
+  Mul(a, b);
+
+  ComputeAndCompareR1<double>(
+      &builder, {kScaledMax * 2, kNextAfterScaledMax * 2}, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantZeroElementF32s) {
