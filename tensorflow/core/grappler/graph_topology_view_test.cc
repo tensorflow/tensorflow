@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/graph_topology_view.h"
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace grappler {
