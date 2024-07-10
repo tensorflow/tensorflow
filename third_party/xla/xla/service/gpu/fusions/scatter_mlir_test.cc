@@ -378,6 +378,79 @@ TEST_F(MlirScatterFusionTest, Scatter_Overwrite) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirScatterFusionTest, Scatter_UnrollFactor) {
+  auto kHloString = R"(
+    HloModule module
+
+    sum {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    scatter {
+      p0 = f32[4000,4,9] parameter(0)
+      p1 = s32[1400000,1] parameter(1)
+      p2 = f32[1400000,1,4,9] parameter(2)
+      ROOT scatter = f32[4000,4,9] scatter(p0, p1, p2),
+        update_window_dims={1,2,3},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=sum
+    }
+    ENTRY entry {
+      p0 = f32[4000,4,9] parameter(0)
+      p1 = s32[1400000,1] parameter(1)
+      p2 = f32[1400000,1,4,9] parameter(2)
+      ROOT %fusion = f32[4000,4,9] fusion(
+        p0, p1, p2), kind=kLoop, calls=scatter
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-LABEL: func.func @fused_computation
+    // CHECK-NOT: scf.for
+    // CHECK: xla_gpu.atomic_rmw
+  )"));
+}
+
+TEST_F(MlirScatterFusionTest, Scatter_UnrollFactorWithUnique) {
+  auto kHloString = R"(
+    HloModule module
+
+    sum {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    scatter {
+      p0 = f32[4000,4,9] parameter(0)
+      p1 = s32[1400000,1] parameter(1)
+      p2 = f32[1400000,1,4,9] parameter(2)
+      ROOT scatter = f32[4000,4,9] scatter(p0, p1, p2),
+        update_window_dims={1,2,3},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        unique_indices=true,
+        to_apply=sum
+    }
+    ENTRY entry {
+      p0 = f32[4000,4,9] parameter(0)
+      p1 = s32[1400000,1] parameter(1)
+      p2 = f32[1400000,1,4,9] parameter(2)
+      ROOT %fusion = f32[4000,4,9] fusion(
+        p0, p1, p2), kind=kLoop, calls=scatter
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-LABEL: func.func @fused_computation
+    // CHECK: scf.for
+    // CHECK-NOT: xla_gpu.atomic_rmw
+  )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
