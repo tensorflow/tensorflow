@@ -16,10 +16,10 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
-#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/cc/experimental/libtf/object.h"
 #include "tensorflow/cc/experimental/libtf/runtime/runtime.h"
-#include "tensorflow/cc/experimental/libtf/value.h"
 
 namespace tf {
 namespace libtf {

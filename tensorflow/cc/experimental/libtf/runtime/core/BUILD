@@ -15,7 +15,6 @@ cc_library(
         "core.h",
     ],
     deps = [
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:tfe_context_internal",
