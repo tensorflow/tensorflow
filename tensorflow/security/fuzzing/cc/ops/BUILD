@@ -17,11 +17,15 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/core/platform:status",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -31,11 +35,17 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/core/platform:status",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -77,12 +87,17 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:bincount_op",
+        "//tensorflow/core/platform:status",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -92,9 +107,16 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:string_to_number_op",
+        "//tensorflow/core/platform:status",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -104,10 +126,17 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:string_split_op",
+        "//tensorflow/core/platform:status",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
+        "@com_google_absl//absl/log",
     ],
 )
 

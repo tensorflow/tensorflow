@@ -15,10 +15,13 @@
 #include <cstdint>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "absl/log/log.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"

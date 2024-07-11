@@ -14,7 +14,6 @@
 
 
 #include "fuzztest/fuzztest.h"
-#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/audio_ops.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
