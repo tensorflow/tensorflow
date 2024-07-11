@@ -4207,7 +4207,11 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     // ----- Set Sharding -----
     SetHloSharding(sequence, instructions_to_shard, strategy_map, cost_graph,
                    output.s_val, (mesh_idx == partial_mesh_shapes.size() - 1));
-    if (option_.post_process && mesh_idx == partial_mesh_shapes.size() - 1) {
+
+    if (mesh_idx == partial_mesh_shapes.size() - 1) {
+      if (!option_.post_process) {
+        continue;
+      }
       if (!SetHloShardingPostProcessing(
                sequence, instructions_to_shard, strategy_map, cost_graph,
                output.s_val, cluster_env,
