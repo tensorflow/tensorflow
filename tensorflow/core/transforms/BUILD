@@ -142,12 +142,14 @@ cc_library(
         "//tensorflow/core/framework:graph_debug_info_proto_cc",
         "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/importexport:graphdef_import",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-        "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -159,10 +161,13 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:graph_constructor",
+        "//tensorflow/core/framework:op",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/platform:status",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
