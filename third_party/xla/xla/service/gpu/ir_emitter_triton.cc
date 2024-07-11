@@ -2511,7 +2511,7 @@ MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
   llvm::SmallVector<int32_t> order;
   llvm::SmallVector<int32_t> boundary_checks;
 
-  const std::vector<int64_t>& tile_strides = tiled_hlo.tile_strides();
+  const llvm::SmallVector<int64_t>& tile_strides = tiled_hlo.tile_strides();
   const Shape& shape = tiled_hlo.hlo()->shape();
 
   // Compute physical strides of the tile. `tile_strides` contains strides for

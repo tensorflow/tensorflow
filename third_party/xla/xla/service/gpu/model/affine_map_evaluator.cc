@@ -29,6 +29,7 @@ namespace gpu {
 
 namespace {
 
+using llvm::SmallVector;
 using mlir::AffineBinaryOpExpr;
 using mlir::AffineConstantExpr;
 using mlir::AffineDimExpr;
@@ -82,13 +83,13 @@ int64_t EvaluateAffineExpr(AffineExpr expr,
   }
 }
 
-std::vector<int64_t> EvaluateAffineMap(
+SmallVector<int64_t> EvaluateAffineMap(
     AffineMap affine_map, absl::Span<int64_t const> dim_values,
     absl::Span<int64_t const> symbol_values) {
   CHECK_EQ(affine_map.getNumDims(), dim_values.size());
   CHECK_EQ(affine_map.getNumSymbols(), symbol_values.size());
 
-  std::vector<int64_t> results;
+  SmallVector<int64_t> results;
   results.reserve(affine_map.getNumResults());
   for (auto expr : affine_map.getResults()) {
     results.push_back(EvaluateAffineExpr(expr, dim_values, symbol_values));

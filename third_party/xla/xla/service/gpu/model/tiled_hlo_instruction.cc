@@ -17,17 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/util.h"
@@ -38,8 +34,8 @@ namespace gpu {
 /*static*/
 absl::StatusOr<std::unique_ptr<TiledHloInstruction>>
 TiledHloInstruction::Create(const HloInstruction* hlo,
-                            std::vector<int64_t> tile_sizes,
-                            std::vector<int64_t> tile_strides,
+                            llvm::SmallVector<int64_t> tile_sizes,
+                            llvm::SmallVector<int64_t> tile_strides,
                             IndexingMap tile_offsets_indexing) {
   int rank = hlo->shape().rank();
 

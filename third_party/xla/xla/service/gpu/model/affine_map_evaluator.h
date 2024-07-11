@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 
@@ -37,7 +38,7 @@ int64_t EvaluateAffineExpr(mlir::AffineExpr expr,
 
 // Given an AffineMap and the values for its dimensions and symbols, evaluates
 // the results.
-std::vector<int64_t> EvaluateAffineMap(
+llvm::SmallVector<int64_t> EvaluateAffineMap(
     mlir::AffineMap affine_map, absl::Span<int64_t const> dim_values,
     absl::Span<int64_t const> symbol_values = {});
 

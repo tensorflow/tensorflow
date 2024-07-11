@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
@@ -41,13 +42,13 @@ class SymbolicTiledHloInstruction {
       : hlo_(hlo), indexing_map_(std::move(indexing_map)) {}
 
   // Evaluates the tile offsets of an instruction with given tile parameters.
-  std::vector<int64_t> TileOffsets(
+  llvm::SmallVector<int64_t> TileOffsets(
       absl::Span<int64_t const> tile_parameters) const;
   // Evaluates the tile sizes of an instruction with given tile parameters.
-  std::vector<int64_t> TileSizes(
+  llvm::SmallVector<int64_t> TileSizes(
       absl::Span<int64_t const> tile_parameters) const;
   // Evaluates the tile strides of an instruction with given tile parameters.
-  std::vector<int64_t> TileStrides(
+  llvm::SmallVector<int64_t> TileStrides(
       absl::Span<int64_t const> tile_parameters) const;
 
   const HloInstruction* hlo() const { return hlo_; }
