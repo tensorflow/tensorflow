@@ -640,7 +640,7 @@ class ShapeUtil {
     }).IgnoreError();
   }
   template <typename Fn>
-  static void ForEachMutableLeafShape(const Shape& shape, Fn&& fn) {
+  static void ForEachMutableLeafShape(Shape* shape, Fn&& fn) {
     ForEachMutableLeafShapeWithStatus(shape, [&](Shape* subshape,
                                                  const ShapeIndex& index) {
       fn(subshape, index);

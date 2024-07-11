@@ -342,7 +342,8 @@ CollectivesInterface* GetCollectivesImpl(
   return GetInProcessCollectivesImpl();
 }
 
-absl::Duration DefaultCollectiveTimeout() { return absl::Minutes(30); }
+// DO_NOT_SUBMIT: undo after debugging.
+absl::Duration DefaultCollectiveTimeout() { return absl::Seconds(20); }
 
 absl::StatusOr<int> RankInGlobalDevices(
     absl::Span<GlobalDeviceId const> devices, GlobalDeviceId device) {
