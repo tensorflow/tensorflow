@@ -319,8 +319,8 @@ class MklQuantizeV2Op : public OpKernel {
             ctx->input_type(0) == DT_BFLOAT16 &&
                 (mode_ == QUANTIZE_MODE_MIN_FIRST ||
                  mode_ == QUANTIZE_MODE_SCALED),
-            errors::InvalidArgument("Input type bfloat16 is supported only "
-                                    "with MIN_FIRST and SCLAED modes"));
+            absl::InvalidArgumentError("Input type bfloat16 is supported only "
+                                       "with MIN_FIRST and SCLAED modes"));
       }
     } else {
       dtype_ = DT_FLOAT;
