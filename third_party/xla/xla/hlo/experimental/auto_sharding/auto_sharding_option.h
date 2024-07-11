@@ -194,7 +194,7 @@ struct AutoShardingOption {
 
   // Whether or not to model the memory usage of intermediate tensors, if any,
   // for resharding edges.
-  bool model_resharding_memory_costs = true;
+  bool model_resharding_memory_costs = false;
 
   // Whether or not to generate strategies that model the windowed einsum (or
   // collective matmul) optimization
@@ -210,7 +210,7 @@ struct AutoShardingOption {
   bool enable_expression_constant_splitter = false;
 
   // Whether to post-process the solution by reshaping / resharding tensors.
-  bool post_process = true;
+  bool post_process = false;
 
   // Prints a debug string.
   std::string ToString() const;
