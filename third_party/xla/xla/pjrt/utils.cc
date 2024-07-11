@@ -29,10 +29,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -929,6 +931,18 @@ absl::Status TestBufferDonationClashes(
     }
   }
   return absl::OkStatus();
+}
+
+void MakeAsciiTitlecase(std::string* s) {
+  if (!s->empty()) {
+    s->at(0) = absl::ascii_toupper(s->at(0));
+  }
+}
+
+std::string MakeAsciiTitlecase(absl::string_view s) {
+  std::string result(s);
+  MakeAsciiTitlecase(&result);
+  return result;
 }
 
 }  // namespace xla

@@ -35,6 +35,10 @@ limitations under the License.
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/dnn.pb.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla::gpu {
 namespace {
 
@@ -52,11 +56,12 @@ class GemmAlgorithmPickerTest : public HloTestBase,
     return debug_options;
   }
 
+  const se::DeviceDescription& device_desc() {
+    return backend().default_stream_executor()->GetDeviceDescription();
+  }
+
   void SetUp() override {
-    const auto& gpu_cc = backend()
-                             .default_stream_executor()
-                             ->GetDeviceDescription()
-                             .gpu_compute_capability();
+    const auto& gpu_cc = device_desc().gpu_compute_capability();
 
     if (auto* procm = std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
       if (GetDebugOptionsForTest().xla_gpu_enable_cublaslt() &&
@@ -66,6 +71,23 @@ class GemmAlgorithmPickerTest : public HloTestBase,
     }
   }
 };
+
+TEST_P(GemmAlgorithmPickerTest, BlasGetVersion) {
+  const auto& desc = device_desc();
+  const auto& gpu_cc = desc.gpu_compute_capability();
+  if (auto* procm = std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
+    auto version = std::stol(desc.runtime_version());
+    if (version < 60200) {
+      GTEST_SKIP() << "This API is not available on ROCM 6.1 and below.";
+    }
+  }
+  auto* blas = backend().default_stream_executor()->AsBlas();
+  ASSERT_TRUE(blas != nullptr);
+  std::string version;
+  ASSERT_TRUE(blas->GetVersion(&version).ok());
+  VLOG(0) << "Blas version: " << version;
+  ASSERT_TRUE(!version.empty());
+}
 
 TEST_P(GemmAlgorithmPickerTest, SetAlgorithm) {
   auto comp = backend()

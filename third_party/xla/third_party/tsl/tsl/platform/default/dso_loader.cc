@@ -48,6 +48,20 @@ std::string GetCufftVersion() { return TF_CUFFT_VERSION; }
 std::string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 std::string GetNcclVersion() { return TF_NCCL_VERSION; }
 std::string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
+std::string GetHipVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_HIPRUNTIME_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+std::string GetRocBlasVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_HIPRUNTIME_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
 
 absl::StatusOr<void*> GetDsoHandle(const std::string& name,
                                    const std::string& version) {
@@ -144,7 +158,7 @@ absl::StatusOr<void*> GetNvInferPluginDsoHandle() {
 }
 
 absl::StatusOr<void*> GetRocblasDsoHandle() {
-  return GetDsoHandle("rocblas", "");
+  return GetDsoHandle("rocblas", GetRocBlasVersion());
 }
 
 absl::StatusOr<void*> GetMiopenDsoHandle() {
@@ -181,7 +195,9 @@ absl::StatusOr<void*> GetHipblasltDsoHandle() {
   return GetDsoHandle("hipblaslt", "");
 }
 
-absl::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", ""); }
+absl::StatusOr<void*> GetHipDsoHandle() {
+  return GetDsoHandle("amdhip64", GetHipVersion());
+}
 
 }  // namespace DsoLoader
 

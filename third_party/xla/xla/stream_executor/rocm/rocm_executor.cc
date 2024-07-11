@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -265,8 +266,16 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     VLOG(1) << "Resolve ROCM kernel " << *kernel_name
             << " from symbol pointer: " << symbol;
 
+#if TF_ROCM_VERSION >= 60200
+    TF_ASSIGN_OR_RETURN(
+        GpuFunctionHandle function,
+        GpuRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
+    *rocm_kernel->gpu_function_ptr() = function;
+#else
     *rocm_kernel->gpu_function_ptr() =
         static_cast<hipFunction_t>(spec.in_process_symbol().symbol());
+#endif  // TF_ROCM_VERSION >= 60200
+
   } else {
     return absl::InternalError("No method of loading ROCM kernel provided");
   }
@@ -847,6 +856,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxRegistersPerBlock(device).value());
   builder.set_threads_per_warp(GpuDriver::GetThreadsPerWarp(device).value());
   builder.set_registers_per_core_limit(64 * 1024);
+  builder.set_runtime_version(std::to_string(TF_ROCM_VERSION));
 
   int cc_major = 0;
   int cc_minor = 0;
