@@ -153,6 +153,15 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
     return InvalidArgument("Unbounded dynamism is disabled for instruction: %s",
                            hlo->ToString());
   }
+  if (hlo->shape().has_layout()) {
+    if (hlo->shape().layout().minor_to_major_size() !=
+        hlo->shape().dimensions_size()) {
+      return InvalidArgument(
+          "Instruction has mismatched minor-to-major size and dimension size: "
+          "%s",
+          hlo->ToString());
+    }
+  }
   return absl::OkStatus();
 }
 
