@@ -236,6 +236,8 @@ void AddPostQuantizationStableHloToTfPasses(
 
   // TFLite dialect passes.
   if (!pass_config.disable_hlo_to_tfl_conversion) {
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::odml::CreatePrepareHloPass());
     pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
   }
   // TF dialect passes
