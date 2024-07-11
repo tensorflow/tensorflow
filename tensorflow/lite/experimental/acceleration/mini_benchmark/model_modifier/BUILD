@@ -83,8 +83,10 @@ cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core:model_builder",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
@@ -125,5 +127,6 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ] + libjpeg_handle_deps() + register_selected_ops_deps(),
 )
