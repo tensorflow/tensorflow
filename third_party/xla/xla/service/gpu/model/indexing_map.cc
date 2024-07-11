@@ -1592,6 +1592,7 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
 
 SmallBitVector IndexingMap::RemoveUnusedSymbols() {
   if (IsUndefined()) return {};
+  if (GetSymbolCount() == 0) return {};
 
   UnusedVariables unused_vars = DetectUnusedVariables(*this);
   for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
@@ -1605,6 +1606,7 @@ SmallBitVector IndexingMap::RemoveUnusedSymbols() {
 
 SmallBitVector IndexingMap::RemoveUnusedDimensions() {
   if (IsUndefined()) return {};
+  if (GetDimensionCount() == 0) return {};
 
   UnusedVariables unused_vars = DetectUnusedVariables(*this);
   for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
