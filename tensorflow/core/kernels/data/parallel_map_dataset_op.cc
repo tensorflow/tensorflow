@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -152,13 +153,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    absl::call_once(instantiated_captured_func_once_, [this, ctx] {
+      instantiated_captured_func_status_ = captured_func_->Instantiate(
+          InstantiateCapturedFunctionParams(ctx), &instantiated_captured_func_);
+    });
+    TF_RETURN_IF_ERROR(instantiated_captured_func_status_);
     std::vector<Tensor> args;
     TF_RETURN_IF_ERROR(input_->Get(ctx, index, &args));
-    if (!instantiated_captured_func_) {
-      TF_RETURN_IF_ERROR(
-          captured_func_->Instantiate(InstantiateCapturedFunctionParams(ctx),
-                                      &instantiated_captured_func_));
-    }
     return instantiated_captured_func_->RunInstantiated(args, out_tensors);
   }
 
@@ -786,6 +787,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   const std::unique_ptr<CapturedFunction> captured_func_;
   const int op_version_;
   // This is used for random access provided by Get().
+  mutable absl::once_flag instantiated_captured_func_once_;
+  mutable absl::Status instantiated_captured_func_status_;
   mutable std::unique_ptr<InstantiatedCapturedFunction>
       instantiated_captured_func_;
   absl::Status random_indexing_compatible_;
