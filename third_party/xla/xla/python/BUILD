@@ -260,16 +260,16 @@ cc_library(
     deps = [
         ":nb_class_ptr",
         # placeholder for index annotation deps
-        "//third_party/nanobind",
-        "//xla/pjrt:exceptions",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "//third_party/nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "//xla/pjrt:exceptions",
+        "@local_tsl//tsl/platform",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -349,7 +349,27 @@ cc_library(
         ":util",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "//third_party/nanobind",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
@@ -403,26 +423,6 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
         # TODO(b/324133505): remove this dependency after JAX OSS migrates to cuda plugin.
@@ -567,11 +567,6 @@ cc_library(
         ":pytree",
         ":types",
         # placeholder for index annotation deps
-        "//third_party/nanobind",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:status_casters",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/profiler/lib:traceme",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -580,7 +575,12 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "//third_party/nanobind",
         "@local_config_python//:python_headers",  # build_cleaner: keep
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:status_casters",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -638,6 +638,8 @@ cc_library(
         ":custom_partition_callback",
         ":inspect_sharding",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "//third_party/nanobind",
         "//xla:shape_util",
         "//xla:util",
@@ -649,8 +651,6 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_helpers",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -669,6 +669,7 @@ cc_library(
         ":nb_helpers",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
@@ -683,7 +684,6 @@ cc_library(
         "//xla/client/lib:sorting",
         "//xla/client/lib:svd",
         "//xla/pjrt:status_casters",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -741,7 +741,17 @@ cc_library(
         ":traceback",
         ":transfer_guard_lib",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:util",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:lru_cache",
@@ -754,16 +764,6 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
     ],
 )
 
@@ -789,7 +789,17 @@ cc_library(
         ":traceback",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -802,16 +812,6 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
     ],
 )
 
@@ -851,6 +851,12 @@ cc_library(
         ":py_client",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
         "//third_party/nanobind",
         "//xla:literal",
         "//xla/client:executable_build_options",
@@ -859,12 +865,6 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
         "@local_tsl//tsl/platform:logging",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -906,9 +906,6 @@ cc_library(
         ":nb_helpers",
         ":pytree_proto_cc",
         # placeholder for index annotation deps
-        "//third_party/nanobind",
-        "//xla/pjrt:exceptions",
-        "@local_tsl//tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -916,7 +913,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "//third_party/nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "//xla/pjrt:exceptions",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -933,18 +933,6 @@ cc_library(
     deps = [
         ":refine_polymorphic_shapes",
         # placeholder for index annotation deps
-        "//third_party/nanobind",
-        "//xla/client:xla_computation",
-        "//xla/mlir/utils:error_util",
-        "//xla/mlir_hlo",
-        "//xla/mlir_hlo:all_passes",
-        "//xla/pjrt:mlir_to_hlo",
-        "//xla/pjrt:status_casters",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
@@ -957,9 +945,21 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
+        "//third_party/nanobind",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
+        "//xla/client:xla_computation",
+        "//xla/mlir/utils:error_util",
+        "//xla/mlir_hlo",
+        "//xla/mlir_hlo:all_passes",
+        "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt:status_casters",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1024,6 +1024,9 @@ cc_library(
         ":types",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
         "//xla/backends/profiler:profiler_backends",
         "//xla/backends/profiler/cpu:python_tracer",
@@ -1042,9 +1045,6 @@ cc_library(
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:capture_profile",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
     ] + select({
         ":gpu_enabled": [
             "//xla/backends/profiler/gpu:device_tracer",
@@ -1066,10 +1066,10 @@ cc_library(
     visibility = [":friends"],
     deps = [
         # placeholder for index annotation deps
-        "//third_party/nanobind",
-        "//xla:util",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
+        "//third_party/nanobind",
+        "//xla:util",
     ],
 )
 
@@ -1106,13 +1106,13 @@ cc_library(
     deps = [
         ":nb_helpers",
         # placeholder for index annotation deps
-        "//third_party/nanobind",
-        "//xla/pjrt:lru_cache",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "//third_party/nanobind",
+        "//xla/pjrt:lru_cache",
     ],
 )
 
@@ -1133,6 +1133,15 @@ cc_library(
         ":py_client",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
         "//xla:array",
         "//xla:debug_options_flags",
@@ -1169,15 +1178,6 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1345,7 +1345,21 @@ tsl_pybind_extension(
         ":weakref_lru_cache",
         ":xla_compiler",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log:initialize",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "//third_party/nanobind",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:literal",
         "//xla:shape_util",
         "//xla:types",
@@ -1383,20 +1397,6 @@ tsl_pybind_extension(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log:initialize",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
     ] + select({
         # gloo transport only builds on linux
         "//xla/tsl:macos": [],
