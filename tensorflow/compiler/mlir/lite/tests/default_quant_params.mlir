@@ -5,10 +5,10 @@ func.func @hardcode_all(%arg0: tensor<2x2xf32>, %arg1: tensor<2x1xf32>) -> tenso
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function="NONE"}: (tensor<2x2xf32>, tensor<2x1xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
 
-// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg1) {qtype = tensor<2x1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}
-// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}
+// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg1) <{qtype = tensor<2x1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}>
+// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<2x2x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}>
 // Quantized tfl.add
-// CHECK: %[[add:.*]] = tfl.add(%[[q1]], %[[q0]]) {fused_activation_function = "NONE"} : (tensor<2x2x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK: %[[add:.*]] = tfl.add(%[[q1]], %[[q0]]) <{fused_activation_function = "NONE"}> : (tensor<2x2x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[add]]) : (tensor<2x2x!quant.uniform<u8:f32, 0.0078431372549019607:128>>)
 // CHECK: return %[[dq]]
 }
@@ -20,9 +20,9 @@ func.func @hardcode_input(%arg0: tensor<2x2xf32>, %arg1: tensor<2x1xf32>) -> ten
   %4 = "tfl.add"(%1, %arg1) {fused_activation_function="NONE"}: (tensor<2x2xf32>, tensor<2x1xf32>) -> tensor<2x2xf32>
   func.return %4 : tensor<2x2xf32>
 
-// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg1) {qtype = tensor<2x1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}
-// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00:128>>}
-// CHECK: %[[add:.*]] = tfl.add(%[[q1]], %[[q0]]) {fused_activation_function = "NONE"} : (tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00:128>>
+// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg1) <{qtype = tensor<2x1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}>
+// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00:128>>}>
+// CHECK: %[[add:.*]] = tfl.add(%[[q1]], %[[q0]]) <{fused_activation_function = "NONE"}> : (tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00:128>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[add]]) : (tensor<2x2x!quant.uniform<u8:f32, 0.0078431372549019607:128>>)
 // CHECK: return %[[dq]]
 }
@@ -33,8 +33,8 @@ func.func @hardcode_input_deq(%arg0: tensor<2x2x!quant.uniform<u8:f32, 1.0>>, %a
   %4 = "tfl.add"(%1, %arg1) {fused_activation_function="NONE"}: (tensor<2x2xf32>, tensor<2x1xf32>) -> tensor<2x2xf32>
   func.return %4 : tensor<2x2xf32>
 
-// CHECK: %[[q:.*]] = "tfl.quantize"(%arg1) {qtype = tensor<2x1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}
-// CHECK: %[[add:.*]] = tfl.add(%arg0, %[[q]]) {fused_activation_function = "NONE"} : (tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK: %[[q:.*]] = "tfl.quantize"(%arg1) <{qtype = tensor<2x1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}>
+// CHECK: %[[add:.*]] = tfl.add(%arg0, %[[q]]) <{fused_activation_function = "NONE"}> : (tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[add]]) : (tensor<2x2x!quant.uniform<u8:f32, 0.0078431372549019607:128>>)
 // CHECK: return %[[dq]]
 }
@@ -48,9 +48,9 @@ func.func @hardcode_output(%arg0: tensor<2x2xf32>, %arg1: tensor<2x1xf32>) -> te
   %4 = "tfl.add"(%2, %3) {fused_activation_function="NONE"}: (tensor<2x2xf32>, tensor<2x1xf32>) -> tensor<2x2xf32>
   func.return %4 : tensor<2x2xf32>
 
-// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00:128>>}
-// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg1) {qtype = tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00:128>>}
-// CHECK: %[[add:.*]] = tfl.add(%[[q0]], %[[q1]]) {fused_activation_function = "NONE"} : (tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00:128>>
+// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00:128>>}>
+// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg1) <{qtype = tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00:128>>}>
+// CHECK: %[[add:.*]] = tfl.add(%[[q0]], %[[q1]]) <{fused_activation_function = "NONE"}> : (tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00:128>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[add]]) : (tensor<2x2x!quant.uniform<u8:f32, 0.0078431372549019607:128>>)
 // CHECK: return %[[dq]]
 }
@@ -81,8 +81,8 @@ func.func @test_conv_2d_activation_and_bias(%arg0: tensor<1x224x224x3xf32>, %arg
     %1 = "tfl.conv_2d"(%arg0, %0, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
     func.return %1 : tensor<1x112x112x32xf32>
 
-// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg2) {qtype = tensor<32x!quant.uniform<i32:f32, 0.0078431372549019607>>}
-// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<1x224x224x3x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}
+// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg2) <{qtype = tensor<32x!quant.uniform<i32:f32, 0.0078431372549019607>>}>
+// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<1x224x224x3x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}>
 // CHECK: %[[conv:.*]] = "tfl.conv_2d"(%[[q1]], %arg1, %[[q0]])
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[conv]]) : (tensor<1x112x112x32x!quant.uniform<u8:f32, 0.0078431372549019607:128>>)
 // CHECK: return %[[dq]]

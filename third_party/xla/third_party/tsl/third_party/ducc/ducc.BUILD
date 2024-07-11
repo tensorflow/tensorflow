@@ -24,6 +24,7 @@ cc_library(
         "src/ducc0/infra/error_handling.h",
         "src/ducc0/infra/misc_utils.h",
         "src/ducc0/infra/simd.h",
+        "src/ducc0/infra/string_utils.h",
         "src/ducc0/infra/threading.cc",
         "src/ducc0/infra/useful_macros.h",
         "src/ducc0/math/cmplx.h",

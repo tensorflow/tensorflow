@@ -15,24 +15,101 @@ limitations under the License.
 
 #include "xla/service/hlo_runner_pjrt.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+
+namespace {
+
+absl::Status SanityCheckParameterLayouts(
+    const ComputationLayout& entry_layout) {
+  const std::vector<ShapeLayout>& layouts = entry_layout.parameter_layouts();
+  bool has_nested_tuples =
+      absl::c_any_of(layouts, [](const auto& shape_layout) {
+        return ShapeUtil::IsNestedTuple(shape_layout.shape());
+      });
+  if (has_nested_tuples) {
+    return InvalidArgument(
+        "PJRT does not support nested tuples as input parameters");
+  }
+  int num_tuples = absl::c_count_if(layouts, [](const auto& shape_layout) {
+    return shape_layout.shape().IsTuple();
+  });
+  if (num_tuples > 1) {
+    return InvalidArgument(
+        "PJRT does not support more than one tuple as input parameters"
+        " (found %d tuples)",
+        num_tuples);
+  }
+  if (num_tuples == 1 && num_tuples != layouts.size()) {
+    return InvalidArgument(
+        "PJRT does not support mixing tuples and non-tuples as input "
+        "parameters (found 1 tuple out of %d arguments)",
+        layouts.size());
+  }
+  return OkStatus();
+}
+
+absl::StatusOr<bool> MustFlattenInputTuple(
+    const ComputationLayout& entry_layout) {
+  TF_RETURN_IF_ERROR(SanityCheckParameterLayouts(entry_layout));
+  // Strictly, we only need to flatten tuples with mixed host/device leaves
+  // because mixed host/device PjRtBuffer's are not supported.
+  // However, splitting all tuples makes the code simpler and is the way
+  // PJRT is commonly used by JAX.
+  return entry_layout.parameter_count() == 1 &&
+         entry_layout.parameter_shape(0).IsTuple();
+}
+
+absl::StatusOr<ExecuteOptions> GenerateExecuteOptions(const HloModule& module) {
+  ExecuteOptions execute_options;
+
+  // If any output leaf buffer is in host memory, PJRT requires untuple_result.
+  auto output_has_tuple_leaf_in_host_memory_space =
+      [&module]() -> absl::StatusOr<bool> {
+    if (!module.result_shape().IsTuple()) {
+      return false;
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::vector<Layout> output_layouts,
+        module.entry_computation_layout().FlattenedResultLayouts());
+    return absl::c_any_of(output_layouts, [](const Layout& layout) {
+      return layout.memory_space() == Layout::kHostMemorySpace;
+    });
+  };
+  TF_ASSIGN_OR_RETURN(execute_options.untuple_result,
+                      output_has_tuple_leaf_in_host_memory_space());
+
+  return execute_options;
+}
+
+}  // namespace
 
 // TODO(b/245550554): Remove the use of PjRtWrappedExecutable.
 class PjRtWrappedExecutable : public Executable {
@@ -102,6 +179,13 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
   }
   compile_options.argument_layouts = parameter_shapes;
 
+  TF_ASSIGN_OR_RETURN(
+      bool flatten, MustFlattenInputTuple(module->entry_computation_layout()));
+  compile_options.parameter_is_tupled_arguments = flatten;
+
+  compile_options.executable_build_options.set_result_layout(
+      module->entry_computation_layout().result_shape());
+
   return compile_options;
 }
 
@@ -114,28 +198,68 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-HloRunnerPjRt::TransferLiteralToDevice(const Literal& literal) {
+HloRunnerPjRt::TransferLiteralToDevice(const Literal& literal,
+                                       int64_t memory_space) {
   auto devices = pjrt_client_->addressable_devices();
+  PjRtDevice* device = devices[kDeviceIdx];
 
+  if (pjrt_client_->memory_spaces().empty()) {
+    TF_ASSIGN_OR_RETURN(auto assignment,
+                        pjrt_client_->BufferFromHostLiteral(literal, device));
+    return std::move(assignment);
+  }
+
+  auto get_pjrt_memory_space = [](PjRtDevice* pjrt_device,
+                                  int64_t xla_memory_space) {
+    if (xla_memory_space == Layout::kHostMemorySpace) {
+      return pjrt_device->memory_space_by_kind(PinnedHostMemorySpace::kKind);
+    }
+    return pjrt_device->default_memory_space();
+  };
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * pjrt_memory_space,
+                      get_pjrt_memory_space(device, memory_space));
   TF_ASSIGN_OR_RETURN(auto assignment, pjrt_client_->BufferFromHostLiteral(
-                                           literal, devices[kDeviceIdx]));
-
+                                           literal, pjrt_memory_space));
   return std::move(assignment);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 HloRunnerPjRt::TransferLiteralsToDevice(
+    const ComputationLayout& entry_layout,
     absl::Span<const Literal* const> literals) {
-  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
-  buffers.reserve(literals.size());
-  for (const Literal* literal : literals) {
-    TF_RET_CHECK(literal != nullptr);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer,
-                        TransferLiteralToDevice(*literal));
-    TF_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
-    buffers.push_back(std::move(buffer));
+  TF_ASSIGN_OR_RETURN(bool flatten, MustFlattenInputTuple(entry_layout));
+  TF_ASSIGN_OR_RETURN(std::vector<Layout> parameter_layouts,
+                      entry_layout.FlattenedParameterLayouts());
+
+  auto transfer_literals = [&parameter_layouts, this](
+                               absl::Span<const Literal* const> input_literals)
+      -> absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> {
+    TF_RET_CHECK(parameter_layouts.size() == input_literals.size());
+    std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+    buffers.reserve(input_literals.size());
+    for (int i = 0; i < input_literals.size(); ++i) {
+      const Literal* literal = input_literals[i];
+      TF_RET_CHECK(literal != nullptr);
+      int64_t memory_space = parameter_layouts[i].memory_space();
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer,
+                          TransferLiteralToDevice(*literal, memory_space));
+      TF_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+      buffers.push_back(std::move(buffer));
+    }
+    return std::move(buffers);
+  };
+
+  if (flatten) {
+    Literal cloned_literal = literals[0]->Clone();
+    std::vector<Literal> flattened = cloned_literal.DecomposeTuple();
+    std::vector<const Literal*> flattened_ptrs;
+    flattened_ptrs.reserve(flattened.size());
+    for (const Literal& literal : flattened) {
+      flattened_ptrs.push_back(&literal);
+    }
+    return transfer_literals(flattened_ptrs);
   }
-  return std::move(buffers);
+  return transfer_literals(literals);
 }
 
 absl::StatusOr<Literal> HloRunnerPjRt::Execute(
@@ -180,15 +304,13 @@ HloRunnerPjRt::CreateExecutable(HloModule* module,
                                 CompileOptions compile_options) {
   XlaComputation computation(module->ToProto());
 
-  return pjrt_client_->Compile(computation, compile_options);
+  return pjrt_client_->Compile(computation, std::move(compile_options));
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 HloRunnerPjRt::ExecuteWithDeviceBuffers(
-    PjRtLoadedExecutable* executable,
+    PjRtLoadedExecutable* executable, const ExecuteOptions& execute_options,
     const std::vector<std::unique_ptr<PjRtBuffer>>& arguments) {
-  ExecuteOptions execute_options;
-
   std::vector<PjRtBuffer*> argument_ptrs = BufferVecToPointerVec(arguments);
 
   auto devices = pjrt_client_->addressable_devices();
@@ -209,17 +331,33 @@ absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
   PjRtWrappedExecutable* wrapped_executable =
       static_cast<PjRtWrappedExecutable*>(executable);
 
-  TF_ASSIGN_OR_RETURN(auto argument_handles,
-                      TransferLiteralsToDevice(arguments));
+  auto* pjrt_executable = wrapped_executable->GetPjRtLoadedExecutable();
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+                      pjrt_executable->GetHloModules());
+  TF_RET_CHECK(hlo_modules.size() == 1);
+  const HloModule& module = *hlo_modules.front();
+
+  TF_ASSIGN_OR_RETURN(ExecuteOptions execute_options,
+                      GenerateExecuteOptions(module));
+  TF_ASSIGN_OR_RETURN(
+      auto argument_handles,
+      TransferLiteralsToDevice(module.entry_computation_layout(), arguments));
 
   TF_ASSIGN_OR_RETURN(
-      auto output_buffer,
+      std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
       ExecuteWithDeviceBuffers(wrapped_executable->GetPjRtLoadedExecutable(),
-                               std::move(argument_handles)));
-  // TODO (b/245550554): Support more than 1 output.
-  CHECK_EQ(output_buffer.size(), 1);
-
-  return TransferLiteralFromDevice(*output_buffer[0]);
+                               execute_options, std::move(argument_handles)));
+  if (!execute_options.untuple_result) {
+    TF_RET_CHECK(output_buffers.size() == 1)
+        << ", got " << output_buffers.size();
+    return TransferLiteralFromDevice(*output_buffers[0]);
+  }
+  std::vector<Literal> result_leaves;
+  for (const auto& leaf_buffer : output_buffers) {
+    TF_ASSIGN_OR_RETURN(Literal leaf, TransferLiteralFromDevice(*leaf_buffer));
+    result_leaves.push_back(std::move(leaf));
+  }
+  return Literal::MoveIntoTuple(absl::MakeSpan(result_leaves));
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> HloRunnerPjRt::CreateExecutable(

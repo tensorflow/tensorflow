@@ -64,6 +64,11 @@ typedef void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
 typedef void* XLA_FFI_INTERNAL_CalledComputation_Get(
     XLA_FFI_ExecutionContext* ctx);
 
+// Returns a pointer to the underlying `xla::ffi::ExecutionContext` object which
+// allows to access typed user data attached to the execution context.
+typedef void* XLA_FFI_INTERNAL_ExecutionContext_Get(
+    XLA_FFI_ExecutionContext* ctx);
+
 //===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
@@ -77,6 +82,7 @@ struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CalledComputation_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_ExecutionContext_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD

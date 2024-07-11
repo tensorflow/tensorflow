@@ -643,3 +643,25 @@ module {
 // CHECK:   }
 // CHECK: }
 // CHECK: return
+
+// -----
+
+module {
+  func.func @atomic_rmw_c32(%in: tensor<2x4xcomplex<f32>>, %i: index, %j: index)
+      -> (tensor<2x4xcomplex<f32>>) {
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xcomplex<f32>> {
+      ^bb0(%current : complex<f32>):
+        %a = complex.add %current, %current : complex<f32>
+        xla_gpu.yield %a : complex<f32>
+    }
+    return %ret : tensor<2x4xcomplex<f32>>
+  }
+}
+
+// CHECK-LABEL: @atomic_rmw_c32
+
+// CHECK: scf.while (%[[ITER_ARG:.*]] = %{{.*}}) : (i64) -> i64
+// CHECK: %[[TMP:.*]] = llvm.alloca
+// CHECK: llvm.store %[[ITER_ARG]], %[[TMP]]
+// CHECK: %[[LD:.*]] = llvm.load %[[TMP]] : {{.*}} -> !llvm.struct<(f32, f32)>
+// CHECK: builtin.unrealized_conversion_cast %[[LD]] : {{.*}} to complex<f32>

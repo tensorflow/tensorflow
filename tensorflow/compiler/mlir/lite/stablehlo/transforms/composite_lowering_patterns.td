@@ -49,3 +49,9 @@ def LegalizeTorchUpsampleBlinear2dComposite: Pat<
                         (Arith_ConstantOp
                             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
                     [(IsSupportedNchwUpsampleBlinear $input, $old_val, $attrs)]>;
+
+
+def LegalizeCompositeGELU : Pat<(MHLO_CompositeOp:$composite 
+                                  (variadic $inputs), 
+                                  ConstantStrAttr<StrAttr, "odml.internal.gelu">, $_, $_, $_),
+                                (TFL_GeluOp $inputs, ConstBoolAttrFalse)>;

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -150,6 +152,16 @@ struct SPMDCollectiveOpsCreator {
       int64_t channel_id)>
       create_cross_partition_all_reduce;
 
+  // Function used to create a cross-partition all-reduce HLO using device list
+  // in iota format. This function is optional: if it is a nullptr, use
+  // create_cross_partition_all_reduce.
+  // TODO(b/316622399): Merge this and create_cross_partition_all_reduce into a
+  // function that uses CollectiveDeviceList.
+  std::function<HloInstruction*(
+      SpmdBuilder*, HloInstruction* operand, HloComputation* reduction,
+      const IotaReplicaGroupList& partition_group_list, int64_t channel_id)>
+      create_cross_partition_all_reduce_with_iota_device_list;
+
   // Function used to create a cross-partition collective-permute HLO.
   std::function<HloInstruction*(
       SpmdBuilder*, HloInstruction* operand,
@@ -171,6 +183,17 @@ struct SPMDCollectiveOpsCreator {
       const std::vector<std::vector<int64_t>>& partition_subgroups,
       int64_t channel_id, int64_t all_gather_dimension)>
       create_cross_partition_all_gather;
+
+  // Function used to create a cross-partition all-gather HLO using device list
+  // in iota format. This function is optional: if it is a nullptr, use
+  // create_cross_partition_all_gather.
+  // TODO(b/316622399): Merge this and create_cross_partition_all_gather into a
+  // function that uses CollectiveDeviceList.
+  std::function<HloInstruction*(
+      SpmdBuilder*, HloInstruction* operand, const Shape& ag_shape,
+      const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
+      int64_t all_gather_dimension)>
+      create_cross_partition_all_gather_with_iota_device_list;
 };
 
 // Create a default SPMDCollectiveOpsCreator.

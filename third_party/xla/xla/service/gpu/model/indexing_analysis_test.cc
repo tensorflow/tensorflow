@@ -2635,19 +2635,30 @@ TEST_F(IndexingAnalysisTest, TilingIndexing) {
 TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
-    ENTRY e {
+    fused_computation {
       p0 = f32[1000, 1000] parameter(0)
       t = f32[1000, 1000]{0, 1} transpose(p0), dimensions={1, 0}
       a0 = f32[1000000] bitcast(t)
       ROOT log = f32[1000000] log(a0)
     }
+    ENTRY e {
+      p0 = f32[1000, 1000] parameter(0)
+      ROOT fusion = f32[1000000] fusion(p0), kind=kLoop,
+          calls=fused_computation
+    }
   )");
   ASSERT_TRUE(module.ok());
-  EXPECT_THAT(ComputeEpilogueInputToOutputIndexing(
-                  (*module)->entry_computation()->GetInstructionWithName("t"),
-                  &mlir_context_)
-                  .ToString(),
-              MatchIndexingString(R"(
+  auto* computation = (*module)->GetComputationWithName("fused_computation");
+  auto fusion = HloFusionAdaptor::ForComputation(computation);
+  HloInstructionAdaptor transpose(*computation->GetInstructionWithName("t"),
+                                  fusion.get());
+  HloInstructionAdaptor log(*computation->GetInstructionWithName("log"),
+                            fusion.get());
+
+  EXPECT_THAT(
+      ComputeEpilogueInputToOutputIndexing(transpose, log, &mlir_context_)
+          .ToString(),
+      MatchIndexingString(R"(
                   (d0, d1) -> (d0 + d1 * 1000)
                   domain:
                   d0 in [0, 999]
@@ -2658,17 +2669,26 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
 TEST_F(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
-    ENTRY e {
+    fused_computation {
       p0 = f32[1000, 1000] parameter(0)
       ROOT t = f32[1000, 1000]{0, 1} transpose(p0), dimensions={1, 0}
     }
+    ENTRY e {
+      p0 = f32[1000, 1000] parameter(0)
+      ROOT fusion = f32[1000, 1000] fusion(p0), kind=kLoop,
+          calls=fused_computation
+    }
   )");
   ASSERT_TRUE(module.ok());
-  EXPECT_THAT(ComputeEpilogueInputToOutputIndexing(
-                  (*module)->entry_computation()->GetInstructionWithName("t"),
-                  &mlir_context_)
-                  .ToString(),
-              MatchIndexingString(R"(
+  auto* computation = (*module)->GetComputationWithName("fused_computation");
+  auto fusion = HloFusionAdaptor::ForComputation(computation);
+  HloInstructionAdaptor transpose(*computation->GetInstructionWithName("t"),
+                                  fusion.get());
+
+  EXPECT_THAT(
+      ComputeEpilogueInputToOutputIndexing(transpose, transpose, &mlir_context_)
+          .ToString(),
+      MatchIndexingString(R"(
                   (d0, d1) -> (d0, d1)
                   domain:
                   d0 in [0, 999]

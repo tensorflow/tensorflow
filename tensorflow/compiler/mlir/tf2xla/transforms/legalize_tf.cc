@@ -1226,7 +1226,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         int64_t pad_high_int64;
         int64_t input_size = input_ty.getDimSize(dim);
         if (input_size == ShapedType::kDynamic) return failure();
-        tsl::Status status = tensorflow::GetWindowedOutputSizeVerbose(
+        absl::Status status = tensorflow::GetWindowedOutputSizeVerbose(
             input_size, filter_ty.getDimSize(i), dilation, stride, padding,
             &output_size, &pad_low_int64, &pad_high_int64);
         if (!status.ok()) return failure();
@@ -6457,9 +6457,7 @@ class ConvertDynamicSqueezeOp : public OpRewritePattern<TF::SqueezeOp> {
 
     auto from_extents =
         rewriter.create<tensor::FromElementsOp>(op.getLoc(), dims);
-    // chlo::DynamicReshapeOp checks if the reshape is legal and will fail if
-    // any non-1 dimension is squeezed.
-    rewriter.replaceOpWithNewOp<chlo::DynamicReshapeOp>(op, result_ty, input,
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_ty, input,
                                                         from_extents);
     return success();
   }

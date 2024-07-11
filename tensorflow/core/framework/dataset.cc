@@ -922,6 +922,30 @@ Status DatasetBase::MakeSplitProviders(
   return inputs[0]->MakeSplitProviders(split_providers);
 }
 
+std::optional<int64_t> DatasetBase::GetEstimatedElementSize() const {
+  const auto& shapes = output_shapes();
+  const auto& dtypes = output_dtypes();
+  if (shapes.size() != dtypes.size()) {
+    LOG(ERROR) << "This should not happen because the sizes of output_shapes() "
+                  "and output_dtypes() should always be "
+                  "the same.";
+    return std::nullopt;
+  }
+
+  size_t num_outputs = shapes.size();
+  int64_t element_size = 0;
+  for (int i = 0; i < num_outputs; ++i) {
+    const auto& partial_shape = shapes[i];
+    const auto& dtype = dtypes[i];
+    auto num_elements = partial_shape.num_elements();
+    if (num_elements == -1) {
+      return std::nullopt;
+    }
+    element_size += num_elements * DataTypeSize(dtype);
+  }
+  return element_size;
+}
+
 int64_t DatasetBase::Cardinality() const {
   mutex_lock l(cardinality_mu_);
   if (cardinality_ == kUnknownCardinality) {

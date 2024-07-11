@@ -86,25 +86,13 @@ namespace {
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser& parser,
                                             OperationState& result) {
   SmallVector<OpAsmParser::UnresolvedOperand, 2> ops;
-  Type type;
   // If the operand list is in-between parentheses, then we have a generic form.
   // (see the fallback in `printOneResultOp`).
-  SMLoc loc = parser.getCurrentLocation();
   if (!parser.parseOptionalLParen()) {
-    if (parser.parseOperandList(ops) || parser.parseRParen() ||
-        parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseType(type))
-      return failure();
-    auto fnType = type.dyn_cast<FunctionType>();
-    if (!fnType) {
-      parser.emitError(loc, "expected function type");
-      return failure();
-    }
-    if (parser.resolveOperands(ops, fnType.getInputs(), loc, result.operands))
-      return failure();
-    result.addTypes(fnType.getResults());
-    return success();
+    if (parser.parseOperandList(ops) || parser.parseRParen()) return failure();
+    return parser.parseGenericOperationAfterOpName(result, ops);
   }
+  Type type;
   return failure(parser.parseOperandList(ops) ||
                  parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
@@ -1046,9 +1034,9 @@ mlir::LogicalResult CustomOp::verify() {
 
 LogicalResult CustomTfOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange ranges,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  CustomTfOpAdaptor op(operands, attr, {}, ranges);
+  CustomTfOpAdaptor op(operands, attr, properties, regions);
 
   if (op.getRegions().empty()) return success();
   auto* real_op = &op.getBody().front().front();
@@ -1391,9 +1379,9 @@ static LogicalResult ComputeConvWindowedOutputSize(
 
 LogicalResult Conv2DOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  Conv2DOpAdaptor op(operands, attr);
+  Conv2DOpAdaptor op(operands, attr, properties);
 
   const Value input = op.getInput();
   const Value filter = op.getFilter();
@@ -2072,9 +2060,9 @@ mlir::LogicalResult ReshapeOp::verify() {
 
 LogicalResult ReshapeOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  ReshapeOpAdaptor op(operands, attr);
+  ReshapeOpAdaptor op(operands, attr, properties);
   const Value input = op.getInput();
   const Value shape = op.getShape();
 
@@ -2449,9 +2437,9 @@ void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult UnpackOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  UnpackOpAdaptor op(operands, attributes);
+  UnpackOpAdaptor op(operands, attributes, properties);
   // TODO(jpienaar): Refactor verify
   if (failed(op.verify(loc.has_value() ? *loc : UnknownLoc::get(context))))
     return failure();
@@ -2810,7 +2798,7 @@ mlir::LogicalResult UnidirectionalSequenceLSTMOp::verify() {
 
 LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
     MLIRContext*, std::optional<Location>, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Value input = operands[0];
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();

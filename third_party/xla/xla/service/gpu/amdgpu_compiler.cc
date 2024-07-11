@@ -132,7 +132,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
           "reshape_mover_after_conv_canonicalization")] {
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
-    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
+    pipeline.AddPass<ReshapeMover>(reshape_mover_options);
     pipeline.AddPass<AlgebraicSimplifier>(options);
   }();
 

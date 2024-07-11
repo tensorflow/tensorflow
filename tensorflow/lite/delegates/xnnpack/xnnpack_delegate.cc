@@ -2899,17 +2899,19 @@ class Subgraph {
                           "odml.scaled_dot_product_attention") == 0) {
           const float* scale_val = nullptr;
           // ensure 28 bytes as we expect
-          if (node->custom_initial_data_size == 28) {
+          // TODO(b/339106680): this reading method may not work for every case.
+          if (node->custom_initial_data_size == 28 && sizeof(float) == 4) {
             // Custom data here is a flexbuffer map.
             // byte_width is 4 for our map.
             // First 5 values are "scale", then is the float value, and last is
             // flexbuffer metadata.
             const uint8_t* buffer =
                 reinterpret_cast<const uint8_t*>(node->custom_initial_data);
-            char str_val[20];
-            memcpy(str_val, buffer, 5 * 4);
-            if (strcmp(str_val, "scale") == 0)
-              scale_val = reinterpret_cast<const float*>(buffer + 5 * 4);
+            if (strcmp("scale", reinterpret_cast<const char*>(buffer)) == 0) {
+              constexpr size_t kScaleValOffset = 20;
+              scale_val =
+                  reinterpret_cast<const float*>(buffer + kScaleValOffset);
+            }
           }
 
           return VisitDotAttentionNode(subgraph, delegate, context, node_index,
@@ -6528,19 +6530,19 @@ class Subgraph {
       bool is_gqa =
           !is_mqa && (key_proj.dims->data[2] != query_proj.dims->data[2]);
 
-      // Scale the query values by multiplying 1 / sqrt(dim_per_head).
+      // Scale the query values
       const auto query_dim = query_proj.dims;
       TF_LITE_ENSURE_EQ(logging_context, query_dim->size, 4);
       float scale_const = 1.0f / sqrt(query_dim->data[3]);
       uint32_t scale_out_id = XNN_INVALID_VALUE_ID;
-      if (scale_param != nullptr && *scale_param == scale_const) {
+      if (scale_param != nullptr) {
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
             xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
                                     /*dims=*/nullptr, scale_param,
                                     XNN_INVALID_VALUE_ID, 0, &scale_out_id));
       } else {
-        // fallback
+        // fallback, use default scale = 1 / sqrt(dim_per_head)
         uint32_t scale_orig_id = XNN_INVALID_VALUE_ID;
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
@@ -6570,7 +6572,7 @@ class Subgraph {
                                /*flags=*/0));
       // Dot similarity
       // BTNH -> BNTH
-      std::vector<size_t> permute_q = {0, 2, 1, 3};
+      std::array<size_t, 4> permute_q = {0, 2, 1, 3};
       TF_LITE_ENSURE_EQ(logging_context, query_proj.dims->size,
                         permute_q.size());
       uint32_t permute_q_out_id = XNN_INVALID_VALUE_ID;
@@ -6584,7 +6586,7 @@ class Subgraph {
                             subgraph, permute_q.size(), permute_q.data(),
                             multiply_out_id, permute_q_out_id, /*flags=*/0));
       // BSNH -> BNSH
-      std::vector<size_t> permute_k = {0, 2, 1, 3};
+      std::array<size_t, 4> permute_k = {0, 2, 1, 3};
       TF_LITE_ENSURE_EQ(logging_context, key_proj.dims->size, permute_k.size());
       uint32_t permute_k_out_id = XNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_EQ(
@@ -6629,14 +6631,14 @@ class Subgraph {
                   nullptr, XNN_INVALID_VALUE_ID, 0, &bmm_reshape_id));
           size_t num_query_groups = key_proj.dims->data[2];
           size_t head_per_query = query_proj.dims->data[2] / num_query_groups;
-          std::vector<size_t> q_reshape_dims = {
+          std::array<size_t, 5> q_reshape_dims = {
               (size_t)query_proj.dims->data[0], num_query_groups,
               head_per_query, (size_t)query_proj.dims->data[1],
               (size_t)query_proj.dims->data[3]};
-          std::vector<size_t> k_reshape_dims = {
+          std::array<size_t, 5> k_reshape_dims = {
               (size_t)key_proj.dims->data[0], num_query_groups, 1,
               (size_t)key_proj.dims->data[1], (size_t)key_proj.dims->data[3]};
-          std::vector<size_t> bmm_reshape_dims = {
+          std::array<size_t, 4> bmm_reshape_dims = {
               (size_t)query_proj.dims->data[0],
               num_query_groups * head_per_query,
               (size_t)query_proj.dims->data[1], (size_t)key_proj.dims->data[1]};
@@ -6671,8 +6673,8 @@ class Subgraph {
         TFLITE_DCHECK(key_proj.dims->data[0] == 1);
         TFLITE_DCHECK(key_proj.dims->data[2] == 1);
         // squeezed_rhs shape: [S, H]
-        std::vector<size_t> reshape_dims_k = {(size_t)key_proj.dims->data[1],
-                                              (size_t)key_proj.dims->data[3]};
+        std::array<size_t, 2> reshape_dims_k = {(size_t)key_proj.dims->data[1],
+                                                (size_t)key_proj.dims->data[3]};
         uint32_t reshape_dims_k_out_id = XNN_INVALID_VALUE_ID;
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
@@ -6723,7 +6725,7 @@ class Subgraph {
                         xnn_define_softmax(subgraph, padded_logits_id, probs_id,
                                            /*flags=*/0));
       // Permute(value_proj, {0, 2, 3, 1})
-      std::vector<size_t> permute_v = {0, 2, 3, 1};
+      std::array<size_t, 4> permute_v = {0, 2, 3, 1};
       TF_LITE_ENSURE_EQ(logging_context, value_proj.dims->size,
                         permute_v.size());
       uint32_t permute_v_out_id = XNN_INVALID_VALUE_ID;
@@ -6770,15 +6772,15 @@ class Subgraph {
                   nullptr, XNN_INVALID_VALUE_ID, 0, &bmm2_reshape_id));
           size_t num_query_groups = value_proj.dims->data[2];
           size_t head_per_query = query_proj.dims->data[2] / num_query_groups;
-          std::vector<size_t> padded_logits_reshape_dims = {
+          std::array<size_t, 5> padded_logits_reshape_dims = {
               (size_t)query_proj.dims->data[0], num_query_groups,
               head_per_query, (size_t)query_proj.dims->data[1],
               (size_t)value_proj.dims->data[1]};
-          std::vector<size_t> v_reshape_dims = {
+          std::array<size_t, 5> v_reshape_dims = {
               (size_t)value_proj.dims->data[0], num_query_groups, 1,
               (size_t)value_proj.dims->data[3],
               (size_t)value_proj.dims->data[1]};
-          std::vector<size_t> bmm2_reshape_dims = {
+          std::array<size_t, 4> bmm2_reshape_dims = {
               (size_t)query_proj.dims->data[0],
               num_query_groups * head_per_query,
               (size_t)query_proj.dims->data[1],
@@ -6814,8 +6816,8 @@ class Subgraph {
         TFLITE_DCHECK(value_proj.dims->data[0] == 1);
         TFLITE_DCHECK(value_proj.dims->data[2] == 1);
         // squeezed_rhs shape: [S, H]
-        std::vector<size_t> reshape_dims_v = {(size_t)value_proj.dims->data[3],
-                                              (size_t)value_proj.dims->data[1]};
+        std::array<size_t, 2> reshape_dims_v = {
+            (size_t)value_proj.dims->data[3], (size_t)value_proj.dims->data[1]};
         uint32_t reshape_dims_v_out_id = XNN_INVALID_VALUE_ID;
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
@@ -6844,7 +6846,7 @@ class Subgraph {
       }
       // [B, N, T, H] -> BTNH
       // Permute(fc2_out_id, {0, 2, 1, 3}) -> output tensor
-      std::vector<size_t> permute_fc = {0, 2, 1, 3};
+      std::array<size_t, 4> permute_fc = {0, 2, 1, 3};
       const xnn_status status = xnn_define_static_transpose(
           subgraph, permute_fc.size(), permute_fc.data(), fc2_out_id, output_id,
           /*flags=*/0);

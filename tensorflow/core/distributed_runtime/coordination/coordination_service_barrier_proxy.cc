@@ -58,7 +58,7 @@ std::pair<Status, bool> BarrierProxy::Wait() {
   if (num_entered_ == num_local_threads_) {
     // Now that all threads are waiting, starts waiting at the global barrier.
     if (tasks_.size() != 1) {
-      profiler::TraceMe traceme("BarrierProxy::Wait::WaitAtBarrier");
+      tsl::profiler::TraceMe traceme("BarrierProxy::Wait::WaitAtBarrier");
       // TODO(b/198475014) the barrier status will be stored in memory forever.
       // We should have a mechanism to remove it after it has been passed.
       status_ = agent_->WaitAtBarrier(key_, timeout_, tasks_);
@@ -103,12 +103,13 @@ Status BarrierProxyManager::Wait(tsl::CoordinationServiceAgent* agent,
   // Only one device, no need to wait.
   if (tasks.size() == 1 && num_local_threads <= 1) return absl::OkStatus();
 
-  profiler::TraceMe traceme([&] {
-    return profiler::TraceMeEncode("BarrierProxyManager::Wait",
-                                   {
-                                       {"num_tasks", tasks.size()},
-                                       {"num_local_threads", num_local_threads},
-                                   });
+  tsl::profiler::TraceMe traceme([&] {
+    return tsl::profiler::TraceMeEncode(
+        "BarrierProxyManager::Wait",
+        {
+            {"num_tasks", tasks.size()},
+            {"num_local_threads", num_local_threads},
+        });
   });
 
   std::shared_ptr<BarrierProxy> barrier;

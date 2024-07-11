@@ -2307,7 +2307,9 @@ ENTRY MatrixVectorComplex {
 void DOT_ReorderContracting(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   auto executors = PlatformUtil::GetStreamExecutors(platform).value();
-  se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(
+      platform, std::vector<se::StreamExecutorInterface*>(executors.begin(),
+                                                          executors.end()));
 
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);

@@ -16,6 +16,7 @@ load(
     "//xla:xla.bzl",
     "xla_cc_binary",
     "xla_cc_test",
+    "xla_internal",
     "xla_py_proto_library",
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -133,6 +134,29 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+build_test(
+    name = "hlo_module_metadata_processor_build_test",
+    targets = [
+        ":hlo_module_metadata_processor",
+    ],
+)
+
+xla_cc_binary(
+    name = "hlo_module_metadata_processor",
+    srcs = ["hlo_module_metadata_processor.cc"],
+    deps = [
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -393,7 +417,6 @@ xla_cc_binary(
         "//xla/client:local_client",
         "//xla/service:compiler",
         "//xla/service:cpu_plugin",
-        "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner",
         "//xla/service:local_service",
@@ -411,7 +434,10 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
     ]) + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ]),
+    ]) + xla_internal(
+        ["service:hlo_graph_dumper_google"],
+        otherwise = ["//xla/service:hlo_graph_dumper"],
+    ),
 )
 
 xla_cc_test(

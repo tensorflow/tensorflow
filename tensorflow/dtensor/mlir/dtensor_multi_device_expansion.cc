@@ -299,8 +299,7 @@ mlir::LogicalResult RewriteTPUFunction(mlir::func::FuncOp func,
         mappings[dev_idx].map(argument, expanded_arguments->at(dev_idx));
       }
     } else {
-      func->emitOpError(
-          tsl::NullTerminatedMessage(expanded_arguments.status()));
+      func->emitOpError(absl::StatusMessageAsCStr(expanded_arguments.status()));
       return mlir::failure();
     }
   }
@@ -422,7 +421,7 @@ mlir::LogicalResult ExpandTPUOperation(
       const StatusOr<absl::Span<mlir::Value>> new_args = GetExpandedArguments(
           builder, target_func, expanded_arguments, arg, &target_mesh);
       if (!new_args.ok()) {
-        op->emitOpError(tsl::NullTerminatedMessage(new_args.status()));
+        op->emitOpError(absl::StatusMessageAsCStr(new_args.status()));
         return mlir::failure();
       } else if (new_args->empty()) {
         operands.push_back(operand);
@@ -487,7 +486,7 @@ mlir::LogicalResult ExpandOperation(
         const StatusOr<absl::Span<mlir::Value>> new_args = GetExpandedArguments(
             builder, target_func, expanded_arguments, arg, &target_mesh);
         if (!new_args.ok()) {
-          op->emitOpError(tsl::NullTerminatedMessage(new_args.status()));
+          op->emitOpError(absl::StatusMessageAsCStr(new_args.status()));
           return mlir::failure();
         } else if (new_args->empty()) {
           operands.push_back(operand);
@@ -809,7 +808,7 @@ struct DTensorMultiDeviceExpansion
                                main_func.getArgument(i));
       if (!expanded_arguments.ok()) {
         main_func->emitOpError(
-            tsl::NullTerminatedMessage(expanded_arguments.status()));
+            absl::StatusMessageAsCStr(expanded_arguments.status()));
         return;
       }
     }

@@ -320,18 +320,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (output_indexes->type) {
     case kTfLiteInt32: {
       return TopKImpl(context, node, k, GetTensorData<int32_t>(output_indexes));
-    } break;
+    }
     case kTfLiteInt16: {
       return TopKImpl(context, node, k, GetTensorData<int16_t>(output_indexes));
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(
           context, "Output index type %s is currently not supported by TopK.",
           TfLiteTypeGetName(output_values->type));
       return kTfLiteError;
   }
-
-  return kTfLiteOk;
 }
 
 }  // namespace topk_v2

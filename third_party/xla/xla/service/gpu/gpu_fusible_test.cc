@@ -28,6 +28,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using ::testing::ElementsAre;
+
 using GpuFusibleTest = HloTestBase;
 
 const char kModulePrefix[] = R"(
@@ -1636,6 +1638,37 @@ TEST_F(GpuFusibleTest, GetFusionRootsWithMakeTupleGTESequence) {
   std::vector<const HloInstruction*> expected_result{custom_call, dus,
                                                      custom_call};
   EXPECT_EQ(roots, expected_result);
+}
+
+TEST_F(GpuFusibleTest, GetFusibleComputations) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_reduce {
+      p0 = f32[128,1024] parameter(0)
+      c0 = f32[] constant(0)
+      ROOT reduce = f32[128]{0} reduce(p0, c0), dimensions={1}, to_apply=scalar_add
+    }
+    body_a {
+      p0 = f32[128,1024] parameter(0)
+      ROOT reduce_fusion = f32[128] fusion(p0), kind=kInput, calls=fused_reduce
+    }
+    body_b {
+      p0 = f32[128,1024] parameter(0)
+      c0 = f32[] constant(0)
+      ROOT bc = f32[128] broadcast(c0), dimensions={}
+    }
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      p1 = f32[128,1024] parameter(1)
+      ROOT conditional = f32[128] conditional(p0, p1, p1),
+        branch_computations={body_a, body_b}
+    })"))
+                    .value();
+
+  // fused_reduce is already fused, scalar_add is not fusible.
+  auto fusible = GetFusibleComputations(*module, {});
+  EXPECT_THAT(fusible, ElementsAre(module->GetComputationWithName("body_a"),
+                                   module->GetComputationWithName("body_b"),
+                                   module->entry_computation()));
 }
 
 }  // namespace gpu

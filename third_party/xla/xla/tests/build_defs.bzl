@@ -11,7 +11,7 @@ load(
 )
 load("//xla/tests:plugin.bzl", "plugins")
 
-all_backends = ["cpu", "gpu"] + plugins.keys()
+all_backends = ["cpu", "gpu"] + list(plugins.keys())
 
 def xla_test(
         name,

@@ -311,14 +311,7 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   return new_while_op;
 }
 
-// Tries to remove elements in a while loop's tuple that aren't used within the
-// loop.
-//
-// Specifically, if a loop is tuple-shaped, and there exists some element of
-// that tuple that is not used by the loop condition and is not used by the loop
-// body except to pass it to the next iteration of the loop, then we can remove
-// that element from the loop's tuples.
-static absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
+absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
   // Don't try this transformation if the while loop isn't removable, since if

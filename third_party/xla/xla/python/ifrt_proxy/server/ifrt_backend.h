@@ -118,6 +118,8 @@ class IfrtBackend final : public BackendInterface {
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleAssembleArrayFromSingleDeviceArraysRequest(
       std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleRemapArraysRequest(
+      std::unique_ptr<IfrtRequest> request);
   Future<Response> HandleCopyToHostBufferRequest(
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleDisassembleIntoSingleDeviceArraysRequest(

@@ -104,6 +104,9 @@ class IotaTileAssignment {
 
   std::string ToString() const;
 
+  // Materializes array representation of IotaTileAssignment.
+  Array<int64_t> ToArray() const;
+
  private:
   friend class TileAssignment;
   static constexpr int kPerDimBytes = sizeof(int64_t);

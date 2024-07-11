@@ -5524,9 +5524,9 @@ func.func @quantized_dot_i8_per_axis(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.
 // -----
 
 // CHECK-LABEL: func @quantized_dot_i4
-func.func @quantized_dot_i4(%arg0: tensor<2x2x!quant.uniform<i4:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i4:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:50>> {
-  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i4:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i4:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:50>>
-  func.return %0: tensor<2x2x!quant.uniform<i4:f32, 10.0:50>>
+func.func @quantized_dot_i4(%arg0: tensor<2x2x!quant.uniform<i4:f32, 2.0:1>>, %arg1: tensor<2x2x!quant.uniform<i4:f32, 5.0:2>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:5>> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i4:f32, 2.0:1>>, tensor<2x2x!quant.uniform<i4:f32, 5.0:2>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:5>>
+  func.return %0: tensor<2x2x!quant.uniform<i4:f32, 10.0:5>>
 }
 
 // -----
@@ -5868,7 +5868,7 @@ func.func @is_compatible_quant_expressed_mismatch(%arg0: tensor<1x!quant.uniform
 
 func.func @is_compatible_quant_storage_mismatch(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
   // expected-error@+1 {{op requires compatible types for all operands and results}}
-  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i4:f32, 1.0:17>>
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i4:f32, 1.0:1>>
   func.return
 }
 
@@ -6105,8 +6105,8 @@ func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
 
 func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
   %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
   func.return %2 : tensor<32xf32>
 }
 
@@ -6121,8 +6121,8 @@ func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
 func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
   // expected-error@+1 {{component #0 of async bundle doesn't match callee input types}}
   %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<32xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<32xf32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
   func.return %2 : tensor<32xf32>
 }
 
@@ -6137,8 +6137,8 @@ func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
 func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
   // expected-error@+1 {{component #1 of async bundle doesn't match callee result types}}
   %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<f32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<f32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<f32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<f32>, tensor<i32>>) -> tensor<32xf32>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<f32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<f32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<f32>, tensor<i32>>) -> tensor<32xf32>
   func.return %2 : tensor<32xf32>
 }
 
@@ -6151,8 +6151,8 @@ func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
 func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
   // expected-error@+1 {{can't find function: async_op}}
   %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
   func.return %2 : tensor<32xf32>
 }
 
@@ -6166,8 +6166,8 @@ func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
 func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
   // expected-error@+1 {{callee must have execution_thread attribute}}
   %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
   func.return %2 : tensor<32xf32>
 }
 
@@ -6196,8 +6196,8 @@ func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
 func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
   // expected-error@+1 {{op execution_thread does not match the execution_thread of async_op. Got: "thread", but expected "thread2".}}
   %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
   func.return %2 : tensor<32xf32>
 }
 
@@ -6212,8 +6212,8 @@ func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
 func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
   // expected-error@+1 {{number of operands doesn't match operands for async_op. Got: 0, but expected: 1.}}
   %0 = "mhlo.async_start"() {called_computation=@async_op, execution_thread="thread"} : () -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
   func.return %2 : tensor<32xf32>
 }
 
@@ -6228,46 +6228,8 @@ func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
 func.func @async(%arg0: tensor<f32>) -> tensor<32xf32> {
   // expected-error@+1 {{type mismatch on argument #0 of async_op. Got: 'tensor<f32>', but expected: 'tensor<10x10xf32>'}}
   %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<f32>) -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
-  func.return %2 : tensor<32xf32>
-}
-
-// -----
-/////
-// async_update negative tests
-/////
-
-func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
-  attributes {execution_thread = "thread"} {
-  %1 = mhlo.constant dense<2.0> : tensor<32xf32>
-  func.return %1 : tensor<32xf32>
-}
-
-func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
-  %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  // expected-error@+1 {{op execution_thread does not match name of async_op. Got: "thread2", but expected "thread".}}
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread2"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
-  func.return %2 : tensor<32xf32>
-}
-
-// -----
-/////
-// async_update negative tests
-/////
-
-func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
-  attributes {execution_thread = "thread"} {
-  %1 = mhlo.constant dense<2.0> : tensor<32xf32>
-  func.return %1 : tensor<32xf32>
-}
-
-func.func @async(%arg0: tensor<10x10xf32>) -> tensor<32xf32> {
-  %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  // expected-error@+1 {{op execution_thread does not match name of async_op. Got: "thread2", but expected "thread".}}
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread2"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<64xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<32xf32>
   func.return %2 : tensor<32xf32>
 }
 
@@ -6281,10 +6243,10 @@ func.func @async_op(%arg0: tensor<10x10xf32>) -> tensor<32xf32>
 
 func.func @async(%arg0: tensor<10x10xf32>) -> tensor<f32> {
   %0 = "mhlo.async_start"(%arg0) {called_computation=@async_op, execution_thread="thread"} : (tensor<10x10xf32>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>
   // expected-error@+2 {{'mhlo.async_done' op failed to infer returned types}}
   // expected-error@+1 {{inferred type(s) 'tensor<32xf32>' are incompatible with return type(s) of operation 'tensor<f32>'}}
-  %2 = "mhlo.async_done"(%1) {called_computation=@async_op, execution_thread="thread"} : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<f32>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<10x10xf32>, tensor<32xf32>, tensor<i32>>) -> tensor<f32>
   func.return %2 : tensor<f32>
 }
 

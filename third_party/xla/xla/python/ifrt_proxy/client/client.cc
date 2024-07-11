@@ -34,6 +34,7 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/client/array.h"
@@ -193,6 +194,13 @@ Client::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics semantics) {
   return Array::AssembleArrayFromSingleDeviceArrays(
       this, rpc_helper_, std::move(shape), sharding, arrays, semantics);
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+Client::RemapArrays(const RemapPlan& plan,
+                    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+                    ArrayCopySemantics semantics) {
+  return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
 }
 
 absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(

@@ -117,7 +117,10 @@ xla_test(
             "notap",
         ],
     },
-    backends = ["gpu"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
     data = [
         "data/sharded_16_devices.hlo",
         "data/sharded_2_devices.hlo",
@@ -127,6 +130,8 @@ xla_test(
     tags = ["nomac"],
     deps = [
         ":functional_hlo_runner",
+        "//xla:statusor",
+        "//xla/pjrt:pjrt_client",
         "//xla/tests:filecheck",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",

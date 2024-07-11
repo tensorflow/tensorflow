@@ -687,6 +687,10 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
         device_info_.ToGpuProto();
   }
 
+  // Compute the computations within which more fusion is possible.
+  auto fusible_computations =
+      GetFusibleComputations(*module, execution_threads);
+
   // Appends ".0" suffix to all instructions.
   //
   // Every time an instruction is duplicated, the last integer suffix is
@@ -697,8 +701,7 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
   // With this modification it will be easier to match instructions before and
   // after fusion passes, because they will have the same unique prefix. Names
   // are not used in the pipeline, but it makes debugging much easier.
-  for (auto* computation :
-       GetNonFusionComputations(module, execution_threads)) {
+  for (auto* computation : fusible_computations) {
     for (auto* instruction : computation->instructions()) {
       module->SetAndUniquifyInstrName(instruction,
                                       absl::StrCat(instruction->name(), ".0"));
@@ -716,8 +719,7 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
           .xla_gpu_enable_triton_softmax_priority_fusion();
 
   int changed = false;
-  for (auto* computation :
-       GetNonFusionComputations(module, execution_threads)) {
+  for (auto* computation : fusible_computations) {
     CHECK(!computation->IsFusionComputation());
 
     auto fusion_queue = std::make_unique<GpuPriorityFusionQueue>(

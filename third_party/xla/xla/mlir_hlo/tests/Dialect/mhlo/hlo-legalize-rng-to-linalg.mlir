@@ -121,10 +121,10 @@ func.func @three_fry_i32(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>)
 // CHECK-SAME: outs(%[[DEST0]], %[[DEST1]] : tensor<4xi32>, tensor<4xi32>)
 
 // CHECK: %expanded = tensor.expand_shape %[[GENERIC]]#0
-// CHECK-SAME{literal}: [[0, 1]] : tensor<4xi32> into tensor<4x1xi32>
+// CHECK-SAME{literal}: [[0, 1]] {{.*}} : tensor<4xi32> into tensor<4x1xi32>
 
 // CHECK: %expanded_1 = tensor.expand_shape %[[GENERIC]]#1
-// CHECK-SAME{literal}: [[0, 1]] : tensor<4xi32> into tensor<4x1xi32>
+// CHECK-SAME{literal}: [[0, 1]] {{.*}} : tensor<4xi32> into tensor<4x1xi32>
 
 // CHECK: %[[EMPTY:.+]] = tensor.empty() : tensor<4x2xi32>
 // CHECK: %[[CONCAT:.+]] = linalg.generic
@@ -164,10 +164,10 @@ func.func @three_fry_odd_i32(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<7x1
 // CHECK-SAME: outs(%[[DEST0]], %[[DEST1]] : tensor<42xi32>, tensor<42xi32>)
 
 // CHECK: %expanded = tensor.expand_shape %[[GENERIC]]#0
-// CHECK-SAME{literal}: [[0, 1]] : tensor<4xi32> into tensor<7x6x1xi32>
+// CHECK-SAME{literal}: [[0, 1]] {{.*}} : tensor<4xi32> into tensor<7x6x1xi32>
 
 // CHECK: %expanded_1 = tensor.expand_shape %[[GENERIC]]#1
-// CHECK-SAME{literal}: [[0, 1]] : tensor<4xi32> into tensor<7x6x1xi32>
+// CHECK-SAME{literal}: [[0, 1]] {{.*}} : tensor<4xi32> into tensor<7x6x1xi32>
 
 // CHECK: %[[EMPTY:.+]] = tensor.empty() : tensor<7x6x2xi32>
 // CHECK: %[[CONCAT:.+]] = linalg.generic
@@ -206,10 +206,10 @@ func.func @three_fry_i16(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi16>)
 // CHECK-SAME: outs(%[[DEST0]], %[[DEST1]] : tensor<4xi16>, tensor<4xi16>)
 
 // CHECK: %expanded = tensor.expand_shape %[[GENERIC]]#0
-// CHECK-SAME{literal}: [[0, 1]] : tensor<4xi16> into tensor<4x1xi16>
+// CHECK-SAME{literal}: [[0, 1]] {{.*}} : tensor<4xi16> into tensor<4x1xi16>
 
 // CHECK: %expanded_1 = tensor.expand_shape %[[GENERIC]]#1
-// CHECK-SAME{literal}: [[0, 1]] : tensor<4xi16> into tensor<4x1xi16>
+// CHECK-SAME{literal}: [[0, 1]] {{.*}} : tensor<4xi16> into tensor<4x1xi16>
 
 // CHECK: %[[EMPTY:.+]] = tensor.empty() : tensor<4x2xi16>
 // CHECK: %[[CONCAT:.+]] = linalg.generic
@@ -337,8 +337,8 @@ func.func @philox_i64(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>) {
 // CHECK-DAG:   %[[VAL_101:.*]] = arith.xori %[[VAL_100]], %[[VAL_87]] : i32
 
 // CHECK: linalg.yield %[[YIELDED_1:.*]], %[[YIELDED_2:.*]] : i64, i64
-// CHECK-DAG: %[[VAL_206:.*]] = tensor.expand_shape %[[VAL_207:.*]]#0 {{\[\[}}0, 1]] : tensor<4xi64> into tensor<4x1xi64>
-// CHECK-DAG: %[[VAL_208:.*]] = tensor.expand_shape %[[VAL_207]]#1 {{\[\[}}0, 1]] : tensor<4xi64> into tensor<4x1xi64>
+// CHECK-DAG: %[[VAL_206:.*]] = tensor.expand_shape %[[VAL_207:.*]]#0 {{\[\[}}0, 1]] {{.*}} : tensor<4xi64> into tensor<4x1xi64>
+// CHECK-DAG: %[[VAL_208:.*]] = tensor.expand_shape %[[VAL_207]]#1 {{\[\[}}0, 1]] {{.*}} : tensor<4xi64> into tensor<4x1xi64>
 // CHECK-DAG: %[[VAL_209:.*]] = tensor.empty() : tensor<4x2xi64>
 // CHECK-DAG: %[[VAL_213:.*]] = tensor.insert %[[VAL_30]] into %[[VAL_0]]{{\[}}%[[VAL_19]]] : tensor<2xi64>
 
@@ -411,10 +411,10 @@ func.func @philox_i32_odd(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi
 
 
 // CHECK: %expanded = tensor.expand_shape %[[GENERIC]]#0
-// CHECK-SAME{literal}: [[0, 1]] : tensor<4xi32> into tensor<4x1xi32>
+// CHECK-SAME{literal}: [[0, 1]] {{.*}} : tensor<4xi32> into tensor<4x1xi32>
 
 // CHECK: %expanded_1 = tensor.expand_shape %[[GENERIC]]#1
-// CHECK-SAME{literal}: [[0, 1]] : tensor<4xi32> into tensor<4x1xi32>
+// CHECK-SAME{literal}: [[0, 1]] {{.*}} : tensor<4xi32> into tensor<4x1xi32>
 
 
 // CHECK: %[[EMPTY:.+]] = tensor.empty() : tensor<20x4xi32>
@@ -424,10 +424,10 @@ func.func @philox_i32_odd(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi
 // CHECK: %[[COLLAPSE:.+]] = tensor.collapse_shape %[[CONCAT]]
 
 
-// CHECK: %[[VAL_213:.*]] = tensor.expand_shape %[[COLLAPSE]] {{\[\[}}0, 1]] : tensor<80xi32> into tensor<80x1xi32>
+// CHECK: %[[VAL_213:.*]] = tensor.expand_shape %[[COLLAPSE]] {{\[\[}}0, 1]] {{.*}} : tensor<80xi32> into tensor<80x1xi32>
 // CHECK: %[[VAL_214:.*]] = tensor.extract_slice %[[VAL_213]][0, 0] [77, 1] [1, 1] : tensor<80x1xi32> to tensor<77x1xi32>
 // CHECK: %[[VAL_215:.*]] = tensor.collapse_shape %[[VAL_214]] {{\[\[}}0, 1]] : tensor<77x1xi32> into tensor<77xi32>
-// CHECK: %[[VAL_216:.*]] = tensor.expand_shape %[[VAL_215]] {{\[\[}}0, 1]] : tensor<77xi32> into tensor<7x11xi32>
+// CHECK: %[[VAL_216:.*]] = tensor.expand_shape %[[VAL_215]] {{\[\[}}0, 1]] {{.*}} : tensor<77xi32> into tensor<7x11xi32>
 // CHECK: %[[VAL_217:.*]] = tensor.insert %[[VAL_30]] into %[[VAL_0]]{{\[}}%[[VAL_19]]] : tensor<2xi64>
 // CHECK: return %[[VAL_217]], %[[VAL_216]] : tensor<2xi64>, tensor<7x11xi32>
 
@@ -465,10 +465,10 @@ func.func @philox_i64_odd(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<3x5xi6
 // CHECK-DAG: %[[COLLAPSE:.+]] = tensor.collapse_shape %[[CONCAT]] {{\[\[}}0, 1]] : tensor<8x2xi64> into tensor<16xi64>
 
 
-// CHECK-DAG: %[[EXPANDED:.*]] = tensor.expand_shape %[[COLLAPSE]] {{\[\[}}0, 1]] : tensor<16xi64> into tensor<16x1xi64>
+// CHECK-DAG: %[[EXPANDED:.*]] = tensor.expand_shape %[[COLLAPSE]] {{\[\[}}0, 1]] {{.*}} : tensor<16xi64> into tensor<16x1xi64>
 // CHECK-DAG: %[[SLICE:.*]] = tensor.extract_slice %[[EXPANDED]][0, 0] [15, 1] [1, 1] : tensor<16x1xi64> to tensor<15x1xi64>
 // CHECK-DAG: %[[EXPAND_2:.*]] = tensor.collapse_shape %[[SLICE]] {{\[\[}}0, 1]] : tensor<15x1xi64> into tensor<15xi64>
-// CHECK-DAG: %[[RESHAPE:.*]] = tensor.expand_shape %[[EXPAND_2]] {{\[\[}}0, 1]] : tensor<15xi64> into tensor<3x5xi64>
+// CHECK-DAG: %[[RESHAPE:.*]] = tensor.expand_shape %[[EXPAND_2]] {{\[\[}}0, 1]] {{.*}} : tensor<15xi64> into tensor<3x5xi64>
 // CHECK-DAG: %[[INSERTED:.+]] = tensor.insert %[[NEWSTATE]] into %[[ARG0]][%[[C1]]] : tensor<2xi64>
 // CHECK: return %[[INSERTED]], %[[RESHAPE]]
 

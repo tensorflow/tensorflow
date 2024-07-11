@@ -107,6 +107,7 @@ class WorkerClientTest : public ::testing::Test {
     info.set_address(GetWorkerAddress());
     info.set_protocol(data_transfer_protocol);
     return CreateDataServiceWorkerClient(kProtocol, info,
+                                         /*accelerator_device_info=*/nullptr,
                                          /*allocator=*/nullptr);
   }
 

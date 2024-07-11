@@ -60,7 +60,7 @@ Status LocalExecutable::ValidateExecutionOptions(
 
     // Check stream matches service platform.
     const se::Platform* stream_platform =
-        run_options.stream()->parent()->platform();
+        run_options.stream()->parent()->GetPlatform();
     if (stream_platform != backend_->platform()) {
       return InvalidArgument(
           "stream is for platform %s, but service targets platform %s",

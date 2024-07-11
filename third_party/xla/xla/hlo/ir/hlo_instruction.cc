@@ -22,7 +22,6 @@ limitations under the License.
 #include <functional>
 #include <iostream>
 #include <iterator>
-#include <list>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -46,9 +45,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -63,7 +62,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/ptrvec.h"
-#include "xla/iterator_util.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
@@ -77,7 +75,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/iterator_range.h"
@@ -1213,7 +1210,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   TF_RET_CHECK(!proto.name().empty());
   instruction->SetAndSanitizeName(proto.name());
   *instruction->metadata_ = proto.metadata();
-  instruction->backend_config_ = proto.backend_config();
+  instruction->backend_config_ = BackendConfigWrapper(proto.backend_config());
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -2101,12 +2098,6 @@ HloInstruction::CreateBroadcastSequence(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReshape(
     const Shape& shape, HloInstruction* operand, int64_t inferred_dimension) {
-  CHECK(operand->shape().is_unbounded_dynamic() ||
-        ShapeUtil::StaticExtentProduct(shape) ==
-            ShapeUtil::StaticExtentProduct(operand->shape()))
-      << "shape: " << ShapeUtil::HumanString(shape)
-      << " operand: " << ShapeUtil::HumanString(operand->shape());
-
   return std::make_unique<HloReshapeInstruction>(shape, operand,
                                                  inferred_dimension);
 }
@@ -2590,7 +2581,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
-  clone->backend_config_ = backend_config_.Clone();
+  clone->backend_config_ = BackendConfigWrapper(backend_config_);
   // The new instruction's name will be uniquified when it's added to a
   // computation.
   clone->SetAndSanitizeName(name());
@@ -4966,96 +4957,6 @@ bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
     return lhs_module->unique_id() < rhs_module->unique_id();
   }
   return lhs->unique_id() < rhs->unique_id();
-}
-
-Status HloInstruction::GetBackendConfigInternal(
-    tsl::protobuf::Message* proto) const {
-  proto->Clear();
-
-  if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
-    if (proto_ptr->GetDescriptor() == proto->GetDescriptor()) {
-      proto->CopyFrom(*proto_ptr);
-      return OkStatus();
-    }
-  }
-
-  auto& raw_string = raw_backend_config_string();
-  // Empty string does not parse as valid JSON, but it's a valid backend config,
-  // corresponding to the empty proto.
-  if (raw_string.empty()) {
-    return OkStatus();
-  }
-  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string, proto));
-  backend_config_.SetProto(*proto);
-  return OkStatus();
-}
-
-const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
-  absl::WriterMutexLock lock{&mutex_};
-  if (proto_ && raw_string_.empty()) {
-    raw_string_ = BackendConfigToRawString(*proto_).value();
-  }
-  return raw_string_;
-}
-
-HloInstruction::BackendConfigRep HloInstruction::BackendConfigRep::Clone()
-    const {
-  // Prefer cloning protobuf, raw_string_ will be lazily generated if accessed.
-  BackendConfigRep cloned;
-  if (auto* proto = GetProtoPtr()) {
-    cloned.SetProto(*proto);
-  } else {
-    absl::MutexLock source_lock{&mutex_};
-    absl::MutexLock target_lock{&cloned.mutex_};
-    cloned.raw_string_ = raw_string_;
-  }
-  return cloned;
-}
-
-HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
-    std::string raw_string) {
-  absl::MutexLock lock{&mutex_};
-  raw_string_ = std::move(raw_string);
-  proto_.reset();
-  return *this;
-}
-
-HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
-    const tsl::protobuf::Message& proto) {
-  SetProto(proto);
-  absl::MutexLock lock{&mutex_};
-  raw_string_.clear();
-  return *this;
-}
-
-void HloInstruction::BackendConfigRep::SetProto(
-    const tsl::protobuf::Message& proto) {
-  proto_.reset(proto.New());
-  proto_->CopyFrom(proto);
-}
-
-bool HloInstruction::BackendConfigRep::operator==(
-    const BackendConfigRep& other) const {
-  auto* proto_a = GetProtoPtr();
-  auto* proto_b = other.GetProtoPtr();
-  if (proto_a != nullptr && proto_b != nullptr) {
-    using ::tsl::protobuf::util::MessageDifferencer;
-    return MessageDifferencer::Equals(*proto_a, *proto_b);
-  }
-  // TODO(b/225956414): Consider canonicalizing raw string form.
-  return GetRawString() == other.GetRawString();
-}
-
-/* static */ absl::StatusOr<std::string>
-HloInstruction::BackendConfigToRawString(const tsl::protobuf::Message& proto) {
-  std::string ret;
-  // Pass ignore_accuracy_loss = true because estimated_cycles field can be
-  // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
-  // INT64_MAX, JsonFormat will return an error status, although there is no
-  // accuracy loss for int64_t.
-  TF_RETURN_IF_ERROR(tsl::ProtoToHumanReadableJson(
-      proto, &ret, /*ignore_accuracy_loss=*/true));
-  return ret;
 }
 
 const PrecisionConfig& HloInstruction::precision_config() const {

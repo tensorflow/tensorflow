@@ -36,9 +36,12 @@ struct Tf2HloResult {
   tf2xla::HostComputeMetadata host_compute_metadata;
 };
 
+absl::Status UpdateCompileMetadata(
+    tensorflow::tpu::TPUCompileMetadataProto& metadata,
+    absl::Span<const DtypeAndShape> inputs);
+
 absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
-    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
-    const xla::ifrt::Client& ifrt_client);
+    mlir::ModuleOp module, const xla::ifrt::Client& ifrt_client);
 
 // A class that convert tf module to hlo
 // TODO(b/304839793): provide wrap persistent compilation cache.

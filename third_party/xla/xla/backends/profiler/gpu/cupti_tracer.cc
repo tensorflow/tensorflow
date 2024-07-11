@@ -16,10 +16,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 
 #include "absl/cleanup/cleanup.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/node_hash_map.h"
-#include "absl/container/node_hash_set.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -41,31 +38,6 @@ using absl::OkStatus;
 using absl::Status;
 using tsl::Env;
 using tsl::profiler::AnnotationStack;
-
-// CUPTI from CUDA 11.6 adds information about the hardware channel that ops
-// run on; this makes its way into the channel_id and channel_type fields in the
-// structs we export.
-//
-// Define some type aliases so we can access the hardware channel id if it's
-// available.
-#if CUDA_VERSION >= 12000  // CUDA 12.0
-#define TF_CUPTI_HAS_CHANNEL_ID 1
-using CuptiActivityKernelTy = CUpti_ActivityKernel9;
-using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
-using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
-using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
-#elif CUDA_VERSION >= 11060  // CUDA 11.6
-#define TF_CUPTI_HAS_CHANNEL_ID 1
-using CuptiActivityKernelTy = CUpti_ActivityKernel7;
-using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
-using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
-using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
-#else
-using CuptiActivityKernelTy = CUpti_ActivityKernel4;
-using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy;
-using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpy2;
-using CuptiActivityMemsetTy = CUpti_ActivityMemset;
-#endif
 
 static thread_local int internalCuCall = 0;
 
@@ -98,48 +70,6 @@ Status ToStatus(CUresult result) {
 inline void LogIfError(const Status &status) {
   if (status.ok()) return;
   LOG(ERROR) << status.message();
-}
-
-// Maps an OverheadKind enum to a const string.
-const char *getActivityOverheadKindString(CUpti_ActivityOverheadKind kind) {
-  switch (kind) {
-    case CUPTI_ACTIVITY_OVERHEAD_DRIVER_COMPILER:
-      return "COMPILER";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_BUFFER_FLUSH:
-      return "BUFFER_FLUSH";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_INSTRUMENTATION:
-      return "INSTRUMENTATION";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_RESOURCE:
-      return "RESOURCE";
-    default:
-      break;
-  }
-  return "<UNKNOWN>";
-}
-
-const char *getActivityUnifiedMemoryKindString(
-    CUpti_ActivityUnifiedMemoryCounterKind kind) {
-  switch (kind) {
-    case CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_BYTES_TRANSFER_HTOD:
-      return "UM_BYTES_TRANSFER_HTOD";
-    case CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_BYTES_TRANSFER_DTOH:
-      return "UM_BYTES_TRANSFER_DTOH";
-    case CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_CPU_PAGE_FAULT_COUNT:
-      return "UM_CPU_PAGE_FAULT";
-    case CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_GPU_PAGE_FAULT:
-      return "UM_GPU_PAGE_FAULT";
-    case CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_THRASHING:
-      return "UM_THRASHING";
-    case CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_THROTTLING:
-      return "UM_THROTTLING";
-    case CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_REMOTE_MAP:
-      return "UM_REMOTE_MAP";
-    case CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_BYTES_TRANSFER_DTOD:
-      return "UM_BYTES_TRANSFER_DTOD";
-    default:
-      break;
-  }
-  return "<UNKNOWN>";
 }
 
 // CUPTI_ERROR_INSUFFICIENT_PRIVILEGES is introduced at CUDA 10.1.
@@ -717,274 +647,6 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   collector->AddEvent(std::move(event));
 }
 
-template <bool cupti_has_channel_id, typename CuptiActivityKernel>
-void AddKernelActivityEvent(CuptiTraceCollector *collector,
-                            const CuptiActivityKernel *kernel) {
-  CuptiTracerEvent event{};
-  event.type = CuptiTracerEventType::Kernel;
-  event.source = CuptiTracerEventSource::Activity;
-  event.name = kernel->name;
-  event.start_time_ns = kernel->start;
-  event.end_time_ns = kernel->end;
-  event.device_id = kernel->deviceId;
-  event.context_id = kernel->contextId;
-  event.stream_id = kernel->streamId;
-  event.correlation_id = kernel->correlationId;
-  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
-      event.device_id, event.correlation_id);
-  event.annotation = info.annotation;
-  event.nvtx_range = info.nvtx_range;
-  event.kernel_info.registers_per_thread = kernel->registersPerThread;
-  event.kernel_info.static_shared_memory_usage = kernel->staticSharedMemory;
-  event.kernel_info.dynamic_shared_memory_usage = kernel->dynamicSharedMemory;
-  event.kernel_info.block_x = kernel->blockX;
-  event.kernel_info.block_y = kernel->blockY;
-  event.kernel_info.block_z = kernel->blockZ;
-  event.kernel_info.grid_x = kernel->gridX;
-  event.kernel_info.grid_y = kernel->gridY;
-  event.kernel_info.grid_z = kernel->gridZ;
-  if constexpr (cupti_has_channel_id) {
-    event.kernel_info.channel_id = kernel->channelID;
-    event.kernel_info.channel_type = kernel->channelType;
-  }
-  collector->AddEvent(std::move(event));
-}
-
-void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
-                            const CuptiActivityMemcpyTy *memcpy) {
-  CuptiTracerEvent event{};
-  switch (memcpy->copyKind) {
-    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
-      event.type = CuptiTracerEventType::MemcpyH2D;
-      event.name = "MemcpyH2D";
-      break;
-    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOH:
-      event.type = CuptiTracerEventType::MemcpyD2H;
-      event.name = "MemcpyD2H";
-      break;
-    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOD:
-      event.type = CuptiTracerEventType::MemcpyD2D;
-      event.name = "MemcpyD2D";
-      break;
-    case CUPTI_ACTIVITY_MEMCPY_KIND_PTOP:
-      event.type = CuptiTracerEventType::MemcpyP2P;
-      event.name = "MemcpyP2P";
-      break;
-    default:
-      event.type = CuptiTracerEventType::MemcpyOther;
-      event.name = "MemcpyOther";
-      break;
-  }
-
-  event.source = CuptiTracerEventSource::Activity;
-  event.start_time_ns = memcpy->start;
-  event.end_time_ns = memcpy->end;
-  event.device_id = memcpy->deviceId;
-  event.context_id = memcpy->contextId;
-  event.stream_id = memcpy->streamId;
-  event.correlation_id = memcpy->correlationId;
-  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
-      event.device_id, event.correlation_id);
-  event.annotation = info.annotation;
-  event.memcpy_info.copy_kind = memcpy->copyKind;
-  event.memcpy_info.num_bytes = memcpy->bytes;
-  event.memcpy_info.destination = memcpy->deviceId;
-  event.memcpy_info.async = memcpy->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
-  event.memcpy_info.src_mem_kind = memcpy->srcKind;
-  event.memcpy_info.dst_mem_kind = memcpy->dstKind;
-#if TF_CUPTI_HAS_CHANNEL_ID
-  event.memcpy_info.channel_id = memcpy->channelID;
-  event.memcpy_info.channel_type = memcpy->channelType;
-#endif
-  collector->AddEvent(std::move(event));
-}
-
-// Invokes callback upon peer-2-peer memcpy between different GPU devices.
-void AddMemcpyP2PActivityEvent(CuptiTraceCollector *collector,
-                               const CuptiActivityMemcpyP2PTy *memcpy) {
-  CuptiTracerEvent event{};
-  event.type = CuptiTracerEventType::MemcpyP2P;
-  event.name = "MemcpyP2P";
-  event.source = CuptiTracerEventSource::Activity;
-  event.start_time_ns = memcpy->start;
-  event.end_time_ns = memcpy->end;
-  event.device_id = memcpy->srcDeviceId;
-  event.context_id = memcpy->contextId;
-  event.stream_id = memcpy->streamId;
-  event.correlation_id = memcpy->correlationId;
-  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
-      event.device_id, event.correlation_id);
-  event.annotation = info.annotation;
-  event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
-  event.memcpy_info.num_bytes = memcpy->bytes;
-  event.memcpy_info.destination = memcpy->dstDeviceId;
-  event.memcpy_info.async = memcpy->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
-  event.memcpy_info.src_mem_kind = memcpy->srcKind;
-  event.memcpy_info.dst_mem_kind = memcpy->dstKind;
-#if TF_CUPTI_HAS_CHANNEL_ID
-  event.memcpy_info.channel_id = memcpy->channelID;
-  event.memcpy_info.channel_type = memcpy->channelType;
-#endif
-  collector->AddEvent(std::move(event));
-}
-
-void AddCuptiOverheadActivityEvent(CuptiTraceCollector *collector,
-                                   const CUpti_ActivityOverhead *overhead) {
-  CuptiTracerEvent event{};
-  event.type = CuptiTracerEventType::Overhead;
-  event.name = getActivityOverheadKindString(overhead->overheadKind);
-  event.source = CuptiTracerEventSource::Activity;
-  event.start_time_ns = overhead->start;
-  event.end_time_ns = overhead->end;
-  // If the overhead is not related to a device, we assign it to device 0.
-  event.device_id = 0;
-  // NOTE: no correlation id.
-  switch (overhead->objectKind) {
-    case CUPTI_ACTIVITY_OBJECT_UNKNOWN:
-      // Don't know how to deal with such activities because of we need either
-      // attribute it to a GPU stream or a CPU thread.
-      return;
-
-    case CUPTI_ACTIVITY_OBJECT_THREAD:
-    case CUPTI_ACTIVITY_OBJECT_PROCESS:
-      event.thread_id = overhead->objectId.pt.threadId;
-      break;
-    case CUPTI_ACTIVITY_OBJECT_STREAM:
-      event.stream_id = overhead->objectId.dcs.streamId;
-      TF_FALLTHROUGH_INTENDED;
-    case CUPTI_ACTIVITY_OBJECT_DEVICE:
-    case CUPTI_ACTIVITY_OBJECT_CONTEXT:
-      event.device_id = overhead->objectId.dcs.deviceId;
-      break;
-    default:
-      LOG(ERROR) << "Unexpected object kind: " << overhead->objectKind;
-      return;
-  }
-  collector->AddEvent(std::move(event));
-}
-
-void AddUnifiedMemoryActivityEvent(
-    CuptiTraceCollector *collector,
-    const CUpti_ActivityUnifiedMemoryCounter2 *record) {
-  VLOG(3) << "Cuda Unified Memory Activity, kind: " << record->counterKind
-          << " src: " << record->srcId << " dst: " << record->dstId;
-  CuptiTracerEvent event{};
-  event.type = CuptiTracerEventType::UnifiedMemory;
-  event.name = getActivityUnifiedMemoryKindString(record->counterKind);
-  event.source = CuptiTracerEventSource::Activity;
-  event.start_time_ns = record->start;
-  if (record->counterKind ==
-          CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_CPU_PAGE_FAULT_COUNT ||
-      record->counterKind ==
-          CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_THRASHING ||
-      record->counterKind ==
-          CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_REMOTE_MAP ||
-      record->end <= record->start) {
-    // If the end time is not valid, trim it so that it can be shown on the UI.
-    event.end_time_ns = record->start + 1;
-  } else {
-    event.end_time_ns = record->end;
-  }
-  event.device_id = record->srcId;
-  // NOTE: not context id and correlation id.
-
-  // For visualization purpose, we assign a pseudo stream id for each
-  // record->counterKind of unified memory related events.
-  constexpr int kPseudoStreamId = 0x10000000;
-  event.stream_id = kPseudoStreamId + record->counterKind;
-  event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
-  // Check whether the activity is byte transfer.
-  if (record->counterKind ==
-          CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_BYTES_TRANSFER_HTOD ||
-      record->counterKind ==
-          CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_BYTES_TRANSFER_DTOH ||
-      record->counterKind ==
-          CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_BYTES_TRANSFER_DTOD) {
-    event.memcpy_info.num_bytes = record->value;
-  } else {
-    event.memcpy_info.num_bytes = 0;
-  }
-  event.memcpy_info.destination = record->dstId;
-  event.memcpy_info.async = false;
-  collector->AddEvent(std::move(event));
-}
-
-void AddMemoryActivityEvent(CuptiTraceCollector *collector,
-                            const CUpti_ActivityMemory *memory) {
-  CuptiTracerEvent event{};
-  event.name = absl::StrCat("Memory ", GetMemoryKindName(memory->memoryKind));
-  event.type = CuptiTracerEventType::MemoryResidency;
-  event.source = CuptiTracerEventSource::Activity;
-  event.start_time_ns = memory->start;
-  event.end_time_ns = std::max(memory->end, memory->start + 1);
-  event.device_id = memory->deviceId;
-  event.context_id = memory->contextId;
-  // Assign to default stream (0) so that event is included during Flush().
-  event.stream_id = 0;
-  event.memory_residency_info.num_bytes = memory->bytes;
-  event.memory_residency_info.mem_kind = memory->memoryKind;
-  event.memory_residency_info.address = memory->address;
-  VLOG(5) << "Cuda activity " << event.name
-          << " addr: " << reinterpret_cast<void *>(memory->address)
-          << " bytes: " << memory->bytes;
-  collector->AddEvent(std::move(event));
-}
-
-void AddMemsetActivityEvent(CuptiTraceCollector *collector,
-                            const CuptiActivityMemsetTy *memset) {
-  auto mem_kind = memset->memoryKind;
-  CuptiTracerEvent event{};
-  event.type = CuptiTracerEventType::Memset;
-  event.source = CuptiTracerEventSource::Activity;
-  event.name = absl::StrCat("Memset ", mem_kind);
-  event.start_time_ns = memset->start;
-  event.end_time_ns = std::max(memset->end, memset->start + 1);
-  event.device_id = memset->deviceId;
-  event.correlation_id = memset->correlationId;
-  event.context_id = memset->contextId;
-  event.stream_id = memset->streamId;
-  event.memset_info.num_bytes = memset->bytes;
-  event.memset_info.mem_kind = mem_kind;
-  event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
-#if TF_CUPTI_HAS_CHANNEL_ID
-  event.memset_info.channel_id = memset->channelID;
-  event.memset_info.channel_type = memset->channelType;
-#endif
-  VLOG(5) << "Cuda activity " << event.name << " bytes: " << memset->bytes
-          << " async: " << event.memset_info.async;
-  collector->AddEvent(std::move(event));
-}
-
-void AddSynchronizationActivityEvent(
-    CuptiTraceCollector *collector, const CUpti_ActivitySynchronization *sync) {
-  CuptiTracerEvent event{};
-  event.type = CuptiTracerEventType::Generic;
-  event.source = CuptiTracerEventSource::Activity;
-  switch (sync->type) {
-    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_EVENT_SYNCHRONIZE:
-      event.name = "cuEventSynchronize";
-      break;
-    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_STREAM_WAIT_EVENT:
-      event.name = "cuStreamWaitEvent";
-      break;
-    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_STREAM_SYNCHRONIZE:
-      event.name = "cuStreamSynchronize";
-      break;
-    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_CONTEXT_SYNCHRONIZE:
-      event.name = "cuCtxSynchronize";
-      break;
-    default:
-      event.name = "unknown synchronization event";
-      break;
-  }
-  event.start_time_ns = sync->start;
-  event.end_time_ns = std::max(sync->end, sync->start + 1);
-  event.correlation_id = sync->correlationId;
-  event.context_id = sync->contextId;
-  VLOG(5) << "Cuda activity " << event.name;
-  collector->AddEvent(std::move(event));
-}
-
 // This hook uses cupti activity api to measure device side activities.
 class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
  public:
@@ -1208,9 +870,7 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
 }
 
 CuptiTracer::CuptiTracer(CuptiInterface *cupti_interface)
-    : num_gpus_(NumGpus()),
-      cupti_interface_(cupti_interface),
-      buffer_pool_(kBufferSizeInBytes) {}
+    : num_gpus_(NumGpus()), cupti_interface_(cupti_interface) {}
 
 /* static */ CuptiTracer *CuptiTracer::GetCuptiTracerSingleton() {
   static auto *singleton = new CuptiTracer(GetCuptiInterface());
@@ -1258,6 +918,17 @@ void CuptiTracer::Disable() {
   cupti_interface_->CleanUp();
   Finalize().IgnoreError();
   cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
+
+  collector_->OnTracerCachedActivityBuffers(std::move(activity_buffers_));
+  if (cupti_dropped_activity_event_count_ > 0) {
+    collector_->OnEventsDropped("Activity Event dropped by Cupti Lib:",
+                                cupti_dropped_activity_event_count_);
+  }
+  if (num_activity_events_in_dropped_buffer_ > 0) {
+    collector_->OnEventsDropped("Activity Event dropped in dropped buffer:",
+                                num_activity_events_in_dropped_buffer_);
+  }
+
   collector_->Flush();
   collector_ = nullptr;
   option_.reset();
@@ -1319,6 +990,8 @@ Status CuptiTracer::DisableApiTracing() {
 }
 
 Status CuptiTracer::EnableActivityTracing() {
+  if (activity_tracing_enabled_) return OkStatus();
+  PrepareActivityStart();
   if (!option_->activities_selected.empty()) {
     // Initialize callback functions for Cupti Activity API.
     VLOG(1) << "Registering CUPTI activity callbacks";
@@ -1491,20 +1164,38 @@ void CuptiTracer::ConfigureActivityUnifiedMemoryCounter(bool enable) {
 }
 
 void CuptiTracer::RequestActivityBuffer(uint8_t **buffer, size_t *size) {
-  *buffer = buffer_pool_.GetOrCreateBuffer();
+  *buffer = activity_buffers_->GetOrCreateBuffer();
   if (*buffer == nullptr) {
     LOG(WARNING)
         << "CUPTI Buffer not allocated, activity records will be dropped";
     *size = 0;
     return;
   }
-  *size = buffer_pool_.GetBufferSizeInBytes();
+  *size = activity_buffers_->GetBufferSizeInBytes();
+}
+
+static size_t CountCuptiActivityEvent(uint8_t *buffer, size_t size) {
+  size_t total_event_count = 0;
+  if (size == 0 || buffer == nullptr) return total_event_count;
+  CuptiInterface *cupti_interface = GetCuptiInterface();
+  CUpti_Activity *record = nullptr;
+  while (true) {
+    if (cupti_interface->ActivityGetNextRecord(buffer, size, &record) ==
+        CUPTI_SUCCESS) {
+      ++total_event_count;
+    } else {
+      break;
+    }
+  }
+  return total_event_count;
 }
 
 Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                           uint8_t *buffer, size_t size) {
-  absl::Cleanup buffer_cleanup = [&]() { buffer_pool_.ReclaimBuffer(buffer); };
-  if (size == 0) {
+  absl::Cleanup buffer_cleanup = [&]() {
+    if (buffer) activity_buffers_->ReclaimBuffer(buffer);
+  };
+  if (size == 0 || buffer == nullptr) {
     return OkStatus();
   }
   if (!activity_tracing_enabled_) {
@@ -1513,71 +1204,33 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
   }
   if (cupti_interface_->Disabled()) return tsl::errors::Internal("Disabled.");
 
-  CUpti_Activity *record = nullptr;
-  while (true) {
-    CUptiResult status =
-        cupti_interface_->ActivityGetNextRecord(buffer, size, &record);
-    if (status == CUPTI_SUCCESS) {
-      switch (record->kind) {
-        case CUPTI_ACTIVITY_KIND_KERNEL:  // sequential
-        case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL:
-          AddKernelActivityEvent<TF_CUPTI_HAS_CHANNEL_ID>(
-              collector_, reinterpret_cast<CuptiActivityKernelTy *>(record));
-          break;
-        case CUPTI_ACTIVITY_KIND_CDP_KERNEL:
-          AddKernelActivityEvent<false>(
-              collector_, reinterpret_cast<CUpti_ActivityCdpKernel *>(record));
-          break;
-        case CUPTI_ACTIVITY_KIND_MEMCPY:
-          AddMemcpyActivityEvent(
-              collector_, reinterpret_cast<CuptiActivityMemcpyTy *>(record));
-          break;
-        case CUPTI_ACTIVITY_KIND_MEMCPY2:
-          AddMemcpyP2PActivityEvent(
-              collector_, reinterpret_cast<CuptiActivityMemcpyP2PTy *>(record));
-          break;
-        case CUPTI_ACTIVITY_KIND_OVERHEAD:
-          AddCuptiOverheadActivityEvent(
-              collector_, reinterpret_cast<CUpti_ActivityOverhead *>(record));
-          break;
-        case CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER:
-          AddUnifiedMemoryActivityEvent(
-              collector_,
-              reinterpret_cast<CUpti_ActivityUnifiedMemoryCounter2 *>(record));
-          break;
-        case CUPTI_ACTIVITY_KIND_MEMORY: {
-          AddMemoryActivityEvent(
-              collector_, reinterpret_cast<CUpti_ActivityMemory *>(record));
-        } break;
-        case CUPTI_ACTIVITY_KIND_MEMSET:
-          AddMemsetActivityEvent(
-              collector_, reinterpret_cast<CuptiActivityMemsetTy *>(record));
-          break;
-        case CUPTI_ACTIVITY_KIND_SYNCHRONIZATION:
-          AddSynchronizationActivityEvent(
-              collector_,
-              reinterpret_cast<CUpti_ActivitySynchronization *>(record));
-          break;
-        default:
-          VLOG(3) << "Activity type " << record->kind << " is not supported.";
-          break;
-      }
-    } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
-      break;
-    } else {
-      return tsl::errors::Internal("Parse cupti activity buffer error.");
-    }
+  // Report dropped records.
+  size_t dropped = 0;
+  if (cupti_interface_->ActivityGetNumDroppedRecords(
+          context, stream_id, &dropped) == CUPTI_SUCCESS) {
+    cupti_dropped_activity_event_count_ += dropped;
   }
 
-  // Report dropped records.
-  size_t dropped;
-  RETURN_IF_CUPTI_ERROR(cupti_interface_->ActivityGetNumDroppedRecords(
-      context, stream_id, &dropped));
-  if (dropped != 0) {
-    uint32_t device_id = -1;
-    RETURN_IF_CUPTI_ERROR(cupti_interface_->GetDeviceId(context, &device_id));
-    collector_->OnEventsDropped("cupti activity buffer full", dropped);
+  size_t event_count_in_buffer = CountCuptiActivityEvent(buffer, size);
+  auto max_activity_event_count =
+      collector_->GetOptions().max_activity_api_events;
+  if (max_activity_event_count > 0 &&
+      num_activity_events_in_cached_buffer_ >= max_activity_event_count) {
+    LOG(WARNING) << "Already too many activity events, drop the buffer of "
+                 << size << "bytes of event to reuse.";
+    num_activity_events_in_dropped_buffer_ += event_count_in_buffer;
+    // buffer will be return to the pool
+    return OkStatus();
   }
+  num_activity_events_in_cached_buffer_ += event_count_in_buffer;
+
+  // When cupti activity buffer is required to flush, save the buffer and its
+  // valid size some where. All the saved activity buffer will be handled
+  // after the profiling is stopped.
+  VLOG(3) << "Caching CUPTI activity buffer of size:" << size;
+  activity_buffers_->CacheCuptiFilledActivityBuffer(buffer, size);
+  buffer = nullptr;  // So cleanup will not free it as it was saved already
+
   return OkStatus();
 }
 
@@ -1592,6 +1245,14 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
         "Failed to load libcupti (is it installed and accessible?)");
   }
   return "";
+}
+
+void CuptiTracer::PrepareActivityStart() {
+  activity_buffers_ =
+      std::make_unique<CuptiActivityBufferManager>(kBufferSizeInBytes);
+  cupti_dropped_activity_event_count_ = 0;
+  num_activity_events_in_cached_buffer_ = 0;
+  num_activity_events_in_dropped_buffer_ = 0;
 }
 
 }  // namespace profiler

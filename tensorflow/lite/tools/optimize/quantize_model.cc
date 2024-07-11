@@ -2013,6 +2013,18 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                        /*activations_type=*/TensorType_INT8,
                        /*bias_type=*/TensorType_INT32, error_reporter);
 }
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, const TensorType& input_type,
+                           const TensorType& output_type, bool allow_float,
+                           bool disable_per_channel,
+                           ErrorReporter* error_reporter) {
+  return QuantizeModel(builder, model, input_type, output_type, allow_float,
+                       GetAllOperatorOutputs(model),
+                       /*activations_type=*/TensorType_INT8,
+                       /*bias_type=*/TensorType_INT32,
+                       /*disable_per_channel=*/disable_per_channel,
+                       error_reporter);
+}
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* model, const TensorType& input_type,

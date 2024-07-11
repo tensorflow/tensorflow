@@ -1717,7 +1717,7 @@ func.func @conv2d_per_channel_res_only(
 
 func.func @conv2d_per_channel_unsupported_channel(
     %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
-    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32:2, {2.000000e+00:0, 1.000000e+00:0}>>
+    %arg1: tensor<3x3x1x2x!quant.uniform<i8:f32:2, {2.000000e+00:0}>>
   ) -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>> {
   // expected-error@+2 {{Conv quantized axis must be out channel axis}}
   // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
@@ -1731,7 +1731,7 @@ func.func @conv2d_per_channel_unsupported_channel(
     {
       batch_group_count = 1 : i64,
       feature_group_count = 1 : i64
-    } : (tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<3x3x1x2x!quant.uniform<i8:f32:2, {2.000000e+00:0, 1.000000e+00:0}>>)
+    } : (tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<3x3x1x2x!quant.uniform<i8:f32:2, {2.000000e+00:0}>>)
     -> tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
   return %0 : tensor<128x26x26x2x!quant.uniform<i32:f32:3, {4.000000e+00:0, 2.000000e+00:0}>>
 }

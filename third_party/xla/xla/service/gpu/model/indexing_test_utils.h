@@ -33,6 +33,9 @@ namespace xla {
 namespace gpu {
 
 // Matches two strings ignoring whitespaces.
+// 'lhs' may contain regions bounded by the special pattern '###',
+// in which case, each region is parsed as a sequence of terms separated by
+// '+ signs. The function will try to match all permutations of terms.
 bool ApproximateMatch(std::string_view lhs, std::string_view rhs);
 
 MATCHER(UndefinedMap, "") { return arg.IsUndefined(); }

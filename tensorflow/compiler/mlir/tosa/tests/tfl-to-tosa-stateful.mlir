@@ -65,7 +65,7 @@ module {
 module {
     // CHECK-LABEL: @nostate
     // CHECK: %[[VAL_0:.*]]: tensor<16x16xf32>) -> tensor<16x16xf32> {
-    // CHECK: %[[VAL_1:.*]] = "tfl.var_handle"() {container = "", shared_name = "Variable"} : () -> tensor<*x!tf_type.resource>
+    // CHECK: %[[VAL_1:.*]] = "tfl.var_handle"() <{container = "", shared_name = "Variable"}> : () -> tensor<*x!tf_type.resource>
     // CHECK: %[[VAL_2:.*]] = "tfl.read_variable"(%[[VAL_1]]) : (tensor<*x!tf_type.resource>) -> tensor<16x16xf32>
     // CHECK: %[[VAL_3:.*]] = tosa.add %[[VAL_2]], %[[VAL_0]] : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
     // CHECK: "tfl.assign_variable"(%[[VAL_1]], %[[VAL_3]]) : (tensor<*x!tf_type.resource>, tensor<16x16xf32>) -> ()

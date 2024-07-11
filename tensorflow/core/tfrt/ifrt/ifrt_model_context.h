@@ -120,8 +120,7 @@ class IfrtModelContext {
   // After Freeze() is called, no new model signature will be compiled. Using a
   // signature or an input shape that wasn't compiled before the freeze will
   // leads to an error.
-  // TODO(b/337926686): prevent further compilation after freeze.
-  void Freeze();
+  absl::Status Freeze();
 
  private:
   std::shared_ptr<xla::ifrt::Client> client_;

@@ -1012,6 +1012,10 @@ cc_test(
 cc_test(
     name = "validator_runner_impl_test",
     srcs = ["validator_runner_impl_test.cc"],
+    # Disable odr violation check because of a libc++ symbol (b/337114862).
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
     deps = [
         ":benchmark_result_evaluator",
         ":embedded_mobilenet_model",

@@ -913,5 +913,29 @@ ENTRY main {
   EXPECT_TRUE(IsTritonSoftmaxFusion(*root));
 }
 
+TEST_F(PriorityFusionTest, DoNotFuseInsideReducer) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    %reducer {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT max = f32[] maximum(add, p0)
+    }
+
+    %fused_reduce {
+      p0 = f32[256] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT reduce = f32[] reduce(p0, p1), dimensions={0}, to_apply=%reducer
+    }
+
+    ENTRY fusion {
+      p0 = f32[256] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT %reduce = f32[] fusion(p0, p1), kind=kInput, calls=fused_reduce
+    }
+  )");
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
 }  // namespace gpu
 }  // namespace xla

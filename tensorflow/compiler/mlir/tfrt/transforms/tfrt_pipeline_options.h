@@ -108,13 +108,6 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, gpurt.compile_and_execute is used for GPU"),
       llvm::cl::init(false)};
 
-  Option<bool> func_use_fallback_tensor{
-      *this, "func-use-fallback-tensor",
-      llvm::cl::desc(
-          "If true, use TF tensor as input/output types in func (and other "
-          "control flow) ops."),
-      llvm::cl::init(false)};
-
   Option<bool> enable_while_parallel_iterations{
       *this, "enable-while-parallel-iterations",
       llvm::cl::desc("If true, tf.While op will be parallelized. This is "

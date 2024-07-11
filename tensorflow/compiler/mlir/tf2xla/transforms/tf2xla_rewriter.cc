@@ -132,7 +132,7 @@ Tf2XlaRewriter::~Tf2XlaRewriter() {
   if (context_) context_->Unref();
 }
 
-tsl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
+absl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
     XlaComputation& computation) {
   xla::DebugOptions debug_options;
   TF_ASSIGN_OR_RETURN(auto hlo_module_config,
@@ -205,7 +205,7 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   // concurrently running each of the MLIR functions create a new device.
   step_container_ = std::make_unique<tensorflow::ScopedStepContainer>(
       /*step_id=*/0, cleanup);
-  tsl::Status status = step_container_->Create(
+  absl::Status status = step_container_->Create(
       device_->resource_manager(),
       tensorflow::XlaContext::kXlaContextResourceName, context_);
   if (!status.ok()) {
@@ -214,7 +214,7 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   }
   params_.step_container = step_container_.get();
 
-  tsl::StatusOr<int64_t> version_or = tensorflow::GetTfGraphProducerVersion(
+  absl::StatusOr<int64_t> version_or = tensorflow::GetTfGraphProducerVersion(
       op_->getParentOfType<mlir::ModuleOp>());
   if (!version_or.ok()) {
     return emitError(op_->getLoc()) << version_or.status().ToString();
@@ -329,7 +329,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   if (failed(PrepareParams())) return failure();
 
   std::shared_ptr<const tensorflow::NodeProperties> props;
-  tsl::Status status = tensorflow::NodeProperties::CreateFromNodeDef(
+  absl::Status status = tensorflow::NodeProperties::CreateFromNodeDef(
       *nodedef_or.value(),
       params_.function_library->GetFunctionLibraryDefinition(), &props);
   if (!status.ok()) {
@@ -388,11 +388,11 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
 
   if (failed(VerifyOpResults(op_context))) return failure();
 
-    StatusOr<mhlo::TupleOp> tuple_result_or_status =
-        CompileWithHloImporter(op_context);
-    if (!tuple_result_or_status.ok()) {
-      return op_->emitRemark() << tuple_result_or_status.status().ToString();
-    }
+  absl::StatusOr<mhlo::TupleOp> tuple_result_or_status =
+      CompileWithHloImporter(op_context);
+  if (!tuple_result_or_status.ok()) {
+    return op_->emitRemark() << tuple_result_or_status.status().ToString();
+  }
     mhlo::TupleOp tuple_result = tuple_result_or_status.value();
 
     llvm::SmallVector<Value> output_values;
@@ -404,7 +404,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   return success();
 }
 
-tsl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::CompileWithHloImporter(
+absl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::CompileWithHloImporter(
     tensorflow::OpKernelContext& op_context) {
   // XLA can only return a single value. Wrap all output op return values
   // in a Tuple op that gets unpacked later.

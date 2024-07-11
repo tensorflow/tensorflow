@@ -417,6 +417,27 @@ TEST_F(MlirLoopFusionTest, TupleBitcast) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirLoopFusionTest, DynamicSliceWith64BitInput) {
+  // Lowering this kernel with 32 bit indices causes an underflow of `c`,
+  // resulting in slicing the last four elements instead of the first four.
+  constexpr auto kHloString = R"(
+    %fused_computation {
+      %p0 = s64[] parameter(0)
+      %p1 = f64[5] parameter(1)
+      ROOT slice = f64[4] dynamic-slice(%p1, %p0), dynamic_slice_sizes={4}
+    }
+
+    ENTRY main {
+      %c = s64[] constant(-1000000000000)
+      %p0 = f64[5] parameter(0)
+      ROOT %fusion = f64[4]{0} fusion(%c, %p0), kind=kInput, calls=%fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64 : i32>>
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

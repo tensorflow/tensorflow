@@ -19,12 +19,14 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
 #include <numeric>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -33,6 +35,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -2814,27 +2817,32 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     }
     llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_);
   }
-  auto* output_address_arg = GetEmittedValueFor(custom_call);
+  auto* output_address = GetEmittedValueFor(custom_call);
 
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   switch (typed_custom_call->api_version()) {
     case CustomCallApiVersion::API_VERSION_ORIGINAL:
       EmitCallToFunc(custom_call->custom_call_target(),
-                     {output_address_arg, operands_alloca}, b_.getVoidTy());
+                     {output_address, operands_alloca}, b_.getVoidTy());
       break;
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
       EmitCallToFunc(custom_call->custom_call_target(),
-                     {output_address_arg, operands_alloca, GetStatusArgument()},
+                     {output_address, operands_alloca, GetStatusArgument()},
                      b_.getVoidTy());
       EmitEarlyReturnIfErrorStatus();
       break;
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED: {
       absl::string_view opaque = typed_custom_call->opaque();
       EmitCallToFunc(custom_call->custom_call_target(),
-                     {output_address_arg, operands_alloca,
+                     {output_address, operands_alloca,
                       b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(opaque)),
                       b_.getInt64(opaque.size()), GetStatusArgument()},
                      b_.getVoidTy());
+      EmitEarlyReturnIfErrorStatus();
+      break;
+    }
+    case CustomCallApiVersion::API_VERSION_TYPED_FFI: {
+      EmitCallToFfi(typed_custom_call, output_address, operands_alloca);
       EmitEarlyReturnIfErrorStatus();
       break;
     }
@@ -3081,6 +3089,114 @@ llvm::Value* IrEmitter::EmitCallToFunc(
     func->setOnlyAccessesInaccessibleMemOrArgMem();
   }
   return b_.CreateCall(func, arguments);
+}
+
+template <typename T>
+static const Shape& GetShape(T&& arg) {
+  if constexpr (std::is_convertible_v<absl::remove_cvref_t<decltype(arg)>,
+                                      Shape>) {
+    return arg;  // convertible to shape, so just return
+  } else {
+    return arg->shape();
+  }
+};
+
+template <typename T>
+llvm::AllocaInst* IrEmitter::StoreTypes(std::string_view alloca_name,
+                                        T&& args) {
+  auto* types_alloca = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      b_.getInt32Ty(), b_.getInt64(args.size()), alloca_name, &b_);
+
+  for (int64_t i = 0; i < args.size(); ++i) {
+    llvm::Value* slot_in_types_alloca =
+        ConstInBoundsGEP1_32(b_.getInt32Ty(), types_alloca, i);
+    Store(b_.getInt32(GetShape(args[i]).element_type()), slot_in_types_alloca);
+  }
+  return types_alloca;
+};
+
+template <typename T>
+llvm::Value* IrEmitter::StoreShapes(std::string_view alloca_name, T&& args) {
+  // Prepare metadata for all buffers
+  // Shapes metadata is encoded using contiguous flattened dimension values:
+  //    {
+  // 1:   DIMCOUNT_1, DIM_1[1], DIM_1[2], ..., DIM_1[DIMCOUNT_1],
+  //                  \______________DIMCOUNT_1 _______________/
+  // 2:   DIMCOUNT_2, DIM_2[1], DIM_2[2], ..., DIM_2[DIMCOUNT_2],
+  //                  \______________DIMCOUNT_2 _______________/
+  // .:   ...
+  // N:   DIMCOUNT_N, DIM_N[1], DIM_N[2], ..., DIM_N[DIMCOUNT_N],
+  //                  \______________DIMCOUNT_N _______________/
+  //    }
+  //  where N is `operand_count`, and `DIMCOUNT_i` is the # of dimensions
+  std::size_t total_dims =
+      absl::c_accumulate(args, int64_t{0}, [](int64_t acc, auto&& arg) {
+        return acc + GetShape(arg).dimensions().size();
+      });
+  int64_t encoded_shapes_size = args.size()  // the dimension count identifiers
+                                + total_dims;  // the # of dimension values
+
+  llvm::Value* shapes_alloca = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      b_.getInt64Ty(), b_.getInt64(encoded_shapes_size), alloca_name, &b_);
+
+  int64_t slot_id = 0;
+  for (int64_t i = 0; i < args.size(); ++i) {
+    auto dims = GetShape(args[i]).dimensions();
+    llvm::Value* alloca_slot =
+        ConstInBoundsGEP1_64(b_.getInt64Ty(), shapes_alloca, slot_id++);
+    // Store the operand count
+    Store(b_.getInt64(dims.size()), alloca_slot);
+    // Store the operand dimensions
+    for (int64_t dim : dims) {
+      alloca_slot =
+          ConstInBoundsGEP1_64(b_.getInt64Ty(), shapes_alloca, slot_id++);
+      Store(b_.getInt64(dim), alloca_slot);
+    }
+  }
+  CHECK_EQ(slot_id, encoded_shapes_size);  // All slots are filled
+  return shapes_alloca;
+};
+
+llvm::Value* IrEmitter::EmitCallToFfi(HloCustomCallInstruction* custom_call,
+                                      llvm::Value* output_address,
+                                      llvm::AllocaInst* operands_alloca) {
+  const auto& operands = absl::MakeSpan(custom_call->operands());
+  const auto& shape = custom_call->shape();
+  const auto& result_shapes =
+      shape.IsTuple() ? shape.tuple_shapes() : std::vector<Shape>({shape});
+
+  auto operand_types_alloca = StoreTypes("meta_types_operands", operands);
+  auto operand_shapes_alloca = StoreShapes("meta_shapes_operands", operands);
+
+  auto result_types_alloca = StoreTypes("meta_types_results", result_shapes);
+  auto result_shapes_alloca = StoreShapes("meta_shapes_results", result_shapes);
+
+  const absl::string_view target = custom_call->custom_call_target();  // name
+  const absl::string_view opaque = custom_call->opaque();
+
+  const auto target_ref = llvm_ir::AsStringRef(target);
+  const auto opaque_ref = llvm_ir::AsStringRef(opaque);
+
+  std::vector<llvm::Value*> arguments = {
+      b_.CreateGlobalStringPtr(target_ref),  // target_name_ptr
+      b_.getInt64(target.size()),            // target_name_len
+      output_address,                        // output
+      operands_alloca,                       // inputs
+      b_.CreateGlobalStringPtr(opaque_ref),  // opaque_str_ptr
+      b_.getInt64(opaque.size()),            // opaque_str_len
+      GetStatusArgument(),                   // status_opaque
+      operand_types_alloca,                  // operand_types
+      b_.getInt64(operands.size()),          // operand_count
+      operand_shapes_alloca,                 // operand_dims
+      result_types_alloca,                   // result_types
+      b_.getInt64(result_shapes.size()),     // result_count
+      result_shapes_alloca,                  // result_dims
+  };
+
+  return EmitCallToFunc("__xla_cpu_runtime_HandleFfiCall", arguments,
+                        b_.getVoidTy(),
+                        /* does_not_throw = */ false,
+                        /* only_accesses_arg_memory = */ true);
 }
 
 void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,

@@ -61,6 +61,17 @@ pyx_library(
     srcs = ["custom_call_for_test.pyx"],
 )
 
+tsl_pybind_extension(
+    name = "typed_ffi_custom_calls",
+    srcs = ["typed_ffi_custom_call_for_test.cc"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//third_party/nanobind",
+        "//xla/ffi",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 py_strict_test(
     name = "xla_client_backend_independent_test",
     srcs = ["xla_client_backend_independent_test.py"],
@@ -101,6 +112,7 @@ py_strict_test(
     ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":custom_call_for_test",
+        ":typed_ffi_custom_calls",
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/flags",
@@ -506,7 +518,6 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

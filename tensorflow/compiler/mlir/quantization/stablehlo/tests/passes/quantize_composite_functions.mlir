@@ -51,7 +51,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// Tests that `stablehlo.dot_general` with `batching_dim` is not quantized.
+// Tests that `stablehlo.dot_general` with `batching_dim` is quantized.
 
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_dot_general_batch_per_tensor_quantized_fn(%arg0: tensor<2x2x2xf32>) -> tensor<2x2x3xf32> attributes {tf._original_func_name = "main_0"} {
@@ -62,9 +62,9 @@ module attributes {tf_saved_model.semantics} {
     return %2 : tensor<2x2x3xf32>
   }
 // CHECK: func.func private @quantize_dot_general_batch_per_tensor_quantized_fn(%[[ARG_0:.+]]: tensor<2x2x2xf32>) -> tensor<2x2x3xf32> attributes {tf._original_func_name = "main_0"}
-// CHECK: %[[CONST_0:.+]] = stablehlo.constant() <{value = dense<127> : tensor<2x2x3xi8>}> : () -> tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[CONST_0:.+]] = stablehlo.constant() <{value = dense<127> : tensor<2x2x3xi8>}> : () -> tensor<2x2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>>
 // CHECK: %[[UNIFORM_QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<2x2x2xf32>) -> tensor<2x2x2x!quant.uniform<i8:f32, {{.*}}>>
-// CHECK: %[[CALL_0:.+]] = call @quantized_dot_general_fn(%[[UNIFORM_QUANTIZE_0]], %[[CONST_0]]) {_quantization_method = "static_range_ptq { }"} : (tensor<2x2x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>) -> tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[CALL_0:.+]] = call @quantized_dot_general_fn(%[[UNIFORM_QUANTIZE_0]], %[[CONST_0]]) {_quantization_method = "static_range_ptq { }"} : (tensor<2x2x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>) -> tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>>
 // CHECK: %[[UNIFORM_DEQUANTIZE_0:.+]] = stablehlo.uniform_dequantize %[[CALL_0]] : (tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>) -> tensor<2x2x3xf32>
 // CHECK: return %[[UNIFORM_DEQUANTIZE_0]] : tensor<2x2x3xf32>
 

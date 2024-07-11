@@ -147,7 +147,6 @@ void RuntimeFallbackExecutor::Prepare(llvm::StringRef mlir_input) {
   pipeline_opts.sink_in_invariant_ops = false;
   pipeline_opts.cost_threshold = 1024;
   pipeline_opts.merge_inter_dependent_streams = true;
-  pipeline_opts.func_use_fallback_tensor = true;
 
   mlir::PassManager pm(module->getContext());
   pm.addPass(CreateTfToTfrtConversionPass(pipeline_opts));

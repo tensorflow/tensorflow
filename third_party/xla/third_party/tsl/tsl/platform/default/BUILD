@@ -235,8 +235,11 @@ cc_library(
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:protobuf",
-        "//tsl/platform:status",
         "//tsl/platform:strcat",
+        "//tsl/platform:stringpiece",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -552,6 +555,12 @@ bzl_library(
 bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
+)
+
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = ["build_config_root.bzl"],
+    # copybara:uncomment parse_tests = False,
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

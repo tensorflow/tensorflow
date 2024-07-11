@@ -662,8 +662,9 @@ HloModule softmax
 max_computation {
   arg_0 = $0[] parameter(0)
   arg_1 = $0[] parameter(1)
-  floor_0 = $0[] floor(arg_0)
-  ROOT maximum = $0[] maximum(floor_0, arg_1)
+  if_0 = pred[] is-finite(arg_0)
+  c = $0[] convert(if_0)
+  ROOT maximum = $0[] maximum(c, arg_1)
 }
 
 ENTRY main {
@@ -923,11 +924,12 @@ max_computation {
 
 ENTRY main {
   param_0 = $0[127,125]{1,0} parameter(0)
-  floor_0 = $0[127,125] floor(param_0)
+  if_0 = pred[127,125] is-finite(param_0)
+  c = $0[127,125] convert(if_0)
   constant_neg_inf = $0[] constant(-inf)
-  reduce = $0[127]{0} reduce(floor_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  reduce = $0[127]{0} reduce(c, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
-  ROOT subtract = $0[127,125]{1,0} subtract(floor_0, broadcast)
+  ROOT subtract = $0[127,125]{1,0} subtract(c, broadcast)
 }
 )";
   const std::string hlo_string =
@@ -941,7 +943,7 @@ ENTRY main {
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::Floor(m::Parameter()))));
+              GmockMatch(m::Fusion(m::IsFinite(m::Parameter()))));
 }
 
 TEST_P(SoftmaxRewriterTritonTest,

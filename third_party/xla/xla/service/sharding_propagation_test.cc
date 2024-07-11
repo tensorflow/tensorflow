@@ -2582,7 +2582,7 @@ ENTRY %entry {
   EXPECT_THAT(crs_f_tiled, op::Sharding("{devices=[2]0,1}"));
   auto* crs_f_none = FindInstruction(module.get(), "crs_f.none");
   ASSERT_NE(crs_f_none, nullptr);
-  EXPECT_THAT(crs_f_none, op::NoSharding());
+  EXPECT_THAT(crs_f_none, op::Sharding("{devices=[2]0,1}"));
   auto* crs_b_replicated = FindInstruction(module.get(), "crs_b.replicated");
   ASSERT_NE(crs_b_replicated, nullptr);
   EXPECT_THAT(crs_b_replicated, op::Sharding("{replicated}"));

@@ -22,7 +22,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "tf.LookupTableFindV2"(%0, %arg0, %cst) {device = ""} : (tensor<!tf_type.resource>, tensor<i64>, tensor<!tf_type.string>) -> tensor<*x!tf_type.string>
     func.return %1 : tensor<*x!tf_type.string>
     // CHECK-LABEL: @serving_default
-    // CHECK: "tfl.call_once"() {session_init_function = "init_all_tables"} : () -> ()
+    // CHECK: "tfl.call_once"() <{session_init_function = "init_all_tables"}> : () -> ()
   }
 }
 

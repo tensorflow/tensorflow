@@ -251,8 +251,9 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
   auto body =
       [&](ValueRange iter_args, ValueRange dim_values,
           ValueRange symbol_values) -> absl::StatusOr<SmallVector<Value>> {
-    auto indices = ApplyAffineMap(indexing_map.GetAffineMap(), dim_values,
-                                  symbol_values, b);
+    auto indices =
+        b.create<ApplyIndexingOp>(dim_values, symbol_values, indexing_map)
+            .getResults();
 
     SmallVector<Value> args{iter_args};
     for (int i = 0; i < instr->operand_count() / 2; ++i) {
@@ -311,8 +312,9 @@ absl::StatusOr<SmallVector<Value>> EmitReduceWindow(
   auto body =
       [&](ValueRange iter_args, ValueRange dim_values,
           ValueRange symbol_values) -> absl::StatusOr<SmallVector<Value>> {
-    auto indices = ApplyAffineMap(indexing_map.GetAffineMap(), dim_values,
-                                  symbol_values, b);
+    auto indices =
+        b.create<ApplyIndexingOp>(dim_values, symbol_values, indexing_map)
+            .getResults();
 
     SmallVector<Value> args{iter_args};
     for (auto [index, input] : llvm::enumerate(reduce_window->inputs())) {
@@ -589,18 +591,20 @@ absl::StatusOr<SmallVector<Value>> EmitDotLoop(
   auto body =
       [&](ValueRange iter_args, ValueRange dim_values,
           ValueRange symbol_values) -> absl::StatusOr<SmallVector<Value>> {
-    llvm::SmallVector<Value> lhs_indices = ApplyAffineMap(
-        lhs_indexing_map.GetAffineMap(), dim_values, symbol_values, b);
-    llvm::SmallVector<Value> rhs_indices =
-        ApplyAffineMap(rhs_indexing_map.GetAffineMap(), dim_values,
-                       symbol_values.take_front(rhs_symbol_count), b);
+    auto lhs_indices =
+        b.create<ApplyIndexingOp>(dim_values, symbol_values, lhs_indexing_map);
+    auto rhs_indices = b.create<ApplyIndexingOp>(
+        dim_values, symbol_values.take_front(rhs_symbol_count),
+        rhs_indexing_map);
 
-    TF_ASSIGN_OR_RETURN(Value lhs_value, GetSingleOperandValue(
-                                             operand_provider, instr,
-                                             /*operand_index=*/0, lhs_indices));
-    TF_ASSIGN_OR_RETURN(Value rhs_value, GetSingleOperandValue(
-                                             operand_provider, instr,
-                                             /*operand_index=*/1, rhs_indices));
+    TF_ASSIGN_OR_RETURN(
+        Value lhs_value,
+        GetSingleOperandValue(operand_provider, instr,
+                              /*operand_index=*/0, lhs_indices.getResults()));
+    TF_ASSIGN_OR_RETURN(
+        Value rhs_value,
+        GetSingleOperandValue(operand_provider, instr,
+                              /*operand_index=*/1, rhs_indices.getResults()));
     Value accum = iter_args[0];
 
     TF_ASSIGN_OR_RETURN(
@@ -845,7 +849,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
           auto operand_map = GetBitcastMap(
               first_shape, instr->operand(i)->shape(), mlir_context);
           operand_indices =
-              ApplyAffineMap(operand_map.GetAffineMap(), indices, {}, builder);
+              builder.create<ApplyIndexingOp>(indices, operand_map)
+                  .getResults();
         } else {
           operand_indices = indices;
         }
@@ -1174,27 +1179,29 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
 
   emit_instr = [&](const HloInstruction* instr,
                    ValueRange indices) -> absl::StatusOr<SmallVector<Value>> {
-    // TODO(jreiffers): Check dominance, e.g.:
-    //
-    // padding_value = log(param)
-    // pad = pad(bar, padding_value)
-    // broadcast = broadcast(padding_value)
-    // pad + broadcast
-    //
-    // If padding_value was first emitted in the context of pad, it'll be
-    // inside an scf.if. For now this doesn't matter, because the indexing
-    // is considered to be different, but once the partitioner is smarter,
-    // it will matter.
-    //
-    // Also, this caching should be combined with parameter caching.
     std::vector<void*> indices_ptrs;
     indices_ptrs.reserve(indices.size());
     for (auto index : indices) {
       indices_ptrs.push_back(index.getAsOpaquePointer());
     }
     auto& entry = cached_instructions[std::make_pair(instr, indices_ptrs)];
+    // Only use the entry if its parent block is still in scope. Note that this
+    // should always be the case normally - if not, we risk exponential code
+    // size.
     if (!entry.empty()) {
-      return entry;
+      auto* entry_block = entry.front().getParentBlock();
+      auto* insertion_block = builder.getInsertionBlock();
+      while (insertion_block != nullptr) {
+        if (insertion_block == entry_block) return entry;
+        if (insertion_block->getParentOp()) {
+          insertion_block = insertion_block->getParentOp()->getBlock();
+        } else {
+          insertion_block = nullptr;
+          VLOG(2) << "Failed dominance check while looking up cache for "
+                  << instr->ToShortString()
+                  << ". This is a bug in the computation partitioner.";
+        }
+      }
     }
 
     TF_ASSIGN_OR_RETURN(auto lowered_instr,

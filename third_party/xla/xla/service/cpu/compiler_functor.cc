@@ -35,7 +35,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
-#include "xla/runtime/execution_engine.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/llvm_ir_runtime.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -159,20 +158,6 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   pb.crossRegisterProxies(lam, fam, cgam, mam);
 
   llvm::ModulePassManager pm;
-
-  for (const auto& func_name : convert_to_xla_runtime_abi_) {
-    llvm::Function* func = module.getFunction(func_name);
-    // Create a new function with the XLA Runtime ABI and inline the original
-    // (i.e. with ctx + memref args) into it.
-    std::string inlined_func_name =
-        absl::StrCat(func_name, "__orig_xla_runtime_abi");
-    func->setName(inlined_func_name);
-    absl::Status status = xla::runtime::ExportWithXlaRuntimeAbi(
-        module, inlined_func_name, func_name);
-    if (!status.ok()) {
-      LOG(FATAL) << status.message();
-    }
-  }
 
   if (dfsan_enabled_) {
     pm.addPass(llvm::DataFlowSanitizerPass(dfsan_abi_list_files_));

@@ -1,7 +1,7 @@
 // RUN: ifrt-opt %s -ifrt-verify-sharding-specified -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @good_arrays
-#sharding = #ifrt.sharding_param<2 to [0] on 2>
+#sharding = #ifrt.sharding_param<2 to [0] on 2, memory_kind = "device">
 module @good_arrays {
   func.func @main(%arg0: !ifrt.array<tensor<2xi32>, #sharding, [0,1]>)
       -> !ifrt.array<tensor<2xi32>, #sharding, [2,3]>

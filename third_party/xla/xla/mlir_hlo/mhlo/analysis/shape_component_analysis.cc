@@ -782,8 +782,7 @@ bool SymbolicExpr::isKnownNotNegativeOne() const {
     if (symbol.source.isShapeInfo()) return true;
     Operation *op = symbol.source.value().getDefiningOp();
     if (op == nullptr) return false;
-    return llvm::isa<shape::ShapeOfOp, mhlo::ComputeReshapeShapeOp,
-                     shape::NumElementsOp>(op);
+    return llvm::isa<shape::ShapeOfOp, shape::NumElementsOp>(op);
   };
 
   // For constants we know if it's -1 or not. Checking the sign is sufficient

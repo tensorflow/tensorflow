@@ -37,6 +37,7 @@
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
@@ -69,6 +70,11 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
+      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+      ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
+      const RemapPlan& plan,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics semantics) override;
 

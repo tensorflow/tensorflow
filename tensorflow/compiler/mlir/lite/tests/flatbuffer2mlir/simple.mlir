@@ -10,9 +10,9 @@ func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
   // CHECK-SAME: tfl.description = "MLIR Converted."
   // CHECK-SAME: tfl.schema_version = 3 : i32
 
-  // CHECK:          %{{.*}} = "tfl.pseudo_const"() {value = dense<{{\[\[1, 2\], \[3, 4\], \[5, 6\]\]}}> : tensor<3x2xi32>}
+  // CHECK:          %{{.*}} = "tfl.pseudo_const"() <{value = dense<{{\[\[1, 2\], \[3, 4\], \[5, 6\]\]}}> : tensor<3x2xi32>}>
   // CHECK-NEXT:     [[SUB:%.*]] = tfl.sub %{{.*}}, %{{.*}} {fused_activation_function = "RELU6"} : tensor<3x2xi32>
-  // CHECK-NEXT:     [[SCALAR:%.*]] = "tfl.pseudo_const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT:     [[SCALAR:%.*]] = "tfl.pseudo_const"() <{value = dense<10> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT:     [[ADD:%.*]] = tfl.add([[SCALAR]], [[SUB]]) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<3x2xi32>) -> tensor<3x2xi32>
   // CHECK-NEXT:     return [[ADD]] : tensor<3x2xi32>
 

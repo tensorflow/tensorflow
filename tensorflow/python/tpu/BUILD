@@ -786,11 +786,11 @@ pytype_strict_library(
     name = "tpu_embedding_v3_utils",
     srcs = ["tpu_embedding_v3_utils.py"],
     deps = [
-        "//tensorflow/core/tpu/kernels:sparse_core_layout_proto_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:control_flow_ops_gen",
         "//tensorflow/python/ops:manip_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",

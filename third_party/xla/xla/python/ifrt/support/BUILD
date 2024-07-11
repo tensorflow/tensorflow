@@ -13,7 +13,7 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:sharding_param",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -34,7 +34,7 @@ xla_cc_test(
         "//xla/hlo/ir:tile_assignment",
         "//xla/python/ifrt",
         "//xla/python/ifrt:sharding_test_util",
-        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:sharding_param",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

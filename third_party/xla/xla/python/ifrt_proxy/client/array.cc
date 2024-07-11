@@ -38,6 +38,7 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -189,6 +190,46 @@ Array::AssembleArrayFromSingleDeviceArrays(
   return tsl::RCReference<xla::ifrt::Array>(
       tsl::MakeRef<Array>(client, std::move(rpc_helper), arrays[0]->dtype(),
                           std::move(shape), std::move(sharding), handle));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+Array::RemapArrays(xla::ifrt::Client* client,
+                   std::shared_ptr<RpcHelper> rpc_helper, const RemapPlan& plan,
+                   absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+                   ArrayCopySemantics semantics) {
+  auto req = std::make_unique<RemapArraysRequest>();
+  TF_RET_CHECK(!arrays.empty());
+  TF_ASSIGN_OR_RETURN(*req->mutable_plan(), plan.ToProto());
+  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+  for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
+    Array* array = llvm::dyn_cast<Array>(rcref.get());
+    if (array == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::Substitute("Array at $0 supplied to RemapArrays() is "
+                           "not a xla::ifrt::proxy::Array.",
+                           rcref.get()));
+    }
+    req->add_array_handles(array->handle_.handle);
+  }
+
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<RemapArraysResponse> response,
+                      rpc_helper->RemapArrays(std::move(req)).Await());
+
+  std::vector<ArrayHandle> handles;
+  for (auto& handle : response->array_handles()) {
+    handles.push_back(ArrayHandle{handle});
+  }
+  TF_RET_CHECK(handles.size() == plan.output_specs.size());
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> result;
+  result.reserve(handles.size());
+  for (int i = 0; i < handles.size(); ++i) {
+    result.push_back(tsl::RCReference<xla::ifrt::Array>(
+        tsl::MakeRef<Array>(client, rpc_helper, plan.output_specs[i].dtype,
+                            plan.output_specs[i].shape,
+                            plan.output_specs[i].sharding, handles[i])));
+  }
+  return result;
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>

@@ -524,7 +524,7 @@ inline Status ShapeFromFormatWithStatus(TensorFormat format, int64_t N,
                                         absl::Span<const int64_t> spatial,
                                         int64_t C, TensorShape* shape) {
   const int dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
-  gtl::InlinedVector<int64_t, 6> dim_sizes(dims);
+  absl::InlinedVector<int64_t, 6UL> dim_sizes(dims);
   dim_sizes[GetTensorBatchDimIndex(dims, format)] = N;
   for (int dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
     auto dim_size = spatial[dim];
@@ -566,7 +566,7 @@ inline TensorShape ShapeFromFilterTensorFormat(
     FilterTensorFormat format, absl::Span<const int64_t> spatial, int64_t I,
     int64_t O) {
   const int dims = GetFilterTensorDimsFromSpatialDims(spatial.size(), format);
-  gtl::InlinedVector<int64_t, 6> dim_sizes(dims);
+  absl::InlinedVector<int64_t, 6UL> dim_sizes(dims);
   dim_sizes[GetFilterTensorOutputChannelsDimIndex(dims, format)] = O;
   for (int dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
     dim_sizes[GetFilterTensorSpatialDimIndex(dims, format, dim)] = spatial[dim];

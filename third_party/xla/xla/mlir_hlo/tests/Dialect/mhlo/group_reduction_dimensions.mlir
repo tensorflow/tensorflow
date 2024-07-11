@@ -16,7 +16,7 @@ func.func @trailing_reduction(%arg : tensor<10x10x3x3xf32>) -> tensor<10x10xf32>
   // CHECK-SAME:     applies mhlo.add across dimensions = [1]
   // CHECK-SAME:     : (tensor<100x9xf32>, tensor<f32>) -> tensor<100xf32>
   // CHECK:      %[[RESULT:.*]] = tensor.expand_shape %[[CRED]]
-  // CHECK-SAME:     {{\[}}[0, 1]{{\]}} : tensor<100xf32> into tensor<10x10xf32>
+  // CHECK-SAME:     {{\[}}[0, 1]{{\]}} output_shape [10, 10] : tensor<100xf32> into tensor<10x10xf32>
   // CHECK:      return %[[RESULT]]
   %c0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %0 = mhlo.reduce(%arg init: %c0) applies mhlo.add across dimensions = [2, 3]
@@ -183,7 +183,7 @@ func.func @accept_dynamic_shape(%arg : tensor<10x?x3x3xf32>) -> tensor<10x?xf32>
   // CHECK-SAME:     applies mhlo.add across dimensions = [1]
   // CHECK-SAME:     : (tensor<?x9xf32>, tensor<f32>) -> tensor<?xf32>
   // CHECK:      %[[RESULT:.*]] = tensor.expand_shape %[[CRED]]
-  // CHECK-SAME:     {{\[}}[0, 1]{{\]}} : tensor<?xf32> into tensor<10x?xf32>
+  // CHECK-SAME:     {{\[}}[0, 1]{{\]}} output_shape [10, %2] : tensor<?xf32> into tensor<10x?xf32>
   // CHECK:      return %[[RESULT]]
   %c0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %0 = mhlo.reduce(%arg init: %c0) applies mhlo.add across dimensions = [2, 3]
@@ -418,7 +418,7 @@ func.func @needs_transpose(%arg : tensor<10x11x12x13x14x15x16x17x18x19xf32>)
 // CHECK-ROW-RED-SAME:     : (tensor<7900200x42432xf32>, tensor<f32>)
 // CHECK-ROW-RED-SAME:     -> tensor<7900200xf32>
 // CHECK-ROW-RED:      %[[RESULT:.*]] = tensor.expand_shape %[[CTCRED]]
-// CHECK-ROW-RED-SAME:     {{\[}}[0, 1, 2, 3, 4, 5]{{\]}} : tensor<7900200xf32>
+// CHECK-ROW-RED-SAME:     {{\[}}[0, 1, 2, 3, 4, 5]{{\]}} output_shape [10, 11, 14, 15, 18, 19] : tensor<7900200xf32>
 // CHECK-ROW-RED-SAME:     into tensor<10x11x14x15x18x19xf32>
 // CHECK-ROW-RED:      return %[[RESULT]] : tensor<10x11x14x15x18x19xf32>
 

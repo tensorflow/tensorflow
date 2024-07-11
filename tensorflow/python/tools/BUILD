@@ -294,6 +294,7 @@ py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",

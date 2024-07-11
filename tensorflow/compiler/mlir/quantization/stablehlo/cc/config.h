@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CONFIG_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CONFIG_H_
 
+#include <optional>
+
+#include "absl/base/attributes.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 
 namespace stablehlo::quantization {
@@ -44,6 +48,17 @@ QuantizationConfig ExpandPresets(const QuantizationConfig& config);
 // Returns whether a given QuantizationSpecs has the given quantization method.
 bool HasQuantizationMethod(const QuantizationSpecs& specs,
                            Method::MethodCase method_case);
+
+// Convenience function for converting the optional `report_file_path` field to
+// `std::optional<absl::string_view>`, where `std::nullopt` represents that the
+// field is not explicitly set. The returned value is a reference type
+// (`absl::string_view`) so its lifetime is bound to the input `config`.
+inline std::optional<absl::string_view> GetReportFilePath(
+    const QuantizationConfig& config ABSL_ATTRIBUTE_LIFETIME_BOUND) {
+  return config.has_report_file_path()
+             ? std::make_optional<absl::string_view>(config.report_file_path())
+             : std::nullopt;
+}
 
 }  // namespace stablehlo::quantization
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -337,6 +338,12 @@ struct PrimitiveTypeToNative<C64> {
 template <>
 struct PrimitiveTypeToNative<C128> {
   using type = complex128;
+};
+
+// Token
+template <>
+struct PrimitiveTypeToNative<TOKEN> {
+  using type = void;
 };
 
 template <PrimitiveType kType>

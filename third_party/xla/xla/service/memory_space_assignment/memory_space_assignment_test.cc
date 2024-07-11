@@ -222,10 +222,11 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     if (cost_analysis_options_override) {
       cost_analysis_options = *cost_analysis_options_override;
     }
+    HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
 
-    auto cost_analysis =
-        CostAnalysis::Create(hlo_cost_analysis, cost_analysis_options, *module)
-            .value();
+    auto cost_analysis = CostAnalysis::Create(hlo_cost_analysis_costs,
+                                              cost_analysis_options, *module)
+                             .value();
     memory_space_options.cost_analysis = cost_analysis.get();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
@@ -9777,9 +9778,11 @@ ENTRY main {
   // Setup cost analysis so it takes 2 instructions to prefetch anything.
   HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions cost_analysis_options;
-  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
-                          FakeCostAnalysis::Create(hlo_cost_analysis, *module,
-                                                   cost_analysis_options));
+  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto cost_analysis,
+      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module,
+                               cost_analysis_options));
   cost_analysis->SetOverrideForGetInstructionElapsed(
       [](const HloInstruction& instruction) -> float { return 10.0; });
   cost_analysis->SetOverrideForGetAsyncCopyElapsed(

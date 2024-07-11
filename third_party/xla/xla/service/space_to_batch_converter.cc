@@ -1562,7 +1562,7 @@ bool ConvolutionVisitor::IsOpcodeNonPropagatable(HloInstruction* consumer) {
     case HloOpcode::kCustomCall:
       return true;
     case HloOpcode::kDot:
-      return true;
+      return !ctrl_.enable_propagations_on_dots;
     default:
       return false;
   }

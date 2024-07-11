@@ -80,7 +80,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
 
 // Computes the indexing for `epilogue_parent`'s epilogue. For example, if
 // `epilogue_parent` is a transpose, computes the input to output indexing for
-// everything below the transpose.
+// the path from the transpose's output to the root's output.
 //
 //   transpose
 //       |
@@ -88,16 +88,23 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
 //       |
 //      ROOT
 //
-// Here, the result will be the input to output indexing for the bitcast.
-// `epilogue_root` may be identical to the root of the fusion (if there is no
-// epilogue). In this case, the result is the identity indexing map.
-// Note: this function assumes the epilogue is compatible with
-// FindNonTrivialHero, i.e., each instruction in the epilogue only has a single
-// user, or the users have identical indexing maps.
+// The root must be specified because in HLO, an instruction can both be a hero
+// and part of a side output:
+//
+//          reduce
+//         /      \
+//   broadcast    log
+//        |        |
+//       neg    bitcast
+//         \      /
+//           ROOT
+//
+// Here, the we must use the path through the `log` for the epilogue indexing,
+// since the other path is not actually an epilogue (it's a side output). This
+// fusion does not make much sense, but they are created sometimes.
 IndexingMap ComputeEpilogueInputToOutputIndexing(
-    const HloInstruction* epilogue_root, mlir::MLIRContext* ctx,
-    std::function<bool(const HloInstruction*)> is_root =
-        [](const HloInstruction* instr) { return instr->IsRoot(); });
+    HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
+    mlir::MLIRContext* ctx);
 
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;

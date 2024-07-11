@@ -118,7 +118,7 @@ struct functor_traits<
   enum {
     Cost = 3 * NumTraits<Scalar>::AddCost,
     PacketAccess =
-        packet_traits<Scalar>::HasCmp && packet_traits<Scalar>::HasFloor,
+        packet_traits<Scalar>::HasCmp && packet_traits<Scalar>::HasRound,
   };
 };
 

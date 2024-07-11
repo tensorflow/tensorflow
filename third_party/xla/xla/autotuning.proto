@@ -115,5 +115,9 @@ message AutotuningLog {
 
   string blas_version = 6;
 
-  // Next ID: 7
+  string fusion_name = 7;
+
+  int64 fusion_count = 8;
+
+  // Next ID: 9
 }

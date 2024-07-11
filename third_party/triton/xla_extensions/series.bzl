@@ -9,4 +9,5 @@ extensions_files_patch_list = [
     "//third_party/triton/xla_extensions:sparse_dot_base.patch",  # Sparsity internal patch
     "//third_party/triton/xla_extensions:sparse_dot_passes.patch",  # Sparsity internal patch
     "//third_party/triton/xla_extensions:sparse_dot_fixes_y24w17.patch",  # Sparsity internal patch
+    "//third_party/triton/xla_extensions:sparse_dot_fixes_y24w19.patch",  # Sparsity internal patch
 ]

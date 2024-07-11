@@ -63,6 +63,7 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/service/reduce_window_rewriter.h"
 #ifdef TF_LLVM_X86_AVAILABLE
 #include "llvm/TargetParser/X86TargetParser.h"
 #endif
@@ -425,6 +426,7 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
+  const DebugOptions& debug_options = module->config().debug_options();
   const int64_t num_partitions = module->config().num_partitions();
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
@@ -576,6 +578,12 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
+
+  if (debug_options.xla_reduce_window_rewrite_base_length() != 0) {
+    pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(
+        debug_options.xla_reduce_window_rewrite_base_length());
+  }
+
   auto dynamic_padder_options = DynamicPadderOptions();
   // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic
   // padder.  The mode defaults to kIgnore, and it was not overridden for nested
@@ -1412,11 +1420,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                           obj_file.getData().size()));
       };
 
-      std::vector<std::string> xla_runtime_abi_conversions;
-      if (options.use_mlir_hlo_lowering()) {
-        xla_runtime_abi_conversions.push_back(options.entry_point_name());
-      }
-
       CompilerFunctor compiler_functor(
           target_machine.get(), static_cast<int>(opt_level),
           options::OptimizeForSizeRequested(module->config()),
@@ -1425,8 +1428,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           llvm_ir::GetCpuFastMathFlags(module->config()),
           pre_optimization_ir_hook, post_optimization_ir_hook,
           post_codegen_hook, aot_options.sanitize_dataflow(),
-          aot_options.sanitize_abilists_dataflow(),
-          xla_runtime_abi_conversions);
+          aot_options.sanitize_abilists_dataflow());
       std::unique_ptr<llvm::MemoryBuffer> object_file =
           cantFail(compiler_functor(*llvm_module));
       ObjectFileData object_file_data(object_file->getBufferStart(),

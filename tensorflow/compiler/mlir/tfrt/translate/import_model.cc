@@ -342,7 +342,6 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->hoist_invariant_ops = options.hoist_invariant_ops;
   pipeline_options->fuse_get_resource_ops_in_hoisting =
       options.fuse_get_resource_ops_in_hoisting;
-  pipeline_options->func_use_fallback_tensor = true;
   pipeline_options->enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
   pipeline_options->cost_threshold = options.cost_threshold;

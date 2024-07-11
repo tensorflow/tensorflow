@@ -18,10 +18,12 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
+#include "xla/status.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

@@ -18,11 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/base/attributes.h"
+#include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/types.h"
+#include "xla/status.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace status_macros {

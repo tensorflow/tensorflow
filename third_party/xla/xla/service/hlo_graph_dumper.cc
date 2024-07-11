@@ -283,10 +283,11 @@ std::string NodeColorAttributes(ColorScheme color) {
                    node_colors.stroke_color, node_colors.fill_color);
 }
 
-// Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
-// graphviz HTML-like string.
+// Replaces <> with &lt;&gt; and " with &quot;, so that this string is safe(er)
+// for use in a graphviz HTML-like string.
 std::string HtmlLikeStringSanitize(absl::string_view s) {
-  return absl::StrReplaceAll(s, {{"<", "&lt;"}, {">", "&gt;"}});
+  return absl::StrReplaceAll(s,
+                             {{"<", "&lt;"}, {">", "&gt;"}, {"\"", "&quot;"}});
 }
 
 bool IsFusedBroadcastOfConstantEffectiveScalar(const HloInstruction* instr) {

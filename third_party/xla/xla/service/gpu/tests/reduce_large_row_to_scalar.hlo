@@ -46,10 +46,10 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_23:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_24:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_25:.*]] = alloca %[[VAL_1]], align 8
-// CHECK:         %[[VAL_26:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_27:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_28:.*]] = alloca %[[VAL_1]], align 8
-// CHECK:         %[[VAL_29:.*]] = alloca %[[VAL_1]], align 8
+// CHECK-DAG:         %[[VAL_26:.*]] = alloca i32, align 4
+// CHECK-DAG:         %[[VAL_27:.*]] = alloca i32, align 4
+// CHECK-DAG:         %[[VAL_28:.*]] = alloca %[[VAL_1]], align 8
+// CHECK-DAG:         %[[VAL_29:.*]] = alloca %[[VAL_1]], align 8
 // CHECK-PTX:     %[[VAL_30:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.y(), !range !2
 // CHECK-GCN:     %[[VAL_30:.*]] = call i32 @llvm.amdgcn.workgroup.id.y
 // CHECK:         %[[VAL_31:.*]] = icmp eq i32 %[[VAL_30]], 0

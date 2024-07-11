@@ -900,7 +900,7 @@ struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
                    ArrayRef<Type> resultTypes, ArrayRef<Type> argTypes,
                    ValueRange args, OpBuilder* b) {
     Type elementType = getElementTypeOrSelf(argTypes.front());
-    if (elementType.isa<SupportedType>()) {
+    if (isa<SupportedType>(elementType)) {
       auto predicate = getCmpPredicate<Predicate>(
           comparisonDirection, !elementType.isUnsignedInteger());
       assert(predicate.has_value() && "expected valid comparison direction");

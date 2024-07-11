@@ -782,6 +782,12 @@ absl::StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
       continue;
     }
 
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseBiasOrSideInput: ", conv->ToString());
+        })) {
+      continue;
+    }
+
     // If it's a vanilla forward conv, upgrade it to a bias-activation conv.  We
     // only want to do this if the fusion will succeed, but we're guaranteed
     // that it will, because the only reason we'll bail at this point is if
@@ -845,12 +851,6 @@ absl::StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
       config.set_side_input_scale(1);
     } else {
       // Can't fuse; this op already has a bias and a side-input.
-      continue;
-    }
-
-    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
-          return absl::StrCat("FuseBiasOrSideInput: ", conv->ToString());
-        })) {
       continue;
     }
 

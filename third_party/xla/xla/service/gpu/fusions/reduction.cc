@@ -481,7 +481,7 @@ ReductionEmitter::BuildFusedInitializerThunk(const HloInstruction* fusion_root,
     return *std::move(constant_init_thunk);
   }
 
-  const Shape dest_shape = fusion_root->shape();
+  const Shape& dest_shape = fusion_root->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       dest_shape, ir_emitter_context_.gpu_device_info());

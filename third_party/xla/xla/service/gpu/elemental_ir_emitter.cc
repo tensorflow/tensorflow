@@ -55,8 +55,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using absl::StrAppend;
-
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     IrEmitterContext& ir_emitter_context, llvm::IRBuilder<>* b)
     : ElementalIrEmitter(ir_emitter_context.llvm_module(), b),
@@ -133,7 +131,7 @@ llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
   // Decode the layout of the shape from the Protobufs attached to
   // backend_config_.
   auto gpu_config = hlo->backend_config<GpuBackendConfig>();
-  CHECK(gpu_config.ok());
+  CHECK_OK(gpu_config);
 
   const BitcastBackendConfig& bitcast_config =
       gpu_config.value().bitcast_backend_config();

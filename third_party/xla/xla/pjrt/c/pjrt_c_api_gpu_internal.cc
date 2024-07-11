@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
-#include "tsl/platform/errors.h"
 
 namespace pjrt {
 namespace gpu_plugin {
@@ -289,12 +289,15 @@ const PJRT_Api* GetGpuPjrtApi() {
       /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&stream),
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
   };
-  static const PJRT_Api pjrt_api =
-      pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
-                          pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-                          pjrt::PJRT_Plugin_Initialize_NoOp,
-                          reinterpret_cast<PJRT_Extension_Base*>(&custom_call),
-                          pjrt::PJRT_Plugin_Attributes_Xla);
+  static PJRT_Layouts_Extension layouts_extension =
+      pjrt::CreateLayoutsExtension(
+          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
+  static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
+      pjrt::gpu_plugin::PJRT_Client_Create,
+      pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
+      pjrt::PJRT_Plugin_Initialize_NoOp,
+      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension),
+      pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;
 }

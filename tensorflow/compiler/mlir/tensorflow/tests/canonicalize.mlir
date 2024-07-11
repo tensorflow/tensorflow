@@ -1924,8 +1924,8 @@ func.func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>
 func.func @testConvertPackToReshapeAxis0(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
   %0 = "tf.Pack"(%arg0) {axis = 0 : i64, _xla_outside_compilation = "1", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>) -> tensor<1x2x3xf32>
   func.return %0 : tensor<1x2x3xf32>
-  // CHECK: %[[SHAPE:.*]] = "tf.Const"() <{value = dense<[1, 2, 3]> : tensor<3xi64>}> : () -> tensor<3xi64>
-  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {_xla_outside_compilation = "1", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<1x2x3xf32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() <{value = dense<[1, 2, 3]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {_xla_outside_compilation = "1", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<1x2x3xf32>
   // CHECK: return %[[RESHAPE]] : tensor<1x2x3xf32>
 }
 
@@ -1933,8 +1933,8 @@ func.func @testConvertPackToReshapeAxis0(%arg0: tensor<2x3xf32>) -> tensor<1x2x3
 func.func @testConvertPackToReshapeAxis1(%arg0: tensor<2x3xf32>) -> tensor<2x1x3xf32> {
   %0 = "tf.Pack"(%arg0) {axis = 1 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>) -> tensor<2x1x3xf32>
   func.return %0 : tensor<2x1x3xf32>
-  // CHECK: %[[SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 1, 3]> : tensor<3xi64>}> : () -> tensor<3xi64>
-  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<2x1x3xf32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 1, 3]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<2x1x3xf32>
   // CHECK: return %[[RESHAPE]] : tensor<2x1x3xf32>
 }
 

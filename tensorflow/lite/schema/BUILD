@@ -115,7 +115,7 @@ exports_files([
 
 flatbuffer_cc_library(
     name = "schema_fbs",
-    srcs = ["schema.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
     compatible_with = get_compatible_with_portable(),
 )
 

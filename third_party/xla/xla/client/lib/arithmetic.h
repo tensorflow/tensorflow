@@ -82,10 +82,6 @@ XlaOp Any(XlaOp predicates);
 // use for the output. In case of ties always prefers smaller index.
 XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis);
 
-// Returns the argmin of `input` along `axis`. `output_type` is the type to
-// use for the output. In case of ties always prefers smaller index.
-XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis);
-
 // Dispatch to ArgMin or ArgMax above, depending on bool.
 XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min);
 

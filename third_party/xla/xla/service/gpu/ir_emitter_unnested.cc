@@ -673,7 +673,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
     const HloCustomCallInstruction* instr) {
   TF_ASSIGN_OR_RETURN(const auto gpu_config,
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
-  xla::gpu::GemmBackendConfig config = gpu_config.gemm_backend_config();
+  const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
   TF_ASSIGN_OR_RETURN(bool has_vector_bias,
@@ -687,7 +687,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
       bool has_aux_output,
       xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
   xla::ShapeIndex output_index =
-      has_aux_output ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+      instr->shape().IsTuple() ? xla::ShapeIndex{0} : xla::ShapeIndex{};
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
                       GetAllocationSliceForHlo(instr->operand(0)));
@@ -713,6 +713,16 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
     TF_ASSIGN_OR_RETURN(aux, GetAllocationSliceForHlo(instr, {1}));
   }
 
+  std::optional<BufferAllocation::Slice> workspace_buffer;
+  if (instr->shape().IsTuple() &&
+      (instr->shape().tuple_shapes_size() - has_aux_output - 1)) {
+    TF_RET_CHECK((has_aux_output && instr->shape().tuple_shapes_size() == 3) ||
+                 (!has_aux_output && instr->shape().tuple_shapes_size() == 2));
+    TF_ASSIGN_OR_RETURN(workspace_buffer,
+                        GetAllocationSliceForHlo(
+                            instr, {instr->shape().tuple_shapes_size() - 1}));
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto gemm_config,
       GemmConfig::For(static_cast<const HloInstruction*>(instr)));
@@ -729,7 +739,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(gemm_config),
       blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
-      c_scale, d_scale, d_amax);
+      c_scale, d_scale, d_amax, workspace_buffer);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -740,7 +750,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
                instr->operand_count() == 8);
   TF_ASSIGN_OR_RETURN(const auto gpu_config,
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
-  xla::gpu::GemmBackendConfig config = gpu_config.gemm_backend_config();
+  const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
   TF_ASSIGN_OR_RETURN(bool has_vector_bias,
@@ -748,6 +758,10 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   bool has_damax = instr->shape().IsTuple();
   xla::ShapeIndex output_index =
       has_damax ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  TF_ASSIGN_OR_RETURN(
+      bool has_aux_output,
+      xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
                       GetAllocationSliceForHlo(instr->operand(0)));
@@ -803,13 +817,23 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
           : 0;
 
   BufferAllocation::Slice aux;  // Not used.
+  TF_RET_CHECK(!has_aux_output);
+  std::optional<BufferAllocation::Slice> workspace_buffer;
+  if (instr->shape().IsTuple() &&
+      (instr->shape().tuple_shapes_size() - has_aux_output - 1)) {
+    TF_RET_CHECK((has_aux_output && instr->shape().tuple_shapes_size() == 3) ||
+                 (!has_aux_output && instr->shape().tuple_shapes_size() == 2));
+    TF_ASSIGN_OR_RETURN(workspace_buffer,
+                        GetAllocationSliceForHlo(
+                            instr, {instr->shape().tuple_shapes_size() - 1}));
+  }
 
   TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(gemm_config),
       blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
-      c_scale, d_scale, d_amax);
+      c_scale, d_scale, d_amax, workspace_buffer);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -953,11 +977,12 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       GetAllocationSliceForHlo(instr, {0}));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      GetAllocationSliceForHlo(instr, {1}));
+                      GetAllocationSliceForHlo(
+                          instr, {instr->shape().tuple_shapes_size() - 1}));
   BufferAllocation::Slice activation_slice;
   bool has_activation = xla::ShapeUtil::TupleElementCount(instr->shape()) == 3;
   if (has_activation) {
-    TF_ASSIGN_OR_RETURN(activation_slice, GetAllocationSliceForHlo(instr, {2}));
+    TF_ASSIGN_OR_RETURN(activation_slice, GetAllocationSliceForHlo(instr, {1}));
   }
 
   TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
@@ -993,7 +1018,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
   absl::InlinedVector<Shape, 2> output_shapes = {
       ShapeUtil::GetSubshape(instr->shape(), {0})};
   if (has_activation) {
-    output_shapes.push_back(ShapeUtil::GetSubshape(instr->shape(), {2}));
+    output_shapes.push_back(ShapeUtil::GetSubshape(instr->shape(), {1}));
   }
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
@@ -1103,11 +1128,16 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
   BufferAllocation::Slice d_s_slice;
   std::optional<Shape> d_s_shape;
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      GetAllocationSliceForHlo(instr, {output_index++}));
-
+  bool has_dbias = instr->shape().tuple_shapes().size() == 5;
   BufferAllocation::Slice d_bias_slice;
   std::optional<Shape> d_bias_shape;
+  if (has_dbias) {
+    TF_ASSIGN_OR_RETURN(d_bias_slice,
+                        GetAllocationSliceForHlo(instr, {output_index}));
+    d_bias_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
+  }
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                      GetAllocationSliceForHlo(instr, {output_index++}));
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
@@ -1251,7 +1281,7 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitCustomCallThunk(
     const HloCustomCallInstruction* instr) {
-  const std::string call_target_name = instr->custom_call_target();
+  const std::string& call_target_name = instr->custom_call_target();
 
   // Typed FFI custom calls is a replacement for legacy custom calls with
   // a rich type safe API. It's under construction and not fully supported.
@@ -1515,7 +1545,7 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
 absl::Status IrEmitterUnnested::EmitTopKCustomCall(
     const HloCustomCallInstruction* instr) {
   auto operands = instr->operands();
-  auto shape = instr->shape();
+  const auto& shape = instr->shape();
   TF_RET_CHECK(operands.size() == 1)
       << "Expect only 1 operand for TopK custom call.";
   TF_RET_CHECK(shape.IsTuple())
@@ -1881,7 +1911,7 @@ absl::Status IrEmitterUnnested::EmitSelectAndScatter(
           Load(selected_index_address->getAllocatedType(),
                selected_index_address_slot));
     }
-    const Shape output_shape = instr->shape();
+    const Shape& output_shape = instr->shape();
     llvm::Value* source_value_address =
         source_array.EmitArrayElementAddress(source_index, &b_);
     llvm_ir::IrArray::Index selected_index(selected_multi_index, output_shape,
@@ -2323,7 +2353,7 @@ absl::Status IrEmitterUnnested::EmitWaitForStreamsThunk(
   if (is_async_done) {
     wait_on_streams.push_back(
         ExecutionStreamId(gpu_config.operation_queue_id()));
-  } else if (gpu_config.wait_on_operation_queues().size() == 0) {
+  } else if (gpu_config.wait_on_operation_queues().empty()) {
     // If wait on queue is empty, we just synchronize on the main compute
     // stream from the execution stream.
     wait_on_streams.push_back(Thunk::kDefaultExecutionStreamId);

@@ -93,6 +93,8 @@ class RpcHelper {
   ResponseFuture<AssembleArrayFromSingleDeviceArraysResponse>
   AssembleArrayFromSingleDeviceArrays(
       std::unique_ptr<AssembleArrayFromSingleDeviceArraysRequest> req);
+  ResponseFuture<RemapArraysResponse> RemapArrays(
+      std::unique_ptr<RemapArraysRequest> req);
   ResponseFuture<DisassembleIntoSingleDeviceArraysResponse>
   DisassembleIntoSingleDeviceArrays(
       std::unique_ptr<DisassembleIntoSingleDeviceArraysRequest> req);

@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -146,15 +147,13 @@ XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
                                           std::string_view platform,
                                           XLA_FFI_Handler* handler,
                                           XLA_FFI_Handler_Traits traits) {
-  // Make copies of string views to guarantee they are null terminated.
-  std::string name_str(name);
-  std::string platform_str(platform);
-
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.name = name_str.c_str();
-  args.platform = platform_str.c_str();
+  args.name = XLA_FFI_ByteSpan{XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr,
+                               name.data(), name.size()};
+  args.platform = XLA_FFI_ByteSpan{XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr,
+                                   platform.data(), platform.size()};
   args.handler = handler;
   args.traits = traits;
   return api->XLA_FFI_Handler_Register(&args);
@@ -641,9 +640,8 @@ struct AttrDecoding;
 //                                      XLA_FFI_ExecutionContext* ctx);
 //   }
 //
-// TODO(ezhulenev): Add an example for decoding opaque data passed together with
-// a handler registration (not yet implemented). Today this is only used as
-// internal implementation detail of builtin FFI handlers.
+// Second template parameter is used to conditionally enable/disable context
+// decoding specialization for a given type via SFINAE.
 template <typename T>
 struct CtxDecoding;
 
@@ -1320,6 +1318,10 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(uint32_t, XLA_FFI_DataType_U32);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(uint64_t, XLA_FFI_DataType_U64);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float, XLA_FFI_DataType_F32);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(double, XLA_FFI_DataType_F64);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(std::complex<float>,
+                                      XLA_FFI_DataType_C64);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(std::complex<double>,
+                                      XLA_FFI_DataType_C128);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
 

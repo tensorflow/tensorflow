@@ -195,7 +195,7 @@ def flatbuffer_cc_library(
         reflection binaries for the schemas.
     '''
     output_headers = [
-        (out_prefix + "%s_generated.h") % (s.replace(".fbs", "").split("/")[-1])
+        (out_prefix + "%s_generated.h") % (s.replace(".fbs", "").split("/")[-1].split(":")[-1])
         for s in srcs
     ]
     reflection_name = "%s_reflection" % name if gen_reflections else ""

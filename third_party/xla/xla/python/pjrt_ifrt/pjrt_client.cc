@@ -26,10 +26,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
@@ -41,19 +44,24 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
+#include "xla/python/pjrt_ifrt/pjrt_remap.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -66,6 +74,57 @@ namespace {
 // explicitly said this is WAI. See b/258212655#comment10.
 absl::AnyInvocable<void() &&> FromStdFunction(std::function<void()>&& f) {
   return f ? std::move(f) : absl::AnyInvocable<void() &&>();
+}
+
+absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
+    Client* client, const void* data, DType dtype, Shape shape,
+    std::optional<absl::Span<const int64_t>> byte_strides,
+    std::shared_ptr<const Sharding> sharding,
+    Client::HostBufferSemantics semantics,
+    std::function<void()> on_done_with_host_buffer) {
+  auto param_validation = [&]() -> absl::Status {
+    if (byte_strides.has_value()) {
+      return absl::InvalidArgumentError(
+          "byte_strides is not currently supported for making "
+          "BasicStringArrays.");
+    }
+    if (semantics != Client::HostBufferSemantics::kImmutableOnlyDuringCall) {
+      return absl::InvalidArgumentError(
+          "HostBufferSemantics other than kImmutableOnlyDuringCall are not "
+          "currently supported for making BasicStringArrays.");
+    }
+    if (!llvm::isa<const SingleDeviceSharding>(sharding.get())) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Only SingleDeviceSharding is supported for making "
+                       "BasicStringArrays: got: ",
+                       sharding->DebugString()));
+    }
+    return absl::OkStatus();
+  }();
+
+  TF_RETURN_IF_ERROR(param_validation);
+
+  auto num_elements = shape.num_elements();
+  auto strings = std::make_shared<std::vector<std::string>>();
+  strings->reserve(num_elements);
+  auto string_views = std::make_shared<std::vector<absl::string_view>>();
+  string_views->reserve(num_elements);
+  auto element = static_cast<const absl::string_view*>(data);
+  for (int i = 0; i < num_elements; ++i, ++element) {
+    strings->push_back(std::string(*element));
+    string_views->push_back(absl::string_view(strings->back()));
+  }
+  std::move(on_done_with_host_buffer)();
+
+  BasicStringArray::Buffers buffers;
+  buffers.push_back(*string_views);
+  auto buffer_releaser = [strings = std::move(strings),
+                          string_views = std::move(string_views)]() {};
+
+  return BasicStringArray::Create(
+      client, std::move(shape), std::move(sharding),
+      Future<BasicStringArray::Buffers>(std::move(buffers)),
+      std::move(buffer_releaser));
 }
 
 }  // namespace
@@ -206,6 +265,11 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
   DCHECK(this);
+  if (dtype.kind() == DType::kString) {
+    return MakeStringArrayFromHostBuffer(this, data, dtype, shape, byte_strides,
+                                         sharding, semantics,
+                                         on_done_with_host_buffer);
+  }
   if (!llvm::isa<const SingleDeviceSharding>(sharding.get())) {
     return InvalidArgument(
         "Only SingleDeviceSharding is supported: sharding=%s",
@@ -329,6 +393,13 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+PjRtClient::RemapArrays(const RemapPlan& plan,
+                        absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+                        ArrayCopySemantics semantics) {
+  return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
 }
 
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(

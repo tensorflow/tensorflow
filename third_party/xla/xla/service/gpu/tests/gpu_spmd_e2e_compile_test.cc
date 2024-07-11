@@ -32,7 +32,14 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class GpuSpmdE2ECompileTest : public GpuCodegenTest {};
+class GpuSpmdE2ECompileTest : public GpuCodegenTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+};
 
 TEST_F(GpuSpmdE2ECompileTest, SinglePartition) {
   // Module with "Sharding" custom call and use_spmd_partitioning enabled.
@@ -73,7 +80,7 @@ ENTRY main {
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(2);
-  config.set_debug_options(GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsForTest());
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
@@ -106,7 +113,7 @@ ENTRY main {
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(4);
-  config.set_debug_options(GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsForTest());
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,

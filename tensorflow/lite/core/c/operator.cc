@@ -18,21 +18,23 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 
 TfLiteOperator* TfLiteOperatorCreate(TfLiteBuiltinOperator builtin_code,
                                      const char* custom_name, int version) {
-  return new TfLiteOperator{/*.custom_name =*/custom_name,
-                            /*.version =*/version,
-                            /*.init =*/nullptr,
-                            /*.free =*/nullptr,
-                            /*.prepare =*/nullptr,
-                            /*.invoke =*/nullptr,
-                            /*.async_kernel =*/nullptr,
-                            /*.builtin_code =*/builtin_code,
-                            /*.node_index =*/-1};
+  return new TfLiteOperator{.custom_name = custom_name,
+                            .version = version,
+                            .init = nullptr,
+                            .free = nullptr,
+                            .prepare = nullptr,
+                            .invoke = nullptr,
+                            .async_kernel = nullptr,
+                            .builtin_code = builtin_code,
+                            .node_index = -1,
+                            .inplace_operator = kTfLiteInplaceOpNone};
 }
 
 void TfLiteOperatorDelete(TfLiteOperator* reg) { delete reg; }

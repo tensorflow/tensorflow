@@ -98,7 +98,7 @@ class CollectivePipeliner : public HloModulePass {
     // pipelined. This is currently only used to support kBackward pipelining.
     bool should_allow_control_dependencies = false;
     HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
-    HloPostprocessor postprocess_backward_rorated_op = std::nullopt;
+    HloPostprocessor postprocess_backward_rotated_op = std::nullopt;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;

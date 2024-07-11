@@ -442,7 +442,6 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_buffer",
-        "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_dataflow_analysis",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",

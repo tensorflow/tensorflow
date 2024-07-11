@@ -246,4 +246,19 @@ TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeBufferInput) {
   EXPECT_EQ(AliasCount(), 0);
 }
 
+// Shapes are the same, but are in different memory spaces.
+TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentMemorySpaces) {
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {
+      ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
+  Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
+  for (int i = 0; i < output.tuple_shapes_size(); ++i) {
+    output.mutable_tuple_shapes(i)->mutable_layout()->set_memory_space(
+        Layout::kHostMemorySpace);
+  }
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(AliasCount(), 0);
+}
+
 }  // namespace xla

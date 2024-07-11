@@ -61,6 +61,11 @@ class ServingExecutableRegistry {
     // Calling this method multiple times is a no-op.
     void Release();
 
+    // Freezes the program's compilation. After Freeze() is called, no new model
+    // signature will be compiled. Using a signature or an input shape that
+    // wasn't compiled before the freeze will lead to an error.
+    absl::Status Freeze();
+
    private:
     friend class ServingExecutableRegistry;
 

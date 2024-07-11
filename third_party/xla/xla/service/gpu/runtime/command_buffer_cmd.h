@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_COMMAND_BUFFER_CMD_H_
 #define XLA_SERVICE_GPU_RUNTIME_COMMAND_BUFFER_CMD_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -193,6 +194,11 @@ class CommandBufferCmd {
                               const RecordParams& record_params,
                               se::CommandBuffer* command_buffer) = 0;
 
+  // For some commands need to force update on Record even the input device
+  // pointers do not change, e.g. command that has state that can be changed by
+  // CPU code.
+  virtual bool force_update() { return false; }
+
   // Returns all buffers used by the cmd. These will be used to track cmd
   // updates, thus they need to be consistent across calls to the function.
   virtual BufferUsageVector buffers() = 0;
@@ -310,6 +316,12 @@ class CommandBufferCmdSequence {
 
   bool empty() const { return commands_.empty(); }
   size_t size() const { return commands_.size(); }
+
+  bool force_update() const {
+    return absl::c_any_of(commands_, [](const CommandInfo& cmd_info) {
+      return cmd_info.cmd->force_update();
+    });
+  }
 
  private:
   struct CommandInfo {
@@ -837,7 +849,7 @@ class BarrierCmd : public CommandBufferCmd {
 // CollectiveCmd
 //===----------------------------------------------------------------------===//
 
-class CollectiveCmd : public TracedCommandBufferCmd {
+class CollectiveCmd : public CommandBufferCmd {
  public:
   CollectiveCmd(ExecutionStreamId execution_stream_id,
                 ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
@@ -846,7 +858,14 @@ class CollectiveCmd : public TracedCommandBufferCmd {
   absl::Status Prepare(const Thunk::PrepareParams& params,
                        Thunk::ResourceRequests& resource_requests) final;
 
+  bool force_update() override { return true; }
+
   bool IsNestedCommandBuffer() const final { return true; }
+
+  absl::Status AddTracedCommandBuffer(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, se::CommandBuffer* command_buffer,
+      absl::FunctionRef<absl::Status(se::Stream*)> trace);
 
   virtual AsyncStreamKind GetAsyncStreamKind() = 0;
 

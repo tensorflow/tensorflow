@@ -51,7 +51,7 @@ py_strict_library(
 py_strict_library(
     name = "config_lib",
     srcs = ["config_lib.py"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )
 
 py_strict_library(

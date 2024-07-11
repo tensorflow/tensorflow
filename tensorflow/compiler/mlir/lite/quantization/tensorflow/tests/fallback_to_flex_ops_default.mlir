@@ -12,7 +12,7 @@ func.func @bias_add(%arg0: tensor<1x10x10x32xf32>, %arg1: tensor<32xf32>) -> ten
 func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   func.return %0: tensor<1xf32>
-// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0, %arg1) {custom_code = "FlexAdd", custom_option = #tfl<const_bytes : "0x03416464001412034164641A001A002A070A015412023001320000021B171414042801">} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0, %arg1) <{custom_code = "FlexAdd", custom_option = #tfl<const_bytes : "0x03416464001412034164641A001A002A070A015412023001320000021B171414042801">}> : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK: return %[[CUSTOM_0]] : tensor<1xf32>
 }
 
@@ -20,7 +20,7 @@ func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
 func.func @softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Softmax"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   func.return %0 : tensor<8x16xf32>
-// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0) {custom_code = "FlexSoftmax", custom_option = #tfl<const_bytes : "0x07536F66746D617800161207536F66746D61781A002A070A0154120230013200000221191414042801">} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0) <{custom_code = "FlexSoftmax", custom_option = #tfl<const_bytes : "0x07536F66746D617800161207536F66746D61781A002A070A0154120230013200000221191414042801">}> : (tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: return %[[CUSTOM_0]] : tensor<8x16xf32>
 }
 
@@ -52,7 +52,7 @@ func.func @conv2d_backprop_input_with_sub(%arg0: tensor<4xi32>, %arg1: tensor<3x
 func.func @depth_to_space(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32> {
   %0 = "tf.DepthToSpace"(%arg0) {block_size = 2: i64,  data_format = "NHWC"}: (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
   func.return %0 : tensor<1x2x2x1xf32>
-// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0) {custom_code = "FlexDepthToSpace", custom_option = #tfl<const_bytes : "{{.*}}">} : (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
+// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0) <{custom_code = "FlexDepthToSpace", custom_option = #tfl<const_bytes : "{{.*}}">}> : (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
 // CHECK: return %[[CUSTOM_0]] : tensor<1x2x2x1xf32>
 }
 
@@ -60,7 +60,7 @@ func.func @depth_to_space(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32> {
 func.func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32> {
   %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
   func.return %0 : tensor<5xf32>
-// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0, %arg1) {custom_code = "FlexFloorMod", custom_option = #tfl<const_bytes : "{{.*}}">} : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0, %arg1) <{custom_code = "FlexFloorMod", custom_option = #tfl<const_bytes : "{{.*}}">}> : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
 // CHECK: return %[[CUSTOM_0]] : tensor<5xf32>
 }
 
@@ -82,7 +82,7 @@ func.func @identity(%arg0: tensor<2xf32>) -> tensor<*xf32> {
   func.return %1 : tensor<*xf32>
 // CHECK: %[[CONST_0:.*]] = "tf.Const"() <{value = dense<1.000000e-03> : tensor<f32>}> {device = ""} : () -> tensor<f32>
 // CHECK: %[[IDENTITY_0:.*]] = "tf.Identity"(%arg0) {device = ""} : (tensor<2xf32>) -> tensor<*xf32>
-// CHECK: %[[ADDV2_0:.*]] = "tfl.custom"(%0, %cst) {custom_code = "FlexAddV2", custom_option = #tfl<const_bytes : "0x0541646456320016120541646456321A001A002A070A015412023001320000021F191414042801">} : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+// CHECK: %[[ADDV2_0:.*]] = "tfl.custom"(%0, %cst) <{custom_code = "FlexAddV2", custom_option = #tfl<const_bytes : "0x0541646456320016120541646456321A001A002A070A015412023001320000021F191414042801">}> : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
 // CHECK: return %[[ADDV2_0]] : tensor<*xf32>
 }
 
@@ -148,7 +148,7 @@ func.func @conv_with_relu1_invalid_pattern(%arg0: tensor<1x3x4x3xf32>) -> (tenso
 // CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() <{value = dense<[-1.000000e+00, -3.000000e+00]> : tensor<2xf32>}> : () -> tensor<2xf32>
 // CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() <{value = dense<[1.000000e+00, 3.000000e+00]> : tensor<2xf32>}> : () -> tensor<2xf32>
 // CHECK: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %[[CONST_0]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x3x4x3xf32>, tensor<1x1x3x2xf32>) -> tensor<1x3x4x2xf32>
-// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%[[CONV2D_0]], %[[CONST_2]]) {custom_code = "FlexMinimum", custom_option = #tfl<const_bytes : "0x074D696E696D756D001812074D696E696D756D1A001A002A070A01541202300132000002231B1414042801">} : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
-// CHECK: %[[CUSTOM_1:.*]] = "tfl.custom"(%[[CUSTOM_0]], %[[CONST_1]]) {custom_code = "FlexMaximum", custom_option = #tfl<const_bytes : "0x074D6178696D756D001812074D6178696D756D1A001A002A070A01541202300132000002231B1414042801">} : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
+// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%[[CONV2D_0]], %[[CONST_2]]) <{custom_code = "FlexMinimum", custom_option = #tfl<const_bytes : "0x074D696E696D756D001812074D696E696D756D1A001A002A070A01541202300132000002231B1414042801">}> : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
+// CHECK: %[[CUSTOM_1:.*]] = "tfl.custom"(%[[CUSTOM_0]], %[[CONST_1]]) <{custom_code = "FlexMaximum", custom_option = #tfl<const_bytes : "0x074D6178696D756D001812074D6178696D756D1A001A002A070A01541202300132000002231B1414042801">}> : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
 // CHECK: return %[[CUSTOM_1]] : tensor<1x3x4x2xf32>
 }

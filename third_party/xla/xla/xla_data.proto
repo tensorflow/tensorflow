@@ -535,7 +535,7 @@ message DeviceAssignmentProto {
   // Each logical computation runs on replica_count physical devices.
   // ComputationDevice represents the device ids assinged to the replicas.
   message ComputationDevice {
-    repeated int32 replica_device_ids = 1;
+    repeated int64 replica_device_ids = 1;
   }
   repeated ComputationDevice computation_devices = 3;
 }

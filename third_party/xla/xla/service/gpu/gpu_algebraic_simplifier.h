@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_ALGEBRAIC_SIMPLIFIER_H_
 #define XLA_SERVICE_GPU_GPU_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -30,16 +33,23 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
  public:
   explicit GpuAlgebraicSimplifierVisitor(
       const AlgebraicSimplifierOptions& options,
+      se::GpuComputeCapability compute_capability,
       AlgebraicSimplifier* simplifier)
-      : AlgebraicSimplifierVisitor(options, simplifier) {}
+      : AlgebraicSimplifierVisitor(options, simplifier),
+        compute_capability_(std::move(compute_capability)) {}
 
   bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) override;
+
+ private:
+  se::GpuComputeCapability compute_capability_;
 };
 
 class GpuAlgebraicSimplifier : public AlgebraicSimplifier {
  public:
-  explicit GpuAlgebraicSimplifier(const AlgebraicSimplifierOptions& options)
-      : AlgebraicSimplifier(options) {}
+  explicit GpuAlgebraicSimplifier(const AlgebraicSimplifierOptions& options,
+                                  se::GpuComputeCapability compute_capability)
+      : AlgebraicSimplifier(options),
+        compute_capability_(std::move(compute_capability)) {}
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(HloModule* module,
@@ -48,7 +58,7 @@ class GpuAlgebraicSimplifier : public AlgebraicSimplifier {
     XLA_VLOG_LINES(
         2, "GpuAlgebraicSimplifier::Run(), before:\n" + module->ToString());
     bool changed = false;
-    GpuAlgebraicSimplifierVisitor visitor(options_, this);
+    GpuAlgebraicSimplifierVisitor visitor(options_, compute_capability_, this);
     for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
       if (visitor.Run(comp, options_, this)) {
         changed = true;
@@ -58,6 +68,9 @@ class GpuAlgebraicSimplifier : public AlgebraicSimplifier {
         2, "GpuAlgebraicSimplifier::Run(), after:\n" + module->ToString());
     return changed;
   }
+
+ private:
+  se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace xla::gpu

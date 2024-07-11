@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "tsl/platform/casts.h"
 
 struct PJRT_Error {
   absl::Status status;
@@ -198,6 +198,14 @@ struct PJRT_TransferMetadata {
 
 struct PJRT_CopyToDeviceStream {
   std::unique_ptr<xla::CopyToDeviceStream> stream;
+};
+
+struct PJRT_Layouts_MemoryLayout {
+  std::unique_ptr<xla::PjRtLayout> layout;
+};
+
+struct PJRT_Layouts_SerializedLayout {
+  std::string serialized;
 };
 
 namespace pjrt {
@@ -360,6 +368,15 @@ PJRT_Error* PJRT_TopologyDescription_Attributes(
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
+PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
+    PJRT_Layouts_MemoryLayout_Destroy_Args* args);
+PJRT_Error* PJRT_Layouts_MemoryLayout_Serialize(
+    PJRT_Layouts_MemoryLayout_Serialize_Args* args);
+PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
+    PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args* args);
+PJRT_Error* PJRT_Layouts_PJRT_Buffer_MemoryLayout(
+    PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args* args);
+
 // Helper macros and functions
 
 #define PJRT_RETURN_IF_ERROR(expr)                                \
@@ -423,6 +440,9 @@ std::shared_ptr<xla::KeyValueStoreInterface> ToCppKeyValueStore(
 // the implementation of PJRT_Plugin_Initialize for plugins that do not require
 // specific initialization.
 PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
+
+PJRT_Layouts_Extension CreateLayoutsExtension(
+    PJRT_Extension_Base* next = nullptr);
 
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.

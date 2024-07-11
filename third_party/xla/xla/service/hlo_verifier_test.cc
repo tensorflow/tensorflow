@@ -2893,6 +2893,25 @@ ENTRY entry {
   EXPECT_THAT(status.message(), HasSubstr("should be compatible"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, AliasedMemorySpaceMismatchReported) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module, input_output_alias={{}: (0, {}, must-alias)},
+                  entry_computation_layout={(f32[10]{0:S(5)})->f32[10]{0}}
+
+ENTRY entry {
+  x = f32[10]{0} parameter(0)
+  ROOT add = f32[10]{0} add(x, x)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  Status status = verifier().Run(module.get()).status();
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Shape and memory space of the result"));
+}
+
 TEST_F(HloVerifierTestLayoutSensitive, LayoutOK) {
   constexpr absl::string_view kHlo = R"(
 HloModule module, entry_computation_layout={(f32[10,10]{1,0},f32[10,10]{1,0})->f32[10,10]{1,0}}

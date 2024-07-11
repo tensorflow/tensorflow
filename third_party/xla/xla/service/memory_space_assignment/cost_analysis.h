@@ -65,7 +65,62 @@ struct CostAnalysisOptions {
   float async_copy_bandwidth_scaling_factor = 1.0;
 };
 
-// A wrapper class around HloCostAnalysis with additional knowledge about the
+// An interface for getting basic HLO costs.
+class BaseCosts {
+ public:
+  virtual ~BaseCosts() = default;
+
+  // The size of shape in bytes
+  virtual int64_t GetShapeSize(const Shape& shape) = 0;
+
+  // The number of operand and output bytes accessed by instruction.
+  virtual float BytesAccessed(const HloInstruction& instruction) = 0;
+
+  // The number of bytes accessed by instruction, for operand operand_num, at
+  // shape_index.
+  virtual float OperandBytesAccessed(const HloInstruction& instruction,
+                                     int64_t operand_num,
+                                     const ShapeIndex& shape_index) = 0;
+
+  // The number of bytes accessed by instruction, in its output, at shape_index.
+  virtual float OutputBytesAccessed(const HloInstruction& instruction,
+                                    const ShapeIndex& shape_index) = 0;
+
+  // The bandwidth of copies to/from alternate memory.
+  virtual float BytesPerSecond() = 0;
+
+  // The compute cost of instruction. The compute cost assumes 0 memory transer
+  // is required.
+  virtual float ComputeSeconds(const HloInstruction& instruction) = 0;
+
+ protected:
+  BaseCosts() = default;
+};
+
+// An implementation of BaseCosts based on HloCostAnalysis.
+class HloCostAnalysisCosts : public BaseCosts {
+ public:
+  explicit HloCostAnalysisCosts(const HloCostAnalysis& hlo_cost_analysis);
+
+  ~HloCostAnalysisCosts() override = default;
+
+  int64_t GetShapeSize(const Shape& shape) override;
+  float BytesAccessed(const HloInstruction& instruction) override;
+  float OperandBytesAccessed(const HloInstruction& instruction,
+                             int64_t operand_num,
+                             const ShapeIndex& shape_index) override;
+  float OutputBytesAccessed(const HloInstruction& instruction,
+                            const ShapeIndex& shape_index) override;
+  float BytesPerSecond() override;
+  float ComputeSeconds(const HloInstruction& instruction) override;
+
+ private:
+  HloCostAnalysisCosts() = default;
+
+  const HloCostAnalysis& hlo_cost_analysis_;
+};
+
+// A wrapper class around BaseCosts with additional knowledge about the
 // bandwidths of different memory spaces.
 class CostAnalysis {
  public:
@@ -85,12 +140,10 @@ class CostAnalysis {
   virtual ~CostAnalysis() = default;
 
   static absl::StatusOr<std::unique_ptr<CostAnalysis>> Create(
-      const HloCostAnalysis& cost_analysis, const CostAnalysisOptions& options,
+      BaseCosts& base_costs, const CostAnalysisOptions& options,
       const HloModule& module);
 
-  const HloCostAnalysis& hlo_cost_analysis() const {
-    return hlo_cost_analysis_;
-  }
+  BaseCosts& base_costs() const { return base_costs_; }
 
   // Returns a heuristic value that captures how much putting this tensor to the
   // alternate memory would help if the op is memory bound, or otherwise how far
@@ -213,19 +266,18 @@ class CostAnalysis {
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
  protected:
-  CostAnalysis(const HloCostAnalysis& hlo_cost_analysis,
-               const CostAnalysisOptions& options,
+  CostAnalysis(BaseCosts& base_costs, const CostAnalysisOptions& options,
                std::unique_ptr<HloAliasAnalysis> alias_analysis,
                std::unique_ptr<HloLiveRange> hlo_live_range,
                std::unique_ptr<CallGraph> call_graph)
-      : hlo_cost_analysis_(hlo_cost_analysis),
+      : base_costs_(base_costs),
         options_(options),
         alias_analysis_(std::move(alias_analysis)),
         hlo_live_range_(std::move(hlo_live_range)),
         call_graph_(std::move(call_graph)) {}
 
  private:
-  const HloCostAnalysis& hlo_cost_analysis_;
+  BaseCosts& base_costs_;
   const CostAnalysisOptions options_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;

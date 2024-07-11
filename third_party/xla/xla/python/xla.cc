@@ -643,12 +643,14 @@ NB_MODULE(xla_extension, m_nb) {
       .def(
           "wait_at_barrier",
           [](DistributedRuntimeClient& client, std::string barrier_id,
-             int64_t timeout_in_ms) {
+             int64_t timeout_in_ms,
+             std::optional<std::vector<int32_t>> process_ids) {
             nb::gil_scoped_release gil_release;
             xla::ThrowIfError(client.WaitAtBarrier(
-                barrier_id, absl::Milliseconds(timeout_in_ms)));
+                barrier_id, absl::Milliseconds(timeout_in_ms), process_ids));
           },
-          nb::arg("barrier_id"), nb::arg("timeout_in_ms"))
+          nb::arg("barrier_id"), nb::arg("timeout_in_ms"),
+          nb::arg("process_ids") = std::nullopt)
       // The key must be a string, but the value can either be a Python string
       // or bytes object.
       // With Python string values, use `key_value_set()` and
@@ -716,7 +718,7 @@ NB_MODULE(xla_extension, m_nb) {
           "key_value_delete",
           [](DistributedRuntimeClient& client, std::string_view key) {
             nb::gil_scoped_release gil_release;
-            return client.KeyValueDelete(key);
+            return xla::ThrowIfError(client.KeyValueDelete(key));
           },
           nb::arg("key"));
 

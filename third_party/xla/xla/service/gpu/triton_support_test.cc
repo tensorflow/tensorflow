@@ -193,8 +193,9 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     UnaryMathTestSuite, UnaryElementwiseTest,
     ::testing::Combine(::testing::Values(F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kCos, HloOpcode::kExp,
-                                         HloOpcode::kExpm1, HloOpcode::kLog,
+                       ::testing::Values(HloOpcode::kCeil, HloOpcode::kCos,
+                                         HloOpcode::kExp, HloOpcode::kExpm1,
+                                         HloOpcode::kFloor, HloOpcode::kLog,
                                          HloOpcode::kLog1p, HloOpcode::kRsqrt,
                                          HloOpcode::kSin, HloOpcode::kSqrt,
                                          HloOpcode::kCbrt, HloOpcode::kTan,

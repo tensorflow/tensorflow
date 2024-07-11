@@ -1,6 +1,9 @@
 # PJRT C API changelog
 
-## 0.50
+## 0.51
+* Added ``PJRT_Extension_Type::PJRT_Extension_Type_Layouts``.
+
+## 0.50 (Apr 26, 2024)
 * Added a new type ``PJRT_Buffer_Type_TOKEN`` to ``PJRT_Buffer_Type``.
 
 ## 0.49 (Apr 19, 2024)

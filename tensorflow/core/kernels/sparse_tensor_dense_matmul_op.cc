@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -310,7 +311,7 @@ Status SparseTensorDenseMatMulImpl(
     if (ADJ_B) {
       // Perform transpose and conjugation on B once, since we chip out B's
       // columns in the nnz loop.
-      Eigen::array<int, 2> shuffle(1, 0);  // preserve dimension order
+      Eigen::array<int, 2> shuffle{1, 0};  // preserve dimension order
       Eigen::Tensor<T, 2, Eigen::ColMajor> col_major_conj_b =
           b.swap_layout().shuffle(shuffle).conjugate();
       LOOP_NNZ(col_major_conj_b);

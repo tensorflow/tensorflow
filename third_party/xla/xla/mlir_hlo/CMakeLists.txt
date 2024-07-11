@@ -160,7 +160,6 @@ add_custom_target(check-mlir-hlo)
 
 add_subdirectory(bindings)
 add_subdirectory(deallocation)
-add_subdirectory(lhlo)
 add_subdirectory(mhlo)
 add_subdirectory(stablehlo)
 add_subdirectory(tests)

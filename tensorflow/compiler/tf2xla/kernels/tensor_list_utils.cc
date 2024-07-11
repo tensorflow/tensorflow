@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal_util.h"
@@ -492,6 +493,27 @@ Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
   start_indices[0] = index;
 
   xla::XlaOp list_part = xla::GetTupleElement(list, 0);
+  {
+    TF_ASSIGN_OR_RETURN(const xla::Shape* list_part_shape,
+                        b->GetShapePtr(list_part));
+    TF_ASSIGN_OR_RETURN(const xla::Shape* update_shape, b->GetShapePtr(update));
+    for (int i = 0; i < list_part_shape->dimensions_size(); ++i) {
+      auto list_part_dim_size = list_part_shape->dimensions(i);
+      auto update_dim_size = update_shape->dimensions(i);
+      // If the update is larger than the list part, the DynamicUpdateSlice will
+      // fail so just ignore this operation and return list as is.
+      if (update_dim_size > list_part_dim_size) {
+        LOG_FIRST_N(WARNING, 1)
+            << "Warning: TensorListSetItem: ignoring set item because the "
+               "update dim ["
+            << update_dim_size << "] is larger than the list dim ["
+            << list_part_dim_size << "] at dimension " << i << ".";
+
+        *result = list;
+        return absl::OkStatus();
+      }
+    }
+  }
   xla::XlaOp updated_list_part =
       xla::DynamicUpdateSlice(list_part, update, start_indices);
 

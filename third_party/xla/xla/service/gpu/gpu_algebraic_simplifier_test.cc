@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/algebraic_simplifier.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -43,8 +44,9 @@ ENTRY entry {
   const HloInstruction* dot = module->entry_computation()->root_instruction();
   AlgebraicSimplifierOptions options;
   options.set_enable_dot_strength_reduction(true);
-  GpuAlgebraicSimplifier simplifier(options);
-  GpuAlgebraicSimplifierVisitor visitor(options, &simplifier);
+  se::CudaComputeCapability ampere(8, 0);
+  GpuAlgebraicSimplifier simplifier(options, ampere);
+  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
   EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
 }
 
@@ -63,9 +65,32 @@ ENTRY entry {
   const HloInstruction* dot = module->entry_computation()->root_instruction();
   AlgebraicSimplifierOptions options;
   options.set_enable_dot_strength_reduction(true);
-  GpuAlgebraicSimplifier simplifier(options);
-  GpuAlgebraicSimplifierVisitor visitor(options, &simplifier);
+  se::CudaComputeCapability ampere(8, 0);
+  GpuAlgebraicSimplifier simplifier(options, ampere);
+  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
   EXPECT_FALSE(visitor.ShouldStrengthReduceDotToReduce(dot));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       DotWithTypeUnsupportedByGemmFusionShouldBeStrengthReduced) {
+  const std::string& hlo_string = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = c64[32, 5, 7] parameter(0)
+  p1 = c64[32, 5] parameter(1)
+  ROOT dot = c64[32,7] dot(p0, p1), lhs_batch_dims={0},
+    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  AlgebraicSimplifierOptions options;
+  options.set_enable_dot_strength_reduction(true);
+  se::CudaComputeCapability ampere(8, 0);
+  GpuAlgebraicSimplifier simplifier(options, ampere);
+  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
+  EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
 }
 
 }  // namespace

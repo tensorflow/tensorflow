@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -135,6 +136,21 @@ PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
 
     pjrt::LogFatalIfPjrtError(
         api->PJRT_TopologyDescription_Destroy(&destroy_args), api);
+  };
+}
+
+PJRT_Layouts_MemoryLayoutDeleter MakeMemoryLayoutDeleter(const PJRT_Api* api) {
+  PJRT_Layouts_Extension* ext_api =
+      FindExtension<PJRT_Layouts_Extension>(api, PJRT_Extension_Type_Layouts);
+  CHECK_NE(ext_api, nullptr) << "MakeMemoryLayoutDeleter passed PJRT_Api that "
+                                "doesn't support layouts extension";
+  return [api, ext_api](PJRT_Layouts_MemoryLayout* layout) -> void {
+    PJRT_Layouts_MemoryLayout_Destroy_Args args;
+    args.struct_size = PJRT_Layouts_MemoryLayout_Destroy_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.layout = layout;
+    pjrt::LogFatalIfPjrtError(ext_api->PJRT_Layouts_MemoryLayout_Destroy(&args),
+                              api);
   };
 }
 
@@ -900,14 +916,21 @@ absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
   return {args.dims, args.num_dims};
 }
 
-PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
-                                         PJRT_Buffer* buffer) {
-  PJRT_Buffer_GetMemoryLayout_Args args;
-  args.struct_size = PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE;
+std::unique_ptr<PJRT_Layouts_MemoryLayout, PJRT_Layouts_MemoryLayoutDeleter>
+GetMemoryLayout(const PJRT_Api* api, PJRT_Buffer* buffer) {
+  PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args args;
+  args.struct_size = PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer;
-  LogFatalIfPjrtError(api->PJRT_Buffer_GetMemoryLayout(&args), api);
-  return args.layout;
+  PJRT_Layouts_Extension* ext_api =
+      FindExtension<PJRT_Layouts_Extension>(api, PJRT_Extension_Type_Layouts);
+  CHECK_NE(ext_api, nullptr) << "GetMemoryLayout called with PJRT_Api that "
+                                "doesn't support layouts extension";
+  LogFatalIfPjrtError(ext_api->PJRT_Layouts_PJRT_Buffer_MemoryLayout(&args),
+                      api);
+  return std::unique_ptr<PJRT_Layouts_MemoryLayout,
+                         PJRT_Layouts_MemoryLayoutDeleter>(
+      args.layout, MakeMemoryLayoutDeleter(api));
 }
 
 absl::StatusOr<xla::Shape> BuildXlaShapeFromC(

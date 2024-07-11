@@ -179,10 +179,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
             }
           }
 
-          // TODO(vuson): lift the first restriction by considering fusing other
-          // uses of the operand to reuse the address computation. Only worth it
-          // if other uses are also custom calls though.
-          return cur->user_count() > 1 || !IsNoOp(cur);
+          return !IsNoOp(cur);
         });
 
     if (maybe_slice_instr == std::nullopt) continue;

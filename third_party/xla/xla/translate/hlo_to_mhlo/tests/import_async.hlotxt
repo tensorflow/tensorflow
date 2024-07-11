@@ -58,7 +58,6 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-SAME: called_computation = [[AG_GENSYM]], execution_thread = "main"
   ag-start = (f32[128,32], f32[128,128]) all-gather-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
   // CHECK-NEXT:  "mhlo.async_done"([[AG_START]])
-  // CHECK-SAME: called_computation = [[AG_GENSYM]], execution_thread = "main"
   ROOT ag-done = f32[128,128] all-gather-done(ag-start)
 }
 
@@ -76,7 +75,6 @@ add {
   // CHECK-SAME: called_computation = [[AR_GENSYM]], execution_thread = "main"
   ar-start = (f32[128,32], f32[128,32]) all-reduce-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, to_apply=add, use_global_device_ids=true
   // CHECK-NEXT:  "mhlo.async_done"([[AR_START]])
-  // CHECK-SAME: called_computation = [[AR_GENSYM]], execution_thread = "main"
   ROOT ar-done = f32[128,32] all-reduce-done(ar-start)
 }
 
@@ -88,7 +86,6 @@ add {
   // CHECK-SAME: called_computation = [[CP_GENSYM]], execution_thread = "main"
   %cp-start = (f32[128,32]{1,0}, f32[128,32]) collective-permute-start(%input), source_target_pairs={{0,1},{1,2},{2,3}}
   // CHECK-NEXT:  "mhlo.async_done"([[CP_START]])
-  // CHECK-SAME: called_computation = [[CP_GENSYM]], execution_thread = "main"
   ROOT %cp-done = f32[128,32]{1,0} collective-permute-done(%cp-start)
 }
 
@@ -100,7 +97,6 @@ add {
   // CHECK-SAME: called_computation = [[COPY_GENSYM]], execution_thread = "main"
   copy-start = (f32[128,32], f32[128,32], u32[]) copy-start(input), cross_program_prefetch_index=0
   // CHECK-NEXT: "mhlo.async_done"([[COPY_START]])
-  // CHECK-SAME: called_computation = [[COPY_GENSYM]], execution_thread = "main"
   ROOT copy-done = f32[128,32] copy-done(copy-start)
 }
 
@@ -114,7 +110,6 @@ add {
   // CHECK-SAME{LITERAL}: -> !mhlo.async_bundle<tuple<tensor<128x32xf32>, !mhlo.token>, !mhlo.token, tensor<ui32>>
   send-start = (f32[128,32], u32[], token[]) send(input, tok), channel_id=5, is_host_transfer=true
   // CHECK-NEXT: "mhlo.async_done"([[SEND_START]])
-  // CHECK-SAME: called_computation = [[SEND_GENSYM]], execution_thread = "main"
   ROOT send-done = token[] send-done(send-start), channel_id=5, is_host_transfer=true
 }
 
@@ -128,7 +123,6 @@ add {
   // CHECK-SAME{LITERAL}: -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<128x32xf32>, !mhlo.token>, tensor<ui32>>
   recv-start = (f32[128,32], u32[], token[]) recv(tok), channel_id=5, is_host_transfer=true
   // CHECK-NEXT: "mhlo.async_done"([[RECV_START]])
-  // CHECK-SAME: called_computation = [[RECV_GENSYM]], execution_thread = "main"
   recv-done = (f32[128,21], token[]) recv-done(recv-start), channel_id=5, is_host_transfer=true
   ROOT gte = get-tuple-element(recv-done), index=0
 }
@@ -143,7 +137,6 @@ add {
   // CHECK-SAME{LITERAL}: -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<128x32xf32>, !mhlo.token>, tensor<ui32>>
   recv-start = (f32[128,32], u32[], token[]) recv(tok), channel_id=5
   // CHECK-NEXT: "mhlo.async_done"([[RECV_START]])
-  // CHECK-SAME: called_computation = [[RECV_DTD_GENSYM]], execution_thread = "main"
   recv-done = (f32[128,21], token[]) recv-done(recv-start), channel_id=5
   ROOT gte = get-tuple-element(recv-done), index=0
 }

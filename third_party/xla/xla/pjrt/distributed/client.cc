@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -26,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
@@ -57,8 +60,9 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status KeyValueSet(std::string_view key,
                            std::string_view value) override;
   absl::Status KeyValueDelete(std::string_view key) override;
-  absl::Status WaitAtBarrier(std::string barrier_id,
-                             absl::Duration timeout) override;
+  absl::Status WaitAtBarrier(
+      std::string barrier_id, absl::Duration timeout,
+      std::optional<absl::Span<const int32_t>> process_ids) override;
   absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
@@ -173,8 +177,19 @@ absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
-    std::string barrier_id, absl::Duration timeout) {
-  return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
+    std::string barrier_id, absl::Duration timeout,
+    std::optional<absl::Span<const int32_t>> process_ids) {
+  std::vector<tensorflow::CoordinatedTask> tasks;
+  if (process_ids.has_value()) {
+    tasks.reserve(process_ids->size());
+    for (int32_t process_id : process_ids.value()) {
+      tensorflow::CoordinatedTask task;
+      task.set_job_name("jax_worker");
+      task.set_task_id(process_id);
+      tasks.push_back(std::move(task));
+    }
+  }
+  return coord_agent_->WaitAtBarrier(barrier_id, timeout, tasks);
 }
 
 absl::StatusOr<tsl::CoordinationServiceAgent*>

@@ -3423,7 +3423,7 @@ namespace {
 
 absl::StatusOr<Literal> CreateScalarLiteral(int64_t value,
                                             PrimitiveType element_type) {
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
           return LiteralUtil::CreateR0(
@@ -3554,7 +3554,7 @@ Literal ExtractLiteralFromIndexPositions(const Literal& from,
 absl::StatusOr<Literal> ExtractFromIndexPositions(
     const Literal& from, absl::Span<int64_t const> indices) {
   PrimitiveType type = from.shape().element_type();
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           return ExtractLiteralFromIndexPositions<
@@ -3693,7 +3693,7 @@ template <PrimitiveType operand_type, PrimitiveType random_type>
 absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                             const Literal& random_literal,
                                             const Shape& result_shape) {
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsSignedIntegralType(
                           primitive_type_constant)) {
@@ -3714,7 +3714,7 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
 absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                             const Literal& random_literal,
                                             const Shape& result_shape) {
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {

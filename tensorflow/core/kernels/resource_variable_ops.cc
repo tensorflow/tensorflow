@@ -501,7 +501,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                                 [](Var** ptr) {
                                   // Created on host.
                                   *ptr = new Var(DT_VARIANT);
-                                  return OkStatus();
+                                  return absl::OkStatus();
                                 }));
 
     // For purposes of forwarding DT_VARIANT, we want the least

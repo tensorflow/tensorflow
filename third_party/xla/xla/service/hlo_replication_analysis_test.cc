@@ -675,5 +675,40 @@ ENTRY entry {
       FindInstruction(module.get(), "dynamic-slice"), {}, replica_groups_2));
 }
 
+TEST_F(HloReplicationAnalysisTest, OptimizationBarrier) {
+  const std::string module_str = R"(
+HloModule OptimizationBarrier
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = (f32[], f32[]) parameter(0)
+  get-tuple-element.0 = f32[] get-tuple-element(param), index=0
+  get-tuple-element.1 = f32[] get-tuple-element(param), index=1
+  ar0 = f32[] all-reduce(get-tuple-element.0), to_apply=sum, replica_groups={{0,1}}
+  ar1 = f32[] all-reduce(get-tuple-element.1), to_apply=sum, replica_groups={{0},{1}}
+  tuple = (f32[], f32[]) tuple(ar0, ar1)
+  opt-barrier = (f32[], f32[]) opt-barrier(tuple)
+  gte.0 = f32[] get-tuple-element(opt-barrier), index=0
+  gte.1 = f32[] get-tuple-element(opt-barrier), index=1
+  ROOT tuple.1 = (f32[], f32[]) tuple(gte.0, gte.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           module_str, /*replica_count=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                          HloReplicationAnalysis::Run(
+                              module.get(), /*cross_partition_spmd=*/false));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "gte.0"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "gte.1"), {}));
+}
+
 }  // namespace
 }  // namespace xla

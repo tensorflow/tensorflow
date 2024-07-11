@@ -1036,10 +1036,6 @@ static void PackLhsHelper(::testing::benchmark::State& state,
   reshape_dims[0] = filter_count;
   reshape_dims[1] = input_depth * filter_rows * filter_cols;
 
-  // We are going to contract along the 'in_depth * filter_rows * filter_cols`.
-  nocontract_t nocontract_dim = {0};
-  contract_t contract_dim = {1};
-
   // These values computed using the algorithm in TensorContraction.h, with
   // 'nocontract_dim' and 'contract_dim' values specified above.
   nocontract_t nocontract_strides = {1};

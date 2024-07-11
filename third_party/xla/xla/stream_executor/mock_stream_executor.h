@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -37,6 +38,8 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/stream_executor/stream_interface.h"
 #include "xla/test.h"
@@ -151,9 +154,8 @@ class MockStreamExecutor : public StreamExecutorInterface {
               (override));
   MOCK_METHOD(bool, DeviceMemoryUsage, (int64_t* free, int64_t* total),
               (const, override));
-  MOCK_METHOD(bool, GetSymbol,
-              (const std::string& symbol_name, ModuleHandle module_handle,
-               void** mem, size_t* bytes),
+  MOCK_METHOD(absl::StatusOr<DeviceMemoryBase>, GetSymbol,
+              (const std::string& symbol_name, ModuleHandle module_handle),
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<DeviceDescription>>,
               CreateDeviceDescription, (), (const, override));
@@ -161,8 +163,6 @@ class MockStreamExecutor : public StreamExecutorInterface {
   MOCK_METHOD(fft::FftSupport*, AsFft, (), (override));
   MOCK_METHOD(dnn::DnnSupport*, AsDnn, (), (override));
   MOCK_METHOD(std::unique_ptr<EventInterface>, CreateEventImplementation, (),
-              (override));
-  MOCK_METHOD(std::unique_ptr<StreamInterface>, GetStreamImplementation, (),
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Kernel>>, CreateKernel, (),
               (override));
@@ -172,6 +172,12 @@ class MockStreamExecutor : public StreamExecutorInterface {
   MOCK_METHOD(bool, ClearAllocatorStats, (), (override));
   MOCK_METHOD(absl::Status, FlushCompilationCache, (), (override));
   MOCK_METHOD(Stream*, FindAllocatedStream, (void* device_stream), (override));
+  MOCK_METHOD(const Platform*, GetPlatform, (), (const, override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Stream>>, CreateStream,
+              ((std::optional<std::variant<StreamPriority, int>>)), (override));
+  MOCK_METHOD(int64_t, GetMemoryLimitBytes, (), (const.override));
+  MOCK_METHOD(const DeviceDescription&, GetDeviceDescription, (),
+              (const, override));
 };
 
 }  // namespace stream_executor

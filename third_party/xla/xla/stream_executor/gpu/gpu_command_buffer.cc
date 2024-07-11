@@ -213,7 +213,7 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
 }
 
 absl::StatusOr<GpuCommandBuffer::SetIfConditionKernel*>
-GpuCommandBuffer::GetSetIfConditionKernel(StreamExecutor* executor) {
+GpuCommandBuffer::GetSetIfConditionKernel(StreamExecutorInterface* executor) {
   if (!set_if_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/2);
     spec.AddCudaPtxInMemory(gpu::GetSetIfConditionKernel(), "set_if_condition");
@@ -224,7 +224,8 @@ GpuCommandBuffer::GetSetIfConditionKernel(StreamExecutor* executor) {
 }
 
 absl::StatusOr<GpuCommandBuffer::SetIfElseConditionKernel*>
-GpuCommandBuffer::GetSetIfElseConditionKernel(StreamExecutor* executor) {
+GpuCommandBuffer::GetSetIfElseConditionKernel(
+    StreamExecutorInterface* executor) {
   if (!set_if_else_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/3);
     spec.AddCudaPtxInMemory(gpu::GetSetIfElseConditionKernel(),
@@ -236,7 +237,7 @@ GpuCommandBuffer::GetSetIfElseConditionKernel(StreamExecutor* executor) {
 }
 
 absl::StatusOr<GpuCommandBuffer::SetCaseConditionKernel*>
-GpuCommandBuffer::GetSetCaseConditionKernel(StreamExecutor* executor) {
+GpuCommandBuffer::GetSetCaseConditionKernel(StreamExecutorInterface* executor) {
   if (!set_case_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/10);
     spec.AddCudaPtxInMemory(gpu::GetSetCaseConditionKernel(),
@@ -248,7 +249,7 @@ GpuCommandBuffer::GetSetCaseConditionKernel(StreamExecutor* executor) {
 }
 
 absl::StatusOr<GpuCommandBuffer::SetForConditionKernel*>
-GpuCommandBuffer::GetSetForConditionKernel(StreamExecutor* executor) {
+GpuCommandBuffer::GetSetForConditionKernel(StreamExecutorInterface* executor) {
   if (!set_for_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/3);
     spec.AddCudaPtxInMemory(gpu::GetSetForConditionKernel(),
@@ -260,7 +261,8 @@ GpuCommandBuffer::GetSetForConditionKernel(StreamExecutor* executor) {
 }
 
 absl::StatusOr<GpuCommandBuffer::SetWhileConditionKernel*>
-GpuCommandBuffer::GetSetWhileConditionKernel(StreamExecutor* executor) {
+GpuCommandBuffer::GetSetWhileConditionKernel(
+    StreamExecutorInterface* executor) {
   if (!set_while_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/2);
     spec.AddCudaPtxInMemory(gpu::GetSetWhileConditionKernel(),
@@ -272,7 +274,7 @@ GpuCommandBuffer::GetSetWhileConditionKernel(StreamExecutor* executor) {
 }
 
 absl::StatusOr<GpuCommandBuffer::NoOpKernel*> GpuCommandBuffer::GetNoOpKernel(
-    StreamExecutor* executor) {
+    StreamExecutorInterface* executor) {
 #if !defined(TENSORFLOW_USE_ROCM)
   if (!noop_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/0);
@@ -325,7 +327,7 @@ absl::Status GpuCommandBuffer::CheckNumCommandBuffers(
 }
 
 absl::StatusOr<GpuGraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
-    StreamExecutor* executor, const Dependencies& dependencies) {
+    StreamExecutorInterface* executor, const Dependencies& dependencies) {
   GpuGraphNodeHandle barrier_handle = nullptr;
 #if !defined(TENSORFLOW_USE_ROCM)
   // TODO(b/316343054): Instead of empty nodes we create no-op kernel nodes as
@@ -360,7 +362,7 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrierDependencies(
   return dependencies;
 }
 
-absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor,
+absl::Status GpuCommandBuffer::Barrier(StreamExecutorInterface* executor,
                                        ExecutionScopeId execution_scope_id) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
@@ -412,7 +414,7 @@ absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor,
 }
 
 absl::Status GpuCommandBuffer::Barrier(
-    StreamExecutor* executor,
+    StreamExecutorInterface* executor,
     absl::Span<const ExecutionScopeId> execution_scope_ids) {
   // Nothing to synchronize here.
   if (execution_scope_ids.empty()) return absl::OkStatus();
@@ -468,7 +470,7 @@ absl::Status GpuCommandBuffer::Barrier(
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor,
+absl::Status GpuCommandBuffer::Barrier(StreamExecutorInterface* executor,
                                        ExecutionScopeId from_execution_scope_id,
                                        ExecutionScopeId to_execution_scope_id) {
   // If scopes are the same simply add a barrier to it.
@@ -757,7 +759,7 @@ GpuCommandBuffer::CreateConditionalNodes(
 }
 
 absl::Status GpuCommandBuffer::CreateConditionalCommand(
-    ExecutionScopeId execution_scope_id, StreamExecutor* executor,
+    ExecutionScopeId execution_scope_id, StreamExecutorInterface* executor,
     ConditionType type, SetConditionFn set_condition,
     absl::Span<const ConditionBuilder> builders) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
@@ -816,7 +818,7 @@ absl::Status GpuCommandBuffer::CreateConditionalCommand(
 }
 
 absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
-                                  StreamExecutor* executor,
+                                  StreamExecutorInterface* executor,
                                   DeviceMemory<bool> predicate,
                                   Builder then_builder) {
   DCHECK(executor == parent_);
@@ -837,7 +839,7 @@ absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
 }
 
 absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
-                                      StreamExecutor* executor,
+                                      StreamExecutorInterface* executor,
                                       DeviceMemory<bool> predicate,
                                       Builder then_builder,
                                       Builder else_builder) {
@@ -860,7 +862,7 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
 }
 
 absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
-                                    StreamExecutor* executor,
+                                    StreamExecutorInterface* executor,
                                     DeviceMemory<int32_t> index,
                                     std::vector<Builder> branches) {
   DCHECK(executor == parent_);
@@ -902,7 +904,7 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
 }
 
 absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
-                                   StreamExecutor* executor,
+                                   StreamExecutorInterface* executor,
                                    int32_t num_iteration,
                                    DeviceMemory<int32_t> loop_counter,
                                    Builder body_builder) {
@@ -937,7 +939,7 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
 }
 
 absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
-                                     StreamExecutor* executor,
+                                     StreamExecutorInterface* executor,
                                      DeviceMemory<bool> pred,
                                      ExecutionScopeBuilder cond_builder,
                                      Builder body_builder) {

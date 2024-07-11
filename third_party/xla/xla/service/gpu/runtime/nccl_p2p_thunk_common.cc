@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
@@ -39,19 +40,20 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor) {
+absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor,
+                                           RunId run_id) {
   absl::MutexLock lock(&mu_);
-  if (counters_.contains(executor)) return absl::OkStatus();
-
-  counters_.emplace(executor, 0);
+  CounterKey key = {executor, run_id};
+  if (counters_.contains(key)) return absl::OkStatus();
+  counters_.emplace(key, 0);
   return absl::OkStatus();
 }
 
 absl::StatusOr<int64_t*> ExecutionCounters::GetCounter(
-    se::StreamExecutor* executor) {
+    se::StreamExecutor* executor, RunId run_id) {
   absl::MutexLock lock(&mu_);
-
-  auto counter = counters_.find(executor);
+  CounterKey key = {executor, run_id};
+  auto counter = counters_.find(key);
   if (counter == counters_.end()) {
     return absl::InternalError("Execution counter not initialized");
   }

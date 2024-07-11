@@ -1554,6 +1554,7 @@ HloScheduleGraph::HloScheduleGraph(
   HloComputation* comp = (*post_order_instructions)[0]->parent();
   auto reachability = HloReachabilityMap::Build(comp);
   int64_t current_pos = 0;
+  std::vector<const HloInstruction*> while_instrs;
   // Allocating the graph nodes. One for each of the instructions in the
   // original instructions order.
   for (HloInstruction* instr : *post_order_instructions) {
@@ -1572,6 +1573,10 @@ HloScheduleGraph::HloScheduleGraph(
     new_node_it->second->occupied_shareable_resources_ =
         async_tracker->GetOccupiedShareableResourcesFromVector(
             new_node_it->second->GetResources());
+    // Gather while instructions for subsequent send-done dependency checks.
+    if (instr->opcode() == HloOpcode::kWhile) {
+      while_instrs.push_back(instr);
+    }
   }
   auto add_dependency_helper = [latency_estimator](HloGraphNode* from,
                                                    HloGraphNode* to) {
@@ -1585,6 +1590,7 @@ HloScheduleGraph::HloScheduleGraph(
     ++to->indegree_;
     ++from->outdegree_;
   };
+
   // Add dependencies edges between each of the graph nodes.
   for (const HloInstruction* instr : *post_order_instructions) {
     auto node_it = nodes_.find(instr);
@@ -1647,6 +1653,53 @@ HloScheduleGraph::HloScheduleGraph(
             }
           }
         }
+      }
+    }
+    // Add dependent edges from send-done operations to while loops which are
+    // dependent on the recv-done control predecessor of the send-done.
+    // This prevents send-done operations from being scheduled after dependent
+    // while loops, which can caused send/recv overlap limits to be violated.
+    //
+    // Example HLO sequence:
+    //
+    //   %0 = recv-done --->
+    //                     |
+    //   %1 = send-done <--|
+    //   %2 = while <------|
+    //
+    if (instr->opcode() == HloOpcode::kSendDone) {
+      for (const auto* ctrl_pred : instr->control_predecessors()) {
+        if (ctrl_pred->opcode() != HloOpcode::kRecvDone) {
+          continue;
+        }
+        const HloInstruction* dependent_while_instr = nullptr;
+        for (const auto* while_hlo : while_instrs) {
+          if (!reachability->IsReachable(ctrl_pred, while_hlo)) {
+            continue;
+          }
+          if (dependent_while_instr == nullptr) {
+            dependent_while_instr = while_hlo;
+            continue;
+          }
+          if (OriginalInstructionPosition(while_hlo) <
+              OriginalInstructionPosition(dependent_while_instr)) {
+            dependent_while_instr = while_hlo;
+          }
+        }
+        // Add dependency edge from 'instr' to 'dependent_while_instr'.
+        if (dependent_while_instr != nullptr) {
+          auto send_done_it = nodes_.find(instr);
+          CHECK(send_done_it != nodes_.end());
+          HloGraphNode* send_done_node = send_done_it->second.get();
+          auto while_it = nodes_.find(dependent_while_instr);
+          CHECK(while_it != nodes_.end());
+          HloGraphNode* while_node = while_it->second.get();
+          send_done_node->successors_.push_back(HloEdge(1, while_node));
+          while_node->predecessors_.push_back(HloEdge(1, send_done_node));
+          ++send_done_node->outdegree_;
+          ++while_node->indegree_;
+        }
+        break;
       }
     }
   }

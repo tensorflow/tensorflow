@@ -565,9 +565,13 @@ class CStreamExecutor : public StreamExecutor {
     return std::unique_ptr<EventInterface>(
         new CEvent(&device_, stream_executor_));
   }
-  std::unique_ptr<StreamInterface> GetStreamImplementation() override {
-    return std::unique_ptr<StreamInterface>(
-        new CStream(&device_, stream_executor_));
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override {
+    auto stream = std::make_unique<Stream>(
+        this, std::make_unique<CStream>(&device_, stream_executor_));
+    TF_RETURN_IF_ERROR(stream->Initialize(priority));
+    return std::move(stream);
   }
 
  private:

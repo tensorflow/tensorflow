@@ -113,7 +113,7 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
     maybe lowered to a future by runtime.
   }];
 
-  // TODO(b/330360798) Redefine the IfrtLoadVariableOp as it doesn't require the
+  // TODO(b/339423851) Redefine the IfrtLoadVariableOp as it doesn't require the
   // sharding info in the attribute if multihost do not need this info. 
   let arguments = (ins
     Arg<TF_Tensor, [{The variable tensor to be loaded}], []>:$variable,

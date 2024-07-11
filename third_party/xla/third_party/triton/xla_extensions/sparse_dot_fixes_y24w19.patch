@@ -1,0 +1,13 @@
+diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -365,7 +365,8 @@ class SparseBlockedToMMA : public mlir::
+ 
+     assert(computeCapability >= 80 &&
+            "SparseDot is supported on Ampere and higher");
+-    int versionMajor = computeCapability < 90 ? 2 : 3;
++    bool allowV3 = triton::tools::getBoolEnv("ENABLE_MMA_V3");
++    int versionMajor = computeCapability >= 90 && allowV3 ? 3 : 2;
+ 
+     // get MMA encoding for the given number of warps
+     auto retShapePerCTA = ttg::getShapePerCTA(oldRetType);

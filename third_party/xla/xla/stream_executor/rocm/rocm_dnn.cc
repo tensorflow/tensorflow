@@ -4371,14 +4371,9 @@ absl::Status MIOpenSupport::DoPoolForward(
         // reusing the same buffer
         workspace = reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
       } else {
-        ScopedDeviceMemory<uint8> wsp_mem(
-            stream->parent(),
-            stream->parent()->AllocateArray<uint8>(workspace_size));
-        workspace = reinterpret_cast<uint8*>(wsp_mem.ptr()->opaque());
-        m_pooling_cache.insert(input_data.opaque(), input_dimensions,
-                               output_dimensions, pooling_dimensions,
-                               miopenFloat, wsp_mem, workspace_size,
-                               AsGpuStreamValue(stream));
+        TF_ASSIGN_OR_RETURN(auto allocated,
+                            workspace_allocator->AllocateBytes(workspace_size));
+        workspace = reinterpret_cast<uint8*>(allocated.opaque());
       }
     }
   }

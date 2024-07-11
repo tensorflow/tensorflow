@@ -198,39 +198,59 @@ TEST(AsyncValuePtrTest, MapMultipleTimes) {
   EXPECT_EQ(mapped.get(), 42 + 6);
 }
 
-TEST(AsyncValuePtrTest, MapStatusOr) {
+TEST(AsyncValuePtrTest, MapToStatus) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<absl::Status> mapped_to_status =
+      ptr.Map([](int32_t value) -> absl::Status { return absl::OkStatus(); });
+  EXPECT_TRUE(mapped_to_status.IsAvailable());
+  EXPECT_EQ(mapped_to_status.get(), absl::OkStatus());
+}
+
+TEST(AsyncValuePtrTest, MapToStatusOr) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<absl::StatusOr<float>> mapped_to_float =
+      ptr.Map([](int32_t value) -> absl::StatusOr<float> { return value; });
+  EXPECT_TRUE(mapped_to_float.IsAvailable());
+  EXPECT_EQ(*mapped_to_float.get(), 42.0f);
+}
+
+TEST(AsyncValuePtrTest, TryMap) {
   AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
   AsyncValuePtr<int32_t> ptr = ref.AsPtr();
 
   AsyncValueRef<float> mapped_to_float =
-      ptr.Map([](int32_t value) -> absl::StatusOr<float> { return value; });
+      ptr.TryMap([](int32_t value) -> absl::StatusOr<float> { return value; });
   EXPECT_TRUE(mapped_to_float.IsAvailable());
   EXPECT_EQ(mapped_to_float.get(), 42.0f);
 }
 
-TEST(AsyncValuePtrTest, MapStatusOrError) {
+TEST(AsyncValuePtrTest, TryMapError) {
   AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
   AsyncValuePtr<int32_t> ptr = ref.AsPtr();
 
   AsyncValueRef<float> mapped_to_float =
-      ptr.Map([](int32_t value) -> absl::StatusOr<float> {
+      ptr.TryMap([](int32_t value) -> absl::StatusOr<float> {
         return absl::InternalError("error");
       });
   EXPECT_TRUE(mapped_to_float.IsError());
   EXPECT_EQ(mapped_to_float.GetError(), absl::InternalError("error"));
 }
 
-TEST(AsyncValuePtrTest, MapStatusOrConstructible) {
+TEST(AsyncValuePtrTest, TryMapConstructible) {
   AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
   AsyncValuePtr<int32_t> ptr = ref.AsPtr();
 
   struct X {
-    explicit X(absl::StatusOr<float> value) : value(*value) {}
+    explicit X(float value) : value(value) {}
     float value;
   };
 
-  AsyncValueRef<X> mapped_to_x =
-      ptr.Map<X>([](int32_t value) -> absl::StatusOr<float> { return value; });
+  AsyncValueRef<X> mapped_to_x = ptr.TryMap<X>(
+      [](int32_t value) -> absl::StatusOr<float> { return value; });
   EXPECT_TRUE(mapped_to_x.IsAvailable());
   EXPECT_EQ(mapped_to_x->value, 42.0f);
 }
@@ -328,12 +348,12 @@ TEST(AsyncValuePtrTest, MapUnavailableOnExecutor) {
   EXPECT_EQ(mapped_to_float.get(), 42.0f);
 }
 
-TEST(AsyncValuePtrTest, MapStatusOrOnExecutor) {
+TEST(AsyncValuePtrTest, TryMapOnExecutor) {
   AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
   AsyncValuePtr<int32_t> ptr = ref.AsPtr();
 
   DeferredExecutor executor;
-  AsyncValueRef<float> mapped_to_float = ptr.Map(
+  AsyncValueRef<float> mapped_to_float = ptr.TryMap(
       executor, [](int32_t value) -> absl::StatusOr<float> { return value; });
 
   ref.SetStateConcrete();
@@ -346,13 +366,13 @@ TEST(AsyncValuePtrTest, MapStatusOrOnExecutor) {
   EXPECT_EQ(mapped_to_float.get(), 42.0f);
 }
 
-TEST(AsyncValuePtrTest, MapStatusOrErrorOnExecutor) {
+TEST(AsyncValuePtrTest, TryMapErrorOnExecutor) {
   AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
   AsyncValuePtr<int32_t> ptr = ref.AsPtr();
 
   DeferredExecutor executor;
   AsyncValueRef<float> mapped_to_float =
-      ptr.Map(executor, [](int32_t value) -> absl::StatusOr<float> {
+      ptr.TryMap(executor, [](int32_t value) -> absl::StatusOr<float> {
         return absl::InternalError("error");
       });
 

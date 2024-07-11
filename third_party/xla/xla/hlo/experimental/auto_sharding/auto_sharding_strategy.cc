@@ -722,8 +722,12 @@ BuildStrategyAndCost(
                 "annotation.");
           }
           generate_non_following_strategies(false);
-        } else if (ins->has_sharding()) {
-          generate_non_following_strategies(false);
+        } else if (IsTopKCustomCall(ins)) {
+          generate_non_following_strategies(false, {0});
+        } else if (IsPartialReduceCustomCall(ins)) {
+          strategy_group = HandlePartialReduce(
+              ins, instruction_id, /* have_memory_cost */ true, strategy_groups,
+              cluster_env, strategy_map, call_graph);
         } else if (OutputInputSameShapes(ins)) {
           auto* partitioner =
               GetCustomCallPartitioner(ins->custom_call_target());
@@ -738,8 +742,8 @@ BuildStrategyAndCost(
                 /* have_memory_cost= */ true, strategy_groups, cluster_env,
                 pretrimmed_strategy_map);
           }
-        } else if (IsTopKCustomCall(ins)) {
-          generate_non_following_strategies(false, {0});
+        } else if (ins->has_sharding()) {
+          generate_non_following_strategies(false);
         } else {
           // TODO (b/258723035) Handle CustomCall ops for GPUs in a better way.
           generate_non_following_strategies(true);

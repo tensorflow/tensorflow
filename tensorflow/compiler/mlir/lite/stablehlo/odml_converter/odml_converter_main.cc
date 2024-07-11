@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -42,7 +43,7 @@ int main(int argc, char* argv[]) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
                   mlir::TFL::TFLDialect, mlir::arith::ArithDialect,
-                  mlir::TF::TensorFlowDialect>();
+                  mlir::TF::TensorFlowDialect, mlir::chlo::ChloDialect>();
 
   return failed(
       mlir::MlirOptMain(argc, argv, "ODML Converter Driver\n", registry));

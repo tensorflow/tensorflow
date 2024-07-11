@@ -28,7 +28,8 @@ std::pair<AsyncHandle::Promise, AsyncHandle> AsyncHandle::Allocate(
   auto user_contexts = current.CopyUserContexts();
 
   auto new_context = std::make_unique<ExecutionContext>(
-      &current.loaded_executable(), std::move(user_contexts));
+      &current.loaded_executable(), std::move(user_contexts),
+      current.user_error_loggers());
   new_context->set_work_queue(current.work_queue());
 
   auto shared_state = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();

@@ -17,15 +17,15 @@ limitations under the License.
 #define XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
 
 #include <string>
+#include <vector>
 
-#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
 
-absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
+std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
     ComputeCapability cc, CudnnVersion cudnn_version,
     const std::string& blas_version, const std::string& hlo);
 

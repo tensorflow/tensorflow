@@ -31,9 +31,6 @@ class Pass;
 namespace func {
 class FuncOp;
 }  // namespace func
-namespace lmhlo {
-class FusionOp;
-}  // namespace lmhlo
 
 namespace mhlo {
 
@@ -80,10 +77,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass();
 
 /// Lowers from HLO dialect to Arithmetic dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
-
-// Lowers shape operations from HLO dialect to Standard dialect.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeHloShapeOpsToStandardPass();
 
 /// Lowers from MHLO dialect to THLO dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass(

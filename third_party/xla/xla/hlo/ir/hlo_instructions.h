@@ -2094,6 +2094,11 @@ class HloCustomCallInstruction : public HloCallableInstruction {
     CHECK(layout_constrained());
     return operand_shapes_with_layout_;
   }
+  void set_operand_shapes_with_layout(
+      std::vector<Shape> operand_shapes_with_layout) {
+    CHECK(layout_constrained());
+    operand_shapes_with_layout_ = std::move(operand_shapes_with_layout);
+  }
   void set_custom_call_schedule(CustomCallSchedule custom_call_schedule) {
     custom_call_schedule_ = custom_call_schedule;
   }

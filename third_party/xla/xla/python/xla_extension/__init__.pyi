@@ -308,6 +308,7 @@ class DebugOptions:
   xla_enable_dumping: bool
   xla_gpu_dump_autotune_results_to: str
   xla_gpu_load_autotune_results_from: str
+  xla_gpu_dump_autotune_logs_to: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -775,7 +776,9 @@ class DistributedRuntimeClient:
   def key_value_set(self, key: str, value: str) -> _Status: ...
   def key_value_set_bytes(self, key: str, value: bytes) -> _Status: ...
   def key_value_delete(self, key: str) -> _Status: ...
-  def wait_at_barrier(self, barrier_id: str, timeout_in_ms: int) -> _Status: ...
+  def wait_at_barrier(
+      self, barrier_id: str, timeout_in_ms: int, process_ids: Optional[List[int]]
+  ) -> _Status: ...
 
 def get_distributed_runtime_service(
     address: str,

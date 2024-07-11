@@ -20,6 +20,7 @@ limitations under the License.
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 // This is a fuzzer for tensorflow::ParseAttrValue.
 

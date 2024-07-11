@@ -94,4 +94,34 @@ TEST(CheckGpuDelegateCompatibility, FCConstInput) {
             "FullyConnected doesn't support constant input.");
 }
 
+TEST(CheckGpuDelegateCompatibility, Add1DBroadCastSuccess) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_ADD;
+  auto params = std::make_unique<TfLiteAddParams>();
+  op_sig.builtin_data = static_cast<void*>(params.get());
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(2);
+  op_sig.inputs[0] = OpSignatureTensorSpec();
+  op_sig.inputs[0].dims = {4, 1, 2};
+  op_sig.inputs[1] = OpSignatureTensorSpec();
+  op_sig.inputs[1].dims = {2};
+
+  EXPECT_TRUE(CheckGpuDelegateCompatibility(op_sig).message().empty());
+}
+
+TEST(CheckGpuDelegateCompatibility, Add2DBroadCastFail) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_ADD;
+  auto params = std::make_unique<TfLiteAddParams>();
+  op_sig.builtin_data = static_cast<void*>(params.get());
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(2);
+  op_sig.inputs[0] = OpSignatureTensorSpec();
+  op_sig.inputs[0].dims = {4, 1, 2};
+  op_sig.inputs[1] = OpSignatureTensorSpec();
+  op_sig.inputs[1].dims = {2, 2};
+
+  EXPECT_EQ(
+      CheckGpuDelegateCompatibility(op_sig).message(),
+      "ADD doesn't support broadcasting - input0: [4,1,2], input1: [2,2]");
+}
+
 }  // namespace tflite

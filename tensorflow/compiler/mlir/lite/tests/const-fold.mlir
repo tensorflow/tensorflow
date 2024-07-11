@@ -416,7 +416,7 @@ func.func @reshape_dynamic_output() -> tensor<?xi32> {
   %input = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
   %shape = arith.constant dense<[4]> : tensor<1xi32>
 
-  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() {value = dense<[1, 2, 3, 4]> : tensor<4xi32>} : () -> tensor<?xi32>
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 2, 3, 4]> : tensor<4xi32>}> : () -> tensor<?xi32>
   // CHECK: return %[[CST]]
   %0 = "tfl.reshape"(%input, %shape) : (tensor<2x2xi32>, tensor<1xi32>) -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
@@ -438,7 +438,7 @@ func.func @range_int() -> tensor<?xi32> {
   %cst_1 = arith.constant dense<4> : tensor<i32>
   %cst_2 = arith.constant dense<1> : tensor<i32>
 
-  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<?xi32>
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[0, 1, 2, 3]> : tensor<4xi32>}> : () -> tensor<?xi32>
   // CHECK: return %[[CST]]
   %0 = "tfl.range"(%cst, %cst_1, %cst_2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
@@ -450,7 +450,7 @@ func.func @range_float() -> tensor<?xf32> {
   %cst_1 = arith.constant dense<4.0> : tensor<f32>
   %cst_2 = arith.constant dense<1.0> : tensor<f32>
 
-  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() {value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>} : () -> tensor<?xf32>
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>}> : () -> tensor<?xf32>
   // CHECK: return %[[CST]]
   %0 = "tfl.range"(%cst, %cst_1, %cst_2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
@@ -463,7 +463,7 @@ func.func @range_float_neg_delta() -> tensor<?xf32> {
   %cst_1 = arith.constant dense<-4.0> : tensor<f32>
   %cst_2 = arith.constant dense<-1.0> : tensor<f32>
 
-  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() {value = dense<[0.000000e+00, -1.000000e+00, -2.000000e+00, -3.000000e+00]> : tensor<4xf32>} : () -> tensor<?xf32>
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[0.000000e+00, -1.000000e+00, -2.000000e+00, -3.000000e+00]> : tensor<4xf32>}> : () -> tensor<?xf32>
   // CHECK: return %[[CST]]
   %0 = "tfl.range"(%cst, %cst_1, %cst_2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
@@ -475,7 +475,7 @@ func.func @range_float_nonzero_base() -> tensor<?xf32> {
   %cst_1 = arith.constant dense<7.0> : tensor<f32>
   %cst_2 = arith.constant dense<1.5> : tensor<f32>
 
-  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() {value = dense<[2.000000e+00, 3.500000e+00, 5.000000e+00, 6.500000e+00]> : tensor<4xf32>} : () -> tensor<?xf32>
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[2.000000e+00, 3.500000e+00, 5.000000e+00, 6.500000e+00]> : tensor<4xf32>}> : () -> tensor<?xf32>
   // CHECK: return %[[CST]]
   %0 = "tfl.range"(%cst, %cst_1, %cst_2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
@@ -508,7 +508,7 @@ func.func @transpose_dynamic() -> tensor<?xi32> {
   %cst = arith.constant dense<[1, 2, 3]> : tensor<3xi32>
   %cst_perm = arith.constant dense<0> : tensor<1xi32>
 
-  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() {value = dense<{{\[}}1, 2, 3]> : tensor<3xi32>} : () -> tensor<?xi32>
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<{{\[}}1, 2, 3]> : tensor<3xi32>}> : () -> tensor<?xi32>
   // CHECK: return %[[CST]]
   %0 = "tfl.transpose"(%cst, %cst_perm) : (tensor<3xi32>, tensor<1xi32>) -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
@@ -567,7 +567,7 @@ func.func @ConstantFoldBinaryOpDynamicOutput() -> tensor<?xi32> {
   %87 = "tfl.sub"(%cst_0, %cst) {fused_activation_function = "NONE"} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
   func.return %87 : tensor<?xi32>
 
-  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() {value = dense<[-5, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[-5, 0]> : tensor<2xi32>}> : () -> tensor<?xi32>
   // CHECK: return %[[CST]]
 }
 
@@ -580,7 +580,7 @@ func.func @add_dense_dense_int_same_shape_dynamic() -> tensor<?xi32> {
 
   func.return %2 : tensor<?xi32>
 
-  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() {value = dense<[5, 22, -2, 98]> : tensor<4xi32>} : () -> tensor<?xi32>
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[5, 22, -2, 98]> : tensor<4xi32>}> : () -> tensor<?xi32>
   // CHECK: return %[[CST]]
 }
 
@@ -603,7 +603,7 @@ func.func @concat_3_tensors_1_empty() -> tensor<?xi32> {
   %3 = "tfl.concatenation"(%0, %1, %2) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<2xi32>, tensor<0xi32>) -> tensor<?xi32>
   func.return %3 : tensor<?xi32>
 
-  // CHECK: %0 = "tfl.concatenation"(%[[CST]], %[[CST]]) {axis = 0 : i32, fused_activation_function = "NONE"}
+  // CHECK: %0 = "tfl.concatenation"(%[[CST]], %[[CST]]) <{axis = 0 : i32, fused_activation_function = "NONE"}>
   // CHECK: return %0 : tensor<?xi32>
 }
 
@@ -835,7 +835,7 @@ func.func @NoFoldFullyConnectedNonFloat() -> tensor<1024xf32> {
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<512xf32>
   // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<2> : tensor<1024x512xi8>
   // CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<4.000000e+00> : tensor<1024xf32>
-  // CHECK: %[[VAL:.*]] = "tfl.fully_connected"(%[[CST]], %[[CST_0]], %[[CST_1]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<512xf32>, tensor<1024x512xi8>, tensor<1024xf32>) -> tensor<1024xf32>
+  // CHECK: %[[VAL:.*]] = "tfl.fully_connected"(%[[CST]], %[[CST_0]], %[[CST_1]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<512xf32>, tensor<1024x512xi8>, tensor<1024xf32>) -> tensor<1024xf32>
   // CHECK: return %[[VAL]] : tensor<1024xf32>
 }
 
@@ -851,7 +851,7 @@ func.func @NoFoldFullyConnectedHighRank() -> tensor<2x1024xf32> {
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<2x512xf32>
   // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<2.000000e+00> : tensor<1024x512xf32>
   // CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<4.000000e+00> : tensor<1024xf32>
-  // CHECK: %[[VAL:.*]] = "tfl.fully_connected"(%[[CST]], %[[CST_0]], %[[CST_1]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
+  // CHECK: %[[VAL:.*]] = "tfl.fully_connected"(%[[CST]], %[[CST_0]], %[[CST_1]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
   // CHECK: return %[[VAL]] : tensor<2x1024xf32>
 }
 

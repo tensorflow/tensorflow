@@ -20,6 +20,7 @@ limitations under the License.
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 // This is a fuzzer for tensorflow::str_util::ConsumeLeadingDigits
 

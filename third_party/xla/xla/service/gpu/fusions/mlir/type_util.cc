@@ -51,7 +51,11 @@ llvm::SmallVector<mlir::Type> ShapeToMlirTypes(const Shape& shape,
   if (shape.IsTuple()) {
     types.reserve(shape.tuple_shapes_size());
     for (auto& tuple_shape : shape.tuple_shapes()) {
-      types.push_back(TensorShapeToMlirType(tuple_shape, b));
+      if (tuple_shape.IsTuple()) {
+        types.append(ShapeToMlirTypes(tuple_shape, b));
+      } else {
+        types.push_back(TensorShapeToMlirType(tuple_shape, b));
+      }
     }
   } else {
     types.push_back(TensorShapeToMlirType(shape, b));

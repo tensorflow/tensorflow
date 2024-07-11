@@ -634,7 +634,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // Generate a random function_name to avoid one function reuse the partition
   // function instantiated by another function.
   FunctionNameGenerator name_generator(
-      &data_lib_def, absl::StrCat(function_name, "_", random::New64()));
+      &data_lib_def,
+      absl::StrCat(function_name, "_partitioned_", random::New64()));
   const int num_subgraphs = subgraphs->size();
   gtl::InlinedVector<Status, 4> instantiate_status(num_subgraphs);
 

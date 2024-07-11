@@ -166,6 +166,8 @@ extern const char* const kOneDnnLayerNormSymbolName =
     "__xla_cpu_runtime_OneDnnLayerNorm";
 extern const char* const kOneDnnMatMulReorderSymbolName =
     "__xla_cpu_runtime_OneDnnMatMulReorder";
+extern const char* const kHandleFfiCallSymbolName =
+    "__xla_cpu_runtime_HandleFfiCall";
 
 namespace {
 

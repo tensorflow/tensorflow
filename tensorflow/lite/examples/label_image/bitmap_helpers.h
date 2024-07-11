@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/lite/examples/label_image/bitmap_helpers_impl.h"
+#include "tensorflow/lite/examples/label_image/bitmap_helpers_impl.h"  // IWYU pragma: export
 #include "tensorflow/lite/examples/label_image/label_image.h"
 
 namespace tflite {

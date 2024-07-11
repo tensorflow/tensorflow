@@ -137,7 +137,7 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
-    const std::vector<const HloInstruction*>& roots);
+    absl::Span<HloInstructionAdaptor const> roots);
 
 // Returns the dynamic-update-slice instructions defining the results of a
 // fusion node. A dynamic slice update is said to be "defining" of a result if
@@ -145,7 +145,7 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 // output of a bitcast of a dynamic slice update---since such bitcast may be
 // handled as a no-op.
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const std::vector<const HloInstruction*>& roots);
+    absl::Span<HloInstructionAdaptor const> roots);
 
 Shape GetShape(mlir::Value value);
 

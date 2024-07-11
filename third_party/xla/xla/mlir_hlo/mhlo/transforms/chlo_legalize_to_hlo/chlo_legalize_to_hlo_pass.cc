@@ -87,7 +87,6 @@ struct ChloLegalizeToHloPass
     conversionTarget.addLegalDialect<
         MhloDialect, mlir::arith::ArithDialect, mlir::func::FuncDialect,
         mlir::tensor::TensorDialect, mlir::shape::ShapeDialect>();
-    conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {

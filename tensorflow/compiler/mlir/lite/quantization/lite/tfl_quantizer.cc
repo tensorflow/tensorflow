@@ -22,8 +22,8 @@ limitations under the License.
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
 using llvm::cl::opt;

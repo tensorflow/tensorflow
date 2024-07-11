@@ -484,6 +484,43 @@ ENTRY main {
   EXPECT_THAT(custom_call1, op::Sharding("{devices=[4,4]<=[16]}"));
 }
 
+TEST_F(AutoShardingTest, SPMDShardToFullShapeMultipleValidMeshShapeTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule rng_bit_generator
+
+add.6.clone {
+  y.13 = bf16[]{:T(256)} parameter(1)
+  x.13 = bf16[]{:T(256)} parameter(0)
+  ROOT add.9011 = bf16[]{:T(256)} add(x.13, y.13)
+}
+
+ENTRY main {
+  input.1 = bf16[512,512]{1,0} parameter(0)
+  custom-call.1 = bf16[512,512]{1,0} custom-call(input.1), custom_call_target="Sharding", sharding={devices=[4,4]<=[16]}
+  custom-call.2 = bf16[128,128]{1,0} custom-call(custom-call.1), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  all-reduce.1 = bf16[128,128]{1,0} all-reduce(custom-call.2), channel_id=621, replica_groups={{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}}, use_global_device_ids=true, to_apply=add.6.clone, frontend_attributes={from-cross-replica-sharding="true"}, backend_config={"flag_configs":[],"barrier_config":{"barrier_type":"CUSTOM","id":"9"},"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  reshape.1 = bf16[64,2,128]{2,1,0} reshape(bf16[128,128]{1,0} all-reduce.1)
+  reshape.2 = bf16[64,256]{1,0} reshape(bf16[64,2,128]{2,1,0} reshape.1)
+  custom-call.3 = bf16[512,512]{1,0} custom-call(reshape.2), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,2]<=[16]}
+  ROOT copy.1 = copy(custom-call.3)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
+  option.enable = true;
+  option.try_multiple_mesh_shapes = false;
+  option.device_mesh_shape = {4, 4};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {1.0, 1.0};
+  EXPECT_DEATH(auto status = AutoSharding(option).Run(module.get()),
+               "Auto-sharding cannot infer a single appropriate mesh shape for "
+               "this HLO, and AutoShardingption::try_multiple_mesh_shapes is "
+               "set to false. Please re-run with the option set to true.");
+}
+
 TEST_F(AutoShardingTest, RngBitGeneratorTupleInput) {
   constexpr absl::string_view kHloString = R"(
 HloModule rng_bit_generator

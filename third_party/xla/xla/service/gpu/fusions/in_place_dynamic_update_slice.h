@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_IN_PLACE_DYNAMIC_UPDATE_SLICE_H_
 #define XLA_SERVICE_GPU_FUSIONS_IN_PLACE_DYNAMIC_UPDATE_SLICE_H_
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -64,8 +65,8 @@ class InPlaceDynamicUpdateSliceFusion : public KernelFusionEmitterBase {
  public:
   explicit InPlaceDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis),
-        dus_ops_(
-            GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
+        dus_ops_(GetOutputDefiningDynamicUpdateSlices(
+            analysis.fusion_root_adaptors())) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
@@ -77,7 +78,7 @@ class InPlaceDynamicUpdateSliceFusion : public KernelFusionEmitterBase {
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* indexing_context) const override;
 
  protected:
   absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,

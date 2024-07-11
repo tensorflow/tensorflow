@@ -19,9 +19,9 @@ load(
 )
 load(
     "//xla:xla.bzl",
-    "ORC_JIT_MEMORY_MAPPER_TARGETS",
     "xla_cc_binary",
     "xla_cc_test",
+    "xla_internal",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
@@ -111,6 +111,7 @@ filegroup(
         "runtime_matmul_f64.cc",
         "runtime_matmul_s32.cc",
         "runtime_fork_join.cc",
+        #"runtime_handle_ffi_call.cc", # TODO(b/338344732): Add  "runtime_handle_ffi_call.cc".
     ],
     visibility = internal_visibility([":friends"]),
 )
@@ -138,8 +139,14 @@ filegroup(
         "runtime_fork_join.h",
         "runtime_lightweight_check.h",
         "runtime_matmul.h",
+        #"runtime_handle_ffi_call.h", # TODO(b/338344732): Add  "runtime_handle_ffi_call.h"
     ],
     visibility = internal_visibility([":friends"]),
+)
+
+cc_library(
+    name = "cpu_event",
+    hdrs = ["cpu_event.h"],
 )
 
 cc_library(
@@ -245,19 +252,10 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
-        "//xla/mlir/framework/ir:xla_framework",
-        "//xla/mlir/runtime/ir:rt",
-        "//xla/mlir/runtime/transforms:calling_convention",
-        "//xla/mlir/runtime/transforms:compilation_pipeline_cpu",
-        "//xla/mlir/runtime/transforms:compiler",
-        "//xla/mlir/runtime/transforms:jit_compiler",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:transforms_passes",
-        "//xla/runtime:custom_call_registry",
-        "//xla/runtime:executable",
-        "//xla/runtime:jit_executable",
         "//xla/service:algebraic_simplifier",
         "//xla/service:all_reduce_promotion",
         "//xla/service:all_to_all_decomposer",
@@ -315,6 +313,7 @@ cc_library(
         "//xla/service:optimize_input_output_buffer_alias",
         "//xla/service:qr_expander",
         "//xla/service:reduce_decomposer",
+        "//xla/service:reduce_window_rewriter",
         "//xla/service:reshape_decomposer",
         "//xla/service:reshape_mover",
         "//xla/service:result_caster",
@@ -339,13 +338,6 @@ cc_library(
         "//xla/service:while_loop_invariant_code_motion",
         "//xla/service:while_loop_simplifier",
         "//xla/service:zero_sized_hlo_elimination",
-        "//xla/service/cpu/runtime:collectives",
-        "//xla/service/cpu/runtime:convolution_call",
-        "//xla/service/cpu/runtime:custom_call",
-        "//xla/service/cpu/runtime:fft_call",
-        "//xla/service/cpu/runtime:retain",
-        "//xla/service/cpu/runtime:rng_call",
-        "//xla/service/cpu/runtime:xfeed",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
@@ -438,6 +430,7 @@ cc_library(
         "//xla/service:hlo_profile_printer_data_cc",
         "//xla/service:hlo_proto_cc",
         "//xla/service:llvm_compiler",
+        "//xla/service:reduce_window_rewriter",
         "//xla/stream_executor",
         "//xla/stream_executor/host:host_platform_id",
         "@llvm-project//llvm:Target",
@@ -492,6 +485,7 @@ cc_library(
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_fp16",
+        ":runtime_handle_ffi_call",
         ":runtime_key_value_sort",
         ":runtime_matmul",
         ":runtime_matmul_acl",
@@ -516,7 +510,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@local_tsl//tsl/platform:logging",
-    ] + ORC_JIT_MEMORY_MAPPER_TARGETS,
+    ] + xla_internal(["service/cpu:named_orc_jit_memory_mapper"]),
 )
 
 cc_library(
@@ -571,9 +565,6 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir/runtime/transforms:compiler",
-        "//xla/runtime:executable",
-        "//xla/runtime:jit_executable",
         "//xla/service:buffer_assignment",
         "//xla/service:computation_layout",
         "//xla/service:custom_call_status_internal",
@@ -651,6 +642,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -815,7 +807,6 @@ cc_library(
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
-        "//xla/runtime:execution_engine",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/functional:any_invocable",
@@ -1181,6 +1172,33 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "runtime_handle_ffi_call",
+    srcs = ["runtime_handle_ffi_call.cc"],
+    hdrs = ["runtime_handle_ffi_call.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:ffi_api",
+        "//xla/service:custom_call_status_public_headers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

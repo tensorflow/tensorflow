@@ -69,7 +69,7 @@ class RollOp : public OpKernel {
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
-    gtl::InlinedVector<int32, 4> shift_mod_sum(num_dims, 0);
+    absl::InlinedVector<int32, 4> shift_mod_sum(num_dims, 0);
     for (int i = 0; i < num_shifts; i++) {
       int axis = axis_flat(i);
       if (axis < 0) {
@@ -83,13 +83,13 @@ class RollOp : public OpKernel {
       shift_mod_sum[axis] = (sum % ds + ds) % ds;
     }
     // the size of each dimension
-    gtl::InlinedVector<int32, 4> dim_size(num_dims);
+    absl::InlinedVector<int32, 4> dim_size(num_dims);
     // threshold[i] is the index that the roll starts to wrap back to the front
-    gtl::InlinedVector<int32, 4> threshold(num_dims);
+    absl::InlinedVector<int32, 4> threshold(num_dims);
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
-    gtl::InlinedVector<int64_t, 4> dim_range(num_dims);
+    absl::InlinedVector<int64_t, 4> dim_range(num_dims);
     int64_t dim_size_prod = 1;  // dimension size product
     // inner shift dimension (inner most shifted dimension)
     int64_t isd = 0;
@@ -130,7 +130,7 @@ void DoRoll(const OpKernelContext* context, const int64_t num_elements,
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64_t start, int64_t end) {
     // array of indices for each dimension
-    gtl::InlinedVector<int, 4> indices(num_dims);
+    absl::InlinedVector<int, 4> indices(num_dims);
     int offset = 0;  // the shift along the flattened tensor for current element
     // initialize indices and offset
     for (int i = 0; i < num_dims; i++) {
@@ -216,7 +216,7 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 
     // array of indices for each dimension
     // indices = [i, j, k, l, m, n]
-    gtl::InlinedVector<int, 4> indices(num_dims);
+    absl::InlinedVector<int, 4> indices(num_dims);
     // the offset needed to make all inner non-shifting dimensions become 0
     int64_t remainder_offset = 0;
     // initialize indices

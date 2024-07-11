@@ -222,8 +222,8 @@ SavedModelSignatureDefsToMlirImportLite(
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
     MLIRImportOptions options) {
   MetaGraphDef meta_graph_def;
-  auto status = ReadMetaGraphDefFromSavedModel(std::string(saved_model_dir),
-                                               tags, &meta_graph_def);
+  auto status =
+      ReadMetaGraphDefFromSavedModel(saved_model_dir, tags, &meta_graph_def);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
                << "': " << status;

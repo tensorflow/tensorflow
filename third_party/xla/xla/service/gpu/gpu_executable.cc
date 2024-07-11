@@ -207,7 +207,7 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   se::Stream* main_stream = run_options->stream();
 
   stream_executor::Platform::Id platform_id =
-      main_stream->parent()->platform()->id();
+      main_stream->parent()->GetPlatform()->id();
   if (platform_id == stream_executor::rocm::kROCmPlatformId) {
     auto cc = main_stream->GetRocmComputeCapability();
     std::string stream_arch = cc.gcn_arch_name();
@@ -647,7 +647,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   // The CUDA driver isn't able to load a PTX and a binary which are both empty.
   // It's okay if we skip loading in this case; if the module isn't loaded, all
   // symbol lookups will fail, just as they should for an empty module.
-  if (!(executor->platform()->id() == stream_executor::cuda::kCudaPlatformId &&
+  if (!(executor->GetPlatform()->id() ==
+            stream_executor::cuda::kCudaPlatformId &&
         binary().empty() && text().empty())) {
     TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
@@ -659,8 +660,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   for (const ConstantInfo& info : constants_) {
     absl::StatusOr<stream_executor::DeviceMemoryBase> global_status;
     if (static_cast<bool>(module_handle)) {
-      global_status =
-          executor->GetUntypedSymbol(info.symbol_name, module_handle);
+      global_status = executor->GetSymbol(info.symbol_name, module_handle);
     }
 
     se::DeviceMemoryBase global;

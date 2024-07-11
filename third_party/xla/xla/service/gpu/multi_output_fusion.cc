@@ -505,13 +505,10 @@ absl::StatusOr<bool> GpuMultiOutputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (auto* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
+  for (auto* computation : GetFusibleComputations(*module, execution_threads)) {
     computation_ = computation;
-    TF_ASSIGN_OR_RETURN(bool fusion_changed, DoMultiOutputFusion());
-    if (fusion_changed) {
-      changed = true;
-    }
+    TF_ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
+    changed |= computation_changed;
   }
   return changed;
 }
