@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 #include "tsl/platform/fingerprint.h"
 
