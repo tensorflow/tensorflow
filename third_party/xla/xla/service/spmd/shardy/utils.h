@@ -1,4 +1,4 @@
-/* Copyright 2020 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDONNAY_UTILS_H_
-#define XLA_SERVICE_SPMD_SHARDONNAY_UTILS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_UTILS_H_
+#define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
 
@@ -22,11 +22,11 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace xla {
 namespace sdy {
-
 // Converts `attr` to string.
 // TODO(bartchr): use the one from Shardonnay when its open sourced.
 std::string attributeToString(mlir::Attribute attr);
@@ -63,7 +63,9 @@ void removeFrontendAttribute(mlir::Operation* op,
 void removeFrontendAttribute(mlir::func::FuncOp funcOp,
                              mlir::StringRef attributeName, int64_t argNum);
 
+void loadAllRequiredDialects(mlir::MLIRContext* context);
+
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDONNAY_UTILS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_UTILS_H_
