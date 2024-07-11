@@ -663,8 +663,8 @@ bool AffineExprSimplifier::SimplifyConstraintRangeOnce(AffineExpr* expr,
             range->upper *= -1;
             std::swap(range->lower, range->upper);
           }
-          range->lower = CeilDiv(range->lower, factor);
-          range->upper = FloorDiv(range->upper, factor);
+          range->lower = llvm::divideCeilSigned(range->lower, factor);
+          range->upper = llvm::divideFloorSigned(range->upper, factor);
           *expr = lhs;
           return true;
         }
@@ -879,7 +879,7 @@ Interval Interval::FloorDiv(int64_t rhs) const {
     if (lhs == kMax) {
       return rhs > 0 ? kMax : kMin;
     }
-    return xla::gpu::FloorDiv(lhs, rhs);
+    return llvm::divideFloorSigned(lhs, rhs);
   };
 
   int64_t a = saturate_div(lower, rhs);
@@ -1139,8 +1139,9 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
         case AffineExprKind::FloorDiv: {
           CHECK(rhs.IsPoint()) << "RHS of floor_div must be a constant";
           int64_t d = rhs.lower;
-          int64_t a = FloorDiv(lhs.lower, d);
-          int64_t b = FloorDiv(lhs.upper, d);
+          // TODO(jreiffers): Implement saturating semantics.
+          int64_t a = llvm::divideFloorSigned(lhs.lower, d);
+          int64_t b = llvm::divideFloorSigned(lhs.upper, d);
           return result = {std::min(a, b), std::max(a, b)};
         }
         default:

@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -39,16 +40,6 @@ using mlir::AffineMap;
 using mlir::AffineSymbolExpr;
 
 }  // namespace
-
-int64_t FloorDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor -
-         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
-
-int64_t CeilDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor +
-         (((dividend >= 0) == (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
 
 int64_t EvaluateAffineExpr(AffineExpr expr,
                            absl::Span<int64_t const> dim_values,
@@ -75,7 +66,7 @@ int64_t EvaluateAffineExpr(AffineExpr expr,
     case AffineExprKind::Mul:
       return lhs * rhs;
     case AffineExprKind::FloorDiv:
-      return FloorDiv(lhs, rhs);
+      return llvm::divideFloorSigned(lhs, rhs);
     case AffineExprKind::Mod:
       return lhs % rhs;
     default:
