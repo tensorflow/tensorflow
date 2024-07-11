@@ -27,9 +27,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-int64_t FloorDiv(int64_t dividend, int64_t divisor);
-int64_t CeilDiv(int64_t dividend, int64_t divisor);
-
 // Given an AffineExpr and the values for its dimensions and symbols, evaluates
 // the result.
 int64_t EvaluateAffineExpr(mlir::AffineExpr expr,

@@ -42,6 +42,9 @@ cc_library(
     hdrs = ["embedder.h"],
     deps = [
         ":validation_graph_builder",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@flatbuffers",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core:framework",
@@ -49,11 +52,9 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg_status",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_common",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_header_parser",
+        # TODO(bekzhan): Remove duplicate dependency when only one of the two schemas is used.
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
-        "@flatbuffers",
     ],
 )
 
