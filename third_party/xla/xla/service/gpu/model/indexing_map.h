@@ -154,12 +154,13 @@ inline size_t hash_value(const Interval& range) {
   return llvm::hash_combine(range.lower, range.upper);
 }
 
+class IndexingMap;
+
 // Evaluates lower and upper bounds for expressions given the domain.
-// Not thread safe.
+// Not thread safe. Lifetime is tied to the owning IndexingMap's lifetime.
 class RangeEvaluator {
  public:
-  RangeEvaluator(absl::Span<const Interval> dim_ranges,
-                 absl::Span<const Interval> symbol_ranges,
+  RangeEvaluator(const IndexingMap& indexing_map,
                  mlir::MLIRContext* mlir_context);
 
   // Checks whether an `AffineExpr` always describes a non-negative value.
@@ -176,6 +177,7 @@ class RangeEvaluator {
 
  private:
   mlir::MLIRContext* mlir_context_;
+  const IndexingMap& indexing_map_;
   llvm::DenseMap<mlir::AffineExpr, Interval> expression_ranges_cache_;
 };
 
