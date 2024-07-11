@@ -15,8 +15,19 @@
 #
 # ==============================================================================
 
-# This script runs XLA unit tests on ROCm platform by selecting tests that are
-# tagged with requires-gpu-amd
+# This is a rocm specific script housed under `build_tools/rocm`
+# It runs following distributed tests which require more >= 4 gpus and these tests
+# are skipped currently in the CI due to tag selection. These tests are tagged either as manual or with oss
+# ```
+# //xla/tests:collective_ops_e2e_test_gpu_amd_any
+# //xla/tests:collective_ops_test_gpu_amd_any
+# //xla/tests:replicated_io_feed_test_gpu_amd_any
+# //xla/tools/multihost_hlo_runner:functional_hlo_runner_test_gpu_amd_any
+# //xla/pjrt/distributed:topology_util_test
+# //xla/pjrt/distributed:client_server_test
+# ```
+# Also these tests do not use `--run_under=//tools/ci_build/gpu_build:parallel_gpu_execute` with bazel which
+# locks down individual gpus thus making multi gpu tests impossible to run
 
 set -e
 set -x
@@ -29,6 +40,11 @@ STATUS=$?
 if [ $STATUS -ne 0 ]; then TF_GPU_COUNT=1; else
    TF_GPU_COUNT=$(rocm-smi -i|grep 'Device ID' |grep 'GPU' |wc -l)
 fi
+if [[ $TF_GPU_COUNT -lt 4 ]]; then
+    echo "Found only ${TF_GPU_COUNT} gpus, multi-gpu tests need atleast 4 gpus."
+    exit
+fi
+
 TF_TESTS_PER_GPU=1
 N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
 
@@ -50,7 +66,7 @@ fi
 export PYTHON_BIN_PATH=`which python3`
 export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
-TAGS_FILTER="gpu,requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-no_rocm"
+TAGS_FILTER="-requires-gpu-nvidia,-oss_excluded,-oss_serial"
 UNSUPPORTED_GPU_TAGS="$(echo -requires-gpu-sm{60,70,80,86,89,90}{,-only})"
 TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
 
@@ -69,5 +85,9 @@ bazel \
     --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
-    --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute \
-    -- //xla/...
+    -- //xla/tests:collective_ops_e2e_test_gpu_amd_any \
+       //xla/tests:collective_ops_test_gpu_amd_any \
+       //xla/tests:replicated_io_feed_test_gpu_amd_any \
+       //xla/tools/multihost_hlo_runner:functional_hlo_runner_test_gpu_amd_any \
+       //xla/pjrt/distributed:topology_util_test \
+       //xla/pjrt/distributed:client_server_test
