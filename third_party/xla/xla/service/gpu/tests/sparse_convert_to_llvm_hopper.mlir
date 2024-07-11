@@ -17,6 +17,7 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
     // CHECK-COUNT-2: llvm.load %[[_:.*]] : !llvm.ptr<3> -> i16
     %meta_alloc = triton_gpu.local_alloc %meta {allocation.offset = 12288 : i32} : (tensor<64x4xi16, #blocked0>) -> !tt.memdesc<64x4xi16, #shared0, #triton_gpu.shared_memory>
     %meta_reg = triton_gpu.local_load %meta_alloc : !tt.memdesc<64x4xi16, #shared0, #triton_gpu.shared_memory> -> tensor<64x4xi16, #dot_meta_enc>
+    // CHECK-NOT: gpu.thread_id
     // CHECK: nvgpu.wgmma_fence
     // CHECK-COUNT-2: nvgpu.wgmma_sp %[[A:.*]] meta %[[M:.*]], %[[B:.*]], %[[C:.*]] {
     // CHECK-DAG: layoutA = 0 : i32

@@ -47,6 +47,9 @@ limitations under the License.
 #include "nvidia/include/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/PTXAsmFormat.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -837,13 +840,15 @@ class SparseDotOpToLLVMPass
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ConversionTarget target(*context);
-    target.addLegalDialect<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
+    target.addLegalDialect<LLVM::LLVMDialect, NVVM::NVVMDialect,
                            arith::ArithDialect, triton::nvgpu::NVGPUDialect>();
     target.addIllegalOp<triton::gpu::SparseDotOp>();
+    target.addIllegalDialect<mlir::gpu::GPUDialect>();
     mlir::LowerToLLVMOptions option(context);
     TritonGPUToLLVMTypeConverter typeConverter(context, option);
-    auto pattern = std::make_unique<SparseDotOpConversion>(typeConverter);
-    RewritePatternSet patterns(context, std::move(pattern));
+    RewritePatternSet patterns(context);
+    patterns.add<SparseDotOpConversion>(typeConverter);
+    populateGpuToNVVMConversionPatterns(typeConverter, patterns);
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
       return signalPassFailure();
