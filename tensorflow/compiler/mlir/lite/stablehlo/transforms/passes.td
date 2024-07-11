@@ -137,3 +137,17 @@ def LegalizeChloToTflPass
   ];
 }
 
+def PrepareHloPass
+    : Pass<"prepare-hlo", "mlir::func::FuncOp"> {
+  let summary = "Prepare mhlo for mhlo->tfl legalization.";
+  let constructor = "mlir::odml::CreatePrepareHloPass()";
+  let description = [{
+    Apply generic mhlo->mhlo rewrites to make the graph more amenable for
+    legalizing to tfl.
+  }];
+  let dependentDialects = [
+    "mlir::mhlo::MhloDialect",
+    "func::FuncDialect",
+  ];
+}
+

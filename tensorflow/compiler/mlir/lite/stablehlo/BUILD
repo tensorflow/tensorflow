@@ -654,6 +654,30 @@ cc_library(
 )
 
 cc_library(
+    name = "prepare_hlo",
+    srcs = [
+        "transforms/prepare_hlo.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "tfl_legalize_chlo",
     srcs = [
         "transforms/tfl_legalize_chlo.cc",
@@ -878,6 +902,7 @@ tf_cc_binary(
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":passes_inc_gen",
+        ":prepare_hlo",
         ":tf_legalize_hlo",
         ":tf_stablehlo",
         ":tfl_legalize_chlo",
