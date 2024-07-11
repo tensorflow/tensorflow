@@ -17,7 +17,10 @@ limitations under the License.
 #include <vector>
 
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/tools/graph_transforms/transform_graph.h"
