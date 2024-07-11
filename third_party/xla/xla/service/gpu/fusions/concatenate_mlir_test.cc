@@ -67,7 +67,7 @@ TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
     bl_z in [0, 1)
     chunk_id in [0, 1)
     unroll_id in [0, 1)
-    th_x + bl_x * 128 in [0, 400)
+    bl_x * 128 + th_x in [0, 400)
   )";
   auto thread_id_to_output_indexing_0 = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);

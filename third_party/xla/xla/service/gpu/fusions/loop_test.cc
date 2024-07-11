@@ -101,7 +101,7 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   bl_z in [0, 1)
   chunk_id in [0, 12)
   unroll_id in [0, 4)
-  th_x + bl_x * 128 + chunk_id * 129024 in [0, 1500000)
+  bl_x * 128 + chunk_id * 129024 + th_x in [0, 1500000)
 )"));
 }
 
@@ -195,7 +195,7 @@ TEST_F(LoopTest, Broadcast) {
                 bl_z in [0, 1)
                 chunk_id in [0, 1)
                 unroll_id in [0, 1)
-                th_x + bl_x * 128 in [0, 6000)
+                bl_x * 128 + th_x in [0, 6000)
             )"));
   auto thread_id_to_input_indexing =
       loop_fusion->ComputeThreadIdToInputIndexing(
@@ -213,7 +213,7 @@ TEST_F(LoopTest, Broadcast) {
                 bl_z in [0, 1)
                 chunk_id in [0, 1)
                 unroll_id in [0, 1)
-                th_x + bl_x * 128 in [0, 6000)
+                bl_x * 128 + th_x in [0, 6000)
             )"));
 }
 
