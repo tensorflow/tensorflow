@@ -154,6 +154,11 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
 
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis) {
+  return ComputeLoopFusionConfig(analysis, GetElementShape(analysis));
+}
+
+LaunchDimensionsConfig ComputeLoopFusionConfig(
+    const HloFusionAnalysis& analysis, const Shape& element_shape) {
   int unroll_factor = 1;
   // Unrolling is good to read large inputs with small elements
   // due to vector loads, but increases the register pressure when one
@@ -161,7 +166,6 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   // Therefore for fusions with small outputs prefer to use one thread
   // per output element = no unroll.
   // Call 'small' fusions that use less threads than the GPU has.
-  const auto& element_shape = GetElementShape(analysis);
   int64_t num_elements = ShapeUtil::ElementsIn(element_shape);
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
