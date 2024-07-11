@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/nccl/collective_communicator.h"
 
-#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 #if TENSORFLOW_USE_NCCL && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 

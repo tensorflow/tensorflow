@@ -353,6 +353,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_canonicalize_inc_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -369,6 +370,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:mutex",
     ] + [":tensorflow_" + target["name"] + "_inc_gen" for target in tf_ops_category_list],
 )
 
@@ -390,9 +392,12 @@ cc_library(
         ":attribute_utils",
         ":serialize_mlir_module_utils",
         ":side_effect_analysis_util",
+        ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
+        ":tensorflow_ops_a_m_inc_gen",
+        ":tensorflow_ops_n_z_inc_gen",
         ":tensorflow_remaining_ops_inc_gen",
         ":tensorflow_side_effects",
         ":tensorflow_structs",
@@ -404,6 +409,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_canonicalize_inc_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:CallOpInterfaces",
@@ -418,6 +424,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
@@ -453,6 +460,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:inline_function_utils",
         "//tensorflow/core/common_runtime:lower_function_call_inline_policy",
+        "//tensorflow/core/ir/types:Dialect",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeOpInterface",
@@ -468,6 +476,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
@@ -556,6 +565,8 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithDialect",
@@ -589,6 +600,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -1477,7 +1489,6 @@ cc_library(
     hdrs = ["ir/tf_arith_ops_folder.h"],
     deps = [
         ":tensorflow_types",
-        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
@@ -1502,6 +1513,8 @@ cc_library(
         ":tensorflow_structs",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1523,7 +1536,6 @@ cc_library(
     srcs = ["ir/tf_ops_tensor_helper.cc"],
     hdrs = ["ir/tf_ops_tensor_helper.h"],
     deps = [
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
