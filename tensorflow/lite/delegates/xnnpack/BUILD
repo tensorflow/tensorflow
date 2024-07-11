@@ -245,7 +245,6 @@ cc_library(
         ":tflite_with_xnnpack_transient_indirection_buffer",
         ":weight_cache",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:logger",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:subgraph",
@@ -260,8 +259,8 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
-        "@XNNPACK//:experiments_config",
-        "@XNNPACK//:logging",
+        "@eigen_archive//:eigen3",
+        "@pthreadpool",
     ],
 )
 
@@ -299,8 +298,8 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
-        "@XNNPACK//:experiments_config",
-        "@XNNPACK//:logging",
+        "@eigen_archive//:eigen3",
+        "@pthreadpool",
     ],
 )
 
@@ -1470,6 +1469,23 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "gelu_test",
+    srcs = ["gelu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
