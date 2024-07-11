@@ -178,16 +178,6 @@ class AffineExprSimplifier {
   std::tuple<AffineExpr /*a*/, int64_t /*gcd*/, AffineExpr /*b*/> SplitSumByGcd(
       AffineExpr sum);
 
-  mlir::AffineMap SimplifyWithMlir(mlir::AffineMap map) {
-    llvm::SmallVector<mlir::AffineExpr, 8> exprs;
-    for (auto e : map.getResults()) {
-      exprs.push_back(
-          SimplifyWithMlir(e, map.getNumDims(), map.getNumSymbols()));
-    }
-    return mlir::AffineMap::get(map.getNumDims(), map.getNumSymbols(), exprs,
-                                map.getContext());
-  }
-
   RangeEvaluator* range_evaluator_;
 };
 
@@ -603,27 +593,29 @@ AffineExpr AffineExprSimplifier::Simplify(AffineExpr expr) {
 }
 
 AffineMap AffineExprSimplifier::Simplify(AffineMap affine_map) {
-  // TODO(jreiffers): This calls Simplify way too often for multi-result maps.
-  // Rewrite this to get rid of the recursion.
-  affine_map = SimplifyWithMlir(affine_map);
   SmallVector<AffineExpr, 4> results;
   results.reserve(affine_map.getNumResults());
-  bool nothing_changed = true;
   for (AffineExpr expr : affine_map.getResults()) {
-    AffineExpr simplified = Simplify(expr);
-    nothing_changed &= simplified == expr;
-    results.push_back(simplified);
+    // Always do one round of simplification.
+    AffineExpr result = Simplify(SimplifyWithMlir(expr, affine_map.getNumDims(),
+                                                  affine_map.getNumSymbols()));
+
+    // As long as the MLIR simplifier still finds changes, we rerun our
+    // simplifier.
+    AffineExpr mlir_simplified, previous;
+    do {
+      previous = result;
+      mlir_simplified = SimplifyWithMlir(result, affine_map.getNumDims(),
+                                         affine_map.getNumSymbols());
+      if (mlir_simplified != result) {
+        result = Simplify(mlir_simplified);
+      }
+    } while (previous != result);
+
+    results.push_back(CanonicalizeOrder(result));
   }
-  if (nothing_changed) {
-    for (auto& result : results) {
-      result = CanonicalizeOrder(result);
-    }
-    return AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
-                          results, affine_map.getContext());
-  }
-  return Simplify(AffineMap::get(affine_map.getNumDims(),
-                                 affine_map.getNumSymbols(), results,
-                                 affine_map.getContext()));
+  return AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
+                        results, affine_map.getContext());
 }
 
 bool AffineExprSimplifier::SimplifyAddConstraint(AffineExpr* add,
