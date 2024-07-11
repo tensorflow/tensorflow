@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/thunk_emitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -60,6 +61,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/runtime/topk_thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_module_config.h"
@@ -300,6 +302,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kFft:
       return EmitFftThunk(instruction);
+
+    case HloOpcode::kTopK:
+      return Unimplemented("TopK is not yet supported by XLA:CPU ThunkEmitter");
 
     case HloOpcode::kCustomCall:
       return EmitCustomCallThunk(instruction);
@@ -764,6 +769,39 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
   }
 }
 
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKThunk(
+    const HloCustomCallInstruction* custom_call) {
+  const auto& result_shape = custom_call->shape();
+  const HloInstruction* input = custom_call->operand(0);
+  TF_RET_CHECK(input->shape().element_type() == F32)
+      << "TopK expects F32 data type for input";
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
+      result_shape.tuple_shapes(0).layout()))
+      << custom_call->ToString();
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
+      result_shape.tuple_shapes(1).layout()))
+      << custom_call->ToString();
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(input->shape().layout()))
+      << custom_call->ToString();
+
+  // Deduce parameters from the result shape and operand shape
+  const int64_t input_size = input->shape().dimensions().back();
+  const bool has_batch = result_shape.tuple_shapes(0).dimensions_size() == 2;
+  const int64_t batch_size =
+      has_batch ? result_shape.tuple_shapes(0).dimensions(0) : 1;
+  const int64_t k = result_shape.tuple_shapes(0).dimensions().back();
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice values_slice,
+                      GetAllocationSlice(input));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice indices_slice,
+                      GetAllocationSlice(custom_call, {0}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      GetAllocationSlice(custom_call, {1}));
+  return ThunkSequence::Of<TopKThunk>(ThunkInfo(custom_call), values_slice,
+                                      indices_slice, output_slice, batch_size,
+                                      input_size, k);
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReplicaIdThunk(
     const HloInstruction* instruction) {
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice replica_id_buffer,
@@ -853,13 +891,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   // TODO(penporn): Support these existing targets.
   auto custom_call_target = custom_call->custom_call_target();
   if (custom_call_target == "PadToStatic" ||
-      custom_call_target == "SliceToDynamic" || custom_call_target == "TopK" ||
+      custom_call_target == "SliceToDynamic" ||
       custom_call_target == "__onednn$matmul" ||
       custom_call_target == "__onednn$softmax" ||
       custom_call_target == "__onednn$layernorm" ||
       custom_call_target == "__onednn$matmul_reorder") {
     return Unimplemented("Custom call target %s is not implemented.",
                          custom_call_target);
+  }
+  if (custom_call_target == "TopK") {
+    return EmitTopKThunk(custom_call);
   }
 
   // Check the API version.

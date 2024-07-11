@@ -115,8 +115,6 @@ class HloCostAnalysisCosts : public BaseCosts {
   float ComputeSeconds(const HloInstruction& instruction) override;
 
  private:
-  HloCostAnalysisCosts() = default;
-
   const HloCostAnalysis& hlo_cost_analysis_;
 };
 
