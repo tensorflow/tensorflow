@@ -5607,8 +5607,8 @@ CHECK:          }
 // Test PreventMmaV3LoopUnrolling pass in order to keep compile time low.
 // See b/344841434.
 TEST_F(TritonGemmTest, TestPreventMMAV3LoopUnrolling) {
-  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
-    GTEST_SKIP() << "There are no wgmma instructions pre-Hopper";
+  if (GetCudaComputeCapability().major != se::CudaComputeCapability::HOPPER) {
+    GTEST_SKIP() << "wgmma instruction is only available on Hopper";
   }
   const std::string hlo_text = R"(
 gemm_fusion_dot {

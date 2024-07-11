@@ -788,8 +788,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantF64s) {
   static_assert(kScaledMax * kScaleFactor == kMax);
   constexpr float kUlpOfScaledMax = GoldbergUlp(kScaledMax);
   constexpr float kNextAfterScaledMax = kScaledMax + kUlpOfScaledMax;
-  static_assert(kNextAfterScaledMax * kScaleFactor ==
-                std::numeric_limits<float>::infinity());
+  static_assert(kNextAfterScaledMax * static_cast<double>(kScaleFactor) >
+                std::numeric_limits<float>::max());
   static_assert(kNextAfterScaledMax * 2 <
                 std::numeric_limits<float>::infinity());
   XlaBuilder builder(TestName());

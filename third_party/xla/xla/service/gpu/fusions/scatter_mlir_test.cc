@@ -95,7 +95,7 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
     bl_z in [0, 1)
     chunk_id in [0, 1)
     unroll_id in [0, 1)
-    th_x + bl_x * 128 in [0, 8400)
+    bl_x * 128 + th_x in [0, 8400)
   )";
   EXPECT_THAT(
       fusion
@@ -135,7 +135,7 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
     chunk_id in [0, 1)
     unroll_id in [0, 1)
     index_id in [0, 1)
-    th_x + bl_x * 128 in [0, 8400)
+    bl_x * 128 + th_x in [0, 8400)
   )";
   EXPECT_THAT(
       fusion

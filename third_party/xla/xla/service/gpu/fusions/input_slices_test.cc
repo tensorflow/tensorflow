@@ -90,7 +90,7 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
     bl_z in [0, 1)
     chunk_id in [0, 1)
     unroll_id in [0, 1)
-    th_x + bl_x * 128 in [0, 30)
+    bl_x * 128 + th_x in [0, 30)
   )"));
 }
 

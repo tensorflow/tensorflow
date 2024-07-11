@@ -67,7 +67,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   bl_z in [0, 1)
   chunk_id in [0, 12)
   unroll_id in [0, 4)
-  th_x + bl_x * 128 + chunk_id * 129024 in [0, 1500000)
+  bl_x * 128 + chunk_id * 129024 + th_x in [0, 1500000)
 )"));
 }
 
@@ -161,7 +161,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
                 bl_z in [0, 1)
                 chunk_id in [0, 1)
                 unroll_id in [0, 1)
-                th_x + bl_x * 128 in [0, 6000)
+                bl_x * 128 + th_x in [0, 6000)
             )"));
   auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
@@ -178,7 +178,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
                 bl_z in [0, 1)
                 chunk_id in [0, 1)
                 unroll_id in [0, 1)
-                th_x + bl_x * 128 in [0, 6000)
+                bl_x * 128 + th_x in [0, 6000)
             )"));
 }
 
