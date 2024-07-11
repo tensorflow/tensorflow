@@ -22,7 +22,9 @@ limitations under the License.
 
 // needed for rocblas_gemm_ex_get_solutions* functionality
 #define ROCBLAS_BETA_FEATURES_API
+
 #include "rocm/include/rocblas/rocblas.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/port.h"
@@ -273,13 +275,23 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_destroy_handle)                        \
   __macro(rocblas_get_stream)                            \
   __macro(rocblas_set_stream)                            \
-  __macro(rocblas_set_atomics_mode)                      \
-  __macro(rocblas_get_version_string)                    \
-  __macro(rocblas_get_version_string_size)
+  __macro(rocblas_set_atomics_mode)
 
 // clang-format on
 
 FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
+
+#if TF_ROCM_VERSION >= 60200
+
+// clang-format off
+#define FOREACH_ROCBLAS_API_62(__macro)            \
+  __macro(rocblas_get_version_string_size)         \
+  __macro(rocblas_get_version_string)
+// clang-format on
+
+FOREACH_ROCBLAS_API_62(ROCBLAS_API_WRAPPER)
+
+#endif  // TF_ROCM_VERSION >= 60200
 
 }  // namespace wrap
 }  // namespace stream_executor
