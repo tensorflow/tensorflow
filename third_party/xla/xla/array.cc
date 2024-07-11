@@ -18,6 +18,8 @@ limitations under the License.
 #include <complex>
 #include <random>
 
+#include "xla/types.h"
+
 namespace xla {
 
 // Specialization of FillRandom() method for complex64 type. Uses real part of

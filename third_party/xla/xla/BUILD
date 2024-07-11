@@ -751,6 +751,9 @@ xla_cc_test(
     deps = [
         ":array",
         ":test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -774,6 +777,7 @@ xla_cc_test(
     deps = [
         ":array2d",
         ":test",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -819,9 +823,12 @@ xla_cc_test(
     name = "array4d_test",
     srcs = ["array4d_test.cc"],
     deps = [
+        ":array2d",
         ":array4d",
         ":test",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -1233,6 +1240,7 @@ xla_cc_test(
     srcs = ["autotune_result_wrapper_test.cc"],
     deps = [
         ":autotune_result_wrapper",
+        ":autotune_results_proto_cc",
         ":autotuning_proto_cc",
         ":test",
         ":test_helpers",
