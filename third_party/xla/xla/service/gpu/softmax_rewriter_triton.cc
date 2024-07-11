@@ -1,8 +1,11 @@
 /* Copyright 2023 The OpenXLA Authors.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -12,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/softmax_rewriter_triton.h"
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <utility>
@@ -54,7 +58,8 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
-namespace xla::gpu {
+namespace xla {
+namespace gpu {
 namespace {
 
 using hlo_query::IsBroadcastOfParameter;
@@ -465,17 +470,13 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamondChain(
   return can_tile;
 }
 
-}  // anonymous namespace
-
-DiamondMatchingDecision
-SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
-    HloInstruction* instr) const {
+DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
+    HloInstruction* instr, const se::GpuComputeCapability& cc) {
   if (!instr->IsElementwiseBinary()) {
     return "Root is not elementwise binary.";
   }
 
-  if (!IsTritonSupportedInstruction(*instr,
-                                    device_info_.gpu_compute_capability())) {
+  if (!IsTritonSupportedInstruction(*instr, cc)) {
     return "Root is not supported for Triton instruction.";
   }
 
@@ -484,12 +485,12 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   HloInstruction* reduce;
 
   if (!TrivialEdge(&broadcast, instr->mutable_operand(1), HloOpcode::kBroadcast,
-                   device_info_.gpu_compute_capability())) {
+                   cc)) {
     return "Could not find a trivial connection from root to a broadcast.";
   }
 
   if (!TrivialEdge(&reduce, broadcast->mutable_operand(0), HloOpcode::kReduce,
-                   device_info_.gpu_compute_capability())) {
+                   cc)) {
     return "Could not find a trivial connection from matched broadcast to a "
            "reduction.";
   }
@@ -499,8 +500,7 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Broadcast or reduce have non-default layouts.";
   }
 
-  if (CodegenDecision is_supported = IsTritonSupportedInstruction(
-          *reduce, device_info_.gpu_compute_capability());
+  if (CodegenDecision is_supported = IsTritonSupportedInstruction(*reduce, cc);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
     return is_supported;
@@ -517,7 +517,7 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Broadcast is not along the reduction dimension.";
   }
 
-  while (IsTriviallyFusible(producer, device_info_.gpu_compute_capability())) {
+  while (IsTriviallyFusible(producer, cc)) {
     producer = ChooseOperandForFusionProcessing(producer);
   }
 
@@ -526,7 +526,7 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   }
 
   if (!IsTriviallyConnectedProducerOf(producer, instr->mutable_operand(0),
-                                      device_info_.gpu_compute_capability())) {
+                                      cc)) {
     return "Producer is not trivially connected.";
   }
 
@@ -543,10 +543,13 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   return producer;
 }
 
-absl::StatusOr<std::vector<DiamondChainDescriptor>>
-SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
+// Returns a vector containing all the single diamonds in the parameter module.
+// The diamonds are returned in def-before-use order, and grouped by
+// computation.
+absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
     HloModule& module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    const se::GpuComputeCapability& cc) {
   std::vector<DiamondChainDescriptor> matched_diamonds;
 
   for (HloComputation* comp :
@@ -555,7 +558,8 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
       continue;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
-      auto producer = MatchesTritonCompatibleClosedReductionDiamond(instr);
+      auto producer =
+          MatchesTritonCompatibleClosedReductionDiamondImpl(instr, cc);
       if (std::holds_alternative<HloInstruction*>(producer)) {
         DiamondChainDescriptor diamond_chain{
             /*root=*/instr, /*producer=*/std::get<HloInstruction*>(producer)};
@@ -581,41 +585,64 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
     }
   }
 
+  return std::move(matched_diamonds);
+}
+
+// Returns the size of the reduction dimension of the input diamond.
+int64_t GetReductionDimensionSizeForDiamond(
+    const DiamondChainDescriptor& diamond_chain) {
+  HloInstruction* diamond_root = diamond_chain.root;
+  HloInstruction* instr = diamond_root->mutable_operand(1);
+  while (instr->opcode() != HloOpcode::kReduce) {
+    instr = ChooseOperandForFusionProcessing(instr);
+  }
+
+  int operand_rank = instr->operand(0)->shape().rank();
+  CHECK_EQ(instr->dimensions().size(), 1);
+  CHECK_EQ(instr->dimensions(0), operand_rank - 1);
+  return instr->operand(0)->shape().dimensions(operand_rank - 1);
+}
+
+// Returns a pointer to the last user of `instr` that is trivially fusible.
+HloInstruction* GetLastTriviallyFusibleUser(
+    HloInstruction* instr, const se::GpuComputeCapability& cc) {
+  while (HasOneUse(instr) && !instr->IsRoot() &&
+         IsTriviallyFusible(instr->users().front(), cc)) {
+    instr = instr->users().front();
+  }
+
+  // We do not care about the number of users for the last instruction of the
+  // fusion, so attempt to fuse one more instruction with this relaxed
+  // restriction.
+  if (HasOneUse(instr) && !instr->IsRoot() &&
+      IsTriviallyFusible(
+          instr->users().front(), cc,
+          /*num_allowed_users=*/instr->users().front()->user_count())) {
+    instr = instr->users().front();
+  }
+  return instr;
+}
+
+}  // anonymous namespace
+
+DiamondMatchingDecision
+SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
+    HloInstruction* instr) const {
+  return MatchesTritonCompatibleClosedReductionDiamondImpl(
+      instr, device_info_.gpu_compute_capability());
+}
+
+absl::StatusOr<std::vector<DiamondChainDescriptor>>
+SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
+    HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+  const se::GpuComputeCapability& cc = device_info_.gpu_compute_capability();
+  TF_ASSIGN_OR_RETURN(std::vector<DiamondChainDescriptor> matched_diamonds,
+                      FindAllFusibleDiamonds(module, execution_threads, cc));
+
   if (matched_diamonds.empty()) {
     return std::vector<DiamondChainDescriptor>();
   }
-
-  auto reduction_dimension_size_from_diamond_root =
-      [](HloInstruction* diamond_root) {
-        HloInstruction* instr = diamond_root->mutable_operand(1);
-        while (instr->opcode() != HloOpcode::kReduce) {
-          instr = ChooseOperandForFusionProcessing(instr);
-        }
-
-        int operand_rank = instr->operand(0)->shape().rank();
-        CHECK_EQ(instr->dimensions().size(), 1);
-        CHECK_EQ(instr->dimensions(0), operand_rank - 1);
-        return instr->operand(0)->shape().dimensions(operand_rank - 1);
-      };
-
-  auto last_trivially_fusible_user = [&](HloInstruction* instr) {
-    while (HasOneUse(instr) && !instr->IsRoot() &&
-           IsTriviallyFusible(instr->users().front(),
-                              device_info_.gpu_compute_capability())) {
-      instr = instr->users().front();
-    }
-
-    // We do not care about the number of users for the last instruction of the
-    // fusion, so attempt to fuse one more instruction with this relaxed
-    // restriction.
-    if (HasOneUse(instr) && !instr->IsRoot() &&
-        IsTriviallyFusible(
-            instr->users().front(), device_info_.gpu_compute_capability(),
-            /*num_allowed_users=*/instr->users().front()->user_count())) {
-      instr = instr->users().front();
-    }
-    return instr;
-  };
 
   // If we matched several diamonds, it may be possible for some of them to be
   // fused together. This is the case if the following conditions hold:
@@ -636,23 +663,22 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
   std::vector<DiamondChainDescriptor> diamond_chains;
   diamond_chains.reserve(matched_diamonds.size());
 
-  HloInstruction* current_fusion_producer = FindFirstNonFusibleDiamondProducer(
-      matched_diamonds.front().producer, device_info_.gpu_compute_capability());
+  HloInstruction* current_fusion_producer =
+      FindFirstNonFusibleDiamondProducer(matched_diamonds.front().producer, cc);
   int current_reduce_dimension_size =
-      reduction_dimension_size_from_diamond_root(matched_diamonds.front().root);
+      GetReductionDimensionSizeForDiamond(matched_diamonds.front());
 
   for (int diamond_idx = 1; diamond_idx < matched_diamonds.size();
        ++diamond_idx) {
-    auto [diamond_root, diamond_producer] = matched_diamonds[diamond_idx];
+    HloInstruction* diamond_producer = matched_diamonds[diamond_idx].producer;
     HloInstruction* previous_diamond_root =
         matched_diamonds[diamond_idx - 1].root;
 
     HloInstruction* first_non_fusible_diamond_producer =
-        FindFirstNonFusibleDiamondProducer(
-            diamond_producer, device_info_.gpu_compute_capability());
+        FindFirstNonFusibleDiamondProducer(diamond_producer, cc);
 
     int diamond_reduce_dimension_size =
-        reduction_dimension_size_from_diamond_root(diamond_root);
+        GetReductionDimensionSizeForDiamond(matched_diamonds[diamond_idx]);
 
     if (first_non_fusible_diamond_producer == previous_diamond_root &&  // 1
         ((first_non_fusible_diamond_producer != diamond_producer &&
@@ -673,7 +699,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
     // trivially fusible user of diamond chain n to be the first non fusible
     // diamond producer of diamond chain n+1.
     diamond_chains.push_back(DiamondChainDescriptor{
-        last_trivially_fusible_user(previous_diamond_root),
+        GetLastTriviallyFusibleUser(previous_diamond_root, cc),
         current_fusion_producer,
     });
 
@@ -683,7 +709,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
 
   // The last diamond chain is still open; close it.
   diamond_chains.push_back(DiamondChainDescriptor{
-      last_trivially_fusible_user(matched_diamonds.back().root),
+      GetLastTriviallyFusibleUser(matched_diamonds.back().root, cc),
       current_fusion_producer});
 
   // We filter out the diamond chains that cannot be tiled correctly using
@@ -730,4 +756,6 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
   }
   return true;
 }
-}  // namespace xla::gpu
+
+}  // namespace gpu
+}  // namespace xla
