@@ -20,7 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <limits>  // IWYU pragma: keep
+#include <limits>
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -49,17 +50,6 @@ limitations under the License.
 #include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-
-#ifdef __has_builtin
-#define XLA_GPU_MODEL_HAS_BUILTIN(x) __has_builtin(x)
-#else
-#define XLA_GPU_MODEL_HAS_BUILTIN(x) 0
-#endif
-
-#if !XLA_GPU_MODEL_HAS_BUILTIN(__builtin_add_overflow) || \
-    !XLA_GPU_MODEL_HAS_BUILTIN(__builtin_mul_overflow)
-#include "absl/numeric/int128.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -844,19 +834,8 @@ Interval Interval::operator+(const Interval& rhs) const {
   constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
   constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
 
-  auto add_overflow = [](int64_t a, int64_t b, int64_t* out) {
-#if XLA_GPU_MODEL_HAS_BUILTIN(__builtin_add_overflow)
-    return __builtin_add_overflow(a, b, out);
-#else
-    auto sum = static_cast<absl::int128>(a) + static_cast<absl::int128>(b);
-    bool overflow = sum < kMin || sum > kMax;
-    *out = static_cast<int64_t>(sum);
-    return overflow;
-#endif
-  };
-
-  bool lower_overflow = add_overflow(lower, rhs.lower, &out_lower);
-  bool upper_overflow = add_overflow(upper, rhs.upper, &out_upper);
+  bool lower_overflow = llvm::AddOverflow(lower, rhs.lower, out_lower);
+  bool upper_overflow = llvm::AddOverflow(upper, rhs.upper, out_upper);
 
   if (lower_overflow || lower == kMin || rhs.lower == kMin) {
     if (lower < 0 || rhs.lower < 0) {
@@ -883,17 +862,6 @@ Interval Interval::operator*(const Interval& rhs) const {
   constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
   constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
 
-  auto mul_overflow = [](int64_t a, int64_t b, int64_t* out) {
-#if XLA_GPU_MODEL_HAS_BUILTIN(__builtin_mul_overflow)
-    return __builtin_mul_overflow(a, b, out);
-#else
-    auto sum = static_cast<absl::int128>(a) * static_cast<absl::int128>(b);
-    auto overflow = sum < kMin || sum > kMax;
-    *out = static_cast<int64_t>(sum);
-    return overflow;
-#endif
-  };
-
   auto mul = [&](int64_t p) {
     int64_t l = lower;
     int64_t u = upper;
@@ -902,13 +870,13 @@ Interval Interval::operator*(const Interval& rhs) const {
     }
     int64_t out_lower;
     int64_t out_upper;
-    if (mul_overflow(l, p, &out_lower) ||
+    if (llvm::MulOverflow(l, p, out_lower) ||
         // -1 * max is min + 1, and doesn't overflow. We consider max a
         // special sentinel value, so the result should be min (= saturated).
         (p == -1 && l == kMax)) {
       out_lower = kMin;
     }
-    if (mul_overflow(u, p, &out_upper)) {
+    if (llvm::MulOverflow(u, p, out_upper)) {
       out_upper = kMax;
     }
     return Interval{out_lower, out_upper};
