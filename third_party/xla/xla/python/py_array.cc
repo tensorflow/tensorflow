@@ -966,7 +966,17 @@ absl::Status PyArray::Delete() {
   }
   py_arrays().clear();
   if (ifrt_array() != nullptr) {
-    TF_RETURN_IF_ERROR(ifrt_array()->Delete().Await());
+    // We do not wait for the deletion to complete here.
+    //
+    // (1) Skipping blocking does not affect the correctness of deletion as long
+    // as the runtime preserves dispatch ordering of deletion w.r.t. other
+    // operations.
+    //
+    // (2) Synchronously waiting for the deletion to complete is very expensive
+    // when the deletion can return a status only after the underlying physical
+    // buffer has been deleted or a request must be processed via RPC,
+    // especially as this deletion is done per array.
+    ifrt_array()->Delete();
     SetIfrtArray(tsl::RCReference<ifrt::Array>());
   }
   return absl::OkStatus();
