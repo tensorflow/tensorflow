@@ -194,9 +194,12 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
 
   auto lhs_simplified = SimplifyOnce(mod.getLHS());
   auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
-  // a % b where b is always larger than a?
-  if (0 <= lhs.lower && lhs.upper < rhs.lower) {
-    return lhs_simplified;
+
+  // Offset to add to lhs so the lower bound is between 0 and m-1.
+  int64_t offset = llvm::divideFloorSigned(lhs.lower, m) * -m;
+  // If there's no chance of wraparound, we can replace the mod with an add.
+  if (lhs.upper + offset < m) {
+    return lhs_simplified + offset;
   }
 
   // Rewrite `(c * a) % ab` to `(c % b) * a`.
@@ -519,6 +522,22 @@ mlir::AffineExpr AffineExprSimplifier::RewriteSum(
         mods[mod_i].first = nullptr;
         break;
       }
+    }
+
+    // (x - (x floordiv div_c) * div_c) * b = (x mod a) * b.
+    // We do this even if there is no x in the sum.
+    for (int div_i = 0; div_i < divs.size(); ++div_i) {
+      auto [div, div_mul] = divs[div_i];
+      if (!div || div_mul > 0) continue;
+      auto div_c = GetConstantRhs(div, AffineExprKind::FloorDiv);
+      if (!div_c || *div_c < 0 || (div_mul % *div_c)) continue;
+
+      int64_t b = div_mul / *div_c;
+      auto x = GetLhs(div);
+      VisitSummands(x, [&](AffineExpr summand) { summands[summand] += b; });
+      mods.push_back({x % *div_c, -b});
+      // Erase the div.
+      divs[div_i].first = nullptr;
     }
   }
 

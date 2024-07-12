@@ -639,6 +639,80 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SumOrderRegression2) {
   EXPECT_FALSE(indexing_map.Simplify());
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_ModIsSub) {
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0) -> (d0 mod 42)", &mlir_context_), {{53, 71}}, {},
+      {});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                                                 (d0) -> (d0 - 42)
+                                                 domain:
+                                                 d0 in [53, 72)
+                                               )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_ModIsAdd) {
+  IndexingMap indexing_map(ParseAffineMap("(d0) -> (d0 mod 5)", &mlir_context_),
+                           {{-5, -1}}, {}, {});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                                                 (d0) -> (d0 + 5)
+                                                 domain:
+                                                 d0 in [-5, 0)
+                                               )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_ModIsNotAdd) {
+  IndexingMap indexing_map1(
+      ParseAffineMap("(d0) -> (d0 mod 5)", &mlir_context_), {{-4, 0}}, {}, {});
+  EXPECT_FALSE(indexing_map1.Simplify());
+  IndexingMap indexing_map2(
+      ParseAffineMap("(d0) -> (d0 mod 5)", &mlir_context_), {{-6, -1}}, {}, {});
+  EXPECT_FALSE(indexing_map2.Simplify());
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_SubIsMod) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0)[s0] -> (d0 - (s0 floordiv 3) * 3 + s0)",
+                     &mlir_context_),
+      {2}, {4});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                                                 (d0)[s0] -> (d0 + s0 mod 3)
+                                                 domain:
+                                                 d0 in [0, 2)
+                                                 s0 in [0, 4)
+                                               )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModMultiplied) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0)[s0] -> (d0 - (s0 floordiv 3) * 12 + s0 * 7)",
+                     &mlir_context_),
+      {2}, {4});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                (d0)[s0] -> (d0 + (s0 mod 3) * 4 + s0 * 3)
+                domain:
+                d0 in [0, 2)
+                s0 in [0, 4)
+              )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModSum) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0)[s0] ->  (1 + d0 - ((s0 + 1) floordiv 3) * 3 + s0)",
+                     &mlir_context_),
+      {2}, {4});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                (d0)[s0] -> (d0 + (s0 + 1) mod 3)
+                domain:
+                d0 in [0, 2)
+                s0 in [0, 4)
+              )"));
+}
+
 TEST_F(IndexingMapTest,
        AffineMapSimplification_DivsAndModsIfSmallerThanDivisor) {
   auto serialized_map = "(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)";
