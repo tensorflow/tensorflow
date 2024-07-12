@@ -648,12 +648,12 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
 
 // Fixes layout changing copies in between on the path to users.
 absl::StatusOr<bool> FixupInterveningCopies(
-    const std::vector<HloInstruction*>& copy_to_host_annotations,
+    const std::vector<HloInstruction*>& starting_instructions,
     const CallGraph* call_graph) {
   absl::flat_hash_set<HloInstruction*> processed_annotations;
   std::vector<HloInstruction*> annotations_to_remove;
   bool changed = false;
-  for (HloInstruction* instruction : copy_to_host_annotations) {
+  for (HloInstruction* instruction : starting_instructions) {
     if (processed_annotations.contains(instruction)) {
       continue;
     }
@@ -670,6 +670,38 @@ absl::StatusOr<bool> FixupInterveningCopies(
 }
 
 }  // namespace
+
+std::vector<HloInstruction*>
+HostOffloadLegalize::FindStartingInstructionsOfHostMemoryOffload(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+  std::vector<HloInstruction*> starting_instructions;
+  // Iterate over all instructions and look for XLA host offload annotations.
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kParameter &&
+          instruction->parent()->IsEntryComputation()) {
+        Shape param_shape =
+            module->entry_computation_layout()
+                .parameter_layout(instruction->parameter_number())
+                .shape();
+        // TODO(mingyao): Add support for tuple parameter.
+        if (param_shape.has_layout() &&
+            param_shape.layout().memory_space() == kHostMemorySpaceColor) {
+          starting_instructions.push_back(instruction);
+          continue;
+        }
+      }
+
+      if (instruction->IsCustomCall(
+              host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+        starting_instructions.push_back(instruction);
+      }
+    }
+  }
+  return starting_instructions;
+}
 
 absl::StatusOr<bool> HostOffloadLegalize::Run(
     HloModule* module,
@@ -688,38 +720,15 @@ absl::StatusOr<bool> HostOffloadLegalize::Run(
   if (!after_layout_) {
     return changed;
   }
+
+  // Look for layout changing copies which happen during host memory offload. If
+  // any are found, move them outside of the offload section.
+  std::vector<HloInstruction*> starting_instructions =
+      FindStartingInstructionsOfHostMemoryOffload(module, execution_threads);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  std::vector<HloInstruction*> copy_to_host_annotations;
-
-  // Iterate over all instructions and look for XLA host offload annotations.
-  for (HloComputation* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kParameter &&
-          instruction->parent()->IsEntryComputation()) {
-        Shape param_shape =
-            module->entry_computation_layout()
-                .parameter_layout(instruction->parameter_number())
-                .shape();
-        // TODO(mingyao): Add support for tuple parameter.
-        if (param_shape.has_layout() &&
-            param_shape.layout().memory_space() == kHostMemorySpaceColor) {
-          copy_to_host_annotations.push_back(instruction);
-          continue;
-        }
-      }
-
-      if (instruction->IsCustomCall(
-              host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
-        copy_to_host_annotations.push_back(instruction);
-      }
-    }
-  }
-  // Fixup layout changing copies that are in between memory offloaded sections.
-  // Move them before the data is moved to the host.
   TF_ASSIGN_OR_RETURN(
       bool changed_intervening_copies,
-      FixupInterveningCopies(copy_to_host_annotations, call_graph.get()));
+      FixupInterveningCopies(starting_instructions, call_graph.get()));
   changed |= changed_intervening_copies;
 
   return changed;
