@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/simulator.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -32,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace memory_space_assignment {
 
-float RuntimeSimulator::ComputeEstimatedElapsedTime(
+float RuntimeSimulator::SimulateElapsedTimeWithoutAsyncCopies(
     const HloLiveRange& hlo_live_range, const AllocationSequence& allocations) {
   absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
       outputs_in_alternate_memory_map;
@@ -86,5 +88,104 @@ float RuntimeSimulator::ComputeEstimatedElapsedTime(
   }
   return total_elapsed;
 }
+
+float RuntimeSimulator::SimulateAsyncCopyTransfer(
+    float bytes_to_transfer,
+    std::queue<const HloInstruction*>& memory_access_queue_to_share_bandwidth,
+    absl::flat_hash_map<const HloInstruction*, float>&
+        remaining_size_of_buffers,
+    float default_memory_bytes_per_second) {
+  float remaining_bytes = bytes_to_transfer;
+  float elapsed_time = 0.0;
+  while (!memory_access_queue_to_share_bandwidth.empty() &&
+         remaining_bytes > 0) {
+    const HloInstruction* front_async_copy =
+        memory_access_queue_to_share_bandwidth.front();
+    float smaller_buffer_size = std::min(
+        remaining_bytes, remaining_size_of_buffers.at(front_async_copy));
+    // The bandwidth is shared, so the request can only use half of the
+    // bandwidth.
+    elapsed_time +=
+        smaller_buffer_size / (0.5 * default_memory_bytes_per_second);
+    remaining_bytes -= smaller_buffer_size;
+    remaining_size_of_buffers.at(front_async_copy) -= smaller_buffer_size;
+    if (remaining_size_of_buffers.at(front_async_copy) <= 0) {
+      remaining_size_of_buffers.erase(front_async_copy);
+      memory_access_queue_to_share_bandwidth.pop();
+    }
+  }
+  if (remaining_bytes > 0) {
+    // The queue that shares the bandwidth is drained, we can now use the full
+    // bandwidth.
+    elapsed_time += remaining_bytes / default_memory_bytes_per_second;
+  }
+  return elapsed_time;
+};
+
+void RuntimeSimulator::ProcessAsyncCopyInTimeWindow(
+    float time_windows, std::queue<const HloInstruction*>& read_queue,
+    std::queue<const HloInstruction*>& write_queue,
+    absl::flat_hash_map<const HloInstruction*, float>&
+        remaining_size_of_buffers,
+    float default_memory_bytes_per_second) {
+  float elapsed_time = time_windows;
+  while (!read_queue.empty() || !write_queue.empty()) {
+    if (elapsed_time <= 0) {
+      // Run out of time, return
+      return;
+    }
+    if (!read_queue.empty() && !write_queue.empty()) {
+      // Both queues are not empty, share the bandwidth between them.
+      const HloInstruction* front_read_default_async_copy = read_queue.front();
+      const HloInstruction* front_write_default_async_copy =
+          write_queue.front();
+      float smaller_buffer_size = std::min(
+          remaining_size_of_buffers.at(front_read_default_async_copy),
+          remaining_size_of_buffers.at(front_write_default_async_copy));
+      float required_time =
+          smaller_buffer_size / (0.5 * default_memory_bytes_per_second);
+      if (required_time > elapsed_time) {
+        // The required time is larger than the remaining
+        // computation time, use the remaining computation time as
+        // the required time to transfer a part of the buffer.
+        required_time = elapsed_time;
+        smaller_buffer_size =
+            required_time * (0.5 * default_memory_bytes_per_second);
+      }
+      elapsed_time -= required_time;
+      remaining_size_of_buffers.at(front_read_default_async_copy) -=
+          smaller_buffer_size;
+      remaining_size_of_buffers.at(front_write_default_async_copy) -=
+          smaller_buffer_size;
+      if (remaining_size_of_buffers.at(front_read_default_async_copy) <= 0) {
+        remaining_size_of_buffers.erase(front_read_default_async_copy);
+        read_queue.pop();
+      }
+      if (remaining_size_of_buffers.at(front_write_default_async_copy) <= 0) {
+        remaining_size_of_buffers.erase(front_write_default_async_copy);
+        write_queue.pop();
+      }
+    } else {
+      // One of the queue is not empty, execute the async copy from
+      // that queue with full bandwidth.
+      std::queue<const HloInstruction*>& queue =
+          read_queue.empty() ? write_queue : read_queue;
+      const HloInstruction* front_async_copy = queue.front();
+      float required_time = remaining_size_of_buffers.at(front_async_copy) /
+                            default_memory_bytes_per_second;
+      if (required_time > elapsed_time) {
+        required_time = elapsed_time;
+      }
+      elapsed_time -= required_time;
+      remaining_size_of_buffers.at(front_async_copy) -=
+          required_time * default_memory_bytes_per_second;
+      if (remaining_size_of_buffers.at(front_async_copy) <= 0) {
+        remaining_size_of_buffers.erase(queue.front());
+        queue.pop();
+      }
+    }
+  }
+}
+
 }  // namespace memory_space_assignment
 }  // namespace xla

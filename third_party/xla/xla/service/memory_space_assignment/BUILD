@@ -349,6 +349,7 @@ xla_cc_test(
         "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_cost_analysis",
         "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
