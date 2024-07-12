@@ -4258,7 +4258,10 @@ class Subgraph {
         TfLiteAffineQuantization* filter_params =
             reinterpret_cast<TfLiteAffineQuantization*>(
                 filter_tensor.quantization.params);
-        if (filter_params->scale->size != output_channels) {
+        xnn_datatype filter_datatype = GetXNNPackDatatype(
+            logging_context, filter_tensor, node->inputs->data[1]);
+        if (filter_datatype == xnn_datatype_qint8) {
+          filter_datatype = xnn_datatype_qcint8;
           TfLiteFloatArrayFree(filter_params->scale);
           filter_params->scale = TfLiteFloatArrayCreate(output_channels);
           std::fill_n(filter_params->scale->data, output_channels,
@@ -4297,8 +4300,6 @@ class Subgraph {
         std::vector<size_t> filter_dims(
             &filter_tensor.dims->data[0],
             &filter_tensor.dims->data[NumDimensions(&filter_tensor)]);
-        const xnn_datatype filter_datatype = GetXNNPackDatatype(
-            logging_context, filter_tensor, node->inputs->data[1]);
         int32_t zero_point_value = filter_params->zero_point->data[0];
         uint32_t kernel_id = XNN_INVALID_VALUE_ID;
         status = xnn_define_channelwise_quantized_tensor_value_v2(
