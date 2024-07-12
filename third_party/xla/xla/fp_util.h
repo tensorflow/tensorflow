@@ -16,13 +16,11 @@ limitations under the License.
 #define XLA_FP_UTIL_H_
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <utility>
 
-#include "absl/base/macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
 
