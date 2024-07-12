@@ -74,6 +74,7 @@ xla_cc_test(
         ":semaphore",
         "//xla:test",
         "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test_main",
     ],
