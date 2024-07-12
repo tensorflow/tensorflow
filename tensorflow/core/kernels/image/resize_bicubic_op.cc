@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/image_ops.cc
+#include "Eigen/src/Core/util/Macros.h"  // from @eigen_archive
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tsl/platform/macros.h"
 #define EIGEN_USE_THREADS
 
 #include <math.h>
@@ -28,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/image_resizer_state.h"
 
 namespace tensorflow {

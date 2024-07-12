@@ -18,6 +18,7 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
+#include "Eigen/src/Core/util/Macros.h"  // from @eigen_archive
 #define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
