@@ -2543,6 +2543,38 @@ absl::Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
+  bool operands_same_sharding = true;
+  for (int64_t i = 1; i < hlo->operand_count(); ++i) {
+    if (hlo->operand(i)->sharding() != hlo->operand(0)->sharding()) {
+      operands_same_sharding = false;
+      break;
+    }
+  }
+
+  if (hlo->operand_count() > 1 && operands_same_sharding) {
+    // Do the element-wise operation. Then reshard the result to the specified
+    // sharding.
+    std::vector<HloInstruction*> original_operands;
+    for (HloInstruction* operand : hlo->operands()) {
+      original_operands.push_back(GetPartitionedHlo(operand).hlo());
+    }
+
+    HloInstruction* result_with_operand_sharding =
+        b_.AddInstruction(hlo->CloneWithNewOperands(
+            MakePartitionedShape(hlo->shape(), hlo->operand(0)->sharding()),
+            original_operands));
+    result_with_operand_sharding->set_sharding(hlo->operand(0)->sharding());
+    SetPartitionedHlo(hlo, [&] {
+      return PartitionedHlo(result_with_operand_sharding, hlo->shape(),
+                            MakePartitioningState())
+          .Reshard(hlo->sharding())
+          .hlo();
+    });
+    return absl::OkStatus();
+  }
+
+  // Reshard the operands to the result's sharding. Then do the element-wise
+  // operation.
   std::vector<HloInstruction*> new_operands;
   for (HloInstruction* operand : hlo->operands()) {
     new_operands.push_back(
