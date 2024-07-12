@@ -115,11 +115,11 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
     %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
     dim_labels=b01f_01io->b01f
     %constant = bf16[3] constant({1.0, 2.0, 3.0})
-    %tuple = (bf16[1,256,256,32], bf16[3])tuple(%convolution, %constant)
-    ROOT %gte = bf16[1,256,256,32] get-tuple-element(%tuple), index=0
+    %tuple = (bf16[1,256,256,32], bf16[3]) tuple(%convolution, %constant)
+    %gte = bf16[1,256,256,32] get-tuple-element(%tuple), index=0
     %gte2 = bf16[3]get-tuple-element(%tuple), index=1
     %init = bf16[] constant(1.0)
-    %reduce-window = bf16[3] reduce-window(bf16[3] %gte2, bf16[] %init),
+    ROOT %reduce-window = bf16[3] reduce-window(bf16[3] %gte2, bf16[] %init),
       window={size=1}, to_apply=%adder
   }
 
@@ -270,6 +270,121 @@ TEST_F(SpaceToBatchConverterTest, PropagateThroughDot) {
       SpaceToBatchController{true, true, true, true, 8});
   // Test that we do not start space-to-batch on conv->dot chains.
   ASSERT_TRUE(converter.Run(module.get()).value());
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnTrivialReduce) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_1.37 (Arg_0.38: f32[], Arg_1.39: f32[]) -> f32[] {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = f32[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    ROOT %reduce.41 = f32[7,160,400]{2,1,0} reduce(%c, %constant.5), dimensions={3}, to_apply=%region_1.37
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0)->operand(0)->operand(0)->operand(0),
+              op::Reduce());
+  auto new_reduce = root->operand(0)->operand(0)->operand(0)->operand(0);
+  // Make sure we propagated on the reduce with the larger batch size.
+  EXPECT_EQ(new_reduce->shape().dimensions(1),
+            // batch*number_of_splits
+            7 * 8);
+}
+
+TEST_F(SpaceToBatchConverterTest, DoNotPropagateOnTupleReduce) {
+  std::string hlo_string = R"(
+  HloModule module
+
+%minmax_func.2717 {
+  %lhs_value.2718 = f32[] parameter(0)
+  %rhs_value.2720 = f32[] parameter(2)
+  %compare.2722 = pred[] compare(f32[] %lhs_value.2718, f32[] %rhs_value.2720), direction=GE
+  %select.2723 = f32[] select(pred[] %compare.2722, f32[] %lhs_value.2718, f32[] %rhs_value.2720)
+  %compare.2725 = pred[] compare(f32[] %lhs_value.2718, f32[] %rhs_value.2720), direction=EQ
+  %lhs_index.2719 = f32[] parameter(1)
+  %rhs_index.2721 = f32[] parameter(3)
+  %minimum.2726 = f32[] minimum(f32[] %lhs_index.2719, f32[] %rhs_index.2721)
+  %select.2724 = f32[] select(pred[] %compare.2722, f32[] %lhs_index.2719, f32[] %rhs_index.2721)
+  %select.2727 = f32[] select(pred[] %compare.2725, f32[] %minimum.2726, f32[] %select.2724)
+  ROOT %tuple.4 = (f32[], f32[]) tuple(f32[] %select.2723, f32[] %select.2727)
+ }
+ 
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = f32[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    %constant.6 = f32[] constant(1)
+    ROOT %reduce.36 = (f32[7,160,400]{2,1,0}, f32[7,160,400]{2,1,0}) reduce(%c, %c,
+    %constant.5, %constant.6), dimensions={3}, to_apply=%minmax_func.2717
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Reduce());
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnBroadcast) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_1.37 (Arg_0.38: f32[], Arg_1.39: f32[]) -> f32[] {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = bf16[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    %convert.29 = f32[7,160,400,32]{3,2,1,0} convert(%c)
+    %reduce.41 = f32[7,160,400]{2,1,0} reduce(%convert.29, %constant.5), dimensions={3}, to_apply=%region_1.37
+    %broadcast.51 = f32[7,160,400,32]{3,2,1,0} broadcast(f32[7,160,400]{2,1,0} %reduce.41), dimensions={0,1,2}
+    ROOT %subtract.52 = f32[7,160,400,32]{3,2,1,0} subtract(%c, %broadcast.51)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+  auto computation = module->entry_computation();
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  // This means we'd propagated through the subtract.
+  EXPECT_THAT(root->operand(0)->operand(0)->operand(0)->operand(0),
+              op::Subtract());
 }
 
 }  // namespace
