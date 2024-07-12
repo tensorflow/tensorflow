@@ -162,13 +162,14 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
 // The group key encapsulates all of the properties which must match for it to
 // be possible to combine the instructions.
 using GroupKey = std::tuple<std::optional<int64_t>, int64_t, bool, bool,
-                            std::vector<std::vector<int64_t>>>;
+                            PrimitiveType, std::vector<std::vector<int64_t>>>;
 
 // Returns a key that will be equal for instructions that might be combined, or
 // different if not.
 std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
                                    const HloDomainMap& domain_map,
-                                   bool combine_by_dim) {
+                                   bool combine_by_dim,
+                                   bool combine_different_dtypes = true) {
   if (instruction->opcode() != HloOpcode::kAllGather) {
     return std::nullopt;
   }
@@ -184,8 +185,15 @@ std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
 
   // Ignore dimension (set to -1) if we are not grouping by dimension.
   int64_t ag_dim_key = combine_by_dim ? ag->all_gather_dimension() : -1;
-  return GroupKey{ag_dim_key, domain_map.GetDomainMetadataId(ag),
-                  ag->channel_id().has_value(), ag->use_global_device_ids(),
+  // Combine different dtypes if combine_different_types_ is true
+  PrimitiveType data_type = combine_different_dtypes
+                                ? PRIMITIVE_TYPE_INVALID
+                                : ag->shape().element_type();
+  return GroupKey{ag_dim_key,
+                  domain_map.GetDomainMetadataId(ag),
+                  ag->channel_id().has_value(),
+                  ag->use_global_device_ids(),
+                  data_type,
                   replica_groups};
 }
 
@@ -193,10 +201,12 @@ std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
 
 AllGatherCombiner::AllGatherCombiner(int64_t combine_threshold_in_bytes,
                                      int64_t combine_threshold_count,
-                                     bool combine_by_dim)
+                                     bool combine_by_dim,
+                                     bool combine_different_dtypes)
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count),
-      combine_by_dim_(combine_by_dim) {}
+      combine_by_dim_(combine_by_dim),
+      combine_different_dtypes_(combine_different_dtypes) {}
 
 absl::StatusOr<bool> AllGatherCombiner::Run(
     HloModule* module,
@@ -222,7 +232,8 @@ absl::StatusOr<bool> AllGatherCombiner::Run(
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&](const HloInstruction* instruction) {
-      return CombineKey(instruction, *domain_map, combine_by_dim_);
+      return CombineKey(instruction, *domain_map, combine_by_dim_,
+                        combine_different_dtypes_);
     };
     auto combine_fn =
         [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
