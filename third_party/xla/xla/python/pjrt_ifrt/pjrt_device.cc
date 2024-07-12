@@ -45,7 +45,7 @@ PjRtDevice::PjRtDevice(
     xla::PjRtDevice* pjrt_device)
     : client_(client),
       id_(id),
-      attributes_(FromPjRtDeviceAttributeMap(std::move(attributes))),
+      attributes_(FromPjRtAttributeMap(std::move(attributes))),
       kind_(std::move(kind)),
       to_string_(std::move(to_string)),
       debug_string_(std::move(debug_string)),

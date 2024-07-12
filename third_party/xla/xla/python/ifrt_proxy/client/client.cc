@@ -92,7 +92,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
     } else {
       TF_ASSIGN_OR_RETURN(auto attributes,
                           AttributeMap::FromProto(d.attributes()));
-      pjrt_device_attributes = ToPjRtDeviceAttributeMap(std::move(attributes));
+      pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
     }
 
     DeviceDescription desc(d.id(), init_response.process_index(),

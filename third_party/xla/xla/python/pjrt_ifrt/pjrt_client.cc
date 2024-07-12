@@ -109,7 +109,7 @@ AttributeMap MakeAttributeMap(xla::PjRtClient* pjrt_client) {
       attributes.insert({key, value});
     }
   }
-  return FromPjRtDeviceAttributeMap(std::move(attributes));
+  return FromPjRtAttributeMap(std::move(attributes));
 }
 
 void SerializePjRtDeviceAttributes(

@@ -31,7 +31,7 @@ namespace proxy {
 Device::Device(DeviceDescription description, int local_device_id,
                int local_hardware_id, bool is_addressable)
     : description_(std::move(description)),
-      attributes_(FromPjRtDeviceAttributeMap(description_.Attributes())),
+      attributes_(FromPjRtAttributeMap(description_.Attributes())),
       local_device_id_(local_device_id),
       local_hardware_id_(local_hardware_id),
       is_addressable_(is_addressable) {}

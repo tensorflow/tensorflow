@@ -37,7 +37,7 @@ char PjRtTopology::ID = 0;
 PjRtTopology::PjRtTopology(
     std::shared_ptr<const xla::PjRtTopologyDescription> description)
     : description_(std::move(description)),
-      attributes_(FromPjRtDeviceAttributeMap(description_->Attributes())) {}
+      attributes_(FromPjRtAttributeMap(description_->Attributes())) {}
 
 absl::string_view PjRtTopology::platform_name() const {
   return description_->platform_name();

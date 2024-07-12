@@ -84,8 +84,7 @@ class CompileOnlyDevice
  public:
   explicit CompileOnlyDevice(const PjRtDeviceDescription* description)
       : description_(std::move(description)),
-        attributes_(
-            ifrt::FromPjRtDeviceAttributeMap(description_->Attributes())) {}
+        attributes_(ifrt::FromPjRtAttributeMap(description_->Attributes())) {}
 
   const PjRtDeviceDescription& description() const { return *description_; }
 
