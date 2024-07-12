@@ -18,7 +18,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/resource/lookup_interfaces.h"
+#include "tensorflow/lite/experimental/resource/lookup_util.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace resource {
