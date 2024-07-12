@@ -183,6 +183,7 @@ xla_cc_test(
     srcs = ["index_domain_test.cc"],
     deps = [
         ":ifrt",
+        "@com_google_absl//absl/hash:hash_testing",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -193,6 +194,7 @@ xla_cc_test(
     srcs = ["index_test.cc"],
     deps = [
         ":ifrt",
+        "@com_google_absl//absl/hash:hash_testing",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -215,6 +217,7 @@ xla_cc_test(
     deps = [
         ":ifrt",
         ":shape_proto_cc",
+        "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",

@@ -54,6 +54,10 @@ class IndexDomain {
   bool operator!=(const IndexDomain& other) const {
     return origin_ != other.origin_ || shape_ != other.shape_;
   }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const IndexDomain& index_domain);
+
   IndexDomain operator+(const Index& offset) const {
     return IndexDomain(origin_ + offset, shape_);
   }
@@ -76,6 +80,11 @@ class IndexDomain {
 };
 
 std::ostream& operator<<(std::ostream& os, const IndexDomain& index_domain);
+
+template <typename H>
+H AbslHashValue(H h, const IndexDomain& index_domain) {
+  return H::combine(std::move(h), index_domain.origin_, index_domain.shape_);
+}
 
 }  // namespace ifrt
 }  // namespace xla
