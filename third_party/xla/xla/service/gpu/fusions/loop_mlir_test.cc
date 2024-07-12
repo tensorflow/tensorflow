@@ -535,6 +535,39 @@ TEST_F(MlirLoopFusionTest, DynamicUpdateSlice) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirLoopFusionTest, NotPred) {
+  constexpr auto kHloString = R"(
+    %fused_computation {
+      p0 = s8[1000] parameter(0)
+      cvt = pred[1000] convert(p0)
+      ROOT not = pred[1000] not(cvt)
+    }
+
+    ENTRY main {
+      p0 = s8[1000] parameter(0)
+      ROOT %fusion = pred[1000] fusion(p0), kind=kLoop, calls=%fused_computation
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, MulPred) {
+  constexpr auto kHloString = R"(
+    %fused_computation {
+      p0 = s8[1000] parameter(0)
+      p1 = s8[1000] parameter(1)
+      cvt0 = pred[1000] convert(p0)
+      cvt1 = pred[1000] convert(p1)
+      ROOT mul = pred[1000] multiply(cvt0, cvt1)
+    }
+
+    ENTRY main {
+      p0 = s8[1000] parameter(0)
+      p1 = s8[1000] parameter(1)
+      ROOT %fusion = pred[1000] fusion(p0, p1), kind=kLoop, calls=%fused_computation
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

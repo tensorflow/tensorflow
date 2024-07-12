@@ -692,18 +692,18 @@ TEST_F(ElementalHloToMlirTest, DotWithPredType) {
     })",
                    R"(
     // CHECK:      @main_dot(
-    // CHECK-SAME: %[[A:.*]]: tensor<3x4xi1>, %[[B:.*]]: tensor<4x5xi1>,
+    // CHECK-SAME: %[[A:.*]]: tensor<3x4xi8>, %[[B:.*]]: tensor<4x5xi8>,
     // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
     // CHECK-SAME: %[[J:.*]]: index {xla.range = [0 : index, 4 : index]})
-    // CHECK-SAME: -> i1
+    // CHECK-SAME: -> i8
     // CHECK-SAME: {
-    // CHECK-DAG:    %[[ACCUM_INIT:.*]] = arith.constant false
+    // CHECK-DAG:    %[[ACCUM_INIT:.*]] = arith.constant 0 : i8
     // CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
     // CHECK-DAG:    %[[C1:.*]] = arith.constant 1 : index
     // CHECK-DAG:    %[[C2:.*]] = arith.constant 2 : index
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4 : index
     // CHECK:        %[[FOR0:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
-    // CHECK-SAME:   iter_args(%[[ACCUM:.*]] = %[[ACCUM_INIT]]) -> (i1) {
+    // CHECK-SAME:   iter_args(%[[ACCUM:.*]] = %[[ACCUM_INIT]]) -> (i8) {
     // CHECK-DAG:      %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
     // CHECK-DAG:      %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
     // CHECK-DAG:      %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
@@ -711,18 +711,18 @@ TEST_F(ElementalHloToMlirTest, DotWithPredType) {
     // CHECK-DAG:      %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
     // CHECK-DAG:      %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
     // CHECK-DAG:      %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
-    // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (i1) {
-    // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xi1>
-    // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xi1>
-    // CHECK-DAG:        %[[AND0:.*]] = arith.andi %[[A_I_K]], %[[B_K_J]] : i1
-    // CHECK-DAG:        %[[OR0:.*]] = arith.ori %[[ACCUM]], %[[AND0]] : i1
-    // CHECK-DAG:        scf.yield %[[OR0]] : i1
+    // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (i8) {
+    // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xi8>
+    // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xi8>
+    // CHECK-DAG:        %[[AND0:.*]] = arith.andi %[[A_I_K]], %[[B_K_J]] : i8
+    // CHECK-DAG:        %[[OR0:.*]] = arith.ori %[[ACCUM]], %[[AND0]] : i8
+    // CHECK-DAG:        scf.yield %[[OR0]] : i8
     // CHECK:          } else {
-    // CHECK:            scf.yield %[[ACCUM]] : i1
+    // CHECK:            scf.yield %[[ACCUM]] : i8
     // CHECK:          }
-    // CHECK:          scf.yield %[[IF0]] : i1
+    // CHECK:          scf.yield %[[IF0]] : i8
     // CHECK:        }
-    // CHECK:        return %[[FOR0]] : i1
+    // CHECK:        return %[[FOR0]] : i8
     // CHECK:      }
   )"));
 }
@@ -1245,6 +1245,22 @@ TEST_F(ElementalHloToMlirTest, ConvertToUnsigned) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ConvertS8ToPred) {
+  // Both s8 and pred are represented as i8, but a conversion is still needed.
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = s8[4] parameter(0)
+      ROOT convert = pred[4] convert(p0)
+    })",
+                   R"(
+    // CHECK:      @main_convert(
+    // CHECK:       %[[C0:.*]] = arith.constant 0 : i8
+    // CHECK:       %[[CMP:.*]] = arith.cmpi ne, %{{.*}}, %[[C0]] : i8
+    // CHECK:       %[[RET:.*]] = arith.extui %[[CMP]] : i1 to i8
+    // CHECK:       return %[[RET]] : i8
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, ConvertToUnsigned64Saturation) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -1378,6 +1394,15 @@ TEST_F(ElementalHloToMlirTest, TensorConstant) {
     // CHECK:        %[[RET:.*]] = arith.addf %[[A]], %[[B]]
     // CHECK:        return %[[RET]]
   })"));
+}
+
+TEST_F(ElementalHloToMlirTest, TensorConstantPred) {
+  TF_EXPECT_OK(Run(
+      R"(
+    ENTRY main {
+      ROOT c1 = pred[2] constant({1, 0})
+    })",
+      "// CHECK: arith.constant dense<[1, 0]> : tensor<2xi8>"));
 }
 
 TEST_F(ElementalHloToMlirTest, DynamicSlice) {

@@ -33,6 +33,9 @@ mlir::Type TensorShapeToMlirType(const Shape& shape, mlir::OpBuilder& b);
 // Converts an XLA primitive type to an MLIR type. All integers are converted to
 // signless integers.
 mlir::Type PrimitiveTypeToMlirType(PrimitiveType type, mlir::OpBuilder& b);
+// Converts an XLA primitive type to an MLIR type, preserving the sign.
+mlir::Type PrimitiveTypeToMlirTypeWithSign(PrimitiveType type,
+                                           mlir::OpBuilder& b);
 
 // If `shape` is a tuple, returns the converted tuple shapes. Otherwise returns
 // just the converted shape. Nested tuples are not supported.
