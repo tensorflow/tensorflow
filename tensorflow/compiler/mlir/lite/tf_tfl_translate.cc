@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -96,8 +97,8 @@ int main(int argc, char **argv) {
     // back to do it properly in the future
     mlir::DialectRegistry registry;
     RegisterAllTensorFlowDialects(registry);
-    registry
-        .insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>();
+    registry.insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
+                    mlir::TFL::TensorFlowLiteDialect>();
     context->appendDialectRegistry(registry);
   }
 
