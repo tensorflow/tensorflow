@@ -852,3 +852,38 @@ module {
 // CHECK-DAG:       vector.insert %[[A1]], {{.*}}[0]
 // CHECK-DAG:       vector.insert %[[A2]], {{.*}}[3]
 // CHECK-DAG:       vector.insert %[[A3]], {{.*}}[2]
+
+// -----
+
+module {
+  func.func @insert_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
+                       %v: i1) -> tensor<43xi1> {
+    %c16 = arith.constant 16 : index
+    %out = tensor.insert %v into %arg0[%c16] : tensor<43xi1>
+    func.return %out : tensor<43xi1>
+  }
+}
+
+// CHECK-LABEL: @insert_i1
+// CHECK-SAME:      (%[[ARG0:.*]]: !llvm.ptr
+// CHECK-SAME:       %[[V:.*]]: i1)
+// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][16]
+// CHECK-DAG:       %[[V_EXT:.*]] = arith.extui %[[V]]
+// CHECK:           llvm.store %[[V_EXT]], %[[PTR]]
+
+// -----
+
+module {
+  func.func @extract_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> i1 {
+    %c16 = arith.constant 16 : index
+    %ret = tensor.extract %arg0[%c16] : tensor<43xi1>
+    func.return %ret : i1
+  }
+}
+
+// CHECK-LABEL: @extract_i1
+// CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : i8
+// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] : !llvm.ptr -> i8
+// CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
+// CHECK:           return %[[CAST]] : i1

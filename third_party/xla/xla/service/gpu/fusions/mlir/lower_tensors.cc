@@ -239,12 +239,18 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto linear_index =
         GetLinearIndex(op.getTensor(), op.getIndices(), rewriter);
-    Type element_type = op.getTensor().getType().getElementType();
+    mlir::ShapedType source_type = op.getTensor().getType();
+    Type element_type = source_type.getElementType();
     Value is_low_nibble = nullptr;
     if (element_type == rewriter.getI4Type()) {
       element_type = rewriter.getI8Type();
       std::tie(linear_index, is_low_nibble) =
           GetI4IndexAndNibble(linear_index, b);
+    }
+
+    // LLVM tends to choke on i1 values, so we convert to i8 explicitly.
+    if (element_type == rewriter.getI1Type()) {
+      element_type = rewriter.getI8Type();
     }
 
     auto gep = CreateGep(op.getTensor(), linear_index, rewriter, element_type);
@@ -259,6 +265,11 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
       load = b.create<mlir::arith::TruncIOp>(
           op.getType(),
           b.create<mlir::arith::SelectOp>(is_low_nibble, load, high_value));
+    }
+
+    if (source_type.getElementType() == rewriter.getI1Type()) {
+      Value zero = b.create<mlir::arith::ConstantIntOp>(0, element_type);
+      load = b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, load, zero);
     }
 
     rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
@@ -346,13 +357,18 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
     auto linear_index = GetLinearIndex(tensor_dest, op.getIndices(), rewriter);
-    auto element_type = tensor_dest.getType().getElementType();
+    auto dest_type = tensor_dest.getType();
+    auto element_type = dest_type.getElementType();
     Value is_low_nibble = nullptr;
 
     if (element_type == rewriter.getI4Type()) {
       element_type = rewriter.getI8Type();
       std::tie(linear_index, is_low_nibble) =
           GetI4IndexAndNibble(linear_index, b);
+    }
+    // LLVM tends to choke on i1 values, so we convert to i8 explicitly.
+    if (element_type == rewriter.getI1Type()) {
+      element_type = rewriter.getI8Type();
     }
 
     auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
@@ -374,6 +390,10 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
               scalar_value, b.create<mlir::arith::ConstantIntOp>(4, ty)));
       scalar_value = b.create<mlir::arith::SelectOp>(is_low_nibble, low_updated,
                                                      high_updated);
+    }
+    if (dest_type.getElementType() == rewriter.getI1Type()) {
+      scalar_value =
+          b.create<mlir::arith::ExtUIOp>(rewriter.getI8Type(), scalar_value);
     }
 
     mlir::LLVMTypeConverter converter(getContext());

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 
 using ::testing::FloatNear;
 using ::testing::Pointwise;
