@@ -3418,8 +3418,10 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     }
 
-    HloSharding common_sharding =
-        hlo_sharding_util::FindCommonSharding(shardings, default_sharding);
+    HloSharding common_sharding = shardings.empty()
+                                      ? default_sharding
+                                      : hlo_sharding_util::FindCommonSharding(
+                                            shardings, default_sharding);
     VLOG(2) << "Aligning shard group: " << shard_as_group_id
             << " to sharding:" << common_sharding.ToString();
     for (HloInstruction* member : shard_as_group) {
