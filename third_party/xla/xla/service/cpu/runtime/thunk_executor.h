@@ -84,31 +84,24 @@ class ThunkExecutor {
   bool is_sequential() const { return is_sequential_; }
 
  private:
-  using ReadyQueue = std::vector<NodeId>;
-
-  ThunkExecutor(ThunkSequence thunk_sequence, std::vector<NodeDef> nodes_defs);
-
-  // At run time NodeDef instantiated as a Node with an atomic counter that
-  // drops to zero when all in_edges are ready.
-  struct Node {
-    NodeId id = kInvalidNodeId;
-    std::atomic<int64_t>* counter = nullptr;
-    const std::vector<NodeId>* out_edges = nullptr;
-  };
-
-  // A struct to keep the state of a running executor.
-  struct ExecuteState {
-    // Align all atomic counters to a cache line boundary to avoid false
-    // sharing between multiple worker threads.
-    static constexpr size_t kAtomicAlignment =
+  // Align all atomic counters to a cache line boundary to avoid false
+  // sharing between multiple worker threads.
+  static constexpr size_t kAtomicAlignment =
 #if defined(__cpp_lib_hardware_interference_size)
-        std::hardware_destructive_interference_size;
+      std::hardware_destructive_interference_size;
 #else
-        64;
+      64;
 #endif
 
-    struct Counter {
-      alignas(kAtomicAlignment) std::atomic<int64_t> value;
+  using ReadyQueue = absl::InlinedVector<NodeId, 8>;
+
+  // A struct to keep the state of a running ThunkExecutor.
+  struct ExecuteState {
+    // At run time NodeDef instantiated as a Node with an atomic counter that
+    // drops to zero when all `in_edges` are ready.
+    struct Node {
+      alignas(kAtomicAlignment) std::atomic<int64_t> counter;
+      const std::vector<NodeId>* out_edges;
     };
 
     ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
@@ -116,9 +109,8 @@ class ThunkExecutor {
     ThunkExecutor* executor;
     Thunk::TaskRunner* runner;
 
-    // Containers for nodes' pending counters and nodes themselves.
-    absl::FixedArray<Counter> counters;
-    absl::InlinedVector<Node, 32> nodes;
+    absl::FixedArray<Node> nodes;
+    tsl::AsyncValueRef<ExecuteEvent> execute_event;
 
     // Once the number of pending sink nodes drops to zero, the execution is
     // completed and we set `execute_event` as concrete or error.
@@ -129,9 +121,9 @@ class ThunkExecutor {
     alignas(kAtomicAlignment) std::atomic<bool> abort;
     absl::Mutex abort_mutex;
     absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
-
-    tsl::AsyncValueRef<ExecuteEvent> execute_event;
   };
+
+  ThunkExecutor(ThunkSequence thunk_sequence, std::vector<NodeDef> nodes_defs);
 
   // Executes thunks sequentially starting from the first thunk in the sequence.
   tsl::AsyncValueRef<ExecuteEvent> ExecuteSequential(
@@ -156,7 +148,7 @@ class ThunkExecutor {
   // execution and records the error status to forward it to the caller.
   void ProcessOutEdges(ExecuteState* state,
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
-                       Node& node, ReadyQueue& ready_queue);
+                       ExecuteState::Node& node, ReadyQueue& ready_queue);
 
   // Runs a transitive reduction on the NodeDef graph to remove redundant edges.
   // Returns the number of removed edges.

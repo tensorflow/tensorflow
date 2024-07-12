@@ -4846,8 +4846,12 @@ class Subgraph {
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
     const int num_reduction_axes = NumElements(&axes_tensor);
     bool all_reductions_supported = false;
+    bool use_legacy_path = false;
     if (input_tensor.type == kTfLiteFloat32) {
       all_reductions_supported = true;
+      if (NumDimensions(&input_tensor) == 4) {
+        use_legacy_path = true;
+      }
     } else {
       TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
                                              node->inputs->data[0],
@@ -4857,10 +4861,12 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
-    if (!all_reductions_supported) {
-      switch (num_reduction_axes) {
-        case 1:
-          if (axes_data[0] != 2) {
+    switch (num_reduction_axes) {
+      case 1:
+        if (axes_data[0] != 2) {
+          if (all_reductions_supported) {
+            use_legacy_path = false;
+          } else {
             TF_LITE_MAYBE_KERNEL_LOG(
                 logging_context,
                 "unsupported MEAN reduction along non-spatial "
@@ -4868,10 +4874,14 @@ class Subgraph {
                 axes_data[0], node_index);
             return kTfLiteError;
           }
-          break;
-        case 2:
-          if (std::min(axes_data[0], axes_data[1]) != 1 ||
-              std::max(axes_data[0], axes_data[1]) != 2) {
+        }
+        break;
+      case 2:
+        if (std::min(axes_data[0], axes_data[1]) != 1 ||
+            std::max(axes_data[0], axes_data[1]) != 2) {
+          if (all_reductions_supported) {
+            use_legacy_path = false;
+          } else {
             TF_LITE_MAYBE_KERNEL_LOG(
                 logging_context,
                 "unsupported MEAN reduction along non-spatial "
@@ -4880,21 +4890,31 @@ class Subgraph {
                 std::max(axes_data[0], axes_data[1]), node_index);
             return kTfLiteError;
           }
-          break;
-        default:
+        }
+        break;
+      default:
+        if (all_reductions_supported) {
+          use_legacy_path = false;
+        } else {
           TF_LITE_MAYBE_KERNEL_LOG(
               logging_context,
               "unsupported MEAN reduction along %d axes in node %d",
               SizeOfDimension(&axes_tensor, 0), node_index);
           return kTfLiteError;
+        }
+    }
+    int expected_output_dims = 4;
+    if (!reducer_params->keep_dims) {
+      expected_output_dims -= num_reduction_axes;
+    }
+    if (NumDimensions(&output_tensor) != expected_output_dims) {
+      if (all_reductions_supported) {
+        use_legacy_path = false;
+      } else {
+        TF_LITE_ENSURE_STATUS(CheckTensorShape(
+            logging_context, output_tensor, expected_output_dims,
+            node->outputs->data[0], BuiltinOperator_MEAN, node_index));
       }
-      int expected_output_dims = 4;
-      if (!reducer_params->keep_dims) {
-        expected_output_dims -= num_reduction_axes;
-      }
-      TF_LITE_ENSURE_STATUS(CheckTensorShape(
-          logging_context, output_tensor, expected_output_dims,
-          node->outputs->data[0], BuiltinOperator_MEAN, node_index));
     }
 
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
@@ -4904,7 +4924,7 @@ class Subgraph {
     if (subgraph != nullptr) {
       uint32_t flags = reducer_params->keep_dims ? XNN_FLAG_KEEP_DIMS : 0;
       xnn_status status = xnn_status_success;
-      if (all_reductions_supported) {
+      if (all_reductions_supported && !use_legacy_path) {
         std::array<size_t, XNN_MAX_TENSOR_DIMS> reduction_axes;
         for (int i = 0; i < num_reduction_axes; ++i) {
           if (axes_data[i] < 0) {

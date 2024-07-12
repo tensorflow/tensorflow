@@ -2225,6 +2225,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
