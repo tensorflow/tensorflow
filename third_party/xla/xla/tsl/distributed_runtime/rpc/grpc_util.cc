@@ -19,7 +19,12 @@ limitations under the License.
 #include <vector>
 
 #include "grpcpp/impl/codegen/proto_utils.h"
+#include "grpcpp/support/byte_buffer.h"
+#include "grpcpp/support/slice.h"
+#include "grpcpp/support/status.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

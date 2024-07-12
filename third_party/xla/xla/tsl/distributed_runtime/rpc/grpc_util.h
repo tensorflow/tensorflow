@@ -19,14 +19,19 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "grpcpp/channel.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/support/byte_buffer.h"
+#include "grpcpp/support/status.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/stringprintf.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
 #include "tsl/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tsl {

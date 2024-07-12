@@ -22,8 +22,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "grpcpp/grpcpp.h"
+#include "grpcpp/support/channel_arguments.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "tsl/platform/types.h"
 #include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tsl {

@@ -18,10 +18,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 #include "xla/tsl/util/device_name_utils.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/strcat.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 #include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tsl {

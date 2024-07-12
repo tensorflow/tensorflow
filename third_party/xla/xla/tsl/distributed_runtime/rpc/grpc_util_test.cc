@@ -19,11 +19,17 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "grpcpp/grpcpp.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "grpcpp/support/byte_buffer.h"
+#include "grpcpp/support/slice.h"
+#include "grpcpp/support/status.h"
 #include "xla/tsl/distributed_runtime/rpc/test_request.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
