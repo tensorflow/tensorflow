@@ -316,6 +316,7 @@ xla_cc_test(
         ":util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/numeric:bits",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -679,6 +680,22 @@ cc_library(
     name = "error_spec",
     hdrs = ["error_spec.h"],
     visibility = internal_visibility([":friends"]),
+    deps = [":xla_data_proto_cc"],
+)
+
+xla_cc_test(
+    name = "literal_comparison_test",
+    srcs = ["literal_comparison_test.cc"],
+    deps = [
+        ":error_spec",
+        ":literal_comparison",
+        ":literal_util",
+        ":test_helpers",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:ml_dtypes",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
 
 cc_library(
@@ -688,13 +705,13 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":error_spec",
+        ":fp_util",
         ":literal",
         ":literal_util",
         ":shape_util",
         ":types",
         ":util",
         ":xla_data_proto_cc",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

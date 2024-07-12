@@ -31,13 +31,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "xla/error_spec.h"
+#include "xla/fp_util.h"
 #include "xla/index_util.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -340,12 +340,32 @@ class NearComparator {
     }
   }
 
+  template <typename T>
+  int CalculateFloatDistance(T expected, T actual) {
+    if (error_.low_precision_fp_error_spec.type ==
+        PrimitiveType::PRIMITIVE_TYPE_INVALID)
+      return -1;
+    switch (error_.low_precision_fp_error_spec.type) {
+      case PrimitiveType::F8E4M3FN:
+        return CalculateDistanceInFloats(tsl::float8_e4m3fn(expected),
+                                         tsl::float8_e4m3fn(actual));
+      case PrimitiveType::F8E5M2:
+        return CalculateDistanceInFloats(tsl::float8_e5m2(expected),
+                                         tsl::float8_e5m2(actual));
+      default:
+        LOG(WARNING) << "Comparing error for unsupported type: "
+                     << error_.low_precision_fp_error_spec.type;
+        return -1;
+    }
+  }
+
   // Compares the two given elements from the expected and actual literals at
   // the given literal_index and keeps track of various mismatch statistics.
   template <typename T>
   void CompareValues(T expected, T actual, int64_t linear_index) {
     double abs_error;
     double rel_error;
+    int float_distance = -1;
     if (CompareEqual<T>(expected, actual, {linear_index})) {
       abs_error = 0;
       rel_error = 0;
@@ -387,6 +407,7 @@ class NearComparator {
       abs_error = std::numeric_limits<double>::infinity();
       rel_error = std::numeric_limits<double>::infinity();
     } else {
+      float_distance = CalculateFloatDistance<T>(expected, actual);
       abs_error = FpAbsoluteValue(actual - expected);
 
       // Avoid division by 0 even though it's well-defined because ubsan can be
@@ -397,8 +418,24 @@ class NearComparator {
         rel_error = std::numeric_limits<double>::infinity();
       }
     }
-    const bool is_abs_mismatch = abs_error > error_.abs;
-    const bool is_rel_mismatch = rel_error > error_.rel;
+    bool is_within_n_floats = false;
+    bool should_use_float_error_spec =
+        error_.low_precision_fp_error_spec.type !=
+        PrimitiveType::PRIMITIVE_TYPE_INVALID;
+    if (should_use_float_error_spec &&
+        error_.low_precision_fp_error_spec.within_n_values >= 0) {
+      is_within_n_floats =
+          float_distance <= error_.low_precision_fp_error_spec.within_n_values;
+    }
+
+    const bool is_abs_mismatch =
+        (should_use_float_error_spec && is_within_n_floats)
+            ? false
+            : (abs_error > error_.abs);
+    const bool is_rel_mismatch =
+        (should_use_float_error_spec && is_within_n_floats)
+            ? false
+            : (rel_error > error_.rel);
     const bool is_mismatch = is_abs_mismatch && is_rel_mismatch;
 
     // Update the error of the relative bucket only if the *absolute* error
