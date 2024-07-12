@@ -46,9 +46,10 @@ cc_library(
     srcs = ["event_pool.cc"],
     hdrs = ["event_pool.h"],
     deps = [
-        "//xla:status_macros",
         "//xla:types",
         "//xla/stream_executor",
+        "//xla/stream_executor:event",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:statusor",
