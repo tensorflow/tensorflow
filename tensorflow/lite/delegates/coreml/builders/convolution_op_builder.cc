@@ -18,12 +18,19 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "google/protobuf/repeated_field.h"
+#include "mlmodel/format/NeuralNetwork.pb.h"
+#include "third_party/protobuf/repeated_field.h"
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/activation_layer_builder.h"
+#include "tensorflow/lite/delegates/coreml/builders/op_builder.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_validator.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
