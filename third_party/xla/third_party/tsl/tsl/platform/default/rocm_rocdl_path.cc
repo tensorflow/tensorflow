@@ -40,6 +40,13 @@ string RocmRoot() {
 #endif
 }
 
-string RocdlRoot() { return io::JoinPath(RocmRoot(), "amdgcn/bitcode"); }
+string RocdlRoot() {
+  if (const char* device_lib_path_env = std::getenv("HIP_DEVICE_LIB_PATH")) {
+   return device_lib_path_env;
+  }
+  else{
+   return io::JoinPath(RocmRoot(), "amdgcn/bitcode");
+  }
+}
 
 }  // namespace tsl

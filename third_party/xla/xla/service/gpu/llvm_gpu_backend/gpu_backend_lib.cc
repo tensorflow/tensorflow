@@ -854,7 +854,10 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   }
   // Locate lld.
   std::string lld_path;
-  if (std::getenv("ROCM_PATH")) {
+  if (std::getenv("LLVM_PATH")) {
+       lld_path = tsl::io::JoinPath(std::getenv("LLVM_PATH"), "bin");
+  }
+  else if (std::getenv("ROCM_PATH")) {
        lld_path = tsl::io::JoinPath(std::getenv("ROCM_PATH"), "llvm/bin");
   }
   else {
