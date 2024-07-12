@@ -87,12 +87,8 @@ namespace cpu {
 
 std::vector<std::string> DetectMachineAttributes() {
   std::vector<std::string> result;
-  llvm::StringMap<bool> host_features;
-  if (llvm::sys::getHostCPUFeatures(host_features)) {
-    for (auto& feature : host_features) {
-      result.push_back((feature.second ? '+' : '-') +
-                       std::string(feature.first()));
-    }
+  for (const auto& [feature, enabled] : llvm::sys::getHostCPUFeatures()) {
+    result.push_back((enabled ? '+' : '-') + std::string(feature));
   }
   return result;
 }
