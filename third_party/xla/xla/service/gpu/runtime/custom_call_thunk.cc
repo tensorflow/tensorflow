@@ -155,7 +155,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
 
   CallOptions options = {device_ordinal, stream, allocator, called_computation_,
                          execution_context};
-  return Call(bundle_->execute, call_frame, options, stage);
+  return Call(handler, call_frame, options, stage);
 }
 
 absl::Status CustomCallThunk::Prepare(const PrepareParams& params,

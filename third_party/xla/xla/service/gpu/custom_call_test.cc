@@ -15,14 +15,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <memory>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <vector>
-
-#include "xla/stream_executor/device_memory.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
@@ -36,7 +32,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -53,6 +48,7 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -730,19 +726,32 @@ TEST_F(CustomCallTest, WithCalledComputation) {
 struct SomeExtraContext {
   explicit SomeExtraContext(int32_t value) : value(value) {}
   int32_t value;
+  bool initialized = false;
+  bool executed = false;
 };
 
-static int32_t execution_context_counter = 0;
-
+template <ffi::ExecutionStage stage>
 static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
                                      SomeExtraContext* ctx) {
   if (ctx->value != 42) return absl::InternalError("Unexpected value");
-  ++execution_context_counter;
+  if constexpr (stage == ffi::ExecutionStage::kInitialize) {
+    ctx->initialized = true;
+  } else {
+    ctx->executed = true;
+  }
+
   return absl::OkStatus();
 }
 
-XLA_FFI_DEFINE_HANDLER(kExecutionContext, ExecutionContext,
-                       ffi::Ffi::Bind()
+XLA_FFI_DEFINE_HANDLER(kExecutionContextInitialize,
+                       ExecutionContext<ffi::ExecutionStage::kInitialize>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kInitialize>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContextExecute,
+                       ExecutionContext<ffi::ExecutionStage::kExecute>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kExecute>()
                            .Ret<ffi::AnyBuffer>()
                            .Ctx<ffi::UserData<SomeExtraContext>>());
 
@@ -750,8 +759,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
                          PLATFORM,
                          {
                              /*prepare=*/nullptr,
-                             /*initializer=*/kExecutionContext,
-                             /*execute=*/kExecutionContext,
+                             /*initialize=*/kExecutionContextInitialize,
+                             /*execute=*/kExecutionContextExecute,
                          });
 
 TEST_F(CustomCallTest, FfiExecutionContext) {
@@ -773,7 +782,10 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
   TF_ASSERT_OK(Execute(&b, {}).status());
 
   // Check that FFI handler was called during initialization and execution.
-  EXPECT_EQ(execution_context_counter, 2);
+  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
+                          execution_context.Lookup<SomeExtraContext>());
+  EXPECT_TRUE(user_context->initialized);
+  EXPECT_TRUE(user_context->executed);
 }
 
 }  // anonymous namespace

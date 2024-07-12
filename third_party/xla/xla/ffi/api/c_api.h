@@ -269,25 +269,40 @@ struct XLA_FFI_Array {
 // XLA runtime has multiple execution stages and it is possible to run
 // different handlers for each stage:
 //
-// (1) Prepare - called before the execution to let FFI handlers to prepare
+// (1) Instantiate - called when FFI handler is instantiated as a part of XLA
+//     executable instantiation. Every call site will have its own "instance" of
+//     the FFI handler, and it is possible to attach an arbitrary user-defined
+//     state to the FFI handler instance, and get it back in other execution
+//     stages. Constructed state owned by the XLA runtime and destructed
+//     together with a parent executable.
+//
+// (2) Prepare - called before the execution to let FFI handlers to prepare
 //     for the execution and request resources from runtime, i.e. in XLA:GPU
 //     we use prepare stage to request collective cliques.
 //
-// (2) Initialize - called before the execution after acquiring all the
+// (3) Initialize - called before the execution after acquiring all the
 //     resources requested in the prepare stage.
 //
-// (3) Execute - called when FFI handler is executed. Note that FFI handler
+// (4) Execute - called when FFI handler is executed. Note that FFI handler
 //     can be called as a part of command buffer capture (CUDA graph capture
 //     on GPU backend) and argument buffers might contain uninitialized
 //     values in this case.
 //
-// It is undefined behavior to access argument buffers in prepare and
-// initialize stages as they might not be initialized yet. However it is safe
-// to use memory address as it is assigned ahead of time by buffer assignment.
+// XLA program (HLO module) compiled to an XLA executable that can be executed
+// on any device accessible to the process, and by extension FFI handlers are
+// not instantiated for any particular device, but for a process. FFI handlers
+// running at instantiation stage do not have access to the underlying device
+// (memory allocation, stream, etc.) and arguments, however they can access
+// execution context and attributes.
+//
+// It is undefined behavior to access argument buffers in prepare and initialize
+// stages as they might not be initialized yet. However it is safe to use memory
+// address as it is assigned ahead of time by buffer assignment.
 typedef enum {
-  XLA_FFI_ExecutionStage_PREPARE = 0,
-  XLA_FFI_ExecutionStage_INITIALIZE = 1,
-  XLA_FFI_ExecutionStage_EXECUTE = 2,
+  XLA_FFI_ExecutionStage_INSTANTIATE = 0,
+  XLA_FFI_ExecutionStage_PREPARE = 1,
+  XLA_FFI_ExecutionStage_INITIALIZE = 2,
+  XLA_FFI_ExecutionStage_EXECUTE = 3,
 } XLA_FFI_ExecutionStage;
 
 struct XLA_FFI_Args {
