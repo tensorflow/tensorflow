@@ -3,13 +3,13 @@
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
-    SHARDY_COMMIT = "7afabee9bf7addaef719244fe0a605463738384d"
-    SHARDY_SHA256 = "7271375db347541dfd544fca1390b9aa700013849fba22c48b46bcf04a7f281a"
+    SHARDY_COMMIT = "2da0ff5d083659019436fa446a80241d991925d4"
+    SHARDY_SHA256 = "df44eb77057eafba1742c9f0eb86f8ea5933b2a84bf59bf5b038dcf24b09ce33"
 
     tf_http_archive(
         name = "shardy",
         sha256 = SHARDY_SHA256,
         strip_prefix = "shardy-{commit}".format(commit = SHARDY_COMMIT),
         urls = tf_mirror_urls("https://github.com/openxla/shardy/archive/{commit}.zip".format(commit = SHARDY_COMMIT)),
-        patch_file = ["//third_party/shardy:shardy.patch"],
+        patch_file = [],
     )
