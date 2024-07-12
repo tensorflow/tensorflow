@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"
 
 namespace mlir {

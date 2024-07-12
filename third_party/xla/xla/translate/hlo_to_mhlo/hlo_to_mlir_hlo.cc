@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
+#include "absl/status/status.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/status_macros.h"
 #include "xla/translate/hlo_to_mhlo/hlo_module_importer.h"
 
 namespace xla {
