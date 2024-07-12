@@ -17,6 +17,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
 namespace tflite {

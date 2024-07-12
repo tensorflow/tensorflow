@@ -44,7 +44,6 @@ struct UnsupportedGpuFeature {};
 
 #if TENSORFLOW_USE_SYCL
 
-using GpuContextHandle = ::sycl::context*;
 using GpuStreamHandle = ::sycl::queue*;
 using GpuEventHandle = ::sycl::event*;
 using GpuFunctionHandle = ::sycl::kernel*;
@@ -54,11 +53,8 @@ using GpuDevicePtr = void*;
 using GpuDeviceAttribute = UnsupportedGpuFeature;
 using GpuDeviceProperty = UnsupportedGpuFeature;
 using GpuModuleHandle = ze_module_handle_t;
-using GpuStatus = UnsupportedGpuFeature;
 using GpuFuncCachePreference = UnsupportedGpuFeature;
 using GpuSharedMemConfig = UnsupportedGpuFeature;
-using GpuComplexType = std::complex<float>;
-using GpuDoubleComplexType = std::complex<double>;
 using GpuRngHandle = UnsupportedGpuFeature;
 using GpuGraphHandle = UnsupportedGpuFeature;
 using GpuGraphExecHandle = UnsupportedGpuFeature;
