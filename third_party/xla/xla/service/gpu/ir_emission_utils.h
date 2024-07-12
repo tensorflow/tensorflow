@@ -24,11 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal.h"
@@ -237,6 +238,31 @@ class DenseDataIntermediate {
 
 absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
     const Literal& literal);
+
+// Returns a deterministic encoded string representation of the proto message.
+absl::StatusOr<std::string> GetProtoFingerprint(
+    const tsl::protobuf::MessageLite&);
+
+// Returns a deterministic encoded string representation of the backend config.
+template <typename ConfigType>
+absl::StatusOr<std::string> GetBackendConfigFingerprint(
+    const BackendConfigWrapper& wrapper) {
+  ConfigType proto;
+  TF_RETURN_IF_ERROR(wrapper.GetProto(&proto));
+  return GetProtoFingerprint(proto);
+}
+
+// Returns concatenated fingerprint of an HLO instruction without its backend
+// config and its backend config's deterministic fingerprint.
+template <typename ConfigType>
+absl::StatusOr<std::string> FingerprintWithBackendConfig(
+    const HloInstruction& hlo) {
+  TF_ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
+  TF_ASSIGN_OR_RETURN(const std::string fingerprint,
+                      GetProtoFingerprint(config));
+  return absl::StrCat(hlo.ToString(HloPrintOptions::Fingerprint()),
+                      ", backend_config_fingerprint=", fingerprint);
+}
 
 }  // namespace gpu
 }  // namespace xla

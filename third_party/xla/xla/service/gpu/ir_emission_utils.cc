@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -53,16 +54,17 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -812,6 +814,13 @@ absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
 
   return DenseDataIntermediate::Alias(absl::MakeSpan(
       reinterpret_cast<const uint8_t*>(literal.untyped_data()), byte_size));
+}
+
+absl::StatusOr<std::string> GetProtoFingerprint(
+    const tsl::protobuf::MessageLite& proto) {
+  std::string result;
+  TF_RET_CHECK(tsl::SerializeToStringDeterministic(proto, &result));
+  return absl::WebSafeBase64Escape(result);
 }
 
 }  // namespace gpu
