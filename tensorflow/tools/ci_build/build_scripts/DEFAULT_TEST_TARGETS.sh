@@ -20,5 +20,4 @@ DEFAULT_BAZEL_TARGETS="//tensorflow/... \
 -//tensorflow/core/tpu/... \
 -//tensorflow/go/... \
 -//tensorflow/java/... \
--//tensorflow/python/integration_testing/... \
 -//tensorflow/tools/toolchains/..."
