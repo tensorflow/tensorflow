@@ -31,11 +31,12 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
