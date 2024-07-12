@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
