@@ -551,8 +551,11 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@local_config_cuda//cuda:cuda_headers",
+    ] + if_cuda_is_configured([
+        # TF has a check that requires every build target to exist, so let's guard this
+        # dependency until hermetic cuda is submitted.
         "@local_config_cuda//cuda:nvptxcompiler",
-    ],
+    ]),
 )
 
 cc_library(
