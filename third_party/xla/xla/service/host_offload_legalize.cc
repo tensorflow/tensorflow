@@ -80,11 +80,12 @@ HloInstruction* FindToDeviceAnnotationToUpdate(HloInstruction* instr) {
   return instr;
 }
 
-// Find a DUS starting from an annotation.
+// Find a DUS starting from an annotation on the update operand.
 HloInstruction* FindDUSFromAnnotation(HloInstruction* instr) {
   while (instr->opcode() != HloOpcode::kDynamicUpdateSlice) {
     if (instr->user_count() != 1 || (instr->opcode() != HloOpcode::kBitcast &&
-                                     instr->opcode() != HloOpcode::kReshape)) {
+                                     instr->opcode() != HloOpcode::kReshape &&
+                                     instr->opcode() != HloOpcode::kCopy)) {
       break;
     }
     instr = instr->users()[0];
@@ -160,7 +161,8 @@ absl::StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
                             instruction->tuple_index());
     }
     case HloOpcode::kBitcast:
-    case HloOpcode::kReshape: {
+    case HloOpcode::kReshape:
+    case HloOpcode::kCopy: {
       return std::make_pair(instruction->mutable_operand(0), index);
     }
     case HloOpcode::kTuple: {
@@ -588,6 +590,26 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
           processed_annotations.insert(annotation);
           processed_annotations.insert(new_annotation);
           to_remove.push_back(annotation);
+
+          // Need to make DUS and its update slice's layout consistent by adding
+          // a copy on the operand side, which is on device.
+          if (instruction.first->shape().layout().minor_to_major() !=
+              instruction.first->operand(1)
+                  ->shape()
+                  .layout()
+                  .minor_to_major()) {
+            HloInstruction* update_slice =
+                instruction.first->mutable_operand(1);
+            CHECK(update_slice->IsCustomCall(
+                host_memory_offload_annotations::kMoveToHostCustomCallTarget));
+            *update_slice->mutable_shape()->mutable_layout() =
+                instruction.first->shape().layout();
+            HloInstruction* new_copy =
+                update_slice->AddInstruction(HloInstruction::CreateUnary(
+                    update_slice->shape(), HloOpcode::kCopy,
+                    update_slice->mutable_operand(0)));
+            TF_RETURN_IF_ERROR(update_slice->ReplaceOperandWith(0, new_copy));
+          }
         }
         stack.push_back(instruction);
       }
