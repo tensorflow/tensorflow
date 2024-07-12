@@ -57,7 +57,7 @@ std::string GetHipVersion() {
 }
 std::string GetRocBlasVersion() {
 #if TENSORFLOW_USE_ROCM
-  return TF_HIPRUNTIME_SOVERSION;
+  return TF_ROCBLAS_SOVERSION;
 #else   // TENSORFLOW_USE_ROCM
   return "";
 #endif  // TENSORFLOW_USE_ROCM
