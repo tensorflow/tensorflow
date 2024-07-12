@@ -28,12 +28,17 @@ message CompilationEnvironmentsProto {
 
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
+//
+// All singular (ie not-repeated) scalar (ie non-message) fields must be
+// explicitly `optional` so that XLA_FLAGS can tell when the flag is set to its
+// proto-level default value. Unfortunately tsl::Flag doesn't have accessors, so
+// we can't restrict this to just fields that correspond to XLA_FLAGS values.
 message DebugOptions {
   // Show addresses of HLO ops in graph dump.
-  bool xla_hlo_graph_addresses = 2;
+  optional bool xla_hlo_graph_addresses = 2;
 
   // Instrument the computation to collect per-HLO cycle counts.
-  bool xla_hlo_profile = 9;
+  optional bool xla_hlo_profile = 9;
 
   // List of HLO passes to disable/enable. These names must exactly match the
   // pass names as specified by the HloPassInterface::name() method.
@@ -49,46 +54,46 @@ message DebugOptions {
   // "guarantee", such as it is, is that if you compile XLA and dump the
   // optimized HLO for some graph, you should be able to run it again on the
   // same device with the same build of XLA.
-  bool xla_disable_all_hlo_passes = 104;
+  optional bool xla_disable_all_hlo_passes = 104;
 
   // Numerical optimization level for the XLA compiler backend; the specific
   // interpretation of this value is left to the backends.
-  int32 xla_backend_optimization_level = 31;
+  optional int32 xla_backend_optimization_level = 31;
 
   // Embed the compiler IR as a string in the executable.
-  bool xla_embed_ir_in_executable = 33;
+  optional bool xla_embed_ir_in_executable = 33;
 
   // Eliminate implicit broadcasts when lowering user computations to HLO
   // instructions; use explicit broadcast instead.
-  bool xla_eliminate_hlo_implicit_broadcast = 35;
+  optional bool xla_eliminate_hlo_implicit_broadcast = 35;
 
   // When generating calls to Eigen in the CPU backend, use multi-threaded Eigen
   // mode.
-  bool xla_cpu_multi_thread_eigen = 60;
+  optional bool xla_cpu_multi_thread_eigen = 60;
 
   // Path to directory with cuda/ptx tools and libraries.
-  string xla_gpu_cuda_data_dir = 61;
+  optional string xla_gpu_cuda_data_dir = 61;
 
   // Enable flush-to-zero semantics in the GPU backend.
-  bool xla_gpu_ftz = 62;
+  optional bool xla_gpu_ftz = 62;
 
   reserved 63;   // Was xla_gpu_disable_multi_streaming
   reserved 134;  // Was xla_gpu_use_random_streams
 
   // If true, in LLVM-based backends, emit !alias.scope metadata in
   // generated IR.
-  bool xla_llvm_enable_alias_scope_metadata = 70;
+  optional bool xla_llvm_enable_alias_scope_metadata = 70;
 
   // If true, in LLVM-based backends, emit !noalias metadata in the
   // generated IR.
-  bool xla_llvm_enable_noalias_metadata = 71;
+  optional bool xla_llvm_enable_noalias_metadata = 71;
 
   // If true, in LLVM-based backends, emit !invariant.load metadata in
   // the generated IR.
-  bool xla_llvm_enable_invariant_load_metadata = 72;
+  optional bool xla_llvm_enable_invariant_load_metadata = 72;
 
   // If true, a set of expensive LLVM optimization passes will not be run.
-  bool xla_llvm_disable_expensive_passes = 73;
+  optional bool xla_llvm_disable_expensive_passes = 73;
 
   reserved 80;  // Was hlo_reduce_precision_options
 
@@ -96,36 +101,36 @@ message DebugOptions {
   // computation will run n! times with all permunations of layouts for the
   // output shape in rank n. For example, with a 3D shape, all permutations of
   // the set {0, 1, 2} are tried.
-  bool xla_test_all_output_layouts = 90;
+  optional bool xla_test_all_output_layouts = 90;
 
   // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
   // computation will run for all permunations of layouts of all input
   // arguments. For example, with 2 input arguments in 2D and 4D shapes, the
   // computation will run 2! * 4! times.
-  bool xla_test_all_input_layouts = 91;
+  optional bool xla_test_all_input_layouts = 91;
 
   // Assign colors based on sharding information when generating the Graphviz
   // HLO graph.
-  bool xla_hlo_graph_sharding_color = 92;
+  optional bool xla_hlo_graph_sharding_color = 92;
 
   reserved 93;  // Was xla_hlo_tfgraph_device_scopes
   reserved 94;  // Was xla_gpu_use_cudnn_batchnorm
 
   // Generate calls to MKL-DNN in the CPU backend.
-  bool xla_cpu_use_mkl_dnn = 97;
+  optional bool xla_cpu_use_mkl_dnn = 97;
 
   reserved 177;  // Was xla_cpu_use_xla_runtime
-  bool xla_cpu_use_thunk_runtime = 298;
+  optional bool xla_cpu_use_thunk_runtime = 298;
 
   // When true, XLA:CPU uses HLO module scheduler that is optimized for
   // extracting concurrency at the cost of extra memory: we extend the live
   // ranges of temporaries to allow XLA runtime to schedule independent
   // operations in parallel on separate threads.
-  bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
+  optional bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
 
   // A `prefer-vector-width` value that is passed to the LLVM backend. Default
   // value is `256` (AVX2 on x86 platforms).
-  int32 xla_cpu_prefer_vector_width = 308;
+  optional int32 xla_cpu_prefer_vector_width = 308;
 
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
 
@@ -137,27 +142,27 @@ message DebugOptions {
   //  - Assuming that operations never produce or consume NaN or +/- Inf (this
   //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
   //  - Assuming that +0 and -0 are indistinguishable.
-  bool xla_cpu_enable_fast_math = 99;
+  optional bool xla_cpu_enable_fast_math = 99;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we allow
   // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
   // false.
-  bool xla_cpu_fast_math_honor_nans = 120;
+  optional bool xla_cpu_fast_math_honor_nans = 120;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we allow
   // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
   // false.
-  bool xla_cpu_fast_math_honor_infs = 121;
+  optional bool xla_cpu_fast_math_honor_infs = 121;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we forbid
   // to use the reciprocal of an argument instead of division. Ignored when
   // xla_cpu_enable_fast_math is false.
-  bool xla_cpu_fast_math_honor_division = 126;
+  optional bool xla_cpu_fast_math_honor_division = 126;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we forbid
   // to approximate calculations for functions. Ignored when
   // xla_cpu_enable_fast_math is false.
-  bool xla_cpu_fast_math_honor_functions = 129;
+  optional bool xla_cpu_fast_math_honor_functions = 129;
 
   // When false we lower the Minimum and Maximum hlos in the CPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NaN.  In other words, if flag
@@ -165,7 +170,7 @@ message DebugOptions {
   //
   // Note, this does not correspond to the exact same behavior as the gpu flag
   // below!
-  bool xla_cpu_enable_fast_min_max = 140;
+  optional bool xla_cpu_enable_fast_min_max = 140;
 
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
@@ -173,7 +178,7 @@ message DebugOptions {
   //
   // Note, this does not correspond to the exact same behavior as the cpu flag
   // above!
-  bool xla_gpu_enable_fast_min_max = 100;
+  optional bool xla_gpu_enable_fast_min_max = 100;
 
   reserved 207;  // Was xla_cpu_sparse_cuda_threads
 
@@ -183,12 +188,12 @@ message DebugOptions {
   // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
   // `AlgebraicSimplifier`, as that will only simplify conversions that are
   // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
-  bool xla_allow_excess_precision = 122;
+  optional bool xla_allow_excess_precision = 122;
 
   // Crashes the program when any kind of verification fails, instead of just
   // logging the failures. One example is cross checking of convolution results
   // among different algorithms.
-  bool xla_gpu_crash_on_verification_failures = 101;
+  optional bool xla_gpu_crash_on_verification_failures = 101;
 
   // 0:   Disable gemm and convolution autotuning.
   // 1:   Enable autotuning, but disable correctness checking.
@@ -198,7 +203,7 @@ message DebugOptions {
   // 4+:  Also check for correct outputs and for out-of-bounds reads/writes.
   //
   // Default: 4.
-  int32 xla_gpu_autotune_level = 123;
+  optional int32 xla_gpu_autotune_level = 123;
 
   // Force the host platform to pretend that there are these many host
   // "devices".  All these devices are backed by the same threadpool.  Defaults
@@ -207,10 +212,10 @@ message DebugOptions {
   // Setting this to anything other than 1 can increase overhead from context
   // switching but we let the user override this behavior to help run tests on
   // the host that run models in parallel across multiple devices.
-  int32 xla_force_host_platform_device_count = 102;
+  optional int32 xla_force_host_platform_device_count = 102;
 
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
-  bool xla_gpu_disable_gpuasm_optimizations = 103;
+  optional bool xla_gpu_disable_gpuasm_optimizations = 103;
 
   enum ShapeChecks {
     // Do not insert any shape checks for dynamically shaped operations; output
@@ -226,7 +231,7 @@ message DebugOptions {
     COMPILE_TIME = 2;
   }
 
-  ShapeChecks xla_gpu_shape_checks = 170;
+  optional ShapeChecks xla_gpu_shape_checks = 170;
 
   reserved 171;  // Was xla_cpu_enable_mlir_lowering
 
@@ -235,11 +240,11 @@ message DebugOptions {
   reserved 179;  // Was xla_gpu_enable_softmax_fusion
 
   // Enable fast math with eigen in the HLO evaluator.
-  bool xla_hlo_evaluator_use_fast_path = 106;
+  optional bool xla_hlo_evaluator_use_fast_path = 106;
 
   // Temporary option to allow support for both the R1 and the scalar index
   // versions of DynamicSlice and DynamicUpdateSlice. Only used for testing.
-  bool xla_allow_scalar_index_dynamic_ops = 107;
+  optional bool xla_allow_scalar_index_dynamic_ops = 107;
 
   enum StepMarkerLocation {
     // Generate a step marker at the program entry. This handles the case where
@@ -259,7 +264,7 @@ message DebugOptions {
   // Option to emit a target-specific marker to indicate the start of a training
   // step. The location of the marker (if any) is determined by the option
   // value.
-  StepMarkerLocation xla_step_marker_location = 108;
+  optional StepMarkerLocation xla_step_marker_location = 108;
 
   //
   // BEGIN flags controlling dumping HLO modules for debugging.
@@ -278,106 +283,106 @@ message DebugOptions {
   //
 
   // Directory to dump into.
-  string xla_dump_to = 109;
+  optional string xla_dump_to = 109;
 
   // If specified, will only dump modules which match this regexp.
-  string xla_dump_hlo_module_re = 110;
+  optional string xla_dump_hlo_module_re = 110;
 
   // If this flag is specified, will also dump HLO before and after passes that
   // match this regular expression.  Set to .* to dump before/after all passes.
-  string xla_dump_hlo_pass_re = 111;
+  optional string xla_dump_hlo_pass_re = 111;
 
   // Specifies the format that HLO is dumped in.  Multiple of these may be
   // specified.
-  bool xla_dump_hlo_as_text = 112;
-  bool xla_dump_hlo_as_proto = 113;
-  bool xla_dump_hlo_as_dot = 114;
-  bool xla_dump_hlo_as_url = 115;
+  optional bool xla_dump_hlo_as_text = 112;
+  optional bool xla_dump_hlo_as_proto = 113;
+  optional bool xla_dump_hlo_as_dot = 114;
+  optional bool xla_dump_hlo_as_url = 115;
 
   // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
-  bool xla_dump_hlo_as_html = 116;
+  optional bool xla_dump_hlo_as_html = 116;
 
   // Dump the visualization of the fusion progress.
-  bool xla_dump_fusion_visualization = 149;
+  optional bool xla_dump_fusion_visualization = 149;
 
   // If true, every time an HLO module is run, we will dump an HloSnapshot
   // (essentially, a serialized module plus its inputs) to the --xla_dump_to
   // directory.
-  bool xla_dump_hlo_snapshots = 118;
+  optional bool xla_dump_hlo_snapshots = 118;
 
   // Include a timestamp in the dumped filenames.
-  bool xla_dump_include_timestamp = 131;
+  optional bool xla_dump_include_timestamp = 131;
 
   // Max number of hlo module dumps in a directory. Set to < 0 for unbounded.
-  int32 xla_dump_max_hlo_modules = 132;
+  optional int32 xla_dump_max_hlo_modules = 132;
 
   // Dump HloModuleMetadata as a text proto for each HLO module.
-  bool xla_dump_module_metadata = 144;
+  optional bool xla_dump_module_metadata = 144;
 
   // GZip-compress protos dumped via --xla_dump_hlo_as_proto.
-  bool xla_dump_compress_protos = 151;
+  optional bool xla_dump_compress_protos = 151;
 
   // Dump HLO in long text format. Ignored unless xla_dump_hlo_as_text is true.
-  bool xla_dump_hlo_as_long_text = 164;
+  optional bool xla_dump_hlo_as_long_text = 164;
 
   //
   // END flags controlling dumping HLO modules.
   //
 
   // Overrides for XLA GPU's convolution layout heuristic.
-  bool xla_gpu_force_conv_nchw = 125;
-  bool xla_gpu_force_conv_nhwc = 146;
+  optional bool xla_gpu_force_conv_nchw = 125;
+  optional bool xla_gpu_force_conv_nhwc = 146;
 
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
 
   // Whether to dump llvm ir when compiling to ptx.
-  bool xla_gpu_dump_llvmir = 155;
+  optional bool xla_gpu_dump_llvmir = 155;
 
   // Whether to dump mlir using pretty print form.
-  bool xla_dump_enable_mlir_pretty_form = 185;
+  optional bool xla_dump_enable_mlir_pretty_form = 185;
 
   // Denylist for cuDNN convolutions.
-  string xla_gpu_algorithm_denylist_path = 128;
+  optional string xla_gpu_algorithm_denylist_path = 128;
 
   reserved 130;  // Was xla_gpu_deterministic_reductions
 
   // Debug options that trigger execution errors when NaN or Inf are detected.
-  bool xla_tpu_detect_nan = 135;
-  bool xla_tpu_detect_inf = 136;
+  optional bool xla_tpu_detect_nan = 135;
+  optional bool xla_tpu_detect_inf = 136;
 
   // True if TraceMe annotations are enabled for XLA:CPU.
-  bool xla_cpu_enable_xprof_traceme = 137;
+  optional bool xla_cpu_enable_xprof_traceme = 137;
 
   // It is usually preferable to not fallback to the driver; it can consume more
   // memory, or have bugs.
-  bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
+  optional bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
   // Extra parameters to pass the GPU assembler.
-  string xla_gpu_asm_extra_flags = 141;
+  optional string xla_gpu_asm_extra_flags = 141;
 
   // Per-heap size constraint. New heaps will be created if per-heap max size is
   // reached.
-  int32 xla_multiheap_size_constraint_per_heap = 142;
+  optional int32 xla_multiheap_size_constraint_per_heap = 142;
 
   reserved 143;  // Was xla_detailed_logging_and_dumping
 
   // Enable detailed logging into vlog. If this is disabled, no
   // compilation summary will be printed in the end of computation.
-  bool xla_detailed_logging = 252;
+  optional bool xla_detailed_logging = 252;
 
   // Enable HLO dumping. If this is disabled, no HLO modules will be dumped.
-  bool xla_enable_dumping = 253;
+  optional bool xla_enable_dumping = 253;
 
   // Overrides normal multi-threaded compilation setting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
-  int32 xla_gpu_force_compilation_parallelism = 147;
-  bool xla_gpu_enable_llvm_module_compilation_parallelism = 268;
+  optional int32 xla_gpu_force_compilation_parallelism = 147;
+  optional bool xla_gpu_enable_llvm_module_compilation_parallelism = 268;
 
   // Guarantees run-to-run determinism.
   // This flag implies --xla_gpu_exclude_nondeterministic_ops and in addition
   // disables autotuning.
-  bool xla_gpu_deterministic_ops = 148;
+  optional bool xla_gpu_deterministic_ops = 148;
 
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
@@ -406,59 +411,59 @@ message DebugOptions {
   reserved 152, 278, 183, 199, 200, 201, 238;
 
   // Size threshold (in bytes) for the GPU collective combiners.
-  int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
-  int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
-  int64 xla_gpu_reduce_scatter_combine_threshold_bytes = 213;
+  optional int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
+  optional int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
+  optional int64 xla_gpu_reduce_scatter_combine_threshold_bytes = 213;
 
   // Combine all-gather/scatter-reduce ops with the same dimension or
   // irrespective of their dimension.
-  bool xla_gpu_enable_all_gather_combine_by_dim = 254;
-  bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
+  optional bool xla_gpu_enable_all_gather_combine_by_dim = 254;
+  optional bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
 
   // Was xla_gpu_all_reduce_contiguous, xla_gpu_enable_all_reduce_splitter
   reserved 158, 299;
 
   // Enable allreduce reassociation on allreduces that are converted to a wider
   // type. The resulting allreduce will be promoted to a wider-typed allreduce.
-  bool xla_gpu_enable_reassociation_for_converted_ar = 209;
+  optional bool xla_gpu_enable_reassociation_for_converted_ar = 209;
 
   // Number of devices per host for first stage of BlueConnect decomposition
   // pass. The pass will attempt to decompose all-reduces ops into a
   // ReduceScatter-AllReduce-AllGather sequence, with the initial ReduceScatter
   // being performed over all of the devices in the same host. Set to < 1 to
   // disable all-reduce decomposition.
-  int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
+  optional int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
 
   // Enable hoisting of reduce-scatter out of while loops.
-  bool xla_gpu_enable_while_loop_reduce_scatter_code_motion = 203;
+  optional bool xla_gpu_enable_while_loop_reduce_scatter_code_motion = 203;
 
   // Inflate collective cost by running each collective multiple times.
-  int32 xla_gpu_collective_inflation_factor = 205;
+  optional int32 xla_gpu_collective_inflation_factor = 205;
 
   // Whether to force inline before llvm module split to get a more balanced
   // splits for parallel compilation.
-  bool xla_llvm_force_inline_before_split = 300;
+  optional bool xla_llvm_force_inline_before_split = 300;
 
   // Whether to use the cuDNN frontend API for convolutions when possible.
-  bool xla_gpu_enable_cudnn_frontend = 160;
+  optional bool xla_gpu_enable_cudnn_frontend = 160;
 
-  bool xla_gpu_enable_cudnn_fmha = 218;
-  bool xla_gpu_fused_attention_use_cudnn_rng = 235;
+  optional bool xla_gpu_enable_cudnn_fmha = 218;
+  optional bool xla_gpu_fused_attention_use_cudnn_rng = 235;
 
   // Rewrite layer norm patterns into cuDNN library calls.
-  bool xla_gpu_enable_cudnn_layer_norm = 262;
+  optional bool xla_gpu_enable_cudnn_layer_norm = 262;
 
   // Disable dumping metadata in HLO dumps.
-  bool xla_dump_disable_metadata = 153;
+  optional bool xla_dump_disable_metadata = 153;
 
   // If this flag is specified, will only dump HLO before and after passes in
   // the pass pipeline that matches this regular expression. Default empty value
   // enables dumping in all pipelines.
-  string xla_dump_hlo_pipeline_re = 154;
+  optional string xla_dump_hlo_pipeline_re = 154;
 
   // If true, abort immediately when conv algorithm picker fails, rather than
   // logging a warning and proceeding with fallback.
-  bool xla_gpu_strict_conv_algorithm_picker = 156;
+  optional bool xla_gpu_strict_conv_algorithm_picker = 156;
 
   reserved 161;  // Was xla_gpu_bef_executable
   reserved 162;  // Was xla_gpu_bef_thunk
@@ -468,29 +473,29 @@ message DebugOptions {
   // If true, XLA will try to pattern match subgraphs of HLO operations into
   // custom fusions registered in the current process (pre-compiled hand written
   // kernels, e.g. various GEMM fusions writtent in CUTLASS).
-  bool xla_gpu_enable_custom_fusions = 263;
+  optional bool xla_gpu_enable_custom_fusions = 263;
 
   // A regular expression enabling only a subset of custom fusions. Enabled only
   // if `xla_gpu_enable_custom_fusion` set to true.
-  string xla_gpu_enable_custom_fusions_re = 264;
+  optional string xla_gpu_enable_custom_fusions_re = 264;
 
   // Enables address computation fusion to optimize dynamic-slice and
   // dynamic-update-slice operations around library calls.
-  bool xla_gpu_enable_address_computation_fusion = 105;
+  optional bool xla_gpu_enable_address_computation_fusion = 105;
 
   reserved 233;  // was xla_gpu_enable_gpu2_runtime
   reserved 234;  // was xla_gpu_enable_gpu2_hal
 
   // Timeout in seconds before terminating jobs that are stuck in a NCCL
   // Rendezvous. Negative value disables the timeout and will not terminate.
-  int64 xla_gpu_nccl_termination_timeout_seconds = 163;
+  optional int64 xla_gpu_nccl_termination_timeout_seconds = 163;
 
   // Enables shared constants for XLA/GPU. This allows large constants to be
   // shared among multiple GPU executables.
-  bool xla_gpu_enable_shared_constants = 165;
+  optional bool xla_gpu_enable_shared_constants = 165;
 
   // Whether to use cuBLASLt for GEMMs on GPUs.
-  bool xla_gpu_enable_cublaslt = 166;
+  optional bool xla_gpu_enable_cublaslt = 166;
 
   // Commands are categorized into 5 types:
   // FUSION represents regular fusion kernels.
@@ -515,15 +520,15 @@ message DebugOptions {
   // This number determines how many moved instructions like fusion kernels are
   // required for a region to be captured as a function to be launched as a GPU
   // graph.
-  int32 xla_gpu_graph_min_graph_size = 208;
+  optional int32 xla_gpu_graph_min_graph_size = 208;
 
   // Identify concurrent regions in GPU graphs and execute them concurrently.
-  bool xla_gpu_graph_enable_concurrent_region = 215;
+  optional bool xla_gpu_graph_enable_concurrent_region = 215;
 
   reserved 230;  // Was xla_gpu_graph_eviction_timeout_seconds
 
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
-  int64 xla_gpu_redzone_scratch_max_megabytes = 167;
+  optional int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
   // Amount of padding the redzone allocator will put on one side of each buffer
   // it allocates.  (So the buffer's total size will be increased by 2x this
@@ -533,59 +538,59 @@ message DebugOptions {
   // write.  Smaller values consume less memory during autotuning.  Note that a
   // fused cudnn conv has up to 6 total buffers (4 inputs, 1 output, and 1
   // scratch), so this can be multiplied by quite a lot.
-  int64 xla_gpu_redzone_padding_bytes = 228;
+  optional int64 xla_gpu_redzone_padding_bytes = 228;
 
   reserved 168;  // Was xla_gpu_simplify_all_fp_conversions.
 
   reserved 172;  // Was xla_gpu_normalize_layouts.
 
   // Generate calls to Arm Compute Library in the CPU backend.
-  bool xla_cpu_use_acl = 174;
+  optional bool xla_cpu_use_acl = 174;
 
   // By default, XLA:CPU will run fp16 dot/conv as fp32, as this is generally
   // (much) faster on our hardware.  Set this flag to disable this behavior.
-  bool xla_cpu_strict_dot_conv_math = 175;
+  optional bool xla_cpu_strict_dot_conv_math = 175;
 
   // An option to enable using cuDNN runtime compiled fusion kernels which is
   // available and recommended for Ampere+ GPUs.
-  bool xla_gpu_use_runtime_fusion = 181;
+  optional bool xla_gpu_use_runtime_fusion = 181;
 
-  bool xla_dump_latency_hiding_schedule = 182;
+  optional bool xla_dump_latency_hiding_schedule = 182;
 
   // By default, MLIR lowering will use Linalg elementwise fusion. If this flag
   // is enabled, the pipeline will use tiling, fusion, peeling, vectorization
   // instead.
-  bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
+  optional bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
 
   // XLA:CPU-Next tiling parameters for matmul.
-  bool xla_cpu_enable_custom_matmul_tiling = 195;
-  int64 xla_cpu_matmul_tiling_m_dim = 196;
-  int64 xla_cpu_matmul_tiling_n_dim = 197;
-  int64 xla_cpu_matmul_tiling_k_dim = 198;
+  optional bool xla_cpu_enable_custom_matmul_tiling = 195;
+  optional int64 xla_cpu_matmul_tiling_m_dim = 196;
+  optional int64 xla_cpu_matmul_tiling_n_dim = 197;
+  optional int64 xla_cpu_matmul_tiling_k_dim = 198;
 
-  bool xla_cpu_enable_mlir_fusion_outlining = 192;
+  optional bool xla_cpu_enable_mlir_fusion_outlining = 192;
 
   // If set, use the experimental deallocation pass from mlir-hlo.
-  bool xla_cpu_enable_experimental_deallocation = 191;
+  optional bool xla_cpu_enable_experimental_deallocation = 191;
 
-  bool xla_gpu_enable_latency_hiding_scheduler = 186;
-  bool xla_gpu_enable_highest_priority_async_stream = 216;
-  bool xla_gpu_enable_analytical_latency_estimator = 255;
+  optional bool xla_gpu_enable_latency_hiding_scheduler = 186;
+  optional bool xla_gpu_enable_highest_priority_async_stream = 216;
+  optional bool xla_gpu_enable_analytical_latency_estimator = 255;
 
-  bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
-  string xla_gpu_pgle_profile_file_or_directory_path = 210;
-  int32 xla_gpu_memory_limit_slop_factor = 260;
+  optional bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
+  optional string xla_gpu_pgle_profile_file_or_directory_path = 210;
+  optional int32 xla_gpu_memory_limit_slop_factor = 260;
 
-  bool xla_gpu_enable_pipelined_collectives = 239;
-  bool xla_gpu_enable_pipelined_all_reduce = 217;
-  bool xla_gpu_enable_pipelined_all_gather = 227;
-  bool xla_gpu_enable_pipelined_reduce_scatter = 231;
-  bool xla_gpu_enable_pipelined_p2p = 246;
-  bool xla_gpu_run_post_layout_collective_pipeliner = 313;
+  optional bool xla_gpu_enable_pipelined_collectives = 239;
+  optional bool xla_gpu_enable_pipelined_all_reduce = 217;
+  optional bool xla_gpu_enable_pipelined_all_gather = 227;
+  optional bool xla_gpu_enable_pipelined_reduce_scatter = 231;
+  optional bool xla_gpu_enable_pipelined_p2p = 246;
+  optional bool xla_gpu_run_post_layout_collective_pipeliner = 313;
 
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
-  int64 xla_gpu_collective_permute_decomposer_threshold = 237;
+  optional int64 xla_gpu_collective_permute_decomposer_threshold = 237;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -594,81 +599,81 @@ message DebugOptions {
     PARTITIONING_ALGORITHM_EXP2 = 3;
   }
   // The partitioning algorithm to be used in the PartitionAssignment pass.
-  PartitioningAlgorithm xla_partitioning_algorithm = 187;
+  optional PartitioningAlgorithm xla_partitioning_algorithm = 187;
 
-  bool xla_gpu_enable_triton_gemm = 188;
+  optional bool xla_gpu_enable_triton_gemm = 188;
 
-  bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
+  optional bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
   // Creates triton fusion for all supported gemms.
   // To make sure only triton gemm is chosen by the autotuner run with
   // `xla_gpu_cublas_fallback` set to false.
-  bool xla_gpu_triton_gemm_any = 190;
+  optional bool xla_gpu_triton_gemm_any = 190;
 
   reserved 211;  // Was xla_gpu_enable_dot_strength_reduction
 
-  bool xla_gpu_exhaustive_tiling_search = 219;
+  optional bool xla_gpu_exhaustive_tiling_search = 219;
 
-  bool xla_gpu_enable_triton_softmax_fusion = 220;
+  optional bool xla_gpu_enable_triton_softmax_fusion = 220;
 
-  bool xla_gpu_enable_priority_fusion = 221;
-  bool xla_gpu_enable_triton_softmax_priority_fusion = 286;
+  optional bool xla_gpu_enable_priority_fusion = 221;
+  optional bool xla_gpu_enable_triton_softmax_priority_fusion = 286;
 
   // File to write autotune results to. It will be a binary file unless the name
   // ends with .txt or .textproto. Warning: The results are written at every
   // compilation, possibly multiple times per process. This only works on CUDA.
-  string xla_gpu_dump_autotune_results_to = 222;
+  optional string xla_gpu_dump_autotune_results_to = 222;
 
   // File to load autotune results from. It will be considered a binary file
   // unless the name ends with .txt or .textproto. At most one loading will
   // happen during the lifetime of one process, even if the first one is
   // unsuccessful or different file paths are passed here. This only works on
   // CUDA.
-  string xla_gpu_load_autotune_results_from = 223;
+  optional string xla_gpu_load_autotune_results_from = 223;
 
   // Description of the target platform in GpuTargetConfigProto format; if
   // provided, deviceless compilation is assumed, and the current device is
   // ignored.
-  string xla_gpu_target_config_filename = 261;
+  optional string xla_gpu_target_config_filename = 261;
 
   // Memory budget in GB per device for AutoSharding.
-  int32 xla_gpu_auto_spmd_partitioning_memory_budget_gb = 224;
+  optional int32 xla_gpu_auto_spmd_partitioning_memory_budget_gb = 224;
 
   // See the definition of the
   // xla_gpu_auto_spmd_partitioning_memory_budget_ratio flag for the meaning of
   // this field.
-  float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
+  optional float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
 
-  bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
+  optional bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
 
-  int32 xla_gpu_triton_fusion_level = 229;
+  optional int32 xla_gpu_triton_fusion_level = 229;
 
-  bool xla_gpu_dump_autotuned_gemm_fusions = 232;
+  optional bool xla_gpu_dump_autotuned_gemm_fusions = 232;
 
-  string xla_gpu_override_gemm_autotuner = 295;
+  optional string xla_gpu_override_gemm_autotuner = 295;
 
-  bool xla_gpu_copy_insertion_use_region_analysis = 236;
+  optional bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
   // If true, each fusion instruction will have a cost model runtime estimate in
   // backend config after compilation.
-  bool xla_gpu_collect_cost_model_stats = 240;
+  optional bool xla_gpu_collect_cost_model_stats = 240;
 
-  bool xla_gpu_enable_split_k_autotuning = 241;
+  optional bool xla_gpu_enable_split_k_autotuning = 241;
 
   // Whether reduction epilogue fusion is enabled in fusion passes.
-  bool xla_gpu_enable_reduction_epilogue_fusion = 243;
+  optional bool xla_gpu_enable_reduction_epilogue_fusion = 243;
   // Allow early return when acquiring NCCL cliques.
-  bool xla_gpu_enable_nccl_clique_optimization = 244;
+  optional bool xla_gpu_enable_nccl_clique_optimization = 244;
 
   // Replace custom calls with noop operations.
-  bool xla_gpu_mock_custom_calls = 245;
+  optional bool xla_gpu_mock_custom_calls = 245;
 
   // Allow Triton GEMM autotuning to fall back to cuBLAS when that is
   // faster.
-  bool xla_gpu_cublas_fallback = 247;
+  optional bool xla_gpu_cublas_fallback = 247;
 
   // Enable double buffering for loops.
-  bool xla_gpu_enable_while_loop_double_buffering = 248;
+  optional bool xla_gpu_enable_while_loop_double_buffering = 248;
 
   enum WhileLoopUnrolling {
     WHILE_LOOP_UNROLLING_NO_UNROLL = 0;
@@ -680,58 +685,58 @@ message DebugOptions {
   }
 
   // Determine the while loop unrolling scheme.
-  WhileLoopUnrolling xla_gpu_enable_while_loop_unrolling = 294;
+  optional WhileLoopUnrolling xla_gpu_enable_while_loop_unrolling = 294;
 
   // Change the layout of the second triton dot operand to be column major.
   // Only works for (bf16 x bf16) -> bf16.
-  bool xla_gpu_ensure_minor_dot_contraction_dims = 249;
+  optional bool xla_gpu_ensure_minor_dot_contraction_dims = 249;
 
   // Filter out kernels that spill registers during autotuning.
-  bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
+  optional bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
 
   // Maximum number of buffers to print when debugging buffer assignment.
-  int64 xla_debug_buffer_assignment_show_max = 251;
+  optional int64 xla_debug_buffer_assignment_show_max = 251;
 
-  int32 xla_gpu_llvm_verification_level = 256;
+  optional int32 xla_gpu_llvm_verification_level = 256;
 
   // Enable radix sort using CUB.
-  bool xla_gpu_enable_cub_radix_sort = 259;
+  optional bool xla_gpu_enable_cub_radix_sort = 259;
 
   // Threshold to enable windowed einsum (collective matmul) in MB.
-  int64 xla_gpu_threshold_for_windowed_einsum_mib = 265;
+  optional int64 xla_gpu_threshold_for_windowed_einsum_mib = 265;
 
   // Enables currently disabled features within Triton for Hopper.
-  bool xla_gpu_enable_triton_hopper = 266;
+  optional bool xla_gpu_enable_triton_hopper = 266;
 
   // Enable NCCL user buffers.
-  bool xla_gpu_enable_nccl_user_buffers = 267;
+  optional bool xla_gpu_enable_nccl_user_buffers = 267;
 
   // Enable NCCL communicator splitting.
-  bool xla_gpu_enable_nccl_comm_splitting = 272;
+  optional bool xla_gpu_enable_nccl_comm_splitting = 272;
 
   // Enable NCCL per stream communicators.
-  bool xla_gpu_enable_nccl_per_stream_comms = 276;
+  optional bool xla_gpu_enable_nccl_per_stream_comms = 276;
 
   // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
-  bool xla_gpu_enable_libnvptxcompiler = 269;
+  optional bool xla_gpu_enable_libnvptxcompiler = 269;
 
-  bool xla_gpu_enable_dot_strength_reduction = 270;
+  optional bool xla_gpu_enable_dot_strength_reduction = 270;
   // Whether to use multiple compute streams to run windowed einsum.
-  bool xla_gpu_multi_streamed_windowed_einsum = 280;
+  optional bool xla_gpu_multi_streamed_windowed_einsum = 280;
 
   // If enabled, uses bf16_6way gemm to compute F32 gemm.
-  bool xla_gpu_enable_bf16_6way_gemm = 271;
+  optional bool xla_gpu_enable_bf16_6way_gemm = 271;
 
   // If enabled, uses bf16_3way gemm to compute F32 gemm.
-  bool xla_gpu_enable_bf16_3way_gemm = 279;
+  optional bool xla_gpu_enable_bf16_3way_gemm = 279;
 
   // Specify the maximum number of channels(SMs) NCCL
   // will use for collective operations.
-  int64 xla_gpu_nccl_collective_max_nchannels = 273;
+  optional int64 xla_gpu_nccl_collective_max_nchannels = 273;
 
   // Specify the maximum number of channels(SMs) NCCL
   // will use for p2p operations.
-  int64 xla_gpu_nccl_p2p_max_nchannels = 274;
+  optional int64 xla_gpu_nccl_p2p_max_nchannels = 274;
 
   reserved 275;  // was xla_gpu_enable_mlir_emitters
 
@@ -742,7 +747,7 @@ message DebugOptions {
   // 2: + Loop-like emitters
   // 3: + Transpose
   // 4: + Reduce
-  int64 xla_gpu_mlir_emitter_level = 303;
+  optional int64 xla_gpu_mlir_emitter_level = 303;
   // The maximum number of kernels to emit with MLIR. Unlimited if 0.
   reserved 281;  // was xla_gpu_max_mlir_kernels
   // The number of initial kernels to not emit with MLIR. Only supported kernels
@@ -752,12 +757,12 @@ message DebugOptions {
   // Threshold to rewrite matmul to cuBLAS or Triton (minumum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
   // rewrite).
-  int64 xla_gpu_gemm_rewrite_size_threshold = 283;
+  optional int64 xla_gpu_gemm_rewrite_size_threshold = 283;
 
   // If true, will require complete AOT autotuning results; in the case of
   // missing AOT result, the model will not be compiled or executed, a
   // `NotFound` error will be returned.
-  bool xla_gpu_require_complete_aot_autotune_results = 284;
+  optional bool xla_gpu_require_complete_aot_autotune_results = 284;
 
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   // Current levels:
@@ -765,33 +770,33 @@ message DebugOptions {
   // 1: Fusions of GEMM, elementwise, transpose/reshape operations.
   // 2: + Broadcasts.
   // 3: + Nontrivial noncontracting dimension reshapes/transposes.
-  int32 xla_gpu_cudnn_gemm_fusion_level = 285;
+  optional int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
   // This instructs the runtime whether to use
   // memcpy for p2p communication when source and
   // target are located within a node(nvlink).
-  bool xla_gpu_use_memcpy_local_p2p = 287;
+  optional bool xla_gpu_use_memcpy_local_p2p = 287;
 
   // If non-zero, limits the number of solutions to be used by GEMM autotuner.
   // This might be useful if underlying math library returns too many GEMM
   // solutions.
-  int64 xla_gpu_autotune_max_solutions = 288;
+  optional int64 xla_gpu_autotune_max_solutions = 288;
 
   // If true, large constants will be printed out when dumping HLOs.
-  bool xla_dump_large_constants = 290;
+  optional bool xla_dump_large_constants = 290;
 
   // If true, will verify that the numerical results of Triton fusions match
   // the results of regular emitters.
-  bool xla_gpu_verify_triton_fusion_numerics = 291;
+  optional bool xla_gpu_verify_triton_fusion_numerics = 291;
 
   // File to write autotune logs to. It will stored in txt format.
-  string xla_gpu_dump_autotune_logs_to = 292;
+  optional string xla_gpu_dump_autotune_logs_to = 292;
 
   // Base length to rewrite the reduce window to, no rewrite if set to 0.
-  int64 xla_reduce_window_rewrite_base_length = 293;
+  optional int64 xla_reduce_window_rewrite_base_length = 293;
 
   // If true, will enable host memory offloading on a device.
-  bool xla_gpu_enable_host_memory_offloading = 296;
+  optional bool xla_gpu_enable_host_memory_offloading = 296;
 
   // Excludes non-deterministic ops from compiled executables.
   // Unlike --xla_gpu_deterministic_ops does not disable autotuning - the
@@ -801,40 +806,40 @@ message DebugOptions {
   // Compilation errors out if SelectAndScatter is encountered.
   // Scatter ops can non-deterministic by default; these get converted to
   // a deterministic implementation.
-  bool xla_gpu_exclude_nondeterministic_ops = 297;
+  optional bool xla_gpu_exclude_nondeterministic_ops = 297;
 
   // If true, Nccl errors will terminate the process.
-  bool xla_gpu_nccl_terminate_on_error = 301;
+  optional bool xla_gpu_nccl_terminate_on_error = 301;
 
   // Use Shardonnay, a new partitioner, to replace the existing
   // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
   // details.
-  bool xla_use_shardonnay = 302;
+  optional bool xla_use_shardonnay = 302;
 
-  bool xla_gpu_shard_autotuning = 304;
+  optional bool xla_gpu_shard_autotuning = 304;
 
-  bool xla_gpu_enable_approx_costly_collectives = 305;
+  optional bool xla_gpu_enable_approx_costly_collectives = 305;
 
-  string xla_gpu_kernel_cache_file = 306;
+  optional string xla_gpu_kernel_cache_file = 306;
 
   // Recognises rotate-right patterns (slice, slice, concat) within a while
   // loop and labels the while loop as a pipelined while loop. This is an
   // unsafe flag.
-  bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
+  optional bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
 
-  string xla_gpu_per_fusion_autotune_cache_dir = 310;
+  optional string xla_gpu_per_fusion_autotune_cache_dir = 310;
 
   // The command buffer trace cache size, increasing the cache size may
   // sometimes reduces the chances of doing command buffer tracing for
   // updating command buffer instance.
-  int64 xla_cmd_buffer_trace_cache_size = 311;
+  optional int64 xla_cmd_buffer_trace_cache_size = 311;
 
   // Enable this flag will use a separate memory space color for
   // temp buffer, and then will use separate memory allocator to allocate it,
   // as there is no other memory allocation interference,
   // it will allocate temp buffer to some fix address on every iteration,
   // which is good for cuda-graph perf.
-  bool xla_gpu_temp_buffer_use_separate_color = 312;
+  optional bool xla_gpu_temp_buffer_use_separate_color = 312;
 
   // Custom call targets with legacy registry API (non FFI API),
   // that support recording to command buffer custom command,
