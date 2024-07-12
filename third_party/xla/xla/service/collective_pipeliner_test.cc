@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/collective_pipeliner.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -2879,6 +2880,115 @@ ENTRY entry {
   const HloInstruction* all_reduce2 = find_all_reduce(all_reduce1);
   EXPECT_NE(all_reduce2, nullptr);
   EXPECT_THAT(all_reduce2, op::AllReduce(op::GetTupleElement(op::While())));
+}
+
+TEST_F(CollectivePipelinerTest,
+       ForwardSinkDependentPipelineableCollectivesNotLastRun) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+add.1 {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  b.1 = bf16[1,8,128,32] broadcast(ar.1), dimensions={0,1,2}
+  constant = bf16[] constant(0)
+  reduce = bf16[1,8,128] reduce(b.1, constant), dimensions={3}, to_apply=add.1
+  ar.2 = bf16[1,8,128] all-reduce(reduce), replica_groups={}, to_apply=add, channel_id=2
+  c1 = bf16[] constant(2.0)
+  bc = bf16[1,8,128] broadcast(c1)
+  mul1 = bf16[1,8,128] multiply(ar.2, bc)
+  mul3 = bf16[1,8,128] multiply(mul1, ar.2)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, mul3, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  config_.set_use_spmd_partitioning(true);
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/false,
+          /*level_to_operate_on=*/0,
+          /*pipeline_use_tree=*/true,
+          /*process_different_sized_ops=*/true,
+          CollectivePipeliner::kForwardSink,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
+          /*acceptable_formatting=*/HloPredicateIsNotOp<HloOpcode::kAllReduce>)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  // Checks if i has at least one operand whose operand is a custom-call with
+  // target "SunkByPreviousStep".
+  std::function<bool(HloInstruction*)> has_operands_operand_custom_call =
+      [&](HloInstruction* i) -> bool {
+    for (const HloInstruction* operand : i->operands()) {
+      if (absl::c_any_of(
+              operand->operands(), [](const HloInstruction* operands_operand) {
+                return operands_operand->IsCustomCall("SunkByPreviousStep");
+              })) {
+        return true;
+      }
+    }
+    return false;
+  };
+  // The following two tuples should have the above function return true.
+  //  - one tuple in the entry computation.
+  //  - the root tuple of the while loop.
+  int64_t num_desired_tuples = 0;
+  for (HloInstruction* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kTuple &&
+        has_operands_operand_custom_call(inst)) {
+      num_desired_tuples++;
+      continue;
+    }
+    if (inst->opcode() == HloOpcode::kWhile) {
+      CHECK(has_operands_operand_custom_call(
+          inst->while_body()->root_instruction()));
+      num_desired_tuples++;
+    }
+  }
+  CHECK_EQ(num_desired_tuples, 2);
 }
 
 }  // namespace

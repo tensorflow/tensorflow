@@ -324,7 +324,8 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
                             HloOpcode::kAllReduce, HloOpcode::kTranspose,
                             HloOpcode::kBroadcast>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
-           i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep);
+           i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
+           i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
   };
   // Returns if this instruction is a dynamic-update-slice inserting the value
   // into a bigger buffer that we are going to pipeline to the next iteration.
@@ -2263,6 +2264,17 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
                 ComputeFullOutputShape(to_move, formatting_op->shape()),
                 collect_operands(formatting_op)[0], new_dims));
         pipelined_map[formatting_op] = expanded_transpose;
+        continue;
+      }
+      if (formatting_op->IsCustomCall(
+              CollectivePipeliner::kSunkByPreviousStep)) {
+        HloInstruction* expanded_custom_call =
+            loop_computation->AddInstruction(HloInstruction::CreateCustomCall(
+                ComputeFullOutputShape(to_move, formatting_op->shape()),
+                collect_operands(formatting_op),
+                /*custom_call_target=*/
+                CollectivePipeliner::kSunkByPreviousStep));
+        pipelined_map[formatting_op] = expanded_custom_call;
         continue;
       }
       CHECK(false) << "Unsupported instruction " << formatting_op->ToString();
