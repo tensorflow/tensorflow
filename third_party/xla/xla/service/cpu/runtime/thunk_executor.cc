@@ -113,19 +113,18 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
                                           Thunk::TaskRunner* runner)
     : executor(executor),
       runner(runner),
-      counters(executor->nodes_defs().size()),
       nodes(executor->nodes_defs().size()),
+      execute_event(tsl::MakeConstructedAsyncValueRef<ExecuteEvent>()),
       pending_sink_nodes(executor->sink().size()),
-      abort(false),
-      execute_event(tsl::MakeConstructedAsyncValueRef<ExecuteEvent>()) {
+      abort(false) {
   DCHECK(runner == nullptr || static_cast<bool>(*runner))
       << "`runner` must be nullptr or a valid TaskRunner";
 
-  for (NodeId id = 0; id < nodes.size(); ++id) {
-    const NodeDef& node_def = executor->node_def(id);
-    counters[id].value.store(node_def.in_edges.size(),
-                             std::memory_order_release);
-    nodes[id] = Node{id, &counters[id].value, &node_def.out_edges};
+  Node* node = nodes.data();
+  for (const NodeDef& node_def : executor->nodes_defs()) {
+    node->counter.store(node_def.in_edges.size(), std::memory_order_release);
+    node->out_edges = &node_def.out_edges;
+    ++node;
   }
 }
 
@@ -242,9 +241,9 @@ void ThunkExecutor::Execute(ExecuteState* state,
 
   for (int64_t i = 0; i < ready_queue.size(); ++i) {
     NodeId id = ready_queue[i];
-    Node& node = state->nodes[id];
+    ExecuteState::Node& node = state->nodes[id];
 
-    int64_t cnt = node.counter->load(std::memory_order_acquire);
+    int64_t cnt = node.counter.load(std::memory_order_acquire);
     CHECK_EQ(cnt, 0) << "Node counter must be 0";  // Crash Ok
 
     // If we have multiple ready thunks, split the ready queue and offload
@@ -330,7 +329,7 @@ inline ABSL_ATTRIBUTE_ALWAYS_INLINE void ThunkExecutor::SplitReadyQueue(
 
 void ThunkExecutor::ProcessOutEdges(
     ExecuteState* state, tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
-    Node& node, ReadyQueue& ready_queue) {
+    ExecuteState::Node& node, ReadyQueue& ready_queue) {
   // If thunk execution failed, mark execution as aborted and record the error.
   // We still continue processing the nodes DAG to eventually mark sink nodes
   // completed as it's easier than to add a special abort handling logic.
@@ -346,9 +345,9 @@ void ThunkExecutor::ProcessOutEdges(
 
   // Append ready nodes to the back of the ready queue.
   for (NodeId out_edge : *node.out_edges) {
-    Node& out_node = state->nodes[out_edge];
+    ExecuteState::Node& out_node = state->nodes[out_edge];
 
-    int64_t cnt = out_node.counter->fetch_sub(1, std::memory_order_release);
+    int64_t cnt = out_node.counter.fetch_sub(1, std::memory_order_release);
     CHECK_GE(cnt, 1) << "Node counter can't drop below 0";  // Crash Ok
     if (cnt == 1) ready_queue.push_back(out_edge);
   }

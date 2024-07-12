@@ -580,7 +580,11 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
   BENCHMARK(name)                      \
       ->MeasureProcessCPUTime()        \
       ->Arg(1)                         \
+      ->Arg(2)                         \
+      ->Arg(4)                         \
+      ->Arg(8)                         \
       ->Arg(16)                        \
+      ->Arg(32)                        \
       ->Arg(64)                        \
       ->Arg(128)                       \
       ->Arg(256)                       \
