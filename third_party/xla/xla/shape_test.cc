@@ -265,6 +265,15 @@ TEST_F(ShapeTest, ProgramShapeToString) {
       prog.ToString());
 }
 
+TEST_F(ShapeTest, IgnoreSplitsComparison) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {256, 256}, {1, 0});
+  Shape other_shape = shape;
+  SplitConfig split_config(/*dimension=*/0, {128});
+  other_shape.mutable_layout()->add_split_configs(split_config);
+
+  EXPECT_TRUE(Shape::Equal().IgnoreSplitConfigInLayout()(shape, other_shape));
+}
+
 TEST_F(ShapeTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
       {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_, tuple_,

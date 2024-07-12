@@ -1668,7 +1668,9 @@ absl::Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
   const Shape& dest_shape = ShapeUtil::GetTupleElementShape(operand_shape, 0);
   const Shape& src_shape = ShapeUtil::GetTupleElementShape(operand_shape, 1);
   if (!ShapesSame(dest_shape, src_shape,
-                  Shape::Equal().IgnoreMemorySpaceInLayout())) {
+                  Shape::Equal()
+                      .IgnoreMemorySpaceInLayout()
+                      .IgnoreSplitConfigInLayout())) {
     return Internal(
         "Source and destination buffers in CopyDone arguments need to be the "
         "same shape found %s and %s\n%s",
