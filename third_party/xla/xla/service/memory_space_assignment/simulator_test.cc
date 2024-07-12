@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <queue>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -119,10 +121,63 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerNestedLoop) {
   // The while loop has 42 iterations, and each iteration has 2 FLOP (for
   // %increment and %greater). Thus, the total FLOPs are 84 FLOPs.
   float expected_elapsed_time = 84;
-  EXPECT_EQ(runtime_simulator_->ComputeEstimatedElapsedTime(*hlo_live_range,
-                                                            allocations),
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTimeWithoutAsyncCopies(
+                *hlo_live_range, allocations),
             expected_elapsed_time);
 }
 
+TEST_F(MemorySpaceAssignmentSimulatorTest,
+       AsyncCopyTransferForSharedBandwidth) {
+  int64_t buffer_size_1 = 100;
+  int64_t buffer_size_2 = 200;
+  auto parameter_1 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {100}), "parameter_1");
+  auto copy_start_1 = HloInstruction::CreateCopyStart(
+      ShapeUtil::MakeShape(F32, {buffer_size_1}), parameter_1.get());
+  auto parameter_2 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {buffer_size_2}), "parameter_2");
+  auto copy_start_2 = HloInstruction::CreateCopyStart(
+      ShapeUtil::MakeShape(F32, {200}), parameter_2.get());
+  std::queue<const HloInstruction*> memory_access_queue_to_share_bandwidth;
+  memory_access_queue_to_share_bandwidth.push(copy_start_1.get());
+  memory_access_queue_to_share_bandwidth.push(copy_start_2.get());
+  absl::flat_hash_map<const HloInstruction*, float> remaining_size_of_buffers =
+      {{copy_start_1.get(), buffer_size_1 * 4},
+       {copy_start_2.get(), buffer_size_2 * 4}};
+  float default_memory_bytes_per_second = 1;
+  float bytes_to_transfer_step1 = 400;
+  // The bandwidth is shared, so only uses half of the bandwidth.
+  float expected_elapsed_time_step1 =
+      bytes_to_transfer_step1 / (0.5 * default_memory_bytes_per_second);
+  EXPECT_EQ(RuntimeSimulator::SimulateAsyncCopyTransfer(
+                bytes_to_transfer_step1, memory_access_queue_to_share_bandwidth,
+                remaining_size_of_buffers, default_memory_bytes_per_second),
+            expected_elapsed_time_step1);
+
+  float bytes_to_transfer_step2 = 900;
+  // After the first step, there are 1200-400=800 bytes left in the shared
+  // queue. Thus, for the next 800 bytes transfer, the bandwidth is shared.
+  // Then, we can use all bandwidth for the rest of bytes.
+  float shared_bandwidth_bytes =
+      ((buffer_size_1 + buffer_size_2) * 4 - bytes_to_transfer_step1);
+  float expected_elapsed_time_step2 =
+      shared_bandwidth_bytes / (0.5 * default_memory_bytes_per_second) +
+      (bytes_to_transfer_step2 - shared_bandwidth_bytes) /
+          default_memory_bytes_per_second;
+  EXPECT_EQ(RuntimeSimulator::SimulateAsyncCopyTransfer(
+                bytes_to_transfer_step2, memory_access_queue_to_share_bandwidth,
+                remaining_size_of_buffers, default_memory_bytes_per_second),
+            expected_elapsed_time_step2);
+
+  // Now, both copy instructions in the shared queue
+  // finishes. The bandwidth is not shared anymore.
+  float bytes_to_transfer_step3 = 150;
+  float expected_elapsed_time_step3 =
+      bytes_to_transfer_step3 / (default_memory_bytes_per_second);
+  EXPECT_EQ(RuntimeSimulator::SimulateAsyncCopyTransfer(
+                bytes_to_transfer_step3, memory_access_queue_to_share_bandwidth,
+                remaining_size_of_buffers, default_memory_bytes_per_second),
+            expected_elapsed_time_step3);
+}
 }  // namespace
 }  // namespace xla

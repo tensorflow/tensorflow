@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_SIMULATOR_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_SIMULATOR_H_
 
+#include <queue>
+
+#include "absl/container/flat_hash_map.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
@@ -33,8 +37,35 @@ class RuntimeSimulator {
   // assignment solution. Specifically, it returns the estimated execution time
   // (in seconds) of the HLO module for the given memory space assignment (i.e.,
   // ```allocations```).
-  float ComputeEstimatedElapsedTime(const HloLiveRange& hlo_live_range,
-                                    const AllocationSequence& allocations);
+  // This function provides a basic estimate without considering the effect of
+  // async copies.
+  float SimulateElapsedTimeWithoutAsyncCopies(
+      const HloLiveRange& hlo_live_range,
+      const AllocationSequence& allocations);
+
+  // TODO(b/352777140): The SimulateElapsedTimeWithoutAsyncCopies function
+  // assumes that the async copies do not have any overhead.
+  // However, in practice, the computation and the async copies may not overlap
+  // perfectly, and the overhead of the async copies is an important factor to
+  // evaluate the effectiveness of the memory space assignment solution. Thus,
+  // we need to add a function to simulate the execution time with async copies.
+  // The detail design is in go/msa-async-predictor.
+
+  // This is an auxiliary function which is used for simulating the execution
+  // time of async copies. This function simulates the execution time of
+  // transferring ```bytes_to_transfer``` bytes while sharing the bandwidth with
+  // memory access requests in ```memory_access_queue_to_share_bandwidth```. The
+  // bandwidth is shared equally: When the
+  // memory_access_queue_to_share_bandwidth is not empty, we can only use half
+  // of the bandwidth to transfer the request, and use the other half to
+  // transfer the memory requests in the queue. When the queue is drained, we
+  // can use the full bandwidth to transfer the request.
+  static float SimulateAsyncCopyTransfer(
+      float bytes_to_transfer,
+      std::queue<const HloInstruction*>& memory_access_queue_to_share_bandwidth,
+      absl::flat_hash_map<const HloInstruction*, float>&
+          remaining_size_of_buffers,
+      float default_memory_bytes_per_second);
 
  private:
   const CostAnalysis* cost_analysis_;

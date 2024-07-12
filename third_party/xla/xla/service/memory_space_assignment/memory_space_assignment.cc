@@ -355,9 +355,11 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
 
   if (options_.cost_analysis) {
     RuntimeSimulator runtime_simulator(options_.cost_analysis);
-    float estimated_time = runtime_simulator.ComputeEstimatedElapsedTime(
-        hlo_live_range, allocations_);
-    VLOG(1) << "Estimated elapsed time (sec): " << estimated_time;
+    float estimated_time =
+        runtime_simulator.SimulateElapsedTimeWithoutAsyncCopies(hlo_live_range,
+                                                                allocations_);
+    VLOG(1) << "Estimated elapsed time without async copies (sec): "
+            << estimated_time;
   }
 
   TF_RETURN_IF_ERROR(Process(hlo_live_range));
