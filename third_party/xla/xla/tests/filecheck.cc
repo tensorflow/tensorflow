@@ -18,8 +18,9 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
-#include "xla/types.h"
-#include "xla/util.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
