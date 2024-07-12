@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 
@@ -83,6 +84,20 @@ class CuptiTracer {
   void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
 
+  // Control threads could periodically call this function to flush the
+  // collected events to the collector. Note that this function will lock the
+  // per-thread data mutex and may impact the performance.
+  absl::Status FlushEventsToCollector();
+
+  // Sets the activity event buffer flush period. Set to 0 to disable the
+  // periodic flush. Before using the FlushEventsToCollector() function, user
+  // either need to set the activity flush period or call the
+  // FlushActivityBuffers()
+  absl::Status SetActivityFlushPeriod(uint32_t period_ms);
+
+  // Force the cupti to flush activity buffers to this tracer.
+  absl::Status FlushActivityBuffers();
+
   absl::Status HandleCallback(CUpti_CallbackDomain domain,
                               CUpti_CallbackId cbid,
                               const CUpti_CallbackData* callback_info);
@@ -114,6 +129,10 @@ class CuptiTracer {
     num_callback_events_.fetch_add(1, std::memory_order_relaxed);
   }
 
+  bool IsCallbackApiEventsRequired() const {
+    return option_.has_value() ? option_->required_callback_api_events : false;
+  }
+
  protected:
   // protected constructor for injecting mock cupti interface for testing.
   explicit CuptiTracer(CuptiInterface* cupti_interface);
@@ -138,8 +157,8 @@ class CuptiTracer {
   void PrepareCallbackStart();
 
   // Gather all per-thread callback events and annotations.
-  std::vector<CallbackAnnotationsAndEvents>
-  GatherCallbackAnnotationsAndEvents();
+  std::vector<CallbackAnnotationsAndEvents> GatherCallbackAnnotationsAndEvents(
+      bool stop_recording);
 
   absl::Status EnableApiTracing();
   absl::Status EnableActivityTracing();

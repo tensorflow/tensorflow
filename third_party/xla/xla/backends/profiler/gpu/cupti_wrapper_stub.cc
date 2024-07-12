@@ -59,6 +59,10 @@ CUptiResult CuptiWrapperStub::ActivityUsePerThreadBuffer() {
   return CUPTI_SUCCESS;
 }
 
+CUptiResult CuptiWrapperStub::SetActivityFlushPeriod(uint32_t period_ms) {
+  return CUPTI_SUCCESS;
+}
+
 CUptiResult CuptiWrapperStub::GetDeviceId(CUcontext context,
                                           uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);

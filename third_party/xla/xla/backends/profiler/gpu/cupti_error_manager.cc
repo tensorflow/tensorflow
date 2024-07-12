@@ -88,6 +88,7 @@ CUptiResult CuptiErrorManager::ActivityGetNextRecord(
   CUptiResult error = interface_->ActivityGetNextRecord(
       buffer, valid_buffer_size_bytes, record);
   ALLOW_ERROR(error, CUPTI_ERROR_MAX_LIMIT_REACHED);
+  ALLOW_ERROR(error, CUPTI_ERROR_INVALID_KIND);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -130,6 +131,13 @@ CUptiResult CuptiErrorManager::ActivityUsePerThreadBuffer() {
   // per-thread activity buffer.
   return error;
 }
+
+CUptiResult CuptiErrorManager::SetActivityFlushPeriod(uint32_t period_ms) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->SetActivityFlushPeriod(period_ms);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+};
 
 CUptiResult CuptiErrorManager::GetDeviceId(CUcontext context,
                                            uint32_t* device_id) {

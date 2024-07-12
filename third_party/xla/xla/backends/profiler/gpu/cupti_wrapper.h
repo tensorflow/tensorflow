@@ -57,6 +57,8 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
 
   CUptiResult ActivityUsePerThreadBuffer() override;
 
+  CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
+
   CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
 
   CUptiResult GetTimestamp(uint64_t* timestamp) override;
@@ -133,6 +135,8 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
   CUptiResult ActivityUsePerThreadBuffer() override;
+
+  CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
 
   CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
 
