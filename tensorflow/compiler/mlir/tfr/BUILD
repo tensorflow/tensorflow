@@ -246,7 +246,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
     ],
 )
 
