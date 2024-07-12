@@ -1,25 +1,51 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp b/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
---- a/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
-+++ b/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
-@@ -15,9 +15,7 @@
- #include "mlir/Dialect/Linalg/IR/Linalg.h"
- #include "mlir/Dialect/Linalg/Utils/Utils.h"
- #include "mlir/Dialect/Tensor/IR/Tensor.h"
--#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
- #include "mlir/Dialect/Utils/StaticValueUtils.h"
--#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- #include "llvm/Support/MathExtras.h"
+diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
+--- a/clang/docs/ReleaseNotes.rst
++++ b/clang/docs/ReleaseNotes.rst
+@@ -312,6 +312,7 @@
  
- namespace mlir {
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -11350,7 +11350,6 @@
-         ":TensorTransforms",
-         ":TensorUtils",
-         ":TilingInterface",
--        ":TosaDialect",
-         ":TransformUtils",
-         ":ValueBoundsOpInterface",
-         ":VectorDialect",
+ - Clang now correctly implements lookup for the terminal name of a member-qualified nested-name-specifier.
+   (`CWG1835: Dependent member lookup before < <https://cplusplus.github.io/CWG/issues/1835.html>`_).
++  The warning can be disabled via `-Wno-missing-dependent-template-keyword`.
+ 
+ C Language Changes
+ ------------------
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/DiagnosticParseKinds.td b/clang/include/clang/Basic/DiagnosticParseKinds.td
+--- a/clang/include/clang/Basic/DiagnosticParseKinds.td
++++ b/clang/include/clang/Basic/DiagnosticParseKinds.td
+@@ -896,7 +896,8 @@
+   DefaultError;
+ 
+ def ext_missing_dependent_template_keyword : ExtWarn<
+-  "use 'template' keyword to treat '%0' as a dependent template name">;
++  "use 'template' keyword to treat '%0' as a dependent template name">,
++  InGroup<DiagGroup<"missing-dependent-template-keyword">>;
+ 
+ def ext_extern_template : Extension<
+   "extern templates are a C++11 extension">, InGroup<CXX11>;
+diff -ruN --strip-trailing-cr a/clang/test/Misc/warning-flags.c b/clang/test/Misc/warning-flags.c
+--- a/clang/test/Misc/warning-flags.c
++++ b/clang/test/Misc/warning-flags.c
+@@ -18,10 +18,9 @@
+ 
+ The list of warnings below should NEVER grow.  It should gradually shrink to 0.
+ 
+-CHECK: Warnings without flags (65):
++CHECK: Warnings without flags (64):
+ 
+ CHECK-NEXT:   ext_expected_semi_decl_list
+-CHECK-NEXT:   ext_missing_dependent_template_keyword
+ CHECK-NEXT:   ext_missing_whitespace_after_macro_name
+ CHECK-NEXT:   ext_new_paren_array_nonconst
+ CHECK-NEXT:   ext_plain_complex
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -3410,6 +3410,7 @@
+         ":__support_arg_list",
+         ":__support_file_file",
+         ":__support_macros_attributes",
++        ":types_FILE",
+         ":printf_main",
+         ":printf_writer",
+     ],
