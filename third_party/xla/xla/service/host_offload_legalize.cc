@@ -189,12 +189,13 @@ absl::StatusOr<InstructionAndIndex> WalkUpMemoryOffload(
     case HloOpcode::kParameter: {
       CHECK_NE(instruction->parent(),
                instruction->GetModule()->entry_computation());
-      auto callers = call_graph.GetComputationCallers(instruction->parent());
+      std::vector<HloInstruction*> callers =
+          call_graph.GetComputationCallers(instruction->parent());
       if (callers.size() != 1) {
         return absl::InvalidArgumentError(
             "Expected to be called only by one caller");
       }
-      auto* caller = callers[0];
+      HloInstruction* caller = callers[0];
       if (caller->opcode() != HloOpcode::kWhile) {
         return absl::InvalidArgumentError(
             "Expected to be called by a while loop");
@@ -214,7 +215,7 @@ absl::StatusOr<InstructionAndIndex> WalkUpMemoryOffload(
       return InstructionAndIndex(instruction, index);
     }
     case HloOpcode::kBroadcast: {
-      auto* broadcast_operand = instruction->mutable_operand(0);
+      HloInstruction* broadcast_operand = instruction->mutable_operand(0);
       if (broadcast_operand->opcode() != HloOpcode::kConstant) {
         return absl::InvalidArgumentError("Expected a constant as operand");
       }
@@ -264,7 +265,7 @@ absl::StatusOr<std::vector<InstructionAndIndex>> WalkDownMemoryOffload(
   if (current_value.instruction->user_count() == 0) {
     if (current_value.instruction->parent()->root_instruction() ==
         current_value.instruction) {
-      auto callers =
+      std::vector<HloInstruction*> callers =
           call_graph.GetComputationCallers(current_value.instruction->parent());
       if (callers.size() != 1 || callers[0]->opcode() != HloOpcode::kWhile) {
         return absl::InvalidArgumentError(
@@ -375,7 +376,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
     while (true) {
       VLOG(10) << "Current value before: "
                << current_value.instruction->ToString();
-      auto current_value_up = WalkUpMemoryOffload(current_value, *call_graph);
+      absl::StatusOr<InstructionAndIndex> current_value_up =
+          WalkUpMemoryOffload(current_value, *call_graph);
       // Invalid upward walking means the chain is unrecognized.
       if (!current_value_up.ok()) {
         return false;
@@ -429,7 +431,7 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
               annotation->parent()->root_instruction();
           if (root_instruction == user &&
               root_instruction->opcode() == HloOpcode::kTuple) {
-            auto callers =
+            std::vector<HloInstruction*> callers =
                 call_graph->GetComputationCallers(annotation->parent());
             if (callers.size() != 1 ||
                 callers[0]->opcode() != HloOpcode::kWhile) {
@@ -459,7 +461,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
       stack.pop_back();
       continue;
     }
-    auto current_value_down = WalkDownMemoryOffload(stack.back(), *call_graph);
+    absl::StatusOr<std::vector<InstructionAndIndex>> current_value_down =
+        WalkDownMemoryOffload(stack.back(), *call_graph);
     if (!current_value_down.ok()) {
       VLOG(5) << "Current value down failed: " << current_value_down.status();
       break;
@@ -467,7 +470,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
     stack.pop_back();
     stack.insert(stack.end(), current_value_down.value().begin(),
                  current_value_down.value().end());
-    for (auto& instruction_and_index : current_value_down.value()) {
+    for (InstructionAndIndex& instruction_and_index :
+         current_value_down.value()) {
       VLOG(5) << "Current value last down: "
               << stack.back().instruction->ToString();
       if (instruction_and_index.instruction->opcode() == HloOpcode::kCopy) {
@@ -513,7 +517,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
   // Process all copies one at a time from the last to the first and push it to
   // its specific user.
   while (!copies_to_move.empty()) {
-    auto& copy_to_move_instruction_and_index = copies_to_move.back();
+    InstructionAndIndex& copy_to_move_instruction_and_index =
+        copies_to_move.back();
     HloInstruction* copy_to_move =
         copy_to_move_instruction_and_index.instruction;
     VLOG(5) << "Copy to move: " << copy_to_move->ToString();
@@ -523,29 +528,31 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
       VLOG(5) << "Current value before down: "
               << stack.back().instruction->ToString() << " "
               << stack.back().index;
-      auto current_value_down =
+      absl::StatusOr<std::vector<InstructionAndIndex>> current_value_down =
           WalkDownMemoryOffload(stack.back(), *call_graph);
       if (!current_value_down.ok()) {
         VLOG(5) << "Current value down failed: " << current_value_down.status();
         break;
       }
-      for (auto& instruction_and_index : current_value_down.value()) {
+      for (InstructionAndIndex& instruction_and_index :
+           current_value_down.value()) {
         HloInstruction* instruction = instruction_and_index.instruction;
         const int index = instruction_and_index.index;
         update_shape_layout(instruction_and_index, copy_to_move);
         if (instruction->opcode() == HloOpcode::kParameter) {
-          auto callers =
+          std::vector<HloInstruction*> callers =
               call_graph->GetComputationCallers(instruction->parent());
           if (callers.size() != 1) {
             return absl::InvalidArgumentError(
                 "Expected to be called only by one caller");
           }
-          auto* caller = callers[0];
+          HloInstruction* caller = callers[0];
           update_shape_layout(InstructionAndIndex(caller, index), copy_to_move);
         }
       }
       stack.pop_back();
-      for (auto& instruction_and_index : current_value_down.value()) {
+      for (InstructionAndIndex& instruction_and_index :
+           current_value_down.value()) {
         HloInstruction* instruction = instruction_and_index.instruction;
         VLOG(5) << "Current value last down: " << instruction->ToString();
         CHECK_NE(instruction->opcode(), HloOpcode::kCopy)
@@ -574,7 +581,7 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
               instruction->AddInstruction(copy_to_move->CloneWithNewOperands(
                   new_copy_shape, {new_annotation}));
           std::vector<HloInstruction*> users = instruction->users();
-          for (auto* use : users) {
+          for (HloInstruction* use : users) {
             if (use == new_copy || use == new_annotation) {
               continue;
             }
