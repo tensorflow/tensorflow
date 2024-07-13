@@ -18,6 +18,8 @@ limitations under the License.
 #include "xla/client/lib/slicing.h"
 #include "xla/client/lib/tridiagonal.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 
