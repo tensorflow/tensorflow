@@ -46,7 +46,7 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible1) {
   HloSharding to_merge =
       HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
   HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
-  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst, HloSharding::PartialTile(
                      TileAssignment({4, 4, 2, 4}, {4, 4, 8}, {0, 2, 1})));
 }
@@ -55,7 +55,7 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible2) {
   HloSharding to_merge =
       HloSharding::PartialTile(TileAssignment({1, 2, 4, 16}, {16, 8}, {1, 0}));
   HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
-  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst, HloSharding::PartialTile(
                      TileAssignment({4, 2, 4, 4}, {4, 4, 8}, {0, 2, 1})));
 }
@@ -64,7 +64,7 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible3) {
   HloSharding to_merge =
       HloSharding::PartialTile(TileAssignment({4, 2, 1, 16}, {16, 8}, {1, 0}));
   HloSharding dst = HloSharding::PartialTile(TileAssignment({1, 1, 4, 32}));
-  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst, HloSharding::PartialTile(
                      TileAssignment({4, 2, 4, 4}, {16, 8}, {1, 0})));
 }
@@ -74,7 +74,7 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible4) {
       HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
   HloSharding dst =
       HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}, {4, 32}, {1, 0}));
-  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst, HloSharding::PartialTile(
                      TileAssignment({4, 4, 2, 4}, {4, 32}, {1, 0})));
 }
@@ -84,21 +84,21 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible5) {
       HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
   HloSharding dst =
       HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}, {32, 4}, {1, 0}));
-  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, &dst));
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible6) {
   HloSharding to_merge =
       HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}));
   HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
-  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, &dst));
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible7) {
   HloSharding to_merge = HloSharding::PartialTile(
       TileAssignment({2, 1, 2, 2}, {2, 2, 2}, {2, 1, 0}));
   HloSharding dst = HloSharding::PartialTile(TileAssignment({1, 2, 1, 4}));
-  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst,
             HloSharding::Tile(TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 0, 1})));
 }
@@ -107,7 +107,7 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible8) {
   HloSharding to_merge = HloSharding::PartialTile(TileAssignment({2, 1, 4}));
   HloSharding dst =
       HloSharding::PartialTile(TileAssignment({1, 4, 2}, {2, 2, 2}, {2, 1, 0}));
-  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst,
             HloSharding::Tile(TileAssignment({2, 4}, {2, 2, 2}, {0, 2, 1})));
 }
@@ -542,7 +542,7 @@ TEST(HloShardingUtilTest, MergeManualSubgroupSharding) {
   //  {devices=[16,4]<=[64] last_tile_dims={manual, replicated}}
   HloSharding dst = HloSharding::Subgroup(tile_assignment, subgroup_types);
   HloSharding to_merge = dst;
-  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, &dst));
 }
 
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualOnly) {

@@ -290,9 +290,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
   if (passthrough_sharding.IsTileMaximal()) {
     return nullptr;
   }
-  hlo_sharding_util::MergeShardingIfCompatible(
-      output_sharding, passthrough_sharding.NumTiles() + 1,
-      &passthrough_sharding);
+  hlo_sharding_util::MergeShardingIfCompatible(output_sharding,
+                                               &passthrough_sharding);
   // Group shardings on index pass-through dimensions.
   const GroupedSharding output_grouped = hlo_sharding_util::GroupShardingOnDims(
       passthrough_sharding, output_group_dims);
@@ -374,9 +373,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
     }
     // Merge the sharding from the instruction with the sharding suggested from
     // the operand sharding.
-    hlo_sharding_util::MergeShardingIfCompatible(
-        output_sharding, maybe_passthrough->NumTiles() + 1,
-        &*maybe_passthrough);
+    hlo_sharding_util::MergeShardingIfCompatible(output_sharding,
+                                                 &*maybe_passthrough);
     // Group shardings on operand pass-through dimensions.
     const GroupedSharding output_grouped =
         hlo_sharding_util::GroupShardingOnDims(*maybe_passthrough,
@@ -631,10 +629,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
                   hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
                       operand.sharding(), operand_parallel_dims),
                   *gather, slice_sizes)) {
-        hlo_sharding_util::MergeShardingIfCompatible(
-            *maybe_passthrough,
-            /*minimum_tiles=*/gather_output_sharding.NumTiles() + 1,
-            &gather_output_sharding);
+        hlo_sharding_util::MergeShardingIfCompatible(*maybe_passthrough,
+                                                     &gather_output_sharding);
       }
       // Construct the offsets for the operand sharding to be used to adjust
       // the indices. Because we know the only dimensions partitioned are the
@@ -1052,9 +1048,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
                   hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
                       operands[0].sharding(), operand_parallel_dims),
                   *scatter, slice_sizes)) {
-        hlo_sharding_util::MergeShardingIfCompatible(
-            *maybe_passthrough,
-            /*minimum_tiles=*/update_sharding.NumTiles() + 1, &update_sharding);
+        hlo_sharding_util::MergeShardingIfCompatible(*maybe_passthrough,
+                                                     &update_sharding);
       }
 
       for (auto& update : updates) {
@@ -1194,9 +1189,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
     }
     // Merge the sharding from update with the sharding suggested from the
     // operand sharding.
-    hlo_sharding_util::MergeShardingIfCompatible(
-        updates[0].sharding(), maybe_passthrough->NumTiles() + 1,
-        &*maybe_passthrough);
+    hlo_sharding_util::MergeShardingIfCompatible(updates[0].sharding(),
+                                                 &*maybe_passthrough);
     // Group shardings on operand pass-through dimensions.
     const GroupedSharding update_grouped =
         hlo_sharding_util::GroupShardingOnDims(*maybe_passthrough,
