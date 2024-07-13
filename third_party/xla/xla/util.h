@@ -918,6 +918,6 @@ using Vector3 = std::array<int64_t, 3>;
 #define XLA_VLOG_LINES(LEVEL, STRING)                   \
   do {                                                  \
     if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
-  } while (false);
+  } while (false)
 
 #endif  // XLA_UTIL_H_
