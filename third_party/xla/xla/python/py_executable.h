@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
@@ -159,8 +160,7 @@ class PyLoadedExecutable {
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
   }
 
-  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const {
+  absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const {
     return ifrt_loaded_executable_->GetCostAnalysis();
   }
 

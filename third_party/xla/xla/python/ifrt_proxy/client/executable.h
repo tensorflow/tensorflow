@@ -34,6 +34,7 @@
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
@@ -83,9 +84,7 @@ class LoadedExecutable final
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
-  absl::StatusOr<absl::flat_hash_map<std::string,
-                                     xla::ifrt::Executable::CostAnalysisValue>>
-  GetCostAnalysis() const override;
+  absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override;
 
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<xla::ifrt::Array>> args,

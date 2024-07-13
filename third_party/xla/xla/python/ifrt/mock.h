@@ -249,9 +249,8 @@ class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
               GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,
               GetHloModules, (), (const, final));
-  MOCK_METHOD(
-      (absl::StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>),
-      GetCostAnalysis, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<xla::ifrt::AttributeMap>, GetCostAnalysis, (),
+              (const, final));
 
   static char ID;  // NOLINT
 };
@@ -281,10 +280,8 @@ class MockLoadedExecutable
               GetOutputMemoryKinds, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,
               GetHloModules, (), (const, final));
-  MOCK_METHOD(
-      (absl::StatusOr<
-          absl::flat_hash_map<std::string, Executable::CostAnalysisValue>>),
-      GetCostAnalysis, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<xla::ifrt::AttributeMap>, GetCostAnalysis, (),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<ExecuteResult>, Execute,
               (absl::Span<tsl::RCReference<Array>> args,
                const ExecuteOptions& options,

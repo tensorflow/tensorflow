@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -91,13 +92,10 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const = 0;
 
-  using CostAnalysisValue = xla::PjRtValueType;
-
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different implementations and platforms.
-  virtual absl::StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>
-  GetCostAnalysis() const = 0;
+  virtual absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const = 0;
 
   // Returns the compile options used to compile this executable.
   // TODO(phawkins): consider removing this API and having the client remember
@@ -175,9 +173,7 @@ class LoadedExecutable
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different implementations and platforms.
-  virtual absl::StatusOr<
-      absl::flat_hash_map<std::string, Executable::CostAnalysisValue>>
-  GetCostAnalysis() const = 0;
+  virtual absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const = 0;
 
   // `LoadedExecutable` methods.
 

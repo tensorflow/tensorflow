@@ -1387,6 +1387,7 @@ tsl_pybind_extension(
         "//xla/python/ifrt:plugin_program_serdes",
         "//xla/python/ifrt_proxy/client:py_module",
         "//xla/python/pjrt_ifrt",
+        "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service/cpu:collectives_interface",
         "//xla/tsl/concurrency:ref_count",

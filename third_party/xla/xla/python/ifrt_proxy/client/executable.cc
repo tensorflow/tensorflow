@@ -40,6 +40,7 @@
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -392,9 +393,8 @@ LoadedExecutable::GetHloModules() const {
       "HloModule does not provide stable serialization");
 }
 
-absl::StatusOr<
-    absl::flat_hash_map<std::string, xla::ifrt::Executable::CostAnalysisValue>>
-LoadedExecutable::GetCostAnalysis() const {
+absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
+    const {
   return absl::UnimplementedError("Unimplemented");
 }
 
