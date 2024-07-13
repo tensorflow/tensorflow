@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/InitAllExtensions.h"
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "mlir/InitAllExtensions.h"  // from @llvm-project
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "xla/service/gpu/prevent_mmav3_loop_unrolling.h"
 #include "xla/service/gpu/triton_sparse_extensions.h"
 #include "third_party/triton/bin/RegisterTritonDialects.h"
