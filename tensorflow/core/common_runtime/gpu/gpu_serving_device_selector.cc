@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
+#include "absl/types/span.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_scheduling_metrics_storage.h"
 
