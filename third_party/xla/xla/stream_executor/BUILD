@@ -835,3 +835,8 @@ alias(
     name = "rocm_platform",
     actual = "//xla/stream_executor/rocm:all_runtime",
 )
+
+alias(
+    name = "sycl_platform",
+    actual = "//xla/stream_executor/sycl:all_runtime",
+)
