@@ -52,5 +52,6 @@ cc_library(
         ":activity_watcher",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:types",
     ],
 )
