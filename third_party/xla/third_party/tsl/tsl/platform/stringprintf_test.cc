@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace strings {

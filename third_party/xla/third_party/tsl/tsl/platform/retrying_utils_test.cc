@@ -17,11 +17,11 @@ limitations under the License.
 #include <cmath>
 #include <fstream>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/time/time.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/str_util.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {

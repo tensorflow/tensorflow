@@ -24,6 +24,9 @@ limitations under the License.
 
 #include "absl/meta/type_traits.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/numbers.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace strings {

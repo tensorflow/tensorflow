@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

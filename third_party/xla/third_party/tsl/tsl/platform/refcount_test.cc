@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tsl/platform/refcount.h"
 
+#include "absl/log/log.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tsl {
 namespace core {

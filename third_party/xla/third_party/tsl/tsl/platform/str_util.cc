@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace str_util {

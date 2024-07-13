@@ -20,10 +20,9 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/strcat.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 #ifdef PLATFORM_WINDOWS
 #define WIFEXITED(code) ((code) != 3)

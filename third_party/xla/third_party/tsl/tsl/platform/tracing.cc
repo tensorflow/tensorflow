@@ -19,6 +19,8 @@ limitations under the License.
 #include <atomic>
 
 #include "tsl/platform/hash.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace tracing {
