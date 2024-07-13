@@ -3436,7 +3436,10 @@ cc_library(
     srcs = ["hlo_unstacker.cc"],
     hdrs = ["hlo_unstacker.h"],
     deps = [
+        ":hlo_alias_analysis",
+        ":hlo_buffer",
         ":hlo_creation_utils",
+        ":hlo_dce",
         ":hlo_pass",
         ":pattern_matcher",
         ":tuple_util",
