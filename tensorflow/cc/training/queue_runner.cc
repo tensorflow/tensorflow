@@ -14,8 +14,22 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/training/queue_runner.h"
-#include "tensorflow/core/kernels/ops_util.h"
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/cc/training/coordinator.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/ops_util.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/queue_runner.pb.h"
+#include "tensorflow/core/public/session.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 

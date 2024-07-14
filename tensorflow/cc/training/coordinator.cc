@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/cc/training/coordinator.h"
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/protobuf/error_codes.pb.h"
+
 namespace tensorflow {
 
 Coordinator::Coordinator() : Coordinator(std::vector<error::Code>()) {}
