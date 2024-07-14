@@ -321,11 +321,19 @@ absl::Status CopyAllocation::Process() {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
-  copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
-      ShapeUtil::MakeTupleShape({shape, shape, ShapeUtil::MakeShape(U32, {})}),
-      producing_instruction, cross_program_prefetch_index()));
-  copy_done_ = computation->AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+  if (producing_instruction->opcode() == HloOpcode::kSlice) {
+    TF_ASSIGN_OR_RETURN(copy_done_, computation->CreateAsyncInstructions(
+                                        producing_instruction,
+                                        {ShapeUtil::MakeShape(S32, {})}));
+    copy_start_ = copy_done_->mutable_operand(0);
+  } else {
+    copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
+        ShapeUtil::MakeTupleShape(
+            {shape, shape, ShapeUtil::MakeShape(U32, {})}),
+        producing_instruction, cross_program_prefetch_index()));
+    copy_done_ = computation->AddInstruction(
+        HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+  }
   VLOG(4) << "Created " << copy_start_->name()
           << " for copy allocation: " << ToString();
 
