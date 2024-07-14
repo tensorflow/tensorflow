@@ -13,26 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/EmulateArray.h"  // from @eigen_archive
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/kernels/eigen_activations.h"
+#include "tensorflow/core/kernels/rnn/blas_gemm.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/status.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/kernels/rnn/lstm_ops.h"
-
 #include <memory>
 #include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/rnn/lstm_ops.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
