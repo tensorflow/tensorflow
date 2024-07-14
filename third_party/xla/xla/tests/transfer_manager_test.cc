@@ -17,22 +17,28 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/service/generic_transfer_manager.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/test_helpers.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla {

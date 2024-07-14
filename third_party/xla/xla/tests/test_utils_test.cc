@@ -17,14 +17,21 @@ limitations under the License.
 
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
