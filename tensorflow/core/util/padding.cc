@@ -17,8 +17,13 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 

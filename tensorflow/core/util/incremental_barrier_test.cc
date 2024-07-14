@@ -18,12 +18,11 @@ limitations under the License.
 #include <atomic>
 
 #include "absl/functional/bind_front.h"
-#include "absl/time/time.h"
+#include "absl/log/check.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
 

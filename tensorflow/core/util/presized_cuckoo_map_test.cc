@@ -18,10 +18,12 @@ limitations under the License.
 #include <array>
 #include <vector>
 
-#include "tensorflow/core/platform/env.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {

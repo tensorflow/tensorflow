@@ -16,6 +16,19 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/status/status.h"
+#include "third_party/protobuf/message_lite.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/memmapped_file_system.h"
+#include "tensorflow/core/util/memmapped_file_system.pb.h"
+#include "tsl/platform/errors.h"
+
 namespace tensorflow {
 
 Status MemmappedFileSystemWriter::InitializeToFile(Env* env,

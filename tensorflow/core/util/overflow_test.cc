@@ -23,7 +23,6 @@ limitations under the License.
 #include <Windows.h>
 #endif
 
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

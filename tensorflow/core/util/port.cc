@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/port.h"
 
 #include "absl/base/call_once.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {

@@ -18,8 +18,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/memmapped_file_system.h"
 #include "tensorflow/core/util/memmapped_file_system.pb.h"
 

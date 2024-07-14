@@ -18,14 +18,19 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
-#include "tensorflow/core/framework/numeric_op.h"
-#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 #define DEBUG_DATA_DUMPER() ::tensorflow::DebugDataDumper::Global()
 

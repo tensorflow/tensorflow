@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/util/guarded_philox_random.h"
 
-#include "tensorflow/core/lib/random/random.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {

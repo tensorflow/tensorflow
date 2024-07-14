@@ -22,6 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_statistics.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/file_system.h"
 
 namespace tensorflow {
 
