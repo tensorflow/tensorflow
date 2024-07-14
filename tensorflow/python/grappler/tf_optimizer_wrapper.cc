@@ -20,12 +20,12 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/grappler_item.h"
