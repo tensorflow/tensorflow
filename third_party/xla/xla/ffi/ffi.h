@@ -434,8 +434,8 @@ struct CtxDecoding<UserData<T>> {
 // Result encoding
 //===----------------------------------------------------------------------===//
 
-template <>
-struct ResultEncoding<absl::Status> {
+template <ExecutionStage stage>
+struct ResultEncoding<stage, absl::Status> {
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api, absl::Status status) {
     return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
   }

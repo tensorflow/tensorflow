@@ -167,7 +167,7 @@ lit_test_suite(
     ),
     args = if_cuda_is_configured([
         "--param=PTX=PTX",
-        "--param=GPU=a100_80",
+        "--param=GPU=a100_pcie_80",
     ]) + if_rocm_is_configured([
         "--param=PTX=GCN",
         "--param=GPU=mi200",
@@ -189,7 +189,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "gpu_specs/a100_80.txtpb",
+        "gpu_specs/a100_pcie_80.txtpb",
         "gpu_specs/mi200.txtpb",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",

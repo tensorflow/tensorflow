@@ -16,20 +16,20 @@ gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
   shared_memory_per_block: 49152
-  shared_memory_per_core: 65536
+  shared_memory_per_core: 233472
   threads_per_core_limit: 2048
-  core_count: 56
-  fpus_per_core: 64
+  core_count: 132
+  fpus_per_core: 128
   block_dim_limit_x: 2147483647
   block_dim_limit_y: 65535
   block_dim_limit_z: 65535
-  memory_bandwidth: 732160000000
-  l2_cache_size: 4194304
-  clock_rate_ghz: 1.4805
-  device_memory_size: 17066622976
-  shared_memory_per_block_optin: 49152
+  memory_bandwidth: 3352320000000
+  l2_cache_size: 52428800
+  clock_rate_ghz: 1.98
+  device_memory_size: 84978434048
+  shared_memory_per_block_optin: 232448
   cuda_compute_capability {
-    major: 6
+    major: 9
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
@@ -40,4 +40,4 @@ dnn_version_info {
   minor: 9
   patch: 4
 }
-device_description_str: "Tesla P100-SXM2-16GB"
+device_description_str: "NVIDIA H100 80GB HBM3"

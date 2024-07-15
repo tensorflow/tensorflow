@@ -573,8 +573,8 @@ struct AttrDecoding<Pointer<T>> {
 // Result encoding
 //===----------------------------------------------------------------------===//
 
-template <>
-struct ResultEncoding<Error> {
+template <ExecutionStage stage>
+struct ResultEncoding<stage, Error> {
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api, Error error) {
     if (error.success()) return nullptr;
 
