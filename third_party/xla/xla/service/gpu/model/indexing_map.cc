@@ -1404,10 +1404,17 @@ UsedParameters GetUsedParameters(const mlir::AffineExpr& expr) {
   return used_parameters;
 }
 
-bool IsFunctionOfUnusedDimsAndSymbolsOnly(
-    const UsedParameters& used_parameters,
-    const SmallBitVector& unused_dims_bit_vector,
-    const SmallBitVector& unused_symbols_bit_vector) {
+bool IsFunctionOfUnusedVarsOnly(const UsedParameters& used_parameters,
+                                const SmallBitVector& unused_dims_bit_vector,
+                                const SmallBitVector& unused_symbols_bit_vector,
+                                bool removing_dims, bool removing_symbols) {
+  if (!used_parameters.dimension_ids.empty() && !removing_dims) {
+    return false;
+  }
+  if (!used_parameters.symbol_ids.empty() && !removing_symbols) {
+    return false;
+  }
+
   for (int64_t dim_id : used_parameters.dimension_ids) {
     if (!unused_dims_bit_vector[dim_id]) return false;
   }
@@ -1424,7 +1431,9 @@ struct UnusedVariables {
 };
 
 // Detects unused dimensions and symbols in the inde
-UnusedVariables DetectUnusedVariables(const IndexingMap& indexing_map) {
+UnusedVariables DetectUnusedVariables(const IndexingMap& indexing_map,
+                                      bool removing_dims,
+                                      bool removing_symbols) {
   AffineMap affine_map = indexing_map.GetAffineMap();
 
   UnusedVariables unused_vars;
@@ -1438,11 +1447,13 @@ UnusedVariables DetectUnusedVariables(const IndexingMap& indexing_map) {
       unused_constraints_candidates;
   for (const auto& [expr, range] : indexing_map.GetConstraints()) {
     UsedParameters used_parameters = GetUsedParameters(expr);
-    // If the expression uses only symbols and dims that are "unused" in
-    // `affine_map`, then we can remove it.
-    if (IsFunctionOfUnusedDimsAndSymbolsOnly(used_parameters,
-                                             unused_vars.unused_dims,
-                                             unused_vars.unused_symbols)) {
+    // If the expression uses only symbols that are unused in `affine_map`, then
+    // we can remove it (because we will remove the symbols as well). Note that
+    // the same is not true for dimensions, because of the existence of the
+    // `RemoveUnusedSymbols` function.
+    if (IsFunctionOfUnusedVarsOnly(used_parameters, unused_vars.unused_dims,
+                                   unused_vars.unused_symbols, removing_dims,
+                                   removing_symbols)) {
       unused_constraints_candidates.push_back({expr, used_parameters});
       continue;
     }
@@ -1455,9 +1466,9 @@ UnusedVariables DetectUnusedVariables(const IndexingMap& indexing_map) {
     }
   }
   for (const auto& [expr, used_parameters] : unused_constraints_candidates) {
-    if (IsFunctionOfUnusedDimsAndSymbolsOnly(used_parameters,
-                                             unused_vars.unused_dims,
-                                             unused_vars.unused_symbols)) {
+    if (IsFunctionOfUnusedVarsOnly(used_parameters, unused_vars.unused_dims,
+                                   unused_vars.unused_symbols, removing_dims,
+                                   removing_symbols)) {
       unused_vars.constraints_with_unused_vars_only.push_back(expr);
     }
   }
@@ -1556,7 +1567,8 @@ SmallBitVector IndexingMap::RemoveUnusedSymbols() {
   if (IsUndefined()) return {};
   if (GetSymbolCount() == 0) return {};
 
-  UnusedVariables unused_vars = DetectUnusedVariables(*this);
+  UnusedVariables unused_vars = DetectUnusedVariables(
+      *this, /*removing_dims=*/false, /*removing_symbols=*/true);
   for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
     constraints_.erase(expr);
   }
@@ -1564,20 +1576,6 @@ SmallBitVector IndexingMap::RemoveUnusedSymbols() {
     return {};
   }
   return std::move(unused_vars.unused_symbols);
-}
-
-SmallBitVector IndexingMap::RemoveUnusedDimensions() {
-  if (IsUndefined()) return {};
-  if (GetDimensionCount() == 0) return {};
-
-  UnusedVariables unused_vars = DetectUnusedVariables(*this);
-  for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
-    constraints_.erase(expr);
-  }
-  if (!CompressVars(unused_vars.unused_dims, /*unused_symbols=*/{})) {
-    return {};
-  }
-  return std::move(unused_vars.unused_dims);
 }
 
 void IndexingMap::ResetToKnownEmpty() {
@@ -1619,7 +1617,8 @@ bool IndexingMap::VerifyConstraintIntervals() {
 SmallBitVector IndexingMap::RemoveUnusedVars() {
   if (IsUndefined()) return {};
 
-  UnusedVariables unused_vars = DetectUnusedVariables(*this);
+  UnusedVariables unused_vars = DetectUnusedVariables(
+      *this, /*removing_dims=*/true, /*removing_symbols=*/true);
   for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
     constraints_.erase(expr);
   }
