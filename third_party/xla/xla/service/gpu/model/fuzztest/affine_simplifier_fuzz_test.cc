@@ -37,18 +37,18 @@ IndexingMap GetMap(std::string input, int64_t d0_min, int64_t d0_size,
   mlir::AffineMap affine_map = xla::gpu::ParseAffineMap(input, context);
   CHECK_EQ(affine_map.getNumResults(), 1);
 
-  // Set the sizes of unused variables to 0.
+  // Set the sizes of unused variables to 1.
   if (!affine_map.isFunctionOfSymbol(0)) {
-    s0_size = 0;
+    s0_size = 1;
   }
   if (!affine_map.isFunctionOfSymbol(1)) {
-    s1_size = 0;
+    s1_size = 1;
   }
   if (!affine_map.isFunctionOfDim(0)) {
-    d0_size = 0;
+    d0_size = 1;
   }
   if (!affine_map.isFunctionOfDim(1)) {
-    d1_size = 0;
+    d1_size = 1;
   }
 
   Interval s0_interval = {s0_min, s0_min + s0_size - 1};
