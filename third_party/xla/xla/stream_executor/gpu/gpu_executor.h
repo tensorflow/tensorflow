@@ -22,12 +22,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -57,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -183,6 +182,11 @@ class GpuExecutor : public StreamExecutorCommon {
 
   void HostMemoryDeallocate(void* location) override {
     return GpuDriver::HostDeallocate(context_, location);
+  }
+
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override {
+    return GpuDriver::GetPointerMemorySpace(
+        reinterpret_cast<GpuDevicePtr>(ptr));
   }
 
   bool SynchronizeAllActivity() override;

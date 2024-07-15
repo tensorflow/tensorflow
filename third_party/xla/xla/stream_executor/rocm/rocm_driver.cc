@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -180,17 +181,6 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
 }
 
 }  // namespace
-
-std::string MemorySpaceString(MemorySpace memory_space) {
-  switch (memory_space) {
-    case MemorySpace::kHost:
-      return "host";
-    case MemorySpace::kDevice:
-      return "device";
-    default:
-      LOG(FATAL) << "impossible memory space";
-  }
-}
 
 namespace {
 

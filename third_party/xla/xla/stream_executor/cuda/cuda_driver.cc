@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
@@ -115,17 +116,6 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
 }
 
 }  // namespace
-
-std::string MemorySpaceString(MemorySpace memory_space) {
-  switch (memory_space) {
-    case MemorySpace::kHost:
-      return "host";
-    case MemorySpace::kDevice:
-      return "device";
-    default:
-      LOG(FATAL) << "impossible memory space";
-  }
-}
 
 namespace {
 
@@ -2182,7 +2172,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   }
 
   return absl::InternalError(absl::StrCat(
-      "failed to query device pointer for memory space: ", ToString(result)));
+      "failed to query pointer for memory space: ", ToString(result)));
 }
 
 /* static */ absl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,

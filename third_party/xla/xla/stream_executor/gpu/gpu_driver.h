@@ -31,17 +31,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 namespace gpu {
-
-// Identifies the memory space where an allocation resides. See
-// GpuDriver::GetPointerMemorySpace().
-enum class MemorySpace { kHost, kDevice };
-
-// Returns a casual string, such as "host" for the provided memory space.
-std::string MemorySpaceString(MemorySpace memory_space);
 
 class GpuContext;
 

@@ -167,8 +167,6 @@ class CreatedContexts {
 
 namespace cuda {
 
-using MemorySpace = gpu::MemorySpace;
-
 using CUDADriver = gpu::GpuDriver;
 
 using ScopedActivateContext = gpu::ScopedActivateContext;

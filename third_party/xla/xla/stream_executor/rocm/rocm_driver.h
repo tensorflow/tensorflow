@@ -142,7 +142,6 @@ class CreatedContexts {
 
 namespace rocm {
 
-using MemorySpace = gpu::MemorySpace;
 using ScopedActivateContext = gpu::ScopedActivateContext;
 
 // TODO: this function shall be added to the GpuDriver API as well
