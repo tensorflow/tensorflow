@@ -366,7 +366,7 @@ class CTCLossOpGPU : public OpKernel {
     bool cudnn_launch_status =
         dnn->PrepareForCtcLoss(
                stream, *probs_desc, probs_data, *grads_desc, labels_data,
-               labels_lengths_data, input_lengths_data, GetNumericOptions(),
+               labels_lengths_data, input_lengths_data, GetNumericOptionsForCuDnn(),
                &workspace_allocator, &scratch_memory, &ctc_loss_algo_id)
             .ok();
     if (cudnn_launch_status) {

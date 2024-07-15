@@ -586,7 +586,7 @@ void operator()(
         use_cudnn_frontend, se::dnn::ConvolutionKind::FORWARD, type, bias_type,
         type, conv_scale, side_input_scale, /*leakyrelu_alpha=*/0.0, stream,
         conv_input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-        /*use_fallback=*/false, dnn_activation_mode, GetNumericOptions(),
+        /*use_fallback=*/false, dnn_activation_mode, GetNumericOptionsForCuDnn(),
         &runners));
 
     auto launch_func =
@@ -637,7 +637,7 @@ void operator()(
           bias_type, type, conv_scale, side_input_scale, leakyrelu_alpha,
           stream, conv_input_desc, filter_desc, bias_desc, output_desc,
           conv_desc,
-          /*use_fallback=*/true, dnn_activation_mode, GetNumericOptions(),
+          /*use_fallback=*/true, dnn_activation_mode, GetNumericOptionsForCuDnn(),
           &fallback_runners));
 
       auto fallback_results_or = internal::AutotuneConvImpl(

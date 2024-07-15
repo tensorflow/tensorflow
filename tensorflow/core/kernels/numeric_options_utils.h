@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_NUMERIC_OPTIONS_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_NUMERIC_OPTIONS_UTILS_H_
 
+#include "tsl/platform/tensor_float_32_utils.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/tsl/util/determinism.h"
-#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 
@@ -27,6 +27,8 @@ inline stream_executor::NumericOptions GetNumericOptions() {
       /*require_determinism=*/tsl::OpDeterminismRequired(),
       /*allow_tf32=*/tsl::tensor_float_32_execution_enabled()};
 }
+
+stream_executor::NumericOptions GetNumericOptionsForCuDnn();
 
 }  // namespace tensorflow
 

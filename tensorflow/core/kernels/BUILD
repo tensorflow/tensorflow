@@ -553,7 +553,9 @@ cc_library(
 cc_library(
     name = "numeric_options_utils",
     hdrs = ["numeric_options_utils.h"],
+    srcs = ["numeric_options_utils.cc"],
     deps = [
+        "//tensorflow/core/util:env_var",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:determinism_for_kernels",
         "@local_xla//xla/stream_executor:numeric_options",
