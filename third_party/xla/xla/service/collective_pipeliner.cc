@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/collective_pipeliner.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -1338,7 +1339,8 @@ absl::Status UpdateSendRecvValidation(
           intervals.push_back({1, 0});
         }
       } else {
-        intervals.push_back({std::max(0l, a - 1), std::max(0l, b - 1)});
+        intervals.push_back(
+            {std::max(int64_t{0}, a - 1), std::max(int64_t{0}, b - 1)});
       }
     }
   } else if (direction == CollectivePipeliner::kBackward) {
