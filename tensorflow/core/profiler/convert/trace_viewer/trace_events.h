@@ -76,8 +76,12 @@ absl::Status ReadFileTraceMetadata(std::string& filepath, Trace* trace);
 std::vector<std::vector<const TraceEvent*>> GetEventsByLevel(
     const Trace& trace, std::vector<TraceEvent*>& events);
 
-// Returns the level that an event with `duration_ps` would go into.
-int GetLevelForDuration(uint64_t duration_ps);
+// Return the minimum duration an event can have in `level`.
+uint64_t LayerResolutionPs(unsigned level);
+
+// Returns <lower, upper> bounds (in picoseconds) for the level that an event
+// with `duration_ps` would go into. (upper >= duration_ps > lower)
+std::pair<uint64_t, uint64_t> GetLevelBoundsForDuration(uint64_t duration_ps);
 
 struct EventFactory {
   TraceEvent* Create() {

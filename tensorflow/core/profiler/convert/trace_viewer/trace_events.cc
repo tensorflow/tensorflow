@@ -23,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/internal/endian.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_visibility.h"
@@ -59,11 +61,6 @@ constexpr uint64_t kLayerResolutions[] = {
 };
 
 constexpr int NumLevels() { return TF_ARRAYSIZE(kLayerResolutions); }
-constexpr uint64_t LayerResolutionPs(unsigned level) {
-  // This sometimes gets called in a tight loop, so levels are precomputed.
-  return level >= NumLevels() ? 0 : kLayerResolutions[level];
-}
-
 // Constants used by the LevelDB Table-based efficient trace viewer storage.
 static constexpr char kTraceMetadataKey[] = "/trace";
 static constexpr absl::string_view kLevelKey("123456789ABCDEFGHIJKLMNOPQ");
@@ -130,14 +127,24 @@ void MaybeAddEventUniqueId(std::vector<TraceEvent*>& events) {
 
 }  // namespace
 
-int GetLevelForDuration(uint64_t duration_ps) {
+uint64_t LayerResolutionPs(unsigned level) {
+  // This sometimes gets called in a tight loop, so levels are precomputed.
+  return level >= NumLevels() ? 0 : kLayerResolutions[level];
+}
+
+std::pair<uint64_t, uint64_t> GetLevelBoundsForDuration(uint64_t duration_ps) {
   int i = 0;
   for (; i < NumLevels(); ++i) {
     if (duration_ps > kLayerResolutions[i]) {
-      return i;
+      if (i == 0) {
+        return std::make_pair(kLayerResolutions[i], kint64max);
+      } else {
+        return std::make_pair(kLayerResolutions[i], kLayerResolutions[i - 1]);
+      }
     }
   }
-  return i;
+  // Tiny event. Put it in the bottom bucket. ([0, 1ps])
+  return std::make_pair(0, 1);
 }
 
 std::vector<TraceEvent*> MergeEventTracks(
