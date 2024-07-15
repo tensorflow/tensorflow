@@ -81,8 +81,6 @@ class ShardingParam {
     llvm::SmallVector<int, 4> axis_sizes;
 
     absl::Status verify() const;
-    mlir::LogicalResult verify(
-        llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
 
     bool operator==(const MinorToMajor& other) const {
       return permutation == other.permutation && axis_sizes == other.axis_sizes;

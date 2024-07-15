@@ -843,7 +843,34 @@ message DebugOptions {
   // command buffer.
   repeated string legacy_command_buffer_custom_call_targets = 314;
 
-  // Next id: 315
+  // This flag is used for controlling HLO dumping and NVTX marker. If turned
+  // on, both HLO dumping and NVTX marker will use syntactic sugar wrappers
+  // as op names, while the actual op names will be shown if turned off.
+  //
+  // Here is an example HLO excerpt with the flag off:
+  //
+  //   async_computation {
+  //    param_0 = f32[1,4,8]{1,0,2} parameter(0)
+  //    ROOT all-to-all.3.1 = f32[1,4,8]{1,0,2} all-to-all(param_0),
+  //                          replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={2}
+  //   }
+  //  ...
+  //
+  //  all-to-all-start =
+  //    ((f32[1,4,8]{1,0,2}), f32[1,4,8]{1,0,2}) async-start(bitcast.24.0),
+  //    calls=async_computation, backend_config={...}
+  //  all-to-all-done = f32[1,4,8]{1,0,2} async-done(all-to-all-start)
+  //
+  // and with the flag on:
+  //
+  //  all-to-all-start = ((f32[1,4,8]{1,0,2}), f32[1,4,8]{1,0,2})
+  //                     all-to-all-start(bitcast.24.0),
+  //                     replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={2},
+  //                     backend_config={...}
+  //  all-to-all-done = f32[1,4,8]{1,0,2} all-to-all-done(all-to-all-start)
+  bool xla_syntax_sugar_async_ops = 315;
+
+  // Next id: 316
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

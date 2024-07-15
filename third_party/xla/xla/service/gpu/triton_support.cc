@@ -419,7 +419,6 @@ bool IsTritonSupportedDataType(PrimitiveType type,
     case S16:
     case S32:
     case S64:
-    case U16:
     case F16:
     case F32:
     case F64:
@@ -556,6 +555,14 @@ bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
 
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  // Special handling for the kCompare instruction, which codegens correctly
+  // with a U16 data type despite the fact that it is not supported by Triton
+  // itself.
+  if (instr.opcode() == HloOpcode::kCompare &&
+      instr.operand(0)->shape().element_type() == PrimitiveType::U16) {
+    return CodegenDecision{};
+  }
+
   bool output_type_is_supported =
       IsTritonSupportedDataType(instr.shape().element_type(), gpu_version);
 
@@ -598,6 +605,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kSlice:
     case HloOpcode::kParameter:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kReshape:
       return CodegenDecision{};
     default:
       VLOG(2) << "Unsupported instruction: " << instr.ToString();
