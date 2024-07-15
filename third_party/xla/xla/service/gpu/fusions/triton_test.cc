@@ -19,13 +19,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,6 +38,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::tsl::testing::StatusIs;
 
 class TritonFusionTest : public HloTestBase {};
 
@@ -98,9 +104,16 @@ ENTRY entry_computation {
 
   std::unique_ptr<FusionInterface> emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
-  auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
-  ASSERT_NE(triton_fusion, nullptr);
-  EXPECT_EQ(triton_fusion->launch_config(), std::nullopt);
+  auto triton_fusion_emitter = dynamic_cast<TritonFusion*>(emitter.get());
+  ASSERT_NE(triton_fusion_emitter, nullptr);
+  EXPECT_EQ(triton_fusion_emitter->launch_config(), std::nullopt);
+
+  // Ensure that the emitter fails gracefully when the launch config is not set.
+  mlir::MLIRContext mlir_context;
+  EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
+                  *::xla::Cast<HloFusionInstruction>(root), "random_name",
+                  device_info, /*llvm_module=*/nullptr, &mlir_context),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace
