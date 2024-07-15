@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
+#include "xla/ffi/type_id_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -359,7 +360,7 @@ static XLA_FFI_Error* XLA_FFI_TypeId_Register(
       "XLA_FFI_ExecutionContext_Get_Args",
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
-  auto type_id = ExecutionContext::RegisterExternalTypeId(
+  auto type_id = TypeIdRegistry::RegisterExternalTypeId(
       std::string_view(args->name.ptr, args->name.len));
   if (!type_id.ok()) {
     return new XLA_FFI_Error{std::move(type_id).status()};
@@ -376,7 +377,7 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
   auto user_data = args->ctx->execution_context->Lookup(
-      ExecutionContext::TypeId(args->type_id->type_id));
+      TypeIdRegistry::TypeId(args->type_id->type_id));
   if (!user_data.ok()) {
     return new XLA_FFI_Error{std::move(user_data).status()};
   }

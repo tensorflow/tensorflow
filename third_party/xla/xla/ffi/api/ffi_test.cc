@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/ffi/type_id_registry.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -563,7 +564,7 @@ TEST(FfiTest, UserData) {
 
   ExecutionContext execution_context;
   TF_ASSERT_OK(execution_context.Insert(
-      ExecutionContext::TypeId(MyData::id.type_id), &data));
+      TypeIdRegistry::TypeId(MyData::id.type_id), &data));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();

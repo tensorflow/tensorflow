@@ -59,13 +59,11 @@ cc_library(
     srcs = ["execution_context.cc"],
     hdrs = ["execution_context.h"],
     deps = [
-        "@com_google_absl//absl/base:core_headers",
+        ":type_id_registry",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -76,6 +74,34 @@ xla_cc_test(
     srcs = ["execution_context_test.cc"],
     deps = [
         ":execution_context",
+        ":type_id_registry",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "execution_state",
+    srcs = ["execution_state.cc"],
+    hdrs = ["execution_state.h"],
+    deps = [
+        ":type_id_registry",
+        "//xla:util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "execution_state_test",
+    srcs = ["execution_state_test.cc"],
+    deps = [
+        ":execution_state",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
@@ -118,6 +144,7 @@ cc_library(
         ":api",
         ":call_frame",
         ":execution_context",
+        ":type_id_registry",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
         "//xla/hlo/ir:hlo",
@@ -173,6 +200,33 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "type_id_registry",
+    srcs = ["type_id_registry.cc"],
+    hdrs = ["type_id_registry.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/lib/gtl:int_type",
+    ],
+)
+
+xla_cc_test(
+    name = "type_id_registry_test",
+    srcs = ["type_id_registry_test.cc"],
+    deps = [
+        ":type_id_registry",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
