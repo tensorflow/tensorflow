@@ -17,8 +17,14 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

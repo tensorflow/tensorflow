@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/graph/while_context.h"
 
+#include "absl/log/check.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/stringpiece.h"
+
 namespace tensorflow {
 
 WhileContext::WhileContext(StringPiece frame_name,

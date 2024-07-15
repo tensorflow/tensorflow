@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 

@@ -19,6 +19,9 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

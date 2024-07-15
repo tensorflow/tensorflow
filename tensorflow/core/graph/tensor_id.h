@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
