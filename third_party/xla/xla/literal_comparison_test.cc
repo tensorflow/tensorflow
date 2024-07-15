@@ -138,5 +138,65 @@ TEST(LiteralComparisonTest, FloatUsingF8E5M2CompareNear_NotEqual_4ulps) {
                                         /*miscompare_callback=*/nullptr));
 }
 
+TEST(LiteralComparisonTest, F8E4M3B11FNUZCompareNear_Equal) {
+  auto actual = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
+      tsl::float8_e4m3b11fnuz(8.0));
+  auto expected = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
+      tsl::float8_e4m3b11fnuz(8.0));
+  TF_EXPECT_OK(literal_comparison::Near(actual, expected, ErrorSpec(0.0, 0.0),
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr));
+}
+
+TEST(LiteralComparisonTest, F8E4M3B11FNUZCompareNear_NotEqual_1ulp) {
+  auto actual = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
+      tsl::float8_e4m3b11fnuz(8.0));
+  auto expected = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
+      tsl::float8_e4m3b11fnuz(9.0));
+  auto error_spec = ErrorSpec(0.0, 0.0);
+  EXPECT_IS_NOT_OK(literal_comparison::Near(actual, expected, error_spec,
+                                            /*detailed_message=*/false,
+                                            /*miscompare_callback=*/nullptr));
+  error_spec.low_precision_fp_error_spec.type = PrimitiveType::F8E4M3B11FNUZ;
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  EXPECT_IS_OK(literal_comparison::Near(actual, expected, error_spec,
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr));
+}
+
+TEST(LiteralComparisonTest, F8E4M3B11FNUZCompareNear_NotEqual_4ulps) {
+  auto actual = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
+      tsl::float8_e4m3b11fnuz(8.0));
+  auto expected = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
+      tsl::float8_e4m3b11fnuz(12.0));
+  auto error_spec = ErrorSpec(0.0, 0.0);
+  error_spec.low_precision_fp_error_spec.type = PrimitiveType::F8E4M3B11FNUZ;
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  EXPECT_IS_NOT_OK(literal_comparison::Near(actual, expected, error_spec,
+                                            /*detailed_message=*/false,
+                                            /*miscompare_callback=*/nullptr));
+  error_spec.low_precision_fp_error_spec.type = PrimitiveType::F8E4M3B11FNUZ;
+  error_spec.low_precision_fp_error_spec.within_n_values = 4;
+  EXPECT_IS_OK(literal_comparison::Near(actual, expected, error_spec,
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr));
+}
+
+TEST(LiteralComparisonTest, FloatUsingF8E4M3B11FNUZCompareNear_NotEqual_4ulps) {
+  auto actual = LiteralUtil::CreateR0<float>(8.0);
+  auto expected = LiteralUtil::CreateR0<float>(12.1);
+  auto error_spec = ErrorSpec(0.0, 0.0);
+  error_spec.low_precision_fp_error_spec.type = PrimitiveType::F8E4M3B11FNUZ;
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  EXPECT_IS_NOT_OK(literal_comparison::Near(actual, expected, error_spec,
+                                            /*detailed_message=*/false,
+                                            /*miscompare_callback=*/nullptr));
+  error_spec.low_precision_fp_error_spec.type = PrimitiveType::F8E4M3B11FNUZ;
+  error_spec.low_precision_fp_error_spec.within_n_values = 4;
+  EXPECT_IS_OK(literal_comparison::Near(actual, expected, error_spec,
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr));
+}
+
 }  // namespace
 }  // namespace xla
