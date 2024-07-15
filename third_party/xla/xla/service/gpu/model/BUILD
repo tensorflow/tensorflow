@@ -173,6 +173,7 @@ xla_cc_test(
     srcs = ["gpu_hlo_cost_analysis_test.cc"],
     deps = [
         ":gpu_hlo_cost_analysis",
+        ":hlo_op_profiles",
         "//xla:shape_util",
         "//xla:test_helpers",
         "//xla/hlo/ir:hlo",

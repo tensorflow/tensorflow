@@ -61,16 +61,16 @@ class GpuPerformanceModelTest : public HloTestBase {
       const HloInstruction* producer,
       std::vector<HloInstruction*> fused_consumers = {}) {
     return GpuPerformanceModel::EstimateRunTimes(
-        producer, &analysis_, GpuPerformanceModelOptions::Default(),
-        fused_consumers);
+        producer, device_info_, &analysis_,
+        GpuPerformanceModelOptions::Default(), fused_consumers);
   }
 
   GpuPerformanceModel::RunTimes EstimateRunTimesForPriorityFusion(
       const HloInstruction* producer,
       std::vector<HloInstruction*> fused_consumers = {}) {
     return GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
-        producer, &analysis_, GpuPerformanceModelOptions::PriorityFusion(),
-        fused_consumers);
+        producer, device_info_, &analysis_,
+        GpuPerformanceModelOptions::PriorityFusion(), fused_consumers);
   }
 
   mlir::MLIRContext mlir_context_;
@@ -81,7 +81,7 @@ class GpuPerformanceModelTest : public HloTestBase {
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
-  GpuHloCostAnalysis analysis_{options_, &device_info_};
+  GpuHloCostAnalysis analysis_{options_, device_info_};
 
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, ShapeSizeBytesFunction(),
@@ -146,7 +146,7 @@ ENTRY e {
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 1, 1);
 
   GpuPerformanceModel::RecordEstimatedRunTime(
-      root, &analysis_, GpuPerformanceModelOptions::Default());
+      root, device_info_, &analysis_, GpuPerformanceModelOptions::Default());
   auto reification_cost = root->backend_config<GpuBackendConfig>()
                               ->fusion_backend_config()
                               .reification_cost();
@@ -183,7 +183,7 @@ ENTRY e {
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 175, 30);
 
   GpuPerformanceModel::RecordEstimatedRunTime(
-      root, &analysis_, GpuPerformanceModelOptions::Default());
+      root, device_info_, &analysis_, GpuPerformanceModelOptions::Default());
   auto reification_cost = root->backend_config<GpuBackendConfig>()
                               ->fusion_backend_config()
                               .reification_cost();
@@ -334,7 +334,7 @@ ENTRY fusion {
   auto run = [&](absl::string_view hlo_text)
       -> absl::StatusOr<GpuPerformanceModel::RunTimes> {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-    GpuHloCostAnalysis analysis(options_, &device_info_);
+    GpuHloCostAnalysis analysis(options_, device_info_);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
 
     auto* producer =

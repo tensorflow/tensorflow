@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_H_
 #define XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_H_
 
-
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -29,11 +29,13 @@ namespace gpu {
 class GpuPerformanceModel : public GpuPerformanceModelBase {
  public:
   static EstimateRunTimeData EstimateRunTimeForInstruction(
-      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+      const HloInstruction* instr, const se::DeviceDescription& device_info,
+      const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
   static EstimateRunTimeData EstimateRunTimeForInstructionCached(
-      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+      const HloInstruction* instr, const se::DeviceDescription& device_info,
+      const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
   // TODO(shyshkov): Unify interface with EstimateRunTimeForInstruction.
@@ -41,6 +43,7 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
       const HloInstruction* producer, const HloInstruction* consumer,
       const EstimateRunTimeData& producer_runtime,
       const EstimateRunTimeData& consumer_runtime,
+      const se::DeviceDescription& device_info,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
@@ -48,12 +51,14 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
       const HloInstruction* producer, const HloInstruction* consumer,
       const EstimateRunTimeData& producer_runtime,
       const EstimateRunTimeData& consumer_runtime,
+      const se::DeviceDescription& device_info,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
   static absl::Duration EstimateUnfusedExecTime(
       const HloInstruction* producer,
       const EstimateRunTimeData& producer_runtime,
+      const se::DeviceDescription& device_info,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
       absl::Span<const HloInstruction* const> fused_consumers);
@@ -61,25 +66,29 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
   static absl::Duration EstimateFusedExecTime(
       const HloInstruction* producer,
       const EstimateRunTimeData& producer_runtime,
+      const se::DeviceDescription& device_info,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
       absl::Span<const HloInstruction* const> fused_consumers,
       bool multi_output);
 
   static RunTimes EstimateRunTimes(
-      const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
+      const HloInstruction* producer, const se::DeviceDescription& device_info,
+      const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
       absl::Span<const HloInstruction* const> fused_consumers = {},
       bool multi_output = false);
 
   static RunTimes EstimateRunTimesForPriorityFusion(
-      const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
+      const HloInstruction* producer, const se::DeviceDescription& device_info,
+      const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
       absl::Span<const HloInstruction* const> fused_consumers = {},
       bool multi_output = false);
 
   // Writes estimated execution time to FusionBackendConfig.reification_cost.
   static void RecordEstimatedRunTime(HloInstruction* instruction,
+                                     const se::DeviceDescription& device_info,
                                      const GpuHloCostAnalysis* cost_analysis,
                                      const GpuPerformanceModelOptions& config);
 };

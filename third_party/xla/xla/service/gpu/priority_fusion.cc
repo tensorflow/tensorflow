@@ -136,7 +136,8 @@ class GpuPriorityFusionQueue {
       HloFusionAnalysisCache& fusion_analysis_cache,
       bool triton_softmax_priority_fusion_enabled)
       : computation_(computation),
-        cost_analysis_(cost_analysis_options, device_info),
+        device_info_(device_info),
+        cost_analysis_(cost_analysis_options, *device_info),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         mlir_context_(mlir_context),
@@ -395,7 +396,7 @@ class GpuPriorityFusionQueue {
 
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
-            producer, &cost_analysis_,
+            producer, *device_info_, &cost_analysis_,
             GpuPerformanceModelOptions::PriorityFusion(
                 &fusion_analysis_cache_, &gpu_performance_model_cache_),
             producer->users());
@@ -511,9 +512,9 @@ class GpuPriorityFusionQueue {
 
     // Avoid cases where we'd create a fusion that hit limitations in ptxas.
     // Would be nice to model this with cost instead.
-    if (auto fits_budget = FusionFitsInBudget(
-            *consumer, *producer, *cost_analysis_.device_info_,
-            /*is_consumer_producer_fusion=*/true);
+    if (auto fits_budget =
+            FusionFitsInBudget(*consumer, *producer, *device_info_,
+                               /*is_consumer_producer_fusion=*/true);
         !fits_budget) {
       return fits_budget;
     }
@@ -590,6 +591,8 @@ class GpuPriorityFusionQueue {
 
   // Store computation for cost analysis.
   HloComputation* computation_;
+
+  const se::DeviceDescription* device_info_;
 
   // Reference to cost model that defines priorities in the queue.
   GpuHloCostAnalysis cost_analysis_;

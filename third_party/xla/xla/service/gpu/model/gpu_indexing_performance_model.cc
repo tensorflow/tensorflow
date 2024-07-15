@@ -62,7 +62,7 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
       shape_size_,
       /*per_second_rates=*/{},
       /*count_multiple_input_accesses=*/true};
-  GpuHloCostAnalysis cost_analysis(cost_analysis_options, device_info_);
+  GpuHloCostAnalysis cost_analysis(cost_analysis_options, *device_info_);
   TF_CHECK_OK(
       cost_analysis.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 

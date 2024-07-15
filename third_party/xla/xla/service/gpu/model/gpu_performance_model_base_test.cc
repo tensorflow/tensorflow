@@ -51,7 +51,7 @@ class GpuPerformanceModelBaseTest : public HloTestBase {
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
-  GpuHloCostAnalysis analysis_{options_, &device_info_};
+  GpuHloCostAnalysis analysis_{options_, device_info_};
 
   GpuPerformanceModelBaseTest() : HloTestBase() {}
 };
