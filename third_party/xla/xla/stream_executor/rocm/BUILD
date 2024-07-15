@@ -286,6 +286,7 @@ cc_library(
         ":hipblas_lt_header",
         ":rocblas_if_static",
         ":rocblas_wrapper",
+        ":rocm_complex_converters",
         ":rocm_executor",
         ":rocm_helpers",
         ":rocm_platform_id",
@@ -337,6 +338,7 @@ cc_library(
     deps = if_rocm_is_configured([
         # keep sorted
         ":hipfft_if_static",
+        ":rocm_complex_converters",
         ":rocm_platform_id",
         "//xla/stream_executor",
         "//xla/stream_executor:fft",
@@ -650,6 +652,14 @@ rocm_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]),
     alwayslink = True,
+)
+
+cc_library(
+    name = "rocm_complex_converters",
+    hdrs = if_rocm_is_configured(["rocm_complex_converters.h"]),
+    deps = ["@com_google_absl//absl/log:check"] + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(

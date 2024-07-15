@@ -352,6 +352,7 @@ cuda_only_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cuda_activation_header",
+        ":cuda_helpers",
         ":cuda_platform_id",
         "//xla/stream_executor",
         "//xla/stream_executor:fft",
@@ -477,7 +478,10 @@ cc_library(
     textual_hdrs = if_cuda_is_configured(["cuda_helpers.h"]),
     deps = if_cuda_is_configured([
         "//xla/stream_executor/gpu:gpu_helpers_header",
-    ]),
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + [
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 cuda_only_cc_library(
