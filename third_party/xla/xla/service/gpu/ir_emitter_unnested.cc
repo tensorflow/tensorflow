@@ -1420,20 +1420,22 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
 
   auto ffi_thunk = [&] {
     auto& called_computations = instr->called_computations();
-    return std::make_unique<CustomCallThunk>(
+    return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->bundle,
         std::move(operands), std::move(results), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&] {
-    return std::make_unique<CustomCallThunk>(
+    return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(instr),
         std::move(custom_call_target), std::move(operands), std::move(results),
         std::move(opaque));
   };
 
-  AddThunkToThunkSequence(found_ffi_handler ? ffi_thunk() : legacy_thunk());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CustomCallThunk> custom_call_thunk,
+                      found_ffi_handler ? ffi_thunk() : legacy_thunk());
+  AddThunkToThunkSequence(std::move(custom_call_thunk));
 
   return absl::OkStatus();
 }

@@ -16,12 +16,15 @@ limitations under the License.
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
@@ -48,6 +51,25 @@ namespace gpu {
 using xla::ffi::CallFrame;
 using xla::ffi::CallFrameBuilder;
 using xla::ffi::CallOptions;
+
+absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
+    ThunkInfo thunk_info, CustomCallTarget call_target,
+    std::vector<std::optional<Slice>> operands,
+    std::vector<std::optional<Slice>> results, const std::string& opaque) {
+  return absl::WrapUnique(
+      new CustomCallThunk(thunk_info, std::move(call_target),
+                          std::move(operands), std::move(results), opaque));
+}
+
+absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
+    ThunkInfo thunk_info, XLA_FFI_Handler_Bundle bundle,
+    std::vector<std::optional<Slice>> operands,
+    std::vector<std::optional<Slice>> results, AttributesMap attributes,
+    const HloComputation* called_computation) {
+  return absl::WrapUnique(new CustomCallThunk(
+      thunk_info, bundle, std::move(operands), std::move(results),
+      std::move(attributes), called_computation));
+}
 
 CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
                                  CustomCallTarget call_target,
