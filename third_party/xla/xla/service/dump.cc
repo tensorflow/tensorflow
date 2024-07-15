@@ -102,7 +102,8 @@ struct CanonicalDebugOptions {
         dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
         dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
         dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
-        dump_large_constants(opts.xla_dump_large_constants()) {
+        dump_large_constants(opts.xla_dump_large_constants()),
+        syntax_sugar_async_ops(opts.xla_syntax_sugar_async_ops()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -220,6 +221,7 @@ struct CanonicalDebugOptions {
   bool dump_as_long_text;
   bool dump_mlir_pretty_form;
   bool dump_large_constants;
+  bool syntax_sugar_async_ops;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -445,6 +447,7 @@ static std::vector<std::string> DumpHloModuleImpl(
     print_options.set_print_backend_config(true);
     print_options.set_print_metadata(opts.dump_hlo_metadata);
     print_options.set_print_name_after_closing_brace(true);
+    print_options.set_syntax_sugar_async_ops(opts.syntax_sugar_async_ops);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
         StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
