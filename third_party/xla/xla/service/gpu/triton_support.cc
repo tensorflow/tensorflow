@@ -626,11 +626,18 @@ absl::Status EnsureTritonSupportsComputeCapability(
     const se::GpuComputeCapability& gpu_compute_capability) {
   auto cuda_compute_capability =
       std::get_if<se::CudaComputeCapability>(&gpu_compute_capability);
+  auto rocm_compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_compute_capability);
+  if (!cuda_compute_capability && !rocm_compute_capability) {
+    return absl::FailedPreconditionError(
+        "Triton support is only enabled for CUDA and ROCm GPUs.");
+  }
+
   if (cuda_compute_capability && !cuda_compute_capability->IsAtLeastAmpere()) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
-                     "capability 8.0) and up, but got compute capability ",
-                     cuda_compute_capability->major, ".",
+        absl::StrCat("CUDA Triton support is only enabled for Ampere GPUs ",
+                     "(compute capability 8.0) and up, but got compute ",
+                     "capability ", cuda_compute_capability->major, ".",
                      cuda_compute_capability->minor, "."));
   }
 
