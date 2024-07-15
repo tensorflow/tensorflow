@@ -2216,7 +2216,6 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:xla_kernel_creator",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -2224,7 +2223,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
-        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:status",
     ],
 )
