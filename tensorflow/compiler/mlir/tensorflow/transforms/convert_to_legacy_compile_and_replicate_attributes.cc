@@ -19,10 +19,9 @@ limitations under the License.
 // This ensures the unified attributes not get exposed outside of the MLIR
 // bridge with V1 pipeline in some cases.
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Debug.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"

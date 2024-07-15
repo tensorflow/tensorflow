@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
 
 namespace tensorflow {
