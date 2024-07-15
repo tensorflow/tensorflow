@@ -610,7 +610,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHostChunked) {
     }
     int sz = end - offset;
     bool reaches_end = end == raw_view.size();
-    ASSERT_OK(txm->TransferRawDataToSubBuffer(
+    TF_ASSERT_OK(txm->TransferRawDataToSubBuffer(
         /*buffer_index=*/0, raw_view.data() + offset, offset, sz, reaches_end,
         /*on_done=*/[]() {}));
     if (reaches_end) {
@@ -966,7 +966,7 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
   // Create a pinned_host buffer
   std::vector<float> float_data{12.0, 34.0, 56.0, 78.0};
   Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buf,
       client->BufferFromHostBuffer(
           static_cast<const void*>(float_data.data()), shape.element_type(),
@@ -975,13 +975,13 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
           /*on_done_with_host_buffer=*/nullptr, memspace,
           /*device_layout=*/nullptr));
   ASSERT_THAT(buf->IsOnCpu(), true);
-  ASSERT_OK_AND_ASSIGN(size_t buf_sz, buf->GetOnDeviceSizeInBytes());
+  TF_ASSERT_OK_AND_ASSIGN(size_t buf_sz, buf->GetOnDeviceSizeInBytes());
   ASSERT_THAT(buf_sz, Ge(sizeof(float) * 4));
 
   // Check that OpaqueDeviceMemoryDataPointer() points to actual data
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
-                       buf->AcquireExternalReference());
-  ASSERT_OK(buf->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                          buf->AcquireExternalReference());
+  TF_ASSERT_OK(buf->GetReadyFuture().Await());
   const float* float_ptr =
       reinterpret_cast<const float*>(ref->OpaqueDeviceMemoryDataPointer());
   EXPECT_THAT(*float_ptr, FloatEq(12.0));
@@ -991,12 +991,12 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
 
   // Copy raw to device using OpaqueDeviceMemoryDataPointer(), and then read
   // back to host; expect to get back the same data
-  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * default_ms,
-                       device->default_memory_space());
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * default_ms,
+                          device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager> txm,
       client->CreateBuffersForAsyncHostToDevice({shape}, default_ms));
-  ASSERT_OK(txm->TransferRawDataToBuffer(
+  TF_ASSERT_OK(txm->TransferRawDataToBuffer(
       /*buffer_index=*/0,
       absl::string_view(
           static_cast<const char*>(ref->OpaqueDeviceMemoryDataPointer()),
@@ -1005,9 +1005,9 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
   std::unique_ptr<PjRtBuffer> hbm_buf = txm->RetrieveBuffer(0);
   EXPECT_THAT(hbm_buf->GetOnDeviceSizeInBytes(), IsOkAndHolds(buf_sz));
   EXPECT_THAT(hbm_buf->HostShape(), IsOkAndHolds(shape));
-  ASSERT_OK(hbm_buf->GetReadyFuture().Await());
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
-                       hbm_buf->ToLiteralSync());
+  TF_ASSERT_OK(hbm_buf->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
+                          hbm_buf->ToLiteralSync());
   EXPECT_THAT(literal->data<float>(), ElementsAreArray(float_data));
 }
 
