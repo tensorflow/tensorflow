@@ -145,7 +145,7 @@ struct CheckShapeAssertionsPass
         return op.emitError()
                << attr.getName() << " is not a supported attribute";
     }
-    if (!op.getBackendConfig().empty())
+    if (!op.hasEmptyBackendConfig())
       return op.emitError() << "expects an empty backend_config";
     if (op.getCallTargetName() != shapeAssertionName)
       return op.emitError() << "expects @shape_assertion";

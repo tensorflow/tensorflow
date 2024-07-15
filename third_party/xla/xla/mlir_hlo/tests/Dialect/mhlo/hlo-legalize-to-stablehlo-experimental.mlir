@@ -7,7 +7,7 @@
 // CHECK-LABEL: "op_all_reduce_tuple"
 func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (tensor<8xf32>, tensor<f32>) {
   //               CHECK: "stablehlo.custom_call"(%[[ARG0:.*]], %[[ARG1:.*]]) <{
-  //          CHECK-SAME:    backend_config = "", call_target_name = "mhlo.all_reduce", called_computations = [@all_reduce]
+  //          CHECK-SAME:  call_target_name = "mhlo.all_reduce", called_computations = [@all_reduce]
   //          CHECK-SAME: }> {
   // CHECK-SAME{LITERAL}:    mhlo.attributes = {replica_groups = dense<> : tensor<0x0xi64>}
   //          CHECK-SAME: } : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
@@ -29,7 +29,7 @@ func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (ten
 
 // CHECK-LABEL: "op_all_to_all_tuple"
 func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>) {
-  //               CHECK: "stablehlo.custom_call"(%arg0, %arg1) <{backend_config = "", call_target_name = "mhlo.all_to_all"}> {
+  //               CHECK: "stablehlo.custom_call"(%arg0, %arg1) <{call_target_name = "mhlo.all_to_all"}> {
   // CHECK-SAME{LITERAL}:    mhlo.attributes = {replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}
   //          CHECK-SAME: } : (tensor<128x4xf32>, tensor<128x4xf32>)
   // expected-error@+1 {{failed to legalize operation 'mhlo.all_to_all' that was explicitly marked illegal}}
@@ -43,7 +43,7 @@ func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32
 
 // CHECK-LABEL: "attr_precision_packed_nibble"
 func.func @attr_precision_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
-  //      CHECK: "stablehlo.custom_call"(%arg0, %arg1) <{backend_config = "", call_target_name = "mhlo.dot"}> {
+  //      CHECK: "stablehlo.custom_call"(%arg0, %arg1) <{call_target_name = "mhlo.dot"}> {
   // CHECK-SAME:    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}
   // CHECK-SAME: } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
   // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}

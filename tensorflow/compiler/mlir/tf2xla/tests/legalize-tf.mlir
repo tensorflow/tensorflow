@@ -1,5 +1,5 @@
 // RUN: tf-opt "-xla-legalize-tf=legalize-chlo=false" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
-// RUN: tf-opt "-xla-legalize-tf=legalize-chlo=true" -split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix CHLO --dump-input-filter=all
+// RUN: tf-opt "-xla-legalize-tf=legalize-chlo=true" -split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix CHLO
 // This test runs twice:
 //   1. Through FILECHECK_OPTS="" FileCheck with chlo legalization disabled since verifying
 //      that the chlo ops emit produces more useful tests.
@@ -2225,19 +2225,16 @@ func.func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHLO-LABEL: @acos
 func.func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  chlo.acos %arg0 : tensor<2xf32>
-// CHLO:   %[[VAL_1:.*]] = mhlo.compare NE, {{.*}}
-// CHLO:   %[[VAL_3:.*]] = mhlo.constant dense<2.000000e+00>
-// CHLO:   %[[VAL_4:.*]] = mhlo.constant dense<1.000000e+00>
-// CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
-// CHLO:   %[[VAL_6:.*]] = mhlo.subtract %[[VAL_4]], %[[VAL_5]]
-// CHLO:   %[[VAL_7:.*]] = mhlo.sqrt %[[VAL_6]]
-// CHLO:   %[[VAL_8:.*]] = mhlo.constant dense<1.000000e+00>
-// CHLO:   %[[VAL_9:.*]] = mhlo.add %[[VAL_8]], %arg0
-// CHLO:   %[[VAL_10:.*]] = mhlo.atan2 %[[VAL_7]], %[[VAL_9]]
-// CHLO:   %[[VAL_11:.*]] = mhlo.multiply %[[VAL_3]], %[[VAL_10]]
-// CHLO:   %[[VAL_12:.*]] = mhlo.constant dense<3.14159274>
-// CHLO:   %[[VAL_13:.*]] = mhlo.select %[[VAL_1]], %[[VAL_11]], %[[VAL_12]]
-// CHLO:       return %[[VAL_13]] : tensor<2xf32>
+// CHLO: %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
+// CHLO:   %[[VAL_1:.*]] = mhlo.constant dense<2.000000e+00> : tensor<2xf32>
+// CHLO:   %[[VAL_2:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
+// CHLO:   %[[VAL_3:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_0]] : tensor<2xf32>
+// CHLO:   %[[VAL_4:.*]] = mhlo.add %[[VAL_2]], %[[VAL_0]] : tensor<2xf32>
+// CHLO:   %[[VAL_5:.*]] = mhlo.multiply %[[VAL_3]], %[[VAL_4]] : tensor<2xf32>
+// CHLO:   %[[VAL_6:.*]] = mhlo.sqrt %[[VAL_5]] : tensor<2xf32>
+// CHLO:   %[[VAL_7:.*]] = mhlo.atan2 %[[VAL_6]], %[[VAL_4]] : tensor<2xf32>
+// CHLO:   %[[VAL_8:.*]] = mhlo.multiply %[[VAL_1]], %[[VAL_7]] : tensor<2xf32>
+// CHLO:   return %[[VAL_8]] : tensor<2xf32>
   %0 = "tf.Acos"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
 }
@@ -2247,7 +2244,143 @@ func.func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: @acos_complex
 // CHLO-LABEL: @acos_complex
 func.func @acos_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
-  // CHLO: tf.Acos
+  // CHECK: chlo.acos
+  // CHLO: %[[VAL_0:.*]]: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
+  // CHLO:   %[[VAL_1:.*]] = mhlo.real %[[VAL_0]] : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  // CHLO:   %[[VAL_2:.*]] = mhlo.abs %[[VAL_1]] : tensor<2xf32>
+  // CHLO:   %[[VAL_3:.*]] = mhlo.imag %[[VAL_0]] : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  // CHLO:   %[[VAL_4:.*]] = mhlo.abs %[[VAL_3]] : tensor<2xf32>
+  // CHLO:   %[[VAL_5:.*]] = mhlo.maximum %[[VAL_2]], %[[VAL_4]] : tensor<2xf32>
+  // CHLO:   %[[VAL_6:.*]] = mhlo.constant dense<3.40282347E+38> : tensor<2xf32>
+  // CHLO:   %[[VAL_7:.*]] = mhlo.sqrt %[[VAL_6]] : tensor<2xf32>
+  // CHLO:   %[[VAL_8:.*]] = mhlo.constant dense<8.000000e+00> : tensor<2xf32>
+  // CHLO:   %[[VAL_9:.*]] = mhlo.divide %[[VAL_7]], %[[VAL_8]] : tensor<2xf32>
+  // CHLO:   %[[VAL_10:.*]] = mhlo.compare  GE, %[[VAL_5]], %[[VAL_9]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_11:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
+  // CHLO:   %[[VAL_12:.*]] = mhlo.compare  LE, %[[VAL_2]], %[[VAL_11]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_13:.*]] = mhlo.constant dense<5.000000e-01> : tensor<2xf32>
+  // CHLO:   %[[VAL_14:.*]] = mhlo.add %[[VAL_2]], %[[VAL_11]] : tensor<2xf32>
+  // CHLO:   %[[VAL_15:.*]] = mhlo.abs %[[VAL_14]] : tensor<2xf32>
+  // CHLO:   %[[VAL_16:.*]] = mhlo.maximum %[[VAL_15]], %[[VAL_4]] : tensor<2xf32>
+  // CHLO:   %[[VAL_17:.*]] = mhlo.minimum %[[VAL_15]], %[[VAL_4]] : tensor<2xf32>
+  // CHLO:   %[[VAL_18:.*]] = mhlo.compare  EQ, %[[VAL_16]], %[[VAL_17]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_19:.*]] = mhlo.constant dense<2.000000e+00> : tensor<2xf32>
+  // CHLO:   %[[VAL_20:.*]] = mhlo.sqrt %[[VAL_19]] : tensor<2xf32>
+  // CHLO:   %[[VAL_21:.*]] = mhlo.multiply %[[VAL_20]], %[[VAL_16]] : tensor<2xf32>
+  // CHLO:   %[[VAL_22:.*]] = mhlo.divide %[[VAL_17]], %[[VAL_16]] : tensor<2xf32>
+  // CHLO:   %[[VAL_23:.*]] = mhlo.multiply %[[VAL_22]], %[[VAL_22]] : tensor<2xf32>
+  // CHLO:   %[[VAL_24:.*]] = mhlo.add %[[VAL_11]], %[[VAL_23]] : tensor<2xf32>
+  // CHLO:   %[[VAL_25:.*]] = mhlo.sqrt %[[VAL_24]] : tensor<2xf32>
+  // CHLO:   %[[VAL_26:.*]] = mhlo.compare  EQ, %[[VAL_25]], %[[VAL_11]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_27:.*]] = mhlo.constant dense<0.000000e+00> : tensor<2xf32>
+  // CHLO:   %[[VAL_28:.*]] = mhlo.compare  GT, %[[VAL_23]], %[[VAL_27]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_29:.*]] = mhlo.and %[[VAL_26]], %[[VAL_28]] : tensor<2xi1>
+  // CHLO:   %[[VAL_30:.*]] = mhlo.multiply %[[VAL_16]], %[[VAL_23]] : tensor<2xf32>
+  // CHLO:   %[[VAL_31:.*]] = mhlo.divide %[[VAL_30]], %[[VAL_19]] : tensor<2xf32>
+  // CHLO:   %[[VAL_32:.*]] = mhlo.add %[[VAL_16]], %[[VAL_31]] : tensor<2xf32>
+  // CHLO:   %[[VAL_33:.*]] = mhlo.multiply %[[VAL_16]], %[[VAL_25]] : tensor<2xf32>
+  // CHLO:   %[[VAL_34:.*]] = mhlo.select %[[VAL_29]], %[[VAL_32]], %[[VAL_33]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_35:.*]] = mhlo.select %[[VAL_18]], %[[VAL_21]], %[[VAL_34]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_36:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_11]] : tensor<2xf32>
+  // CHLO:   %[[VAL_37:.*]] = mhlo.abs %[[VAL_36]] : tensor<2xf32>
+  // CHLO:   %[[VAL_38:.*]] = mhlo.maximum %[[VAL_37]], %[[VAL_4]] : tensor<2xf32>
+  // CHLO:   %[[VAL_39:.*]] = mhlo.minimum %[[VAL_37]], %[[VAL_4]] : tensor<2xf32>
+  // CHLO:   %[[VAL_40:.*]] = mhlo.compare  EQ, %[[VAL_38]], %[[VAL_39]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_41:.*]] = mhlo.multiply %[[VAL_20]], %[[VAL_38]] : tensor<2xf32>
+  // CHLO:   %[[VAL_42:.*]] = mhlo.divide %[[VAL_39]], %[[VAL_38]] : tensor<2xf32>
+  // CHLO:   %[[VAL_43:.*]] = mhlo.multiply %[[VAL_42]], %[[VAL_42]] : tensor<2xf32>
+  // CHLO:   %[[VAL_44:.*]] = mhlo.add %[[VAL_11]], %[[VAL_43]] : tensor<2xf32>
+  // CHLO:   %[[VAL_45:.*]] = mhlo.sqrt %[[VAL_44]] : tensor<2xf32>
+  // CHLO:   %[[VAL_46:.*]] = mhlo.compare  EQ, %[[VAL_45]], %[[VAL_11]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_47:.*]] = mhlo.compare  GT, %[[VAL_43]], %[[VAL_27]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_48:.*]] = mhlo.and %[[VAL_46]], %[[VAL_47]] : tensor<2xi1>
+  // CHLO:   %[[VAL_49:.*]] = mhlo.multiply %[[VAL_38]], %[[VAL_43]] : tensor<2xf32>
+  // CHLO:   %[[VAL_50:.*]] = mhlo.divide %[[VAL_49]], %[[VAL_19]] : tensor<2xf32>
+  // CHLO:   %[[VAL_51:.*]] = mhlo.add %[[VAL_38]], %[[VAL_50]] : tensor<2xf32>
+  // CHLO:   %[[VAL_52:.*]] = mhlo.multiply %[[VAL_38]], %[[VAL_45]] : tensor<2xf32>
+  // CHLO:   %[[VAL_53:.*]] = mhlo.select %[[VAL_48]], %[[VAL_51]], %[[VAL_52]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_54:.*]] = mhlo.select %[[VAL_40]], %[[VAL_41]], %[[VAL_53]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_55:.*]] = mhlo.add %[[VAL_35]], %[[VAL_54]] : tensor<2xf32>
+  // CHLO:   %[[VAL_56:.*]] = mhlo.multiply %[[VAL_13]], %[[VAL_55]] : tensor<2xf32>
+  // CHLO:   %[[VAL_57:.*]] = mhlo.add %[[VAL_56]], %[[VAL_2]] : tensor<2xf32>
+  // CHLO:   %[[VAL_58:.*]] = mhlo.multiply %[[VAL_13]], %[[VAL_57]] : tensor<2xf32>
+  // CHLO:   %[[VAL_59:.*]] = mhlo.multiply %[[VAL_4]], %[[VAL_4]] : tensor<2xf32>
+  // CHLO:   %[[VAL_60:.*]] = mhlo.add %[[VAL_35]], %[[VAL_14]] : tensor<2xf32>
+  // CHLO:   %[[VAL_61:.*]] = mhlo.divide %[[VAL_59]], %[[VAL_60]] : tensor<2xf32>
+  // CHLO:   %[[VAL_62:.*]] = mhlo.subtract %[[VAL_54]], %[[VAL_36]] : tensor<2xf32>
+  // CHLO:   %[[VAL_63:.*]] = mhlo.add %[[VAL_61]], %[[VAL_62]] : tensor<2xf32>
+  // CHLO:   %[[VAL_64:.*]] = mhlo.multiply %[[VAL_58]], %[[VAL_63]] : tensor<2xf32>
+  // CHLO:   %[[VAL_65:.*]] = mhlo.sqrt %[[VAL_64]] : tensor<2xf32>
+  // CHLO:   %[[VAL_66:.*]] = mhlo.divide %[[VAL_58]], %[[VAL_60]] : tensor<2xf32>
+  // CHLO:   %[[VAL_67:.*]] = mhlo.add %[[VAL_54]], %[[VAL_36]] : tensor<2xf32>
+  // CHLO:   %[[VAL_68:.*]] = mhlo.divide %[[VAL_58]], %[[VAL_67]] : tensor<2xf32>
+  // CHLO:   %[[VAL_69:.*]] = mhlo.add %[[VAL_66]], %[[VAL_68]] : tensor<2xf32>
+  // CHLO:   %[[VAL_70:.*]] = mhlo.sqrt %[[VAL_69]] : tensor<2xf32>
+  // CHLO:   %[[VAL_71:.*]] = mhlo.multiply %[[VAL_4]], %[[VAL_70]] : tensor<2xf32>
+  // CHLO:   %[[VAL_72:.*]] = mhlo.select %[[VAL_12]], %[[VAL_65]], %[[VAL_71]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_73:.*]] = mhlo.select %[[VAL_10]], %[[VAL_4]], %[[VAL_72]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_74:.*]] = mhlo.atan2 %[[VAL_73]], %[[VAL_1]] : tensor<2xf32>
+  // CHLO:   %[[VAL_75:.*]] = mhlo.compare  LT, %[[VAL_3]], %[[VAL_27]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_76:.*]] = mhlo.constant dense<9.99999995E+11> : tensor<2xf32>
+  // CHLO:   %[[VAL_77:.*]] = mhlo.multiply %[[VAL_9]], %[[VAL_76]] : tensor<2xf32>
+  // CHLO:   %[[VAL_78:.*]] = mhlo.compare  LT, %[[VAL_2]], %[[VAL_77]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_79:.*]] = mhlo.constant dense<9.99999997E-7> : tensor<2xf32>
+  // CHLO:   %[[VAL_80:.*]] = mhlo.multiply %[[VAL_9]], %[[VAL_79]] : tensor<2xf32>
+  // CHLO:   %[[VAL_81:.*]] = mhlo.constant dense<1.000000e+02> : tensor<2xf32>
+  // CHLO:   %[[VAL_82:.*]] = mhlo.multiply %[[VAL_9]], %[[VAL_81]] : tensor<2xf32>
+  // CHLO:   %[[VAL_83:.*]] = mhlo.select %[[VAL_78]], %[[VAL_80]], %[[VAL_82]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_84:.*]] = mhlo.compare  GE, %[[VAL_4]], %[[VAL_83]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_85:.*]] = mhlo.select %[[VAL_84]], %[[VAL_4]], %[[VAL_2]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_86:.*]] = mhlo.select %[[VAL_84]], %[[VAL_83]], %[[VAL_9]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_87:.*]] = mhlo.compare  GE, %[[VAL_85]], %[[VAL_86]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_88:.*]] = mhlo.log %[[VAL_19]] : tensor<2xf32>
+  // CHLO:   %[[VAL_89:.*]] = mhlo.log %[[VAL_85]] : tensor<2xf32>
+  // CHLO:   %[[VAL_90:.*]] = mhlo.add %[[VAL_88]], %[[VAL_89]] : tensor<2xf32>
+  // CHLO:   %[[VAL_91:.*]] = mhlo.constant dense<0x7F800000> : tensor<2xf32>
+  // CHLO:   %[[VAL_92:.*]] = mhlo.compare  EQ, %[[VAL_4]], %[[VAL_91]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_93:.*]] = mhlo.not %[[VAL_92]] : tensor<2xi1>
+  // CHLO:   %[[VAL_94:.*]] = mhlo.and %[[VAL_84]], %[[VAL_93]] : tensor<2xi1>
+  // CHLO:   %[[VAL_95:.*]] = mhlo.divide %[[VAL_2]], %[[VAL_4]] : tensor<2xf32>
+  // CHLO:   %[[VAL_96:.*]] = mhlo.select %[[VAL_94]], %[[VAL_95]], %[[VAL_27]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_97:.*]] = mhlo.multiply %[[VAL_96]], %[[VAL_96]] : tensor<2xf32>
+  // CHLO:   %[[VAL_98:.*]] = mhlo.log_plus_one %[[VAL_97]] : tensor<2xf32>
+  // CHLO:   %[[VAL_99:.*]] = mhlo.multiply %[[VAL_13]], %[[VAL_98]] : tensor<2xf32>
+  // CHLO:   %[[VAL_100:.*]] = mhlo.add %[[VAL_90]], %[[VAL_99]] : tensor<2xf32>
+  // CHLO:   %[[VAL_101:.*]] = mhlo.constant dense<1.17549435E-38> : tensor<2xf32>
+  // CHLO:   %[[VAL_102:.*]] = mhlo.sqrt %[[VAL_101]] : tensor<2xf32>
+  // CHLO:   %[[VAL_103:.*]] = mhlo.constant dense<4.000000e+00> : tensor<2xf32>
+  // CHLO:   %[[VAL_104:.*]] = mhlo.multiply %[[VAL_102]], %[[VAL_103]] : tensor<2xf32>
+  // CHLO:   %[[VAL_105:.*]] = mhlo.compare  LT, %[[VAL_4]], %[[VAL_104]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_106:.*]] = mhlo.compare  LT, %[[VAL_2]], %[[VAL_11]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_107:.*]] = mhlo.and %[[VAL_105]], %[[VAL_106]] : tensor<2xi1>
+  // CHLO:   %[[VAL_108:.*]] = mhlo.multiply %[[VAL_14]], %[[VAL_36]] : tensor<2xf32>
+  // CHLO:   %[[VAL_109:.*]] = mhlo.add %[[VAL_56]], %[[VAL_11]] : tensor<2xf32>
+  // CHLO:   %[[VAL_110:.*]] = mhlo.divide %[[VAL_108]], %[[VAL_109]] : tensor<2xf32>
+  // CHLO:   %[[VAL_111:.*]] = mhlo.negate %[[VAL_110]] : tensor<2xf32>
+  // CHLO:   %[[VAL_112:.*]] = mhlo.compare  GE, %[[VAL_2]], %[[VAL_11]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_113:.*]] = mhlo.multiply %[[VAL_13]], %[[VAL_59]] : tensor<2xf32>
+  // CHLO:   %[[VAL_114:.*]] = mhlo.divide %[[VAL_113]], %[[VAL_60]] : tensor<2xf32>
+  // CHLO:   %[[VAL_115:.*]] = mhlo.multiply %[[VAL_13]], %[[VAL_67]] : tensor<2xf32>
+  // CHLO:   %[[VAL_116:.*]] = mhlo.add %[[VAL_114]], %[[VAL_115]] : tensor<2xf32>
+  // CHLO:   %[[VAL_117:.*]] = mhlo.constant dense<1.500000e+00> : tensor<2xf32>
+  // CHLO:   %[[VAL_118:.*]] = mhlo.compare  LE, %[[VAL_56]], %[[VAL_117]] : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHLO:   %[[VAL_119:.*]] = mhlo.divide %[[VAL_113]], %[[VAL_62]] : tensor<2xf32>
+  // CHLO:   %[[VAL_120:.*]] = mhlo.add %[[VAL_114]], %[[VAL_119]] : tensor<2xf32>
+  // CHLO:   %[[VAL_121:.*]] = mhlo.subtract %[[VAL_56]], %[[VAL_11]] : tensor<2xf32>
+  // CHLO:   %[[VAL_122:.*]] = mhlo.select %[[VAL_118]], %[[VAL_120]], %[[VAL_121]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_123:.*]] = mhlo.select %[[VAL_112]], %[[VAL_116]], %[[VAL_122]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_124:.*]] = mhlo.select %[[VAL_107]], %[[VAL_111]], %[[VAL_123]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_125:.*]] = mhlo.multiply %[[VAL_124]], %[[VAL_109]] : tensor<2xf32>
+  // CHLO:   %[[VAL_126:.*]] = mhlo.sqrt %[[VAL_125]] : tensor<2xf32>
+  // CHLO:   %[[VAL_127:.*]] = mhlo.divide %[[VAL_4]], %[[VAL_126]] : tensor<2xf32>
+  // CHLO:   %[[VAL_128:.*]] = mhlo.add %[[VAL_124]], %[[VAL_126]] : tensor<2xf32>
+  // CHLO:   %[[VAL_129:.*]] = mhlo.log_plus_one %[[VAL_128]] : tensor<2xf32>
+  // CHLO:   %[[VAL_130:.*]] = mhlo.select %[[VAL_107]], %[[VAL_127]], %[[VAL_129]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_131:.*]] = mhlo.select %[[VAL_87]], %[[VAL_100]], %[[VAL_130]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_132:.*]] = mhlo.negate %[[VAL_131]] : tensor<2xf32>
+  // CHLO:   %[[VAL_133:.*]] = mhlo.select %[[VAL_75]], %[[VAL_131]], %[[VAL_132]] : tensor<2xi1>, tensor<2xf32>
+  // CHLO:   %[[VAL_134:.*]] = mhlo.complex %[[VAL_74]], %[[VAL_133]] : tensor<2xcomplex<f32>>
+  // CHLO:   return %[[VAL_134]] : tensor<2xcomplex<f32>>
   %0 = "tf.Acos"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   func.return %0 : tensor<2xcomplex<f32>>
 }
