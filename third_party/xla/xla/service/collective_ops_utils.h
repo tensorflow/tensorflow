@@ -174,6 +174,11 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
 bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
                         absl::Span<const ReplicaGroup> second);
 
+// Returns true if all subgroups in replica_groups are exclusively cross-module.
+absl::StatusOr<bool> IsExclusivelyCrossModule(
+    absl::Span<const ReplicaGroup> replica_groups, bool use_global_ids,
+    bool has_channel_id, const DeviceAssignment& device_assignment);
+
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
 inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";

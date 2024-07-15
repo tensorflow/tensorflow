@@ -36,9 +36,22 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-
 namespace xla {
 namespace {
+
+// Creates a container of ReplicaGroups.
+std::vector<ReplicaGroup> CreateReplicaGroups(
+    const std::vector<std::vector<int64_t>> &replica_groups) {
+  std::vector<ReplicaGroup> result;
+  result.reserve(replica_groups.size());
+  for (const auto &replica_group : replica_groups) {
+    ReplicaGroup &group = result.emplace_back();
+    for (auto id : replica_group) {
+      group.add_replica_ids(id);
+    }
+  }
+  return result;
+}
 
 TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
   std::vector<int> actual =
@@ -131,19 +144,91 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
 }
 
-// Creates a container of ReplicaGroups.
-std::vector<ReplicaGroup> CreateReplicaGroups(
-    const std::vector<std::vector<int64_t>> &replica_groups) {
-  std::vector<ReplicaGroup> result;
-  result.reserve(replica_groups.size());
-  for (const auto &replica_group : replica_groups) {
-    ReplicaGroup group;
-    for (auto id : replica_group) {
-      group.add_replica_ids(id);
-    }
-    result.push_back(group);
-  }
-  return result;
+TEST(IsExclusivelyCrossModuleTest, CrossReplicaNoChannelSet) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+  DeviceAssignment device_assignment(num_replicas, num_partitions);
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1}, {2, 3}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool is_exclusively_cross_module,
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/false,
+                               /*has_channel_id=*/false, device_assignment));
+  EXPECT_FALSE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossReplicaAndCrossModuleNoGlobalIds) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+  DeviceAssignment device_assignment(num_replicas, num_partitions);
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1}, {2, 3}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool is_exclusively_cross_module,
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/false,
+                               /*has_channel_id=*/true, device_assignment));
+  EXPECT_FALSE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossModuleNoGlobalIds) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+  ComputationPlacer placer;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                          placer.AssignDevices(num_replicas, num_partitions));
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0}, {1}, {2}, {3}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool is_exclusively_cross_module,
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/false,
+                               /*has_channel_id=*/true, device_assignment));
+  EXPECT_TRUE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossReplicaWithGlobalIds) {
+  int64_t num_replicas = 8;
+  int64_t num_partitions = 1;
+  ComputationPlacer placer;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                          placer.AssignDevices(num_replicas, num_partitions));
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1, 2, 3, 4, 5, 6, 7}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool is_exclusively_cross_module,
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/true,
+                               /*has_channel_id=*/true, device_assignment));
+  EXPECT_FALSE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossReplicaAndCrossModuleWithGlobalIds) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+  ComputationPlacer placer;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                          placer.AssignDevices(num_replicas, num_partitions));
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1, 2, 3, 4, 5, 6, 7}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool is_exclusively_cross_module,
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/true,
+                               /*has_channel_id=*/true, device_assignment));
+  EXPECT_FALSE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossModuleWithGlobalIds) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+
+  ComputationPlacer placer;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                          placer.AssignDevices(num_replicas, num_partitions));
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 4}, {1, 5}, {2, 6}, {3, 7}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool is_exclusively_cross_module,
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/true,
+                               /*has_channel_id=*/true, device_assignment));
+  EXPECT_TRUE(is_exclusively_cross_module);
 }
 
 }  // namespace
