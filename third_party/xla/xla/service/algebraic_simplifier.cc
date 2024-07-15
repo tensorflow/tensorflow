@@ -6629,18 +6629,28 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
       }
     }
 
-    // Finally, create Hlo for the new dot and reorder
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * new_dot,
-        MakeDotHlo(new_lhs, new_rhs, dnums, dot->precision_config(),
-                   dot->shape().element_type(), new_sparsity, new_meta));
+    int64_t old_slice_operand_elements = ShapeUtil::ElementsIn(slice->shape());
+    int64_t new_slice_operand_elements = 0;
+    if (new_lhs->opcode() == HloOpcode::kSlice) {
+      new_slice_operand_elements += ShapeUtil::ElementsIn(new_lhs->shape());
+    }
+    if (new_rhs->opcode() == HloOpcode::kSlice) {
+      new_slice_operand_elements += ShapeUtil::ElementsIn(new_rhs->shape());
+    }
+    new_slice_operand_elements *= dot->user_count();
 
     // We should only do this reorder if both new_lhs and new_rhs have free
     // dimensions. Otherwise, it will conflict with an existing optimization
     // that converts dot to mul(broadcast)
     if (!DotHasOnlyBatchAndContractingOnOneOperand(
             ShapeUtil::TrueRank(new_lhs->shape()),
-            ShapeUtil::TrueRank(new_rhs->shape()), dnums)) {
+            ShapeUtil::TrueRank(new_rhs->shape()), dnums) &&
+        new_slice_operand_elements <= old_slice_operand_elements) {
+      // Finally, create Hlo for the new dot and reorder
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_dot,
+          MakeDotHlo(new_lhs, new_rhs, dnums, dot->precision_config(),
+                     dot->shape().element_type(), new_sparsity, new_meta));
       VLOG(10) << "Reordering slice into dot operands";
       return ReplaceInstruction(slice, new_dot);
     }
