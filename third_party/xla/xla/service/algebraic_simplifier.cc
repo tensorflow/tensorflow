@@ -5200,6 +5200,19 @@ absl::Status AlgebraicSimplifierVisitor::HandleConvert(
                               convert->mutable_operand(0)->mutable_operand(0));
   }
 
+  // Try to replace convert(constant) with a constant of the right type to begin
+  // with. Disallow moving int4 since it is not supported for many ops
+  HloInstruction* constant;
+  if (Match(convert, m::Convert(m::Constant(&constant))) &&
+      !primitive_util::IsSubByteNonPredType(src_type) &&
+      !primitive_util::IsSubByteNonPredType(dest_type)) {
+    TF_ASSIGN_OR_RETURN(Literal dest_literal,
+                        constant->literal().Convert(dest_type));
+    VLOG(10) << "Replacing convert(constant) with constant";
+    return ReplaceWithNewInstruction(
+        convert, HloInstruction::CreateConstant(std::move(dest_literal)));
+  }
+
   return TryRemoveUpcastAndDowncastSurroundingBinaryOp(convert);
 }
 
