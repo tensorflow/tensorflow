@@ -17,16 +17,19 @@ limitations under the License.
 
 #include <float.h>
 #include <stddef.h>
+
 #include <limits>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace strings {

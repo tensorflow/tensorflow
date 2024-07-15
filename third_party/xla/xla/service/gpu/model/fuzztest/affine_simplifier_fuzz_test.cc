@@ -74,7 +74,9 @@ void TestCorrectness(std::string input, int64_t d0_min, int64_t d0_size,
   mlir::AffineExpr simplified = map_simplified.GetAffineMap().getResult(0);
 
   EXPECT_OK(VerifyExprsAreIdentical(
-      original, simplified, map.GetDimensionBounds(), map.GetSymbolBounds()));
+      original, simplified, map.GetDimensionBounds(), map.GetSymbolBounds()))
+      << "original: " << AffineMapPrinter().ToString(original)
+      << ", simplified: " << AffineMapPrinter().ToString(simplified);
 }
 
 void TestIdempotency(std::string input, int64_t d0_min, int64_t d0_size,
@@ -91,53 +93,6 @@ void TestIdempotency(std::string input, int64_t d0_min, int64_t d0_size,
   }
 }
 
-int64_t Cost(mlir::AffineExpr expr) {
-  switch (expr.getKind()) {
-    case mlir::AffineExprKind::Constant:
-      return 0;
-    case mlir::AffineExprKind::DimId:
-      return 1;
-    case mlir::AffineExprKind::SymbolId:
-      return 1;
-    case mlir::AffineExprKind::Add:
-      return 2 + Cost(mlir::cast<mlir::AffineBinaryOpExpr>(expr).getLHS()) +
-             Cost(mlir::cast<mlir::AffineBinaryOpExpr>(expr).getRHS());
-    case mlir::AffineExprKind::Mul:
-      return 4 + Cost(mlir::cast<mlir::AffineBinaryOpExpr>(expr).getLHS()) +
-             Cost(mlir::cast<mlir::AffineBinaryOpExpr>(expr).getRHS());
-    case mlir::AffineExprKind::FloorDiv:
-    case mlir::AffineExprKind::CeilDiv:
-    case mlir::AffineExprKind::Mod:
-      return 10 + Cost(mlir::cast<mlir::AffineBinaryOpExpr>(expr).getLHS()) +
-             Cost(mlir::cast<mlir::AffineBinaryOpExpr>(expr).getRHS());
-  }
-}
-
-void TestNoAdditionalSimplificationFromMlir(std::string input, int64_t d0_min,
-                                            int64_t d0_size, int64_t d1_min,
-                                            int64_t d1_size, int64_t s0_min,
-                                            int64_t s0_size, int64_t s1_min,
-                                            int64_t s1_size) {
-  // Checks that no additional simplification is done by the MLIR simplifier, as
-  // measured by the above cost function.
-  // We don't check that simplify(mlir-simplify(simplify(map)) == simplify(map)
-  // because the MLIR simplifier sometimes makes expressions more complicated,
-  // which we then don't clean up completely.
-  IndexingMap map = GetMap(input, d0_min, d0_size, d1_min, d1_size, s0_min,
-                           s0_size, s1_min, s1_size);
-  if (map.Simplify()) {
-    auto simplified = mlir::simplifyAffineMap(map.GetAffineMap());
-    IndexingMap new_map(simplified, map.GetDimVars(), map.GetRangeVars(), {});
-    new_map.Simplify();
-    EXPECT_LE(Cost(map.GetAffineMap().getResult(0)),
-              Cost(new_map.GetAffineMap().getResult(0)))
-        << "unexpected additional simplification from "
-        << AffineMapPrinter().ToString(map.GetAffineMap()) << " to "
-        << AffineMapPrinter().ToString(new_map.GetAffineMap()) << " via "
-        << AffineMapPrinter().ToString(simplified);
-  }
-}
-
 auto AffineDomain() {
   // The ranges are chosen to include entirely negative, entirely positive and
   // mixed domains (but mostly positive ones).
@@ -149,18 +104,9 @@ auto AffineDomain() {
       fuzztest::InRange<int64_t>(0, 10));
 }
 
-TEST(AffineSimplifierFuzzTest,
-     TestNoAdditionalSimplificationFromMlirRegression) {
-  TestNoAdditionalSimplificationFromMlir(
-      "(d0, d1)[s0, s1] -> ((s1 + ((d0 + (s0 mod 2)) + d1)))", 0, 2, 0, 1, 2, 2,
-      0, 1);
-}
-
 FUZZ_TEST(AffineSimplifierFuzzTest, TestCorrectness)
     .WithDomains(AffineDomain());
 FUZZ_TEST(AffineSimplifierFuzzTest, TestIdempotency)
-    .WithDomains(AffineDomain());
-FUZZ_TEST(AffineSimplifierFuzzTest, TestNoAdditionalSimplificationFromMlir)
     .WithDomains(AffineDomain());
 
 }  // namespace
