@@ -51,7 +51,7 @@ LogicalResult DynamicReduceWindowOpAdaptor::verify() {
       return op_.emitError()
              << attr.getName() << " is not a supported attribute";
   }
-  if (!op_.getBackendConfig().empty())
+  if (!op_.hasEmptyBackendConfig())
     return op_.emitError() << "expects an empty backend_config";
   if (op_.getCallTargetName() != "stablehlo.dynamic_reduce_window")
     return op_.emitError() << "expects @stablehlo.dynamic_reduce_window";
@@ -296,7 +296,7 @@ LogicalResult DynamicRngBitGeneratorOpAdaptor::verify() {
       return op_.emitError()
              << attr.getName() << " is not a supported attribute";
   }
-  if (!op_.getBackendConfig().empty())
+  if (!op_.hasEmptyBackendConfig())
     return op_.emitError() << "expects an empty backend_config";
   if (op_.getCallTargetName() != "stablehlo.dynamic_rng_bit_generator")
     return op_.emitError() << "expects @stablehlo.dynamic_rng_bit_generator";
@@ -407,7 +407,7 @@ LogicalResult DynamicTopKOpAdaptor::verify() {
       return op_.emitError()
              << attr.getName() << " is not a supported attribute";
   }
-  if (!op_.getBackendConfig().empty())
+  if (!op_.hasEmptyBackendConfig())
     return op_.emitError() << "expects an empty backend_config";
   if (op_.getCallTargetName() != "stablehlo.dynamic_top_k")
     return op_.emitError() << "expects @stablehlo.dynamic_top_k";

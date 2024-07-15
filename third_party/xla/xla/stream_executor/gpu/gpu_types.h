@@ -26,13 +26,11 @@ limitations under the License.
 
 #define __HIP_DISABLE_CPP_FUNCTIONS__
 
-#include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hiprand/hiprand.h"
 
 #else  // CUDA
 
-#include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 
 #endif
@@ -80,8 +78,6 @@ using GpuDeviceProperty = hipDeviceProp_t;
 using GpuModuleHandle = hipModule_t;
 using GpuFuncCachePreference = hipFuncCache_t;
 using GpuSharedMemConfig = hipSharedMemConfig;
-using GpuComplexType = hipComplex;
-using GpuDoubleComplexType = hipDoubleComplex;
 using GpuRngHandle = hiprandGenerator_t;
 using GpuGraphHandle = hipGraph_t;
 using GpuGraphExecHandle = hipGraphExec_t;
@@ -100,8 +96,6 @@ using GpuDeviceProperty = CUdevprop;
 using GpuModuleHandle = CUmodule;
 using GpuFuncCachePreference = CUfunc_cache;
 using GpuSharedMemConfig = CUsharedconfig;
-using GpuComplexType = cuComplex;
-using GpuDoubleComplexType = cuDoubleComplex;
 using GpuGraphHandle = CUgraph;
 using GpuGraphExecHandle = CUgraphExec;
 using GpuGraphNodeHandle = CUgraphNode;

@@ -80,7 +80,7 @@ LogicalResult recomposeChloOpFromCustomCall(stablehlo::CustomCallOp op,
            name == "mhlo.version";
   };
   if (!llvm::all_of(op->getAttrs(), isSupportedAttrName) ||
-      !op.getBackendConfig().empty()) {
+      !op.hasEmptyBackendConfig()) {
     return rewriter.notifyMatchFailure(
         op, "CHLO Recompose custom call did not have required attributes.");
   }
