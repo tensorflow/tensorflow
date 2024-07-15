@@ -70,7 +70,7 @@ KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
   }
 }
 
-std::string KernelThunk::ToStringExtra(int indent) const {
+std::string KernelThunk::ToString(int indent) const {
   return absl::StrFormat(
       ", kernel = %s, launch dimensions = %s, cluster_dim = %s", kernel_name_,
       launch_dimensions_.ToString(),
@@ -178,7 +178,7 @@ CustomKernelThunk::CustomKernelThunk(
   }
 }
 
-std::string CustomKernelThunk::ToStringExtra(int indent) const {
+std::string CustomKernelThunk::ToString(int indent) const {
   return custom_kernel_.ToString();
 }
 
@@ -223,12 +223,12 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
                                        custom_kernel_.shared_memory_bytes());
 
   if (auto cluster = custom_kernel_.cluster_dims(); cluster.has_value()) {
-    return executor->Launch(params.stream, custom_kernel_.thread_dims(),
-                            custom_kernel_.block_dims(), *cluster, *kernel,
-                            args);
+    return params.stream->Launch(custom_kernel_.thread_dims(),
+                                 custom_kernel_.block_dims(), *cluster, *kernel,
+                                 args);
   } else {
-    return executor->Launch(params.stream, custom_kernel_.thread_dims(),
-                            custom_kernel_.block_dims(), *kernel, args);
+    return params.stream->Launch(custom_kernel_.thread_dims(),
+                                 custom_kernel_.block_dims(), *kernel, args);
   }
 }
 

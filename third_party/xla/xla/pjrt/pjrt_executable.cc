@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -97,16 +97,6 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
     *output.mutable_target_config() = target_config->ToProto();
   }
   return output;
-}
-
-void CompileOptions::SerializeEnvOptionOverrides(
-    google::protobuf::Map<std::string, xla::OptionOverrideProto>*
-        output_env_option_overrides) const {
-  for (auto& env_option_override : env_option_overrides) {
-    auto& tmp = (*output_env_option_overrides)[env_option_override.first];
-    std::visit([&](const auto& arg) { SetOptionOverride(tmp, arg); },
-               env_option_override.second);
-  }
 }
 
 absl::StatusOr<CompileOptions> CompileOptions::FromProto(

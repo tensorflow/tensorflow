@@ -720,5 +720,24 @@ TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
   EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.85"), 4);
 }
 
+TEST_F(HloValueSemanticsAnalysisTest,
+       HandleIncompleteForeignThreadComputation) {
+  constexpr std::string_view hlo = R"(
+HloModule Module
+
+ENTRY entry {
+  foreign-call-start = ((), s32[], s32[]) custom-call-start(), custom_call_target="ThreadSpecificCustomCall", async_execution_thread="foreign_thread"
+  ROOT foreign-call-done = s32[] custom-call-done(foreign-call-start)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(
+          *module,
+          /*execution_threads=*/{HloInstruction::kMainExecutionThread}));
+}
+
 }  // namespace
 }  // namespace xla

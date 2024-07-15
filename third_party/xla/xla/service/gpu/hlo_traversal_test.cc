@@ -269,6 +269,52 @@ TEST_F(HloTraversalTest, NotFound) {
   ASSERT_EQ(result, std::nullopt);
 }
 
+TEST_F(HloTraversalTest, FindAllMultiple) {
+  const char kConverts[] = R"(
+    HloModule test
+
+    ENTRY entry {
+      p0 = s8[128] parameter(0)
+      p1 = pred[128] parameter(1)
+      p1c = s8[128] convert(p1)
+      p1c1 = f16[128] convert(p1c)
+      p0c = f16[128] convert(p0)
+      ROOT diff = f16[128] subtract(p0c, p1c1)
+    })";
+
+  auto module = ParseAndReturnVerifiedModule(kConverts).value();
+  auto root = module->entry_computation()->GetInstructionWithName("diff");
+  std::vector<const HloInstruction*> converts =
+      HloFindAll({root}, [&](const HloInstruction* node) {
+        return node->opcode() == HloOpcode::kConvert;
+      });
+
+  auto get = [&](absl::string_view name) {
+    return module->entry_computation()->GetInstructionWithName(name);
+  };
+
+  EXPECT_THAT(converts, ElementsAre(get("p0c"), get("p1c1"), get("p1c")));
+}
+
+TEST_F(HloTraversalTest, FindAllNotFound) {
+  const char kConverts[] = R"(
+    HloModule test
+
+    ENTRY entry {
+      p0 = s8[128] parameter(0)
+      p1 = f16[128] parameter(1)
+      p0c = f16[128] convert(p0)
+      ROOT diff = f16[128] subtract(p0c, p1)
+    })";
+  auto module = ParseAndReturnVerifiedModule(kConverts).value();
+  auto root = module->entry_computation()->GetInstructionWithName("diff");
+  std::vector<const HloInstruction*> converts =
+      HloFindAll({root}, [&](const HloInstruction* node) {
+        return node->opcode() == HloOpcode::kAdd;
+      });
+  EXPECT_THAT(converts, IsEmpty());
+}
+
 const char kTwoFusions[] = R"(
     HloModule test
 

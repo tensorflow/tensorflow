@@ -373,7 +373,6 @@ class MklQuantizeV2Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const unsigned int src_idx = 0;
-    const Tensor& input = ctx->input(src_idx);
     const float input_min_range = ctx->input(1).scalar<float>()();
     const float input_max_range = ctx->input(2).scalar<float>()();
     float min_range = std::min(0.0f, input_min_range);

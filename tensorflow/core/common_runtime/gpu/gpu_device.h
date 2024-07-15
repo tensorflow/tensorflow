@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/local_device_state.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // TF_GPU_USE_PJRT
+#include "xla/tsl/framework/device_id.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/framework/device_id.h"
 
 namespace Eigen {
 class StreamInterface;

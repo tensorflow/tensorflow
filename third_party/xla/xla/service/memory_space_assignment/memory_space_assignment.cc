@@ -45,15 +45,16 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/algorithm.h"
 #include "xla/service/memory_space_assignment/allocation.h"
-#include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
+#include "xla/service/memory_space_assignment/simulator.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -216,8 +217,10 @@ void ProcessBuffersProducedInAlternateMemory(
   for (auto& [_, eviction] : evictions_map) {
     MakeEvictionImmediate(eviction);
   }
-  VLOG(2) << "AllocationSequence after making spills immediate spills\n";
-  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "AllocationSequence after making spills immediate spills\n";
+    XLA_LOG_LINES(INFO, AllocationSequenceToString(allocations, true));
+  }
   // Process all buffers produced in the alternate memory:
   // 1. Make the buffer short lived.
   // 2. Service immediate use if any.
@@ -261,16 +264,22 @@ void ProcessBuffersProducedInAlternateMemory(
 
 void TransformAllocationSequenceToSpill(AllocationSequence& allocations,
                                         const HloLiveRange& hlo_live_range) {
-  VLOG(2) << "InstructionSchedule before transform\n";
-  XLA_LOG_LINES(2, InstructionScheduleToString(hlo_live_range));
-  VLOG(2) << "AllocationSequence before transform\n";
-  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "InstructionSchedule before transform\n";
+    XLA_LOG_LINES(INFO, InstructionScheduleToString(hlo_live_range));
+    LOG(INFO) << "AllocationSequence before transform\n";
+    XLA_LOG_LINES(INFO, AllocationSequenceToString(allocations, true));
+  }
   ProcessPrefetchesToAlternateMemory(allocations, hlo_live_range);
-  VLOG(2) << "AllocationSequence after processing prefetches\n";
-  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "AllocationSequence after processing prefetches\n";
+    XLA_LOG_LINES(INFO, AllocationSequenceToString(allocations, true));
+  }
   ProcessBuffersProducedInAlternateMemory(allocations, hlo_live_range);
-  VLOG(2) << "AllocationSequence after processing buffers produced in kAlt\n";
-  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "AllocationSequence after processing buffers produced in kAlt\n";
+    XLA_LOG_LINES(INFO, AllocationSequenceToString(allocations, true));
+  }
   SortAllocationSequence(allocations);
 }
 
@@ -326,9 +335,11 @@ MemorySpaceAssignment::Run(HloModule* module,
                            const HloAliasAnalysis& alias_analysis,
                            const Options& options) {
   CHECK(module->has_schedule());
-  VLOG(3) << "Module before memory space assignment: ";
-  XLA_VLOG_LINES(3, module->ToString());
-  VLOG(3) << "Schedule: " << module->schedule().ToString();
+  if (VLOG_IS_ON(3)) {
+    LOG(INFO) << "Module before memory space assignment: ";
+    XLA_LOG_LINES(INFO, module->ToString());
+    LOG(INFO) << "Schedule: " << module->schedule().ToString();
+  }
   MemorySpaceAssignment memory_space_assignment(module, options,
                                                 hlo_live_range);
 
@@ -343,8 +354,9 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
 
   if (options_.cost_analysis) {
-    float estimated_time =
-        ComputeEstimatedElapsedTime(hlo_live_range, allocations_);
+    RuntimeSimulator runtime_simulator(options_.cost_analysis);
+    float estimated_time = runtime_simulator.ComputeEstimatedElapsedTime(
+        hlo_live_range, allocations_);
     VLOG(1) << "Estimated elapsed time (sec): " << estimated_time;
   }
 
@@ -354,8 +366,10 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   TF_RETURN_IF_ERROR(FixSchedule());
   TF_RETURN_IF_ERROR(ExportAndColorBuffers());
 
-  VLOG(3) << "Module after memory space assignment: ";
-  XLA_VLOG_LINES(3, module_->ToString());
+  if (VLOG_IS_ON(3)) {
+    LOG(INFO) << "Module after memory space assignment: ";
+    XLA_LOG_LINES(INFO, module_->ToString());
+  }
   TF_CHECK_OK(module_->schedule().Verify());
   TF_ASSIGN_OR_RETURN(AsyncCopyStats stats, CalculateAsyncCopyStats());
   VLOG(1) << "Maximum number of outstanding async copies/slices: "
@@ -388,58 +402,6 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
                                         heap_simulator_options)
                          .status());
   return absl::OkStatus();
-}
-
-float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
-    const HloLiveRange& hlo_live_range, const AllocationSequence& allocations) {
-  absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
-      outputs_in_alternate_memory_map;
-  absl::flat_hash_map<const HloInstruction*,
-                      std::vector<std::pair<int64_t, ShapeIndex>>>
-      operands_in_alternate_memory_map;
-
-  for (auto& allocation : allocations) {
-    if (!allocation->is_copy_allocation()) {
-      if (allocation->memory_space() == MemorySpace::kAlternate) {
-        const HloInstruction* defining_instruction =
-            allocation->defining_position().instruction;
-        outputs_in_alternate_memory_map[defining_instruction].push_back(
-            allocation->defining_position().index);
-      }
-    }
-    for (auto& hlo_use : allocation->uses()) {
-      const HloInstruction* use_instruction = hlo_use.instruction;
-      operands_in_alternate_memory_map[use_instruction].push_back(
-          std::make_pair(hlo_use.operand_number, hlo_use.operand_index));
-    }
-  }
-
-  const auto& instruction_sequence =
-      hlo_live_range.flattened_instruction_sequence().instructions();
-  float total_elapsed = 0.0;
-  for (const HloInstruction* instruction : instruction_sequence) {
-    std::vector<ShapeIndex> outputs_in_alternate_memory;
-    auto output_it = outputs_in_alternate_memory_map.find(instruction);
-    if (output_it != outputs_in_alternate_memory_map.end()) {
-      outputs_in_alternate_memory = output_it->second;
-    }
-    std::vector<std::pair<int64_t, ShapeIndex>> operands_in_alternate_memory;
-    auto operand_it = operands_in_alternate_memory_map.find(instruction);
-    if (operand_it != operands_in_alternate_memory_map.end()) {
-      operands_in_alternate_memory = operand_it->second;
-    }
-    float instruction_elapsed =
-        options_.cost_analysis->GetInstructionElapsedInAlternateMemory(
-            *instruction, operands_in_alternate_memory,
-            outputs_in_alternate_memory);
-    float while_nest_multiplier =
-        options_.cost_analysis->GetWhileNestMultiplier(
-            options_.cost_analysis->CalculateComputationNestLevel(
-                instruction,
-                /*while_only=*/true));
-    total_elapsed += while_nest_multiplier * instruction_elapsed;
-  }
-  return total_elapsed;
 }
 
 absl::Status MemorySpaceAssignment::Process(
@@ -504,10 +466,19 @@ absl::Status MemorySpaceAssignment::Process(
   // Post-process allocations. This is only used for parent allocations where we
   // update the body root with a reference to the buffer in default memory
   // space.
+  absl::flat_hash_set<HloPosition> seen_pinned_positions;
   for (auto& allocation : allocations_) {
     if (needed_allocations.contains(allocation.get())) {
       VLOG(3) << "Post-Processing: " << allocation->ToString();
       TF_RETURN_IF_ERROR(allocation->PostProcess());
+      if (allocation->is_pinned_allocation() &&
+          !allocation->is_scoped_allocation()) {
+        auto [it, inserted] =
+            seen_pinned_positions.insert(allocation->defining_position());
+        TF_RET_CHECK(inserted)
+            << "Multiple pinned allocations defined for position "
+            << allocation->defining_position().ToString();
+      }
     }
   }
   return absl::OkStatus();

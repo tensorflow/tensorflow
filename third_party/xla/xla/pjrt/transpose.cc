@@ -88,6 +88,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -96,9 +97,9 @@ limitations under the License.
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {

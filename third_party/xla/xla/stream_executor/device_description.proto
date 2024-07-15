@@ -48,6 +48,8 @@ message GpuDeviceInfoProto {
     CudaComputeCapabilityProto cuda_compute_capability = 16;
     RocmComputeCapabilityProto rocm_compute_capability = 17;
   }
+  int64 registers_per_core_limit = 18;
+  int64 registers_per_block_limit = 19;
 }
 
 message DnnVersionInfoProto {

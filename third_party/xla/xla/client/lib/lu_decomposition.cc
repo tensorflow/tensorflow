@@ -18,9 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
+#include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

@@ -5229,8 +5229,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const dnn::TensorDescriptor& dv_desc,
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    double scale, bool use_dropout, bool use_bias,
-    dnn::FMHAMaskKind mask_type) {
+    double scale, bool use_dropout, bool use_bias, dnn::FMHAMaskKind mask_type,
+    bool force_deterministic) {
 #if CUDNN_VERSION >= 8904
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\n bmm1_grad_gemm1_rhs(q): " << q_desc.ToString()
@@ -5393,6 +5393,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                          .set_uid(CudnnfMHAUid::D_OFFSET_ID));
     sdpa_backward_options.set_dropout((float)dropout_rate.value(), seed_tensor,
                                       offset_tensor);
+  }
+
+  if (force_deterministic) {
+    sdpa_backward_options.set_deterministic_algorithm(true);
   }
 
   auto [dQ, dK, dV] =
@@ -7269,7 +7273,7 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
     std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    dnn::FMHAMaskKind mask_type) {
+    dnn::FMHAMaskKind mask_type, bool force_deterministic) {
 #if CUDNN_VERSION >= 8904
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
@@ -7283,7 +7287,8 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
           bmm2_grad_gemm1_lhs_descriptor, bmm2_grad_gemm2_rhs_descriptor,
           d_output_descriptor, d_bmm1_lhs_descriptor, d_bmm1_rhs_descriptor,
           d_bmm2_rhs_descriptor, bias_descriptor, dropout_rate, seed, scale,
-          use_dropout, bias_descriptor != std::nullopt, mask_type));
+          use_dropout, bias_descriptor != std::nullopt, mask_type,
+          force_deterministic));
 
   std::vector<int64_t> p_dims =
       bmm2_grad_gemm1_lhs_descriptor.GetCudnnCompatibleDimensions(false);

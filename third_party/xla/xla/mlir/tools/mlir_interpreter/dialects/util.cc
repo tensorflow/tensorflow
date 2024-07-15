@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -28,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/ViewLikeInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/MathExtras.h"  // from @llvm-project
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 
@@ -147,11 +147,11 @@ int64_t EvalAffineExpr(AffineExpr expr, ArrayRef<int64_t> dims,
     case AffineExprKind::Mul:
       return lhs * rhs;
     case AffineExprKind::Mod:
-      return mod(lhs, rhs);
+      return llvm::mod(lhs, rhs);
     case AffineExprKind::FloorDiv:
-      return floorDiv(lhs, rhs);
+      return llvm::divideFloorSigned(lhs, rhs);
     case AffineExprKind::CeilDiv:
-      return ceilDiv(lhs, rhs);
+      return llvm::divideCeilSigned(lhs, rhs);
     case AffineExprKind::Constant:
       return expr.cast<AffineConstantExpr>().getValue();
     case AffineExprKind::DimId:

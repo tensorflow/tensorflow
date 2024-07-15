@@ -85,7 +85,7 @@ class HloModuleConfig {
   explicit HloModuleConfig(ComputationLayout entry_computation_layout);
 
   // Convert an HloModuleConfig to or from a proto.
-  absl::StatusOr<HloModuleConfigProto> ToProto() const;
+  HloModuleConfigProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
       const HloModuleConfigProto& proto);
 

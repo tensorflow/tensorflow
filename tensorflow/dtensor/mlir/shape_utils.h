@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 

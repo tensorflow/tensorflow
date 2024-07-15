@@ -90,7 +90,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.17.0"
+VERSION = "2.18.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -3272,7 +3272,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@com_googlesource_code_re2//:__subpackages__",
         "@compute_library//:__subpackages__",
         "@cpuinfo//:__subpackages__",
-        "@cudnn_frontend_archive//:__subpackages__",  #  TFRT integration for TensorFlow.
         "@curl//:__subpackages__",
         "@dlpack//:__subpackages__",
         "@double_conversion//:__subpackages__",

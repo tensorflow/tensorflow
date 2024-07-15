@@ -76,11 +76,13 @@ xla_cc_test(
     srcs = ["ffi_test.cc"],
     deps = [
         ":ffi",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:call_frame",
         "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

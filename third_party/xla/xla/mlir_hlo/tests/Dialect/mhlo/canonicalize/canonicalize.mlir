@@ -973,14 +973,6 @@ func.func @iota_broadcast_second() -> tensor<5x4xi32> {
   func.return %0 : tensor<5x4xi32>
 }
 
-// CHECK-LABEL: @unary_einsum
-func.func @unary_einsum(%arg0: tensor<2x3xf32>) -> tensor<2x2xf32> {
-  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: "mhlo.einsum"(%[[ONE]], %arg0) <{einsum_config = ",ab->aa"}>
-  %0 = "mhlo.unary_einsum"(%arg0) {einsum_config = "ab->aa"} : (tensor<2x3xf32>) -> tensor<2x2xf32>
-  func.return %0 : tensor<2x2xf32>
-}
-
 // CHECK-LABEL: func @fold_copy
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @fold_copy(%arg : tensor<1x4xf32>) -> tensor<1x4xf32> {

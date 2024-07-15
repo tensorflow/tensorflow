@@ -185,6 +185,7 @@ FusionDecision OperandReachableFromProducer(
 FusionDecision ProducerCandidateIsFusible(
     const HloInstruction& producer, const HloInstruction& consumer,
     const HloDfsReachability& reachability, FusionInfoCache* fusion_info_cache,
+    const se::DeviceDescription& device_info,
     GpuHloCostAnalysis* cost_analysis) {
   if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return "consumer not eligible as multi-output fusion root.";
@@ -197,7 +198,7 @@ FusionDecision ProducerCandidateIsFusible(
       OperandReachableFromProducer(producer, consumer, reachability));
 
   RETURN_IF_NOT_FUSIBLE(FusionFitsInBudget(
-      producer, consumer, *cost_analysis->device_info_,
+      producer, consumer, device_info,
       /*is_consumer_producer_fusion=*/false, fusion_info_cache));
 
   if (cost_analysis->ProducerConsumerMergedTooLarge(producer, consumer)) {
@@ -205,7 +206,8 @@ FusionDecision ProducerCandidateIsFusible(
   }
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      &producer, cost_analysis, GpuPerformanceModelOptions::Default(),
+      &producer, device_info, cost_analysis,
+      GpuPerformanceModelOptions::Default(),
       /*fused_consumers=*/{&consumer},
       /*multi_output=*/true);
   if (t.time_fused > t.time_unfused) {
@@ -217,7 +219,9 @@ FusionDecision ProducerCandidateIsFusible(
 
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloDfsReachability& reachability,
-    FusionInfoCache* fusion_info_cache, GpuHloCostAnalysis* cost_analysis) {
+    FusionInfoCache* fusion_info_cache,
+    const se::DeviceDescription& device_info,
+    GpuHloCostAnalysis* cost_analysis) {
   std::vector<HloInstruction*> fusion_candidates;
   const HloComputation* computation = producer->parent();
   const HloModule* module = computation->parent();
@@ -242,9 +246,9 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     VLOG(3) << "Looking at producer " << producer->name()
             << " and its consumer " << consumer->name();
 
-    if (auto decision =
-            ProducerCandidateIsFusible(*producer, *consumer, reachability,
-                                       fusion_info_cache, cost_analysis)) {
+    if (auto decision = ProducerCandidateIsFusible(
+            *producer, *consumer, reachability, fusion_info_cache, device_info,
+            cost_analysis)) {
       fusion_candidates.push_back(consumer);
     } else if (dump_fusion) {
       RegisterFusionState(
@@ -277,7 +281,7 @@ FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
                                const HloInstruction& common_producer,
                                const HloDfsReachability& reachability,
                                FusionInfoCache* fusion_info_cache,
-                               GpuHloCostAnalysis* cost_analysis) {
+                               const se::DeviceDescription& device_info) {
   if (reachability.IsConnected(&sibling_consumer_1, &sibling_consumer_2)) {
     return {absl::StrCat(sibling_consumer_1.name(), " and ",
                          sibling_consumer_2.name(), " are connected")};
@@ -297,8 +301,7 @@ FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
 
   // This check should be last, as it may be expensive.
   RETURN_IF_NOT_FUSIBLE(LegalToFuse(sibling_consumer_1, sibling_consumer_2,
-                                    *cost_analysis->device_info_,
-                                    fusion_info_cache));
+                                    device_info, fusion_info_cache));
   return {};
 }
 
@@ -341,7 +344,7 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
       VLOG(3) << "Considering " << (*i)->name() << " and " << (*j)->name();
 
       if (auto fusible = CanFuseSiblings(**i, **j, *parent, *reachability_,
-                                         fusion_info_cache, cost_analysis);
+                                         fusion_info_cache, device_info_);
           !fusible) {
         // We pick `j` arbitrarily as a consumer.
         if (dump_fusion) {
@@ -405,7 +408,7 @@ absl::StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   GpuHloCostAnalysis cost_analysis({shape_size_function_,
                                     /*per_second_rates=*/{},
                                     /*count_multiple_input_accesses=*/true},
-                                   &device_info_);
+                                   device_info_);
   TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
@@ -433,7 +436,8 @@ absl::StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     // multi-output fusion will occur before the current op in the order of
     // traversal, and hence, not get into the way of subsequent fusion attempts.
     const auto candidates = GetProducerConsumerMultiOutputFusionCandidates(
-        producer, *reachability_, &fusion_info_cache, &cost_analysis);
+        producer, *reachability_, &fusion_info_cache, device_info_,
+        &cost_analysis);
     auto* consumer_for_fusion = SelectPreferredFusionCandidate(candidates);
     if (consumer_for_fusion == nullptr) {
       continue;

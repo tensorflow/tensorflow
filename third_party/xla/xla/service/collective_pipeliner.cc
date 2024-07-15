@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/collective_pipeliner.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -48,8 +50,10 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/hlo_dce.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/service/value_range.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -318,9 +322,11 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
     return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
                             HloOpcode::kPad, HloOpcode::kCollectivePermute,
                             HloOpcode::kConvert, HloOpcode::kReshape,
-                            HloOpcode::kAllReduce, HloOpcode::kTranspose>(i) ||
+                            HloOpcode::kAllReduce, HloOpcode::kTranspose,
+                            HloOpcode::kBroadcast>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
-           i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep);
+           i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
+           i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
   };
   // Returns if this instruction is a dynamic-update-slice inserting the value
   // into a bigger buffer that we are going to pipeline to the next iteration.
@@ -438,8 +444,9 @@ bool IsLoopIterator(const HloInstruction* instr,
 // Scavenge operands that are dependencies not included in the ops set and that
 // aren't the source_op passed as input parameter and return them in a vector.
 std::vector<HloInstruction*> CollectDependenciesToPipeline(
-    HloInstruction* source_op, absl::Span<HloInstruction* const> ops) {
-  absl::flat_hash_set<HloInstruction*> formatting_set(ops.begin(), ops.end());
+    const HloInstruction* source_op, absl::Span<HloInstruction* const> ops) {
+  absl::flat_hash_set<const HloInstruction*> formatting_set(ops.begin(),
+                                                            ops.end());
   formatting_set.insert(source_op);
   std::vector<HloInstruction*> to_return;
   absl::flat_hash_set<HloInstruction*> already_inserted;
@@ -457,7 +464,10 @@ std::vector<HloInstruction*> CollectDependenciesToPipeline(
 std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
     HloInstruction* instr, int64_t loop_iter,
     const absl::flat_hash_set<const HloInstruction*>& loop_invariant_params,
-    HloPredicate should_allow_loop_variant_parameter_in_chain) {
+    HloPredicate should_allow_loop_variant_parameter_in_chain,
+    const absl::flat_hash_set<const HloInstruction*>&
+        loop_invariant_instructions,
+    bool should_add_loop_invariant_op_in_chain) {
   std::vector<HloInstruction*> chain;
   absl::flat_hash_set<const HloInstruction*> visited_set({instr});
   std::vector<std::pair<HloInstruction*, int>> stack(1, {instr, 0});
@@ -508,10 +518,20 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
     const bool is_scalar_shaped =
         ShapeUtil::IsEffectiveScalar(chain_instr->shape());
     if (!all_users_in_chain) {
-      if (!loop_invariant_params.contains(chain_instr) && !is_scalar_shaped &&
+      // Whether we should allow loop variant parameter in the operand chain of
+      // the collective.
+      bool allow_loop_variant_parameter_in_chain =
           (chain_instr->opcode() != HloOpcode::kGetTupleElement ||
            chain_instr->operand(0)->opcode() != HloOpcode::kParameter ||
-           !should_allow_loop_variant_parameter_in_chain(chain_instr))) {
+           !should_allow_loop_variant_parameter_in_chain(chain_instr));
+      // Whether we should allow loop invariant instructions in the operand
+      // chain of the collective.
+      bool add_loop_invariant_op_in_chain =
+          (should_add_loop_invariant_op_in_chain &&
+           loop_invariant_instructions.contains(chain_instr));
+      if ((!loop_invariant_params.contains(chain_instr) && !is_scalar_shaped &&
+           allow_loop_variant_parameter_in_chain) &&
+          !add_loop_invariant_op_in_chain) {
         return std::nullopt;
       }
     }
@@ -530,13 +550,17 @@ std::optional<std::vector<HloInstruction*>> CollectChainsToPushBackwards(
     int64_t level_to_operate_on,
     const absl::flat_hash_set<const HloInstruction*>& loop_invariant_params,
     HloPredicate should_allow_loop_variant_parameter_in_chain,
-    bool should_allow_control_dependencies) {
+    bool should_allow_control_dependencies,
+    const absl::flat_hash_set<const HloInstruction*>&
+        loop_invariant_instructions,
+    bool should_add_loop_invariant_op_in_chain) {
   if (instr->HasControlDependencies() && !should_allow_control_dependencies) {
     return std::nullopt;
   }
   return CollectIndependentOperandChain(
       instr, loop_iter, loop_invariant_params,
-      should_allow_loop_variant_parameter_in_chain);
+      should_allow_loop_variant_parameter_in_chain, loop_invariant_instructions,
+      should_add_loop_invariant_op_in_chain);
 }
 
 // Given a dynamic-update-slice find the output index of the loop we feed into.
@@ -688,14 +712,37 @@ class WhileLoopAnalysis {
   int64_t GetMaxPipeliningPerLoop() const { return max_pipelining_per_loop_; }
 
   bool ComputeLoopStatistics();
+  // Checks if the given dynamic-update-slice is supported for pipelining and
+  // returns its slice dimension and index in the while tuple if supported.
+  // Returns std::nullopt if it is not supported, which can happen for several
+  // reasons:
+  // - The slice dimension can not be found or is not 0 for forward-sinking.
+  // - The number of slices size does not match the loop iteration count.
+  // - There is an unexpected shape/size in the overall dependency chain.
+  // - The buffer to insert into is not a GTE from the loop parameter.
+  // - The parameter usage is not compatible with the expected pattern.
+  // - The update slicing is not compatible with the expected pattern.
+  // - The update index is not monotonic.
+  // - The output index for the insertion can not be found.
+  std::optional<std::pair<int64_t, int64_t>> IsSupportedDynamicUpdateSlice(
+      const HloDynamicUpdateSliceInstruction* dyn_update,
+      const HloInstruction* instr,
+      const std::vector<HloInstruction*>& formatting_ops,
+      CollectivePipeliner::PipeliningDirection direction,
+      int64_t level_to_operate_on,
+      const absl::flat_hash_map<int64_t, int64_t>& parameter_gtes_count,
+      const absl::flat_hash_map<const HloInstruction*, Range>& index_ranges)
+      const;
   void CollectCollectivesToMove(
       int64_t level_to_operate_on,
       CollectivePipeliner::PipeliningDirection direction,
       HloPredicate should_process, HloPredicate acceptable_formatting,
       HloPredicate should_allow_loop_variant_parameter_in_chain =
           HloPredicateFalse,
-      bool should_allow_control_dependencies = false);
+      bool should_allow_control_dependencies = false,
+      bool should_add_loop_invariant_op_in_chain = false);
   HloInstruction* while_loop_instruction() const { return while_; }
+  void ExtractLoopInvariantOps();
 
  private:
   HloInstruction* while_;
@@ -707,6 +754,7 @@ class WhileLoopAnalysis {
   std::vector<WhileMoveInfo> move_infos_;
   absl::flat_hash_map<HloInstruction*, int64_t> dus_index_map_;
   absl::flat_hash_set<const HloInstruction*> invariant_loop_parameters_;
+  absl::flat_hash_set<const HloInstruction*> invariant_loop_instructions_;
   int64_t max_pipelining_per_loop_;
   bool pipeline_use_tree_;
   bool process_different_sized_options_;
@@ -716,6 +764,28 @@ int64_t WhileLoopAnalysis::GetDUSIndex(const HloInstruction* dus) const {
   auto it = dus_index_map_.find(dus);
   CHECK(it != dus_index_map_.end());
   return it->second;
+}
+
+void WhileLoopAnalysis::ExtractLoopInvariantOps() {
+  for (HloInstruction* inst :
+       while_->while_body()->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kConstant) {
+      invariant_loop_instructions_.insert(inst);
+      continue;
+    }
+    if (invariant_loop_instructions_.contains(inst)) {
+      continue;
+    }
+    // Nodes that only consume loop invariants are also invariants.
+    bool should_add = true;
+    for (const HloInstruction* operand : inst->operands()) {
+      should_add &= (invariant_loop_instructions_.contains(operand) ||
+                     invariant_loop_parameters_.contains(operand));
+    }
+    if (should_add) {
+      invariant_loop_instructions_.insert(inst);
+    }
+  }
 }
 
 bool WhileLoopAnalysis::ComputeLoopStatistics() {
@@ -796,7 +866,124 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
       invariant_loop_parameters_.insert(loop_root->operand(i));
     }
   }
+
+  // Extract all loop invariant instructions.
+  ExtractLoopInvariantOps();
+
   return true;
+}
+
+std::optional<std::pair<int64_t, int64_t>>
+WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
+    const HloDynamicUpdateSliceInstruction* dyn_update,
+    const HloInstruction* instr,
+    const std::vector<HloInstruction*>& formatting_ops,
+    CollectivePipeliner::PipeliningDirection direction,
+    int64_t level_to_operate_on,
+    const absl::flat_hash_map<int64_t, int64_t>& parameter_gtes_count,
+    const absl::flat_hash_map<const HloInstruction*, Range>& index_ranges)
+    const {
+  HloComputation* while_body = while_->while_body();
+  const HloInstruction* loop_parameter =
+      while_body->parameter_instructions()[0];
+  std::optional<int64_t> sliced_dim = GetSlicedDimension(dyn_update);
+  if (!sliced_dim.has_value()) {
+    VLOG(5) << "Skipping " << instr->name()
+            << " because couldn't find sliced dimension";
+    return std::nullopt;
+  }
+  if (direction == CollectivePipeliner::PipeliningDirection::kForwardSink &&
+      (*sliced_dim != 0 || dyn_update->shape().dimensions(0) !=
+                               loop_iteration_count_->GetUnsignedValue())) {
+    VLOG(5) << "Skipping " << instr->name()
+            << " because number of iteration of the loop doesn't match "
+               "slices being inserted or slice dim is not 0. slice_dim = "
+            << *sliced_dim
+            << " loop count = " << loop_iteration_count_->GetUnsignedValue();
+  }
+  if (!process_different_sized_options_) {
+    if (!formatting_ops.empty()) {
+      if (instr->operand(0)->shape() != formatting_ops.back()->shape()) {
+        VLOG(5) << "Skipping " << instr->name()
+                << " because operand and last formatting op don't have the "
+                   "same shape";
+        return std::nullopt;
+      }
+      auto dependencies_to_pipeline = CollectDependenciesToPipeline(
+          instr, absl::MakeConstSpan(formatting_ops));
+      bool skip_because_not_same_size = false;
+      // If any instruction in the dependency chain is not of the same size
+      // then we abort for this instruction.
+      for (auto* dependency : dependencies_to_pipeline) {
+        if (ShapeUtil::IsEffectiveScalar(dependency->shape())) {
+          skip_because_not_same_size = true;
+          break;
+        }
+      }
+      if (skip_because_not_same_size) {
+        VLOG(5)
+            << "Skipping " << instr->name()
+            << " because formatting ops do not have the expected shapes/sizes";
+        return std::nullopt;
+      }
+    } else if (instr->operand(0)->shape() != instr->shape()) {
+      VLOG(5) << "Skipping " << instr->name()
+              << " because instr does not have the same shape as its operand";
+      return std::nullopt;
+    }
+  }
+  const HloInstruction* to_insert_into = dyn_update->operand(0);
+  if (level_to_operate_on == 0 &&
+      (to_insert_into->opcode() != HloOpcode::kGetTupleElement ||
+       to_insert_into->operand(0) != loop_parameter)) {
+    VLOG(5) << "Skipping " << instr->name()
+            << " because slice to insert into is not a GTE from input "
+               "parameter "
+            << to_insert_into->ToString();
+    return std::nullopt;
+  }
+  // If Level is > 0 then we already did our analysis in the previous
+  // iteration for safeness of this index to transform.
+  if (level_to_operate_on == 0) {
+    if (to_insert_into->opcode() == HloOpcode::kGetTupleElement) {
+      // GTE for this parameter is not CSEd. Abort because we don't analyze
+      // every single use from other GTEs.
+      if (parameter_gtes_count.at(to_insert_into->tuple_index()) != 1) {
+        VLOG(5) << "Skipping " << instr->name()
+                << " because there are multiple parameter GTEs for this slice";
+        return std::nullopt;
+      }
+    }
+    const HloInstruction* dyn_update_idx = dyn_update->operand(
+        dyn_update->first_index_operand_number() + *sliced_dim);
+    if (level_to_operate_on == 0 &&
+        !CheckParameterUsageIsCompatible(to_insert_into, dyn_update,
+                                         dyn_update_idx, *sliced_dim)) {
+      VLOG(5) << "Skipping " << instr->name()
+              << " because parameter usage doesn't follow the expected pattern";
+      return std::nullopt;
+    }
+    if (!AllIndicesConstantsExceptOne(
+            dyn_update,
+            dyn_update->first_index_operand_number() + *sliced_dim)) {
+      VLOG(5) << "Skipping " << instr->name()
+              << " because update slicing doesn't match expectation";
+      return std::nullopt;
+    }
+    if (!CheckIndexIsMonotonic(dyn_update_idx, index_ranges)) {
+      VLOG(5) << "Skipping " << instr->name()
+              << " because update index is not monotonic";
+      return std::nullopt;
+    }
+  }
+  std::optional<int64_t> output_idx = FindOutputIndexForDynamicUpdateSlice(
+      dyn_update, while_body->root_instruction());
+  if (!output_idx.has_value()) {
+    VLOG(5) << "Skipping " << instr->name()
+            << " because couldn't find unique output index for insertion";
+    return std::nullopt;
+  }
+  return std::make_pair(*sliced_dim, *output_idx);
 }
 
 void WhileLoopAnalysis::CollectCollectivesToMove(
@@ -804,7 +991,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     CollectivePipeliner::PipeliningDirection direction,
     HloPredicate should_process, HloPredicate acceptable_formatting,
     HloPredicate should_allow_loop_variant_parameter_in_chain,
-    bool should_allow_control_dependencies) {
+    bool should_allow_control_dependencies,
+    bool should_add_loop_invariant_op_in_chain) {
   move_infos_.clear();
   HloComputation* while_body = while_->while_body();
   const HloInstruction* loop_parameter =
@@ -876,100 +1064,15 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
                "computation";
         continue;
       }
-      std::optional<int64_t> sliced_dim = GetSlicedDimension(dyn_update);
-      if (!sliced_dim.has_value()) {
-        VLOG(5) << "Skipping " << instr->name()
-                << " because couldn't find sliced dimension";
+      std::optional<std::pair<int64_t, int64_t>> maybe_dus_info =
+          IsSupportedDynamicUpdateSlice(dyn_update, instr, formatting_ops,
+                                        direction, level_to_operate_on,
+                                        parameter_gtes_count, index_ranges);
+      if (!maybe_dus_info.has_value()) {
         continue;
       }
-      if (direction == CollectivePipeliner::PipeliningDirection::kForwardSink &&
-          (*sliced_dim != 0 || dyn_update->shape().dimensions(0) !=
-                                   loop_iteration_count_->GetUnsignedValue())) {
-        VLOG(5) << "Skipping " << instr->name()
-                << " because number of iteration of the loop doesn't match "
-                   "slices being inserted or slice dim is not 0. slice_dim = "
-                << *sliced_dim << " loop count = "
-                << loop_iteration_count_->GetUnsignedValue();
-      }
-      if (!process_different_sized_options_) {
-        if (!formatting_ops.empty()) {
-          if (instr->operand(0)->shape() != formatting_ops.back()->shape()) {
-            continue;
-          }
-          auto dependencies_to_pipeline = CollectDependenciesToPipeline(
-              instr, absl::MakeConstSpan(formatting_ops));
-          bool skip_because_not_same_size = false;
-          // If any instruction in the dependency chain is not of the same size
-          // then we abort for this instruction.
-          for (auto* dependency : dependencies_to_pipeline) {
-            if (ShapeUtil::IsEffectiveScalar(dependency->shape())) {
-              skip_because_not_same_size = true;
-              break;
-            }
-          }
-          if (skip_because_not_same_size) {
-            continue;
-          }
-        } else if (instr->operand(0)->shape() != instr->shape()) {
-          continue;
-        }
-      }
-      const HloInstruction* to_insert_into = dyn_update->operand(0);
-      if (level_to_operate_on == 0 &&
-          (to_insert_into->opcode() != HloOpcode::kGetTupleElement ||
-           to_insert_into->operand(0) != loop_parameter)) {
-        VLOG(5) << "Skipping " << instr->name()
-                << " because slice to insert into is not a GTE from input "
-                   "parameter "
-                << to_insert_into->ToString();
-        continue;
-      }
-      if (dyn_update->user_count() != 1) {
-        continue;
-      }
-      // If Level is > 0 then we already did our analysis in the previous
-      // iteration for safeness of this index to transform.
-      if (level_to_operate_on == 0) {
-        if (to_insert_into->opcode() == HloOpcode::kGetTupleElement) {
-          // GTE for this parameter is not CSEd. Abort because we don't analyze
-          // every single use from other GTEs.
-          if (parameter_gtes_count.at(to_insert_into->tuple_index()) != 1) {
-            VLOG(5)
-                << "Skipping " << instr->name()
-                << " because there are multiple parameter GTEs for this slice";
-            continue;
-          }
-        }
-        HloInstruction* dyn_update_idx = dyn_update->mutable_operand(
-            dyn_update->first_index_operand_number() + *sliced_dim);
-        if (level_to_operate_on == 0 &&
-            !CheckParameterUsageIsCompatible(to_insert_into, dyn_update,
-                                             dyn_update_idx, *sliced_dim)) {
-          VLOG(5)
-              << "Skipping " << instr->name()
-              << " because parameter usage doesn't follow the expected pattern";
-          continue;
-        }
-        if (!AllIndicesConstantsExceptOne(
-                dyn_update,
-                dyn_update->first_index_operand_number() + *sliced_dim)) {
-          VLOG(5) << "Skipping " << instr->name()
-                  << " because update slicing doesn't match expectation";
-          continue;
-        }
-        if (!CheckIndexIsMonotonic(dyn_update_idx, index_ranges)) {
-          VLOG(5) << "Skipping " << instr->name()
-                  << " because update index is not monotonic";
-          continue;
-        }
-      }
-      std::optional<int64_t> output_idx = FindOutputIndexForDynamicUpdateSlice(
-          dyn_update, while_body->root_instruction());
-      if (!output_idx.has_value()) {
-        VLOG(5) << "Skipping " << instr->name()
-                << " because couldn't find unique output index for insertion";
-        continue;
-      }
+      int64_t sliced_dim = maybe_dus_info->first;
+      int64_t output_idx = maybe_dus_info->second;
       auto merge_as_formatting =
           [this, &instruction_order](
               absl::flat_hash_map<const HloInstruction*, int64_t>::iterator it,
@@ -1005,15 +1108,20 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
         continue;
       }
       index_per_dyn_update_slice[dyn_update] = move_infos_.size();
+      absl::c_sort(formatting_ops,
+                   [&](const HloInstruction* a, const HloInstruction* b) {
+                     return instruction_order[a] < instruction_order[b];
+                   });
       move_infos_.push_back({instr, dyn_update, std::move(formatting_ops),
-                             *sliced_dim, *output_idx});
+                             sliced_dim, output_idx});
     } else {
       CHECK_EQ(direction, CollectivePipeliner::PipeliningDirection::kBackward);
       auto chain_collected = CollectChainsToPushBackwards(
           instr, *loop_iteration_idx_, while_body, level_to_operate_on,
           invariant_loop_parameters_,
           should_allow_loop_variant_parameter_in_chain,
-          should_allow_control_dependencies);
+          should_allow_control_dependencies, invariant_loop_instructions_,
+          should_add_loop_invariant_op_in_chain);
       if (!chain_collected.has_value()) {
         VLOG(5) << "Skipping " << instr->name()
                 << " because didn't find compatible slice of parameter";
@@ -1149,6 +1257,131 @@ HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
 
 }  // namespace
 
+using Interval = std::pair<int64_t, int64_t>;
+using Intervals = std::vector<Interval>;
+// Parses a string "{{a,b},{c,d},{e,f},...}" to a vector of pairs.
+absl::StatusOr<std::vector<Interval>> ParseVectorOfPairs(
+    absl::string_view str) {
+  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
+                      ParseReplicaGroupsOnly(str));
+  std::vector<Interval> res;
+  res.reserve(replica_groups.size());
+  for (const ReplicaGroup& replica_group : replica_groups) {
+    TF_RET_CHECK(replica_group.replica_ids_size() == 2);
+    int64_t a = replica_group.replica_ids(0);
+    int64_t b = replica_group.replica_ids(1);
+    res.emplace_back(a, b);
+  }
+  return res;
+}
+
+// If there is a collective-permute instruction with _xla_send_recv_validation
+// attribute in the computation, then during pipelining the loop trip count
+// changes. This function fixes the attribute for the cloned instruction.
+//
+// For forward pipelining: A peeled collective permute is executed before the
+// loop. This peeled collective permute runs for all the devices that were
+// supposed to run on iteration 0. The second execution of collective-permute
+// occurs in the second iteration of the old loop, but the first iteration of
+// the transformed loop (because of the peeled instruction). Hence, the
+// collective permutes inside the loop see iteration bounds reducing by 1. For
+// example, let the original trip count be 7, and the attribute be
+// {{0,4},{0,5},{1,5},{1,6},{2,6}}. For the peeled collective this attribute
+// will become {{0,0},{0,0},{1,0},{1,0},{1,0}} and for the internal collective
+// this will become {{0,3},{0,4},{0,4},{0,5},{1,5}}
+//
+// For backward pipelining: A peeled collective permute is executed after the
+// loop. This peeled collective permute runs for all devices that were supposed
+// to run the last iteration (trip_count-1). All the other executions, except
+// the last instance of collective permute, except the last execution run
+// as-it-is without any change to iteration bounds. So, only the devices that
+// were supposed to run the last iteration instance see a change in their bounds
+// inside the while loop. For example, let the original trip count be 7 and the
+// attribute be {{0,4},{0,4},{1,5},{1,6},{2,6}}. For the peeled collective, this
+// attribute will become {{1,0},{1,0},{1,0},{0,0},{0,0}} and for the collective
+// inside while loop, this attribute will become
+// {{0,4},{0,4},{1,5},{1,5},{2,5}}.
+absl::Status UpdateSendRecvValidation(
+    HloInstruction* instruction, bool is_peeled,
+    CollectivePipeliner::PipeliningDirection direction,
+    const WhileLoopAnalysis& loop_analysis) {
+  if (instruction->opcode() != HloOpcode::kCollectivePermute) {
+    return absl::OkStatus();
+  }
+  const auto& frontend_attributes = instruction->frontend_attributes().map();
+  if (!frontend_attributes.contains(kSendRecvValidationAttr)) {
+    return absl::OkStatus();
+  }
+  VLOG(3) << "Trip count = "
+          << loop_analysis.GetLoopIterationCount()->GetSignedValue();
+  VLOG(3) << "Collective permute with _xla_send_recv_validation: "
+          << instruction->ToString();
+  TF_ASSIGN_OR_RETURN(
+      Intervals old_intervals,
+      ParseVectorOfPairs(frontend_attributes.at(kSendRecvValidationAttr)));
+
+  Intervals intervals;
+
+  if (direction == CollectivePipeliner::kForward) {
+    // It is a forward pipelining which means that the peeled collective permute
+    // is before the loop. It should run once for the devices executing the
+    // first iteration and the internal collective permute now sees each
+    // original iteration decreased by one.
+    //
+    // peeled collective permute:
+    //      {{0,0} if {a,b} in old and a<=0<=b, {1,0} otherwise}
+    // internal collective permute: {{max(0, a-1), max(0, b-1)} | {a,b} in old}
+    for (auto [a, b] : old_intervals) {
+      if (is_peeled) {
+        if (a <= 0 && 0 <= b) {
+          intervals.push_back({0, 0});
+        } else {
+          intervals.push_back({1, 0});
+        }
+      } else {
+        intervals.push_back(
+            {std::max(int64_t{0}, a - 1), std::max(int64_t{0}, b - 1)});
+      }
+    }
+  } else if (direction == CollectivePipeliner::kBackward) {
+    // It is a backward pipelining which means that the peeled collective is
+    // after the loop. It should run once for the devices executing the last
+    // iteration and the internal collective permute doesn't see the last
+    // iteration.
+    //
+    // peeled collective permute:
+    //      {{0,0} if {a,b} in old and a<=n<=b where n=#last_iteration, {1,0}
+    //      otherwise}
+    // interval collective permute:
+    //      {{a,min(n-1,b)} | {a,b} in old and n=#last_iteration}
+    auto trip_count_value = loop_analysis.GetLoopIterationCount();
+    if (!trip_count_value) {
+      return absl::InternalError(
+          "Unable to deduce loop trip count in collective pipeliner. This is "
+          "required for backward pipelining while fixing the "
+          "_xla_send_recv_validation attribute");
+    }
+    int64_t trip_count = trip_count_value->GetSignedValue();
+    int64_t last_iteration = trip_count - 1;
+    for (auto [a, b] : old_intervals) {
+      if (is_peeled) {
+        if (a <= last_iteration && last_iteration <= b) {
+          intervals.push_back({0, 0});
+        } else {
+          intervals.push_back({1, 0});
+        }
+      } else {
+        intervals.push_back({a, std::min(last_iteration - 1, b)});
+      }
+    }
+  }
+  hlo_instruction_utils::AddOrUpdateVectorOfPairsAsAttribute(
+      instruction, kSendRecvValidationAttr, intervals);
+  VLOG(3) << "Updated collective_permute with _xla_send_recv_validation: "
+          << instruction->ToString();
+  return absl::OkStatus();
+}
+
 // Function that does the work of pushing forward instructions that have been
 // determined that can be pipelined. Rough transformation: while (i < LAYERS) {
 //   p0 = param(0)
@@ -1276,6 +1509,9 @@ absl::Status TransformLoopForward(
     TF_RETURN_IF_ERROR(
         UpdateControlDependencies(instr, cloned_instr, while_body_to_peeled));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
+    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
+        cloned_instr, true, CollectivePipeliner::PipeliningDirection::kForward,
+        loop_analysis));
     while_body_to_peeled[instr] = cloned_instr;
     auto output_it = is_output_instruction.find(instr);
     if (output_it != is_output_instruction.end()) {
@@ -1338,6 +1574,11 @@ absl::Status TransformLoopForward(
   HloComputation* new_while_body =
       loop_computation->parent()->AddEmbeddedComputation(
           while_body->CloneWithReplacements(&replacements));
+  for (HloInstruction* instruction : new_while_body->instructions()) {
+    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
+        instruction, false, CollectivePipeliner::PipeliningDirection::kForward,
+        loop_analysis));
+  }
   HloInstruction* new_init = loop_computation->AddInstruction(
       HloInstruction::CreateTuple(new_init_operands));
   while_body_to_peeled[while_body->root_instruction()] = new_init;
@@ -1938,9 +2179,11 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
         continue;
       }
       if (formatting_op->opcode() == HloOpcode::kBroadcast) {
-        CHECK(formatting_op->dimensions().empty());
         auto operands = collect_operands(formatting_op);
         std::vector<int64_t> dimensions(1, 0);
+        for (const int64_t dim : formatting_op->dimensions()) {
+          dimensions.push_back(dim + 1);
+        }
         // Constant scalars don't get expanded ahead of time and are kept
         // scalar.
         if (operands[0]->shape().dimensions_size() == 0) {
@@ -2023,6 +2266,17 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
                 ComputeFullOutputShape(to_move, formatting_op->shape()),
                 collect_operands(formatting_op)[0], new_dims));
         pipelined_map[formatting_op] = expanded_transpose;
+        continue;
+      }
+      if (formatting_op->IsCustomCall(
+              CollectivePipeliner::kSunkByPreviousStep)) {
+        HloInstruction* expanded_custom_call =
+            loop_computation->AddInstruction(HloInstruction::CreateCustomCall(
+                ComputeFullOutputShape(to_move, formatting_op->shape()),
+                collect_operands(formatting_op),
+                /*custom_call_target=*/
+                CollectivePipeliner::kSunkByPreviousStep));
+        pipelined_map[formatting_op] = expanded_custom_call;
         continue;
       }
       CHECK(false) << "Unsupported instruction " << formatting_op->ToString();
@@ -2288,6 +2542,11 @@ static absl::Status TransformLoopBackward(
   TF_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
                                                new_loop_root,
                                                while_body_replacement_map));
+  for (HloInstruction* instruction : new_while_body->instructions()) {
+    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
+        instruction, false, CollectivePipeliner::PipeliningDirection::kBackward,
+        loop_analysis));
+  }
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       loop_cond_replacements;
   auto cond_builder =
@@ -2366,6 +2625,9 @@ static absl::Status TransformLoopBackward(
     TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
                                                  while_body_replacement_map));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
+    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
+        cloned_instr, true, CollectivePipeliner::PipeliningDirection::kBackward,
+        loop_analysis));
     while_body_replacement_map[instr] = cloned_instr;
     if (instruction_is_output_it != is_output_instruction.end()) {
       output_tuple_instructions[instruction_is_output_it->second] =
@@ -2384,11 +2646,9 @@ static absl::Status TransformLoopBackward(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> CollectivePipeliner::Run(
+absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  CHECK(config_.acceptable_formatting);
-  CHECK(config_.should_process);
   bool changed = false;
   std::vector<HloInstruction*> while_loop_instructions;
   for (HloComputation* computation : module->MakeComputationPostOrder()) {
@@ -2420,7 +2680,8 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
         config_.level_to_operate_on, config_.pipelining_direction,
         config_.should_process, config_.acceptable_formatting,
         config_.should_allow_loop_variant_parameter_in_chain,
-        config_.should_allow_control_dependencies);
+        config_.should_allow_control_dependencies,
+        config_.should_add_loop_invariant_op_in_chain);
     if (loop_analysis.GetMoveInfos().empty()) {
       continue;
     }
@@ -2490,6 +2751,32 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
   }
 
   return changed;
+}
+
+absl::StatusOr<bool> CollectivePipeliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  CHECK(config_.acceptable_formatting);
+  CHECK(config_.should_process);
+
+  if (config_.pipelining_direction != PipeliningDirection::kForwardSink) {
+    return RunPipeliner(module, execution_threads);
+  }
+
+  // If the pipelining direction is kForwardSink, run the pipeliner until it
+  // does not change the module anymore. The maximum number of iterations should
+  // be equal to the maximum number of pipelineable collectives in a chain of
+  // users plus one. In each iteration, we pipeline the last pipelineable
+  // collectives, which do not have any other pipelineable collectives in their
+  // user subtree.
+  bool changed = true;
+  int64_t iter = 0;
+  while (changed) {
+    TF_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+    VLOG(1) << "Finished running pipeliner's iteration: " << iter;
+    iter++;
+  }
+  return iter > 1;
 }
 
 }  // namespace xla

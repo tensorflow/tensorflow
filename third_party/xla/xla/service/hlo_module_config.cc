@@ -258,7 +258,7 @@ static void AssignStructPhaseOrderingConfig(HloModuleConfig& config,
   *config.mutable_phase_ordering_config() = std::move(module_config);
 }
 
-absl::StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
+HloModuleConfigProto HloModuleConfig::ToProto() const {
   HloModuleConfigProto proto;
   if (has_entry_computation_layout()) {
     *proto.mutable_entry_computation_layout() =
@@ -286,7 +286,7 @@ absl::StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
 
   if (has_static_device_assignment()) {
     auto proto_assignment = proto.mutable_static_device_assignment();
-    TF_RETURN_IF_ERROR(static_device_assignment_->Serialize(proto_assignment));
+    static_device_assignment_->Serialize(proto_assignment);
   }
   AssignProtoShardableValueUpdatePairs(
       proto.mutable_shardable_value_update_pairs(),

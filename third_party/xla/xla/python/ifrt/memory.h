@@ -60,9 +60,16 @@ class MemoryKind {
     return H::combine(std::move(h), memory_kind.memory_kind_);
   }
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const MemoryKind& memory_kind) {
+    sink.Append(memory_kind.DebugString());
+  }
+
   // Returns a platform-dependent identifier of a memory kind.
   std::optional<absl::string_view> memory_kind() const { return memory_kind_; }
 
+  // TODO(kedars): Rename & make private after replacing usage with
+  // AbslStringify.
   std::string DebugString() const;
 
  private:

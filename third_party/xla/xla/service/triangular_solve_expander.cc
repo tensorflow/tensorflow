@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/math.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {

@@ -66,6 +66,7 @@ namespace tflite {
 namespace flex {
 
 constexpr char kReadVariableOp[] = "ReadVariableOp";
+constexpr char kInterOpParallelismAttrName[] = "use_inter_op_parallelism";
 
 struct OpNode;
 
@@ -245,7 +246,13 @@ class OpNode {
     // It should be ok to remove this when/if the tensorflow::Executor::Run
     // function is changed not to call the RunAsync function and wait on its
     // completion. See b/304799442 for more context.
-    (*nodedef_.mutable_attr())["use_inter_op_parallelism"].set_b(false);
+    const auto& op_def = op_reg_data_->op_def;
+    for (const auto& attr : op_def.attr()) {
+      if (attr.name() == kInterOpParallelismAttrName) {
+        (*nodedef_.mutable_attr())[kInterOpParallelismAttrName].set_b(false);
+        break;
+      }
+    }
 
     return absl::OkStatus();
   }

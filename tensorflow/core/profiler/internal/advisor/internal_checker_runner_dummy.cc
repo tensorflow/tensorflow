@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/advisor/internal_checker_runner.h"
+#include "tensorflow/core/profiler/tfprof_options.pb.h"
+#include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {

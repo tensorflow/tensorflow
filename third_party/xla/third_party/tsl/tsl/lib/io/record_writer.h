@@ -77,22 +77,22 @@ class RecordWriter {
   // implicit Close() call in the destructor.
   ~RecordWriter();
 
-  Status WriteRecord(StringPiece data);
+  absl::Status WriteRecord(StringPiece data);
 
 #if defined(TF_CORD_SUPPORT)
-  Status WriteRecord(const absl::Cord& data);
+  absl::Status WriteRecord(const absl::Cord& data);
 #endif
 
   // Flushes any buffered data held by underlying containers of the
   // RecordWriter to the WritableFile. Does *not* flush the
   // WritableFile.
-  Status Flush();
+  absl::Status Flush();
 
   // Writes all output to the file. Does *not* close the WritableFile.
   //
   // After calling Close(), any further calls to `WriteRecord()` or `Flush()`
   // are invalid.
-  Status Close();
+  absl::Status Close();
 
   // Utility method to populate TFRecord headers.  Populates record-header in
   // "header[0,kHeaderSize-1]".  The record-header is based on data[0, n-1].

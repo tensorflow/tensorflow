@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/debug_options_flags.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
@@ -26,6 +27,8 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -70,6 +73,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(false);
+  opts.set_xla_dump_large_constants(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
   opts.set_xla_debug_buffer_assignment_show_max(15);
 #ifdef ENABLE_MKL
@@ -79,6 +83,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_thunk_runtime(false);
+  opts.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
+  opts.set_xla_cpu_prefer_vector_width(256);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -112,6 +118,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_graph_enable_concurrent_region(false);
+  opts.set_xla_cmd_buffer_trace_cache_size(16);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -126,7 +133,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(true);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
-  opts.set_xla_gpu_enable_all_reduce_splitter(false);
+  opts.set_xla_gpu_enable_approx_costly_collectives(false);
 
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
@@ -137,12 +144,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_dumping(true);
 
   opts.set_xla_gpu_enable_custom_fusions(false);
-  opts.set_xla_gpu_enable_address_computation_fusion(true);
+  opts.set_xla_gpu_enable_address_computation_fusion(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(false);
   opts.set_xla_gpu_enable_nccl_per_stream_comms(false);
+
+  opts.set_xla_gpu_temp_buffer_use_separate_color(false);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
@@ -161,6 +170,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
   opts.set_xla_gpu_enable_pipelined_p2p(false);
+
+  opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
 
   opts.set_xla_gpu_collective_permute_decomposer_threshold(
       std::numeric_limits<int64_t>::max());
@@ -197,8 +208,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
+  opts.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
 
-  opts.set_xla_gpu_copy_insertion_use_region_analysis(true);
+  opts.set_xla_gpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_gpu_collect_cost_model_stats(false);
   opts.set_xla_gpu_enable_split_k_autotuning(true);
 
@@ -233,9 +245,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
 
-  opts.set_xla_gpu_enable_mlir_emitters(false);
-  opts.set_xla_gpu_max_mlir_kernels(0);
-  opts.set_xla_gpu_skip_mlir_kernels(0);
+#if GOOGLE_CUDA
+  opts.set_xla_gpu_mlir_emitter_level(1);
+#else
+  opts.set_xla_gpu_mlir_emitter_level(0);
+#endif
 
   opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
 
@@ -249,7 +263,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_use_memcpy_local_p2p(false);
 
-  opts.set_xla_reduce_window_rewrite_base_length(32);
+  opts.set_xla_reduce_window_rewrite_base_length(16);
 
   opts.set_xla_gpu_require_complete_aot_autotune_results(false);
 
@@ -258,6 +272,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_terminate_on_error(false);
 
   opts.set_xla_use_shardonnay(false);
+
+  opts.set_xla_gpu_shard_autotuning(false);
+
+  opts.set_xla_gpu_per_fusion_autotune_cache_dir("");
 
   return opts;
 }
@@ -372,6 +390,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         for (const auto& passname : std::vector<std::string>(
                  absl::StrSplit(comma_separated_values, ','))) {
           debug_options->add_xla_enable_hlo_passes_only(passname);
+        }
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for legacy_command_buffer_custom_call_targets.
+  auto setter_for_legacy_command_buffer_custom_call_targets =
+      [debug_options](std::string comma_separated_values) {
+        for (const auto& target : std::vector<std::string>(
+                 absl::StrSplit(comma_separated_values, ','))) {
+          debug_options->add_legacy_command_buffer_custom_call_targets(target);
         }
         return true;
       };
@@ -776,6 +804,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_cpu_use_thunk_runtime(),
                 "Use Thunk-based runtime for the CPU backend."));
   flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_concurrency_optimized_scheduler",
+      bool_setter_for(
+          &DebugOptions::set_xla_cpu_enable_concurrency_optimized_scheduler),
+      debug_options->xla_cpu_enable_concurrency_optimized_scheduler(),
+      "Use HLO module scheduler that is optimized for extracting concurrency "
+      "from an HLO module by trading off extra memory pressure."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_prefer_vector_width",
+      int32_setter_for(&DebugOptions::set_xla_cpu_prefer_vector_width),
+      debug_options->xla_cpu_prefer_vector_width(),
+      "Preferred vector with for the XLA:CPU LLVM backend."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_crash_on_verification_failures),
@@ -849,6 +889,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "debug_options "
       "are written to the --xla_dump_to dir, or, if no dir is specified, to "
       "stdout. Ignored unless xla_dump_hlo_as_text is true."));
+  flag_list->push_back(
+      tsl::Flag("xla_dump_large_constants",
+                bool_setter_for(&DebugOptions::set_xla_dump_large_constants),
+                debug_options->xla_dump_large_constants(),
+                "Dumps HLO modules including large constants before and after "
+                "optimizations. debug_options are written to the --xla_dump_to "
+                "dir, or, if no dir is specified, to stdout. Ignored unless "
+                "xla_dump_hlo_as_text is true."));
   flag_list->push_back(
       tsl::Flag("xla_dump_hlo_as_proto",
                 bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_proto),
@@ -990,6 +1038,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsafe_pipelined_loop_annotator",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_unsafe_pipelined_loop_annotator),
+      debug_options->xla_gpu_unsafe_pipelined_loop_annotator(),
+      "If this option is true, then the while loop with rotate right "
+      "pattern will be considered a pipelined while loop and the "
+      "operations within the pipeline bubbles may be considered no-ops. "
+      "Specifically, collective-permute may become a no-op for the iterations "
+      "within pipeline bubble. This is an unsafe flag."));
+  flag_list->push_back(tsl::Flag(
       "xla_multiheap_size_constraint_per_heap",
       int32_setter_for(
           &DebugOptions::set_xla_multiheap_size_constraint_per_heap),
@@ -1070,11 +1128,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Combine reduce-scatter ops with the same dimension or irrespective of "
       "their dimension."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_all_reduce_splitter",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_all_reduce_splitter),
-      debug_options->xla_gpu_enable_all_reduce_splitter(),
-      "Splits cross-device all reduce into logical reduce scatter followed by "
-      "dynamic slice and all reduce."));
+      "xla_gpu_enable_approx_costly_collectives",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_approx_costly_collectives),
+      debug_options->xla_gpu_enable_approx_costly_collectives(),
+      "Enables more accurate latency approximation of collectives. Used in "
+      "`ApproximateLatencyEstimator` scheduler."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_blueconnect_num_devices_per_host",
       int32_setter_for(
@@ -1160,6 +1219,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       " can either be a list of command types or a list of command types with"
       " + and - as prefix, which indicate adding or removing a command type"
       " to/from the default list."));
+
+  flag_list->push_back(
+      tsl::Flag("legacy_command_buffer_custom_call_targets",
+                setter_for_legacy_command_buffer_custom_call_targets, "",
+                "Comma-separated list of custom call targets with legacy "
+                "registry API (non FFI API), whose targets supports lowering "
+                "to command buffer custom command, i.e, custom call target "
+                "supports cuda-graph capturing for CUDA devices."));
+
   flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_min_graph_size",
       int32_setter_for(&DebugOptions::set_xla_gpu_graph_min_graph_size),
@@ -1173,7 +1241,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_graph_enable_concurrent_region(),
                 "Identify concurrent regions in gpu graphs and execute them "
                 "concurrently."));
-
+  flag_list->push_back(tsl::Flag(
+      "xla_cmd_buffer_trace_cache_size",
+      int64_setter_for(&DebugOptions::set_xla_cmd_buffer_trace_cache_size),
+      debug_options->xla_cmd_buffer_trace_cache_size(),
+      "Set the command buffer trace cache size, increasing the cache size may "
+      "sometimes reduces the chances of doing command buffer tracing for "
+      "updating command buffer instance."));
   flag_list->push_back(
       tsl::Flag("xla_dump_disable_metadata",
                 bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
@@ -1230,6 +1304,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enables NCCL User Buffer Registration. collective_memory_size in the "
       "allocator config must also be set to a non-zero value that is large "
       "enough to meet peak collective memory usage."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_temp_buffer_use_separate_color",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_temp_buffer_use_separate_color),
+      debug_options->xla_gpu_temp_buffer_use_separate_color(),
+      "Enables temp User Buffer Registration. Enable this flag will use a "
+      "separate cuda async memory allocator to allocate temp buffer, this will "
+      "allocate temp buffer to the fixed address on every iteration"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_nccl_comm_splitting",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_nccl_comm_splitting),
@@ -1371,6 +1453,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_p2p),
       debug_options->xla_gpu_enable_pipelined_p2p(),
       "Enable pipelinling of P2P instructions."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_run_post_layout_collective_pipeliner",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_run_post_layout_collective_pipeliner),
+      debug_options->xla_gpu_run_post_layout_collective_pipeliner(),
+      "Move collective pipeliner after the post-layout optimization."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_collective_permute_decomposer_threshold",
       int64_setter_for(
@@ -1601,7 +1689,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_enable_triton_hopper",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_hopper),
       debug_options->xla_gpu_enable_triton_hopper(),
-      "Enable Hopper-specific optimizations such as MMA_V3 and pipelining."));
+      "Currently used to enable MMA_V3 for Hopper in Triton"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_libnvptxcompiler",
       [debug_options](bool enabled) {
@@ -1646,21 +1734,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Specify the maximum number of channels(SMs) NCCL will use "
       "for p2p operations. Default is 0 which is to let "
       "NCCL decide."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_mlir_emitters",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_emitters),
-      debug_options->xla_gpu_enable_mlir_emitters(),
-      "Enable new MLIR-based emitters."));
   flag_list->push_back(
-      tsl::Flag("xla_gpu_max_mlir_kernels",
-                int64_setter_for(&DebugOptions::set_xla_gpu_max_mlir_kernels),
-                debug_options->xla_gpu_max_mlir_kernels(),
-                "Maximum number of kernels to emit with MLIR."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_skip_mlir_kernels",
-                int64_setter_for(&DebugOptions::set_xla_gpu_skip_mlir_kernels),
-                debug_options->xla_gpu_skip_mlir_kernels(),
-                "Number of initial kernels to skip MLIR emission for."));
+      tsl::Flag("xla_gpu_mlir_emitter_level",
+                int64_setter_for(&DebugOptions::set_xla_gpu_mlir_emitter_level),
+                debug_options->xla_gpu_mlir_emitter_level(),
+                "Enable new MLIR-based emitters. Level 0 means disabled, "
+                "higher levels enable more of the emitters."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_multi_streamed_windowed_einsum",
       bool_setter_for(
@@ -1705,6 +1784,33 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_use_shardonnay",
       bool_setter_for(&DebugOptions::set_xla_use_shardonnay),
       debug_options->xla_use_shardonnay(), "Whether to use Shardonnay."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_shard_autotuning",
+      bool_setter_for(&DebugOptions::set_xla_gpu_shard_autotuning),
+      debug_options->xla_gpu_shard_autotuning(),
+      "Shard autotuning between participating compiler processes (typically in "
+      "multi-host setups) and join the results when it's done."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_kernel_cache_file",
+                string_setter_for(&DebugOptions::set_xla_gpu_kernel_cache_file),
+                debug_options->xla_gpu_kernel_cache_file(),
+                "Path to a file to cache compiled kernels. Cached kernels get "
+                "reused in further compilations; not yet cached kernels are "
+                "compiled as usual and get appended to the cache file whenever "
+                "possible."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_per_fusion_autotune_cache_dir",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_per_fusion_autotune_cache_dir),
+      debug_options->xla_gpu_per_fusion_autotune_cache_dir(),
+      "Experimental: Maintain a per-fusion autotune cache in the given "
+      "directory. XLA will try to read existing results when they are needed "
+      "and write new results when they are determined. The directory must "
+      "exist. Cache invalidation has to be handled by the user (e.g. please "
+      "use an empty directory if you want to start with an empty cache). XLA "
+      "version checks must be done by the user (e.g. if you want to use "
+      "separate caches for different versions of XLA, please use different "
+      "directories). Default: no cache."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

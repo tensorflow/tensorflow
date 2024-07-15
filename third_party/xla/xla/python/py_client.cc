@@ -113,7 +113,7 @@ namespace nb = nanobind;
 
 PyClient::PyClient(std::shared_ptr<ifrt::Client> ifrt_client)
     : ifrt_client_(std::move(ifrt_client)),
-      client_attributes_(ifrt_client_->attributes()) {
+      client_attributes_(ifrt_client_->Attributes()) {
   CHECK(ifrt_client_);
 }
 
@@ -763,10 +763,10 @@ PyType_Slot PyClient::slots_[] = {
           nb::arg("dtype"), nb::arg("shard_shape"), nb::arg("device"))
       .def("__getattr__",
            [](PyClient& client, std::string_view name) -> nb::object {
-             const auto& attrs = client.attributes();
+             const auto& attrs = client.Attributes().map();
              auto it = attrs.find(name);
              if (it != attrs.end()) {
-               return std::visit([](auto&& v) { return nb::cast(v); },
+               return std::visit([](auto&& v) { return nb::cast(v.value); },
                                  it->second);
              }
              throw nb::attribute_error(

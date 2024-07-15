@@ -33,10 +33,12 @@
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -47,6 +49,7 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -77,16 +80,24 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   std::vector<xla::ifrt::Device*> addressable_device_ptrs;
 
   for (const auto& d : init_response.devices()) {
-    absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes;
-    for (const auto& [key, attr] : d.attributes()) {
-      TF_ASSIGN_OR_RETURN(xla::PjRtDeviceAttribute value,
-                          FromVariantProto(attr));
-      attributes.insert({key, std::move(value)});
+    absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
+        pjrt_device_attributes;
+    AttributeMap::Map attributes;
+    if (rpc_helper->version().protocol_version() <= 3) {
+      for (const auto& [key, attr] : d.deprecated_attributes()) {
+        TF_ASSIGN_OR_RETURN(xla::PjRtDeviceAttribute value,
+                            FromVariantProto(attr));
+        pjrt_device_attributes.insert({key, std::move(value)});
+      }
+    } else {
+      TF_ASSIGN_OR_RETURN(auto attributes,
+                          AttributeMap::FromProto(d.attributes()));
+      pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
     }
 
     DeviceDescription desc(d.id(), init_response.process_index(),
                            d.device_kind(), d.debug_string(), d.to_string(),
-                           std::move(attributes));
+                           std::move(pjrt_device_attributes));
     bool is_addressable = addressable_device_ids.contains(d.id());
 
     auto device =
@@ -161,6 +172,8 @@ Client::Client(std::shared_ptr<RpcHelper> rpc_helper, uint64_t session_id,
       platform_id_(platform_id),
       process_index_(process_index),
       runtime_type_(std::move(runtime_type)),
+      // TODO(b/309059940): Forward the backend attributes to the client.
+      attributes_(AttributeMap::Map()),
       devices_(std::move(devices)),
       device_ptrs_(device_ptrs),
       addressable_device_ptrs_(std::move(addressable_device_ptrs)),
@@ -198,6 +211,82 @@ Client::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics semantics) {
   return Array::AssembleArrayFromSingleDeviceArrays(
       this, rpc_helper_, std::move(shape), sharding, arrays, semantics);
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+                   std::optional<DeviceList> devices,
+                   std::optional<MemoryKind> memory_kind,
+                   ArrayCopySemantics semantics) {
+  if (arrays.empty()) {
+    return std::vector<tsl::RCReference<xla::ifrt::Array>>();
+  }
+
+  for (int i = 1; i < arrays.size(); ++i) {
+    const auto& sharding = arrays[i]->sharding();
+    if (sharding.devices() != arrays[0]->sharding().devices() ||
+        sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
+      return absl::InvalidArgumentError(
+          "CopyArrays only supports arrays with the same device list and "
+          "memory kind");
+    }
+  }
+
+  if (rpc_helper_->version().protocol_version() <= 2) {
+    std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
+    new_arrays.reserve(arrays.size());
+    for (const auto& array : arrays) {
+      TF_ASSIGN_OR_RETURN(
+          auto new_sharding,
+          array->sharding().WithDeviceAssignment(devices, memory_kind));
+      if (auto* const proxy_array =
+              llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
+        TF_ASSIGN_OR_RETURN(
+            new_arrays.emplace_back(),
+            proxy_array->Reshard(std::move(new_sharding), semantics));
+      } else {
+        return absl::InvalidArgumentError(
+            "Unsupported array type for xla::ifrt::proxy::Client::CopyArrays");
+      }
+    }
+    return new_arrays;
+  }
+
+  auto req = std::make_unique<CopyArraysRequest>();
+  for (const auto& array : arrays) {
+    if (auto* proxy_array =
+            llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
+      req->add_array_handles(proxy_array->handle().handle);
+    } else {
+      return absl::InvalidArgumentError(
+          "CopyArrays only supports arrays created via IFRT Proxy client");
+    }
+  }
+  if (devices.has_value()) {
+    for (auto* const device : devices->devices()) {
+      req->add_device_ids(device->Id().value());
+    }
+  }
+  if (memory_kind.has_value()) {
+    // Use an empty string to indicate the default memory kind.
+    req->set_memory_kind(std::string(memory_kind->memory_kind().value_or("")));
+  }
+  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+
+  auto future = rpc_helper_->CopyArrays(std::move(req));
+  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
+  new_arrays.reserve(arrays.size());
+  for (int i = 0; i < response->array_handles_size(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        auto new_sharding,
+        arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
+    new_arrays.push_back(tsl::MakeRef<Array>(
+        this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
+        std::move(new_sharding), ArrayHandle{response->array_handles(i)}));
+  }
+  return new_arrays;
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>

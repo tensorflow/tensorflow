@@ -36,7 +36,7 @@ class GpuCostModelStatsCollection : public HloModulePass {
   explicit GpuCostModelStatsCollection(
       const se::DeviceDescription& d,
       const GpuHloCostAnalysis::Options& cost_analysis_options)
-      : device_info_(d), cost_analysis_(cost_analysis_options, &device_info_) {}
+      : device_info_(d), cost_analysis_(cost_analysis_options, device_info_) {}
 
   absl::string_view name() const override {
     return "gpu_cost_model_stats_collection";

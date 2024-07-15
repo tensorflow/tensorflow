@@ -53,7 +53,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -30,7 +30,7 @@ namespace {
 
 TEST(ErrorUtilTest, BaseScopedDiagnosticHandler) {
   MLIRContext context;
-  auto id = StringAttr::get(&context, "//tensorflow/python/test.py");
+  auto id = StringAttr::get(&context, "test.py");
   auto loc = FileLineColLoc::get(&context, id, 0, 0);
 
   // Test OK without diagnostic gets passed through.

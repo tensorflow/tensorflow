@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 
 namespace xla {
 class TupleUtil {

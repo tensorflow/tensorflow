@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -95,8 +95,8 @@ class DefaultCostModel : public ParallelCostModel {
       // TODO(b/29630486) Develop system bandwidth model.
       max_parallelism = std::min<int64_t>(
           max_parallelism_, std::ceil(std::sqrt(tsl::port::MaxParallelism())));
-      // Use shape size instruction cost and L2 cache size min per-thread cost.
-      instruction_cost = shape_size_(instruction->shape());
+      // Use bytes accessed cost and L2 cache size min per-thread cost.
+      instruction_cost = bytes_accessed;
       min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
     } else {
       // Use max parallelism for compute bound instructions.

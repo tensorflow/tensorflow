@@ -335,6 +335,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"dcn_chunk", kDcnChunk},
       {"dcn_loop_index", kDcnLoopIndex},
       {"dropped_traces", kDroppedTraces},
+      {"cuda_graph_id", kCudaGraphId},
+      {"cuda_graph_details", kCudaGraphDetails},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
@@ -361,6 +363,7 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
       {"launch_id", kMegaScaleLaunchId},
       {"loop_iteration", kMegaScaleLoopIteration},
       {"graph_protos", kMegaScaleGraphProtos},
+      {"network_transport_latency_us", kMegaScaleNetworkTransportLatency},
   });
   DCHECK_EQ(stat_type_map->size(), kNumMegaScaleStatTypes);
   return *stat_type_map;

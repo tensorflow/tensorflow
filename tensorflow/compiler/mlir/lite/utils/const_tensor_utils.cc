@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 
+#include <algorithm>
 #include <cassert>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -33,15 +35,16 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/lite/string_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir {
@@ -433,8 +436,8 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
   }
   // TensorFlow Lite uses tflite::DynamicBufer to encode vector of strings.
   if (tensor.type == tflite::TensorType_STRING) {
-    for (int i = 0; i < tflite::GetStringCount(buffer.data()); ++i) {
-      tflite::StringRef str = tflite::GetString(buffer.data(), i);
+    for (int i = 0; i < mlir::TFL::GetStringCount(buffer.data()); ++i) {
+      mlir::TFL::StringRef str = mlir::TFL::GetString(buffer.data(), i);
       ret.add_string_val(str.str, str.len);
     }
     return ret;
@@ -443,6 +446,48 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
   content.assign(reinterpret_cast<const char*>(buffer.data()), buffer.size());
   ret.set_tensor_content(content);
   return ret;
+}
+
+int64_t GetSizeInBits(mlir::ShapedType shaped_type) {
+  return GetSizeInBits(shaped_type.getElementType()) *
+         shaped_type.getNumElements();
+}
+
+int64_t GetSizeInBits(mlir::quant::QuantizedType quant_type) {
+  const int64_t bits = std::max(quant_type.getStorageTypeIntegralWidth(),
+                                static_cast<uint32_t>(CHAR_BIT));
+  assert(IsPowerOfTwo(bits));
+  return bits;
+}
+
+int64_t GetSizeInBits(mlir::Type type) {
+  if (type.isIntOrFloat()) {
+    const int64_t bits =
+        std::max(type.getIntOrFloatBitWidth(), static_cast<uint32_t>(CHAR_BIT));
+    assert(IsPowerOfTwo(bits));
+    return bits;
+  }
+  if (mlir::isa<mlir::ShapedType>(type)) {
+    auto shaped_type = mlir::cast<mlir::ShapedType>(type);
+    if (mlir::isa<mlir::ComplexType>(shaped_type.getElementType())) {
+      auto complex_type =
+          mlir::cast<mlir::ComplexType>(shaped_type.getElementType());
+      return GetSizeInBits(complex_type.getElementType()) * 2;
+    } else if (mlir::isa<mlir::quant::QuantizedType>(
+                   shaped_type.getElementType())) {
+      auto quant_type =
+          mlir::cast<mlir::quant::QuantizedType>(shaped_type.getElementType());
+      return GetSizeInBits(quant_type);
+    } else {
+      return GetSizeInBits(shaped_type);
+    }
+  }
+
+  return 0;
+}
+
+int64_t GetSizeInBytes(mlir::Type type) {
+  return ExactIntegerDivide(GetSizeInBits(type), CHAR_BIT);
 }
 
 }  // namespace TFL

@@ -123,7 +123,7 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
                                           const toco::ModelFlags& model_flags,
                                           toco::TocoFlags& toco_flags,
                                           std::string* result) {
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
@@ -162,9 +162,9 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_TEXT) {
-    module = HloTextToMlirHloTranslateFunction(input, &context, false);
+    module = HloTextToMlirHloTranslateFunction(input, context.get(), false);
   } else if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_PROTO) {
-    module = HloToMlirHloTranslateFunction(input, &context, false);
+    module = HloToMlirHloTranslateFunction(input, context.get(), false);
   } else {
     return errors::InvalidArgument("unknown hlo format type.");
   }
@@ -191,7 +191,8 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   // StableHLO Quantizer is not supported for JAX input models, so
   // quantization_py_function_lib is set to nullptr.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      model_flags, toco_flags, std::move(module), pass_config,
+      model_flags, toco_flags, std::move(context), std::move(module),
+      pass_config,
       /*saved_model_tags=*/{}, result, /*saved_model_bundle=*/nullptr,
       /*quantization_py_function_lib=*/nullptr);
   return status;

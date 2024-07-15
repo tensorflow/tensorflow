@@ -37,6 +37,7 @@ visibility = [
     "//tensorflow_minigo:__subpackages__",
     "//research/graph/fairness/inproc_fair_reg:__subpackages__",
     "//third_party/py/scenic:__subpackages__",
+    "//smartass/brain/ops:__subpackages__",
 ]
 
 package(
@@ -139,6 +140,7 @@ tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//smartass/brain/ops:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/mlir/tfr/examples/customization:__pkg__",
         "//tensorflow/compiler/mlir/tfr/examples/pad:__pkg__",
@@ -530,6 +532,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
+        "//smartass/brain/configure:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
@@ -1385,6 +1388,7 @@ py_strict_library(
         ":optional_ops_gen",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:auto_control_deps",
         "//tensorflow/python/framework:auto_control_deps_utils",
         "//tensorflow/python/framework:constant_op",
@@ -1602,6 +1606,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -2639,6 +2644,7 @@ cuda_py_strict_test(
     srcs = ["sparse_bincount_ops_test.py"],
     deps = [
         ":sparse_ops",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
@@ -3276,6 +3282,7 @@ cuda_py_strict_test(
         ":array_ops_stack",
         ":check_ops",
         ":cond",
+        ":cond_v2",
         ":control_flow_assert",
         ":control_flow_case",
         ":control_flow_ops",

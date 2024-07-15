@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,15 +33,58 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
+// TODO(jmudigonda): Several BasicStringArray operations such as
+// DisassembleIntoSingleDeviceArrays, Reshard, FullyReplicatedShard,
+// CopyToHostBuffer and AssembleFromSingleDeviceArrays share a common pattern
+// that waits for the source array(s) buffers to become ready and then copies
+// the data into a new array's buffer backing store. Factor out the common
+// pattern into a helper function.
+
 namespace xla {
 namespace ifrt {
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// BasicStringArrayLayout
+//
+
+std::string BasicStringArrayLayout::Serialize() const {
+  // We currently do not have any state that need to be serialized. Return an
+  // empty string.
+  return std::string();
+}
+
+std::string BasicStringArrayLayout::ToString() const {
+  return "BasicStringArrayLayout: Dense, major-to-minor.";
+}
+
+bool BasicStringArrayLayout::operator==(const PjRtLayout& other) const {
+  auto* other_basic_string_array_layout =
+      dynamic_cast<const xla::ifrt::BasicStringArrayLayout*>(&other);
+  if (other_basic_string_array_layout == nullptr) {
+    return false;
+  }
+  // All BasicStringArrayLayout objects are the same - they are all dense,
+  // major-to-minor. So, all of them are equal.
+  return true;
+}
+
+void BasicStringArrayLayout::Hash(absl::HashState state) const {
+}  // Nothing to add to the hash state. Just return.
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// BasicStringArray
+//
 
 char BasicStringArray::ID = 0;
 
@@ -159,9 +203,9 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
   //   (3) shape and sharding by disassembing the source array's sharding.
   //
   // The Futures, the on-done-with-host-buffer callbacks, shapes and shardings
-  // are used to make the arrays. The promises and the buffer backing stores are
-  // passed onto the OnReady callback that populates them when the buffers of
-  // the source array become ready.
+  // are used to make the arrays. The promises and the buffer backing stores
+  // are passed onto the OnReady callback that populates them when the buffers
+  // of the source array become ready.
   std::vector<Promise<Buffers>> buffer_promises;
   buffer_promises.reserve(num_shards);
   std::vector<Future<Buffers>> buffer_futures;
@@ -218,8 +262,8 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
   });
 
   // Make and return the individual single device arrays. These will become
-  // ready when the this (source) array becomes ready and the callback we set up
-  // above runs.
+  // ready when the this (source) array becomes ready and the callback we set
+  // up above runs.
   TF_ASSIGN_OR_RETURN(auto shapes_and_shadings, sharding_->Disassemble(shape_));
 
   std::vector<tsl::RCReference<Array>> arrays;
@@ -243,21 +287,134 @@ Future<> BasicStringArray::CopyToHostBuffer(
   return Future<>(absl::UnimplementedError("Not implemented"));
 }
 
-absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Reshard(
-    std::shared_ptr<const Sharding> new_sharding,
+absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
+    std::optional<xla::ifrt::DeviceList> devices,
+    std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
   DCHECK(this);
-  return absl::UnimplementedError("Not implemented");
+  absl::MutexLock lock(&mu_);
+  if (is_deleted_) {
+    return absl::FailedPreconditionError("Array has already been deleted");
+  }
+
+  TF_ASSIGN_OR_RETURN(auto new_sharding,
+                      sharding().WithDeviceAssignment(devices, memory_kind));
+  if (new_sharding->devices().size() != sharding_->devices().size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Number of devices in new sharding: ", new_sharding->devices().size(),
+        " does not match the number of devices in the current sharding: ",
+        sharding_->devices().size()));
+  }
+
+  struct BufferBackingStore {
+    void AddShardData(absl::Span<const absl::string_view> input_buffer) {
+      auto& shard_strings = strings.emplace_back();
+      shard_strings.reserve(input_buffer.size());
+
+      auto& shard_string_views = string_views.emplace_back();
+      shard_string_views.reserve(input_buffer.size());
+
+      for (absl::string_view buf : input_buffer) {
+        shard_strings.push_back(std::string(buf.data(), buf.size()));
+        shard_string_views.push_back(shard_strings.back());
+      }
+    }
+    std::vector<std::vector<std::string>> strings;
+    std::vector<std::vector<absl::string_view>> string_views;
+  };
+
+  auto backing_store = std::make_shared<BufferBackingStore>();
+  auto on_done_with_buffer = [backing_store]() {};
+  auto buffers_promise = Future<Buffers>::CreatePromise();
+  auto buffers_future = Future<Buffers>(buffers_promise);
+
+  auto copier = [backing_store = std::move(backing_store),
+                 buffers_promise = std::move(buffers_promise)](
+                    absl::StatusOr<Buffers> input_buffers) mutable {
+    if (!input_buffers.ok()) {
+      buffers_promise.Set(input_buffers.status());
+      return;
+    }
+    Buffers buffers;
+    buffers.reserve(input_buffers->size());
+    for (auto& input_buffer : *input_buffers) {
+      backing_store->AddShardData(input_buffer);
+      buffers.push_back(backing_store->string_views.back());
+    }
+    buffers_promise.Set(std::move(buffers));
+  };
+  buffers_.OnReady(std::move(copier));
+  return BasicStringArray::Create(client_, shape_, std::move(new_sharding),
+                                  std::move(buffers_future),
+                                  std::move(on_done_with_buffer));
 }
 
+// Makes a single sharded BasicStringArray from the first shard.
 absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
-  // Make a single sharded BasicStringArray from the first shard.
-  return absl::UnimplementedError("Not implemented");
+  absl::MutexLock lock(&mu_);
+  if (is_deleted_) {
+    return absl::FailedPreconditionError("Array has already been deleted");
+  }
+
+  // Some user code paths (e.g.: through JAX) may not correctly set the
+  // `is_fully_replicated` flag when they are using ConcreteEvenSharding. If
+  // and when that causes a problem, we should investigate a way to actually
+  // looking into the sharding to determine if it is a fully replicated
+  // sharding.
+  if (!sharding_->IsFullyReplicated()) {
+    return absl::FailedPreconditionError("This array is not fully replicated");
+  }
+  struct BufferBackingStore {  // Data (strings) for a single shard.
+    void CopyFrom(absl::Span<const absl::string_view> input_buffer) {
+      strings.reserve(input_buffer.size());
+      string_views.reserve(input_buffer.size());
+      for (absl::string_view buf : input_buffer) {
+        strings.push_back(std::string(buf.data(), buf.size()));
+        string_views.push_back(strings.back());
+      }
+    }
+    std::vector<std::string> strings;
+    std::vector<absl::string_view> string_views;
+  };
+
+  auto backing_store = std::make_shared<BufferBackingStore>();
+  auto on_done_with_buffer = [backing_store]() {};
+  auto buffers_promise = Future<Buffers>::CreatePromise();
+  auto buffers_future = Future<Buffers>(buffers_promise);
+
+  auto copier = [backing_store = std::move(backing_store),
+                 buffers_promise = std::move(buffers_promise)](
+                    absl::StatusOr<Buffers> input_buffers) mutable {
+    if (!input_buffers.ok()) {
+      buffers_promise.Set(input_buffers.status());
+      return;
+    }
+
+    // No need to check the size of input_buffers. The consistency checks that
+    // were run when the source array's buffers became ready would have
+    // ensured that the input_buffers have at least one shard's worth of data.
+    auto& input_buffer = (*input_buffers)[0];
+    backing_store->CopyFrom(input_buffer);
+
+    Buffers buffers;
+    buffers.push_back(backing_store->string_views);
+    buffers_promise.Set(std::move(buffers));
+  };
+  buffers_.OnReady(std::move(copier));
+
+  return BasicStringArray::Create(
+      client_, shape_,
+      SingleDeviceSharding::Create(sharding_->devices().at(0), MemoryKind()),
+      std::move(buffers_future), std::move(on_done_with_buffer));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLayout>> BasicStringArray::layout() const {
-  return absl::UnimplementedError("Not implemented");
+  absl::MutexLock lock(&mu_);
+  if (is_deleted_) {
+    return absl::FailedPreconditionError("Array has already been deleted");
+  }
+  return std::make_unique<BasicStringArrayLayout>();
 }
 
 std::string BasicStringArray::DebugString() const {

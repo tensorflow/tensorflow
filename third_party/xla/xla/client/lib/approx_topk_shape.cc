@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "xla/util.h"
 
 // Used by rank 2+ operands

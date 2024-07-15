@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

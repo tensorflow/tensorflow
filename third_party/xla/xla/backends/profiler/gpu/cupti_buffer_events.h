@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/utils/buffer_pool.h"
+#include "tsl/profiler/utils/lock_free_queue.h"
 
 namespace xla {
 namespace profiler {
@@ -128,6 +130,18 @@ struct KernelDetails {
   int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };
 
+struct GenericDetails {
+  uint32_t cbid;
+};
+
+struct CudaGraphDetails {
+  uint32_t cbid;  // 0 for activity events, otherwise the cbid of the callback
+  uint32_t orig_graph_id;  // The original graph from which new graph is
+                           // instantiated. Note graph_id is put into general
+                           // fields as if trace in node mode, many activity
+                           // events will contains graph id.
+};
+
 inline std::string ToXStat(const KernelDetails& kernel_info,
                            double occupancy_pct) {
   return absl::StrCat(
@@ -159,6 +173,7 @@ enum class CuptiTracerEventType {
   MemoryResidency = 12,
   HostRegister = 13,
   HostUnregister = 14,
+  CudaGraph = 15,
   Generic = 100,
 };
 
@@ -197,6 +212,7 @@ struct CuptiTracerEvent {
   uint32_t thread_id = kInvalidThreadId;
   int64_t context_id = kInvalidContextId;
   int64_t stream_id = kInvalidStreamId;
+  uint32_t graph_id = 0;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;
@@ -214,9 +230,37 @@ struct CuptiTracerEvent {
     MemsetDetails memset_info;
     // Used for Memory residency activities. `type` must be MemoryResidency.
     MemoryResidencyDetails memory_residency_info;
+    // Used for `source` DriverCallback, `type` must be Generic.
+    GenericDetails generic_info;
+    // Used for `source` DriverCallback, `type` must be CudaGraph.
+    CudaGraphDetails cuda_graph_info;
   };
 };
 
+// As annotation and nvtx range strings are of large duplication, it is worth
+// to keep single copy of different strings to save memory footprint. This class
+// will construct a string when deduping unseen string_view input, and return
+// the string_view on the newly created string. If the input str is contains in
+// its internal data, it just return it's internal copy's string_view. All
+// returned string_view will keep valid as the object of this class is alive.
+class StringDeduper {
+ public:
+  void Clear() { strings_.clear(); }
+
+  // max_unique_count is not put into data member to make it consistent with
+  // existing logic.
+  absl::string_view Dedup(absl::string_view str, size_t max_unique_count = 0);
+
+  size_t Size() const { return strings_.size(); }
+
+ private:
+  absl::node_hash_set<std::string> strings_;
+};
+
+// AnnotationMap keep the map from a correlation id to its corresponding
+// annotation and nvtx_range. During Add(), unseen input string view will
+// cause new internal string constructed. This annotation map also controls
+// per-device annotation string count.
 class AnnotationMap {
  public:
   struct AnnotationInfo {
@@ -226,21 +270,18 @@ class AnnotationMap {
 
   explicit AnnotationMap(uint64_t max_size, uint32_t num_gpus)
       : max_size_(max_size), per_device_map_(num_gpus) {}
+
   void Add(uint32_t device_id, uint32_t correlation_id,
            absl::string_view annotation, absl::string_view nvtx_range);
-  AnnotationInfo LookUp(uint32_t device_id, uint32_t correlation_id);
+
+  AnnotationInfo LookUp(uint32_t device_id, uint32_t correlation_id) const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND;
 
  private:
   struct PerDeviceAnnotationMap {
-    // The population/consumption of annotations might happen from multiple
-    // callback/activity api related threads.
-    tsl::mutex mutex;
-    // Annotation tends to be repetitive, use a hash_set to store the strings,
-    // an use the reference to the string in the map.
-    absl::node_hash_set<std::string> annotations TF_GUARDED_BY(mutex);
-    absl::node_hash_set<std::string> nvtx_ranges TF_GUARDED_BY(mutex);
-    absl::flat_hash_map<uint32_t, AnnotationInfo> correlation_map
-        TF_GUARDED_BY(mutex);
+    StringDeduper annotation_deduper;
+    StringDeduper nvtx_range_deduper;
+    absl::flat_hash_map<uint32_t, AnnotationInfo> correlation_map;
   };
   const uint64_t max_size_;
   absl::FixedArray<PerDeviceAnnotationMap> per_device_map_;
@@ -252,6 +293,7 @@ class AnnotationMap {
 struct CuptiEventCollectorDelegate {
   AnnotationMap& annotation_map;
   std::function<void(CuptiTracerEvent&&)> receive;
+
   explicit CuptiEventCollectorDelegate(
       AnnotationMap& p_annotation_map,
       std::function<void(CuptiTracerEvent&&)> p_receive)
@@ -280,14 +322,62 @@ class CuptiActivityBufferManager {
     cached_buffers_.emplace_back(p, sz);
   }
 
-  void AddCachedActivityEventsTo(CuptiEventCollectorDelegate& receiver,
-                                 size_t max_activity_event_count,
-                                 size_t& dropped_activity_event_count);
+  std::list<ActivityBufferAndSize> PopCachedBuffers() {
+    std::list<ActivityBufferAndSize> result;
+    tsl::mutex_lock lock(buffer_mutex_);
+    std::swap(result, cached_buffers_);
+    return result;
+  }
 
  private:
   tsl::profiler::BufferPool buffer_pool_;
   tsl::mutex buffer_mutex_;
   std::list<ActivityBufferAndSize> cached_buffers_ TF_GUARDED_BY(buffer_mutex_);
+};
+
+void AddActivityBufferListEventsTo(
+    CuptiEventCollectorDelegate& receiver,
+    std::list<CuptiActivityBufferManager::ActivityBufferAndSize>& buffer_list,
+    size_t max_activity_event_count, size_t& dropped_activity_event_count);
+
+class CallbackAnnotationsAndEvents {
+ public:
+  static constexpr size_t kQueueBlockSize = 256 * 1024;
+  using EventQueue =
+      tsl::profiler::BlockedQueue<CuptiTracerEvent, kQueueBlockSize>;
+
+  CallbackAnnotationsAndEvents() = default;
+
+  CallbackAnnotationsAndEvents(CallbackAnnotationsAndEvents&& another);
+
+  CallbackAnnotationsAndEvents& operator=(
+      CallbackAnnotationsAndEvents&& another);
+
+  void Clear();
+
+  size_t NumAnnotations() const { return annotations_.Size(); }
+
+  std::string_view DedupAnnotation(std::string_view str) {
+    return annotations_.Dedup(str);
+  }
+
+  std::string_view DedupNvtxRange(std::string_view str) {
+    return nvtx_ranges_.Dedup(str);
+  }
+
+  EventQueue& event_queue() { return event_queue_; }
+
+  size_t NumDroppedEvents() const { return num_dropped_events_; }
+
+  void IncNumDroppedEvents() { ++num_dropped_events_; }
+
+ private:
+  // Annotation tends to be repetitive, use a hash_set to store the strings,
+  // and use the reference to the string in the hash_set.
+  StringDeduper annotations_;
+  StringDeduper nvtx_ranges_;
+  size_t num_dropped_events_ = 0;
+  EventQueue event_queue_;
 };
 
 }  // namespace profiler

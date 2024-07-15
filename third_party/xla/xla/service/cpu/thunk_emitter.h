@@ -16,15 +16,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_THUNK_EMITTER_H_
 #define XLA_SERVICE_CPU_THUNK_EMITTER_H_
 
+#include <memory>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter2.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 
 namespace xla::cpu {
@@ -38,16 +46,27 @@ namespace xla::cpu {
 // multiple LLVM modules compiled to object files).
 class ThunkEmitter {
  public:
-  ThunkEmitter(IrEmitter2* ir_emitter,
-               const BufferAssignment* buffer_assignment);
+  ThunkEmitter(IrEmitter2& ir_emitter,
+               const BufferAssignment& buffer_assignment,
+               const TargetMachineFeatures& target_machine_features,
+               const HloModuleConfig& hlo_module_config);
 
   // Emits HLO module entry computation as a sequence of thunks.
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
 
  private:
+  struct HostKernelAllocationSlices {
+    std::vector<BufferAllocation::Slice> arguments;
+    std::vector<BufferAllocation::Slice> results;
+  };
+
   // Returns the buffer allocation slice assigned to the given instruction at
   // the given shape index. Instruction must have a unique slice assigned to it!
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+      const HloInstruction* instruction, const ShapeIndex& index = {});
+
+  // Returns a token resource corresponding to the given instruction result.
+  absl::StatusOr<std::shared_ptr<Resource>> GetTokenResource(
       const HloInstruction* instruction, const ShapeIndex& index = {});
 
   absl::StatusOr<ThunkSequence> EmitHloComputation(
@@ -59,7 +78,16 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitCallThunk(
       const HloInstruction* instruction);
 
-  absl::StatusOr<ThunkSequence> EmitConcatenateThunk(
+  absl::StatusOr<ThunkSequence> EmitConcatenateKernelThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitGetDimensionSizeThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitSetDimensionSizeThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitCopyThunk(
@@ -68,10 +96,17 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitElementalKernelThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitFusionKernelThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitReductionKernelThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitRngThunk(const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitRngBitGeneratorThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateThunk(
@@ -89,16 +124,73 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitWhileThunk(
       const HloInstruction* instruction);
 
-  // Return the list of buffer allocation slices assigned to the given
+  absl::StatusOr<ThunkSequence> EmitDotThunk(const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitReplicaIdThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitPartitionIdThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitAllGatherThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitAllReduceThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitAllToAllThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitCollectivePermuteThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitReduceScatterThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitSelectAndScatterThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitTopKThunk(
+      const HloCustomCallInstruction* custom_call);
+
+  absl::StatusOr<ThunkSequence> EmitSliceThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitDynamicUpdateSliceThunk(
+      const HloInstruction* instruction);
+
+  // Returns the list of buffer allocation slices assigned to the given
   // instruction that will be passed to the host kernel as arguments: a
   // flattened list of all the leaf buffers for all operands and result. We do
   // not materialize tuples at run time and only read and write from buffers
   // corresponding to arrays.
-  absl::StatusOr<std::vector<BufferAllocation::Slice>>
-  GetHostKernelAllocationSlices(const HloInstruction* instruction);
+  absl::StatusOr<HostKernelAllocationSlices> GetHostKernelAllocationSlices(
+      const HloInstruction* instruction);
 
-  IrEmitter2* ir_emitter_;
-  const BufferAssignment* buffer_assignment_;
+  // Verifies that the element types of all of the given operand instructions
+  // match and are of one of the given supported types.
+  absl::Status ElementTypesSameAndSupported(
+      const HloInstruction& instruction,
+      absl::Span<const HloInstruction* const> operands,
+      absl::Span<const PrimitiveType> supported_types);
+
+  IrEmitter2& ir_emitter_;
+  const BufferAssignment& buffer_assignment_;
+
+  const TargetMachineFeatures& target_machine_features_;
+  const HloModuleConfig& hlo_module_config_;
+
+  // A global resource that is used to order all collective operations.
+  std::shared_ptr<Resource> communicator_resource_;
+
+  // Token resources that correspond to the token buffer allocation slices. We
+  // rely on buffer assignment to assign unique "identity" to each token, and
+  // create a separate resource for each unique allocation slice.
+  absl::flat_hash_map<BufferAllocation::Slice, std::shared_ptr<Resource>>
+      token_resources_;
 };
 
 }  // namespace xla::cpu

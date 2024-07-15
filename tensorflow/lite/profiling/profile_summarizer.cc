@@ -19,8 +19,13 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
+#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/profiling/memory_info.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/profiling/profile_buffer.h"
+#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 
 namespace tflite {
 namespace profiling {

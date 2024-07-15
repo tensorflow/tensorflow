@@ -258,17 +258,6 @@ absl::Status CUDAFftPlan::Initialize(
   return absl::OkStatus();
 }
 
-absl::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
-                                     int rank, uint64_t *elem_count,
-                                     fft::Type type,
-                                     ScratchAllocator *scratch_allocator) {
-  return Initialize(parent_, stream, rank, elem_count,
-                    /*input_embed=*/nullptr, /*input_stride=*/0,
-                    /*input_distance=*/0,
-                    /*output_embed=*/nullptr, /*output_stride=*/0,
-                    /*output_distance=*/0, type, 1, scratch_allocator);
-}
-
 absl::Status CUDAFftPlan::UpdateScratchAllocator(
     Stream *stream, ScratchAllocator *scratch_allocator) {
   scratch_allocator_ = scratch_allocator;

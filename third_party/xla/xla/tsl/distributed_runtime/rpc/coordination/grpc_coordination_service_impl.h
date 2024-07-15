@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <memory>
 
-#include "grpcpp/alarm.h"
-#include "grpcpp/completion_queue.h"
-#include "grpcpp/server_builder.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "grpcpp/alarm.h"
+#include "grpcpp/completion_queue.h"
+#include "grpcpp/server_builder.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"

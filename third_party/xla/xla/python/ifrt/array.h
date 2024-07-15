@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -119,26 +120,6 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   ABSL_MUST_USE_RESULT
   virtual Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
-      ArrayCopySemantics semantics) = 0;
-
-  // Copies the array with a new sharding, creating a new array.
-  //
-  // Resharding falls into one of the three cases:
-  //
-  // * Metadata-only resharding: Use a new sharding for the array that expects
-  //   the same physical layout of underlying buffers on the same devices.
-  // * 1-to-1 buffer copy: Copy individual buffers to different devices without
-  //   altering their physical layout.
-  // * M-to-N buffer resharding: Shuffle the buffer data across the boundary of
-  //   the buffers, changing their physical layout.
-  //
-  // Implementations may return `UNIMPLEMENTED` if they do not know how to copy
-  // or reshuffle the data to match the new sharding.
-  //
-  // It may fail if the buffer data would be sent from/to an unaddressable
-  // device.
-  virtual absl::StatusOr<tsl::RCReference<Array>> Reshard(
-      std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) = 0;
 
   static char ID;  // NOLINT

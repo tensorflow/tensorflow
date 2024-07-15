@@ -20,6 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/shape.h"
 
 namespace xla {
 namespace ifrt {
@@ -50,6 +53,14 @@ TEST(IndexDomainTest, Operations) {
     IndexDomain c = a;
     EXPECT_EQ(c -= b, IndexDomain(Index({0, 0}), Shape({3, 4})));
   }
+}
+
+TEST(IndexDomainTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {IndexDomain(Index({1, 2}), Shape({3, 4})),
+       IndexDomain(Index({1, 2}), Shape({4, 3})),
+       IndexDomain(Index({2, 1}), Shape({3, 4})),
+       IndexDomain(Index({2, 1}), Shape({4, 3}))}));
 }
 
 }  // namespace

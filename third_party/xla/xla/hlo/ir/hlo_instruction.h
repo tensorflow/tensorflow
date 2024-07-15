@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
@@ -2859,6 +2859,12 @@ template <HloOpcode op, HloOpcode... rest>
 bool HloPredicateIsOp(const HloInstruction* instruction) {
   return (instruction->opcode() == op) ||
          ((instruction->opcode() == rest) || ...);
+}
+
+template <HloOpcode op, HloOpcode... rest>
+bool HloPredicateIsNotOp(const HloInstruction* instruction) {
+  return (instruction->opcode() != op) &&
+         ((instruction->opcode() != rest) && ...);
 }
 
 /* static */ inline bool HloInstruction::MightHaveCalledComputations(

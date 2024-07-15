@@ -17,11 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_TEST_MATCHERS_H_
 
 #include <gmock/gmock.h>
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tsl/platform/statusor.h"
 
 template <typename T>
-bool WasGraphAnalysisFailure(tsl::StatusOr<T> status) {
+bool WasGraphAnalysisFailure(const absl::StatusOr<T>& status) {
   return (status.status() ==
           tensorflow::CompileToHloGraphAnalysisFailedError());
 }
@@ -57,6 +58,19 @@ MATCHER_P(ComputationProtoContains, regex,
                                        graph_analysis_failure, result_listener);
   }
   auto proto = arg.value().computation->proto().DebugString();
+  return testing::ExplainMatchResult(testing::ContainsRegex(regex), proto,
+                                     result_listener);
+}
+
+MATCHER_P(XlaComputationProtoContains, regex,
+          "If not a Graph Analysis failure then matches the computation result "
+          "with the regex") {
+  auto graph_analysis_failure = WasGraphAnalysisFailure(arg);
+  if (graph_analysis_failure) {
+    return testing::ExplainMatchResult(testing::IsTrue(),
+                                       graph_analysis_failure, result_listener);
+  }
+  auto proto = arg.value().proto().DebugString();
   return testing::ExplainMatchResult(testing::ContainsRegex(regex), proto,
                                      result_listener);
 }

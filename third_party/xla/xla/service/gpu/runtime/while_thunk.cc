@@ -59,15 +59,13 @@ absl::StatusOr<int64_t> WhileThunk::CurrentLoopIteration(int64_t depth) {
 WhileThunk::WhileThunk(
     ThunkInfo thunk_info,
     const BufferAllocation::Slice& condition_result_buffer_index,
-    std::unique_ptr<ThunkSequence> condition_thunk_sequence,
-    std::unique_ptr<ThunkSequence> body_thunk_sequence,
+    std::unique_ptr<SequentialThunk> condition_thunk_sequence,
+    std::unique_ptr<SequentialThunk> body_thunk_sequence,
     std::optional<int64_t> trip_count)
     : Thunk(Kind::kWhile, thunk_info),
       condition_result_buffer_index_(condition_result_buffer_index),
-      condition_thunk_sequence_(std::make_unique<SequentialThunk>(
-          ThunkInfo(), std::move(*condition_thunk_sequence))),
-      body_thunk_sequence_(std::make_unique<SequentialThunk>(
-          ThunkInfo(), std::move(*body_thunk_sequence))),
+      condition_thunk_sequence_(std::move(condition_thunk_sequence)),
+      body_thunk_sequence_(std::move(body_thunk_sequence)),
       trip_count_(trip_count) {}
 
 absl::Status WhileThunk::Prepare(const PrepareParams& params,

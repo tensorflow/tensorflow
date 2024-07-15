@@ -64,8 +64,6 @@ struct HloInstructionIndexing {
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
 
-std::string ToString(const mlir::AffineMap& affine_map);
-
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
 HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
@@ -132,6 +130,9 @@ bool FuseProducerConsumerOutputToInputIndexing(
 // Equivalent to linearizing the input_shape index and then delinearizing it
 // to output_shape.
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
+                          mlir::MLIRContext* mlir_context);
+IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
+                          const Shape& output_shape,
                           mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the physical layout of the tensor to its logical

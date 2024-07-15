@@ -865,6 +865,35 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
                                FindInstruction(m.get(), "recv")->shape()));
 }
 
+TEST_F(LayoutAssignmentTest, AllReduceSpmd) {
+  // Pin non matching layouts to parameter and root.
+  const char* module_str = R"(
+    HloModule test_module, num_partitions=2
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY entry_computation {
+      param = f32[2,2] parameter(0)
+      ar.0 = f32[2,2] all-reduce(param),
+        channel_id=1, replica_groups={{0}}, to_apply=add
+      p1 = f32[2] parameter(1)
+      ar.1 = f32[2] all-reduce(p1),
+        channel_id=1, replica_groups={{0}}, to_apply=add
+      ROOT t = tuple(ar.0, ar.1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  // Check that assign layouts does not crash with repeated channel_id and
+  // different shapes.
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  AssignLayouts(m.get(), &computation_layout);
+}
+
 TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
   // Pin non matching layouts to parameter and root.
   const char* module_str = R"(

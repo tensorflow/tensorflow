@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -650,6 +651,42 @@ ENTRY entry_computation {
                                                    output_bytes_accessed);
   EXPECT_EQ(analysis_.flop_count(*reduce), 32 * 39 * 6);
 }
+
+TEST_F(GpuHloCostAnalysisTest, CustomOpProfileIsUsed) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+ENTRY entry_computation {
+  param_0 = f32[10] parameter(0)
+  param_1 = f32[10] parameter(1)
+  add = f32[10] add(param_0, param_1)
+  ROOT mul = f32[10] multiply(add, param_0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloOpProfiles::HloOpProfile hlo_op_profile;
+
+  const int kF32AddFlopsPerElement = 7;
+  const int kF32MultiplyFlopsPerElement = 11;
+  const int kNumElements = 10;
+
+  hlo_op_profile[{HloOpcode::kAdd, PrimitiveType::F32}] =
+      kF32AddFlopsPerElement;
+  hlo_op_profile[{HloOpcode::kMultiply, PrimitiveType::F32}] =
+      kF32MultiplyFlopsPerElement;
+
+  GpuHloCostAnalysis analysis(options_, hlo_op_profile);
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
+
+  const HloInstruction* mul = module->entry_computation()->root_instruction();
+  const HloInstruction* add = mul->operand(0);
+
+  EXPECT_EQ(analysis.flop_count(*add), kF32AddFlopsPerElement * kNumElements);
+  EXPECT_EQ(analysis.flop_count(*mul),
+            kF32MultiplyFlopsPerElement * kNumElements);
+};
 
 }  // namespace gpu
 }  // namespace xla

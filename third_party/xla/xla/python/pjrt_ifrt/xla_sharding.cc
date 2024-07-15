@@ -134,6 +134,9 @@ bool HloSharding::HasSamePartitioning(const Sharding& other) const {
   if (this == &other) {
     return true;
   }
+  if (devices().size() != other.devices().size()) {
+    return false;
+  }
   const auto* other_hlo_sharding = llvm::dyn_cast<HloSharding>(&other);
   if (!other_hlo_sharding) {
     return false;

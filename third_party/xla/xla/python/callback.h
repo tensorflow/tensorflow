@@ -72,18 +72,11 @@ class CpuCallback {
 
   xla::TransposePlanCache& transpose_cache() { return transpose_cache_; }
 
-  void PrepareAndCall(void* result, void** arg_ptrs,
-                      XlaCustomCallStatus* status);
   absl::Status PrepareAndCall(void* result, void** arg_ptrs);
 
-  std::optional<nanobind::tuple> Call(nanobind::tuple args,
-                                      XlaCustomCallStatus* status);
   absl::StatusOr<nanobind::tuple> Call(nanobind::tuple args);
 
  private:
-  absl::Status PrepareAndCallInternal(void* result, void** arg_ptrs);
-  absl::StatusOr<nanobind::tuple> CallInternal(nanobind::tuple args);
-
   nanobind::callable callable_;
   std::vector<Arg> args_;
   std::vector<Result> results_;

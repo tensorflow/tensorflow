@@ -523,11 +523,6 @@ absl::Status NcclCollectiveDoneThunk::ExecuteOnStream(
   return params.stream->WaitFor(event);
 }
 
-absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
-  Shape shape = GetShape(operand);
-  return IsValidOperand(shape, reduction_op);
-}
-
 absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
   if (!LayoutUtil::IsDenseArray(shape)) {
     return absl::AbortedError(

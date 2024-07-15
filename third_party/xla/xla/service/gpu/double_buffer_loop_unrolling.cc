@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -81,6 +82,160 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
              hlo_query::IsAsyncCollectiveStartOp(new_instr)) {
     new_instr->set_channel_id(hlo_query::NextChannelId(*module));
   }
+}
+
+using Interval = std::pair<int64_t, int64_t>;
+
+// Parses a string of the format `{{a,b},{c,d},{e,f}...}` to a vector of pairs.
+absl::StatusOr<std::vector<Interval>> ParseVectorOfPairs(
+    absl::string_view str) {
+  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
+                      ParseReplicaGroupsOnly(str));
+  std::vector<Interval> res;
+  res.reserve(replica_groups.size());
+  for (const ReplicaGroup& replica_group : replica_groups) {
+    TF_RET_CHECK(replica_group.replica_ids_size() == 2);
+    int64_t a = replica_group.replica_ids(0);
+    int64_t b = replica_group.replica_ids(1);
+    res.emplace_back(a, b);
+  }
+  return res;
+}
+
+// This function fixes the `_xla_send_recv_validation` attribute for peeled
+// instructions. When the loop trip count is odd, the peeled instructions are
+// moved before the loop. The collectives in these instructions correspond to
+// the first iteration of the original loop. We have to run this peeled
+// collective for all those devices that had the 0-th iteration as a valid
+// iteration.
+absl::Status SetSendRecvValidationForPeeledInstr(HloInstruction* new_instr,
+                                                 HloInstruction* old_instr) {
+  TF_RET_CHECK(
+      new_instr->opcode() == old_instr->opcode() &&
+      "cloned instruction and original instruction have different opcodes");
+  if (!HloPredicateIsOp<HloOpcode::kCollectivePermute,
+                        HloOpcode::kCollectivePermuteStart, HloOpcode::kSend,
+                        HloOpcode::kRecv>(old_instr)) {
+    return absl::OkStatus();
+  }
+
+  const auto& attribute_map = new_instr->frontend_attributes().map();
+  if (!attribute_map.contains(kSendRecvValidationAttr)) {
+    return absl::OkStatus();
+  }
+
+  VLOG(3) << "Original send-recv iterations: "
+          << attribute_map.at(kSendRecvValidationAttr);
+
+  TF_ASSIGN_OR_RETURN(
+      auto send_recv_validation_attr,
+      ParseVectorOfPairs(attribute_map.at(kSendRecvValidationAttr)));
+
+  uint64_t n_pairs = send_recv_validation_attr.size();
+  if (n_pairs == 0) {
+    return absl::OkStatus();
+  }
+  std::vector<Interval> send_recv_validation_attr_updated(n_pairs, {1, 0});
+  // Check which of the attributes have iteration number zero as valid
+  // iteration. For all those, set the peeled instruction to run.
+  for (std::uint64_t i = 0; i < send_recv_validation_attr.size(); i++) {
+    if (send_recv_validation_attr[i].first <= 0 &&
+        send_recv_validation_attr[i].second >= 0) {
+      send_recv_validation_attr_updated[i] = {0, 0};
+    }
+  }
+
+  hlo_instruction_utils::AddOrUpdateVectorOfPairsAsAttribute(
+      /*instr=*/new_instr, /*attr_name=*/kSendRecvValidationAttr,
+      /*intervals=*/send_recv_validation_attr_updated);
+  return absl::OkStatus();
+}
+
+// This function fixes the `_xla_send_recv_validation` attribute for the two new
+// collectives inside the loop. The calculation of the new valid iterations
+// depends on whether the loop was peeled or not.
+//
+// If the loop was not peeled, then
+//  - iteration 0 of the new loop coressponds to iteration 0,1 of the old loop.
+//  - iteration 1 of the new loop coressponds to iteration 2,3 of the old loop.
+//  - and so on...
+// If the loop was peeled, then the first iteration runs before the loop. So,
+//  - iteration 0 of the new loop coressponds to iteration 1,2 of the old loop.
+//  - iteration 1 of the new loop coressponds to iteration 3,4 of the old loop.
+//  - and so on...
+//
+// Consider the case when the loop was peeled, and the original attribute for
+// some device was {4,7}. Consider that the two new collectives are
+// `collective.1` and `collective.2` (they execute in this order inside the new
+// loop). In the old loop, iterations 4,5,6,7 were valid. In the new
+// loop,
+//  - collective.2 in iteration 1 of new loop runs 4th iteration of old loop.
+//  - collective.1 in iteration 2 of new loop runs 5th iteration of old loop.
+//  - collective.2 in iteration 2 of new loop runs 6th iteration of old loop.
+//  - collective.1 in iteration 3 of new loop runs 7th iteration of old loop.
+// So, the updated attribute for that device are {1,2} for `collective.2` and
+// {2,3} for `collective.1`.
+//
+// In a similar fashion we can generalize the computation of new values based on
+// the values of the old attribute as done in the logic below.
+absl::Status SetSendRecvValidation(HloInstruction* cp1, HloInstruction* cp2,
+                                   bool is_peeled) {
+  TF_RET_CHECK(
+      cp2->opcode() == cp1->opcode() &&
+      "cloned instruction and original instruction have different opcodes");
+  if (!HloPredicateIsOp<HloOpcode::kCollectivePermute,
+                        HloOpcode::kCollectivePermuteStart, HloOpcode::kSend,
+                        HloOpcode::kRecv>(cp1)) {
+    return absl::OkStatus();
+  }
+  const auto& attribute_map = cp2->frontend_attributes().map();
+  if (!attribute_map.contains(kSendRecvValidationAttr)) {
+    return absl::OkStatus();
+  }
+  VLOG(3) << "Original send-recv iterations: "
+          << attribute_map.at(kSendRecvValidationAttr);
+
+  TF_ASSIGN_OR_RETURN(
+      auto send_recv_validation_attr,
+      ParseVectorOfPairs(attribute_map.at(kSendRecvValidationAttr)));
+
+  if (send_recv_validation_attr.size() == 0) {
+    return absl::OkStatus();
+  }
+
+  std::vector<Interval> send_recv_iterations_new_instr1,
+      send_recv_iterations_new_instr2;
+  send_recv_iterations_new_instr1.reserve(send_recv_validation_attr.size());
+  send_recv_iterations_new_instr2.reserve(send_recv_validation_attr.size());
+  for (const Interval& pair : send_recv_validation_attr) {
+    int64_t a = pair.first;
+    int64_t b = pair.second;
+    if (is_peeled) {
+      send_recv_iterations_new_instr1.emplace_back(
+          std::floor(a / 2.0), std::max(0.0, std::floor((b - 1) / 2.0)));
+      send_recv_iterations_new_instr2.emplace_back(
+          std::max(0.0, std::floor((a - 1) / 2.0)),
+          std::max(0.0, std::floor((b - 2) / 2.0)));
+    } else {
+      send_recv_iterations_new_instr1.emplace_back(std::floor((a + 1) / 2.0),
+                                                   std::floor(b / 2.0));
+      send_recv_iterations_new_instr2.emplace_back(
+          std::floor(a / 2.0), std::max(0.0, std::floor((b - 1) / 2.0)));
+    }
+  }
+
+  hlo_instruction_utils::AddOrUpdateVectorOfPairsAsAttribute(
+      /*instr=*/cp1, /*attr_name=*/kSendRecvValidationAttr,
+      /*intervals=*/send_recv_iterations_new_instr1);
+  hlo_instruction_utils::AddOrUpdateVectorOfPairsAsAttribute(
+      /*instr=*/cp2, /*attr_name=*/kSendRecvValidationAttr,
+      /*intervals=*/send_recv_iterations_new_instr2);
+
+  VLOG(3) << "Updated send-recv iterations for " << cp1->name() << " : "
+          << cp1->frontend_attributes().map().at(kSendRecvValidationAttr);
+  VLOG(3) << "Updated send-recv iterations for " << cp2->name() << " : "
+          << cp2->frontend_attributes().map().at(kSendRecvValidationAttr);
+  return absl::OkStatus();
 }
 
 // Handle control predecessors/successors for every old-new instruction pair.
@@ -249,6 +404,7 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
             old_instr->shape(), new_operands, suffix));
 
     SetChannelIdForNewCollective(new_instr, module);
+    TF_CHECK_OK(SetSendRecvValidationForPeeledInstr(new_instr, old_instr));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString()
             << " to parent computation.";
@@ -310,7 +466,8 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
   absl::flat_hash_map<HloInstruction*, HloInstruction*> old_to_new_map;
   absl::flat_hash_set<HloInstruction*> skip_control_dep_injection;
 
-  if (exact_trip_count % 2) {
+  bool is_peeled = exact_trip_count % 2;
+  if (is_peeled) {
     VLOG(2) << "Found loops with odd trip count, 1 iteration will be peeled "
                "outside of the main body.";
     TF_RETURN_IF_ERROR(PeelInstructionsForOddTripCount(module, while_instr));
@@ -339,6 +496,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
       skip_control_dep_injection.insert(old_instr);
     }
     SetChannelIdForNewCollective(new_instr, module);
+    TF_CHECK_OK(SetSendRecvValidation(old_instr, new_instr, is_peeled));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString();
   }

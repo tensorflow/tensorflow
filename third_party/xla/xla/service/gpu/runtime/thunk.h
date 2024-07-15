@@ -165,6 +165,7 @@ class Thunk {
     kTriangularSolve,
     kWhile,
     kFusedMHA,
+    kFusedMHABackward,
     kWaitForStreams,
     kCuDnn
   };
@@ -382,6 +383,8 @@ class Thunk {
     // Additional compute streams on which thunks launch operations.
     ExecutionStreamIdMap additional_compute_streams;
 
+    bool mock_collectives = false;
+
    private:
     friend class CommandBufferThunk;
 
@@ -394,7 +397,8 @@ class Thunk {
                   SendDeviceMemoryFunction* send_device_memory_function,
                   RecvDeviceMemoryFunction* recv_device_memory_function,
                   const ffi::ExecutionContext* ffi_execution_context,
-                  ExecutionStreamIdMap additional_compute_streams = {});
+                  ExecutionStreamIdMap additional_compute_streams = {},
+                  bool mock_collectives = false);
   };
 
   //===--------------------------------------------------------------------===//
@@ -410,7 +414,7 @@ class Thunk {
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
-  virtual std::string ToStringExtra(int indent) const { return ""; }
+  virtual std::string ToString(int indent) const { return ""; }
   Kind kind() const { return kind_; }
   std::string_view profile_annotation() const { return profile_annotation_; }
 
@@ -451,6 +455,9 @@ class Thunk {
   static absl::StatusOr<se::Stream*> GetStreamForExecution(
       ExecutionStreamId stream_id, const ExecuteParams& params);
 
+  // Returns `true` if this thunk requires inter-GPU communication.
+  bool IsCollective() const;
+
  private:
   Kind kind_;
   std::string profile_annotation_;
@@ -458,12 +465,7 @@ class Thunk {
 };
 
 // A sequence of thunks.
-class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
- public:
-  std::string ToString(int indent = 0,
-                       std::function<std::string(const Thunk*)>
-                           get_thunk_annotation = nullptr) const;
-};
+using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 

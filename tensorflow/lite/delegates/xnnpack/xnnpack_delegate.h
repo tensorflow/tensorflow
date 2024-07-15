@@ -68,10 +68,11 @@ typedef struct {
   // Deprecated. Use the flags bitfield with the
   // TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS mask.
   bool handle_variable_ops;
-  // Path to the weight cache to load if `weight_cache` is undefined.
+  // Path to the weight cache to load.
   //
-  // WARNING this is an experimental flag.
-  const char* experimental_weight_cache_file_path;
+  // To keep backwards compatibility with the previous caching mechanism, the
+  // weight cache will only be loaded from this if `weight_cache` is undefined.
+  const char* weight_cache_file_path;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.

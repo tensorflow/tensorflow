@@ -118,7 +118,7 @@ class PartitionedComputation {
     // The sum of the arity of the injected values.
     int num_injected_values = 0;
 
-    std::string ToString() const;
+    std::string ToString(int indentation = 0) const;
 
     // Creates a subgraph for the given heroes' epilogue. The heroes values will
     // be injected into the subgraph.
@@ -138,7 +138,7 @@ class PartitionedComputation {
     return *instructions_to_subgraphs_.at(instr);
   }
 
-  std::string ToString() const;
+  std::string ToString(int indentation = 0) const;
 
  private:
   const HloComputation* computation_;

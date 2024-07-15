@@ -26,17 +26,20 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_to_hlo.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/reproducer.pb.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/xla.pb.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
@@ -45,6 +48,7 @@ limitations under the License.
 #include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/error_logging.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -78,30 +82,38 @@ bool ShouldFallbackToGraphCompiler(
 }
 
 void DumpComputationInput(
+    const tpu::TPUCompileMetadataProto& metadata,
+    const std::vector<tensorflow::TensorShape>& arg_shapes,
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>
         computation) {
   if (!VLOG_IS_ON(2)) {
     return;
   }
 
+  tensorflow::mlir::tf2xla::internal::LegalizeMlirToHloReproducer reproducer;
+  *reproducer.mutable_compile_metadata() = metadata;
+  for (const auto& shape : arg_shapes) {
+    shape.AsProto(reproducer.add_input_shapes());
+  }
+
   switch (computation.index()) {
     case 0:
-      VLOG(2) << "LegalizeMlirToHlo with MLIR computation input: "
-              << std::get<0>(computation).mlir_module;
+      reproducer.set_mlir_module(
+          std::string(std::get<0>(computation).mlir_module));
       break;
     case 1: {
       auto input = std::get<1>(computation);
-      Graph g(input.flib_def);
-      VLOG(2) << "LegalizeMlirToHlo with FLIB computation input: "
-              << DumpGraphToFile(
-                     absl::StrCat("legalize_mlir_hlo_computation_input_",
-                                  input.function->name()),
-                     g, std::get<1>(computation).flib_def);
+      *reproducer.mutable_function_def_library() = input.flib_def->ToProto();
     } break;
     default:
       VLOG(2) << "LegalizeMlirToHlo computation input: unknown";
       break;
   }
+
+  std::string string_reproducer;
+  tensorflow::protobuf::TextFormat::PrintToString(reproducer,
+                                                  &string_reproducer);
+  DumpRawStringToFile("legalize_tf_reproducer.textproto", string_reproducer);
 }
 
 Status DumpHloCompilationResult(std::string_view name,
@@ -137,7 +149,7 @@ absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,
-    std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
+    std::vector<std::unique_ptr<::mlir::Pass>>& custom_legalization_passes,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
@@ -151,7 +163,7 @@ absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
 
   auto compilation_result = std::make_unique<XlaCompilationResult>();
 
-  DumpComputationInput(computation);
+  DumpComputationInput(metadata, arg_shapes, computation);
 
   // If there are no MLIR args, compile the given function in the library.
   if (ShouldFallbackToGraphCompiler(computation)) {

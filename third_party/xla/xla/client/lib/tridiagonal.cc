@@ -22,14 +22,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/loops.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace tridiagonal {

@@ -29,7 +29,7 @@ class LayerNormTest : public HloTestBase {
   ; CHECK:     custom_call_target="__onednn$layernorm",
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "onednn_layer_norm_config":{
-  ; CHECK-DAG:       "fused_ops":"SCALE_AND_SHIFT"
+  ; CHECK-DAG:       "rescale":"SCALE_AND_SHIFT"
   ; CHECK-DAG:   }
   ; CHECK:     }
   )";

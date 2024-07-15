@@ -87,6 +87,9 @@ using mlir::tf_device::ReplicateOp;
 #define GEN_PASS_DEF_XLABROADCASTPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
+const char kICIWeightDistributionMlirBridgeMarker[] =
+    "ici_weight_distribution_mlir_bridge_marker";
+
 struct XlaBroadcast : public impl::XlaBroadcastPassBase<XlaBroadcast> {
   void runOnOperation() override;
 };
@@ -120,9 +123,16 @@ bool GetDummyParams(OpBuilder& builder, Value val_bcast, Attribute& zero,
 // Create a dummy zero to be fed locally from the host to the TPUExecute.
 Value CreateZeroInput(Location loc, OpBuilder& builder, Attribute zero_attr,
                       DenseIntElementsAttr shape_attr) {
-  Value zero = builder.create<ConstOp>(loc, zero_attr);
-  Value shape = builder.create<ConstOp>(loc, shape_attr);
-  return builder.create<FillOp>(loc, shape, zero);
+  ConstOp zero = builder.create<ConstOp>(loc, zero_attr);
+  zero->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                builder.getBoolAttr(true));
+  ConstOp shape = builder.create<ConstOp>(loc, shape_attr);
+  shape->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                 builder.getBoolAttr(true));
+  FillOp fill = builder.create<FillOp>(loc, shape, zero);
+  fill->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                builder.getBoolAttr(true));
+  return fill;
 }
 
 // Add parallel collection of inputs to the replicated op.
@@ -263,6 +273,8 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
   OpBuilder before_cluster_builder(cluster);
   IdentityOp assigned_id = before_cluster_builder.create<IdentityOp>(
       val_bcast.getLoc(), block_arg.getType(), block_arg);
+  assigned_id->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                       before_cluster_builder.getBoolAttr(true));
   std::string device = tensorflow::GetDeviceAliasForHostOfLogicalCore(0);
   LaunchOp launch = tensorflow::WrapOpInLaunch(
       &before_cluster_builder, val_bcast.getLoc(), assigned_id, device);

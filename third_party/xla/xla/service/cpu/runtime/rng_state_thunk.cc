@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <utility>
 
 #include "absl/base/config.h"
+#include "absl/memory/memory.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -26,6 +29,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -38,6 +42,14 @@ namespace xla::cpu {
 // is arbitrarily chosen, any non-zero values should be fine.
 static constexpr absl::int128 kRngStateInitialValue = 0x7012395ull;
 
+absl::StatusOr<std::unique_ptr<RngGetAndUpdateStateThunk>>
+RngGetAndUpdateStateThunk::Create(Info info,
+                                  BufferAllocation::Slice state_buffer,
+                                  int64_t delta) {
+  return absl::WrapUnique(
+      new RngGetAndUpdateStateThunk(std::move(info), state_buffer, delta));
+}
+
 RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
     Info info, BufferAllocation::Slice state_buffer, int64_t delta)
     : Thunk(Kind::kRngGetAndUpdateState, info),
@@ -45,7 +57,8 @@ RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
       delta_(delta),
       state_(kRngStateInitialValue) {}
 
-absl::Status RngGetAndUpdateStateThunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
+    const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   TF_ASSIGN_OR_RETURN(
@@ -72,7 +85,7 @@ absl::Status RngGetAndUpdateStateThunk::Execute(const ExecuteParams& params) {
 
   state_ += delta_;
 
-  return absl::OkStatus();
+  return OkExecuteEvent();
 }
 
 }  // namespace xla::cpu

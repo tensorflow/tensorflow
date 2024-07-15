@@ -512,12 +512,12 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug",
-        "//tensorflow/core/profiler/lib:connected_traceme",
-        "//tensorflow/core/profiler/lib:context_types_hdrs",
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 

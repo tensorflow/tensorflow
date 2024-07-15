@@ -29,7 +29,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -37,9 +41,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -351,6 +358,13 @@ class SpmdPartitioner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
+  // A plug for subclasses to alter the IR based on the computation that has the
+  // rotate-right pattern. This is called during `PreprocessHlos`.
+  virtual absl::Status HandleRotateRightWhilePreprocessing(
+      HloComputation* computation) {
+    return absl::OkStatus();
+  };
+
   void set_execution_threads(
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     execution_threads_ = execution_threads;
@@ -522,25 +536,6 @@ class PartitionedHlo {
   PartitioningState state_;
 };
 
-struct DotConvDimsMapping {
-  // The dimension numbers for the operands and output corresponding to a
-  // logical dimension (e.g., batch, contracting, non-contracting). If an
-  // operand or the output doesn't have the logical dimension, it is set to
-  // -1.
-  struct DimsMapping {
-    int64_t lhs;
-    int64_t rhs;
-    int64_t output;
-    // input mapped to index in input_spatial_dimensions().
-    int64_t spatial;
-  };
-  std::vector<DimsMapping> batch_dims;
-  std::vector<DimsMapping> contracting_dims;
-  std::vector<DimsMapping> lhs_non_contracting_dims;
-  std::vector<DimsMapping> rhs_non_contracting_dims;
-  std::vector<DimsMapping> conv_spatial_dims;
-};
-
 class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
  public:
   SpmdPartitioningVisitor(
@@ -589,7 +584,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   absl::Status HandleDotHelper(
-      HloInstruction* hlo, const DotConvDimsMapping& dims_mapping,
+      HloInstruction* hlo,
+      const dot_as_convolution_util::DotConvolutionDimsInfo& dims_mapping,
       absl::FunctionRef<absl::StatusOr<HloInstruction*>(
           HloInstruction*, HloInstruction*, SpmdBuilder*,
           const Window& conv_window)>

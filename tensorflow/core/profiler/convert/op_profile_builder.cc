@@ -45,6 +45,8 @@ using op_profile::Metrics;
 using op_profile::Node;
 using tsl::profiler::IsFusion;
 
+double CapUtilization(double utilization) { return std::min(utilization, 1.0); }
+
 // Fill symbol details into a node.
 void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
   node->set_name(op_metrics.name());
@@ -173,9 +175,9 @@ void PopulateOpMetricsNode(
   metrics->set_avg_time_ps(tsl::profiler::SafeDivide(op_metrics.time_ps(),
                                                      op_metrics.occurrences()));
 
-  double flops_utilization =
+  double flops_utilization = CapUtilization(
       tsl::profiler::SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
-                                peak_gigaflops_per_second_per_core);
+                                peak_gigaflops_per_second_per_core));
   // The UI expects flops_utilization = flop_util / time_fraction. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   const double time_fraction =
@@ -190,9 +192,9 @@ void PopulateOpMetricsNode(
       tsl::profiler::GigaToGibi(
           GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_HBM,
                                     OpMetrics::MemoryAccessed::WRITE));
-  const double hbm_bw_utilization = tsl::profiler::SafeDivide(
+  const double hbm_bw_utilization = CapUtilization(tsl::profiler::SafeDivide(
       hbm_gibibytes_per_second,
-      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]));
   metrics->add_bandwidth_utils(hbm_bw_utilization);
   double hbm_bytes = tsl::profiler::GibiToGiga(hbm_gibibytes_per_second) *
                      tsl::profiler::PicoToNano(op_metrics.time_ps());
@@ -200,9 +202,10 @@ void PopulateOpMetricsNode(
   const double sram_rd_gibibytes_per_second = tsl::profiler::GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
                                 OpMetrics::MemoryAccessed::READ));
-  const double sram_rd_bw_utilization = tsl::profiler::SafeDivide(
-      sram_rd_gibibytes_per_second,
-      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
+  const double sram_rd_bw_utilization =
+      CapUtilization(tsl::profiler::SafeDivide(
+          sram_rd_gibibytes_per_second, peak_mem_gibibytes_per_second_per_core
+                                            [MemBwType::MEM_BW_TYPE_SRAM_RD]));
   metrics->add_bandwidth_utils(sram_rd_bw_utilization);
   double sram_rd_bytes =
       tsl::profiler::GibiToGiga(sram_rd_gibibytes_per_second) *
@@ -211,9 +214,10 @@ void PopulateOpMetricsNode(
   const double sram_wr_gibibytes_per_second = tsl::profiler::GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
                                 OpMetrics::MemoryAccessed::WRITE));
-  const double sram_wr_bw_utilization = tsl::profiler::SafeDivide(
-      sram_wr_gibibytes_per_second,
-      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
+  const double sram_wr_bw_utilization =
+      CapUtilization(tsl::profiler::SafeDivide(
+          sram_wr_gibibytes_per_second, peak_mem_gibibytes_per_second_per_core
+                                            [MemBwType::MEM_BW_TYPE_SRAM_WR]));
   metrics->add_bandwidth_utils(sram_wr_bw_utilization);
   double sram_wr_bytes =
       tsl::profiler::GibiToGiga(sram_wr_gibibytes_per_second) *

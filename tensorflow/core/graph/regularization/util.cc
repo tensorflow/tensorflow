@@ -19,11 +19,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow::graph_regularization {
 

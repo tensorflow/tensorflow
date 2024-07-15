@@ -105,41 +105,15 @@ class MockStreamExecutor : public StreamExecutor {
               (void* host_dst, const DeviceMemoryBase& device_src,
                uint64_t size),
               (override));
-  MOCK_METHOD(absl::Status, MemZero,
-              (Stream * stream, DeviceMemoryBase* location, uint64_t size),
-              (override));
   MOCK_METHOD(absl::Status, Memset,
               (Stream * stream, DeviceMemoryBase* location, uint8_t pattern,
                uint64_t size),
               (override));
-  MOCK_METHOD(absl::Status, Memset32,
-              (Stream * stream, DeviceMemoryBase* location, uint32_t pattern,
-               uint64_t size),
-              (override));
-  MOCK_METHOD(absl::Status, Memcpy,
-              (Stream * stream, void* host_dst,
-               const DeviceMemoryBase& device_src, uint64_t size),
-              (override));
-  MOCK_METHOD(absl::Status, Memcpy,
-              (Stream * stream, DeviceMemoryBase* device_dst,
-               const void* host_src, uint64_t size),
-              (override));
-  MOCK_METHOD(bool, MemcpyDeviceToDevice,
-              (Stream * stream, DeviceMemoryBase* device_dst,
-               const DeviceMemoryBase& device_src, uint64_t size),
-              (override));
   MOCK_METHOD(bool, HostCallback,
               (Stream * stream, absl::AnyInvocable<absl::Status() &&> callback),
               (override));
-  MOCK_METHOD(absl::Status, RecordEvent, (Stream * stream, Event* event),
-              (override));
-  MOCK_METHOD(absl::Status, WaitForEvent, (Stream * stream, Event* event),
-              (override));
   MOCK_METHOD(void, DeallocateStream, (Stream * stream), (override));
-  MOCK_METHOD(bool, CreateStreamDependency, (Stream * dependent, Stream* other),
-              (override));
   MOCK_METHOD(absl::Status, BlockHostUntilDone, (Stream * stream), (override));
-  MOCK_METHOD(absl::Status, GetStatus, (Stream * stream));
   MOCK_METHOD(absl::Status, EnablePeerAccessTo, (StreamExecutor * other),
               (override));
   MOCK_METHOD(bool, CanEnablePeerAccessTo, (StreamExecutor * other),

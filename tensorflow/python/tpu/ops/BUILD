@@ -13,6 +13,10 @@ pytype_strict_library(
     name = "ops",
     srcs = ["tpu_ops.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//smartass/brain/configure:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",

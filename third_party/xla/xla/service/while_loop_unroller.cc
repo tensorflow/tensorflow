@@ -297,9 +297,10 @@ absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
     HloComputation* unrolled_body = module->AddEmbeddedComputation(
         UnrollSingleIterationOfTrivialLoop(while_op, config, i).value());
 
-    unrolled_body_call_op =
-        body_builder.AddInstruction(HloInstruction::CreateCall(
-            while_op->shape(), call_operands, unrolled_body));
+    unrolled_body_call_op = body_builder.AddInstruction(
+        HloInstruction::CreateCall(while_op->shape(), call_operands,
+                                   unrolled_body),
+        absl::StrCat(while_op->name(), "-unrolled-body-call-", i));
 
     call_operands.clear();
     call_operands.emplace_back(unrolled_body_call_op);
@@ -343,7 +344,7 @@ bool IsLoopInductionVar(const HloInstruction* instr,
 }
 
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
-    HloInstruction* instr, HloInstruction* input, HloOpcode opcode,
+    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
     const WhileLoopConfig& config) {
   // Based on the instruction type, start indices start from index 1 or 2 of the
   // operands.
@@ -355,20 +356,22 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   } else {
     return std::nullopt;
   }
-  HloInstruction* operand = instr->mutable_operand(0);
+  const HloInstruction* operand = instr->operand(0);
   if (operand != input) {
+    VLOG(3) << "Input of dynamic index instruction is not the given operand.";
     return std::nullopt;
   }
 
   int64_t dynamic_index = -1;
   for (int64_t start_index = start_indices_offset;
        start_index < instr->operand_count(); ++start_index) {
-    HloInstruction* index = instr->mutable_operand(start_index);
+    const HloInstruction* index = instr->operand(start_index);
     // All constants must be zero in order to slice the entire shape.
     if (Match(index, match::ConstantScalar())) {
       std::optional<int64_t> offset =
           LiteralUtil::LiteralAsScalarInt64(index->literal());
       if (offset.has_value() && offset.value() != 0) {
+        VLOG(3) << "Constant index " << start_index << " is not zero.";
         return std::nullopt;
       }
     }
@@ -379,6 +382,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
       // In order to cover the whole shape only a single non-constant index is
       // allowed.
       if (dynamic_index != -1) {
+        VLOG(3) << "Multiple non-constant indices.";
         return std::nullopt;
       }
       dynamic_index = start_index - start_indices_offset;
@@ -386,11 +390,14 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   }
 
   if (dynamic_index == -1) {
+    VLOG(3) << "No dynamic index found.";
     return std::nullopt;
   }
 
   // The shape's broadcast_dim must be exactly equal to the loop trip count.
   if (operand->shape().dimensions(dynamic_index) != config.trip_count) {
+    VLOG(3) << "The shape's broadcast_dim must be exactly equal to the loop "
+               "trip count.";
     return std::nullopt;
   }
 
@@ -561,7 +568,7 @@ WhileLoopUnroller::GetUnrollableLoops(
 
 /*static*/ absl::StatusOr<bool> WhileLoopUnroller::Unroll(
     HloInstruction* while_op, int64_t unroll_factor, bool wrap_in_trivial_loop,
-    bool force_unroll) {
+    bool force_unroll, bool prepare) {
   bool changed = false;
   HloModule* module = while_op->GetModule();
   // TODO(b/288130138): For now, we only support full unrolling. Will add
@@ -573,10 +580,12 @@ WhileLoopUnroller::GetUnrollableLoops(
     return false;
   }
 
-  // Make sure all the necessary passes are executed before unrolling in order
-  // to unroll every possible loop.
-  TF_ASSIGN_OR_RETURN(
-      changed, PrepareModuleForUnrolling(module, /*execution_threads=*/{}));
+  if (prepare) {
+    // Make sure all the necessary passes are executed before unrolling in order
+    // to unroll every possible loop.
+    TF_ASSIGN_OR_RETURN(
+        changed, PrepareModuleForUnrolling(module, /*execution_threads=*/{}));
+  }
 
   // Construct the loop config
   std::optional<WhileLoopConfig> config = IsLoopUnrollable(while_op);

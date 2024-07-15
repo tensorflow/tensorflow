@@ -154,7 +154,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )");
 
   // Checking that this does not crash should be enough.

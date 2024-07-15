@@ -68,22 +68,9 @@ class StreamCommon : public Stream {
 
   PlatformSpecificHandle platform_specific_handle() const override;
   bool ok() const override { return !InErrorState(); }
-  absl::Status RefreshStatus() override TF_LOCKS_EXCLUDED(mu_);
   absl::StatusOr<Stream *> GetOrCreateSubStream() override
       TF_LOCKS_EXCLUDED(mu_);
   void ReturnSubStream(Stream *sub_stream) override TF_LOCKS_EXCLUDED(mu_);
-  absl::Status WaitFor(Stream *other) override;
-  absl::Status WaitFor(Event *event) override;
-  absl::Status RecordEvent(Event *event) override;
-  absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                      uint64_t size) override;
-  absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                      uint64_t size) override;
-  absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
-                      const DeviceMemoryBase &gpu_src, uint64_t size) override;
-  absl::Status MemZero(DeviceMemoryBase *location, uint64_t size) override;
-  absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
-                        uint64_t size) override;
   absl::Status BlockHostUntilDone() override TF_LOCKS_EXCLUDED(mu_);
   absl::Status DoHostCallback(absl::AnyInvocable<void() &&> callback) override;
   absl::Status DoHostCallbackWithStatus(
@@ -105,6 +92,13 @@ class StreamCommon : public Stream {
   }
   absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
                       const Kernel &k, const KernelArgs &args) override;
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      const ClusterDim &cluster_dims, const Kernel &k,
+                      const KernelArgs &args) override;
+
+  // Doesn't do anything interesting by default; GpuStream connects this to NVTX
+  absl::string_view name() const override { return name_; }
+  void set_name(absl::string_view name) override { name_ = name; }
 
  protected:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
@@ -120,6 +114,8 @@ class StreamCommon : public Stream {
   void CheckStatus(absl::Status status) TF_LOCKS_EXCLUDED(mu_);
 
   void SetError() { CheckError(false /* = operation_retcode */); }
+
+  std::string name_;
 
  private:
   // The StreamExecutor that supports the operation of this stream.

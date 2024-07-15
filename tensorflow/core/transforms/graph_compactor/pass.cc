@@ -20,21 +20,26 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 #include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_registry.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
 namespace tfg {

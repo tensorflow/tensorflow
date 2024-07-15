@@ -76,9 +76,18 @@ class LiteralBase {
   virtual ~LiteralBase() = 0;
 
   // Literals are equal if they have compatible shapes and the same data
-  // values. Layout is not compared.
-  bool operator==(const LiteralBase& other) const;
+  // values. Layout is not compared. For a layout sensitive comparison
+  // call Equal() with layout_sensitive=true.
+  bool operator==(const LiteralBase& other) const {
+    return Equal(other, false);
+  }
   bool operator!=(const LiteralBase& other) const { return !(*this == other); }
+
+  // Compares two literals with optional layout sensitivity. If you use
+  // literals in a hash map, together with AbslHashValue or Hash defined below,
+  // you must use this method instead of operator== to ensure proper layout
+  // handling.
+  bool Equal(const LiteralBase& other, bool layout_sensitive) const;
 
   // Returns the shape of the literal.
   const Shape& shape() const;
@@ -309,7 +318,7 @@ class LiteralBase {
   bool IsAllFloat(float value) const;
   bool IsAllComplex(complex64 value) const;
 
-  // Deetermines if this literal consists entirely of the first element of the
+  // Determines if this literal consists entirely of the first element of the
   // literal.
   //
   // Returns false if this literal is not an array.
@@ -347,56 +356,65 @@ class LiteralBase {
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
-  // Compute a hash for this literal.
+  // This definition is here to ensure that nobody accidentally implements this
+  // function which would lead to inconsistencies. Use Hash instead.
+  //
+  // Note: code below should really be static_assert(false, ...), but that is
+  // unfortunately not possible, as some compilers consider it invalid code,
+  // see https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p2593r0.html.
   template <typename H>
   friend H AbslHashValue(H state, const LiteralBase& value) {
-    return LiteralBase::Hash(std::move(state), value);
+    static_assert(sizeof(H) == 0,
+                  "Do not use Literal directly as a hash key, because it has "
+                  "multiple definitions of equality - layout sensitive or "
+                  "insensitive. Instead, provide an external hash function "
+                  "that uses Literal::Hash which allows you to specify layout "
+                  "sensitivity.");
   }
 
+  // Always use this together with the Equal method and not operator== in order
+  // to handle layout sensitivity properly.
   template <typename H, bool kIsLayoutSensitive = true,
             int64_t kByteLimit = std::numeric_limits<int64_t>::max()>
   static H Hash(H state, const LiteralBase& literal) {
     state =
         Shape::Hash<H, kIsLayoutSensitive>(std::move(state), literal.shape());
 
-    ShapeUtil::ForEachSubshape(
-        literal.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray()) {
-            return;
-          }
+    ShapeUtil::ForEachSubshape(literal.shape(), [&](const Shape& subshape,
+                                                    const ShapeIndex& index) {
+      if (!subshape.IsArray()) {
+        return;
+      }
 
-          CHECK(LayoutUtil::IsDenseArray(subshape));
-          const int64_t size_bytes = literal.size_bytes(index);
-          const int64_t bytes_to_hash = std::min(size_bytes, kByteLimit);
-          // When layout insensitive, we need to hash the data bytes in logical
-          // order rather than physical order.
-          const bool use_physical_order =
-              kIsLayoutSensitive || !subshape.has_layout();
-          auto data = absl::MakeConstSpan(
-              static_cast<const char*>(literal.untyped_data(index)),
-              size_bytes);
-          if (use_physical_order) {
-            state = H::combine(std::move(state), data.first(bytes_to_hash));
-            return;
-          }
-          const int64_t elem_size =
-              ShapeUtil::ByteSizeOfPrimitiveType(subshape.element_type());
-          absl::Span<const int64_t> minor_to_major =
-              subshape.layout().minor_to_major();
-          DimensionVector elem_index(subshape.dimensions_size());
-          absl::Span<int64_t> elem_index_span(elem_index.data(),
-                                              elem_index.size());
-          int64_t bytes_hashed = 0;
-          while (bytes_hashed < bytes_to_hash) {
-            int64_t offset =
-                elem_size * IndexUtil::MultidimensionalIndexToLinearIndex(
-                                subshape, minor_to_major, elem_index);
-            state =
-                H::combine(std::move(state), data.subspan(offset, elem_size));
-            if (!IndexUtil::BumpIndices(subshape, elem_index_span)) return;
-            bytes_hashed += elem_size;
-          }
-        });
+      CHECK(LayoutUtil::IsDenseArray(subshape));
+      const int64_t size_bytes = literal.size_bytes(index);
+      const int64_t bytes_to_hash = std::min(size_bytes, kByteLimit);
+      // When layout insensitive, we need to hash the data bytes in logical
+      // order rather than physical order.
+      const bool use_physical_order =
+          kIsLayoutSensitive || !subshape.has_layout();
+      auto data = absl::MakeConstSpan(
+          static_cast<const char*>(literal.untyped_data(index)), size_bytes);
+      if (use_physical_order) {
+        state = H::combine(std::move(state), data.first(bytes_to_hash));
+        return;
+      }
+      const int64_t elem_size =
+          ShapeUtil::ByteSizeOfPrimitiveType(subshape.element_type());
+      absl::Span<const int64_t> minor_to_major =
+          subshape.layout().minor_to_major();
+      DimensionVector elem_index(subshape.dimensions_size());
+      absl::Span<int64_t> elem_index_span(elem_index.data(), elem_index.size());
+      int64_t bytes_hashed = 0;
+      while (bytes_hashed < bytes_to_hash) {
+        int64_t offset =
+            elem_size * IndexUtil::MultidimensionalIndexToLinearIndex(
+                            subshape, minor_to_major, elem_index);
+        state = H::combine(std::move(state), data.subspan(offset, elem_size));
+        if (!IndexUtil::BumpIndices(subshape, elem_index_span)) return;
+        bytes_hashed += elem_size;
+      }
+    });
 
     return std::move(state);
   }

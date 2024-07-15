@@ -246,22 +246,29 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuitePRED, UnaryElementwiseTest,
     ::testing::Combine(
         ::testing::Values(PRED),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(PRED)),
+        ::testing::ValuesIn(
+            legacy_triton::
+                TritonSupportedUnaryElementwiseUpToFloatNormalization(PRED)),
         ::testing::Values(3e-2)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS8, UnaryElementwiseTest,
-    ::testing::Combine(::testing::Values(S8),
-                       ::testing::ValuesIn(TritonSupportedUnaryElementwise(S8)),
-                       ::testing::Values(3e-2)),
+    ::testing::Combine(
+        ::testing::Values(S8),
+        ::testing::ValuesIn(
+            legacy_triton::
+                TritonSupportedUnaryElementwiseUpToFloatNormalization(S8)),
+        ::testing::Values(3e-2)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS16, UnaryElementwiseTest,
     ::testing::Combine(
         ::testing::Values(S16),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(S16)),
+        ::testing::ValuesIn(
+            legacy_triton::
+                TritonSupportedUnaryElementwiseUpToFloatNormalization(S16)),
         ::testing::Values(1e-3)),
     ElementwiseTestParamsToString);
 
@@ -269,7 +276,9 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS32, UnaryElementwiseTest,
     ::testing::Combine(
         ::testing::Values(S32),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(S32)),
+        ::testing::ValuesIn(
+            legacy_triton::
+                TritonSupportedUnaryElementwiseUpToFloatNormalization(S32)),
         ::testing::Values(1e-3)),
     ElementwiseTestParamsToString);
 
@@ -277,7 +286,9 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteF16, UnaryElementwiseTest,
     ::testing::Combine(
         ::testing::Values(F16),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(F16)),
+        ::testing::ValuesIn(
+            legacy_triton::
+                TritonSupportedUnaryElementwiseUpToFloatNormalization(F16)),
         ::testing::Values(2e-4)),
     ElementwiseTestParamsToString);
 
@@ -285,7 +296,9 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteF32, UnaryElementwiseTest,
     ::testing::Combine(
         ::testing::Values(F32),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(F32)),
+        ::testing::ValuesIn(
+            legacy_triton::
+                TritonSupportedUnaryElementwiseUpToFloatNormalization(F32)),
         ::testing::Values(1e-6)),
     ElementwiseTestParamsToString);
 
@@ -361,7 +374,9 @@ ENTRY e {
 }
 
 std::vector<HloOpcode> TestedBinaryElementwise(PrimitiveType element_type) {
-  std::vector<HloOpcode> ret = TritonSupportedBinaryElementwise(element_type);
+  std::vector<HloOpcode> ret =
+      legacy_triton::TritonSupportedBinaryElementwiseUpToFloatNormalization(
+          element_type);
   // Comparison requires an additional property.
   ret.erase(std::remove_if(ret.begin(), ret.end(), HloOpcodeIsComparison),
             ret.end());
@@ -530,7 +545,8 @@ TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
-    if (!IsTritonSupportedDataType(type, GetCudaComputeCapability())) {
+    if (!legacy_triton::IsTritonSupportedDataType(type,
+                                                  GetCudaComputeCapability())) {
       GTEST_SKIP() << absl::Substitute(
           "Unsupported data type: $0",
           primitive_util::LowercasePrimitiveTypeName(type));
@@ -631,7 +647,8 @@ class ConstantTest : public TritonTest,
 
 TEST_P(ConstantTest, ConstantFusionExecutesCorrectly) {
   const PrimitiveType data_type = GetParam();
-  if (!IsTritonSupportedDataType(data_type, GetCudaComputeCapability())) {
+  if (!legacy_triton::IsTritonSupportedDataType(data_type,
+                                                GetCudaComputeCapability())) {
     GTEST_SKIP() << absl::Substitute(
         "Unsupported data type: $0",
         primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -735,7 +752,8 @@ TEST_P(ConvertTest, ConvertFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
-    if (!IsTritonSupportedDataType(type, GetCudaComputeCapability())) {
+    if (!legacy_triton::IsTritonSupportedDataType(type,
+                                                  GetCudaComputeCapability())) {
       GTEST_SKIP() << absl::Substitute(
           "Unsupported data type: $0",
           primitive_util::LowercasePrimitiveTypeName(type));
@@ -780,6 +798,9 @@ class TritonSoftmaxTest : public GpuCodegenTest,
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
+    // TODO(b/38354253): Remove once HloTestBase does not remove constant
+    // folding.
+    debug_options.clear_xla_disable_hlo_passes();
     return debug_options;
   }
 
@@ -832,7 +853,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[param_0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -886,7 +907,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -937,7 +958,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[param_0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -972,84 +993,12 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0_ENTRY]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   MatchOptimizedHlo(hlo_text, hlo_ref);
 
   float tolerance = 2e-4;
-  EXPECT_TRUE(RunAndCompare(hlo_text,
-                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
-}
-
-TEST_P(
-    TritonSoftmaxTest,
-    CanFuseAndEmitSoftmaxWithBatchDimMergingAndSplittingBitcastsOnEveryEdge) {
-  PrimitiveType data_type = GetParam();
-
-  if (data_type == F16) {
-    GTEST_SKIP() << "Exponential op does not support F16.";
-  }
-
-  const std::string hlo_text_template = R"(
-HloModule softmax
-max_computation {
-  arg_0 = $0[] parameter(0)
-  arg_1 = $0[] parameter(1)
-  ROOT maximum = $0[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = $0[] parameter(0)
-  arg_1.1 = $0[] parameter(1)
-  ROOT add = $0[] add(arg_0.1, arg_1.1)
-}
-
-ENTRY main {
-  param_0 = $0[2,65,125] parameter(0)
-  bitcasted_param_0 = $0[65,2,125] reshape(param_0)
-  constant_neg_inf = $0[] constant(-inf)
-  reduce = $0[65,2]{1,0} reduce(bitcasted_param_0, constant_neg_inf), dimensions={2}, to_apply=max_computation
-  bitcasted_reduce = $0[130] reshape(reduce)
-  broadcast = $0[130,125]{1,0} broadcast(bitcasted_reduce), dimensions={0}
-  bitcasted_broadcast = $0[65,2,125] reshape(broadcast)
-  subtract = $0[65,2,125]{2,1,0} subtract(bitcasted_param_0, bitcasted_broadcast)
-  bitcasted_subtract = $0[130,125] reshape(subtract)
-  exponential = $0[130,125]{1,0} exponential(bitcasted_subtract)
-  constant_zero = $0[] constant(0)
-  bitcasted_exponential = $0[2,65,125] reshape(exponential)
-  second_reduce = $0[2,65]{1,0} reduce(bitcasted_exponential, constant_zero), dimensions={2}, to_apply=add_computation
-  second_bitcasted_reduce = $0[130] reshape(second_reduce)
-  second_broadcast = $0[130,125]{1,0} broadcast(second_bitcasted_reduce), dimensions={0}
-  second_bitcasted_broadcast = $0[2,65,125] reshape(second_broadcast)
-  ROOT divide = $0[2,65,125]{2,1,0} divide(bitcasted_exponential, second_bitcasted_broadcast)
-})";
-  const std::string hlo_text = absl::Substitute(
-      hlo_text_template, primitive_util::LowercasePrimitiveTypeName(data_type));
-  const std::string hlo_ref_template = R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = $0[2,65,125]{2,1,0} parameter(0)
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
-)";
-
-  const std::string hlo_ref = absl::Substitute(
-      hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
-
-  MatchOptimizedHlo(hlo_text, hlo_ref);
-
-  float tolerance;
-  switch (data_type) {
-    case F32:
-      tolerance = 1e-6;
-      break;
-    case BF16:
-      tolerance = 2e-4;
-      break;
-    default:
-      ABSL_UNREACHABLE();
-  }
   EXPECT_TRUE(RunAndCompare(hlo_text,
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
@@ -1082,7 +1031,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1150,7 +1099,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1211,7 +1160,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1266,7 +1215,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1320,7 +1269,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1377,7 +1326,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1432,7 +1381,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   MatchOptimizedHlo(hlo_text, hlo_ref);
@@ -1485,7 +1434,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1541,7 +1490,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1600,7 +1549,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1668,7 +1617,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1735,7 +1684,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1835,7 +1784,7 @@ ENTRY main.30 {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1898,7 +1847,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1961,7 +1910,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -2020,7 +1969,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -2079,7 +2028,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
   const std::string hlo_ref = absl::Substitute(
       hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -2138,7 +2087,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
   const std::string hlo_ref = absl::Substitute(
       hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -2171,16 +2120,15 @@ TEST_P(
   const std::string hlo_text_template = R"(
 HloModule nonfusible_diamond
 max_computation {
-  arg_0.1 = $0[] parameter(0)
-  arg_1.1 = $0[] parameter(1)
-  ROOT max = $0[] maximum(arg_0.1, arg_1.1)
+  arg_0 = $0[] parameter(0)
+  arg_1 = $0[] parameter(1)
+  ROOT max = $0[] maximum(arg_0, arg_1)
 }
 ENTRY main {
   param_0 = $0[127,125]{1,0} parameter(0)
-  constant_2 = $0[] constant(0.333333343)
-  broadcast_splat = $0[127,125]{1,0} broadcast(constant_2), dimensions={}
   param_1 = $0[127,125]{1,0} parameter(1)
-  multiply_splat = $0[127,125]{1,0} multiply(broadcast_splat, param_1)
+  constant_2 = $0[] constant(2)
+  broadcast_splat = $0[127,125]{1,0} broadcast(constant_2), dimensions={}
   multiply = $0[127,125]{1,0} multiply(param_0, broadcast_splat)
   constant_neg_inf = $0[] constant(-inf)
   reduce = $0[127]{0} reduce(multiply, constant_neg_inf), dimensions={1}, to_apply=max_computation
@@ -2197,7 +2145,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
   const std::string hlo_ref = absl::Substitute(
       hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));

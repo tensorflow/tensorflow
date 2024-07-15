@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
 
 namespace xla {
@@ -42,7 +42,7 @@ constexpr double kInfinityCost = 1e20;
 
 // Type alias
 template <typename Key, typename Value>
-using StableHashMap = ::absl::flat_hash_map<Key, Value>;
+using StableHashMap = ::absl::btree_map<Key, Value>;
 template <typename Key>
 using StableHashSet = ::absl::flat_hash_set<Key>;
 

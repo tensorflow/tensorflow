@@ -26,27 +26,13 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
-#include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/event.h"
-#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/numbers.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 

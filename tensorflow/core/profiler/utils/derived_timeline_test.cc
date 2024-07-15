@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/utils/group_events.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -254,6 +255,39 @@ TEST(DerivedTimelineTest, TfOpNameScopeShrinkTest) {
       }
     });
   }
+}
+
+TEST(DerivedTimelineTest, DeriveLinesForXlaCpuOps) {
+  XPlane xplane;
+  XPlaneBuilder plane_builder(&xplane);
+  plane_builder.SetName(tsl::profiler::kHostThreadsPlaneName);
+
+  absl::string_view main_line_name = "main";
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  line_builder.SetName(main_line_name);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kHloModule, "Module1"}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 400,
+               {{StatType::kHloModule, "Module2"}});
+
+  DeriveLinesForXlaCpuOps(&xplane);
+
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&xplane);
+  EXPECT_EQ(plane_visitor.NumLines(), 2);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    if (line_visitor.Name() == main_line_name) return;
+    line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+      if (event_visitor.Name() == "Module1") {
+        EXPECT_EQ(event_visitor.DurationPs(), 100);
+        EXPECT_EQ(event_visitor.OffsetPs(), 0);
+      } else if (event_visitor.Name() == "Module2") {
+        EXPECT_EQ(event_visitor.DurationPs(), 400);
+        EXPECT_EQ(event_visitor.OffsetPs(), 200);
+      } else {
+        FAIL() << "Found Event " << event_visitor.Name();
+      }
+    });
+  });
 }
 
 }  // namespace

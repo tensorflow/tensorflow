@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
+#include "xla/tsl/framework/serving_device_selector.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_scheduling_metrics_storage.h"
-#include "tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
 namespace gpu {
@@ -69,7 +69,7 @@ tsl::DeviceReservation GpuServingDeviceSelector::ReserveDevice(
 
 void GpuServingDeviceSelector::FreeDeviceReservation(
     const tsl::DeviceReservation& reservation) {
-  Completed(reservation.device_index());
+  Completed(reservation.device_index(), /*had_error=*/false);
 }
 
 void GpuServingDeviceSelector::Enqueue(int32_t index_on_host,

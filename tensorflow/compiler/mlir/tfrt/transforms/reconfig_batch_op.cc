@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringRef.h"
@@ -40,6 +41,7 @@ class ReconfigBatchOpPass
                           mlir::OperationPass<mlir::ModuleOp>>() {
     min_num_batch_threads_ = options.min_num_batch_threads;
     min_max_enqueued_batches_ = options.min_max_enqueued_batches;
+    batch_padding_policy_ = options.batch_padding_policy;
   }
   ReconfigBatchOpPass()
       : mlir::PassWrapper<ReconfigBatchOpPass,
@@ -61,7 +63,10 @@ class ReconfigBatchOpPass
   }
 
   void runOnOperation() override {
-    if (min_num_batch_threads_ == 0 && min_max_enqueued_batches_ == 0) return;
+    if (min_num_batch_threads_ == 0 && min_max_enqueued_batches_ == 0 &&
+        batch_padding_policy_.empty()) {
+      return;
+    }
     mlir::ModuleOp module = getOperation();
     module.walk([&](mlir::TF::BatchFunctionOp batch_op) {
       int64_t num_batch_threads = batch_op.getNumBatchThreads();
@@ -73,6 +78,10 @@ class ReconfigBatchOpPass
       max_enqueued_batches =
           std::max(max_enqueued_batches, min_max_enqueued_batches_.getValue());
       batch_op.setMaxEnqueuedBatches(max_enqueued_batches);
+
+      if (!batch_padding_policy_.empty()) {
+        batch_op.setBatchPaddingPolicy(batch_padding_policy_);
+      }
     });
   }
 
@@ -84,6 +93,9 @@ class ReconfigBatchOpPass
       *this, "tfrt-min-max-enqueued-batches", llvm::cl::init(1),
       llvm::cl::desc(
           "Minimum of the maximum number of outstanding enqueued batches")};
+  mlir::Pass::Option<std::string> batch_padding_policy_{
+      *this, "tfrt-batch-padding-policy", llvm::cl::init(""),
+      llvm::cl::desc("The policy used when padding (or splitting) batches.")};
 };
 
 }  // namespace

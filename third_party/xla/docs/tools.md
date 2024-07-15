@@ -35,11 +35,10 @@ As with all the tools, `--help` can be used to obtain the full list of options.
 ## Running HLO snippets with SPMD support: `multihost_hlo_runner`
 
 Multihost HLO runner is a very similar tool, with the caveat that it supports
-SPMD, including cross host communication. A typical invocation looks like:
+SPMD, including cross host communication. See
+[Multi-Host HLO Runner](./tools_multihost_hlo_runner) for details.
 
-```
-$ hlo_runner_main  /path/to/module.hlo
-```
+## Multi-HLO replay
 
 Invocation with multiple modules is supported for both `run_hlo_module` and
 `hlo_runner_main`, which is often convenient to replay all modules in a dump

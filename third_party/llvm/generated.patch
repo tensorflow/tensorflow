@@ -1,29 +1,25 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/AST/QualTypeNames.cpp b/clang/lib/AST/QualTypeNames.cpp
---- a/clang/lib/AST/QualTypeNames.cpp
-+++ b/clang/lib/AST/QualTypeNames.cpp
-@@ -65,8 +65,9 @@
-   assert(ArgTDecl != nullptr);
-   QualifiedTemplateName *QTName = TName.getAsQualifiedTemplateName();
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp b/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
+--- a/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
++++ b/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
+@@ -15,9 +15,7 @@
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
+ #include "mlir/Dialect/Linalg/Utils/Utils.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+-#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
+ #include "mlir/Dialect/Utils/StaticValueUtils.h"
+-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "llvm/Support/MathExtras.h"
  
--  if (QTName && !QTName->hasTemplateKeyword()) {
--    NNS = QTName->getQualifier();
-+  if (QTName &&
-+      !QTName->hasTemplateKeyword() &&
-+      (NNS = QTName->getQualifier())) {
-     NestedNameSpecifier *QNNS = getFullyQualifiedNestedNameSpecifier(
-         Ctx, NNS, WithGlobalNsPrefix);
-     if (QNNS != NNS) {
-diff -ruN --strip-trailing-cr a/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp b/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
---- a/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
-+++ b/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
-@@ -5095,7 +5095,8 @@
-     // header. Note that the header is computed *after* the output is known, so
-     // we currently explicitly use a buffer, write to it, and then subsequently
-     // flush to Out.
--    SmallVector<char, 256 * 1024> Buffer;
-+    SmallVector<char, 0> Buffer;
-+    Buffer.reserve(256 * 1024);
-     Buffer.insert(Buffer.begin(), BWH_HeaderSize, 0);
-     BitcodeWriter Writer(Buffer);
-     Write(Writer);
+ namespace mlir {
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -11350,7 +11350,6 @@
+         ":TensorTransforms",
+         ":TensorUtils",
+         ":TilingInterface",
+-        ":TosaDialect",
+         ":TransformUtils",
+         ":ValueBoundsOpInterface",
+         ":VectorDialect",

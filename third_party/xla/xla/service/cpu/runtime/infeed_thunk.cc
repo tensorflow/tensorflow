@@ -17,14 +17,20 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <utility>
 
-#include "absl/status/status.h"
+#include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -32,12 +38,22 @@ limitations under the License.
 
 namespace xla::cpu {
 
-InfeedThunk::InfeedThunk(Info info,
-                         absl::Span<const InfeedBuffer> infeed_buffers)
-    : Thunk(Kind::kInfeed, info),
-      infeed_buffers_(infeed_buffers.begin(), infeed_buffers.end()) {}
+absl::StatusOr<std::unique_ptr<InfeedThunk>> InfeedThunk::Create(
+    Info info, absl::Span<const InfeedBuffer> infeed_buffers,
+    InfeedResources infeed_resources) {
+  return absl::WrapUnique(
+      new InfeedThunk(info, infeed_buffers, std::move(infeed_resources)));
+}
 
-absl::Status InfeedThunk::Execute(const ExecuteParams& params) {
+InfeedThunk::InfeedThunk(Info info,
+                         absl::Span<const InfeedBuffer> infeed_buffers,
+                         InfeedResources infeed_resources)
+    : Thunk(Kind::kInfeed, info),
+      infeed_buffers_(infeed_buffers.begin(), infeed_buffers.end()),
+      infeed_resources_(std::move(infeed_resources)) {}
+
+tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
+    const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   VLOG(3) << absl::StreamFormat("Infeed %d buffers", infeed_buffers_.size());
@@ -79,7 +95,20 @@ absl::Status InfeedThunk::Execute(const ExecuteParams& params) {
                                           infeed_buffer.shape);
   }
 
-  return absl::OkStatus();
+  return OkExecuteEvent();
+}
+
+InfeedThunk::BufferUses InfeedThunk::buffer_uses() const {
+  BufferUses buffer_uses;
+  for (const InfeedBuffer& infeed_buffer : infeed_buffers_) {
+    buffer_uses.emplace_back(infeed_buffer.slice, BufferUse::kWrite);
+  }
+  return buffer_uses;
+}
+
+InfeedThunk::ResourceUses InfeedThunk::resource_uses() const {
+  return {ResourceUse::Read(infeed_resources_.consume_token),
+          ResourceUse::Write(infeed_resources_.produce_token)};
 }
 
 }  // namespace xla::cpu

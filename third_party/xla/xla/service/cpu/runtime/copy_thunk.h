@@ -19,12 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/pjrt/transpose.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
@@ -32,20 +33,37 @@ namespace xla::cpu {
 // destination buffers have different layouts it will transpose the data.
 class CopyThunk final : public Thunk {
  public:
-  CopyThunk(Info info, BufferAllocation::Slice source_buffer,
-            const Shape& source_shape,
-            BufferAllocation::Slice destination_buffer,
-            const Shape& destination_shape);
+  // Parameters for running a copy operation in parallel.
+  struct ParallelBlockParams {
+    int64_t size_in_bytes;
+    int64_t block_size;
+    int64_t block_count;
+  };
 
-  absl::Status Execute(const ExecuteParams& params) final;
+  static absl::StatusOr<std::unique_ptr<CopyThunk>> Create(
+      Info info, BufferAllocation::Slice src_buffer, const Shape& src_shape,
+      BufferAllocation::Slice dst_buffer, const Shape& dst_shape);
+
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
+
+  BufferUses buffer_uses() const final {
+    return {{src_buffer_, BufferUse::kRead}, {dst_buffer_, BufferUse::kWrite}};
+  }
 
  private:
-  BufferAllocation::Slice source_buffer_;
-  Shape source_shape_;
+  CopyThunk(Info info, BufferAllocation::Slice src_buffer,
+            const Shape& src_shape, BufferAllocation::Slice dst_buffer,
+            const Shape& dst_shape);
 
-  BufferAllocation::Slice destination_buffer_;
-  Shape destination_shape_;
+  static ParallelBlockParams ComputeParallelBlockParams(const Shape& shape);
 
+  BufferAllocation::Slice src_buffer_;
+  Shape src_shape_;
+
+  BufferAllocation::Slice dst_buffer_;
+  Shape dst_shape_;
+
+  ParallelBlockParams parallel_block_params_;
   std::unique_ptr<TransposePlan> transpose_plan_;  // optional
 };
 

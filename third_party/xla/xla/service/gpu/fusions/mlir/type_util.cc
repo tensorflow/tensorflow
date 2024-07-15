@@ -22,12 +22,31 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace mlir_converter {
+
+mlir::Type PrimitiveTypeToMlirType(PrimitiveType type, mlir::OpBuilder& b) {
+  if (primitive_util::IsIntegralType(type)) {
+    return b.getIntegerType(primitive_util::BitWidth(type));
+  }
+  return PrimitiveTypeToMlirTypeWithSign(type, b);
+}
+
+mlir::Type PrimitiveTypeToMlirTypeWithSign(PrimitiveType type,
+                                           mlir::OpBuilder& b) {
+  if (type == PrimitiveType::PRED) {
+    // We lower PRED to i8 for historical reasons. Yes, that means that there
+    // are more than two PRED values. Yes, we have tests for that.
+    return b.getI8Type();
+  }
+  return *ConvertPrimitiveTypeToMlirType(type, b);
+}
 
 mlir::Type TensorShapeToMlirType(const Shape& shape, mlir::OpBuilder& b) {
   CHECK(shape.IsArray());
@@ -41,7 +60,7 @@ mlir::Type TensorShapeToMlirType(const Shape& shape, mlir::OpBuilder& b) {
   }
   return mlir::RankedTensorType::get(
       llvm::to_vector(shape.dimensions()),
-      *ConvertPrimitiveTypeToMlirType(shape.element_type(), b), layout);
+      PrimitiveTypeToMlirType(shape.element_type(), b), layout);
 }
 
 llvm::SmallVector<mlir::Type> ShapeToMlirTypes(const Shape& shape,

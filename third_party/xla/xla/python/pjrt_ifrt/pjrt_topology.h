@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/topology.h"
 
 namespace xla::ifrt {
@@ -56,13 +56,13 @@ class PjRtTopology final : public llvm::RTTIExtends<PjRtTopology, Topology> {
 
   absl::StatusOr<std::string> Serialize() const override;
 
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override;
+  const AttributeMap& Attributes() const override;
 
   static char ID;  // NOLINT
 
  private:
   std::shared_ptr<const xla::PjRtTopologyDescription> description_;
+  AttributeMap attributes_;
 };
 
 }  // namespace xla::ifrt

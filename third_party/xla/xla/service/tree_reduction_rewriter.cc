@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "xla/client/padding.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"

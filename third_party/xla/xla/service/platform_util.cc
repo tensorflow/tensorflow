@@ -19,12 +19,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"

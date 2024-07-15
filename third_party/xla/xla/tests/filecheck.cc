@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/tests/filecheck.h"
 
-#include <cstdlib>
 #include <string>
 
-#include "xla/types.h"
-#include "xla/util.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -92,11 +92,11 @@ absl::StatusOr<bool> RunFileCheckWithPatternFile(
     }
 
     // Log at ERROR level so these show up even if you don't pass --logtostderr.
-    LOG(ERROR) << "FileCheck stderr:\n" << standard_error;
     LOG(ERROR) << "FileCheck input was:\n" << input;
+    LOG(ERROR) << "FileCheck stderr:\n" << standard_error;
   } else if (!standard_error.empty()) {
-    LOG(INFO) << "FileCheck stderr:\n" << standard_error;
     LOG(INFO) << "FileCheck input was:\n" << input;
+    LOG(INFO) << "FileCheck stderr:\n" << standard_error;
   }
   return succeeded;
 }

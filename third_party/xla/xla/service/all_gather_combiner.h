@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_GATHER_COMBINER_H_
 #define XLA_SERVICE_ALL_GATHER_COMBINER_H_
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -31,7 +31,8 @@ namespace xla {
 class AllGatherCombiner : public HloModulePass {
  public:
   AllGatherCombiner(int64_t combine_threshold_in_bytes,
-                    int64_t combine_threshold_count, bool combine_by_dim);
+                    int64_t combine_threshold_count, bool combine_by_dim,
+                    bool combine_different_dtypes = true);
 
   absl::string_view name() const override { return "all-gather-combiner"; }
 
@@ -49,6 +50,9 @@ class AllGatherCombiner : public HloModulePass {
 
   // Combine only all-gather ops with the same gather dimension.
   bool combine_by_dim_;
+
+  // Combine all-gather ops with different dtypes.
+  bool combine_different_dtypes_;
 };
 
 }  // namespace xla

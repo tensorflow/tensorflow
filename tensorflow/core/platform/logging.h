@@ -24,17 +24,12 @@ namespace tensorflow {
 namespace internal {
 using tsl::internal::LogString;
 }  // namespace internal
-using tsl::ERROR;
-using tsl::FATAL;
-using tsl::INFO;
-using tsl::NUM_SEVERITIES;
 using tsl::TFAddLogSink;
 using tsl::TFGetLogSinks;
 using tsl::TFLogEntry;
 using tsl::TFLogSink;
 using tsl::TFRemoveLogSink;
 using tsl::UpdateLogVerbosityIfDefined;
-using tsl::WARNING;
 }  // namespace tensorflow
 // NOLINTEND(misc-unused-using-decls)
 

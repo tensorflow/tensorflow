@@ -55,7 +55,7 @@ namespace tsl {
 //
 //    // Register callback that will be invoked once preempted
 //    notifier->WillBePreemptedAtAsync(
-//      [](StatusOr<absl::Time> status_or_time) {
+//      [](absl::StatusOr<absl::Time> status_or_time) {
 //        if (status_or_time.ok()) {
 //          LOG(INFO) << "Preempted at time: " << status_or_time.value();
 //        } else {

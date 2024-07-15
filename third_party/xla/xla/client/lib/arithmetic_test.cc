@@ -18,13 +18,11 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 
+#include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
-#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

@@ -40,10 +40,10 @@ void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn,
                            ->embedded_thunk());
       break;
     case Thunk::kCommandBuffer:
-      if (const std::optional<ThunkSequence>& sequence =
+      if (const std::unique_ptr<SequentialThunk>& sequence =
               tensorflow::down_cast<const CommandBufferThunk*>(thunk)->thunks();
-          sequence.has_value()) {
-        ForAllThunks(fn, &sequence.value());
+          sequence != nullptr) {
+        ForAllThunks(fn, sequence.get());
       }
       break;
     case Thunk::kConditional:
@@ -75,6 +75,7 @@ void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn,
     case Thunk::kCuDnn:
     case Thunk::kFft:
     case Thunk::kFusedMHA:
+    case Thunk::kFusedMHABackward:
     case Thunk::kGemm:
     case Thunk::kInfeed:
     case Thunk::kKernel:

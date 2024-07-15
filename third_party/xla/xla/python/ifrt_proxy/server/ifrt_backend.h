@@ -127,6 +127,8 @@ class IfrtBackend final : public BackendInterface {
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleDisassembleIntoSingleDeviceArraysRequest(
       std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleCopyArraysRequest(
+      std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleReshardRequest(
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleFullyReplicatedShardRequest(

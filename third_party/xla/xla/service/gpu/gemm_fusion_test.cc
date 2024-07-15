@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
@@ -446,6 +445,25 @@ class GemmFusionLevel2Test : public GemmFusionTest {
     return debug_options;
   }
 };
+
+TEST_F(GemmFusionTest, ConcatenationDivisibleBy64IsFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[8192,1]{1,0} parameter(0)
+  p1 = bf16[2752,8192]{1,0} parameter(1)
+  p2 = bf16[2752,8192]{1,0} parameter(2)
+  concat = bf16[5504,8192]{1,0} concatenate(p1, p2), dimensions={0}
+  bitcast = bf16[8192,5504]{0,1} bitcast(concat)
+  ROOT r = f32[1,5504]{1,0} dot(p0, bitcast),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+}
 
 TEST_F(GemmFusionLevel2Test, ReshapeToScalarIsHandled) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -873,8 +891,22 @@ ENTRY e {
           .Run(module.get()),
       tsl::testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
-          ::testing::StrEq(
-              "Triton support is only enabled for Ampere GPUs and up.")));
+          ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
+                               "(compute capability 8.0) and up, but got")));
+}
+
+TEST_F(GemmFusionLevel2Test, GemmFusionSucceedsOnNonCudaGpu) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[2,53] parameter(0)
+  p0e = f32[2,53] exponential(p0)
+  p1 = s16[53,2] parameter(1)
+  p1c = f32[53,2] convert(p1)
+  ROOT dot = f32[2,2] dot(p0e, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmFusion(se::RocmComputeCapability{}).Run(module.get()).ok());
 }
 
 TEST_F(GemmFusionLevel2Test, ParameterUsedElementwiseTwiceIsFused) {

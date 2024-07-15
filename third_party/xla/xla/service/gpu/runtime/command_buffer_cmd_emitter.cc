@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/runtime/cudnn_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
+#include "xla/service/gpu/runtime/fused_mha_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
@@ -141,6 +142,27 @@ static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk) {
       thunk.workspace().value());
 }
 
+static absl::StatusOr<Command> Convert(const FusedMHAThunk& thunk) {
+  return std::make_unique<FusedMHACmd>(
+      thunk.execution_stream_id(), thunk.config(), thunk.lhs_bmm1_buffer(),
+      thunk.rhs_bmm1_buffer(), thunk.rhs_bmm2_buffer(), thunk.output_buffer(),
+      thunk.scratch_buffer(), BufferAllocation::Slice(), thunk.bias_buffer(),
+      thunk.activation_buffer(), thunk.seqlen_q_buffer(),
+      thunk.seqlen_k_buffer());
+}
+
+static absl::StatusOr<Command> Convert(const FusedMHABackwardThunk& thunk) {
+  return std::make_unique<FusedMHABackwardCmd>(
+      thunk.execution_stream_id(), thunk.config(),
+      thunk.bmm1_grad_gemm1_rhs_buffer(), thunk.bmm1_grad_gemm2_rhs_buffer(),
+      thunk.bmm2_grad_gemm1_lhs_buffer(), thunk.bmm2_grad_gemm2_rhs_buffer(),
+      thunk.d_output_buffer(), thunk.scratch_buffer(),
+      thunk.d_bmm1_lhs_buffer(), thunk.d_bmm1_rhs_buffer(),
+      thunk.d_bmm2_rhs_buffer(), thunk.d_s_buffer(), thunk.d_bias_buffer(),
+      thunk.fwd_output_buffer(), thunk.bias_buffer(), thunk.seqlen_q_buffer(),
+      thunk.seqlen_k_buffer());
+}
+
 static absl::StatusOr<Command> Convert(
     const ConditionalThunk& thunk,
     CommandBufferCmdSequence::SynchronizationMode synchronization_mode) {
@@ -179,9 +201,8 @@ static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
 }
 
 static absl::StatusOr<Command> Convert(const NcclCollectiveDoneThunk& thunk) {
-  return std::make_unique<BarrierCmd>(
-      thunk.execution_stream_id(),
-      std::vector<ExecutionStreamId>{thunk.nccl_execution_stream_id()});
+  return std::make_unique<BarrierCmd>(thunk.execution_stream_id(),
+                                      thunk.nccl_execution_stream_id());
 }
 
 static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {
@@ -209,7 +230,7 @@ static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {
 
 static absl::StatusOr<Command> Convert(const WaitForStreamsThunk& thunk) {
   return std::make_unique<BarrierCmd>(thunk.stream_id(),
-                                      thunk.wait_for_stream_ids());
+                                      thunk.wait_for_stream_id());
 }
 
 //===----------------------------------------------------------------------===//
@@ -254,6 +275,10 @@ static absl::Status AppendCommands(
       return append(Convert<CustomCallThunk>(thunk));
     case Thunk::Kind::kCustomKernel:
       return append(Convert<CustomKernelThunk>(thunk));
+    case Thunk::Kind::kFusedMHA:
+      return append(Convert<FusedMHAThunk>(thunk));
+    case Thunk::Kind::kFusedMHABackward:
+      return append(Convert<FusedMHABackwardThunk>(thunk));
     case Thunk::Kind::kKernel:
       return append(Convert<KernelThunk>(thunk));
     case Thunk::Kind::kGemm:

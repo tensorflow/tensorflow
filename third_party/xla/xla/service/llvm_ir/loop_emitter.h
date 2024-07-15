@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace llvm_ir {

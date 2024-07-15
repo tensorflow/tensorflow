@@ -185,6 +185,20 @@ config_setting(
 )
 
 config_setting(
+    name = "visionos_arm64",
+    values = {
+        "cpu": "visionos_arm64",
+    },
+)
+
+config_setting(
+    name = "visionos_sim_arm64",
+    values = {
+        "cpu": "visionos_sim_arm64",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -281,6 +295,8 @@ selects.config_setting_group(
         ":ios_sim_arm64",
         ":darwin_arm64",
         ":raspberry_pi_with_neon",
+        ":visionos_arm64",
+        ":visionos_sim_arm64",
     ] + tflite_extra_arm_config_settings(),
 )
 
@@ -413,7 +429,7 @@ cc_library(
         ":types",
         "//tensorflow/lite/core/c:common",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/framework/convolution:eigen_spatial_convolutions-inl",
+        "@local_xla//xla/tsl/framework/convolution:eigen_spatial_convolutions-inl",
     ],
 )
 
@@ -437,6 +453,8 @@ selects.config_setting_group(
         ":ios_arm64",
         ":ios_arm64e",
         ":ios_sim_arm64",
+        ":visionos_arm64",
+        ":visionos_sim_arm64",
     ],
 )
 
@@ -1442,6 +1460,7 @@ cc_test(
     srcs = ["per_channel_dequantize_test.cc"],
     deps = [
         ":reference_base",
+        ":tensor_utils_no_eigen",
         ":types",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",

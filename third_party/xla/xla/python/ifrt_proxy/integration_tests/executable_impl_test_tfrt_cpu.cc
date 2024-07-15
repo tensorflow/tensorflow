@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
 
       // Enable this when Serialization support for IFRT IR is available.
       "IfrtIrExecutableImplTest.CallXla",
+      "IfrtIrExecutableImplTest.CopyArrays",
       "IfrtIrExecutableImplTest.Reshard",
       "IfrtIrExecutableImplTest.ZeroInput",
       "IfrtIrExecutableImplTest.ZeroOutput",

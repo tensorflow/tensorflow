@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 

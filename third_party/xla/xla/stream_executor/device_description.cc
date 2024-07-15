@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/logging.h"
@@ -78,6 +79,8 @@ DeviceDescription::DeviceDescription(const GpuDeviceInfoProto &proto) {
   l2_cache_size_ = proto.l2_cache_size();
   clock_rate_ghz_ = proto.clock_rate_ghz();
   device_memory_size_ = proto.device_memory_size();
+  registers_per_core_limit_ = proto.registers_per_core_limit();
+  registers_per_block_limit_ = proto.registers_per_block_limit();
 }
 
 GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
@@ -104,6 +107,8 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   proto.set_l2_cache_size(l2_cache_size_);
   proto.set_clock_rate_ghz(clock_rate_ghz_);
   proto.set_device_memory_size(device_memory_size_);
+  proto.set_registers_per_core_limit(registers_per_core_limit_);
+  proto.set_registers_per_block_limit(registers_per_block_limit_);
   return proto;
 }
 

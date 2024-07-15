@@ -24,7 +24,9 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/crc/crc32c.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/service/global_device_id.h"
 #include "tsl/lib/gtl/int_type.h"
@@ -144,6 +146,11 @@ class NcclCliqueId {
 
   absl::Span<const char> data() const;
   std::string ToString() const;
+
+  uint32_t fingerprint() const {
+    return static_cast<uint32_t>(
+        absl::ComputeCrc32c(absl::string_view(data_.data(), kSize)));
+  }
 
   template <typename H>
   friend H AbslHashValue(H h, const NcclCliqueId& id);

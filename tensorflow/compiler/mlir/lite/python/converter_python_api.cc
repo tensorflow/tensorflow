@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/core/framework/op.h"
@@ -44,7 +46,6 @@ limitations under the License.
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 #include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
 #include "tensorflow/lite/toco/model.h"
@@ -381,11 +382,12 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto status = mlir::lite::QuantizeModel(
       input_model_buffer, input_type, output_type, inference_tensor_type,
       /*operator_names=*/{}, disable_per_channel, fully_quantize, output_model,
-      error_reporter.get(), enable_numeric_verify, enable_whole_model_verify,
+      enable_numeric_verify, enable_whole_model_verify,
       /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes,
       enable_variable_quantization, disable_per_channel_for_dense_layers,
       debug_options);
-  if (status != kTfLiteOk) {
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to quantize model: " << status;
     error_reporter->exception();
     return nullptr;
   }
@@ -415,10 +417,9 @@ PyObject* MlirSparsifyModel(PyObject* data) {
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
   flatbuffers::FlatBufferBuilder builder;
-  auto status =
-      mlir::lite::SparsifyModel(*tflite_model, &builder, error_reporter.get());
+  auto status = mlir::lite::SparsifyModel(*tflite_model, &builder);
 
-  if (status != kTfLiteOk) {
+  if (!status.ok()) {
     error_reporter->exception();
     return nullptr;
   }

@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 
 namespace xla {
 // A class to create all the logical buffers defined by the HLO ops in a module.

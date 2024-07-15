@@ -393,8 +393,8 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
-                                  dims.block_counts(), kernel, *kernel_args);
+  return stream->Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                        kernel, *kernel_args);
 }
 
 absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
@@ -406,9 +406,8 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
-                                  dims.block_counts(), cluster_dim, kernel,
-                                  *kernel_args);
+  return stream->Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                        cluster_dim, kernel, *kernel_args);
 }
 
 // Unimplemented for integers yet.

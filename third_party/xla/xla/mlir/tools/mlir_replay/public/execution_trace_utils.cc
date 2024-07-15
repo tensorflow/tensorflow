@@ -127,10 +127,6 @@ struct TraceInterpreterValueVisitor {
   static TracedValue::ElementType GetElementType(const std::complex<T>&) {
     return TracedValue::COMPLEX;
   }
-
-  static TracedValue::ElementType GetElementType(const Tuple&) {
-    return TracedValue::UNKNOWN;
-  }
 };
 
 }  // namespace

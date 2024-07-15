@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_gpu_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
@@ -407,6 +408,38 @@ TEST(PjrtCApiPlatformNameTest, UnavailablePlatformName) {
   error_destroy_args.error = error;
 
   api->PJRT_Error_Destroy(&error_destroy_args);
+}
+
+TEST(PJRTGpuDeviceTopologyTest, CreateGpuTopology) {
+  auto pjrt_api = gpu_plugin::GetGpuPjrtApi();
+
+  PJRT_TopologyDescription_Create_Args args;
+  args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.topology = nullptr;
+
+  PJRT_Error* error = pjrt_api->PJRT_TopologyDescription_Create(&args);
+  EXPECT_EQ(error, nullptr) << error->status.message();
+
+  auto pjrt_topology =
+      reinterpret_cast<const PJRT_TopologyDescription*>(args.topology);
+  ASSERT_NE(pjrt_topology, nullptr);
+
+#ifdef TENSORFLOW_USE_ROCM
+  EXPECT_EQ(pjrt_topology->topology->platform_id(), xla::RocmId());
+  EXPECT_EQ(pjrt_topology->topology->platform_name(), xla::RocmName());
+#else
+  EXPECT_EQ(pjrt_topology->topology->platform_id(), xla::CudaId());
+  EXPECT_EQ(pjrt_topology->topology->platform_name(), xla::CudaName());
+#endif
+
+  PJRT_TopologyDescription_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.topology = const_cast<PJRT_TopologyDescription*>(pjrt_topology);
+  PJRT_Error* destroy_error =
+      pjrt_api->PJRT_TopologyDescription_Destroy(&destroy_args);
+  EXPECT_EQ(destroy_error, nullptr) << destroy_error->status.message();
 }
 
 void TestCustomCallV2() {}

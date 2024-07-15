@@ -19,10 +19,8 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
@@ -42,9 +40,9 @@ absl::Status GpuEvent::Destroy() {
   return GpuDriver::DestroyEvent(parent_->gpu_context(), &gpu_event_);
 }
 
-absl::Status GpuEvent::Record(GpuStream* stream) {
+absl::Status GpuEvent::Record(GpuStreamHandle stream_handle) {
   return GpuDriver::RecordEvent(parent_->gpu_context(), gpu_event_,
-                                stream->gpu_stream());
+                                stream_handle);
 }
 
 GpuEventHandle GpuEvent::gpu_event() { return gpu_event_; }

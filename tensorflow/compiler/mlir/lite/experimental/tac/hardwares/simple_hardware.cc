@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/simple_hardware.h"
 
-#include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
-#include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/target_hardware.h"
 
 namespace mlir {
 namespace TFL {

@@ -61,6 +61,9 @@ class Shape {
   bool operator==(const Shape& other) const { return dims_ == other.dims_; }
   bool operator!=(const Shape& other) const { return dims_ != other.dims_; }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Shape& shape);
+
   // Total number of elements in this shape.
   int64_t num_elements() const;
 
@@ -69,6 +72,11 @@ class Shape {
  private:
   Dimensions dims_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const Shape& shape) {
+  return H::combine(std::move(h), shape.dims_);
+}
 
 // A tag for `Shape` to indicate bounded dynamism. Should be used together with
 // `Shape` to represent a bounded dynamic shape where the number of dimensions

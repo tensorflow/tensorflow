@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -43,6 +46,8 @@ constexpr char kCurrentFileIndex[] = "current_file_index";
 constexpr char kOffset[] = "offset";
 constexpr char kGcsFsPrefix[] = "gs://";
 constexpr char kS3FsPrefix[] = "s3://";
+constexpr int64_t kUnspecifiedBufferSize = -1;
+constexpr int64_t kDefaultBufferSize = 256LL << 10;  // 256KB
 constexpr int64_t kCloudTpuBlockSize = 127LL << 20;  // 127MB.
 constexpr int64_t kS3BlockSize = kCloudTpuBlockSize;
 
@@ -323,10 +328,11 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
                                                    &compression_type));
 
-  int64_t buffer_size = -1;
+  int64_t buffer_size = kUnspecifiedBufferSize;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
-  OP_REQUIRES(ctx, buffer_size >= 0,
+  OP_REQUIRES(ctx,
+              (buffer_size == kUnspecifiedBufferSize) || (buffer_size >= 0),
               errors::InvalidArgument(
                   "`buffer_size` must be >= 0 (0 == no buffering)"));
 
@@ -346,19 +352,31 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     }
   }
 
-  if (is_gcs_fs && is_cloud_tpu_gcs_fs() && buffer_size < kCloudTpuBlockSize) {
-    VLOG(2) << "User buffer size is too small for reading Cloud TPU "
-            << "TFRecords stored in GCS. Overriding " << buffer_size
-            << " to the minimum recommended buffer_size = "
-            << kCloudTpuBlockSize;
-    buffer_size = kCloudTpuBlockSize;
-  }
-
-  if (is_s3_fs && buffer_size < kS3BlockSize) {
-    VLOG(2) << "User buffer size is too small for reading "
-            << "TFRecords stored in S3. Overriding " << buffer_size
-            << " to the minimum recommended buffer_size = " << kS3BlockSize;
-    buffer_size = kS3BlockSize;
+  if (buffer_size == kUnspecifiedBufferSize) {
+    if (is_gcs_fs && is_cloud_tpu_gcs_fs() &&
+        buffer_size < kCloudTpuBlockSize) {
+      LOG_FIRST_N(WARNING, 1)
+          << "User buffer size is too small for reading Cloud TPU "
+          << "TFRecords stored in GCS. Overriding " << buffer_size
+          << " to the minimum recommended buffer_size = " << kCloudTpuBlockSize;
+      buffer_size = kCloudTpuBlockSize;
+    } else if (is_s3_fs && buffer_size < kS3BlockSize) {
+      LOG_FIRST_N(WARNING, 1)
+          << "User buffer size is too small for reading "
+          << "TFRecords stored in S3. Overriding " << buffer_size
+          << " to the minimum recommended buffer_size = " << kS3BlockSize;
+      buffer_size = kS3BlockSize;
+    } else {
+      LOG_FIRST_N(INFO, 1)
+          << "TFRecordDataset `buffer_size` is unspecified, default to "
+          << kDefaultBufferSize;
+      buffer_size = kDefaultBufferSize;
+    }
+  } else {
+    LOG_FIRST_N(INFO, 1)
+        << "The default buffer size is " << kDefaultBufferSize
+        << ", which is overridden by the user specified `buffer_size` of "
+        << buffer_size;
   }
 
   *output = new Dataset(ctx, std::move(filenames), compression_type,

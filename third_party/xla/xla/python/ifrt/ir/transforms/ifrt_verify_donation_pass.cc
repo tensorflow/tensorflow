@@ -63,7 +63,6 @@ class IfrtVerifyDonationPass
 
 void IfrtVerifyDonationPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
-  xla::ifrt::ReshardOp reshard_op;
   llvm::DenseSet<mlir::Value> donated_values;
   mlir::WalkResult result = module_op.walk([&](mlir::Operation* op)
                                                -> mlir::WalkResult {
@@ -71,11 +70,13 @@ void IfrtVerifyDonationPass::runOnOperation() {
         llvm::TypeSwitch<mlir::Operation*, mlir::LogicalResult>(op)
             .Case<xla::ifrt::CallOp, xla::ifrt::CallLoadedExecutableOp>(
                 [&](auto& op) {
+                  llvm::DenseSet<int> donated_input_idxs;
                   for (const auto& io_alias :
                        op.getIoAliases()
                            .template getAsRange<mlir::DenseI32ArrayAttr>()) {
                     mlir::ArrayRef<int> io_alias_as_array =
                         io_alias.asArrayRef();
+                    donated_input_idxs.insert(io_alias_as_array[0]);
                     auto donated_value = op.getInputs()[io_alias_as_array[0]];
                     if (!donated_values.insert(donated_value).second) {
                       op.emitOpError() << "input #" << io_alias_as_array[0]
@@ -88,26 +89,24 @@ void IfrtVerifyDonationPass::runOnOperation() {
                       return mlir::failure();
                     }
                   }
+                  // Verify that an input is not both donated and not donated.
+                  for (const auto [idx, input] :
+                       llvm::enumerate(op.getInputs())) {
+                    if (donated_values.contains(input) &&
+                        !donated_input_idxs.contains(idx)) {
+                      op.emitOpError() << "input #" << idx
+                                       << " is both donated and not donated.";
+                      return mlir::failure();
+                    }
+                  }
                   return mlir::success();
                 })
-            .Case<xla::ifrt::ReshardOp>([&](auto& op) {
-              if (op.getDonated()) {
-                auto donated_value = op.getInput();
-                if (!donated_values.insert(donated_value).second) {
-                  op.emitOpError() << "input already donated.";
-                  return mlir::failure();
-                }
-                if (mlir::failed(VerifyIfInputAndDonated(op, donated_value))) {
-                  return mlir::failure();
-                }
-              }
-              return mlir::success();
-            })
-            .Case<xla::ifrt::RemapArraysOp>([&](auto& op) {
+            .Case<xla::ifrt::CopyArraysOp, xla::ifrt::RemapArraysOp,
+                  xla::ifrt::ReshardOp>([&](auto& op) {
               if (op.getDonated()) {
                 for (const auto [idx, input] :
                      llvm::enumerate(op.getInputs())) {
-                  if (!donated_values.insert(input).second) {
+                  if (donated_values.contains(input)) {
                     op.emitOpError() << "input #" << idx << " already donated.";
                     return mlir::failure();
                   }
@@ -115,6 +114,8 @@ void IfrtVerifyDonationPass::runOnOperation() {
                     return mlir::failure();
                   }
                 }
+                donated_values.insert(op.getInputs().begin(),
+                                      op.getInputs().end());
               }
               return mlir::success();
             })

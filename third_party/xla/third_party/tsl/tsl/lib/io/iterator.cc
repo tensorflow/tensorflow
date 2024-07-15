@@ -53,7 +53,7 @@ void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
 namespace {
 class EmptyIterator : public Iterator {
  public:
-  explicit EmptyIterator(const Status& s) : status_(s) {}
+  explicit EmptyIterator(const absl::Status& s) : status_(s) {}
   bool Valid() const override { return false; }
   void Seek(const StringPiece& target) override {}
   void SeekToFirst() override {}
@@ -66,16 +66,16 @@ class EmptyIterator : public Iterator {
     assert(false);
     return StringPiece();
   }
-  Status status() const override { return status_; }
+  absl::Status status() const override { return status_; }
 
  private:
-  Status status_;
+  absl::Status status_;
 };
 }  // namespace
 
-Iterator* NewEmptyIterator() { return new EmptyIterator(OkStatus()); }
+Iterator* NewEmptyIterator() { return new EmptyIterator(absl::OkStatus()); }
 
-Iterator* NewErrorIterator(const Status& status) {
+Iterator* NewErrorIterator(const absl::Status& status) {
   return new EmptyIterator(status);
 }
 

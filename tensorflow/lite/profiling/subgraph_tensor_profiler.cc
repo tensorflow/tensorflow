@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <cstring>
 
-#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/interpreter.h"
 
 namespace tflite::profiling {
 

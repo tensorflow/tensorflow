@@ -183,8 +183,6 @@ class PythonHooks {
     e2e_context_ = e2e_context;
   }
 
-  static PythonHookContext* e2e_context() { return e2e_context_; }
-
   static int ProfileFunction(PyObject* obj, PyFrameObject* frame, int what,
                              PyObject* arg);
 

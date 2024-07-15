@@ -51,10 +51,9 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 
 // API notes:
@@ -150,12 +149,13 @@ class PjRtDevice {
   virtual PjRtLocalDeviceId local_device_id() const {
     // By default, local_device_id is the same as local_hardware_id when there
     // is only one PJRT device on a physical device.
-    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+    return PjRtLocalDeviceId(local_hardware_id().value());
   }
 
-  // TODO(b/314368788): Remove `int local_hardware_id()` and rename this
-  // function to `local_hardware_id()`.
-  virtual PjRtLocalHardwareId local_hardware_id_typed() const = 0;
+  // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
+  // which GPU when interacting with non-JAX code. In general, not guaranteed to
+  // be dense, and -1 if undefined.
+  virtual PjRtLocalHardwareId local_hardware_id() const = 0;
 
   // The index of the process that this device belongs to, i.e. is addressable
   // from. This is not always identical to PjRtClient::process_index() in a
@@ -163,14 +163,6 @@ class PjRtDevice {
   // processes, but only a subset of them are addressable and have the same
   // process_index as the client.
   virtual int process_index() const { return description().process_index(); }
-
-  // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
-  // which GPU when interacting with non-JAX code. In general, not guaranteed to
-  // be dense, and -1 if undefined.
-  ABSL_DEPRECATED("Use local_hardware_id_typed() instead")
-  virtual int local_hardware_id() const {
-    return local_hardware_id_typed().value();
-  }
 
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
@@ -531,12 +523,7 @@ class PjRtClient {
       PjRtGlobalDeviceId global_device_id) const = 0;
 
   // Return an addressable PjRtDevice for a given
-  // PjRtDevice::local_hardware_id().
-  ABSL_DEPRECATED("Use LookupAddressableDevice(PjRtLocalDeviceId) instead")
-  virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const {
-    return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
-  }
+  // PjRtDevice::local_device_id().
   virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const = 0;
 
@@ -896,6 +883,19 @@ class PjRtClient {
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) = 0;
 
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtDevice* device,
+      const Layout* device_layout) {
+    if (device_layout) {
+      return absl::UnimplementedError(absl::StrCat(
+          "BufferFromHostLiteral with device_layout is not implemented on "
+          "platform: ",
+          platform_name()));
+    }
+
+    return this->BufferFromHostLiteral(literal, device);
+  }
+
   // TODO(b/277820585): remove BufferFromHostLiteral with PjRtDevice after the
   // migration is done.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
@@ -904,6 +904,18 @@ class PjRtClient {
         "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
         "platform: ",
         platform_name());
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) {
+    if (device_layout) {
+      return absl::UnimplementedError(absl::StrCat(
+          "BufferFromHostLiteral with device_layout is not implemented on "
+          "platform: ",
+          platform_name()));
+    }
+    return this->BufferFromHostLiteral(literal, memory_space);
   }
 
   // Creates a PjRtBuffer that is a non-owned view of an on-device

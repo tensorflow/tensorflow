@@ -185,7 +185,7 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
   plane.ForEachLine([&](const XLineVisitor& line) {
     StepEvents thread_step_events =
         ConvertHostThreadsXLineToStepEvents(line, device_step_events);
-    CombineStepEvents(thread_step_events, &host_step_events);
+    UnionCombineStepEvents(thread_step_events, &host_step_events);
   });
   return host_step_events;
 }
@@ -287,19 +287,24 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
         (tpu_core_id.has_value() &&
          line.Name() == tsl::profiler::kStepLineName)) {
       StepEvents step_marker_events = ConvertDeviceStepInfoToStepMarkers(line);
-      CombineStepEvents(step_marker_events, &device_step_events);
+      UnionCombineStepEvents(step_marker_events, &device_step_events);
     } else if (IsDerivedThreadId(line_id)) {
       return;
     } else {
       StepEvents stream_step_events;
-      if (!tpu_core_id.has_value()) {
+      if (tpu_core_id.has_value()) {
+        // In TPU sampling mode, the profiling session could stop in the middle
+        //  of a training step. In this case, the "XLA Ops" line will have
+        // one more step than the "Step" line. We need to intersect them to get
+        // the common step numbers.
         stream_step_events =
-            ConvertDeviceTraceXLineToStepEvents(plane.Id(), line);
+            ConvertTpuDeviceTraceXLineToStepEvents(*tpu_core_id, line);
+        IntersectCombineStepEvents(stream_step_events, &device_step_events);
       } else {
         stream_step_events =
-            ConvertTpuDeviceTraceXLineToStepEvents(tpu_core_id.value(), line);
+            ConvertDeviceTraceXLineToStepEvents(plane.Id(), line);
+        UnionCombineStepEvents(stream_step_events, &device_step_events);
       }
-      CombineStepEvents(stream_step_events, &device_step_events);
     }
   });
   return device_step_events;

@@ -27,13 +27,13 @@ limitations under the License.
 #include <vector>
 
 #include "ruy/denormal.h"  // from @ruy
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/logger.h"

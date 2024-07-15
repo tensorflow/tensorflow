@@ -155,8 +155,7 @@ void RemoteCopyNode::StartSend() {
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
         src_, /*wait_until_ready=*/false,
-        remote_op->add_op_inputs()->mutable_remote_handle(), src_->device(),
-        src_->DeviceOrHostCPU(*ctx_)->name());
+        remote_op->add_op_inputs()->mutable_remote_handle(), src_->device());
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
       return;
@@ -351,8 +350,7 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
       // are ready before sending a packed handle to the function device.
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
           h, /*wait_until_ready=*/true,
-          op->add_handles()->mutable_remote_handle(), src_device,
-          h->DeviceOrHostCPU(*ctx)->name(),
+          op->add_handles()->mutable_remote_handle(), src_device, "",
           serialize_resource_dtype_and_shape));
     } else {
       return errors::InvalidArgument("Nested packed handles are not supported");

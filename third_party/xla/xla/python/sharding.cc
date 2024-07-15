@@ -175,7 +175,7 @@ bool ShardingEqual(nb::handle a, nb::handle b) {
 NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
                              nb::object memory_kind, nb::object parsed_pspec,
                              nb::object manual_axes)
-    : XLACompatibleSharding(/*num_devices=*/[&mesh]() {
+    : Sharding(/*num_devices=*/[&mesh]() {
         xla::nb_numpy_ndarray devices = mesh.attr("devices");
         return devices.size();
       }()),
@@ -205,7 +205,7 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
 
 SingleDeviceSharding::SingleDeviceSharding(nb::object device,
                                            nb::object memory_kind)
-    : XLACompatibleSharding(/*num_devices=*/1),
+    : Sharding(/*num_devices=*/1),
       device_(device),
       memory_kind_(std::move(memory_kind)),
       internal_device_list_(
@@ -217,7 +217,7 @@ SingleDeviceSharding::SingleDeviceSharding(nb::object device,
 SingleDeviceSharding::SingleDeviceSharding(
     xla::nb_class_ptr<xla::PyClient> client, xla::ifrt::DeviceList device_list,
     nb::object memory_kind)
-    : XLACompatibleSharding(/*num_devices=*/1),
+    : Sharding(/*num_devices=*/1),
       device_(client->GetPyDevice(device_list.front())),
       memory_kind_(std::move(memory_kind)),
       internal_device_list_(xla::make_nb_class<PyDeviceList>(
@@ -228,7 +228,7 @@ SingleDeviceSharding::SingleDeviceSharding(
 
 PmapSharding::PmapSharding(xla::nb_numpy_ndarray devices,
                            ShardingSpec sharding_spec)
-    : XLACompatibleSharding(/*num_devices=*/devices.size()),
+    : Sharding(/*num_devices=*/devices.size()),
       devices_(std::move(devices)),
       sharding_spec_(std::move(sharding_spec)) {
   nb::object flat_devices = devices_.attr("flat");
@@ -238,7 +238,7 @@ PmapSharding::PmapSharding(xla::nb_numpy_ndarray devices,
 
 GSPMDSharding::GSPMDSharding(nb::sequence devices, xla::HloSharding op_sharding,
                              nb::object memory_kind, nb::object device_list)
-    : XLACompatibleSharding(/*num_devices=*/nb::len(devices.ptr())),
+    : Sharding(/*num_devices=*/nb::len(devices.ptr())),
       devices_(nb::tuple(devices)),
       hlo_sharding_(std::move(op_sharding)),
       memory_kind_(std::move(memory_kind)) {
@@ -260,11 +260,7 @@ GSPMDSharding::GSPMDSharding(nb::sequence devices, xla::HloSharding op_sharding,
 void RegisterSharding(nb::module_& m) {
   nb::class_<Sharding>(m, "Sharding").def(nb::init<>());
 
-  nb::class_<XLACompatibleSharding, Sharding>(m, "XLACompatibleSharding")
-      .def(nb::init<>());
-
-  nb::class_<NamedSharding, XLACompatibleSharding>(m, "NamedSharding",
-                                                   nb::dynamic_attr())
+  nb::class_<NamedSharding, Sharding>(m, "NamedSharding", nb::dynamic_attr())
       .def(nb::init<nb::object, nb::object, nb::object, nb::object,
                     nb::object>(),
            nb::arg("mesh"), nb::arg("spec").none(),
@@ -280,8 +276,8 @@ void RegisterSharding(nb::module_& m) {
       .def_prop_ro("_internal_device_list",
                    &NamedSharding::internal_device_list);
 
-  nb::class_<SingleDeviceSharding, XLACompatibleSharding>(
-      m, "SingleDeviceSharding", nb::dynamic_attr())
+  nb::class_<SingleDeviceSharding, Sharding>(m, "SingleDeviceSharding",
+                                             nb::dynamic_attr())
       .def(nb::init<nb::object, nb::object>(), nb::arg("device"),
            nb::arg("memory_kind").none() = nb::none())
       .def_prop_ro("_device", &SingleDeviceSharding::device)
@@ -289,8 +285,7 @@ void RegisterSharding(nb::module_& m) {
       .def_prop_ro("_internal_device_list",
                    &SingleDeviceSharding::internal_device_list);
 
-  nb::class_<PmapSharding, XLACompatibleSharding>(m, "PmapSharding",
-                                                  nb::dynamic_attr())
+  nb::class_<PmapSharding, Sharding>(m, "PmapSharding", nb::dynamic_attr())
       .def(
           "__init__",
           [](PmapSharding* self, nb::object devices,
@@ -304,8 +299,7 @@ void RegisterSharding(nb::module_& m) {
       .def_prop_ro("_internal_device_list",
                    &PmapSharding::internal_device_list);
 
-  nb::class_<GSPMDSharding, XLACompatibleSharding>(m, "GSPMDSharding",
-                                                   nb::dynamic_attr())
+  nb::class_<GSPMDSharding, Sharding>(m, "GSPMDSharding", nb::dynamic_attr())
       .def(nb::init<nb::sequence, xla::OpSharding, nb::object, nb::object>(),
            nb::arg("devices"), nb::arg("op_sharding"),
            nb::arg("memory_kind").none() = nb::none(),

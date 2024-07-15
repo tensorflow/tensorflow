@@ -5,10 +5,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load(
-    "//xla/tests:build_defs.bzl",
-    "prepare_gpu_backend_data",
-)
+load("//xla/tests:build_defs.bzl", "prepare_gpu_backend_data")
 
 # buildifier: disable=out-of-order-load
 # Internally this loads a macro, but in OSS this is a function
@@ -39,6 +36,9 @@ def get_cub_sort_kernel_types(name = ""):
         "u64_b16",
         "u64_b32",
         "u64_b64",
+        "u8_b16",
+        "u8_b32",
+        "u8_b64",
     ]
 
 def build_cub_sort_kernels(name, types, local_defines = [], **kwargs):
@@ -77,7 +77,7 @@ def gen_gpu_hlo_compile_tests(
     """Macro to generate Bazel tests for compiling HLO files on a GPU.
 
     This macro creates individual Bazel test targets for each specified HLO file.
-    These tests use the `cuda_hlo_runner_main` binary to attempt to compile the HLO
+    These tests use the `hlo_runner_main_gpu` binary to attempt to compile the HLO
     files.
 
     Parses num_hosts, num_devices_per_host and num_replicas for each filename in `hlo_files`.
@@ -181,6 +181,6 @@ def gen_gpu_hlo_compile_tests(
                     "--use_spmd_partitioning=true",
                     hlo_path,
                 ] + xla_flags,
-                data = ["//xla/tools/multihost_hlo_runner:cuda_hlo_runner_main", data_label],
-                tags = backend_tags[backend] + ["requires-mem:16g"] + tags,
+                data = ["//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu", data_label],
+                tags = backend_tags[backend] + ["requires-mem:16g", "nozapfhahn"] + tags,
             )

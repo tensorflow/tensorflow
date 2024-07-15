@@ -24,13 +24,29 @@ import lit.formats
 
 
 config.name = "XLA"
-config.suffixes = [".cc", ".hlo", ".hlotxt", ".json", ".mlir", ".pbtxt", ".py"]
+config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py"]
 
 config.test_format = lit.formats.ShTest(execute_external=True)
 
 
-# Passthrough XLA_FLAGS.
-config.environment["XLA_FLAGS"] = os.environ.get("XLA_FLAGS", "")
+for env in [
+    # Passthrough XLA_FLAGS.
+    "XLA_FLAGS",
+    # Propagate environment variables used by 'bazel coverage'.
+    # These are exported by tools/coverage/collect_coverage.sh
+    "BULK_COVERAGE_RUN",
+    "COVERAGE",
+    "COVERAGE_DIR",
+    "COVERAGE_MANIFEST",
+    "LLVM_PROFILE_FILE",
+    "LLVM_COVERAGE_FILE",
+    "GCOV_PREFIX",
+    "GCOV_PREFIX_STRIP",
+]:
+  value = os.environ.get(env)
+  if value:
+    config.environment[env] = value
+
 
 # Use the most preferred temp directory.
 config.test_exec_root = (
@@ -43,8 +59,11 @@ config.substitutions.extend([
     ("%PYTHON", os.getenv("PYTHON", sys.executable)),
 ])
 
+if lit_config.params.get("PTX") == "GCN":
+  config.available_features.add("IS_ROCM")
+
+
 # Include additional substitutions that may be defined via params
 config.substitutions.extend(
-    ("%%{%s}" % key, val)
-    for key, val in lit_config.params.items()
+    ("%%{%s}" % key, val) for key, val in lit_config.params.items()
 )

@@ -133,11 +133,11 @@ void NcclCliqueCommunicators::ForEachComm(
 }
 
 std::string NcclCliqueCommunicators::DebugString() const {
-  std::string out =
-      absl::StrFormat("clique_key: %s; hash(id): %d; size: %d; communicators: ",
-                      clique_key_.ToString(),
-                      clique_id_.has_value() ? absl::HashOf(*clique_id_) : 0,
-                      communicators_.size());
+  std::string out = absl::StrFormat(
+      "clique_key: %s; fingerprint(id): %d; size: %d; communicators: ",
+      clique_key_.ToString(),
+      clique_id_.has_value() ? clique_id_->fingerprint() : 0,
+      communicators_.size());
   int32_t cnt = 0;
   for (const auto& [rank, comm] : communicators_) {
     if (cnt++) absl::StrAppend(&out, ", ");
@@ -274,9 +274,10 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
 
     VLOG(3) << absl::StreamFormat(
-        "Create NCCL communicators for clique %s; ranks=[%s]; hash(id)=%d",
+        "Create NCCL communicators for clique %s; ranks=[%s]; "
+        "fingerprint(id)=%d",
         clique_key.ToString(), DeviceRanksToString(ranks),
-        absl::HashOf(clique_id));
+        clique_id.fingerprint());
 
     TF_ASSIGN_OR_RETURN(
         std::vector<NcclApi::OwnedNcclComm> created_comms,
@@ -288,9 +289,10 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     }
 
     VLOG(3) << absl::StreamFormat(
-        "Created NCCL communicators for clique %s; ranks=[%s]; hash(id)=%d",
+        "Created NCCL communicators for clique %s; ranks=[%s]; "
+        "fingerprint(id)=%d",
         clique_key.ToString(), DeviceRanksToString(ranks),
-        absl::HashOf(clique_id));
+        clique_id.fingerprint());
 
     NcclCliques& cliques = GetNcclCliques();
     absl::MutexLock lock(&cliques.mu);

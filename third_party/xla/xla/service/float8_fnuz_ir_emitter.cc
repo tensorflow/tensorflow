@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace float8_fnuz_ir_emitter {

@@ -69,7 +69,6 @@ load("//tensorflow/python/tools/api/generator2:generate_api.bzl", "generate_apis
 
 PACKAGE_STATIC_DEPS = [
     "//:__subpackages__",
-    "@cudnn_frontend_archive//:__subpackages__",
     "@gif//:__subpackages__",
     "@highwayhash//:__subpackages__",
     "@hwloc//:__subpackages__",
@@ -1223,8 +1222,8 @@ tf_cc_shared_library(
                 "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
                 "//tensorflow/lite/kernels/shim:tf_kernel_shim",
                 "@local_xla//xla/stream_executor:stream_executor_impl",
-                "@local_tsl//tsl/framework:bfc_allocator",
-                "@local_tsl//tsl/framework:metrics",
+                "@local_xla//xla/tsl/framework:bfc_allocator",
+                "@local_xla//xla/tsl/framework:metrics",
             ] + tf_additional_binary_deps() +
             # TODO(b/259305727): Remove this select and include captured_function in macos builds.
             select({
@@ -1389,7 +1388,6 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",

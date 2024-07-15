@@ -8,8 +8,8 @@ load("//third_party/triton/xla_extensions:series.bzl", "extensions_files_patch_l
 def repo():
     """Imports Triton."""
 
-    TRITON_COMMIT = "cl638583630"
-    TRITON_SHA256 = "769385a2295fa7256a04fcdc886054fb0853a25ee1c35dcdc0aabf755508f9fc"
+    TRITON_COMMIT = "cl650171855"
+    TRITON_SHA256 = "db4073455d0b86de6b71f7ee9472588c8e7c73a181f262b6231f3fdff1ece685"
     tf_http_archive(
         name = "triton",
         sha256 = TRITON_SHA256,

@@ -59,10 +59,7 @@ static SE_ExecutableRunOptions ToC(
 
   if (options.run_options().device_assignment() != nullptr) {
     xla::DeviceAssignmentProto dev_assign_proto;
-    options.run_options()
-        .device_assignment()
-        ->Serialize(&dev_assign_proto)
-        .IgnoreError();
+    options.run_options().device_assignment()->Serialize(&dev_assign_proto);
     se_options.device_assignment =
         stream_executor::tpu::SerializeProto(dev_assign_proto);
   } else {

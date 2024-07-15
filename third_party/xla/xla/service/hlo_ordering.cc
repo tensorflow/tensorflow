@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"

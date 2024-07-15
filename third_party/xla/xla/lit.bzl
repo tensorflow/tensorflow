@@ -1,6 +1,7 @@
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("//xla/tsl:tsl.bzl", "if_oss")
 
 def enforce_glob(files, **kwargs):
     """A utility to enforce that a list matches a glob expression.
@@ -211,7 +212,7 @@ def lit_test(
             # called lit.cfg.py
             cfg,
             tools_on_path_target_name,
-        ] + data + ["@pypi_lit//:pkg"],
+        ] + data + if_oss(["@pypi_lit//:pkg"]),
         visibility = visibility,
         env = env,
         timeout = timeout,

@@ -77,12 +77,15 @@ class Stream {
   // implementation without blocking the stream.
   //
   // Normally, Stream::BlockHostUntilDone is used to get execution status.
-  // However, some devices use out-of-band mechnanisms to ensure their streams
+  // However, some devices use out-of-band mechanisms to ensure their streams
   // have finished on-device work, without needing to block the streams. (These
   // devices should also override AllowsSyncOnCompletion to return false.) For
   // these devices, this method can be used after work is finished to retrieve
   // execution status.
-  virtual absl::Status RefreshStatus() = 0;
+  virtual absl::Status RefreshStatus() {
+    return absl::UnimplementedError(
+        "RefreshStatus is not supported on this stream.");
+  }
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
@@ -189,22 +192,31 @@ class Stream {
   // of the given target size. gpu_src/dst must be pointers to GPU memory and
   // peer access must be enabled between their owning StreamExecutors.
   virtual absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
-                              const DeviceMemoryBase &gpu_src,
-                              uint64_t size) = 0;
+                              const DeviceMemoryBase &gpu_src, uint64_t size) {
+    return absl::UnimplementedError(
+        "Memcpy from device to device is not implemented for this "
+        "stream.");
+  }
+
   absl::Status MemcpyD2D(DeviceMemoryBase *gpu_dst,
                          const DeviceMemoryBase &gpu_src, uint64_t size) {
     return Memcpy(gpu_dst, gpu_src, size);
   }
 
-  // Entrain onto the stream: a memset of zero at a GPU location of size bytes.
-  // The location must not be null.
-  virtual absl::Status MemZero(DeviceMemoryBase *location, uint64_t size) = 0;
+  // Entrain onto the stream: a memset of zero at a device location of size
+  // bytes. The location must not be null.
+  virtual absl::Status MemZero(DeviceMemoryBase *location, uint64_t size) {
+    return absl::UnimplementedError("MemZero is not supported on this stream.");
+  }
 
-  // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
+  // Entrain onto the stream: a memset of a 32-bit pattern at device location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
   virtual absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
-                                uint64_t size) = 0;
+                                uint64_t size) {
+    return absl::UnimplementedError(
+        "Memset32 is not supported on this stream.");
+  }
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
@@ -253,6 +265,18 @@ class Stream {
   virtual absl::Status Launch(const ThreadDim &thread_dims,
                               const BlockDim &block_dims, const Kernel &k,
                               const KernelArgs &args) = 0;
+
+  // Launches a data parallel kernel with the given thread/block
+  // dimensionality and already-packed args/sizes to pass to the underlying
+  // platform driver.
+  virtual absl::Status Launch(const ThreadDim &thread_dims,
+                              const BlockDim &block_dims,
+                              const ClusterDim &cluster_dims, const Kernel &k,
+                              const KernelArgs &args) = 0;
+
+  // Get/set a name for a stream, which can be shown in profiling tools
+  virtual absl::string_view name() const = 0;
+  virtual void set_name(absl::string_view name) = 0;
 };
 
 template <typename... Params, typename... Args>

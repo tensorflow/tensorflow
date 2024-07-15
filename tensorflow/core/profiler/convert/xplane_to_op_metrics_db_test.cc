@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -79,6 +80,17 @@ void AddTensorFlowOpEvent(std::string&& tf_op_fullname,
   event.AddStatValue(
       *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
       *plane->GetOrCreateStatMetadata(std::move(tf_op_fullname)));
+}
+
+void AddXlaCpuOpEvent(std::string&& hlo_op_name, std::string&& tf_op,
+                      int64_t start_timestamp_ns, int64_t duration_ns,
+                      XPlaneBuilder* plane, XLineBuilder* line) {
+  XEventBuilder event =
+      line->AddEvent(*plane->GetOrCreateEventMetadata(hlo_op_name));
+  event.SetTimestampNs(start_timestamp_ns);
+  event.SetDurationNs(duration_ns);
+  event.ParseAndAddStatValue(
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)), tf_op);
 }
 
 TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
@@ -239,6 +251,39 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
                                metrics_db { name: "IDLE" category: "IDLE" }
                                total_time_ps: 10000
                                total_op_time_ps: 10000
+              )pb"));
+#endif
+}
+
+TEST(ConvertXPlaneToOpMetricsDb, HostXPlaneWithXlaOps) {
+  XPlane xplane;
+  XPlaneBuilder plane(&xplane);
+  XLineBuilder line = plane.GetOrCreateLine(/*line_id=*/10);
+  AddXlaCpuOpEvent("xla_op", "tf_op", 100000, 8000, &plane, &line);
+  AddXlaCpuOpEvent("xla_op2", "tf_op2", 110000, 10000, &plane, &line);
+  OpMetricsDb op_metrics = ConvertHostThreadsXPlaneToOpMetricsDb(xplane);
+#if defined(PLATFORM_GOOGLE)
+  EXPECT_THAT(op_metrics, EqualsProto(R"pb(metrics_db {
+                                             self_time_ps: 8000000
+                                             occurrences: 1
+                                             name: "tf_op"
+                                             time_ps: 8000000
+                                           }
+                                           metrics_db {
+                                             self_time_ps: 10000000
+                                             occurrences: 1
+                                             name: "tf_op2"
+                                             time_ps: 10000000
+                                           }
+                                           metrics_db {
+                                             self_time_ps: 2000000
+                                             name: "IDLE"
+                                             time_ps: 2000000
+                                             category: "IDLE"
+                                           }
+                                           total_time_ps: 20000000
+                                           total_op_time_ps: 18000000
+                                           precision_stats {}
               )pb"));
 #endif
 }

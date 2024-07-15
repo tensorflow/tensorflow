@@ -14,16 +14,17 @@
 # ==============================================================================
 """Converts a frozen graph into a TFLite FlatBuffer."""
 
-import distutils.spawn
 import enum
 import hashlib
 import os as _os
 import platform as _platform
+import shutil
 import subprocess as _subprocess
 import tempfile as _tempfile
 from typing import Optional
 import warnings
 
+from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.compiler.mlir.lite.python import wrap_converter
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
@@ -33,7 +34,6 @@ from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
-from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics.wrapper import metrics_wrapper as _metrics_wrapper
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
@@ -408,7 +408,7 @@ def _run_deprecated_conversion_binary(
     RuntimeError: When conversion fails, an exception is raised with the error
       message embedded.
   """
-  if distutils.spawn.find_executable(_deprecated_conversion_binary) is None:
+  if shutil.which(_deprecated_conversion_binary) is None:
     raise ConverterError("""Could not find `toco_from_protos` binary, make sure
 your virtualenv bin directory or pip local bin directory is in your path.
 In particular, if you have installed TensorFlow with --user, make sure you

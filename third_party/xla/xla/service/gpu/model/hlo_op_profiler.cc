@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/test_utils.h"
 #include "xla/util.h"

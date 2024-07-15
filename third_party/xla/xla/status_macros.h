@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/log_severity.h"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "xla/statusor.h"
@@ -137,7 +138,7 @@ class MakeErrorStream {
     bool is_done_;  // true after absl::Status object has been returned
     std::ostringstream stream_;
     bool should_log_;
-    int log_severity_;
+    absl::LogSeverity log_severity_;
     bool should_log_stack_trace_;
 
     // Wrapper around the MakeErrorStream object that has a
@@ -198,5 +199,10 @@ class StatusAdaptorForMacros {
                                              ::tsl::error::INTERNAL) \
       .with_log_stack_trace()                                        \
       .add_ret_check_failure(#condition)
+
+#define XLA_RET_CHECK_FAIL()                                         \
+  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
+                                             ::tsl::error::INTERNAL) \
+      .with_log_stack_trace()
 
 #endif  // XLA_STATUS_MACROS_H_

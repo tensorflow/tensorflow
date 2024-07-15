@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -34,6 +37,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/logging.h"
@@ -88,7 +92,13 @@ absl::Status Call(Ffi& handler, CallFrame& call_frame,
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
   XLA_FFI_CallFrame ffi_call_frame =
       call_frame.Build(GetXlaFfiApi(), &ctx, stage);
-  return TakeStatus(handler.Call(&ffi_call_frame));
+  XLA_FFI_Error* status = nullptr;
+  try {
+    status = handler.Call(&ffi_call_frame);
+  } catch (std::exception& e) {
+    return absl::UnknownError(absl::StrCat("XLA FFI call failed: ", e.what()));
+  }
+  return TakeStatus(status);
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
@@ -96,7 +106,13 @@ absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
   XLA_FFI_CallFrame ffi_call_frame =
       call_frame.Build(GetXlaFfiApi(), &ctx, stage);
-  return TakeStatus((*handler)(&ffi_call_frame));
+  XLA_FFI_Error* status = nullptr;
+  try {
+    status = (*handler)(&ffi_call_frame);
+  } catch (std::exception& e) {
+    return absl::UnknownError(absl::StrCat("XLA FFI call failed: ", e.what()));
+  }
+  return TakeStatus(status);
 }
 
 namespace internal {
@@ -164,10 +180,20 @@ static absl::Status RegisterHandler(std::string_view name,
 
   auto emplaced = GetHandlerRegistry().try_emplace(
       MakeHandlerKey(name, platform), HandlerRegistration{bundle, traits});
-  if (!emplaced.second)
-    return absl::InvalidArgumentError(
-        absl::StrCat("Duplicate FFI handler registration for ", name,
-                     " on a platform ", platform));
+  if (!emplaced.second) {
+    auto existing = emplaced.first->second;
+    if (existing.traits != traits)
+      return absl::InvalidArgumentError(
+          absl::StrCat("Duplicate FFI handler registration for ", name,
+                       " on a platform ", platform, " with different traits"));
+    if (existing.bundle.prepare != bundle.prepare ||
+        existing.bundle.initialize != bundle.initialize ||
+        existing.bundle.execute != bundle.execute) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Duplicate FFI handler registration for ", name, " on a platform ",
+          platform, " with different bundle addresses"));
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -359,12 +385,59 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
   return nullptr;
 }
 
+static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
+    XLA_FFI_DeviceMemory_Allocate_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_DeviceMemory_Allocate_Args",
+      XLA_FFI_DeviceMemory_Allocate_Args_STRUCT_SIZE, args->struct_size));
+
+  // TODO(ezhulenev): We happen to have the same alignment requirement for
+  // device memory on CPU and GPU backends, but instead of hardcoding it here
+  // we should query it for the platform XLA FFI handler is registered with.
+  static constexpr int64_t kMaxAlignment = 16;
+
+  if (!absl::has_single_bit(args->alignment) ||
+      args->alignment > kMaxAlignment) {
+    return new XLA_FFI_Error{absl::InvalidArgumentError(
+        absl::StrCat("Unsupported alignment: ", args->alignment))};
+  }
+
+  absl::StatusOr<stream_executor::OwningDeviceMemory> memory =
+      args->ctx->allocator->Allocate(args->ctx->device_ordinal, args->size);
+  if (!memory.ok()) {
+    return new XLA_FFI_Error{std::move(memory).status()};
+  }
+
+  args->data = memory->Release().opaque();
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
+    XLA_FFI_DeviceMemory_Free_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_DeviceMemory_Free_Args",
+      XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE, args->struct_size));
+
+  absl::Status status = args->ctx->allocator->Deallocate(
+      args->ctx->device_ordinal,
+      stream_executor::DeviceMemoryBase(args->data, args->size));
+  if (!status.ok()) {
+    return new XLA_FFI_Error{std::move(status)};
+  }
+
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // XLA FFI Internal Api Implementation
 //===----------------------------------------------------------------------===//
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
-  return new XLA_FFI_Error{std::move(*reinterpret_cast<absl::Status*>(status))};
+  auto* absl_status = reinterpret_cast<absl::Status*>(status);
+  if (ABSL_PREDICT_TRUE(absl_status->ok())) {
+    return nullptr;
+  }
+  return new XLA_FFI_Error{std::move(*absl_status)};
 }
 
 static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
@@ -419,6 +492,8 @@ static XLA_FFI_Api api = {
     XLA_FFI_Stream_Get,
     XLA_FFI_TypeId_Register,
     XLA_FFI_ExecutionContext_Get,
+    XLA_FFI_DeviceMemory_Allocate,
+    XLA_FFI_DeviceMemory_Free,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &api; }

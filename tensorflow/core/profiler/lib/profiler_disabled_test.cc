@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/lib/profiler_lock.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 
 namespace tensorflow {
 namespace profiler {

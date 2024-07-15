@@ -25,10 +25,25 @@ limitations under the License.
 
 namespace xla::cpu {
 
+// A string-to-string mapping that allows to parametrize HLO benchmarks.
+using StrToStrMapping =
+    std::initializer_list<std::pair<absl::string_view, absl::string_view>>;
+
+// Runs the given HLO module as a benchmark.
+//
+// The HLO text can be interpolated using the given string replacements. Each
+// replacement is a mapping that will be applied to the HLO module before
+// running the benchmark.
+//
+// If `disable_parallel_task_assigner` is true, the parallel task assigner will
+// not be run on the HLO module before running the benchmark. Therefore,
+// parallel backend will not be executed.
 absl::Status RunHloBenchmark(benchmark::State& state,
                              std::string_view hlo_module,
-                             absl::Span<const Literal* const> args);
+                             absl::Span<const Literal* const> args,
+                             StrToStrMapping replacements = {},
+                             bool disable_parallel_task_assigner = false);
 
-}
+}  // namespace xla::cpu
 
 #endif  // XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_

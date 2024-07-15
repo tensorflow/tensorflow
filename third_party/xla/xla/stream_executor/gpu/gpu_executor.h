@@ -147,17 +147,6 @@ class GpuExecutor : public StreamExecutorCommon {
   absl::Status Submit(Stream* stream,
                       const CommandBuffer& command_buffer) override;
 
-  int CalculateOccupancy(const DeviceDescription& device_description,
-                         uint64_t registers_per_thread,
-                         uint64_t shared_memory_per_block,
-                         const ThreadDim& thread_dims, GpuFunctionHandle func);
-
-  int CompareOccupancy(int* initial_blocks,
-                       const DeviceDescription& device_description,
-                       uint64_t registers_per_thread,
-                       uint64_t shared_memory_per_block,
-                       const ThreadDim& thread_dims, GpuFunctionHandle func);
-
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
   void Deallocate(DeviceMemoryBase* mem) override;
@@ -208,33 +197,13 @@ class GpuExecutor : public StreamExecutorCommon {
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
 
-  absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64_t size) override;
   absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
                       uint8_t pattern, uint64_t size) override;
-  absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                        uint32_t pattern, uint64_t size) override;
-
-  absl::Status Memcpy(Stream* stream, void* host_dst,
-                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
-
-  absl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                      const void* host_src, uint64_t size) override;
-
-  bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
-                            const DeviceMemoryBase& gpu_src,
-                            uint64_t size) override;
 
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
   void DeallocateStream(Stream* stream) override;
-
-  bool CreateStreamDependency(Stream* dependent, Stream* other) override;
-
-  absl::Status RecordEvent(Stream* stream, Event* event) override;
-
-  absl::Status WaitForEvent(Stream* stream, Event* event) override;
 
   absl::Status BlockHostUntilDone(Stream* stream) override;
 
@@ -340,12 +309,6 @@ class GpuExecutor : public StreamExecutorCommon {
   absl::Status GetKernelMetadata(GpuKernel* cuda_kernel,
                                  KernelMetadata* kernel_metadata);
 
-  // Prints to VLOG(2) information about the kernel's occupancy and how it might
-  // be improved.
-  void VlogOccupancyInfo(const DeviceDescription& device_description,
-                         const Kernel& kernel, const ThreadDim& thread_dims,
-                         const BlockDim& block_dims);
-
   // (supported on CUDA only)
   absl::Status LoadModuleFromCuBin(const char* cubin, GpuModuleHandle* module)
       TF_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
@@ -396,14 +359,6 @@ class GpuExecutor : public StreamExecutorCommon {
   // GPU binary (PTX or CUBIN or HSACO) -> {CUDA module, reference count}.
   std::unordered_map<const void*, std::pair<GpuModuleHandle, uint64_t>>
       gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
-
-  // Guards the launched kernel set.
-  absl::Mutex launched_kernels_mu_;
-
-  // Keeps track of the set of launched kernels. Currently used to suppress the
-  // occupancy check on subsequent launches.
-  std::set<GpuFunctionHandle> launched_kernels_
-      ABSL_GUARDED_BY(launched_kernels_mu_);
 
   // Handle for the CUDA device being operated on. Immutable
   // post-initialization.

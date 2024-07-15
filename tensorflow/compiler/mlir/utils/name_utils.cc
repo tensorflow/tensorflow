@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {

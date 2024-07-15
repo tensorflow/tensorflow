@@ -320,7 +320,9 @@ enum StatType {
   kEdgeTpuModelProfileInfo,
   kEdgeTpuMlir,
   kDroppedTraces,
-  kLastStatType = kDroppedTraces,
+  kCudaGraphId,
+  kCudaGraphDetails,
+  kLastStatType = kCudaGraphDetails,
 };
 
 enum MegaScaleStatType : uint8_t {
@@ -344,7 +346,8 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleLaunchId,
   kMegaScaleLoopIteration,
   kMegaScaleGraphProtos,
-  kLastMegaScaleStatType = kMegaScaleGraphProtos,
+  kMegaScaleNetworkTransportLatency,
+  kLastMegaScaleStatType = kMegaScaleNetworkTransportLatency,
 };
 
 enum TaskEnvStatType {

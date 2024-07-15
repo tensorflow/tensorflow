@@ -268,15 +268,12 @@ TEST_F(XlaCompilerTest, SimpleDynamicShapeParameter) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
-  args[0].value_bound = Tensor(DT_INT32, std::get<0>(args[0].shape));
-  Tensor dynamism_tensor(DT_BOOL);
-  TF_ASSERT_OK(LiteralToHostTensor(xla::LiteralUtil::CreateR1<bool>({true}),
-                                   DT_BOOL, &dynamism_tensor));
-  args[0].value_dynamism = dynamism_tensor;
+  args[0].shape =
+      xla::ShapeUtil::MakeShape(/*element_type=*/xla::S32, /*dimensions=*/{2},
+                                /*dynamic_dimensions=*/{true});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = TensorShape({2});
+  args[1].shape = TensorShape(/*dimensions=*/{2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());

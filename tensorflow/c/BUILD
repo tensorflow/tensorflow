@@ -749,7 +749,10 @@ tf_cuda_library(
         ":tf_status",
         ":tf_status_helper",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -810,9 +813,9 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
-            "@local_tsl//tsl/framework:device_id_utils",
             "@local_tsl//tsl/platform:statusor",
             "@local_xla//xla/stream_executor",
+            "@local_xla//xla/tsl/framework:device_id_utils",
         ],
     }),
 )

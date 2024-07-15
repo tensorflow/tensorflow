@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/llvm_compiler.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 

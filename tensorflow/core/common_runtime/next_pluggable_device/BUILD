@@ -87,9 +87,9 @@ cc_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/framework:device_id_utils",
         "@local_tsl//tsl/platform:errors",
         "@local_xla//xla/stream_executor/tpu:c_api_conversions",
+        "@local_xla//xla/tsl/framework:device_id_utils",
     ],
 )
 

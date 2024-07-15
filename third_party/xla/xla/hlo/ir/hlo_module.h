@@ -456,7 +456,7 @@ class HloModule {
       bool prohibit_empty_literal = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  absl::StatusOr<HloModuleProtoWithConfig> ToProtoWithConfig() const;
+  HloModuleProtoWithConfig ToProtoWithConfig() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto,
       bool prohibit_empty_literal = true);

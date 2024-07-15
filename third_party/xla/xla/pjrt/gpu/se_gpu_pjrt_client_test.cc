@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -50,7 +52,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
@@ -67,7 +69,13 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::Eq;
+using ::testing::FloatEq;
+using ::testing::Ge;
+using ::testing::Gt;
 using ::testing::HasSubstr;
+using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
@@ -130,13 +138,17 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
 
   for (auto* device : client->devices()) {
     TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space());
-    EXPECT_THAT(device->memory_spaces(), ElementsAre(memory_space));
     EXPECT_EQ(memory_space->kind(), StreamExecutorGpuHbmMemorySpace::kKind);
     EXPECT_EQ(memory_space->kind_id(),
               StreamExecutorGpuHbmMemorySpace::kKindId);
     EXPECT_THAT(
         device->memory_space_by_kind(StreamExecutorGpuHbmMemorySpace::kKind),
         IsOkAndHolds(memory_space));
+    EXPECT_EQ(device->memory_spaces().size(), 2);
+    auto* pinned = device->memory_spaces()[1];
+    EXPECT_EQ(pinned->kind_id(), PinnedHostMemorySpace::kKindId);
+    EXPECT_THAT(device->memory_space_by_kind(PinnedHostMemorySpace::kKind),
+                IsOkAndHolds(pinned));
   }
 }
 
@@ -312,8 +324,8 @@ static absl::Status MemsetFromValue(
   uint32_t pattern;
   std::memcpy(&pattern, &memset_value->value, sizeof(pattern));
 
-  se::DeviceMemoryBase base = result->data;
-  return stream->Memset32(&base, pattern, result->data.size());
+  se::DeviceMemoryBase base = result->device_memory();
+  return stream->Memset32(&base, pattern, base.size());
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemsetFromValue, MemsetFromValue,
@@ -498,6 +510,116 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
         src_literals[i].data<float>(),
         literals[i]->Relayout(src_literals[i].shape().layout()).data<float>());
   }
+}
+
+TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* pinned_memory_space,
+      client->addressable_devices()[0]->memory_space_by_kind(
+          PinnedHostMemorySpace::kKind));
+
+  std::vector<Literal> src_literals;
+  std::vector<Shape> src_shapes;
+  for (int i = 0; i < 4; ++i) {
+    std::vector<float> data(i + 1);
+    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
+    src_shapes.push_back(src_literals.back().shape());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                          client->CreateBuffersForAsyncHostToDevice(
+                              src_shapes, pinned_memory_space));
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  for (int i = 0; i < src_shapes.size(); ++i) {
+    buffers.emplace_back(transfer_manager->RetrieveBuffer(i));
+  }
+
+  for (int i = 0; i < src_shapes.size(); ++i) {
+    TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+        i,
+        absl::string_view(static_cast<char*>(src_literals[i].untyped_data()),
+                          src_literals[i].size_bytes()),
+        [&]() {}));
+  }
+
+  absl::Mutex mu;
+  std::vector<std::shared_ptr<Literal>> literals;
+  int got_literal_count = 0;
+  int got_callback_count = 0;
+
+  for (auto& buffer : buffers) {
+    literals.push_back(std::make_shared<Literal>(
+        ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
+    buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
+      absl::MutexLock l(&mu);
+      TF_ASSERT_OK(s);
+      ++got_literal_count;
+    });
+    buffer->GetReadyFuture().OnReady([&](absl::Status s) {
+      absl::MutexLock l(&mu);
+      TF_ASSERT_OK(s);
+      ++got_callback_count;
+    });
+    buffer.reset();
+  }
+
+  {
+    auto done = [&]() {
+      return got_literal_count == src_literals.size() &&
+             got_callback_count == src_literals.size();
+    };
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(&done));
+  }
+
+  for (int i = 0; i < src_literals.size(); ++i) {
+    ASSERT_TRUE(
+        ShapeUtil::Compatible(src_literals[i].shape(), literals[i]->shape()));
+    ASSERT_EQ(
+        src_literals[i].data<float>(),
+        literals[i]->Relayout(src_literals[i].shape().layout()).data<float>());
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHostChunked) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_THAT(client->addressable_devices(), SizeIs(Gt(0)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memspace,
+      client->addressable_devices()[0]->memory_space_by_kind(
+          PinnedHostMemorySpace::kKind));
+  std::vector<float> data{1, 3, 5, 7, 11, 13, 17, 19};
+  Shape shape = ShapeUtil::MakeShape(F32, {static_cast<int64_t>(data.size())});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager> txm,
+      client->CreateBuffersForAsyncHostToDevice({shape}, memspace));
+  std::unique_ptr<PjRtBuffer> buf = txm->RetrieveBuffer(0);
+  ASSERT_THAT(buf->GetReadyFuture().IsReady(), Eq(false));
+
+  absl::string_view raw_view(reinterpret_cast<char*>(data.data()),
+                             data.size() * sizeof(data[0]));
+  int offset = 0;
+  while (true) {
+    int end = offset + 3;  // unaligned chunk size
+    if (end > raw_view.size()) {
+      end = raw_view.size();
+    }
+    int sz = end - offset;
+    bool reaches_end = end == raw_view.size();
+    TF_ASSERT_OK(txm->TransferRawDataToSubBuffer(
+        /*buffer_index=*/0, raw_view.data() + offset, offset, sz, reaches_end,
+        /*on_done=*/[]() {}));
+    if (reaches_end) {
+      break;
+    }
+    offset = end;
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> lit, buf->ToLiteralSync());
+  EXPECT_THAT(lit->data<float>(), ElementsAreArray(data));
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
@@ -755,6 +877,274 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
                 ->description()
                 .core_on_chip(),
             0);
+}
+
+TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
+  const int num_nodes = 4;
+  GpuClientOptions options;
+  options.num_nodes = num_nodes;
+  options.enable_mock_nccl = true;
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto devices_per_host = client->addressable_device_count();
+  EXPECT_EQ(devices_per_host, 2);
+  EXPECT_EQ(client->device_count(), devices_per_host * num_nodes);
+  for (int i = 0; i < client->device_count(); i++) {
+    auto device = client->devices()[i];
+    auto slice_index =
+        std::get<int64_t>(device->Attributes().at("slice_index"));
+    auto host_index = device->process_index();
+    EXPECT_EQ(slice_index, host_index);
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* pinned_memory_space,
+      client->addressable_devices()[0]->memory_space_by_kind(
+          PinnedHostMemorySpace::kKind));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_memory_space, /*device_layout=*/nullptr));
+
+  EXPECT_EQ(buffer->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(buffer->IsOnCpu());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  std::vector<int32_t> expected{1, 2, 3, 4};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpace) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  auto device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          device));
+
+  EXPECT_EQ(buffer->memory_space()->kind(), "device");
+
+  auto* pinned_memory_space = device->memory_spaces()[1];
+  EXPECT_EQ(pinned_memory_space->kind_id(), PinnedHostMemorySpace::kKindId);
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          buffer->CopyToMemorySpace(pinned_memory_space));
+
+  EXPECT_EQ(result->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(result->IsOnCpu());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  std::vector<int32_t> expected{1, 2, 3, 4};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_THAT(client->addressable_devices(), SizeIs(Gt(0)));
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memspace,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  // Create a pinned_host buffer
+  std::vector<float> float_data{12.0, 34.0, 56.0, 78.0};
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buf,
+      client->BufferFromHostBuffer(
+          static_cast<const void*>(float_data.data()), shape.element_type(),
+          shape.dimensions(), /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, memspace,
+          /*device_layout=*/nullptr));
+  ASSERT_THAT(buf->IsOnCpu(), true);
+  TF_ASSERT_OK_AND_ASSIGN(size_t buf_sz, buf->GetOnDeviceSizeInBytes());
+  ASSERT_THAT(buf_sz, Ge(sizeof(float) * 4));
+
+  // Check that OpaqueDeviceMemoryDataPointer() points to actual data
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                          buf->AcquireExternalReference());
+  TF_ASSERT_OK(buf->GetReadyFuture().Await());
+  const float* float_ptr =
+      reinterpret_cast<const float*>(ref->OpaqueDeviceMemoryDataPointer());
+  EXPECT_THAT(*float_ptr, FloatEq(12.0));
+  EXPECT_THAT(*(float_ptr + 1), FloatEq(34.0));
+  EXPECT_THAT(*(float_ptr + 2), FloatEq(56.0));
+  EXPECT_THAT(*(float_ptr + 3), FloatEq(78.0));
+
+  // Copy raw to device using OpaqueDeviceMemoryDataPointer(), and then read
+  // back to host; expect to get back the same data
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * default_ms,
+                          device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager> txm,
+      client->CreateBuffersForAsyncHostToDevice({shape}, default_ms));
+  TF_ASSERT_OK(txm->TransferRawDataToBuffer(
+      /*buffer_index=*/0,
+      absl::string_view(
+          static_cast<const char*>(ref->OpaqueDeviceMemoryDataPointer()),
+          buf_sz),
+      /*on_done=*/[]() {}));
+  std::unique_ptr<PjRtBuffer> hbm_buf = txm->RetrieveBuffer(0);
+  EXPECT_THAT(hbm_buf->GetOnDeviceSizeInBytes(), IsOkAndHolds(buf_sz));
+  EXPECT_THAT(hbm_buf->HostShape(), IsOkAndHolds(shape));
+  TF_ASSERT_OK(hbm_buf->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
+                          hbm_buf->ToLiteralSync());
+  EXPECT_THAT(literal->data<float>(), ElementsAreArray(float_data));
+}
+
+namespace {
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateDeviceBufferForTest(
+    xla::PjRtClient* client) {
+  auto device = client->addressable_devices()[0];
+  TF_EXPECT_OK(device->default_memory_space());
+
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
+  TF_ASSIGN_OR_RETURN(
+      auto input, client->BufferFromHostBuffer(
+                      data.data(), shape.element_type(), shape.dimensions(),
+                      /*byte_strides=*/std::nullopt,
+                      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/nullptr, device));
+  EXPECT_EQ(input->memory_space()->kind(), "device");
+  return input;
+}
+
+constexpr char const* kD2HProgram = R"(
+  HloModule f
+
+  ENTRY main.5 {
+    p = s32[4]{0} parameter(0)
+    ROOT cc = s32[4] custom-call(p),
+        custom_call_target="annotate_device_placement",
+        frontend_attributes={_xla_buffer_placement="pinned_host"}
+  }
+)";
+
+constexpr char const* kD2HProgramTupleOutput = R"(
+  HloModule f
+
+  ENTRY main.5 {
+    p = s32[4]{0} parameter(0)
+    cc = s32[4] custom-call(p),
+        custom_call_target="annotate_device_placement",
+        frontend_attributes={_xla_buffer_placement="pinned_host"}
+    ROOT tuple = (s32[4]{0}, s32[4]{0}) tuple(s32[4]{0} p, s32[4]{0} cc)
+  }
+)";
+
+}  // namespace
+
+TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kD2HProgram, *client));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, executable->Execute({{input.get()}}, ExecuteOptions()));
+
+  std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
+  EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "pinned_host");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_stats,
+                          executable->GetCompiledMemoryStats());
+  EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
+}
+
+TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+
+  // Build the output shape with the correct memory space set.
+  Shape host_shape = input->on_device_shape();
+  host_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  Shape out_shape =
+      ShapeUtil::MakeTupleShape({input->on_device_shape(), host_shape});
+
+  // Set the result layout so that the compiler assertions on memory
+  // spaces pass.
+  xla::CompileOptions options;
+  options.executable_build_options.set_result_layout(out_shape);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kD2HProgramTupleOutput, *client, options));
+
+  // Untuple the result so that we get separate buffers.
+  // This is how JAX invokes XLA.
+  ExecuteOptions execute_options;
+  execute_options.untuple_result = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, executable->Execute({{input.get()}}, execute_options));
+
+  std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
+  EXPECT_EQ(result_buffers.size(), 2);
+  EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
+  EXPECT_EQ(result_buffers[1]->memory_space()->kind(), "pinned_host");
+}
+
+TEST(StreamExecutorGpuClientTest, ExecutablePinnedHostOutputMemoryKindTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kD2HProgram, *client));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_kinds,
+                          executable->GetOutputMemoryKinds());
+  EXPECT_EQ(memory_kinds.size(), 1);
+  EXPECT_EQ(memory_kinds[0].size(), 1);
+  EXPECT_EQ(memory_kinds[0][0], "pinned_host");
+}
+
+TEST(StreamExecutorGpuClientTest,
+     ExecutablePinnedHostTupleOutputMemoryKindTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  // Build the output shape with the correct memory space set.
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
+  Shape host_shape = shape;
+  host_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  Shape out_shape = ShapeUtil::MakeTupleShape({shape, host_shape});
+
+  // Set the result layout so that the compiler assertions on memory
+  // spaces pass.
+  xla::CompileOptions options;
+  options.executable_build_options.set_result_layout(out_shape);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kD2HProgramTupleOutput, *client, options));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_kinds,
+                          executable->GetOutputMemoryKinds());
+  EXPECT_EQ(memory_kinds.size(), 1);
+  EXPECT_EQ(memory_kinds[0].size(), 2);
+  EXPECT_EQ(memory_kinds[0][0], "device");
+  EXPECT_EQ(memory_kinds[0][1], "pinned_host");
 }
 
 }  // namespace

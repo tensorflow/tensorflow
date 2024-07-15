@@ -173,13 +173,11 @@ TfLiteStatus GraphPartitionHelper::PrepareSupportedNodes(
     std::string unsupported_details;
     if (IsNodeSupported(context_, node, registration, node_id,
                         &unsupported_details)) {
-#ifdef TFLITE_DEBUG_DELEGATE
       if (node_id < start_node_index) {
         continue;
       } else if (node_id > end_node_index) {
         break;
       }
-#endif  // TFLITE_DEBUG_DELEGATE
       supported_nodes_->data[supported_nodes_->size++] = node_id;
     } else if (unsupported_nodes_info) {
       std::string node_info = GetOpNameByRegistration(*registration);

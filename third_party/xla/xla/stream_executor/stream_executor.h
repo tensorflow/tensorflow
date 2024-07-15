@@ -223,12 +223,6 @@ class StreamExecutor {
     return SynchronousMemcpy(host_dst, device_src, size);
   }
 
-  // Enqueues an operation onto stream to zero out size bytes at the given
-  // device memory location. Neither stream nor location may be null. Returns
-  // whether the operation was successfully enqueued onto the stream.
-  virtual absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                               uint64_t size) = 0;
-
   // Enqueues an operation onto stream to set 8-bit patterns starting at
   // location, for byte count given by size.  Returns whether the operation was
   // successfully enqueued onto the stream.
@@ -237,60 +231,18 @@ class StreamExecutor {
     return absl::InternalError("Not implemented");
   }
 
-  // Enqueues an operation onto stream to set 32-bit patterns starting at
-  // location, for byte count given by size. size must be 32-bit quantified
-  // (i.e. evenly divisible by 4). Returns whether the operation was
-  // successfully enqueued onto the stream.
-  virtual absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                                uint32_t pattern, uint64_t size) = 0;
-
-  // Enqueues a memcpy operation onto stream, with a host destination location
-  // host_dst and a device memory source, with target size size.
-  virtual absl::Status Memcpy(Stream* stream, void* host_dst,
-                              const DeviceMemoryBase& device_src,
-                              uint64_t size) = 0;
-
-  // Enqueues a memcpy operation onto stream, with a device destination location
-  // and a host memory source, with target size size.
-  virtual absl::Status Memcpy(Stream* stream, DeviceMemoryBase* device_dst,
-                              const void* host_src, uint64_t size) = 0;
-
-  // Enqueues a memcpy operation onto stream, with a device destination location
-  // and a device source location, with target size size. Peer access should
-  // have been enabled between the StreamExecutors owning the device memory
-  // regions.
-  virtual bool MemcpyDeviceToDevice(Stream* stream,
-                                    DeviceMemoryBase* device_dst,
-                                    const DeviceMemoryBase& device_src,
-                                    uint64_t size) = 0;
-
   // Enqueues on a stream a user-specified function to be run on the host.
   virtual bool HostCallback(Stream* stream,
                             absl::AnyInvocable<absl::Status() &&> callback) = 0;
 
-  // Inserts the specified event at the end of the specified stream.
-  virtual absl::Status RecordEvent(Stream* stream, Event* event) = 0;
-
-  // Waits for the specified event at the end of the specified stream.
-  virtual absl::Status WaitForEvent(Stream* stream, Event* event) = 0;
-
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
-
-  // Causes dependent to not begin execution until other has finished its
-  // last-enqueued work.
-  virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
 
   // Causes the host code to synchronously wait for operations enqueued
   // onto stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
   virtual absl::Status BlockHostUntilDone(Stream* stream) = 0;
 
-  // Without blocking the device, retrieve the current stream status.
-  virtual absl::Status GetStatus(Stream* stream) {
-    return absl::UnimplementedError(
-        "GetStatus is not supported on this executor.");
-  }
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
   // access it directly.

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
@@ -44,6 +45,38 @@ limitations under the License.
 
 namespace stream_executor {
 namespace interpreter {
+
+// A HostStream that is used for the interpreter.
+class InterpreterStream : public host::HostStream {
+ public:
+  explicit InterpreterStream(StreamExecutor *executor)
+      : host::HostStream(executor) {}
+  absl::Status WaitFor(Stream *stream) override {
+    return host::HostStream::WaitFor(stream);
+  }
+  absl::Status WaitFor(Event *event) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  absl::Status RecordEvent(Event *event) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
+  absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
+                      uint64_t size) override {
+    void *src_mem = const_cast<void *>(gpu_src.opaque());
+    EnqueueTask(
+        [this, host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
+    return BlockUntilDone();
+  }
+
+  absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
+                      uint64_t size) override {
+    void *dst_mem = gpu_dst->opaque();
+    EnqueueTask(
+        [this, dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
+    return BlockUntilDone();
+  }
+};
 
 class XlaInterpreterExecutor : public StreamExecutorCommon {
  public:
@@ -74,26 +107,8 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
     delete[] static_cast<char *>(mem);
   }
 
-  absl::Status Memcpy(Stream *stream, void *host_dst,
-                      const DeviceMemoryBase &dev_src, uint64_t size) override;
-  absl::Status Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
-                      const void *host_src, uint64_t size) override;
-  bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
-                            const DeviceMemoryBase &host_src,
-                            uint64_t size) override {
-    return false;
-  }
-
-  absl::Status MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64_t size) override {
-    return absl::InternalError("Interpreter can not memzero");
-  }
   absl::Status Memset(Stream *stream, DeviceMemoryBase *location,
                       uint8_t pattern, uint64_t size) override {
-    return absl::InternalError("Interpreter can not memset");
-  }
-  absl::Status Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32_t pattern, uint64_t size) override {
     return absl::InternalError("Interpreter can not memset");
   }
 
@@ -113,16 +128,7 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   bool HostCallback(Stream *stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status RecordEvent(Stream *stream, Event *event) override {
-    return absl::Status{absl::StatusCode::kUnimplemented, "RecordEvent"};
-  }
-
-  absl::Status WaitForEvent(Stream *stream, Event *event) override {
-    return absl::Status{absl::StatusCode::kUnimplemented, "WaitForEvent"};
-  }
-
   void DeallocateStream(Stream *stream) override {}
-  bool CreateStreamDependency(Stream *dependent, Stream *other) override;
 
   absl::Status BlockHostUntilDone(Stream *stream) override;
 
@@ -150,7 +156,7 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) override {
-    return std::make_unique<host::HostStream>(this);
+    return std::make_unique<InterpreterStream>(this);
   }
 
  private:

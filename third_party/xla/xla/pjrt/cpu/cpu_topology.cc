@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/pjrt/cpu/cpu_topology.pb.h"
+
 namespace xla {
 
 std::unique_ptr<const CpuTopology> CpuTopology::FromProto(
@@ -30,8 +32,8 @@ std::unique_ptr<const CpuTopology> CpuTopology::FromProto(
 
   for (size_t i = 0; i < cpu_topology_proto.cpu_devices_size(); ++i) {
     auto& cpu_device_proto = cpu_topology_proto.cpu_devices(i);
-    devices.push_back({cpu_device_proto.id(), cpu_device_proto.process_index(),
-                       cpu_device_proto.local_hardware_id()});
+    devices.push_back(CpuDevice{cpu_device_proto.process_index(),
+                                cpu_device_proto.local_hardware_id()});
   }
 
   std::vector<std::string> machine_attributes;
@@ -48,9 +50,8 @@ CpuTopologyProto CpuTopology::ToProto() const {
   CpuTopologyProto proto;
   for (auto& cpu_device : cpu_devices_) {
     auto* cpu_device_proto = proto.add_cpu_devices();
-    cpu_device_proto->set_id(cpu_device.id);
-    cpu_device_proto->set_process_index(cpu_device.process_index);
-    cpu_device_proto->set_local_hardware_id(cpu_device.local_hardware_id);
+    cpu_device_proto->set_process_index(cpu_device.process_id);
+    cpu_device_proto->set_local_hardware_id(cpu_device.local_device_id);
   }
   for (const std::string& machine_attribute : machine_attributes_) {
     proto.add_machine_attributes(machine_attribute);

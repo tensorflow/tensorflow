@@ -146,8 +146,10 @@ static void DumpRocmTracerEvent(const RocmTracerEvent& event,
     case RocmTracerEventType::MemoryAlloc:
       oss << ",num_bytes=" << event.memalloc_info.num_bytes;
       break;
+    case RocmTracerEventType::MemcpyOther:
+    case RocmTracerEventType::MemoryFree:
+    case RocmTracerEventType::Memset:
     case RocmTracerEventType::Synchronization:
-      break;
     case RocmTracerEventType::Generic:
       break;
     default:
@@ -613,9 +615,10 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   absl::flat_hash_map<uint32_t, RocmTracerEvent> auxiliary_api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
 
-  const std::vector<RocmTracerEvent> ApiActivityInfoExchange();
+  const std::vector<RocmTracerEvent> ApiActivityInfoExchange()
+      TF_EXCLUSIVE_LOCKS_REQUIRED(event_maps_mutex_);
 
-  absl::node_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
+  absl::flat_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
 };
 //==========
 
@@ -730,7 +733,6 @@ RocmTraceCollectorImpl::ApiActivityInfoExchange() {
   std::vector<RocmTracerEvent> aggregated_events;
 
   // Copy info from activity events to API callback events
-  mutex_lock lock{event_maps_mutex_};
   for (auto& api_iter : api_events_map_) {
     RocmTracerEvent& api_event = api_iter.second;
     auto activity_event =

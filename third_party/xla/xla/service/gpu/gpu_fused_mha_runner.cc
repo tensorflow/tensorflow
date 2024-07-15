@@ -515,6 +515,7 @@ GpufMHAConfig::AsDnnFusedMHAOpConfig() const {
 
   config.kind = desc.kind;
   config.mask_type = desc.mask_type;
+  config.force_deterministic = desc.force_deterministic;
   const CudnnfMHABackendConfig &backend_config = desc.backend_config;
   config.algorithm = se::dnn::AlgorithmDesc(backend_config.algorithm());
   config.fmha_scale.emplace(backend_config.fmha_scale());
@@ -531,6 +532,7 @@ GpufMHABackwardConfig::AsDnnFusedMHABackwardOpConfig() const {
   }
   TF_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind mask_type,
                       GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(mask_type));
+
   return se::dnn::FusedMHABackwardOp::Config{scale,
                                              bmm1_grad_gemm1_rhs,
                                              bmm1_grad_gemm2_rhs,
@@ -546,7 +548,8 @@ GpufMHABackwardConfig::AsDnnFusedMHABackwardOpConfig() const {
                                              bias,
                                              dropout_rate,
                                              seed,
-                                             mask_type};
+                                             mask_type,
+                                             force_deterministic};
 }
 
 /*static*/ absl::StatusOr<GpufMHAParams> GpufMHAParams::For(

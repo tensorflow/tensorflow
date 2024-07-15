@@ -130,7 +130,6 @@ third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl:
 third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
 third_party/tensorrt/tensorrt_configure.bzl:
 third_party/tensorrt/workspace.bzl:
-third_party/tf_runtime/BUILD:
 third_party/zlib.BUILD:
 tools/def_file_filter/BUILD.tpl:
 tools/def_file_filter/BUILD:

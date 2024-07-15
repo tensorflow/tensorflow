@@ -15,9 +15,25 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/translate.h"
 
 #include <memory>
+#include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
+#include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 
@@ -31,16 +47,20 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
                                                   bool emit_use_tuple_arg) {
   if (!module) return mlir::failure();
 
-  HloProto hloProto;
-  absl::Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
-  if (!status.ok()) {
-    module.emitOpError() << status.message();
-    LOG(ERROR) << "Module conversion failed: " << status;
+  mlir::MlirToHloConversionOptions options;
+  options.use_tuple_args = emit_use_tuple_arg;
+  options.return_tuple = emit_return_tuple;
+  absl::StatusOr<std::unique_ptr<HloModule>> statusOrModule =
+      mlir::ConvertMlirHloToHloModule(module, options);
+
+  if (!statusOrModule.ok()) {
+    module.emitOpError() << statusOrModule.status().message();
+    LOG(ERROR) << "Module conversion failed: " << statusOrModule.status();
     return mlir::failure();
   }
 
-  output << hloProto.DebugString();
+  // Print as HloProto with empty BufferAssignment for legacy compatibility.
+  output << MakeHloProto(*statusOrModule.value()).DebugString();
   return mlir::success();
 }
 
@@ -117,20 +137,23 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   HloProto hloProto;
   mlir::MlirToHloConversionOptions options;
   options.propagate_layouts = with_layouts;
-  absl::Status status =
-      via_builder
-          ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
-          : mlir::ConvertMlirHloToHlo(module, &hloProto, emit_use_tuple_arg,
-                                      emit_return_tuple, options);
-  if (!status.ok()) {
-    module.emitOpError() << status.message();
-    LOG(ERROR) << "Module conversion failed: " << status;
-    return mlir::failure();
+  options.use_tuple_args = emit_use_tuple_arg;
+  options.return_tuple = emit_return_tuple;
+  absl::StatusOr<std::unique_ptr<HloModule>> statusOrHloModule;
+  if (via_builder) {
+    auto status = ConvertMlirHloToHloViaBuilder(module, &hloProto, options);
+    if (!status.ok()) {
+      module.emitOpError() << status.message();
+      LOG(ERROR) << "Module conversion failed: " << status;
+      return mlir::failure();
+    }
+    statusOrHloModule = HloModuleFromProto(hloProto);
+  } else {
+    statusOrHloModule = mlir::ConvertMlirHloToHloModule(module, options);
   }
 
-  auto statusOrHloModule = HloModuleFromProto(hloProto);
-
   if (!statusOrHloModule.ok()) {
+    module.emitOpError() << statusOrHloModule.status().message();
     LOG(ERROR) << "Conversion to HLO module failed: "
                << statusOrHloModule.status();
     return mlir::failure();
@@ -156,4 +179,30 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   return mlir::success();
 }
 
-}  // namespace xla
+mlir::LogicalResult MlirHloToHloTextMain(
+    std::unique_ptr<llvm::MemoryBuffer> buffer,
+    llvm::raw_ostream& output_stream, bool emit_return_tuple,
+    bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
+    bool print_sugar, bool via_builder, bool with_layouts) {
+  auto source_mgr = std::make_shared<llvm::SourceMgr>();
+  source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
+
+  mlir::DialectRegistry registry;
+  mlir::mhlo::registerAllMhloDialects(registry);
+  registry.insert<mlir::func::FuncDialect>();
+
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, &context);
+
+  if (!module) {
+    return mlir::failure();
+  }
+
+  return xla::MlirHloToHloTextTranslateFunction(
+      *module, output_stream, emit_return_tuple, emit_use_tuple_arg,
+      print_layouts, print_large_constants, print_sugar, via_builder,
+      with_layouts);
+}
+
+}  //  namespace xla

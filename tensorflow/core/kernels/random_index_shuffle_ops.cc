@@ -15,22 +15,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <memory>
+#include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/random_index_shuffle.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -116,12 +115,24 @@ class RandomIndexShuffleOp : public OpKernel {
     }
 
     for (int64_t i = 0; i < num_outputs; ++i) {
-      const auto index =
-          static_cast<uint64_t>(index_t.dims() ? index_t.vec<IntType>()(i)
-                                               : index_t.scalar<IntType>()());
-      const auto max_index = static_cast<uint64_t>(
+      IntType index_int = internal::SubtleMustCopy(
+          index_t.dims() ? index_t.vec<IntType>()(i)
+                         : index_t.scalar<IntType>()());
+      IntType max_index_int = internal::SubtleMustCopy(
           max_index_t.dims() ? max_index_t.vec<IntType>()(i)
                              : max_index_t.scalar<IntType>()());
+      OP_REQUIRES(context, index_int >= 0,
+                  absl::InvalidArgumentError(absl::StrFormat(
+                      "index must be >= 0 but was %d", index_int)));
+      OP_REQUIRES(context, max_index_int >= 0,
+                  absl::InvalidArgumentError(absl::StrFormat(
+                      "max_index must be >= 0 but was %d", max_index_int)));
+      OP_REQUIRES(context, max_index_int >= index_int,
+                  absl::InvalidArgumentError(
+                      absl::StrFormat("max_index must be >= index, but %d < %d",
+                                      max_index_int, index_int)));
+      const auto index = static_cast<uint64_t>(index_int);
+      const auto max_index = static_cast<uint64_t>(max_index_int);
       std::array<uint32_t, 3> seed;
       OP_REQUIRES_OK(context,
                      GetSeed(seed_t, seed_t.dims() == 1 ? 0 : i, &seed));

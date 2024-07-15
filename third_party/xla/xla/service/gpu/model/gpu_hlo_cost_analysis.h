@@ -25,7 +25,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -39,10 +42,20 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   static constexpr int64_t kMaxIRSize = 10000;
 
  public:
-  explicit GpuHloCostAnalysis(
+  GpuHloCostAnalysis(
       const Options& options,
-      const se::DeviceDescription* device_info = nullptr)
-      : HloCostAnalysis(options), device_info_(device_info) {}
+      const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile)
+      : HloCostAnalysis(options),
+        hlo_elementwise_op_profile_(hlo_elementwise_op_profile) {}
+
+  explicit GpuHloCostAnalysis(const Options& options)
+      : GpuHloCostAnalysis(options,
+                           HloOpProfiles::Singleton().GetDefaultProfile()) {}
+
+  GpuHloCostAnalysis(const Options& options,
+                     const se::DeviceDescription& device_info)
+      : GpuHloCostAnalysis(
+            options, HloOpProfiles::Singleton().GetProfile(device_info)) {}
 
   absl::Status Preprocess(const HloInstruction* hlo) override;
 
@@ -79,7 +92,14 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   float CommonElementwiseUtilization(const HloInstruction* a,
                                      const HloInstruction* b) const;
 
-  const se::DeviceDescription* device_info_;
+  // Returns the number of FLOPs needed to compute an element of the given
+  // elementwise instruction.
+  int64_t GetFlopsPerElementwiseOpElement(PrimitiveType type, HloOpcode opcode);
+
+  // Returns the number of FLOPs needed to compute the output of the elementwise
+  // instruction.
+  int64_t GetFlopsForElementwiseOp(HloOpcode op_code, const Shape& shape);
+  int64_t GetFlopsForElementwiseOp(const HloInstruction* instr);
 
  protected:
   std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis() override;
@@ -109,6 +129,10 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // This is different from hlo_properties_[instr][kUtilizationKey] which
   // is the utilization of the instruction by other roots.
   absl::flat_hash_map<const HloInstruction*, float> root_utilizations_;
+
+  // Contains a map from (opcode, element_type) to FLOPs per element estimate
+  // for elementwise instructions.
+  const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile_;
 };
 
 }  // namespace gpu

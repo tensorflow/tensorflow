@@ -20,9 +20,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 

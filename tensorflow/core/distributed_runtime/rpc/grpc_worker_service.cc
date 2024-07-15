@@ -488,7 +488,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
   }
 
   const string& key = request->rendezvous_key();
-  TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
+  TRACEPRINTF("RecvTensor: %lld %s", step_id, key);
   Rendezvous::ParsedKey parsed;
   s = Rendezvous::ParseKey(key, &parsed);
   Device* src_dev = nullptr;

@@ -1,4 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -34,6 +38,7 @@ cc_library(
     hdrs = ["test_matchers.h"],
     deps = [
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -292,5 +297,19 @@ tf_cc_test(
         "//tensorflow/core/platform:enable_tf2_utils",
         # "//tensorflow/core/platform:resource_loader",
         "@local_tsl//tsl/lib/core:status_test_util",
+    ],
+)
+
+tf_proto_library(
+    name = "reproducer_proto",
+    srcs = ["reproducer.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
+    ],
+    visibility = [
+        "//learning/brain/mlir/bridge:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:__pkg__",
     ],
 )

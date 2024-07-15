@@ -44,7 +44,6 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -131,6 +130,16 @@ void MaybeAddEventUniqueId(std::vector<TraceEvent*>& events) {
 
 }  // namespace
 
+int GetLevelForDuration(uint64_t duration_ps) {
+  int i = 0;
+  for (; i < NumLevels(); ++i) {
+    if (duration_ps > kLayerResolutions[i]) {
+      return i;
+    }
+  }
+  return i;
+}
+
 std::vector<TraceEvent*> MergeEventTracks(
     const std::vector<const TraceEventTrack*>& event_tracks) {
   std::vector<TraceEvent*> events;
@@ -214,7 +223,7 @@ absl::Status ReadFileTraceMetadata(std::string& filepath, Trace* trace) {
 //
 // Note that each event only appears exactly once, at the first layer it's
 // eligible for.
-tsl::Status DoStoreAsLevelDbTable(
+absl::Status DoStoreAsLevelDbTable(
     std::unique_ptr<tsl::WritableFile>& file, const Trace& trace,
     const std::vector<std::vector<const TraceEvent*>>& events_by_level) {
   tsl::table::Options options;
@@ -267,7 +276,7 @@ tsl::Status DoStoreAsLevelDbTable(
   return file->Close();
 }
 
-tsl::Status DoLoadFromLevelDbTable(
+absl::Status DoLoadFromLevelDbTable(
     const std::string& filename,
     std::unique_ptr<TraceEventsFilterInterface> filter,
     std::unique_ptr<TraceVisibilityFilter> visibility_filter,
@@ -384,7 +393,7 @@ tsl::Status DoLoadFromLevelDbTable(
   }
   LOG(INFO) << "Added " << visible_events_count
             << " visible events from LevelDb fast file: " << filename;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

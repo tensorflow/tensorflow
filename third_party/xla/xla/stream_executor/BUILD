@@ -4,7 +4,7 @@ load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -64,21 +64,11 @@ bzl_library(
 filegroup(
     name = "stream_executor_api_headers",
     srcs = [
-        "allocator_stats.h",
-        "command_buffer.h",
-        "data_type.h",
         "device_description.h",
         "device_memory.h",
         "device_memory_allocator.h",
-        "event.h",
-        "executor_cache.h",
-        "host_memory_allocation.h",
         "kernel.h",
-        "kernel_spec.h",
         "launch_dim.h",
-        "memory_allocation.h",
-        "module_spec.h",
-        "numeric_options.h",
         "platform.h",
         "platform_manager.h",
         "scratch_allocator.h",
@@ -88,29 +78,33 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-# These are the headers for default StreamExecutor plugins.
-filegroup(
-    name = "stream_executor_plugin_headers",
-    srcs = [
-        "blas.h",
-        "dnn.h",
-        "fft.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 cc_library(
     name = "stream_executor",
     hdrs = [
         ":stream_executor_api_headers",
-        ":stream_executor_plugin_headers",
     ],
     deps = [
+        ":allocator_stats",
+        ":blas",
+        ":command_buffer",
+        ":data_type",
         ":device_description_proto_cc",
+        ":dnn",
+        ":event",
+        ":fft",
+        ":host_memory_allocation",  # build_cleaner: keep
         ":host_or_device_scalar",
+        ":kernel_spec",
+        ":memory_allocation",
+        ":module_spec",
+        ":numeric_options",
+        ":platform",
+        ":stream_common",
+        ":stream_executor_common",
         ":stream_executor_h",
-        ":stream_executor_pimpl",
         "//xla/stream_executor/platform",
+        "//xla/tsl/framework:device_id",
+        "//xla/tsl/framework:device_type",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -125,8 +119,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/framework:device_id",
-        "@local_tsl//tsl/framework:device_type",
         "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
@@ -139,7 +131,8 @@ cc_library(
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_static([
         ":stream_executor_impl",
-        "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
+    ]) + if_google([
+        "@com_google_protobuf//:wrappers_cc_proto",  # indirectly-used by dnn.h
     ]),
 )
 
@@ -172,7 +165,10 @@ cc_library(
 cc_library(
     name = "device_memory",
     hdrs = ["device_memory.h"],
-    deps = ["@local_tsl//tsl/platform:logging"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@local_tsl//tsl/platform:logging",
+    ],
 )
 
 cc_library(
@@ -227,13 +223,12 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-    ] + if_static(["@com_google_protobuf//:protobuf"]),
+    ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
 )
 
 cc_library(
     name = "data_type",
     hdrs = ["data_type.h"],
-    visibility = [":internal"],
     deps = [
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
@@ -401,7 +396,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
-    ] + if_static(["@com_google_protobuf//:protobuf"]),
+    ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
 )
 
 cc_library(
@@ -523,14 +518,14 @@ cc_library(
     name = "allocator_stats",
     srcs = ["allocator_stats.cc"],
     hdrs = ["allocator_stats.h"],
-    visibility = ["//visibility:private"],
+    visibility = [":internal"],
     deps = ["@com_google_absl//absl/strings:str_format"],
 )
 
 cc_library(
     name = "command_buffer",
     hdrs = ["command_buffer.h"],
-    visibility = ["//visibility:private"],
+    visibility = [":internal"],
     deps = [
         ":device_memory",
         ":kernel",
@@ -582,7 +577,6 @@ cc_library(
     name = "kernel_spec",
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
-    visibility = [":internal"],
     deps = [
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -647,7 +641,6 @@ cc_library(
 cc_library(
     name = "scratch_allocator",
     hdrs = ["scratch_allocator.h"],
-    visibility = ["//visibility:private"],
     deps = [
         ":device_memory",
         ":device_memory_allocator",
@@ -662,32 +655,17 @@ cc_library(
     srcs = ["stream_executor_common.cc"],
     hdrs = ["stream_executor_common.h"],
     deps = [
-        ":blas",
-        ":command_buffer",
         ":device_description",
-        ":dnn",
-        ":event",
-        ":fft",
         ":kernel",
-        ":module_spec",
         ":platform",
-        ":stream",
         ":stream_executor_h",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -711,56 +689,16 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:thread_annotations",
-    ],
-)
-#===--------------------------------------------------------------------------------------------===#
-
-# TODO(ezhulenev): This should be merged into regular `stream_executor` target and `stream.cc` moved
-# into its own target, however today we have problems with backward references when we try to link
-# everything together. See: https://lld.llvm.org/ELF/warn_backrefs.html.
-cc_library(
-    name = "stream_executor_pimpl",
-    tags = ["avoid_dep"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":blas",  # build_cleaner: keep
-        ":command_buffer",  # build_cleaner: keep
-        ":dnn",  # build_cleaner: keep
-        ":fft",
-        ":host_memory_allocation",  # build_cleaner: keep
-        ":kernel_spec",
-        ":platform",
-        ":stream_common",
-        ":stream_executor_common",
-        ":stream_executor_h",
-        "//xla/tsl/util:env_var",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
+#===--------------------------------------------------------------------------------------------===#
 
 # We have a separate `stream_executor_impl` target because in open source we are building multiple
 # shared libraries and then link them together (this is an implementation detail of Tensorflow
@@ -771,19 +709,24 @@ cc_library(
     name = "stream_executor_impl",
     deps = [
         ":allocator_stats",
+        ":blas",  # build_cleaner: keep
+        ":command_buffer",  # build_cleaner: keep
         ":device_description",
         ":device_memory",
         ":dnn",
         ":executor_cache",
+        ":fft",
+        ":host_memory_allocation",  # build_cleaner: keep
         ":kernel",
         ":kernel_spec",
         ":launch_dim",
         ":platform",
         ":platform_manager",
         ":scratch_allocator",
-        ":stream_executor_pimpl",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc_impl",
-    ],
+        ":stream_common",
+        ":stream_executor_common",
+        ":stream_executor_h",
+    ] + if_oss(["@local_tsl//tsl/protobuf:dnn_proto_cc_impl"]),
 )
 
 #===--------------------------------------------------------------------------------------------===#
@@ -795,6 +738,7 @@ xla_cc_test(
     srcs = ["kernel_test.cc"],
     deps = [
         ":device_memory",
+        ":kernel_spec",
         ":stream_executor",
         ":typed_kernel_factory",
         "//xla/stream_executor/host:host_platform",
@@ -868,6 +812,16 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "device_description_test",
+    srcs = ["device_description_test.cc"],
+    deps = [
+        ":device_description",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 #===--------------------------------------------------------------------------------------------===#
 # Aliases for StreamExecutor platforms
 #===--------------------------------------------------------------------------------------------===#
@@ -882,18 +836,7 @@ alias(
     actual = "//xla/stream_executor/rocm:all_runtime",
 )
 
-# TODO(ezhulenev): This should be removed.
-cc_library(
-    name = "stream_executor_bundle",
-    visibility = [":internal"],
-    deps = [
-        ":dnn",
-        ":platform_manager",
-        ":scratch_allocator",
-        ":stream_executor",
-        "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/stream_executor/host:host_platform_id",
-        "//xla/stream_executor/platform:dso_loader",
-        "//xla/stream_executor/rocm:rocm_platform_id",
-    ],
+alias(
+    name = "sycl_platform",
+    actual = "//xla/stream_executor/sycl:all_runtime",
 )

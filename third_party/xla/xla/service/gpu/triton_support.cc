@@ -21,12 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -34,6 +39,7 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace legacy_triton {
 
 bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   // The list is most likely incomplete.
@@ -51,22 +57,34 @@ bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   return false;
 }
 
-// Data types that are supported by the Triton emitters.
+// Types that are supported by Triton as dot output.
 //
 // BF16 is supported in a sense that all operations on it are implemented
 // through F32 and converts have to be inserted into the HLO graph, but
 // they can be missing during fusion.
-// TODO(b/266862493): Support more data types (F8, F64, etc.).
-bool IsTritonSupportedDataType(PrimitiveType type,
-                               const se::GpuComputeCapability& gpu_version) {
-  switch (type) {
-    case PRED:
-    case S8:
-    case S16:
-    case S32:
+bool IsTritonSupportedDotOutputType(
+    const PrimitiveType t, const se::GpuComputeCapability& gpu_version) {
+  switch (t) {
     case F16:
     case F32:
       return true;
+    case F8E5M2:
+      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                         return cc.IsAtLeastAmpere();
+                                       },
+                                       [](const se::RocmComputeCapability& cc) {
+                                         return false;
+                                       }},
+                        gpu_version);
+
+    case F8E4M3FN:
+      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                         return cc.IsAtLeastHopper();
+                                       },
+                                       [](const se::RocmComputeCapability& cc) {
+                                         return false;
+                                       }},
+                        gpu_version);
     case BF16:
       return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
                                          return true;
@@ -78,9 +96,27 @@ bool IsTritonSupportedDataType(PrimitiveType type,
     default:
       return false;
   }
+};
+
+// Data types that are supported by the Triton emitters.
+// TODO(b/266862493): Support more data types (F8, F64, etc.).
+bool IsTritonSupportedDataType(PrimitiveType type,
+                               const se::GpuComputeCapability& gpu_version) {
+  if (IsTritonSupportedDotOutputType(type, gpu_version)) {
+    return true;
+  }
+  switch (type) {
+    case PRED:
+    case S8:
+    case S16:
+    case S32:
+      return true;
+    default:
+      return false;
+  }
 }
 
-std::vector<HloOpcode> TritonSupportedUnaryElementwise(
+std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
     PrimitiveType element_type) {
   std::vector<HloOpcode> ret = {HloOpcode::kConvert};
   if (element_type == PrimitiveType::PRED) {
@@ -104,7 +140,7 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwise(
   return ret;
 }
 
-std::vector<HloOpcode> TritonSupportedBinaryElementwise(
+std::vector<HloOpcode> TritonSupportedBinaryElementwiseUpToFloatNormalization(
     PrimitiveType element_type) {
   if (element_type == PrimitiveType::PRED) {
     return {HloOpcode::kAnd, HloOpcode::kOr, HloOpcode::kXor,
@@ -123,19 +159,25 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwise(
   return ret;
 }
 
-std::vector<HloOpcode> TritonSupportedTernaryElementwise(
+std::vector<HloOpcode> TritonSupportedTernaryElementwiseUpToFloatNormalization(
     PrimitiveType element_type) {
   return {HloOpcode::kSelect, HloOpcode::kClamp};
 }
 
-bool IsTritonSupportedElementwise(HloOpcode opcode,
-                                  PrimitiveType element_type) {
-  return absl::c_linear_search(TritonSupportedUnaryElementwise(element_type),
-                               opcode) ||
-         absl::c_linear_search(TritonSupportedBinaryElementwise(element_type),
-                               opcode) ||
-         absl::c_linear_search(TritonSupportedTernaryElementwise(element_type),
-                               opcode);
+bool IsTritonSupportedElementwiseUpToFloatNormalization(
+    HloOpcode opcode, PrimitiveType element_type) {
+  return absl::c_linear_search(
+             TritonSupportedUnaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode) ||
+         absl::c_linear_search(
+             TritonSupportedBinaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode) ||
+         absl::c_linear_search(
+             TritonSupportedTernaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode);
 }
 
 CodegenDecision CanTritonHandleElementwise(
@@ -153,7 +195,7 @@ CodegenDecision CanTritonHandleElementwise(
 
   if (instr.opcode() == HloOpcode::kConstant) {
     return CodegenDecision{};
-  } else if (!IsTritonSupportedElementwise(
+  } else if (!IsTritonSupportedElementwiseUpToFloatNormalization(
                  instr.opcode(), instr.operand(0)->shape().element_type())) {
     return "Unsupported elementwise operation.";
   }
@@ -219,26 +261,9 @@ CodegenDecision CanTritonHandleGEMM(
     }
   }
 
-  auto supported_output_type = [&](const PrimitiveType t) {
-    switch (t) {
-      case F16:
-      case F32:
-        return true;
-      case BF16:
-        if (cuda_compute_capability) {
-          return true;
-        }
-        if (rocm_compute_capability) {
-          return rocm_compute_capability->has_bf16_dtype_support();
-        }
-        return false;
-      default:
-        return false;
-    }
-  };
-
   // TODO(b/266862493): Support more output types.
-  if (!supported_output_type(dot.shape().element_type())) {
+  if (!IsTritonSupportedDotOutputType(dot.shape().element_type(),
+                                      gpu_version)) {
     return "Unsupported output data type for Dot op.";
   }
 
@@ -371,10 +396,6 @@ CodegenDecision IsTritonSupportedInstruction(
       }
       return CanTritonHandleGEMM(*dot, gpu_version);
     }
-    case HloOpcode::kReduce: {
-      return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
-                                   gpu_version);
-    }
     case HloOpcode::kTuple: {
       if (instr.IsRoot()) {
         return CodegenDecision{};
@@ -398,6 +419,238 @@ CodegenDecision IsTritonSupportedInstruction(
       break;
   }
   return "Unsupported opcode.";
+}
+
+}  // namespace legacy_triton
+
+namespace {
+
+bool IsTritonSupportedDataType(PrimitiveType type,
+                               const se::GpuComputeCapability& gpu_version) {
+  switch (type) {
+    case PRED:
+    case S8:
+    case S16:
+    case S32:
+    case S64:
+    case U16:
+    case F16:
+    case F32:
+    case F64:
+      return true;
+    case F8E5M2:
+    case F8E4M3FN:
+      return std::holds_alternative<se::CudaComputeCapability>(gpu_version);
+    case BF16:
+      return std::holds_alternative<se::CudaComputeCapability>(gpu_version) ||
+             (std::holds_alternative<se::RocmComputeCapability>(gpu_version) &&
+              std::get<se::RocmComputeCapability>(gpu_version)
+                  .has_bf16_dtype_support());
+    default:
+      return false;
+  }
+}
+
+// Set of unary elementwise ops that are genuinely supported by Triton.
+// TODO(b/345763510): make sure that this is accurate. At the moment, this is
+// mostly a fork of the same code in legacy_triton::.
+absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
+    PrimitiveType element_type) {
+  if (element_type == PrimitiveType::PRED) {
+    return {HloOpcode::kNot};
+  }
+
+  if (element_type == PrimitiveType::U16) {
+    return {HloOpcode::kAbs};
+  }
+
+  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kAbs, HloOpcode::kConvert};
+
+  if (element_type != PrimitiveType::F8E5M2 &&
+      element_type != PrimitiveType::F8E4M3FN) {
+    ret.insert(HloOpcode::kNegate);
+  }
+
+  if (primitive_util::IsIntegralType(element_type)) {
+    ret.insert(HloOpcode::kNot);
+  }
+
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::F64) {
+    absl::flat_hash_set<HloOpcode> additional_opcodes{
+        HloOpcode::kCos,   HloOpcode::kExp,   HloOpcode::kExpm1,
+        HloOpcode::kFloor, HloOpcode::kCeil,  HloOpcode::kLog,
+        HloOpcode::kLog1p, HloOpcode::kRsqrt, HloOpcode::kSin,
+        HloOpcode::kSqrt,  HloOpcode::kCbrt,  HloOpcode::kTan,
+        HloOpcode::kTanh,  HloOpcode::kErf};
+    ret.insert(additional_opcodes.begin(), additional_opcodes.end());
+  }
+
+  if (element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16) {
+    absl::flat_hash_set<HloOpcode> additional_opcodes{HloOpcode::kFloor,
+                                                      HloOpcode::kCeil};
+    ret.insert(additional_opcodes.begin(), additional_opcodes.end());
+  }
+  return ret;
+}
+
+// Set of binary elementwise ops that are genuinely supported by Triton.
+// TODO(b/345763510): make sure that this is accurate. At the moment, this is
+// mostly a fork of the same code in legacy_triton::.
+absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
+    PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
+  if (element_type == PrimitiveType::F8E5M2 ||
+      element_type == PrimitiveType::F8E4M3FN) {
+    return {};
+  }
+
+  if (element_type == PrimitiveType::PRED) {
+    return {HloOpcode::kAnd,     HloOpcode::kOr,     HloOpcode::kXor,
+            HloOpcode::kCompare, HloOpcode::kAdd,    HloOpcode::kMultiply,
+            HloOpcode::kMaximum, HloOpcode::kMinimum};
+  }
+
+  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kCompare};
+
+  if (element_type != PrimitiveType::U16) {
+    ret.insert(HloOpcode::kAdd);
+    ret.insert(HloOpcode::kSubtract);
+    ret.insert(HloOpcode::kMaximum);
+    ret.insert(HloOpcode::kMinimum);
+    ret.insert(HloOpcode::kMultiply);
+
+    if (primitive_util::IsIntegralType(element_type)) {
+      ret.insert(HloOpcode::kDivide);
+      ret.insert(HloOpcode::kAnd);
+      ret.insert(HloOpcode::kOr);
+      ret.insert(HloOpcode::kXor);
+    }
+  }
+
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::F64) {
+    ret.insert(HloOpcode::kAtan2);
+    ret.insert(HloOpcode::kDivide);
+    ret.insert(HloOpcode::kRemainder);
+    ret.insert(HloOpcode::kPower);
+  }
+  return ret;
+}
+
+// Set of ternary elementwise ops that are genuinely supported by Triton.
+// TODO(b/345763510): make sure that this is accurate. At the moment, this is
+// mostly a fork of the same code in legacy_triton::.
+absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
+    PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
+  if (element_type == PrimitiveType::U16) {
+    return {};
+  }
+
+  if (element_type == PrimitiveType::F8E5M2 ||
+      element_type == PrimitiveType::F8E4M3FN) {
+    return {HloOpcode::kSelect};
+  }
+
+  return {HloOpcode::kSelect, HloOpcode::kClamp};
+}
+
+// Returns `true` if the given opcode and element type correspond to a n-ary
+// elementwise op that is genuinely supported by Triton. The caller is
+// responsible for ensuring that the relevant data type is supported on the
+// device of interest.
+bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
+                                  const se::GpuComputeCapability& gpu_version) {
+  return TritonSupportedUnaryElementwiseOps(element_type).contains(opcode) ||
+         TritonSupportedBinaryElementwiseOps(element_type, gpu_version)
+             .contains(opcode) ||
+         TritonSupportedTernaryElementwiseOps(element_type, gpu_version)
+             .contains(opcode);
+}
+
+CodegenDecision IsTritonSupportedInstructionImpl(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  bool output_type_is_supported =
+      IsTritonSupportedDataType(instr.shape().element_type(), gpu_version);
+
+  if (!output_type_is_supported) {
+    return "Unsupported output data type.";
+  }
+
+  bool input_types_are_supported =
+      absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
+        return IsTritonSupportedDataType(operand->shape().element_type(),
+                                         gpu_version);
+      });
+
+  if (!input_types_are_supported) {
+    return "Unsupported input data type.";
+  }
+
+  if (instr.IsElementwise()) {
+    if (!IsTritonSupportedElementwise(
+            instr.opcode(),
+            // Use the last operand below in order to support both `compare`
+            // and `select` which have a fixed PRED type in the output and first
+            // operand.
+            instr.operand(instr.operand_count() - 1)->shape().element_type(),
+            gpu_version)) {
+      return "Unsupported elementwise operation.";
+    }
+    return CodegenDecision{};
+  }
+
+  // TODO(bchetioui): support kDot, kPad, and kDynamicSlice.
+  switch (instr.opcode()) {
+    case HloOpcode::kReduce: {
+      // TODO(bchetioui): upgrade `CanTritonHandleReduce` to correspond to
+      // the new implementation.
+      return legacy_triton::CanTritonHandleReduce(
+          *Cast<HloReduceInstruction>(&instr), gpu_version);
+    }
+    case HloOpcode::kTranspose:
+    case HloOpcode::kSlice:
+    case HloOpcode::kParameter:
+    case HloOpcode::kBroadcast:
+      return CodegenDecision{};
+    default:
+      VLOG(2) << "Unsupported instruction: " << instr.ToString();
+      break;
+  }
+  return "Unsupported opcode.";
+}
+
+}  // namespace
+
+absl::Status EnsureTritonSupportsComputeCapability(
+    const se::GpuComputeCapability& gpu_compute_capability) {
+  auto cuda_compute_capability =
+      std::get_if<se::CudaComputeCapability>(&gpu_compute_capability);
+  auto rocm_compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_compute_capability);
+  if (!cuda_compute_capability && !rocm_compute_capability) {
+    return absl::FailedPreconditionError(
+        "Triton support is only enabled for CUDA and ROCm GPUs.");
+  }
+
+  if (cuda_compute_capability && !cuda_compute_capability->IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("CUDA Triton support is only enabled for Ampere GPUs ",
+                     "(compute capability 8.0) and up, but got compute ",
+                     "capability ", cuda_compute_capability->major, ".",
+                     cuda_compute_capability->minor, "."));
+  }
+
+  return absl::OkStatus();
+}
+
+CodegenDecision IsTritonSupportedInstruction(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  CodegenDecision decision =
+      IsTritonSupportedInstructionImpl(instr, gpu_version);
+  VLOG(2) << "IsTritonSupportedInstruction: " << instr.ToString() << " "
+          << bool(decision);
+  return decision;
 }
 
 }  // namespace gpu

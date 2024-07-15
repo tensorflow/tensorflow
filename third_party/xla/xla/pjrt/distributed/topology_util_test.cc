@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/test_helpers.h"
@@ -44,7 +45,8 @@ TEST(TopologyTest, BuildGlobalTopology) {
   d3->set_local_device_ordinal(1);
 
   GlobalTopologyProto global =
-      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals));
+      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
+                          /*assign_global_device_ids=*/true);
   EXPECT_EQ(global.nodes_size(), 2);
   EXPECT_EQ(global.nodes()[0].devices_size(), 2);
   EXPECT_EQ(global.nodes()[1].devices_size(), 2);
@@ -73,7 +75,8 @@ TEST(TopologyTest, ExchangeTopology) {
             /*platform=*/"cuda", /*node_id=*/i, num_nodes,
             /*get_local_topology_timeout=*/
             absl::Seconds(10), /*get_global_topology_timeout=*/
-            absl::Seconds(10), &kv_store, locals[i], &globals[i]));
+            absl::Seconds(10), &kv_store, locals[i], &globals[i],
+            /*assign_global_device_ids=*/true));
       });
     }
   }
@@ -104,7 +107,8 @@ TEST(TopologyTest, BuildGpuTopology) {
   d3->set_local_device_ordinal(1);
 
   GlobalTopologyProto global =
-      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals));
+      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
+                          /*assign_global_device_ids=*/true);
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
   EXPECT_EQ(gpu_topology.device_ids_size(), 4);
@@ -132,9 +136,14 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
   d2->set_local_device_ordinal(0);
 
   GlobalTopologyProto global =
-      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals));
+      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
+                          /*assign_global_device_ids=*/true);
 
-  EXPECT_IS_NOT_OK(BuildGpuTopology(global).status());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
+  EXPECT_EQ(gpu_topology.device_ids_size(), 3);
+  EXPECT_EQ(gpu_topology.num_slices(), -1);
+  EXPECT_EQ(gpu_topology.num_hosts_per_slice(), -1);
+  EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
@@ -154,9 +163,14 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
   d2->set_local_device_ordinal(0);
 
   GlobalTopologyProto global =
-      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals));
+      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
+                          /*assign_global_device_ids=*/true);
 
-  EXPECT_IS_NOT_OK(BuildGpuTopology(global).status());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
+  EXPECT_EQ(gpu_topology.device_ids_size(), 3);
+  EXPECT_EQ(gpu_topology.num_slices(), -1);
+  EXPECT_EQ(gpu_topology.num_hosts_per_slice(), -1);
+  EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
 }
 }  // namespace
 }  // namespace xla

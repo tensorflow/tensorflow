@@ -39,18 +39,16 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -58,15 +56,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/core/common_runtime/function_body.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -114,8 +110,9 @@ absl::StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
           absl::StrCat("Function ", func_name, " is not found."));
     }
     FunctionDef func_def;
-    TF_RETURN_IF_ERROR(ConvertMlirFunctionToFunctionLibraryDef(
-        func_op, GraphExportConfig(), &func_def));
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(
+            func_op, GraphExportConfig(), &func_def));
     xla_func_defs.push_back(func_def);
 
     // Visit each op in the function and find out referenced functions from the
@@ -347,7 +344,7 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->cost_threshold = options.cost_threshold;
   pipeline_options->min_num_batch_threads = options.min_num_batch_threads;
   pipeline_options->min_max_enqueued_batches = options.min_max_enqueued_batches;
-
+  pipeline_options->batch_padding_policy = options.batch_padding_policy;
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
 

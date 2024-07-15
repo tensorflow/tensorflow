@@ -86,12 +86,6 @@ def LegalizeNchwResizeNearestNeighbor2dComposite: Pat<
         ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
     [(IsNchwLayoutOp $attrs)]>;
 
-// This composite is created using pattern matching in the tflite converter.
-def LegalizeCompositeGELU : Pat<(MHLO_CompositeOp:$composite
-                                  (variadic $inputs),
-                                  ConstantStrAttr<StrAttr, "odml.internal.gelu">, $_, $_, $_),
-                                (TFL_GeluOp $inputs, ConstBoolAttrFalse)>;
-
 def LegalizeCompositeExactAtenGELU : Pat<
         (MHLO_CompositeOp:$composite
           (variadic $inputs),

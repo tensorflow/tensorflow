@@ -176,6 +176,7 @@ Useful logging and error messages
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -360,12 +361,6 @@ class MemorySpaceAssignment {
   // Remove the positions and chunks associated with the instruction from
   // alternate_memory_assignments_.
   void RemoveAssignmentForInstruction(const HloInstruction* instruction);
-
-  // Returns the estimated elapsed duration of the hlo module in seconds. It
-  // uses the 'allocations' argument to determine the location (default memory
-  // or alternate memory) of each operand and output of an instruction.
-  float ComputeEstimatedElapsedTime(const HloLiveRange& hlo_live_range,
-                                    const AllocationSequence& allocations);
 
   HloModule* module_;
   const Options& options_;

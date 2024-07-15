@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -952,14 +952,15 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
     }
     case HloOpcode::kCustomCall: {
       if (root->custom_call_target() == "SetBound") {
-        // `SetBound` doesn't change the static value of a tensor, so forward
-        // the operand when analyzing static value.
-        return PostorderDFSNode()
-            .AddDependency(root->operand_ids(0),
-                           PostorderDFSNodeType::kConstantValue, context)
-            .AddVisit([](Literal operand) -> absl::StatusOr<Literal> {
-              return operand;
-            });
+        return PostorderDFSNode().AddVisit([root]() -> absl::StatusOr<Literal> {
+          if (root->literal().shape().element_type() == TUPLE) {
+            // First literal of SetBound contains bounds, second literal
+            // contains dynamism indicators.
+            return Literal::CreateFromProto(root->literal().tuple_literals(0));
+          } else {
+            return Literal::CreateFromProto(root->literal());
+          }
+        });
       } else if (root->custom_call_target() == "Sharding") {
         return PostorderDFSNode()
             .AddDependency(root->operand_ids(0),

@@ -363,6 +363,14 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
                  << ": " << ToString(ret);
     }
   }
+#if TF_ROCM_VERSION >= 60000
+  if (auto *workspace = GetWorkspace(); workspace != nullptr &&
+                                        workspace->opaque() != nullptr &&
+                                        workspace->size() > 0) {
+    (void)wrap::rocblas_set_workspace(blas_, workspace->opaque(),
+                                      workspace->size());
+  }
+#endif
 
   ret = rocblas_func(blas_, std::forward<Args>(args)...);
   if (ret != rocblas_status_success) {
@@ -376,22 +384,6 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   return absl::OkStatus();
 }
 
-bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,
-                          const DeviceMemory<float> &x, int incx,
-                          DeviceMemory<float> *y, int incy) {
-  return DoBlasInternal(wrap::rocblas_saxpy, stream,
-                        /* pointer_mode_host = */ true, elem_count, &alpha,
-                        GpuMemory(x), incx, GpuMemoryMutable(y), incy);
-}
-
-bool ROCMBlas::DoBlasCopy(Stream *stream, uint64_t elem_count,
-                          const DeviceMemory<float> &x, int incx,
-                          DeviceMemory<float> *y, int incy) {
-  return DoBlasInternal(wrap::rocblas_scopy, stream,
-                        /* pointer_mode_host = */ true, elem_count,
-                        GpuMemory(x), incx, GpuMemoryMutable(y), incy);
-}
-
 #define Impl_DoBlasScal(Fun, T, Ta)                                         \
   bool ROCMBlas::DoBlasScal(Stream *stream, uint64_t elem_count, Ta alpha,  \
                             DeviceMemory<T> *x, int incx) {                 \
@@ -400,14 +392,14 @@ bool ROCMBlas::DoBlasCopy(Stream *stream, uint64_t elem_count,
                           incx);                                            \
   }
 
-Impl_DoBlasScal(wrap::rocblas_sscal, float,
-                float) Impl_DoBlasScal(wrap::rocblas_dscal, double, double)
-    Impl_DoBlasScal(wrap::rocblas_csscal, std::complex<float>, float)
-        Impl_DoBlasScal(wrap::rocblas_zdscal, std::complex<double>, double)
-            Impl_DoBlasScal(wrap::rocblas_cscal, std::complex<float>,
-                            std::complex<float>)
-                Impl_DoBlasScal(wrap::rocblas_zscal, std::complex<double>,
-                                std::complex<double>)
+Impl_DoBlasScal(wrap::rocblas_sscal, float, float)
+    Impl_DoBlasScal(wrap::rocblas_dscal, double, double)
+        Impl_DoBlasScal(wrap::rocblas_csscal, std::complex<float>, float)
+            Impl_DoBlasScal(wrap::rocblas_zdscal, std::complex<double>, double)
+                Impl_DoBlasScal(wrap::rocblas_cscal, std::complex<float>,
+                                std::complex<float>)
+                    Impl_DoBlasScal(wrap::rocblas_zscal, std::complex<double>,
+                                    std::complex<double>)
 #define Impl_DoBlasGemv(fun, T)                                                \
   bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m, \
                             uint64_t n, T alpha, const DeviceMemory<T> &a,     \
@@ -419,40 +411,28 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float,
                           complex_cast(beta), complex_cast(y), incy);          \
   }
 
-                    Impl_DoBlasGemv(wrap::rocblas_sgemv, float)
-                        Impl_DoBlasGemv(wrap::rocblas_dgemv, double)
-                            Impl_DoBlasGemv(wrap::rocblas_cgemv,
-                                            std::complex<float>)
-                                Impl_DoBlasGemv(wrap::rocblas_zgemv,
-                                                std::complex<double>)
+                        Impl_DoBlasGemv(wrap::rocblas_sgemv, float)
+                            Impl_DoBlasGemv(wrap::rocblas_dgemv, double)
+                                Impl_DoBlasGemv(wrap::rocblas_cgemv,
+                                                std::complex<float>)
+                                    Impl_DoBlasGemv(wrap::rocblas_zgemv,
+                                                    std::complex<double>)
 
-                                    bool ROCMBlas::DoBlasSbmv(
-                                        Stream *stream, blas::UpperLower uplo,
-                                        uint64_t n, uint64_t k, float alpha,
-                                        const DeviceMemory<float> &a, int lda,
-                                        const DeviceMemory<float> &x, int incx,
-                                        float beta, DeviceMemory<float> *y,
-                                        int incy) {
-  return DoBlasInternal(
-      wrap::rocblas_ssbmv, stream, /* pointer_mode_host = */ true,
-      ROCMBlasUpperLower(uplo), n, k, &alpha, GpuMemory(a), lda, GpuMemory(x),
-      incx, &beta, GpuMemoryMutable(y), incy);
-}
-
-/**
- *
- *  ALPHA/BETA TYPES
- *
- * For half and bf16, alpha and beta point to floats.
- * For all other types, alpha and beta point to values of the same type as
- *a/b/c.
- *
- * On the rocblas side, non-ex functions expect the same type as a/b/c
- *    (this seems to be a deviation from the blas standard);
- *    and ex functions expect the same type as the compute type (i.e. floats.)
- *
- **/
-using GemmCallTrace = StreamExecutor::GemmCallTrace;
+    /**
+     *
+     *  ALPHA/BETA TYPES
+     *
+     * For half and bf16, alpha and beta point to floats.
+     * For all other types, alpha and beta point to values of the same type as
+     *a/b/c.
+     *
+     * On the rocblas side, non-ex functions expect the same type as a/b/c
+     *    (this seems to be a deviation from the blas standard);
+     *    and ex functions expect the same type as the compute type (i.e.
+     *floats.)
+     *
+     **/
+    using GemmCallTrace = StreamExecutor::GemmCallTrace;
 
 // Log the GEMM operation if the logging mode is enabled.
 void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,
@@ -692,17 +672,17 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
   auto blas_lambda = [this, out_algorithms](auto handle, auto &&blas_func,
                                             auto &&...rest) {
     rocblas_int num_sols = 0;
-
+    // If get_solutions call fails, we still can use the default (fallback)
+    // algorithm which is available for almost all number types.
     if (auto ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
                              nullptr, &num_sols);
-        ret != rocblas_status_success) {
-      return ret;
-    }
-    solutions_.resize(num_sols);
-    if (auto ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
-                             solutions_.data(), &num_sols);
-        ret != rocblas_status_success) {
-      return ret;
+        ret == rocblas_status_success) {
+      solutions_.resize(num_sols);
+      if (ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
+                          solutions_.data(), &num_sols);
+          ret != rocblas_status_success) {
+        num_sols = 0;
+      }
     }
     out_algorithms->resize(num_sols + 1);
     (*out_algorithms)[0] = blas::kDefaultAlgorithm;
@@ -1251,21 +1231,21 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 }
 
 absl::Status ROCMBlas::GetVersion(std::string *version) {
-#if TF_ROCM_VERSION >= 60300  // Not yet available in ROCM-6.1
+#if TF_ROCM_VERSION >= 60200  // Not available in ROCM-6.1
   absl::MutexLock lock{&mu_};
   size_t len = 0;
-  if (auto res = rocblas_get_version_string_size(&len);
+  if (auto res = wrap::rocblas_get_version_string_size(&len);
       res != rocblas_status_success) {
     return absl::InternalError(
         absl::StrCat("GetVersion failed with: ", ToString(res)));
   }
   std::vector<char> buf(len + 1);
-  if (auto res = rocblas_get_version_string(buf.data(), len);
+  if (auto res = wrap::rocblas_get_version_string(buf.data(), len);
       res != rocblas_status_success) {
     return absl::InternalError(
         absl::StrCat("GetVersion failed with: ", ToString(res)));
   }
-  *version = string(buf.begin(), buf.end());
+  *version = std::string(buf.begin(), buf.end());
   return absl::OkStatus();
 #else
   return absl::UnimplementedError("");

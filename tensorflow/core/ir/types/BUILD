@@ -121,6 +121,7 @@ tf_cc_test(
         ":Dialect",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",

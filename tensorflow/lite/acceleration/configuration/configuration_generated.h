@@ -1692,7 +1692,7 @@ struct XNNPackSettingsT : public ::flatbuffers::NativeTable {
   typedef XNNPackSettings TableType;
   int32_t num_threads = 0;
   tflite::XNNPackFlags flags = tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS;
-  std::string experimental_weight_cache_file_path{};
+  std::string weight_cache_file_path{};
 };
 
 struct XNNPackSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -1701,7 +1701,7 @@ struct XNNPackSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUM_THREADS = 4,
     VT_FLAGS = 6,
-    VT_EXPERIMENTAL_WEIGHT_CACHE_FILE_PATH = 8
+    VT_WEIGHT_CACHE_FILE_PATH = 8
   };
   int32_t num_threads() const {
     return GetField<int32_t>(VT_NUM_THREADS, 0);
@@ -1709,15 +1709,15 @@ struct XNNPackSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   tflite::XNNPackFlags flags() const {
     return static_cast<tflite::XNNPackFlags>(GetField<int32_t>(VT_FLAGS, 0));
   }
-  const ::flatbuffers::String *experimental_weight_cache_file_path() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_EXPERIMENTAL_WEIGHT_CACHE_FILE_PATH);
+  const ::flatbuffers::String *weight_cache_file_path() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_WEIGHT_CACHE_FILE_PATH);
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_NUM_THREADS, 4) &&
            VerifyField<int32_t>(verifier, VT_FLAGS, 4) &&
-           VerifyOffset(verifier, VT_EXPERIMENTAL_WEIGHT_CACHE_FILE_PATH) &&
-           verifier.VerifyString(experimental_weight_cache_file_path()) &&
+           VerifyOffset(verifier, VT_WEIGHT_CACHE_FILE_PATH) &&
+           verifier.VerifyString(weight_cache_file_path()) &&
            verifier.EndTable();
   }
   XNNPackSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1735,8 +1735,8 @@ struct XNNPackSettingsBuilder {
   void add_flags(tflite::XNNPackFlags flags) {
     fbb_.AddElement<int32_t>(XNNPackSettings::VT_FLAGS, static_cast<int32_t>(flags), 0);
   }
-  void add_experimental_weight_cache_file_path(::flatbuffers::Offset<::flatbuffers::String> experimental_weight_cache_file_path) {
-    fbb_.AddOffset(XNNPackSettings::VT_EXPERIMENTAL_WEIGHT_CACHE_FILE_PATH, experimental_weight_cache_file_path);
+  void add_weight_cache_file_path(::flatbuffers::Offset<::flatbuffers::String> weight_cache_file_path) {
+    fbb_.AddOffset(XNNPackSettings::VT_WEIGHT_CACHE_FILE_PATH, weight_cache_file_path);
   }
   explicit XNNPackSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -1753,9 +1753,9 @@ inline ::flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t num_threads = 0,
     tflite::XNNPackFlags flags = tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS,
-    ::flatbuffers::Offset<::flatbuffers::String> experimental_weight_cache_file_path = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> weight_cache_file_path = 0) {
   XNNPackSettingsBuilder builder_(_fbb);
-  builder_.add_experimental_weight_cache_file_path(experimental_weight_cache_file_path);
+  builder_.add_weight_cache_file_path(weight_cache_file_path);
   builder_.add_flags(flags);
   builder_.add_num_threads(num_threads);
   return builder_.Finish();
@@ -1765,13 +1765,13 @@ inline ::flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettingsDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t num_threads = 0,
     tflite::XNNPackFlags flags = tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS,
-    const char *experimental_weight_cache_file_path = nullptr) {
-  auto experimental_weight_cache_file_path__ = experimental_weight_cache_file_path ? _fbb.CreateString(experimental_weight_cache_file_path) : 0;
+    const char *weight_cache_file_path = nullptr) {
+  auto weight_cache_file_path__ = weight_cache_file_path ? _fbb.CreateString(weight_cache_file_path) : 0;
   return tflite::CreateXNNPackSettings(
       _fbb,
       num_threads,
       flags,
-      experimental_weight_cache_file_path__);
+      weight_cache_file_path__);
 }
 
 ::flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(::flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4937,7 +4937,7 @@ inline bool operator==(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs)
   return
       (lhs.num_threads == rhs.num_threads) &&
       (lhs.flags == rhs.flags) &&
-      (lhs.experimental_weight_cache_file_path == rhs.experimental_weight_cache_file_path);
+      (lhs.weight_cache_file_path == rhs.weight_cache_file_path);
 }
 
 inline bool operator!=(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs) {
@@ -4956,7 +4956,7 @@ inline void XNNPackSettings::UnPackTo(XNNPackSettingsT *_o, const ::flatbuffers:
   (void)_resolver;
   { auto _e = num_threads(); _o->num_threads = _e; }
   { auto _e = flags(); _o->flags = _e; }
-  { auto _e = experimental_weight_cache_file_path(); if (_e) _o->experimental_weight_cache_file_path = _e->str(); }
+  { auto _e = weight_cache_file_path(); if (_e) _o->weight_cache_file_path = _e->str(); }
 }
 
 inline ::flatbuffers::Offset<XNNPackSettings> XNNPackSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -4969,12 +4969,12 @@ inline ::flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(::flatbuffer
   struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const XNNPackSettingsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _num_threads = _o->num_threads;
   auto _flags = _o->flags;
-  auto _experimental_weight_cache_file_path = _o->experimental_weight_cache_file_path.empty() ? 0 : _fbb.CreateString(_o->experimental_weight_cache_file_path);
+  auto _weight_cache_file_path = _o->weight_cache_file_path.empty() ? 0 : _fbb.CreateString(_o->weight_cache_file_path);
   return tflite::CreateXNNPackSettings(
       _fbb,
       _num_threads,
       _flags,
-      _experimental_weight_cache_file_path);
+      _weight_cache_file_path);
 }
 
 

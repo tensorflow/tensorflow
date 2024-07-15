@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -20,9 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
@@ -33,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/testing/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"

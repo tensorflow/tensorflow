@@ -36,9 +36,11 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/shape.h"
@@ -63,6 +65,9 @@ class PyClient {
   virtual ~PyClient();
 
   ifrt::Client* ifrt_client() const { return ifrt_client_.get(); }
+  const std::shared_ptr<ifrt::Client>& shared_ptr_ifrt_client() const {
+    return ifrt_client_;
+  }
 
   // Short-term escape hatch to get PjRtClient from PyClient.
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
@@ -109,8 +114,7 @@ class PyClient {
 
   // Returns implementation-specific attributes about this client, e.g. the PJRT
   // C API version if applicable.
-  const absl::flat_hash_map<std::string, xla::ifrt::Client::ClientAttribute>&
-  attributes() const {
+  const xla::ifrt::AttributeMap& Attributes() const {
     return client_attributes_;
   }
 
@@ -233,8 +237,7 @@ class PyClient {
   static PyType_Slot slots_[];
 
   std::shared_ptr<ifrt::Client> ifrt_client_;
-  absl::flat_hash_map<std::string, xla::ifrt::Client::ClientAttribute>
-      client_attributes_;
+  xla::ifrt::AttributeMap client_attributes_;
   // Pointers to intrusive doubly-linked lists of arrays and executables, used
   // to iterate over all known objects when heap profiling. The list structure
   // is protected by the GIL.

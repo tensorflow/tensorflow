@@ -145,19 +145,20 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
 
   constexpr auto kUpdatesIndexing = R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    ((bl_x * 16 + th_x floordiv 8) floordiv 25) mod 42,
-    ((bl_x * 32 + th_x floordiv 4) floordiv 5) mod 10,
-    (bl_x * 128 + th_x) mod 20)
+      (bl_x * 128 + th_x) floordiv 200,
+      ((bl_x * 128 + th_x) floordiv 20) mod 10,
+      (bl_x * 128 + th_x) mod 20
+    )
     domain:
-    th_x in [0, 127]
-    th_y in [0, 0]
-    th_z in [0, 0]
-    bl_x in [0, 65]
-    bl_y in [0, 0]
-    bl_z in [0, 0]
-    chunk_id in [0, 0]
-    unroll_id in [0, 0]
-    th_x + bl_x * 128 in [0, 8399]
+    th_x in [0, 128)
+    th_y in [0, 1)
+    th_z in [0, 1)
+    bl_x in [0, 66)
+    bl_y in [0, 1)
+    bl_z in [0, 1)
+    chunk_id in [0, 1)
+    unroll_id in [0, 1)
+    bl_x * 128 + th_x in [0, 8400)
   )";
   EXPECT_THAT(
       fusion
@@ -185,19 +186,19 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
       MatchIndexingString(kUpdatesIndexing));
 
   constexpr auto kIndicesIndexing = R"(
-    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id, index_id] -> (
-    ((bl_x * 16 + th_x floordiv 8) floordiv 25) mod 42, 0)
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id, index_id] ->
+      ((bl_x * 128 + th_x) floordiv 200, 0)
     domain:
-    th_x in [0, 127]
-    th_y in [0, 0]
-    th_z in [0, 0]
-    bl_x in [0, 65]
-    bl_y in [0, 0]
-    bl_z in [0, 0]
-    chunk_id in [0, 0]
-    unroll_id in [0, 0]
-    index_id in [0, 0]
-    th_x + bl_x * 128 in [0, 8399]
+    th_x in [0, 128)
+    th_y in [0, 1)
+    th_z in [0, 1)
+    bl_x in [0, 66)
+    bl_y in [0, 1)
+    bl_z in [0, 1)
+    chunk_id in [0, 1)
+    unroll_id in [0, 1)
+    index_id in [0, 1)
+    bl_x * 128 + th_x in [0, 8400)
   )";
   EXPECT_THAT(
       fusion

@@ -67,12 +67,11 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -330,11 +329,6 @@ absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(
   args.id = global_device_id.value();
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Client_LookupDevice(&args), c_api_);
   return GetCppDevice(args.device);
-}
-
-absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
-    int local_hardware_id) const {
-  return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
 }
 
 absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
@@ -823,11 +817,7 @@ bool PjRtCApiDevice::IsAddressable() const {
   return args.is_addressable;
 }
 
-int PjRtCApiDevice::local_hardware_id() const {
-  return local_hardware_id_typed().value();
-}
-
-PjRtLocalHardwareId PjRtCApiDevice::local_hardware_id_typed() const {
+PjRtLocalHardwareId PjRtCApiDevice::local_hardware_id() const {
   PJRT_Device_LocalHardwareId_Args args;
   args.struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -1173,17 +1163,12 @@ PjRtCApiExecutable::GetHloModules() const {
       return xla::Internal("failed to convert to MHLO");
     // TODO(jieying): Tuple args should really come from GetCompileOptions (or
     // equivalent) once implemented.
-    TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module.get(), &hlo_proto,
-                                                 /*use_tuple_args=*/false,
-                                                 /*return_tuple=*/false));
-    xla::DebugOptions debug_options;
-    TF_ASSIGN_OR_RETURN(xla::HloModuleConfig module_config,
-                        xla::HloModule::CreateModuleConfigFromProto(
-                            hlo_proto.hlo_module(), debug_options));
+    mlir::MlirToHloConversionOptions options;
+    options.return_tuple = false;
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloModule> hlo_module,
+                        mlir::ConvertMlirHloToHloModule(module.get(), options));
+
     std::vector<std::shared_ptr<HloModule>> out;
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> hlo_module,
-        HloModule::CreateFromProto(hlo_proto.hlo_module(), module_config));
     out.push_back(std::move(hlo_module));
     return out;
   }

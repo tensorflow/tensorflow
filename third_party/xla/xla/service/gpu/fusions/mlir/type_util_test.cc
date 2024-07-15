@@ -54,6 +54,14 @@ TEST(TensorShapeTest, ConvertsShape) {
             "tensor<4x5x6xi32>");
 }
 
+TEST(TensorShapeTest, ConvertsPred) {
+  mlir::MLIRContext ctx;
+  mlir::OpBuilder b(&ctx);
+  EXPECT_EQ(TypeToString(TensorShapeToMlirType(
+                ShapeUtil::MakeShape(PRED, {4, 5, 6}), b)),
+            "tensor<4x5x6xi8>");
+}
+
 TEST(TensorShapeTest, ConvertsLayout) {
   mlir::MLIRContext ctx;
   mlir::OpBuilder b(&ctx);

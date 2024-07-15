@@ -19,14 +19,28 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {

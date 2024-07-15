@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/topology_util.h"
 
+#include <algorithm>
 #include <fstream>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -34,7 +37,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -125,7 +127,8 @@ static absl::StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
 
 // Steals the contents of `local_topologies`.
 GlobalTopologyProto BuildGlobalTopology(
-    absl::Span<LocalTopologyProto> local_topologies) {
+    absl::Span<LocalTopologyProto> local_topologies,
+    bool assign_global_device_ids) {
   GlobalTopologyProto global_topology;
   int next_global_device_id = 0;
   // Assign local devices of the same host to the same slice_index.
@@ -140,7 +143,9 @@ GlobalTopologyProto BuildGlobalTopology(
       ++next_slice_index;
     }
     for (DeviceProto& device : *local.mutable_devices()) {
-      device.set_global_device_id(next_global_device_id++);
+      if (assign_global_device_ids) {
+        device.set_global_device_id(next_global_device_id++);
+      }
       device.set_slice_index(it->second);
     }
     global_topology.add_nodes()->Swap(&local);
@@ -161,7 +166,8 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
                                 absl::Duration get_global_topology_timeout,
                                 KeyValueStoreInterface* kv_store,
                                 const LocalTopologyProto& local_topology,
-                                GlobalTopologyProto* global_topology) {
+                                GlobalTopologyProto* global_topology,
+                                bool assign_global_device_ids) {
   VLOG(3) << "Local Topology for platform" << platform << ":\n"
           << local_topology.DebugString();
   if (num_nodes == 1) {
@@ -184,7 +190,8 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
                         GetAllLocalTopologies(platform, num_nodes, kv_store,
                                               get_local_topology_timeout));
     *global_topology =
-        BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies));
+        BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies),
+                            assign_global_device_ids);
     TF_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
                                      global_topology->SerializeAsString()));
   } else {
@@ -198,47 +205,66 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
   return absl::OkStatus();
 }
 
+bool IsGpuTopologySymmetric(
+    const std::map<int, std::set<int>>& slice_id_to_node_ids,
+    const std::map<int, int>& node_id_to_device_count) {
+  CHECK(!slice_id_to_node_ids.empty());
+  CHECK(!node_id_to_device_count.empty());
+
+  int num_hosts_per_slice = slice_id_to_node_ids.begin()->second.size();
+  int num_devices_per_host = node_id_to_device_count.begin()->second;
+  for (const auto& [slice_id, node_ids] : slice_id_to_node_ids) {
+    if (node_ids.size() != num_hosts_per_slice) {
+      LOG(INFO) << "GpuTopology is asymmetric as it has different number "
+                   "of hosts per slice.";
+      return false;
+    }
+  }
+  for (const auto& [node_id, device_count] : node_id_to_device_count) {
+    if (device_count != num_devices_per_host) {
+      LOG(INFO) << "GpuTopology is asymmetric as it has different number "
+                   "of devices per host.";
+      return false;
+    }
+  }
+  return true;
+}
+
 absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     const GlobalTopologyProto& global_topology) {
   GpuTopologyProto gpu_topology;
-  std::map<int, std::vector<int>> slice_id_to_node_ids;
+  std::map<int, std::set<int>> slice_id_to_node_ids;
+  std::map<int, int> node_id_to_device_count;
   std::vector<int> device_ids;
   for (int i = 0; i < global_topology.nodes_size(); ++i) {
     const LocalTopologyProto& local_topology = global_topology.nodes(i);
 
-    slice_id_to_node_ids[local_topology.devices(0).slice_index()].push_back(
-        local_topology.node_id());
-
-    // Initializes GPU topology with the first local topology.
-    if (i == 0) {
-      gpu_topology.set_platform_version((local_topology.devices(0).name()));
-      gpu_topology.set_num_devices_per_host(local_topology.devices_size());
-    } else {
-      // Check for consistent number of devices per host.
-      if (gpu_topology.num_devices_per_host() !=
-          local_topology.devices_size()) {
-        return absl::InternalError(
-            "GpuTopology doesn't support multi-host with different number of "
-            "devices per host.");
-      }
-    }
-
+    node_id_to_device_count[local_topology.node_id()] =
+        local_topology.devices_size();
     for (const DeviceProto& device : local_topology.devices()) {
+      if (gpu_topology.platform_version().empty()) {
+        gpu_topology.set_platform_version(device.name());
+      }
+      slice_id_to_node_ids[device.slice_index()].insert(
+          local_topology.node_id());
       device_ids.push_back(device.global_device_id());
     }
   }
 
-  gpu_topology.set_num_slices(slice_id_to_node_ids.size());
-  gpu_topology.set_num_hosts_per_slice(
-      slice_id_to_node_ids.begin()->second.size());
-  // Check for consistent number of hosts per slice.
-  for (const auto& [boot_id, node_ids] : slice_id_to_node_ids) {
-    if (node_ids.size() != gpu_topology.num_hosts_per_slice()) {
-      return absl::InternalError(
-          "GpuTopology doesn't support multi-host with different number of "
-          "hosts per slice.");
-    }
+  if (IsGpuTopologySymmetric(slice_id_to_node_ids, node_id_to_device_count)) {
+    gpu_topology.set_num_slices(slice_id_to_node_ids.size());
+    gpu_topology.set_num_hosts_per_slice(
+        slice_id_to_node_ids.begin()->second.size());
+    gpu_topology.set_num_devices_per_host(
+        node_id_to_device_count.begin()->second);
+  } else {
+    // If gpu topology is not symmetric, then we don't need to populate
+    // the topology with the slice/host/device information.
+    gpu_topology.set_num_slices(-1);
+    gpu_topology.set_num_hosts_per_slice(-1);
+    gpu_topology.set_num_devices_per_host(-1);
   }
+  std::sort(device_ids.begin(), device_ids.end());
   gpu_topology.mutable_device_ids()->Add(device_ids.begin(), device_ids.end());
   return gpu_topology;
 }

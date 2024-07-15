@@ -1,4 +1,4 @@
-# GPU acceleration delegate with Interpreter API
+# GPU acceleration delegate with Java/Kotlin Interpreter API
 
 Using graphics processing units (GPUs) to run your machine learning (ML) models
 can dramatically improve the performance and the user experience
@@ -6,7 +6,7 @@ of your ML-enabled applications. On Android devices, you can enable
 
 [*delegate*](../../performance/delegates) and one of the following APIs:
 
-- Interpreter API - this guide
+- Java/Kotlin Interpreter API - this guide
 - Task library API - [guide](./gpu_task)
 - Native (C/C++) API - [guide](./gpu_native)
 
@@ -18,7 +18,7 @@ TensorFlow Lite, including best practices and advanced techniques, see the
 
 ## Use GPU with TensorFlow Lite with Google Play services
 
-The TensorFlow Lite [Interpreter API](https://tensorflow.org/lite/api_docs/java/org/tensorflow/lite/InterpreterApi)
+The TensorFlow Lite Java/Kotlin [Interpreter API](https://tensorflow.org/lite/api_docs/java/org/tensorflow/lite/InterpreterApi)
 provides a set of general purpose APIs for building a machine learning
 applications. This section describes how to use the GPU accelerator delegate
 with these APIs with TensorFlow Lite with Google Play services.

@@ -21,10 +21,12 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -265,6 +267,22 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
   }
 };
 
+// Swaps pairs of values in the vector: [0, 1, 2, 3] -> [1, 0, 3, 2].
+Value PermutePairsInVector(Value vector, mlir::ImplicitLocOpBuilder& b) {
+  // There is a `vector.extract_strided_slice` op that would be useful here, but
+  // it actually requires the strides to be 1.
+  auto ty = mlir::cast<mlir::VectorType>(vector.getType());
+  int size = ty.getNumElements();
+  Value result = vector;
+  for (int i = 0; i < size; i += 2) {
+    auto v0 = b.create<mlir::vector::ExtractOp>(vector, i);
+    auto v1 = b.create<mlir::vector::ExtractOp>(vector, i + 1);
+    result = b.create<mlir::vector::InsertOp>(v1, result, i);
+    result = b.create<mlir::vector::InsertOp>(v0, result, i + 1);
+  }
+  return result;
+}
+
 struct RewriteTransferRead
     : mlir::OpRewritePattern<mlir::vector::TransferReadOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -279,16 +297,37 @@ struct RewriteTransferRead
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto linear_index = GetLinearIndex(source, op.getIndices(), rewriter);
-    Type element_type = source.getType().getElementType();
-    auto gep = CreateGep(source, linear_index, rewriter, element_type);
 
-    mlir::LLVMTypeConverter converter(rewriter.getContext());
-    auto llvm_vector_type = converter.convertType(op.getVectorType());
-    auto load =
-        rewriter.create<mlir::LLVM::LoadOp>(gep.getLoc(), llvm_vector_type, gep)
-            .getResult();
+    mlir::VectorType vector_type = op.getVectorType();
+    if (vector_type.getElementType().isInteger(1)) {
+      vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
+    }
+    mlir::Type gep_element_type = vector_type.getElementType();
+    if (op.getVectorType().getElementType().isInteger(4)) {
+      linear_index = b.create<arith::ShRUIOp>(
+          linear_index,
+          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+      gep_element_type = b.getI8Type();
+    }
+    auto gep = CreateGep(source, linear_index, rewriter, gep_element_type);
+
+    mlir::LLVMTypeConverter converter(b.getContext());
+    auto llvm_vector_type = converter.convertType(vector_type);
+    auto loaded =
+        b.create<mlir::LLVM::LoadOp>(llvm_vector_type, gep).getResult();
+
+    if (source.getType().getElementType().isInteger(1)) {
+      Value zero = b.create<mlir::arith::ConstantOp>(
+          mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
+      loaded = b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, loaded, zero);
+    } else if (source.getType().getElementType().isInteger(4)) {
+      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
+      // elements.
+      loaded = PermutePairsInVector(loaded, b);
+    }
+
     rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-        op, op.getType(), load);
+        op, op.getType(), loaded);
     return success();
   }
 };
@@ -366,19 +405,31 @@ struct RewriteTransferWrite
     auto linear_index = GetLinearIndex(tensor_dest, op.getIndices(), rewriter);
     auto element_type = tensor_dest.getType().getElementType();
 
-    auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
     mlir::Value vector_value = op.getVector();
+    if (op.getVectorType().getElementType().isInteger(1)) {
+      vector_value = b.create<arith::ExtUIOp>(
+          op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
+          vector_value);
+    }
+    if (op.getVectorType().getElementType().isInteger(4)) {
+      linear_index = b.create<arith::ShRUIOp>(
+          linear_index,
+          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+      element_type = rewriter.getI8Type();
+      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
+      // elements.
+      vector_value = PermutePairsInVector(vector_value, b);
+    }
+    auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
 
     mlir::LLVMTypeConverter converter(getContext());
     auto llvm_type = converter.convertType(vector_value.getType());
-    vector_value = rewriter
-                       .create<mlir::UnrealizedConversionCastOp>(
-                           gep.getLoc(), llvm_type, vector_value)
-                       .getResult(0);
-    rewriter.create<mlir::LLVM::StoreOp>(gep.getLoc(), vector_value, gep);
+    vector_value =
+        b.create<mlir::UnrealizedConversionCastOp>(llvm_type, vector_value)
+            .getResult(0);
+    b.create<mlir::LLVM::StoreOp>(vector_value, gep);
 
-    op.replaceAllUsesWith(mlir::ValueRange{op.getSource()});
-    op.erase();
+    rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
     return success();
   }
 };
@@ -679,7 +730,7 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
       case ml::AtomicBinOp::xchg: {
         rewriter.create<ml::StoreOp>(
             loc, modifier_arg, addr,
-            /*alignment=*/element_type.getIntOrFloatBitWidth(),
+            /*alignment=*/element_type.getIntOrFloatBitWidth() / 8,
             /*volatile*/ false, /*isNonTemporal=*/false,
             ml::AtomicOrdering::unordered);
         return success();
@@ -722,11 +773,14 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     bool is_supported_f16_atomic =
         element_type.isF16() &&
         cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA);
+    bool is_supported_bf16_atomic =
+        element_type.isBF16() &&
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
     bool is_supported_f64_atomic =
         element_type.isF64() &&
         cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::PASCAL_);
     if (!element_type.isF32() && !is_supported_f16_atomic &&
-        !is_supported_f64_atomic) {
+        !is_supported_bf16_atomic && !is_supported_f64_atomic) {
       return failure();
     }
     b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,

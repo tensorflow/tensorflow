@@ -36,7 +36,7 @@ class BufferedWritableFile : public WritableFile {
   }
   ~BufferedWritableFile() override { Close().IgnoreError(); }
 
-  Status Append(StringPiece str_data) override {
+  absl::Status Append(StringPiece str_data) override {
     int64_t bytes_left = str_data.size();
     const char* data = str_data.data();
 
@@ -58,22 +58,22 @@ class BufferedWritableFile : public WritableFile {
       bytes_left -= append_bytes;
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Append(const absl::Cord& data) override {
+  absl::Status Append(const absl::Cord& data) override {
     for (absl::string_view fragment : data.Chunks()) {
       TF_RETURN_IF_ERROR(Append(fragment));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Close() override {
+  absl::Status Close() override {
     TF_RETURN_IF_ERROR(Flush());
     return file_->Close();
   }
 
-  Status Flush() override {
+  absl::Status Flush() override {
     if (buffer_pos_ > 0) {
       TF_RETURN_IF_ERROR(file_->Append(StringPiece(&buffer_[0], buffer_pos_)));
       buffer_pos_ = 0;
@@ -81,18 +81,18 @@ class BufferedWritableFile : public WritableFile {
     return file_->Flush();
   }
 
-  tsl::Status Tell(int64_t* position) override {
+  absl::Status Tell(int64_t* position) override {
     int64_t bytes_written;
-    tsl::Status status = file_->Tell(&bytes_written);
+    absl::Status status = file_->Tell(&bytes_written);
     if (status.ok()) {
       *position = bytes_written + buffer_pos_;
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return status;
     }
   }
 
-  Status Sync() override { return file_->Sync(); }
+  absl::Status Sync() override { return file_->Sync(); }
 
   // For compatibilty with the TensorBundle writer, we expose CRC32 checksums.
   uint32_t crc32() const { return crc32_; }

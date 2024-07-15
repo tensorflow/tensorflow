@@ -61,7 +61,7 @@ for i in "$@"; do
 done
 
 # Call the C++ compiler
-/usr/lib/llvm-17/bin/clang "$@"
+/usr/lib/llvm-18/bin/clang "$@"
 
 function get_library_path() {
     for libdir in ${LIB_DIRS}; do
@@ -112,7 +112,7 @@ for rpath in ${RPATHS}; do
         if [[ -n "${libname-}" ]]; then
             libpath=$(get_library_path ${lib})
             if [ -n "${libpath}" ]; then
-                /usr/lib/llvm-17/bin/llvm-install-name-tool -change $(get_otool_path "${libpath}") \
+                /usr/lib/llvm-18/bin/llvm-install-name-tool -change $(get_otool_path "${libpath}") \
                     "@loader_path/${rpath}/${libname}" "${OUTPUT}"
             fi
         fi

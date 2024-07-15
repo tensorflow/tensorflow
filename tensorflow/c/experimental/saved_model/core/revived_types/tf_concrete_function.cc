@@ -22,14 +22,13 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/flat_tensor_function.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

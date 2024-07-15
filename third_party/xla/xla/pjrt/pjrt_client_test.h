@@ -24,8 +24,7 @@ limitations under the License.
 namespace xla {
 
 void RegisterTestClientFactory(
-    std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory);
-
+    std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory);
 }
 
 #endif  // XLA_PJRT_PJRT_CLIENT_TEST_H_

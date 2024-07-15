@@ -36,17 +36,21 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/layout_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/sharding_format_picker.h"
 #include "xla/service/spmd/spmd_prepare.h"
+#include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -642,6 +646,30 @@ ENTRY entry {
                                        op::Reshape(), op::Constant())),
                   op::DynamicSlice(op::Pad(op::Constant(), op::Constant()),
                                    op::Reshape(), op::Constant()))));
+}
+
+TEST_P(SpmdPartitioningTest, TiledElementwiseOperandsSameSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[32,32] parameter(0), sharding={devices=[2,2]<=[4]}
+  b = f32[32,32] parameter(1), sharding={devices=[2,2]<=[4]}
+  c = f32[32,32] multiply(a, b), sharding={replicated}
+  ROOT d = f32[32,32] add(c, c), sharding={devices=[4,1]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto multiply = FindInstruction(module.get(), "c.1");
+  EXPECT_NE(multiply, nullptr);
+  EXPECT_THAT(multiply, op::Shape("f32[16,16]"));
+  EXPECT_THAT(multiply, op::Multiply(op::Parameter(0), op::Parameter(1)));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Shape("f32[8,32]"));
+  EXPECT_THAT(root, op::DynamicSlice(op::Add(), _, _));
 }
 
 TEST_P(SpmdPartitioningTest, TiledAllReduce) {
@@ -4400,6 +4428,41 @@ ENTRY entry {
                           op::Shape("f32[4,5]")));
 }
 
+TEST_P(SpmdPartitioningTest, ConditionalPartialManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+Negate {
+  x = f32[4] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+  ROOT negate = f32[4] negate(x), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+}
+
+Identity {
+  y = f32[4] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+  ROOT copy = f32[4] copy(y), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+}
+
+ENTRY entry {
+  %param.0 = pred[] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={replicated, manual}}
+  %param.1 = f32[4] parameter(1), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+  %param.2 = f32[4] parameter(2), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+  ROOT cond = f32[4] conditional(%param.0, %param.1, %param.2),
+    true_computation=Negate, false_computation=Identity, sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("pred[]"));
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[2]"));
+  auto param2 = AllOf(op::Parameter(2), op::Shape("f32[2]"));
+
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Conditional(param0, param1, param2),
+                          op::Shape("f32[2]")));
+}
+
 TEST_P(SpmdPartitioningTest, WhileManual) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -4428,6 +4491,39 @@ ENTRY entry {
 
   auto zero = AllOf(op::Parameter(0), op::Shape("s32[]"));
   const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
+}
+
+TEST_P(SpmdPartitioningTest, TestWhileFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+LoopCond {
+  x = s32[] parameter(0), sharding={manual}
+  const = s32[] constant(5), sharding={manual}
+  ROOT lt = pred[] compare(x, const), direction=LT, sharding={manual}
+}
+
+Inc {
+  x = s32[] parameter(0), sharding={manual}
+  const = s32[] constant(1), sharding={manual}
+  ROOT add = s32[] add(x, const), sharding={manual}
+}
+
+ENTRY entry {
+  zero = s32[] parameter(0), sharding={manual}
+  ROOT while = s32[] while(zero), body=Inc, condition=LoopCond,
+    sharding={manual}, frontend_attributes={_xla_other_attribute="xyz"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto zero = AllOf(op::Parameter(0), op::Shape("s32[]"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->frontend_attributes().map().at("_xla_other_attribute"),
+            "xyz");
   EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
 }
 
@@ -9011,6 +9107,33 @@ ENTRY entry {
   EXPECT_THAT(root, dot) << module->ToString();
 }
 
+TEST_P(SpmdPartitioningTest, ReshardLHSRHSToMatchDotSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %main.7 {
+  %p0 = bf16[32,97] parameter(0), sharding={devices=[32,1]<=[8,4]T(1,0)}
+  %p1 = bf16[48,64,97] parameter(1), sharding={devices=[8,4,1]<=[32]}
+  %dot.0 = bf16[32,48,64] dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={2}, sharding={devices=[4,8,1]<=[8,4]T(1,0)}
+  %dot.1 = bf16[32,48,64] dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={2}, sharding={devices=[4,4,1,2]<=[8,4]T(1,0) last_tile_dim_replicate}
+  ROOT %tuple = tuple(%dot.0, %dot.1), sharding={{devices=[4,8,1]<=[8,4]T(1,0)}, {devices=[4,4,1,2]<=[8,4]T(1,0) last_tile_dim_replicate}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
+  VLOG(1) << module->ToString();
+
+  const auto lhs = AllOf(op::Shape("bf16[8,97]"));
+  const auto rhs0 = AllOf(op::Shape("bf16[6,64,97]"));
+  const auto rhs1 = AllOf(op::Shape("bf16[12,64,97]"));
+  auto dot0 = AllOf(op::Shape("bf16[8,6,64]"), op::Dot(lhs, rhs0));
+  auto dot1 = AllOf(op::Shape("bf16[8,12,64]"), op::Dot(lhs, rhs1));
+  auto tuple =
+      AllOf(op::Shape("(bf16[8,6,64], bf16[8,12,64])"), op::Tuple(dot0, dot1));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, tuple);
+}
+
 TEST_P(SpmdPartitioningTest, ElementwiseTest_SubgroupSharding_TileToReplicate) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -9022,9 +9145,9 @@ ENTRY entry {
   constant.1 = f32[6,3]{1,0}
     constant({{2,7,2},{2,9,2},{2,6,2},{3,7,2},{2,9,3},{2,3,2}}),
     sharding={devices=[1,2,2]<=[4] last_tile_dims={manual}}
-   multiply = f32[6,3]{1,0} multiply(constant, constant.1),
+  multiply = f32[6,3]{1,0} multiply(constant, constant.1),
     sharding={devices=[1,2,2]<=[4] last_tile_dims={manual}}
-   ROOT add = f32[6,3]{1,0} add(multiply, constant.1),
+  ROOT add = f32[6,3]{1,0} add(multiply, constant.1),
     sharding={devices=[1,1,2,2]<=[4] last_tile_dims={replicated, manual}}
 }
 )";
@@ -9043,13 +9166,12 @@ ENTRY entry {
                              op::Constant(), op::Reshape()));
   auto multiply =
       AllOf(op::Shape("f32[6,2]"), op::Multiply(multiply_lhs, multiply_rhs));
-  auto replicated_lhs =
-      AllOf(op::Shape("f32[6,3]"),
-            op::Slice(op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(), multiply, op::Constant(), op::Reshape()))));
+  auto add = AllOf(op::Shape("f32[6,2]"), op::Add(multiply, multiply_rhs));
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::Shape("f32[6,3]"),
-                          op::Add(replicated_lhs, op::Constant())));
+  EXPECT_THAT(
+      root, AllOf(op::Shape("f32[6,3]"),
+                  op::Slice(op::AllReduce(op::DynamicUpdateSlice(
+                      op::Broadcast(), add, op::Constant(), op::Reshape())))));
 }
 
 TEST_P(SpmdPartitioningTest, ElementwiseTest_SubgroupSharding_ReplicateToTile) {
@@ -9063,9 +9185,9 @@ ENTRY entry {
   constant.1 = f32[6,3]{1,0}
     constant({{2,7,2},{2,9,2},{2,6,2},{3,7,2},{2,9,3},{2,3,2}}),
     sharding={devices=[1,1,2,2]<=[4] last_tile_dims={replicated,manual}}
-   multiply = f32[6,3]{1,0} multiply(constant, constant.1),
+  multiply = f32[6,3]{1,0} multiply(constant, constant.1),
     sharding={devices=[1,1,2,2]<=[4] last_tile_dims={replicated,manual}}
-   ROOT add = f32[6,3]{1,0} add(multiply, constant.1),
+  ROOT add = f32[6,3]{1,0} add(multiply, constant.1),
     sharding={devices=[1,2,2]<=[4] last_tile_dims={manual}}
 }
 )";
@@ -9076,14 +9198,11 @@ ENTRY entry {
 
   auto multiply = AllOf(op::Shape("f32[6,3]"),
                         op::Multiply(op::Constant(), op::Constant()));
-  auto add_lhs = AllOf(op::Shape("f32[6,2]"),
-                       op::DynamicSlice(op::Pad(multiply, op::Constant()),
-                                        op::Constant(), op::Reshape()));
-  auto add_rhs = AllOf(op::Shape("f32[6,2]"),
-                       op::DynamicSlice(op::Pad(op::Constant(), op::Constant()),
-                                        op::Constant(), op::Reshape()));
+  auto add = AllOf(op::Shape("f32[6,3]"), op::Add(multiply, op::Constant()));
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::Shape("f32[6,2]"), op::Add(add_lhs, add_rhs)));
+  EXPECT_THAT(root, AllOf(op::Shape("f32[6,2]"),
+                          op::DynamicSlice(op::Pad(add, op::Constant()),
+                                           op::Constant(), op::Reshape())));
 }
 
 TEST_P(SpmdPartitioningTest,

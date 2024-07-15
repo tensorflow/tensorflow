@@ -42,6 +42,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
@@ -469,6 +470,47 @@ class CondTest(test_util.TensorFlowTestCase):
         self.evaluate(variables.global_variables_initializer())
         self.evaluate(summary_ops_v2.summary_writer_initializer_op())
         self.assertEqual(self.evaluate(op), True)
+
+  def _makeGradient(self, use_case=False):
+    inputs = [variables.Variable(2.0), variables.Variable(5.0)]
+    with backprop.GradientTape() as tape:
+      for x in inputs:
+        tape.watch(x)
+      f1 = lambda: math_ops.multiply(inputs[0], 17)
+      f2 = lambda: math_ops.add(inputs[1], 23)
+      if use_case:
+        z = cond_v2.indexed_case(variables.Variable(1), [f1, f2])
+      else:
+        z = cond_v2.cond_v2(math_ops.less(inputs[0], inputs[1]), f1, f2)
+    return tape.gradient(z, inputs)
+
+  def testCondWithOptionals(self):
+    if context.executing_eagerly():
+      return
+    grads = self._makeGradient()
+    assert all("Optional" in str(g.graph.as_graph_def()) for g in grads)
+
+  def testCondWithoutOptionals(self):
+    if context.executing_eagerly():
+      return
+    with context.temporarily_disable_optionals_in_gradients():
+      grads = self._makeGradient()
+      self.assertEqual(len(grads), 2)
+      assert not any("Optional" in str(g.graph.as_graph_def()) for g in grads)
+
+  def testCaseWithOptionals(self):
+    if context.executing_eagerly():
+      return
+    grads = self._makeGradient(use_case=True)
+    assert all("Optional" in str(g.graph.as_graph_def()) for g in grads)
+
+  def testCaseWithoutOptionals(self):
+    if context.executing_eagerly():
+      return
+    with context.temporarily_disable_optionals_in_gradients():
+      grads = self._makeGradient(use_case=True)
+      self.assertEqual(len(grads), 2)
+      assert not any("Optional" in str(g.graph.as_graph_def()) for g in grads)
 
 
 class ContextTest(test_util.TensorFlowTestCase):

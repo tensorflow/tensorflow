@@ -5,6 +5,7 @@ load(
     "if_cuda_is_configured",
     "if_cuda_newer_than",
 )
+load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -47,7 +48,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -63,6 +63,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//xla/stream_executor",
+        "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -205,10 +206,10 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":custom_kernel",
-        "//xla:statusor",
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
+        "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -259,9 +260,9 @@ cc_library(
         ":custom_kernel",
         ":cutlass_gemm",
         ":cutlass_gemm_kernels",  # build_cleaner: keep
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
+        "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -291,7 +292,7 @@ xla_test(
     ],
 )
 
-cc_binary(
+xla_cc_binary(
     name = "cutlass_gemm_custom_kernel_benchmarks",
     testonly = 1,
     srcs = if_cuda_is_configured(["cutlass_gemm_custom_kernel_benchmarks.cc"]),

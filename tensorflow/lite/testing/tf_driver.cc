@@ -18,8 +18,19 @@ limitations under the License.
 #include <iostream>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/strings/escaping.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"

@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

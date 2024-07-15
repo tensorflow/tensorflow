@@ -19,6 +19,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
@@ -66,6 +67,7 @@ pybind_extension(
         ":genai_ops",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite/c:common",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

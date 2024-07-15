@@ -608,9 +608,12 @@ def prompt_loop_or_load_from_env(environ_cp,
 
 def set_clang_cuda_compiler_path(environ_cp):
   """Set CLANG_CUDA_COMPILER_PATH."""
-  default_clang_path = '/usr/lib/llvm-17/bin/clang'
+  # Upon clang 19 drop the check for 16
+  default_clang_path = '/usr/lib/llvm-18/bin/clang'
   if not os.path.exists(default_clang_path):
-    default_clang_path = '/usr/lib/llvm-16/bin/clang'
+    default_clang_path = '/usr/lib/llvm-17/bin/clang'
+    if not os.path.exists(default_clang_path):
+      default_clang_path = '/usr/lib/llvm-16/bin/clang'
     if not os.path.exists(default_clang_path):
       default_clang_path = which('clang') or ''
 
@@ -832,10 +835,13 @@ def set_clang_compiler_path(environ_cp):
   Returns:
     string value for clang_compiler_path.
   """
-  # Default path if clang-16 is installed by using apt-get install
-  default_clang_path = '/usr/lib/llvm-17/bin/clang'
+  # Default path if clang-18 is installed by using apt-get install
+  # remove 16 logic upon release of 19
+  default_clang_path = '/usr/lib/llvm-18/bin/clang'
   if not os.path.exists(default_clang_path):
-    default_clang_path = '/usr/lib/llvm-16/bin/clang'
+    default_clang_path = '/usr/lib/llvm-17/bin/clang'
+    if not os.path.exists(default_clang_path):
+      default_clang_path = '/usr/lib/llvm-16/bin/clang'
     if not os.path.exists(default_clang_path):
       default_clang_path = which('clang') or ''
 
@@ -914,12 +920,16 @@ def retrieve_clang_version(clang_executable):
 
   curr_version_split = curr_version.lower().split('clang version ')
   if len(curr_version_split) > 1:
-    curr_version = curr_version_split[1].split()[0]
+    curr_version = curr_version_split[1].split()[0].split('git')
 
+  if len(curr_version) > 1:
+    print('WARNING: current clang installation is not a release version.\n')
+
+  curr_version = curr_version[0]
   curr_version_int = convert_version_to_int(curr_version)
   # Check if current clang version can be detected properly.
   if not curr_version_int:
-    print('WARNING: current clang installation is not a release version.\n')
+    print('WARNING: current clang installation version unknown.\n')
     return None
 
   print('You have Clang %s installed.\n' % curr_version)
@@ -1020,7 +1030,7 @@ def get_native_cuda_compute_capabilities(environ_cp):
   if os.path.isfile(device_query_bin) and os.access(device_query_bin, os.X_OK):
     try:
       output = run_shell(device_query_bin).split('\n')
-      pattern = re.compile('[0-9]*\\.[0-9]*')
+      pattern = re.compile('\d*\\.\d*')
       output = [pattern.search(x) for x in output if 'Capability' in x]
       output = ','.join(x.group() for x in output if x is not None)
     except subprocess.CalledProcessError:

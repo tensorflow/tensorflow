@@ -23,7 +23,7 @@ package(
         "@local_xla//xla/hlo/experimental:__subpackages__",
         "//tensorflow/core/lib/monitoring:__subpackages__",
         "@local_xla//xla/service:__subpackages__",
-        "//tsl/framework:__subpackages__",
+        "@local_xla//xla/tsl/framework:__subpackages__",
         "@local_xla//xla/tsl/distributed_runtime:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow_serving/model_servers:__subpackages__",
@@ -79,6 +79,8 @@ cc_library(
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
         "//tsl/protobuf:histogram_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -95,9 +97,7 @@ cc_library(
 cc_library(
     name = "metric_def",
     hdrs = ["metric_def.h"],
-    visibility = internal_visibility([
-        "//tensorflow/core:__subpackages__",
-    ]),
+    visibility = ["//visibility:public"],
     deps = [
         ":types",
         "//tsl/platform:stringpiece",
@@ -110,10 +110,7 @@ cc_library(
     name = "collection_registry",
     srcs = ["collection_registry.cc"],
     hdrs = ["collection_registry.h"],
-    visibility = internal_visibility([
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow_serving/model_servers:__pkg__",
-    ]),
+    visibility = ["//visibility:public"],
     deps = [
         ":collected_metrics",
         ":metric_def",
@@ -166,11 +163,13 @@ cc_library(
         ":collection_registry",
         ":metric_def",
         ":test_utils",
-        ":types",
         "//tsl/platform:errors",
         "//tsl/platform:status",
         "//tsl/platform:statusor",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -184,10 +183,13 @@ cc_library(
         ":metric_def",
         ":types",
         "//tsl/platform",
+        "//tsl/platform:env_time",
         "//tsl/platform:macros",
         "//tsl/platform:mutex",
         "//tsl/platform:status",
         "//tsl/platform:thread_annotations",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -203,6 +205,7 @@ cc_library(
         "//tsl/platform:statusor",
         "//tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )

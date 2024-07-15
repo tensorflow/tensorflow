@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/tsl/concurrency/async_value_ref.h"
 
+#include <any>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -41,6 +43,56 @@ class WrappedInt32 {
 };
 
 constexpr int32_t kTestValue = 42;
+
+TEST(AsyncValueRefTest, MakeUnconstructedStatusOrOfAny) {
+  auto value = MakeUnconstructedAsyncValueRef<absl::StatusOr<std::any>>();
+  EXPECT_TRUE(value.IsUnavailable());
+}
+
+TEST(AsyncValueRefTest, MakeUnconstructedStatusOr) {
+  auto value = MakeUnconstructedAsyncValueRef<absl::StatusOr<int32_t>>();
+  EXPECT_TRUE(value.IsUnavailable());
+}
+
+TEST(AsyncValueRefTest, MakeConstructedStatusOr) {
+  auto value = MakeConstructedAsyncValueRef<absl::StatusOr<int32_t>>(42);
+  EXPECT_TRUE(value.IsUnavailable());
+}
+
+TEST(AsyncValueRefTest, MakeAvailableStatusOr) {
+  auto value = MakeAvailableAsyncValueRef<absl::StatusOr<int32_t>>(42);
+  EXPECT_TRUE(value.IsAvailable());
+  EXPECT_EQ(**value, 42);
+}
+
+TEST(AsyncValueRefTest, ImplicitStatusConversion) {
+  auto error = []() -> AsyncValueRef<WrappedInt32> {
+    return absl::InternalError("Error");
+  }();
+
+  EXPECT_TRUE(error.IsAvailable());
+  EXPECT_TRUE(error.IsError());
+  EXPECT_EQ(error.GetError(), absl::InternalError("Error"));
+}
+
+TEST(AsyncValueRefTest, ImplicitStatusConversionWithStatusOrPayloadAndStatus) {
+  auto status = []() -> absl::StatusOr<absl::StatusOr<int32_t>> {
+    return absl::InternalError("Error");
+  }();
+
+  auto error = []() -> AsyncValueRef<absl::StatusOr<int32_t>> {
+    return absl::InternalError("Error");
+  }();
+
+  // Check that AsyncValueRef<absl::StatusOr<T>> behavior is consistent with
+  // absl::StatusOr<absl::StatusOr<T>> for implicit error conversion.
+
+  ASSERT_FALSE(status.ok());
+  ASSERT_EQ(status.status(), absl::InternalError("Error"));
+
+  EXPECT_TRUE(error.IsError());
+  EXPECT_EQ(error.GetError(), absl::InternalError("Error"));
+}
 
 TEST(AsyncValueRefTest, ValueCheck) {
   auto wrapped_int_value = MakeAvailableAsyncValueRef<WrappedInt32>(kTestValue);
@@ -676,6 +728,37 @@ TEST(AsyncValueRefTest, Cast) {
   typed_indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Cast<A>(c_typed_indirect));
   EXPECT_TRUE(Cast<C>(c_typed_indirect));
+}
+
+TEST(AsyncValueRefTest, RecursiveOwnership) {
+  // This is a test for recursive ownership of AsyncValue:
+  //   (1) AsyncValueRef owned by a State object
+  //   (2) State object owned by AsyncValue::AndThen callback.
+  //
+  // We check that setting async value state concrete and then running all
+  // AndThen callbacks doesn't cause an asan error.
+  struct State {
+    explicit State(AsyncValueRef<int32_t> value) : value(std::move(value)) {}
+    AsyncValueRef<int32_t> value;
+  };
+
+  AsyncValueRef<int32_t> value = MakeConstructedAsyncValueRef<int32_t>(42);
+  auto state = std::make_unique<State>(std::move(value));
+
+  State* state_ptr = state.get();
+  int64_t counter = 0;
+
+  // Enqueue callbacks.
+  state_ptr->value.AndThen([&, value = 1] { counter += value; });
+  state_ptr->value.AndThen([&, value = 2] { counter += value; });
+  state_ptr->value.AndThen([&, value = 3] { counter += value; });
+
+  // Move state ownership to the callback.
+  state_ptr->value.AndThen([state = std::move(state)] {});
+
+  // Run all callbacks and as a side effect destroy the `state` object.
+  state_ptr->value.SetStateConcrete();
+  EXPECT_EQ(counter, 1 + 2 + 3);
 }
 
 }  // namespace tsl

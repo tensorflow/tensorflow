@@ -24,6 +24,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/autotuning.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -459,6 +461,48 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
   return runtime_arguments;
 }
 
+struct CudnnVersionRange {
+  using TupleVersion = std::tuple<int, int, int>;
+  TupleVersion begin;
+  TupleVersion end;
+
+  bool IsInRange(const CudnnVersion& other) const {
+    TupleVersion other_version{other.major(), other.minor(), other.patch()};
+    return begin <= other_version && other_version < end;
+  }
+
+  CudnnVersionRange(const CudnnVersion& begin, const CudnnVersion& end)
+      : begin(begin.major(), begin.minor(), begin.patch()),
+        end(end.major(), end.minor(), end.patch()) {}
+
+  CudnnVersionRange(const TupleVersion& begin, const TupleVersion& end)
+      : begin(begin), end(end) {}
+};
+
+struct ComputeCapabilityRange {
+  using TupleComputeCapability = std::tuple<int, int>;
+  TupleComputeCapability begin;
+  TupleComputeCapability end;
+
+  bool IsInRange(const ComputeCapability& other) const {
+    TupleComputeCapability other_cc{other.major(), other.minor()};
+    return begin <= other_cc && other_cc < end;
+  }
+};
+
+struct DisabledAlgorithm {
+  CudnnVersionRange cudnn_version_range;
+  ComputeCapabilityRange compute_capability_range;
+  int algo_id;
+};
+
+// TODO(b/343101418): Remove this once the bug is fixed in upstream cudnn and
+// once we updated to that cudnn version.
+static const DisabledAlgorithm kDisabledAlgorithms[] = {
+    {/*.cudnn_version_range=*/{/*.begin=*/{9, 0, 0}, /*.end=*/{10, 0, 0}},
+     /*.compute_capability_range=*/{/*.begin=*/{6, 0}, /*.end=*/{8, 0}},
+     /*.algo_id=*/14}};
+
 // There are three tiers of errors possible here: returning a failed
 // absl::StatusOr means autotuning fails immediately; returning an
 // AutotuneResult with a failure code other than DISQUALIFIED means autotuning
@@ -493,6 +537,19 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   std::string instr_str = instruction_info.has_value()
                               ? std::string(instruction_info->GetHlo())
                               : "<unknown>";
+
+  for (const auto& disabled_algo : kDisabledAlgorithms) {
+    if (disabled_algo.cudnn_version_range.IsInRange(
+            GetCudnnVersion(stream_exec)) &&
+        disabled_algo.compute_capability_range.IsInRange(
+            GetComputeCapability(stream_exec)) &&
+        disabled_algo.algo_id == alg.algo_id()) {
+      LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
+                << " for conv " << instr_str;
+      return make_failure(AutotuneResult::DISQUALIFIED,
+                          "Disqualified for being known-buggy.");
+    }
+  }
 
   if (absl::c_linear_search(disabled_algos, alg_key)) {
     LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()

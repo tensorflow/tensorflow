@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
+#include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"

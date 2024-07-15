@@ -803,6 +803,12 @@ def _ZerosLikeV1(op, index):
     return array_ops.zeros_like(val, optimize=False)
 
 
+@array_ops._tag_zeros_tensor  # pylint: disable=protected-access
+def _ConstantZeros(shape, dtype):
+  """Create a constant zero tensor."""
+  return constant_op.constant(0, shape=shape, dtype=dtype)
+
+
 def _ZerosLikeV2(op, index):
   """Branch of ZerosLike for TF2."""
   val = op.outputs[index]
@@ -817,7 +823,7 @@ def _ZerosLikeV2(op, index):
     # it helps avoid creating extra nodes(possibly Consts) for the shape.
     # For variants, we must use ZerosLike.
     if val.shape.is_fully_defined():
-      return constant_op.constant(0, shape=val.shape.dims, dtype=val.dtype)
+      return _ConstantZeros(val.shape.dims, val.dtype)
     else:
       # Note: Even though we add `Shape` in the default graph, while_v2 is smart
       # enough to place it in the forward graph i.e. `val.graph`.

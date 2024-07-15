@@ -101,6 +101,7 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                                &low_priority_max_enqueued_batches_));
   OP_REQUIRES_OK(c,
                  c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
+  OP_REQUIRES_OK(c, c->GetAttr("batch_padding_policy", &batch_padding_policy_));
 
   if (shared_name_.empty()) {
     // If shared_name is not supplied, use name instead (prevent collisions by

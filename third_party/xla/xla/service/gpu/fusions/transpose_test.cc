@@ -80,16 +80,16 @@ TEST_F(TransposeTest, ThreadIndexing021) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 1)
+        s1 in [0, 8)
+        s2 in [0, 1)
       )"));
   EXPECT_THAT(
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
@@ -100,16 +100,16 @@ TEST_F(TransposeTest, ThreadIndexing021) {
           d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 1)
+        s1 in [0, 8)
+        s2 in [0, 1)
       )"));
 }
 
@@ -138,20 +138,20 @@ TEST_F(TransposeTest, ThreadIndexing201) {
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
-          (d3 * 32 + s1 * 4) mod 64 + d0 floordiv 32,
+          (d3 mod 2) * 32 + s1 * 4 + d0 floordiv 32,
           d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 1)
+        s1 in [0, 8)
+        s2 in [0, 1)
       )"));
   EXPECT_THAT(
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
@@ -162,16 +162,16 @@ TEST_F(TransposeTest, ThreadIndexing201) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 1)
+        s1 in [0, 8)
+        s2 in [0, 1)
       )"));
 }
 
@@ -207,17 +207,16 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
           d0 mod 4
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 1]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 7]
-        s1 in [0, 0]
-        s2 in [0, 0]
-        d0 floordiv 32 + s0 * 4 in [0, 23]
-        d0 mod 32 in [0, 23]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 2)
+        d4 in [0, 1)
+        d5 in [0, 1)
+        s0 in [0, 6)
+        s1 in [0, 1)
+        s2 in [0, 1)
+        d0 mod 32 in [0, 24)
       )"));
   EXPECT_THAT(
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
@@ -229,17 +228,16 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
           d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 1]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 7]
-        s1 in [0, 0]
-        s2 in [0, 0]
-        d0 floordiv 32 + s0 * 4 in [0, 23]
-        d0 mod 32 in [0, 23]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 2)
+        d4 in [0, 1)
+        d5 in [0, 1)
+        s0 in [0, 6)
+        s1 in [0, 1)
+        s2 in [0, 1)
+        d0 mod 32 in [0, 24)
       )"));
 }
 
@@ -305,16 +303,16 @@ TEST_F(TransposeTest, ThreadIndexingSideOutput) {
           d0 floordiv 32 + s1 * 4
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 1)
+        s1 in [0, 8)
+        s2 in [0, 1)
       )"));
   EXPECT_THAT(
       fusion->ComputeThreadIdToOutputIndexing(1, &mlir_context)->ToString(),
@@ -325,16 +323,16 @@ TEST_F(TransposeTest, ThreadIndexingSideOutput) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 1)
+        s1 in [0, 8)
+        s2 in [0, 1)
       )"));
 }
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/AtomicOrdering.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
@@ -309,15 +310,14 @@ LaunchDimensions TransposeFusion::launch_dimensions() const {
 
 std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
-  const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  const auto& hero = analysis_.fusion_hero(root_index);
   if (hero.opcode() != HloOpcode::kTranspose) {
     // The shape of non-transpose roots are bitcast compatible with the input
     // shape of transpose heroes.
     auto map = ComposeIndexingMaps(
         GetIndexingMapForTiling(tiling_, ctx),
-        GetBitcastMap(
-            tiling_.GetXlaShape(),
-            analysis_.fusion_roots()[root_index].instruction().shape(), ctx));
+        GetBitcastMap(tiling_.GetXlaShape(),
+                      analysis_.fusion_root(root_index).shape(), ctx));
     map.Simplify();
     return map;
   }

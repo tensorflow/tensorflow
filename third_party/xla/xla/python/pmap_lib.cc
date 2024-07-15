@@ -156,14 +156,15 @@ absl::StatusOr<ShardArgResult> ShardArg(
           ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
                               devices.end());
           // pmap does not support memory_kind for now.
-          auto sharding = xla::ifrt::OpaqueSharding::Create(
-              xla::ifrt::DeviceList(std::move(ifrt_devices)),
-              xla::ifrt::MemoryKind());
-          TF_ASSIGN_OR_RETURN(auto copied_ifrt_array,
-                              result.ifrt_array->Reshard(
-                                  std::move(sharding),
-                                  xla::ifrt::ArrayCopySemantics::kReuseInput));
-          result.ifrt_array = std::move(copied_ifrt_array);
+          auto* ifrt_client = result.ifrt_array->client();
+          TF_ASSIGN_OR_RETURN(
+              auto copied_ifrt_arrays,
+              ifrt_client->CopyArrays(
+                  absl::MakeSpan(&result.ifrt_array, 1),
+                  xla::ifrt::DeviceList(std::move(ifrt_devices)),
+                  xla::ifrt::MemoryKind(),
+                  xla::ifrt::ArrayCopySemantics::kReuseInput));
+          result.ifrt_array = std::move(copied_ifrt_arrays.front());
         }
         return result;
       }
@@ -794,10 +795,8 @@ void JaxPmapFunction_tp_dealloc(PyObject* self) {
 
 int JaxPmapFunction_tp_traverse(PyObject* self, visitproc visit, void* arg) {
   JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
-#if PY_VERSION_HEX >= 0x03090000
   // https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_traverse
   Py_VISIT(Py_TYPE(self));
-#endif
   Py_VISIT(o->dict);
   Py_VISIT(o->fun.fun().ptr());
   Py_VISIT(o->fun.cache_miss().ptr());

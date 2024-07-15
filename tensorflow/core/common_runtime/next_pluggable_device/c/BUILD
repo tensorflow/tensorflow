@@ -225,6 +225,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:types_proto_cc",
-        "@local_tsl//tsl/framework:allocator",
+        "@local_xla//xla/tsl/framework:allocator",
     ],
 )

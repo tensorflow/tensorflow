@@ -774,6 +774,7 @@ tf_kernel_library(
     ] + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([

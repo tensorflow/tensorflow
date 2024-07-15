@@ -1973,13 +1973,15 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
     DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   AllToAllOp::Adaptor adaptor(operands, attributes, properties, regions);
+  std::optional<uint64_t> splitDimension = adaptor.getSplitDimension();
+  std::optional<uint64_t> concatDimension = adaptor.getConcatDimension();
+  std::optional<uint64_t> splitCount = adaptor.getSplitCount();
 
-  bool isArrayAllToAll = adaptor.getSplitDimension() &&
-                         adaptor.getConcatDimension() &&
-                         adaptor.getSplitCount();
+  bool isArrayAllToAll = splitDimension.has_value() &&
+                         concatDimension.has_value() && splitCount.has_value();
   if (!isArrayAllToAll) {
-    if (adaptor.getSplitDimension() || adaptor.getConcatDimension() ||
-        adaptor.getSplitCount()) {
+    if (splitDimension.has_value() || concatDimension.has_value() ||
+        splitCount.has_value()) {
       return emitOptionalError(location,
                                "TupleAllToAll should not have split_dimension, "
                                "concat_dimension or split_count attributes");
@@ -2005,10 +2007,9 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
                              "ArrayAllToAll should have exactly one operand");
   }
 
-  return hlo::inferAllToAllOp(
-      location, adaptor.getOperand()[0], *adaptor.getSplitDimension(),
-      *adaptor.getConcatDimension(), *adaptor.getSplitCount(),
-      adaptor.getReplicaGroups(), inferredReturnShapes);
+  return hlo::inferAllToAllOp(location, adaptor.getOperand()[0],
+                              *splitDimension, *concatDimension, *splitCount,
+                              adaptor.getReplicaGroups(), inferredReturnShapes);
 }
 
 void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
@@ -3473,20 +3474,6 @@ void ReduceWindowOp::build(
 }
 
 //===----------------------------------------------------------------------===//
-// ReducePrecisionOp
-//===----------------------------------------------------------------------===//
-
-// The following property is already enforced by the ODS:
-//  P0. operand element type is float
-//  P1. mantissa_bits >= 0
-// We intend to verify the following properties
-//  P2. exponent_bits >= 1
-LogicalResult ReducePrecisionOp::verify() {
-  return hlo::verifyReducePrecisionOp(getLoc(), getExponentBits(),
-                                      getMantissaBits());
-}
-
-//===----------------------------------------------------------------------===//
 // ReverseOp
 //===----------------------------------------------------------------------===//
 
@@ -4219,16 +4206,16 @@ struct PadEmptyTensor : public OpRewritePattern<PadOp> {
 
     llvm::SmallVector<Value> reifiedShapes;
     if (failed(op.reifyReturnTypeShapes(rewriter, op.getOperands(),
-                                        reifiedShapes)))
+                                        reifiedShapes))) {
       return failure();
+    }
 
     auto dimsType = RankedTensorType::get({0}, rewriter.getIntegerType(64));
     auto broadcastDims =
         DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
     rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
         op, op.getType(), padVal, reifiedShapes.front(), broadcastDims);
-
-    return failure();
+    return success();
   }
 };
 
@@ -4261,16 +4248,16 @@ struct DynamicPadEmptyTensor : public OpRewritePattern<DynamicPadOp> {
 
     llvm::SmallVector<Value> reifiedShapes;
     if (failed(op.reifyReturnTypeShapes(rewriter, op->getOperands(),
-                                        reifiedShapes)))
+                                        reifiedShapes))) {
       return failure();
+    }
 
     auto dimsType = RankedTensorType::get({0}, rewriter.getIntegerType(64));
     auto broadcastDims =
         DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
     rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
         op, op.getType(), padVal, reifiedShapes.front(), broadcastDims);
-
-    return failure();
+    return success();
   }
 };
 
@@ -5378,84 +5365,97 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
 }
 
 // transpose(transpose(X)) => transpose(X)
-static LogicalResult eliminateRedundantTranspse(TransposeOp op,
-                                                PatternRewriter& rewriter) {
-  auto tranposeOperand = op.getOperand().getDefiningOp<TransposeOp>();
-  if (!tranposeOperand) {
-    return failure();
-  }
-  auto operandPermutation = tranposeOperand.getPermutation().getValues<APInt>();
-  auto newPermutation =
-      cast<DenseIntElementsAttr>(op.getPermutation().mapValues(
-          op.getPermutation().getElementType(),
-          [&operandPermutation](const APInt& index) -> APInt {
-            return operandPermutation[index.getSExtValue()];
-          }));
-  rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getResult().getType(),
-                                           tranposeOperand.getOperand(),
-                                           newPermutation);
-  return success();
-}
-
-// transpose(broadcast_in_dim(X)) => broadcast_in_dim(X)
-static LogicalResult eliminateBroadcastInDimTranspose(
-    TransposeOp op, PatternRewriter& rewriter) {
-  auto broadcastInDimOp = op.getOperand().getDefiningOp<BroadcastInDimOp>();
-  if (!broadcastInDimOp) {
-    return failure();
-  }
-  DenseIntElementsAttr broadcastDimensions =
-      broadcastInDimOp.getBroadcastDimensions();
-  DenseIntElementsAttr permutation = op.getPermutation();
-  SmallVector<int64_t> newBroadcastDimensions;
-  for (auto dimension : broadcastDimensions.getValues<int64_t>()) {
-    int64_t index = 0;
-    for (auto p : permutation.getValues<int64_t>()) {
-      if (p == dimension) {
-        newBroadcastDimensions.push_back(index);
-        break;
-      }
-      index++;
+class EliminateRedundantTranspose : public OpRewritePattern<TransposeOp> {
+ public:
+  using OpRewritePattern<TransposeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tranposeOperand = op.getOperand().getDefiningOp<TransposeOp>();
+    if (!tranposeOperand) {
+      return failure();
     }
-  }
-  rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
-      op, op->getResultTypes(), broadcastInDimOp.getOperand(),
-      rewriter.getI64TensorAttr(newBroadcastDimensions));
-  return success();
-}
-
-// simplify Transpose: replace Transpose with Reshape if they are equivalent
-static LogicalResult simplifyTranspose(TransposeOp op,
-                                       PatternRewriter& rewriter) {
-  auto operandType = dyn_cast<RankedTensorType>(op.getOperand().getType());
-  auto resultType = dyn_cast<RankedTensorType>(op.getResult().getType());
-  if (!operandType || !resultType) {
-    return failure();
-  }
-  // Not support dynamic shape a.t.m. BTW, when it's dynamic shape,
-  // maybe Transpose should be replaced by DynamicReshape.
-  if (!operandType.hasStaticShape() || !resultType.hasStaticShape()) {
-    return failure();
-  }
-  auto permutation = op.getPermutation().getValues<int64_t>();
-  llvm::SmallVector<int64_t> sortedPermutation;
-  for (int64_t i = 0, e = resultType.getRank(); i < e; i++) {
-    if (resultType.getDimSize(i) != 1) {
-      sortedPermutation.push_back(permutation[i]);
-    }
-  }
-  if (llvm::is_sorted(sortedPermutation)) {
-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
+    auto operandPermutation =
+        tranposeOperand.getPermutation().getValues<APInt>();
+    auto newPermutation =
+        cast<DenseIntElementsAttr>(op.getPermutation().mapValues(
+            op.getPermutation().getElementType(),
+            [&operandPermutation](const APInt& index) -> APInt {
+              return operandPermutation[index.getSExtValue()];
+            }));
+    rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getResult().getType(),
+                                             tranposeOperand.getOperand(),
+                                             newPermutation);
     return success();
   }
-  return failure();
-}
+};
+
+// BroadcastInDim(BroadcastInDim(X)) => BroadcastInDim(X)
+class EliminateBroadcastInDimTranspose : public OpRewritePattern<TransposeOp> {
+ public:
+  using OpRewritePattern<TransposeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto broadcastInDimOp = op.getOperand().getDefiningOp<BroadcastInDimOp>();
+    if (!broadcastInDimOp) {
+      return failure();
+    }
+    DenseIntElementsAttr broadcastDimensions =
+        broadcastInDimOp.getBroadcastDimensions();
+    DenseIntElementsAttr permutation = op.getPermutation();
+    SmallVector<int64_t> newBroadcastDimensions;
+    for (auto dimension : broadcastDimensions.getValues<int64_t>()) {
+      int64_t index = 0;
+      for (auto p : permutation.getValues<int64_t>()) {
+        if (p == dimension) {
+          newBroadcastDimensions.push_back(index);
+          break;
+        }
+        index++;
+      }
+    }
+    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+        op, op->getResultTypes(), broadcastInDimOp.getOperand(),
+        rewriter.getI64TensorAttr(newBroadcastDimensions));
+    return success();
+  }
+};
+
+// simplify Transpose: replace Transpose with Reshape if they are equivalent
+class SimplifyTranspose : public OpRewritePattern<TransposeOp> {
+ public:
+  using OpRewritePattern<TransposeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto operandType = dyn_cast<RankedTensorType>(op.getOperand().getType());
+    auto resultType = dyn_cast<RankedTensorType>(op.getResult().getType());
+    if (!operandType || !resultType) {
+      return failure();
+    }
+    // Not support dynamic shape a.t.m. BTW, when it's dynamic shape,
+    // maybe Transpose should be replaced by DynamicReshape.
+    if (!operandType.hasStaticShape() || !resultType.hasStaticShape()) {
+      return failure();
+    }
+    auto permutation = op.getPermutation().getValues<int64_t>();
+    llvm::SmallVector<int64_t> sortedPermutation;
+    for (int64_t i = 0, e = resultType.getRank(); i < e; i++) {
+      if (resultType.getDimSize(i) != 1) {
+        sortedPermutation.push_back(permutation[i]);
+      }
+    }
+    if (llvm::is_sorted(sortedPermutation)) {
+      rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
+      return success();
+    }
+    return failure();
+  }
+};
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                              MLIRContext* /*context*/) {
-  results.add(eliminateRedundantTranspse);
-  results.add(eliminateBroadcastInDimTranspose);
-  results.add(simplifyTranspose);
+                                              MLIRContext* context) {
+  results.add<EliminateRedundantTranspose>(context);
+  results.add<EliminateBroadcastInDimTranspose>(context);
+  results.add<SimplifyTranspose>(context);
 }
 
 LogicalResult TransposeOp::reifyReturnTypeShapes(
@@ -5557,15 +5557,6 @@ LogicalResult TupleOp::inferReturnTypes(
   TupleOp::Adaptor adaptor(operands, attributes, properties, regions);
   return hlo::inferTupleOp(context, location, adaptor.getVal(),
                            inferredReturnTypes);
-}
-
-//===----------------------------------------------------------------------===//
-// UnaryEinsumOp
-//===----------------------------------------------------------------------===//
-
-void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                                MLIRContext* context) {
-  results.add<UnaryEinsumToEinsum>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -6073,6 +6064,10 @@ void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add(&whileCanonicalization);
 }
 
+//===----------------------------------------------------------------------===//
+// UniformDequantizeOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
@@ -6081,6 +6076,14 @@ LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
                                        regions);
   return hlo::inferUniformDequantizeOp(location, adaptor.getOperand(),
                                        inferredReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult UniformQuantizeOp::verify() {
+  return hlo::verifyUniformQuantizeOp(getLoc(), getOperand(), getResult());
 }
 
 //===----------------------------------------------------------------------===//

@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

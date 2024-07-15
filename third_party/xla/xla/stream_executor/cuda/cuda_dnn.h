@@ -364,7 +364,7 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      dnn::FMHAMaskKind mask_type);
+      dnn::FMHAMaskKind mask_type, bool force_deterministic);
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
@@ -739,7 +739,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_bias,
-    const dnn::FMHAMaskKind mask_type);
+    const dnn::FMHAMaskKind mask_type, bool force_deterministic);
 
 }  // namespace gpu
 }  // namespace stream_executor

@@ -19,10 +19,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "xla/service/gpu/model/indexing_map.h"
 
@@ -35,6 +31,7 @@ namespace gpu {
 // Returns the range of a given value, if it can be statically determined.
 std::optional<Interval> GetRange(mlir::Value value);
 
+std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere);
 std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
@@ -42,11 +39,12 @@ std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
-std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
+std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
 std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();
 std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass();
+std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"

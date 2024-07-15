@@ -115,8 +115,8 @@ Status ExecuteNodeArgs::Init(
       // component function. So we wait until the remote input is ready before
       // serializing it.
       bool wait_until_ready = SkipRemoteHandleWaitReady() ? false : is_function;
-      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          h, wait_until_ready, handle, device, device->name());
+      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(h, wait_until_ready,
+                                                           handle, device);
     };
   }
 #endif  // !IS_MOBILE_PLATFORM

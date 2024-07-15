@@ -162,6 +162,9 @@ class Layout {
   // Constructs a dense layout with the given minor-to-major order.
   explicit Layout(absl::Span<const int64_t> minor_to_major);
 
+  explicit Layout(absl::Span<const int64_t> minor_to_major,
+                  absl::Span<const Tile> tiles, int64_t element_size_in_bits);
+
   // Constructs a dense tiled layout with the given minor-to-major order, dim
   // level types, and tiles.
   explicit Layout(absl::Span<const int64_t> minor_to_major,

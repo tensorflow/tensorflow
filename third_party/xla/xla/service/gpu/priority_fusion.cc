@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -51,7 +53,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -130,13 +132,15 @@ class GpuPriorityFusionQueue {
       const GpuHloCostAnalysis::Options& cost_analysis_options,
       const se::DeviceDescription* device_info,
       FusionProcessDumpProto* fusion_process_dump,
-      tsl::thread::ThreadPool* thread_pool,
+      tsl::thread::ThreadPool* thread_pool, mlir::MLIRContext* mlir_context,
       HloFusionAnalysisCache& fusion_analysis_cache,
       bool triton_softmax_priority_fusion_enabled)
       : computation_(computation),
-        cost_analysis_(cost_analysis_options, device_info),
+        device_info_(device_info),
+        cost_analysis_(cost_analysis_options, *device_info),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
+        mlir_context_(mlir_context),
         fusion_analysis_cache_(fusion_analysis_cache),
         triton_softmax_priority_fusion_enabled_(
             triton_softmax_priority_fusion_enabled) {
@@ -392,7 +396,7 @@ class GpuPriorityFusionQueue {
 
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
-            producer, &cost_analysis_,
+            producer, *device_info_, &cost_analysis_,
             GpuPerformanceModelOptions::PriorityFusion(
                 &fusion_analysis_cache_, &gpu_performance_model_cache_),
             producer->users());
@@ -418,7 +422,7 @@ class GpuPriorityFusionQueue {
       return "triton softmax fusion is not enabled";
     }
 
-    if (IsTritonSoftmaxFusion(*producer)) {
+    if (IsGenericTritonFusion(*producer)) {
       if (!IsFusible(*consumer)) {
         return "the consumer is not fusible";
       }
@@ -428,18 +432,23 @@ class GpuPriorityFusionQueue {
       }
     }
 
-    // TODO(b/316143118): Replace TritonFusionAnalysis with SymbolicTileAnalysis
-    // once symbolic analysis is ready.
-    if (!TritonFusionAnalysis::ExecuteForProducerConsumer(*producer, *consumer)
-             .ok()) {
-      return "triton codegen can't handle the fusion";
+    auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+
+    SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
+        SymbolicTileAnalysis::AnalyzeFusion(*fusion, mlir_context_);
+
+    if (const auto* fusion_decision =
+            std::get_if<FusionDecision>(&symbolic_tile_analysis_or)) {
+      return {
+          absl::StrCat("Fusion can not be tiled with SymbolicTileAnalysis: ",
+                       fusion_decision->Explain())};
     }
 
     return {};
   }
 
   FusionDecision CanFuse(HloInstruction* producer, HloInstruction* consumer) {
-    if (IsTritonSoftmaxFusion(*producer) || IsTritonSoftmaxFusion(*consumer)) {
+    if (IsGenericTritonFusion(*producer) || IsGenericTritonFusion(*consumer)) {
       return CanFuseTriton(producer, consumer);
     }
 
@@ -503,9 +512,9 @@ class GpuPriorityFusionQueue {
 
     // Avoid cases where we'd create a fusion that hit limitations in ptxas.
     // Would be nice to model this with cost instead.
-    if (auto fits_budget = FusionFitsInBudget(
-            *consumer, *producer, *cost_analysis_.device_info_,
-            /*is_consumer_producer_fusion=*/true);
+    if (auto fits_budget =
+            FusionFitsInBudget(*consumer, *producer, *device_info_,
+                               /*is_consumer_producer_fusion=*/true);
         !fits_budget) {
       return fits_budget;
     }
@@ -583,6 +592,8 @@ class GpuPriorityFusionQueue {
   // Store computation for cost analysis.
   HloComputation* computation_;
 
+  const se::DeviceDescription* device_info_;
+
   // Reference to cost model that defines priorities in the queue.
   GpuHloCostAnalysis cost_analysis_;
 
@@ -614,6 +625,8 @@ class GpuPriorityFusionQueue {
   absl::Mutex fusion_process_dump_mutex_;
 
   tsl::thread::ThreadPool* thread_pool_;
+
+  mlir::MLIRContext* mlir_context_;
 
   HloFusionAnalysisCache& fusion_analysis_cache_;
 
@@ -724,8 +737,8 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
 
     auto fusion_queue = std::make_unique<GpuPriorityFusionQueue>(
         computation, cost_analysis_options_, &device_info_,
-        fusion_process_dump_.get(), thread_pool_, fusion_analysis_cache_,
-        triton_softmax_priority_fusion_enabled);
+        fusion_process_dump_.get(), thread_pool_, &mlir_context_,
+        fusion_analysis_cache_, triton_softmax_priority_fusion_enabled);
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
@@ -832,7 +845,7 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
     HloInstruction* fusion_instruction, HloInstruction* producer) {
   HloInstruction* result = fusion_instruction;
   if (producer->opcode() == HloOpcode::kFusion) {
-    if (IsTritonSoftmaxFusion(*producer)) {
+    if (IsGenericTritonFusion(*producer)) {
       TF_CHECK_OK(fusion_instruction->set_backend_config(
           *producer->backend_config<GpuBackendConfig>()));
     }

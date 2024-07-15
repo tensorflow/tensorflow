@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -66,11 +66,11 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 

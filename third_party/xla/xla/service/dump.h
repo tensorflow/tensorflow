@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_DUMP_H_
 #define XLA_SERVICE_DUMP_H_
 
+#include <string>
+
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"
@@ -110,10 +114,13 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
 
 // Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.
-void DumpHloModuleIfEnabled(const HloModule& module, absl::string_view name);
-void DumpHloModuleIfEnabled(const HloModule& module,
-                            const BufferAssignment& buffer_assn,
-                            absl::string_view name);
+// Returns the full file paths of all dumps of the module, or an empty vector if
+// nothing was dumped.
+std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
+                                                absl::string_view name);
+std::vector<std::string> DumpHloModuleIfEnabled(
+    const HloModule& module, const BufferAssignment& buffer_assn,
+    absl::string_view name);
 
 // Dumps the given HLO module after running one HLO pass and before running
 // another, if that's enabled. Returns the full file paths of all dumps of the

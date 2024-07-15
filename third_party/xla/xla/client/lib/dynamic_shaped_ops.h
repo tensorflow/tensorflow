@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_DYNAMIC_SHAPED_OPS_H_
 #define XLA_CLIENT_LIB_DYNAMIC_SHAPED_OPS_H_
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/value_inference.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"

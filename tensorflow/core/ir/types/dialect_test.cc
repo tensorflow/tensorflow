@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/ir/types/dialect.h"
 
+#include <cstdint>
+#include <limits>
+
+#include <gmock/gmock.h>
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -53,6 +57,64 @@ TEST(TFTypesDialect, TestFuncAttrSubElement) {
   EXPECT_TRUE(func_attr.getName() == sym_ref);
   auto bar_ref = func_attr.getAttrs().get("bar");
   EXPECT_TRUE(bar_ref == sym_ref);
+}
+
+TEST(TFTypesDialect, ParsesDimensionListWithZero) {
+  // Test that a dimension list with zero can be parsed.
+  const char *const code = R"mlir(
+  "test.op"() {shape = #tf_type.shape<00x128>} : () -> ()
+)mlir";
+
+  MLIRContext context;
+  context.allowUnregisteredDialects();
+  context.getOrLoadDialect<tf_type::TFTypeDialect>();
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  Operation &test_op = module->front();
+
+  auto shape_attr =
+      mlir::dyn_cast<tf_type::ShapeAttr>(test_op.getAttr("shape"));
+  ASSERT_TRUE(shape_attr);
+  EXPECT_THAT(shape_attr.getShape(), testing::ElementsAre(0, 128));
+}
+
+TEST(TFTypesDialect, ParsesDimensionListWithQuestionMark) {
+  // Test that a dimension list with zero can be parsed.
+  const char *const code = R"mlir(
+  "test.op"() {shape = #tf_type.shape<0x?x2>} : () -> ()
+)mlir";
+
+  MLIRContext context;
+  context.allowUnregisteredDialects();
+  context.getOrLoadDialect<tf_type::TFTypeDialect>();
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  Operation &test_op = module->front();
+
+  auto shape_attr =
+      mlir::dyn_cast<tf_type::ShapeAttr>(test_op.getAttr("shape"));
+  ASSERT_TRUE(shape_attr);
+  EXPECT_THAT(shape_attr.getShape(),
+              testing::ElementsAre(0, std::numeric_limits<int64_t>::min(), 2));
+}
+
+TEST(TFTypesDialect, ParsesDimensionListWithNegativeOne) {
+  // Test that a dimension list with zero can be parsed.
+  const char *const code = R"mlir(
+  "test.op"() {shape = #tf_type.shape<0x-1x2>} : () -> ()
+)mlir";
+
+  MLIRContext context;
+  context.allowUnregisteredDialects();
+  context.getOrLoadDialect<tf_type::TFTypeDialect>();
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  Operation &test_op = module->front();
+
+  auto shape_attr =
+      mlir::dyn_cast<tf_type::ShapeAttr>(test_op.getAttr("shape"));
+  ASSERT_TRUE(shape_attr);
+  EXPECT_THAT(shape_attr.getShape(), testing::ElementsAre(0, -1, 2));
 }
 
 }  // namespace

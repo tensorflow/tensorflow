@@ -21,9 +21,9 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/statusor.h"
 #include "xla/tools/run_hlo_module.pb.h"
 
 namespace xla {

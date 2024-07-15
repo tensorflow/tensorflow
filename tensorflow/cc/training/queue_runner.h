@@ -26,10 +26,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 

@@ -903,6 +903,7 @@ cc_library(
         ":macros",
         ":stringpiece",
         ":types",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -926,6 +927,7 @@ cc_library(
     hdrs = ["stringpiece.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1557,8 +1559,15 @@ tsl_cc_test(
     ],
     deps = [
         ":logging",
+        ":path",
+        ":stacktrace_handler",
+        ":statusor",
         ":test",
-        ":test_main",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

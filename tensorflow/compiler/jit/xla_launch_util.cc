@@ -34,6 +34,17 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/client/local_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/framework/serving_device_selector_policies.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
@@ -52,8 +63,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tsl/framework/device_id_utils.h"
-#include "tsl/framework/serving_device_selector_policies.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "xla/client/local_client.h"
@@ -865,10 +874,11 @@ Status RunPjRtExecutable(
                       tsl::GetDeviceIdFromDeviceParsedName(
                           ctx->device()->parsed_name(), device_type));
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
-                      pjrt_client->LookupAddressableDevice(pjrt_device_id));
+                      pjrt_client->LookupAddressableDevice(
+                          xla::PjRtLocalDeviceId(pjrt_device_id)));
 
   gpu::GpuServingDeviceSelectorResource* device_selector_resource = nullptr;
-  if (device_type == DEVICE_GPU && gpu::kUseGpuServingDeviceSelector) {
+  if (device_type == DEVICE_GPU) {
     auto rm = ctx->resource_manager();
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<
                        gpu::GpuServingDeviceSelectorResource>(

@@ -1,4 +1,5 @@
 # RUN: xla-translate -hlo-to-mlir-hlo %s -o - | FileCheck %s
+# RUN: xla-translate -hlo-to-stablehlo %s -o - | FileCheck %s --check-prefix CHECK-SHLO
 
 name: "foo.5"
 entry_computation_name: "foo.5"
@@ -144,3 +145,9 @@ dynamic_parameter_binding {
 # CHECK-NEXT:   %1 = "mhlo.dot"(%0, %arg1) <{precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}> : (tensor<4xf32>, tensor<4xf32>) -> tensor<f32>
 # CHECK-NEXT:   return %1 : tensor<f32>
 # CHECK-NEXT: }
+#
+# CHECK-SHLO-LABEL: func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<f32> {
+# CHECK-SHLO-NEXT:   %0 = stablehlo.add %arg0, %arg1 : tensor<4xf32>
+# CHECK-SHLO-NEXT:   %1 = stablehlo.dot %0, %arg1, precision = [DEFAULT, DEFAULT] : (tensor<4xf32>, tensor<4xf32>) -> tensor<f32>
+# CHECK-SHLO-NEXT:   return %1 : tensor<f32>
+# CHECK-SHLO-NEXT: }

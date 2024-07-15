@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/memory.h"
 
 // Generated definitions.
 #include "xla/python/ifrt/ir/ifrt_dialect.h.inc"  // IWYU pragma: export

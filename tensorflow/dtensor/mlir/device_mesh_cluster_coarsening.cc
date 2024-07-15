@@ -18,9 +18,11 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -34,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace dtensor {

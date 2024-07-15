@@ -132,16 +132,21 @@ class TraceVisibilityFilter : public TraceEventsFilterInterface {
   uint64_t ResolutionPs() const { return visibility_.ResolutionPs(); }
 
   void SetUp(const Trace& trace) override {
-    // If the visible_span was not set at construction time, use the trace
-    // bounds and recompute the resolution in picoseconds.
+    // Update visible_span with trace bounds and recompute the resolution in
+    // picoseconds.
     tsl::profiler::Timespan visible_span = VisibleSpan();
-    if (visible_span.Instant() && trace.has_min_timestamp_ps() &&
-        trace.has_max_timestamp_ps()) {
-      visible_span = tsl::profiler::Timespan::FromEndPoints(
-          trace.min_timestamp_ps(), trace.max_timestamp_ps());
-      visibility_ = TraceViewerVisibility(
-          visible_span, ResolutionPs(visible_span.duration_ps()));
+    uint64_t start_time_ps = visible_span.begin_ps();
+    uint64_t end_time_ps = visible_span.end_ps();
+    if (end_time_ps == 0 && trace.has_max_timestamp_ps()) {
+      end_time_ps = trace.max_timestamp_ps();
     }
+    if (start_time_ps == 0 && trace.has_min_timestamp_ps()) {
+      start_time_ps = trace.min_timestamp_ps();
+    }
+    visible_span =
+        tsl::profiler::Timespan::FromEndPoints(start_time_ps, end_time_ps);
+    visibility_ = TraceViewerVisibility(
+        visible_span, ResolutionPs(visible_span.duration_ps()));
   }
 
   // Updates the visibility based on `resolution`.

@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -113,6 +114,7 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
     auto thread_id_to_output_map = ComposeIndexingMaps(
         ComposeIndexingMaps(thread_id_to_input_map, input_to_output_map),
         epilogue_indexing);
+    thread_id_to_output_map.Simplify();
 
     auto loop_nest_body_builder =
         [&, operand_index = operand_index](

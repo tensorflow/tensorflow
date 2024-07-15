@@ -1,5 +1,5 @@
 ################################################################################
-FROM ubuntu:22.04 as builder
+FROM ubuntu:22.04@sha256:19478ce7fc2ffbce89df29fea5725a8d12e57de52eb9ea570890dc5852aac1ac as builder
 ################################################################################
 
 # Install devtoolset build dependencies
@@ -16,7 +16,7 @@ COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
-FROM nvidia/cuda:12.3.1-base-ubuntu22.04 as devel
+FROM nvidia/cuda:12.3.2-base-ubuntu22.04@sha256:8cecfe099315f73127d6d5cc43fce32c7ffff4ea0460eefac48f2b7d811ce857 as devel
 ################################################################################
 COPY --from=builder /dt9 /dt9
 
@@ -29,7 +29,7 @@ COPY devel.packages.txt /devel.packages.txt
 RUN /setup.sources.sh && /setup.packages.sh /devel.packages.txt && /setup.cuda.sh
 
 # Make sure clang is on the path
-RUN ln -s /usr/lib/llvm-17/bin/clang /usr/bin/clang
+RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
 
 # Install various tools.
 # - bats: bash unit testing framework

@@ -896,7 +896,7 @@ ENTRY main {
   param_0 = f32[125]{0} parameter(0)
   param_1 = f32[125,127]{1,0} parameter(1)
   producer_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=producer_computation
-  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
   ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_1, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
@@ -910,7 +910,7 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);
-  EXPECT_TRUE(IsTritonSoftmaxFusion(*root));
+  EXPECT_TRUE(IsGenericTritonFusion(*root));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseInsideReducer) {

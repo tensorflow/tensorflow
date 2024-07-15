@@ -20,14 +20,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
-#include "xla/primitive_util.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -59,8 +58,8 @@ XlaComputation CreateScalarComparisonComputation(
   }
 
   CHECK_EQ(operand_types.size(), generators.size());
-  int64_t parameter_count = 0;
-  int64_t last_generator_index = 0;
+  int parameter_count = 0;
+  int last_generator_index = 0;
   std::vector<XlaOp> lhs_params;
   std::vector<XlaOp> rhs_params;
 
@@ -85,29 +84,21 @@ XlaComputation CreateScalarComparisonComputation(
 
   CHECK_NE(parameter_count, 0);
 
-  auto shape_or = b->GetShape(lhs_params[0]);
-  if (!shape_or.ok()) {
-    b->ReportError(shape_or.status());
-    return {};
-  }
-  Shape shape = shape_or.value();
-  shape.set_element_type(PRED);
-  XlaOp param_equal =
-      Broadcast(One(b.get(), shape.element_type()), shape.dimensions());
-  XlaOp result = param_equal;
+  XlaOp result;
+  XlaOp prev_equal;
 
-  for (int64_t i = 0; i < parameter_count; i++) {
+  for (int i = 0; i < parameter_count; i++) {
     if (generators[i].has_value()) {
-      result = Select(param_equal,
-                      generators[i].value()(lhs_params[i], rhs_params[i], {}),
-                      result);
+      XlaOp cmp_op = generators[i].value()(lhs_params[i], rhs_params[i], {});
+      result = prev_equal.valid() ? Select(prev_equal, cmp_op, result) : cmp_op;
       if (i != last_generator_index) {
-        param_equal =
-            And(param_equal, EqTotalOrder(lhs_params[i], rhs_params[i]));
+        XlaOp eq_op = EqTotalOrder(lhs_params[i], rhs_params[i]);
+        prev_equal = prev_equal.valid() ? And(prev_equal, eq_op) : eq_op;
       }
     }
   }
 
+  CHECK(result.valid());
   return b->BuildAndNoteError();
 }
 

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -31,22 +30,22 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/log_severity.h"
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -513,7 +512,24 @@ std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
-void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
+void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
+              int lineno);
+inline void LogLinesINFO(absl::string_view text, const char* fname,
+                         int lineno) {
+  return LogLines(absl::LogSeverity::kInfo, text, fname, lineno);
+}
+inline void LogLinesWARNING(absl::string_view text, const char* fname,
+                            int lineno) {
+  return LogLines(absl::LogSeverity::kWarning, text, fname, lineno);
+}
+inline void LogLinesERROR(absl::string_view text, const char* fname,
+                          int lineno) {
+  return LogLines(absl::LogSeverity::kError, text, fname, lineno);
+}
+inline void LogLinesFATAL(absl::string_view text, const char* fname,
+                          int lineno) {
+  return LogLines(absl::LogSeverity::kFatal, text, fname, lineno);
+}
 
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
@@ -893,19 +909,15 @@ using Vector3 = std::array<int64_t, 3>;
 
 }  // namespace xla
 
+// Note that STRING is evaluated regardless of whether it will be logged.
 #define XLA_LOG_LINES(SEV, STRING) \
-  ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
+  ::xla::LogLines##SEV(STRING, __FILE__, __LINE__)
 
-#define XLA_VLOG_LINES(LEVEL, STRING)                          \
-  do {                                                         \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tsl::INFO, STRING); \
-  } while (false);
-
-// Utility macro that performs the equivalent of what one would expect
-// LOG_LINES(FATAL, X) to do but can be used at the end of a function that
-// returns a value without getting a compiler warning that no value is returned.
-#define XLA_FATAL_LOG(X)          \
-  XLA_LOG_LINES(::tsl::ERROR, X); \
-  LOG(FATAL) << "Aborting in " << __FUNCTION__ << " due to previous errors.";
+// Like LOG_LINES, but only logs if VLOG is enabled for the given level.
+// STRING is evaluated only if it will be logged.
+#define XLA_VLOG_LINES(LEVEL, STRING)                   \
+  do {                                                  \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
+  } while (false)
 
 #endif  // XLA_UTIL_H_
