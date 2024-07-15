@@ -977,9 +977,9 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   //
   // For now, this identifier is good enough.
   builder.set_model_str(absl::StrFormat(
-      "sm_%d.%d with %dB RAM, %d cores, %dKHz clock, %dKHz mem clock, %dB L2$",
-      cc_major, cc_minor, device_memory_size, core_count, sm_clock_khz,
-      value_or(mem_clock_khz, 0), l2_cache_bytes));
+      "sm_%d.%d with %d cores, %dKHz clock, %dKHz mem clock, %dB L2$", cc_major,
+      cc_minor, core_count, sm_clock_khz, value_or(mem_clock_khz, 0),
+      l2_cache_bytes));
 
   return builder.Build();
 }

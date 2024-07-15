@@ -269,8 +269,8 @@ class DeviceDescription {
   // Returns the name that the device reports. Vendor dependent.
   const std::string &name() const { return name_; }
 
-  // Gets a human-readable description of the device, e.g. "nvidia GPU
-  // supporting sm75 with 32GB RAM, 80 SMs, ...".  This is intended to be the
+  // Gets a human-readable description of the device, e.g.
+  // "sm_7.5 with 80 cores, ...".  This is intended to be the
   // same if and only if two devices are "the same" (e.g. the same make/model of
   // GPU), though it may not completely succeed at this for all platforms.
   //
