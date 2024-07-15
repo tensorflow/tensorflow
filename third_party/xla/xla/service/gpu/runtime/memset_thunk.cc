@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/memset_thunk.h"
 
 #include "absl/status/status.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {

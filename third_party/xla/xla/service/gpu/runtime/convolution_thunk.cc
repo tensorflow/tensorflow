@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
+#include "tsl/protobuf/dnn.pb.h"
 #if TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/stream_executor_util.h"
 #endif  // TENSORFLOW_USE_ROCM
