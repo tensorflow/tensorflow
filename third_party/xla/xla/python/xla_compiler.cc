@@ -354,13 +354,14 @@ absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
         return reinterpret_cast<XLA_FFI_Handler*>(capsule.data());
       };
 
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * prepare, handler("prepare"));
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * initialize, handler("initialize"));
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * execute, handler("execute"));
+      XLA_FFI_Handler_Bundle bundle;
+      TF_ASSIGN_OR_RETURN(bundle.instantiate, handler("instantiate"));
+      TF_ASSIGN_OR_RETURN(bundle.prepare, handler("prepare"));
+      TF_ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
+      TF_ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
 
       return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
-          xla::ffi::GetXlaFfiApi(), fn_name, platform,
-          XLA_FFI_Handler_Bundle{prepare, initialize, execute}, traits));
+          xla::ffi::GetXlaFfiApi(), fn_name, platform, bundle, traits));
     }
 
     return absl::InvalidArgumentError(

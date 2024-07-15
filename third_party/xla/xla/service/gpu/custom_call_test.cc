@@ -758,6 +758,7 @@ XLA_FFI_DEFINE_HANDLER(kExecutionContextExecute,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
                          PLATFORM,
                          {
+                             /*instantiate=*/nullptr,
                              /*prepare=*/nullptr,
                              /*initialize=*/kExecutionContextInitialize,
                              /*execute=*/kExecutionContextExecute,

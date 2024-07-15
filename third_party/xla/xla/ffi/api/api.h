@@ -224,8 +224,8 @@ class Ffi {
       const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
       XLA_FFI_Handler* execute, XLA_FFI_Handler_Traits traits = 0) {
     return RegisterStaticHandler(
-        api, name, platform, XLA_FFI_Handler_Bundle{nullptr, nullptr, execute},
-        traits);
+        api, name, platform,
+        XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr, execute}, traits);
   }
 
  protected:

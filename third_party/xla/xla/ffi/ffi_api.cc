@@ -163,6 +163,7 @@ static HandlerRegistry& GetHandlerRegistry() {
 static std::vector<std::string> GetHandlerStages(
     const XLA_FFI_Handler_Bundle& bundle) {
   std::vector<std::string> stages;
+  if (bundle.instantiate != nullptr) stages.push_back("instantiate");
   if (bundle.prepare != nullptr) stages.push_back("prepare");
   if (bundle.initialize != nullptr) stages.push_back("initialize");
   if (bundle.execute != nullptr) stages.push_back("execute");

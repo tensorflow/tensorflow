@@ -364,9 +364,10 @@ typedef XLA_FFI_Error* XLA_FFI_Handler(XLA_FFI_CallFrame* call_frame);
 
 // XLA FFI handlers for execution stages (see XLA_FFI_ExecutionStage).
 struct XLA_FFI_Handler_Bundle {
-  XLA_FFI_Handler* prepare;     // optional
-  XLA_FFI_Handler* initialize;  // optional
-  XLA_FFI_Handler* execute;     // required
+  XLA_FFI_Handler* instantiate;  // optional
+  XLA_FFI_Handler* prepare;      // optional
+  XLA_FFI_Handler* initialize;   // optional
+  XLA_FFI_Handler* execute;      // required
 };
 
 enum XLA_FFI_Handler_TraitsBits {
