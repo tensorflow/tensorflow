@@ -15,15 +15,34 @@ limitations under the License.
 
 #include "xla/hlo/ir/collective_device_list.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
+
+int64_t IotaReplicaGroupList::num_replica_groups() const {
+  DCHECK_GE(num_replica_groups_, 0);
+  return num_replica_groups_;
+}
+
+int64_t IotaReplicaGroupList::num_devices_per_group() const {
+  DCHECK_GE(num_devices_per_group_, 0);
+  return num_devices_per_group_;
+}
+
+std::string IotaReplicaGroupList::ToString() const {
+  return iota_tile_assignment_.ToString();
+}
 
 CollectiveDeviceList::CollectiveDeviceList(
     absl::Span<const ReplicaGroup> replica_groups) {
@@ -85,20 +104,23 @@ const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
   return *replica_groups_;
 }
 
-int64_t IotaReplicaGroupList::num_replica_groups() const {
-  if (num_replica_groups_ == -1) {
-    num_replica_groups_ = iota_tile_assignment_.dim(0);
+std::string CollectiveDeviceList::ToString() const {
+  if (iota_replica_group_list_.has_value()) {
+    return iota_replica_group_list_->ToString();
   }
-  DCHECK_GE(num_replica_groups_, 0);
-  return num_replica_groups_;
+
+  return ReplicaGroupsToString(replica_groups());
 }
 
-int64_t IotaReplicaGroupList::num_devices_per_group() const {
-  if (num_devices_per_group_ == -1) {
-    num_devices_per_group_ = iota_tile_assignment_.dim(1);
+std::string ReplicaGroupsToString(
+    absl::Span<const ReplicaGroup> replica_groups) {
+  std::vector<std::string> replica_group_str;
+  replica_group_str.reserve(replica_groups.size());
+  for (const ReplicaGroup& group : replica_groups) {
+    replica_group_str.push_back(
+        absl::StrCat("{", absl::StrJoin(group.replica_ids(), ","), "}"));
   }
-  DCHECK_GE(num_devices_per_group_, 0);
-  return num_devices_per_group_;
+  return absl::StrCat("{", absl::StrJoin(replica_group_str, ","), "}");
 }
 
 }  // namespace xla
