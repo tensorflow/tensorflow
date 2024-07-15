@@ -362,7 +362,8 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
                       backend().default_stream_executor()->CreateStream());
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(),
-                                    stream.get(), nullptr, RunId());
+                                    stream.get(), nullptr, RunId(),
+                                    backend().device_count());
   service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
@@ -422,7 +423,8 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     streams.emplace_back(std::move(stream));
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
-        device, streams.back().get(), device_assignment, run_id));
+        device, streams.back().get(), device_assignment, run_id,
+        backend().device_count()));
 
     // Copy arguments to device.
     const int64_t argument_count = argument_count_provider(i);
@@ -670,9 +672,11 @@ HloRunner::CreateExecutableWithBufferAssignment(
 
 ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
     int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
-    RunId run_id) {
+    RunId run_id, int local_device_count) {
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(device);
+  run_options.set_local_device_count(local_device_count);
+
   run_options.set_stream(stream);
   run_options.set_allocator(backend().memory_allocator());
   run_options.set_intra_op_thread_pool(

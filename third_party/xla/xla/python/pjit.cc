@@ -121,10 +121,10 @@ class PjitFunctionCache {
   // might be evicted before we finish tracing/compiling.
   typedef xla::LRUCache<CallSignature, std::shared_ptr<PjitCacheEntry>> Cache;
 
-  // We include as part of the cache key `donate_argnums` (and any other fields
-  // that aren't subsumed by the CallSignature we compute for each call).
+  // We include as part of the cache key `global_cache_key` (and any other
+  // fields that aren't subsumed by the CallSignature we compute for each call).
   std::shared_ptr<Cache> Lookup(nb::handle function,
-                                absl::Span<const int> donate_argnums);
+                                nb::object global_cache_key);
   std::shared_ptr<Cache> DefaultCache();
 
   int Size() const { return lru_list_.Size(); }
@@ -137,19 +137,18 @@ class PjitFunctionCache {
 
     // Other fields that are part of the arguments to `jit`, but are not
     // otherwise part of CallSignature.
-    std::vector<int> donate_argnums;
+    nb::object global_cache_key;
 
     bool operator==(const Key& other) const {
       return function.ptr() == other.function.ptr() &&
-             donate_argnums == other.donate_argnums;
+             global_cache_key.equal(other.global_cache_key);
     }
   };
 
   template <typename H>
   friend H AbslHashValue(H h, const Key& key) {
     h = H::combine(std::move(h), key.function.ptr());
-    h = H::combine_contiguous(std::move(h), key.donate_argnums.data(),
-                              key.donate_argnums.size());
+    h = H::combine(std::move(h), xla::nb_hash(key.global_cache_key));
     return h;
   }
 
@@ -176,11 +175,10 @@ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::DefaultCache() {
 }
 
 std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
-    nb::handle function, absl::Span<const int> donate_argnums) {
+    nb::handle function, nb::object global_cache_key) {
   Key key;
   key.function = function;
-  key.donate_argnums =
-      std::vector<int>(donate_argnums.begin(), donate_argnums.end());
+  key.global_cache_key = global_cache_key;
   auto insert = functions_.emplace(key, nullptr);
   if (!insert.second) {
     return insert.first->second->cache;
@@ -210,7 +208,7 @@ class PjitFunction {
   PjitFunction(std::string function_name, std::optional<nb::callable> fun,
                nb::callable cache_miss, std::vector<int> static_argnums,
                std::vector<nb::str> static_argnames,
-               std::vector<int> donate_argnums,
+               nb::object global_cache_key,
                std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
                nb::callable shard_arg_fallback,
                std::shared_ptr<PjitFunctionCache> cache);
@@ -257,7 +255,7 @@ class PjitFunction {
   const std::vector<nb::str>& static_argnames() const {
     return static_argnames_;
   }
-  const std::vector<int>& donate_argnums() const { return donate_argnums_; }
+  const nb::object& global_cache_key() const { return global_cache_key_; }
   const std::shared_ptr<PjitFunctionCache>& cache() const { return cache_; }
 
   int cache_capacity() const { return executables_->Size(); }
@@ -290,7 +288,7 @@ class PjitFunction {
   nb::callable cache_miss_;
   std::vector<int> static_argnums_;
   std::vector<nb::str> static_argnames_;
-  std::vector<int> donate_argnums_;
+  nb::object global_cache_key_;
 
   std::shared_ptr<xla::PyTreeRegistry> pytree_registry_;
   nb::callable shard_arg_fallback_;
@@ -324,14 +322,14 @@ PjitFunctionStore& GetGlobalPjitFunctionStore() {
 PjitFunction::PjitFunction(
     std::string function_name, std::optional<nb::callable> fun,
     nb::callable cache_miss, std::vector<int> static_argnums,
-    std::vector<nb::str> static_argnames, std::vector<int> donate_argnums,
+    std::vector<nb::str> static_argnames, nb::object global_cache_key,
     std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
     nb::callable shard_arg_fallback, std::shared_ptr<PjitFunctionCache> cache)
     : function_name_(std::move(function_name)),
       fun_(std::move(fun)),
       cache_miss_(std::move(cache_miss)),
       static_argnums_(std::move(static_argnums)),
-      donate_argnums_(donate_argnums),
+      global_cache_key_(global_cache_key),
       pytree_registry_(std::move(pytree_registry)),
       shard_arg_fallback_(std::move(shard_arg_fallback)),
       cache_(std::move(cache)) {
@@ -345,7 +343,7 @@ PjitFunction::PjitFunction(
   if (!fun_.has_value()) {
     executables_ = cache_->DefaultCache();
   } else {
-    executables_ = cache_->Lookup(fun_.value(), donate_argnums);
+    executables_ = cache_->Lookup(fun_.value(), global_cache_key);
   }
 
   GetGlobalPjitFunctionStore().Insert(this);
@@ -1027,20 +1025,20 @@ void InitializePjitFunction(
     PjitFunctionObject* fn_obj, std::string function_name,
     std::optional<nb::callable> fun, nb::callable cache_miss,
     std::vector<int> static_argnums, std::vector<nb::str> static_argnames,
-    std::vector<int> donate_argnums,
+    nb::object global_cache_key,
     std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
     nb::callable shard_arg_fallback, std::shared_ptr<PjitFunctionCache> cache) {
   new (&fn_obj->fun) PjitFunction(
       std::move(function_name), std::move(fun), std::move(cache_miss),
       std::move(static_argnums), std::move(static_argnames),
-      std::move(donate_argnums), std::move(pytree_registry),
+      std::move(global_cache_key), std::move(pytree_registry),
       std::move(shard_arg_fallback), std::move(cache));
 }
 
 nb::object MakePjitFunction(
     std::string function_name, std::optional<nb::callable> fun,
     nb::callable cache_miss, std::vector<int> static_argnums,
-    std::vector<nb::str> static_argnames, std::vector<int> donate_argnums,
+    std::vector<nb::str> static_argnames, nb::object global_cache_key,
     std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
     nb::callable shard_arg_fallback,
     std::optional<std::shared_ptr<PjitFunctionCache>> cache) {
@@ -1051,11 +1049,11 @@ nb::object MakePjitFunction(
     cache = std::make_shared<PjitFunctionCache>(
         PjitFunctionCache::kDefaultCapacity);
   }
-  InitializePjitFunction(fn_obj, std::move(function_name), std::move(fun),
-                         std::move(cache_miss), std::move(static_argnums),
-                         std::move(static_argnames), std::move(donate_argnums),
-                         std::move(pytree_registry),
-                         std::move(shard_arg_fallback), std::move(*cache));
+  InitializePjitFunction(
+      fn_obj, std::move(function_name), std::move(fun), std::move(cache_miss),
+      std::move(static_argnums), std::move(static_argnames),
+      std::move(global_cache_key), std::move(pytree_registry),
+      std::move(shard_arg_fallback), std::move(*cache));
   return obj;
 }
 
@@ -1167,7 +1165,7 @@ void BuildPjitSubmodule(nb::module_& m) {
         pickle["cache_miss"] = fn->cache_miss();
         pickle["static_argnums"] = fn->static_argnums();
         pickle["static_argnames"] = nb::cast(fn->static_argnames());
-        pickle["donate_argnums"] = fn->donate_argnums();
+        pickle["global_cache_key"] = fn->global_cache_key();
         pickle["pytree_registry"] = nb::cast(fn->pytree_registry());
         pickle["shard_arg_fallback"] = fn->shard_arg_fallback();
         pickle["cache"] = fn->cache();
@@ -1195,8 +1193,7 @@ void BuildPjitSubmodule(nb::module_& m) {
             nb::cast<std::vector<int>>(pickle["static_argnums"]);
         std::vector<nb::str> static_argnames =
             nb::cast<std::vector<nb::str>>(pickle["static_argnames"]);
-        std::vector<int> donate_argnums =
-            nb::cast<std::vector<int>>(pickle["donate_argnums"]);
+        nb::object global_cache_key = pickle["global_cache_key"];
         std::shared_ptr<xla::PyTreeRegistry> pytree_registry =
             nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pickle["pytree_registry"].ptr()));
@@ -1208,7 +1205,7 @@ void BuildPjitSubmodule(nb::module_& m) {
             reinterpret_cast<PjitFunctionObject*>(self.ptr()),
             std::move(function_name), std::move(fun), std::move(cache_miss),
             std::move(static_argnums), std::move(static_argnames),
-            std::move(donate_argnums), std::move(pytree_registry),
+            std::move(global_cache_key), std::move(pytree_registry),
             std::move(shard_arg_fallback), std::move(cache));
       },
       nb::is_method());
@@ -1234,7 +1231,7 @@ void BuildPjitSubmodule(nb::module_& m) {
       "pjit",
       [](std::string function_name, std::optional<nb::callable> fun,
          nb::callable cache_miss, std::vector<int> static_argnums,
-         std::vector<nb::str> static_argnames, std::vector<int> donate_argnums,
+         std::vector<nb::str> static_argnames, nb::object global_cache_key,
          nb::object pytree_registry, nb::callable shard_arg_fallback,
          std::optional<std::shared_ptr<PjitFunctionCache>> cache) {
         std::shared_ptr<xla::PyTreeRegistry> registry =
@@ -1243,12 +1240,12 @@ void BuildPjitSubmodule(nb::module_& m) {
         return MakePjitFunction(
             std::move(function_name), std::move(fun), std::move(cache_miss),
             std::move(static_argnums), std::move(static_argnames),
-            std::move(donate_argnums), std::move(registry),
+            std::move(global_cache_key), std::move(registry),
             std::move(shard_arg_fallback), std::move(cache));
       },
       nb::arg("function_name"), nb::arg("fun").none(), nb::arg("cache_miss"),
       nb::arg("static_argnums"), nb::arg("static_argnames"),
-      nb::arg("donate_argnums"), nb::arg("pytree_registry"),
+      nb::arg("global_cache_key"), nb::arg("pytree_registry"),
       nb::arg("shard_arg_fallback"), nb::arg("cache").none() = nb::none());
 }
 
