@@ -16,6 +16,7 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
+    "if_macos",
 )
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
@@ -226,10 +227,15 @@ cc_library(
 # PJRT CPU plugin.
 xla_cc_binary(
     name = "pjrt_c_api_cpu_plugin.so",
-    linkopts = [
-        "-Wl,--version-script,$(location :pjrt_c_api_cpu_version_script.lds)",
-        "-Wl,--no-undefined",
-    ],
+    linkopts = if_macos(
+        [
+            "-Wl,--no-undefined",
+        ],
+        [
+            "-Wl,--version-script,$(location :pjrt_c_api_cpu_version_script.lds)",
+            "-Wl,--no-undefined",
+        ],
+    ),
     linkshared = True,
     tags = [
         "noasan",
