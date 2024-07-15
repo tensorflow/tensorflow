@@ -259,6 +259,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:status_macros",
+        "//xla:util",
         "//xla/service:global_device_id",
         "//xla/service:lockable",
         "//xla/service:rendezvous",
