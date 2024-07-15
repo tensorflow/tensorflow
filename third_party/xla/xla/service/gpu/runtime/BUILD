@@ -608,6 +608,7 @@ cc_library(
         "//xla:util",
         "//xla/ffi:call_frame",
         "//xla/ffi:execution_context",
+        "//xla/ffi:execution_state",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
         "//xla/hlo/ir:hlo",
@@ -624,6 +625,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

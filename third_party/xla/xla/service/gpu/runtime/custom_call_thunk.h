@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
@@ -112,6 +113,7 @@ class CustomCallThunk : public Thunk {
                   std::vector<std::optional<Slice>> operands,
                   std::vector<std::optional<Slice>> results,
                   AttributesMap attributes,
+                  std::unique_ptr<ffi::ExecutionState> execution_state,
                   const HloComputation* called_computation);
 
   absl::Status ExecuteCustomCall(const ExecuteParams& params);
@@ -136,6 +138,9 @@ class CustomCallThunk : public Thunk {
   // a lot of features. Long term it will replace legacy custom calls.
   std::optional<XLA_FFI_Handler_Bundle> bundle_;
   AttributesMap attributes_;
+
+  // Execution state bound to the FFI handler. Optional.
+  std::unique_ptr<ffi::ExecutionState> execution_state_;
 
   // TODO(ezhulenev): Currently we assume that HloModule that owns this
   // computation is owned by a GpuExecutable and stays alive for as long as

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -66,9 +68,29 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     std::vector<std::optional<Slice>> operands,
     std::vector<std::optional<Slice>> results, AttributesMap attributes,
     const HloComputation* called_computation) {
+  auto execution_state = std::make_unique<ffi::ExecutionState>();
+
+  // Initialize FFI handler state if it has an instantiate callback.
+  if (bundle.instantiate) {
+    // At FFI handler instantiation time, we don't have any arguments or
+    // results or access to the underlying device (stream, etc.)
+    CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+
+    CallFrameBuilder::AttributesBuilder attrs;
+    attrs.Append(attributes);
+
+    builder.AddAttributes(attrs.Build());
+    CallFrame call_frame = builder.Build();
+
+    CallOptions options;
+    options.execution_state = execution_state.get();
+    TF_RETURN_IF_ERROR(Call(bundle.instantiate, call_frame, options,
+                            XLA_FFI_ExecutionStage_INSTANTIATE));
+  }
+
   return absl::WrapUnique(new CustomCallThunk(
       thunk_info, bundle, std::move(operands), std::move(results),
-      std::move(attributes), called_computation));
+      std::move(attributes), std::move(execution_state), called_computation));
 }
 
 CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
@@ -82,17 +104,18 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
       call_target_(std::move(call_target)),
       opaque_(opaque) {}
 
-CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
-                                 XLA_FFI_Handler_Bundle bundle,
-                                 std::vector<std::optional<Slice>> operands,
-                                 std::vector<std::optional<Slice>> results,
-                                 AttributesMap attributes,
-                                 const HloComputation* called_computation)
+CustomCallThunk::CustomCallThunk(
+    ThunkInfo thunk_info, XLA_FFI_Handler_Bundle bundle,
+    std::vector<std::optional<Slice>> operands,
+    std::vector<std::optional<Slice>> results, AttributesMap attributes,
+    std::unique_ptr<ffi::ExecutionState> execution_state,
+    const HloComputation* called_computation)
     : Thunk(Thunk::kCustomCall, thunk_info),
       operands_(std::move(operands)),
       results_(std::move(results)),
       bundle_(bundle),
       attributes_(std::move(attributes)),
+      execution_state_(std::move(execution_state)),
       called_computation_(called_computation) {}
 
 absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
@@ -175,8 +198,9 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
-  CallOptions options = {device_ordinal, stream, allocator, called_computation_,
-                         execution_context};
+  CallOptions options = {device_ordinal,    stream,
+                         allocator,         called_computation_,
+                         execution_context, execution_state_.get()};
   return Call(handler, call_frame, options, stage);
 }
 
