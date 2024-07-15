@@ -1,99 +1,32 @@
-diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
---- stablehlo/CMakeLists.txt
-+++ stablehlo/CMakeLists.txt
-@@ -53,16 +53,24 @@
- #-------------------------------------------------------------------------------
- # Project setup and globals
- #-------------------------------------------------------------------------------
-+
-+# There are 3 build modes, one will be set to ON
-+#  - Standalone: Build MLIR as a part of StableHLO, requires registering LLVM globals
-+#  - External: StableHLO built as an external LLVM project (XLA/MHLO uses this)
-+#  - Embedded: StableHLO built as a part of another MLIR project (torch-mlir uses this)
-+#
-+# If building as part of another project, let it handle the MLIR dependency.
-+# The dependent project might use a bundled version of MLIR instead of installing.
- set(STABLEHLO_EXTERNAL_PROJECT_BUILD OFF)
--
--if(NOT (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR) AND NOT MLIR_BINARY_DIR)
--  # Building as part of LLVM via the external project mechanism.
--  set(STABLEHLO_EXTERNAL_PROJECT_BUILD ON)
--else()
--  # Building standalone.
--  project(stablehlo LANGUAGES CXX C)
--  set(CMAKE_C_STANDARD 11)
--  set(CMAKE_CXX_STANDARD 17)
-+set(STABLEHLO_STANDALONE_BUILD OFF)
-+# STABLEHLO_BUILD_EMBEDDED declared in above options
-+
-+if (NOT STABLEHLO_BUILD_EMBEDDED)
-+  if ((CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR) OR MLIR_BINARY_DIR)
-+    set(STABLEHLO_STANDALONE_BUILD ON)
-+  else()
-+    set(STABLEHLO_EXTERNAL_PROJECT_BUILD ON)
-+  endif()
- endif()
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -518,6 +518,16 @@
+   return StringAttr::get(getContext(), "");
+ }
  
- #-------------------------------------------------------------------------------
-@@ -74,9 +82,6 @@
-   set(LLVM_ENABLE_PEDANTIC ON)
- endif()
++// Returns if the backend config is unset, or if empty dict / string attribute.
++bool CustomCallOp::hasEmptyBackendConfig() {
++  if (!getBackendConfig().has_value()) return true;
++  Attribute backendConfig = getBackendConfigOrDefault();
++  if (auto strAttr = dyn_cast<StringAttr>(backendConfig)) {
++    return strAttr.empty();
++  }
++  return cast<DictionaryAttr>(backendConfig).empty();
++}
++
+ //===----------------------------------------------------------------------===//
+ // CholeskyOp
+ //===----------------------------------------------------------------------===//
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -2389,6 +2389,7 @@
  
--# Find MLIR to install if we are building standalone. If building as part of
--# another project, let it handle the MLIR dependency. The dependent project
--# might use a bundled version of MLIR instead of installing, for instance.
- if(STABLEHLO_EXTERNAL_PROJECT_BUILD)
-   message(STATUS "Building StableHLO as an external LLVM project")
-   set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir ) # --src-root
-@@ -88,17 +93,35 @@
+   let extraClassDeclaration = commonClassDeclaration # [{
+     mlir::Attribute getBackendConfigOrDefault();
++    bool hasEmptyBackendConfig();
+   }];
+ }
  
-   set(BACKEND_PACKAGE_STRING "${PACKAGE_STRING}")
-   list(APPEND CMAKE_MODULE_PATH "${MLIR_MAIN_SRC_DIR}/cmake/modules")
--elseif(NOT STABLEHLO_BUILD_EMBEDDED)
--  message(STATUS "Building StableHLO with an installed MLIR")
-+endif()
-+
-+if(STABLEHLO_STANDALONE_BUILD)
-+  message("Building StableHLO as a standalone project.")
-+  project(stablehlo LANGUAGES CXX C)
-+  set(CMAKE_C_STANDARD 11)
-+  set(CMAKE_CXX_STANDARD 17)
-+
-   find_package(MLIR REQUIRED CONFIG)
-   message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
-   message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-+
-   set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
-   set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
-   list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
-   list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
--else()
-+
-+  include(TableGen)
-+  include(AddLLVM)
-+  include(AddMLIR)
-+  include(HandleLLVMOptions)
-+endif()
-+
-+if(STABLEHLO_BUILD_EMBEDDED)
-   message(STATUS "Building StableHLO embedded in another project")
-+  include(TableGen)
-+  include(AddLLVM)
-+  include(AddMLIR)
-+  include(HandleLLVMOptions)
- endif()
- 
- # Add the CMake modules specific to StableHLO
-@@ -134,10 +157,7 @@
-     endif()
- endif()
- 
--include(TableGen)
--include(AddLLVM)
--include(AddMLIR)
--include(HandleLLVMOptions)
-+#TODO: Where should these be?
- include_directories(${LLVM_INCLUDE_DIRS})
- include_directories(${MLIR_INCLUDE_DIRS})
- include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 

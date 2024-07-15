@@ -28,6 +28,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/fft.h"
@@ -45,6 +46,8 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
+
+using cuda::CUDAComplex;
 
 namespace {
 
@@ -389,8 +392,8 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
   cuda::ScopedActivateExecutorContext sac(parent_);
   auto ret =
       cufftExec(cuda_fft_plan->GetPlan(),
-                GpuComplex(const_cast<InputT *>(GpuMemory(input_maybe_copy))),
-                GpuComplex(GpuMemoryMutable(output)));
+                CUDAComplex(const_cast<InputT *>(GpuMemory(input_maybe_copy))),
+                CUDAComplex(GpuMemoryMutable(output)));
 
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "Failed to run cuFFT routine: " << ret;
@@ -417,8 +420,8 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
 
   cuda::ScopedActivateExecutorContext sac(parent_);
   auto ret = cufftExec(cuda_fft_plan->GetPlan(),
-                       GpuComplex(const_cast<InputT *>(GpuMemory(input))),
-                       GpuComplex(GpuMemoryMutable(output)),
+                       CUDAComplex(const_cast<InputT *>(GpuMemory(input))),
+                       CUDAComplex(GpuMemoryMutable(output)),
                        cuda_fft_plan->GetFftDirection());
 
   if (ret != CUFFT_SUCCESS) {
