@@ -83,7 +83,7 @@ GPU spec on the command line we can get e.g. PTX output without access to an
 accelerator:
 
 ```
-$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=(pwd)/tools/data/gpu_specs/a100_80.txtpb input.hlo
+$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=(pwd)/tools/data/gpu_specs/a100_pcie_80.txtpb input.hlo
 ```
 
 Note: For the above invocation to work, the user would usually either need to
@@ -122,7 +122,7 @@ Deviceless compilation might run into issues if autotuning is required. Luckily,
 we can also provide those on the command line:
 
 ```
-$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
+$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_pcie_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
 ```
 
 The autotune file is text serialization of `autotune_results.proto`, with

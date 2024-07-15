@@ -16,21 +16,23 @@ gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
   shared_memory_per_block: 49152
-  shared_memory_per_core: 233472
+  shared_memory_per_core: 167936
   threads_per_core_limit: 2048
-  core_count: 132
-  fpus_per_core: 128
+  core_count: 108
+  fpus_per_core: 64
   block_dim_limit_x: 2147483647
   block_dim_limit_y: 65535
   block_dim_limit_z: 65535
-  memory_bandwidth: 3352320000000
-  l2_cache_size: 52428800
-  clock_rate_ghz: 1.98
-  device_memory_size: 84978434048
-  shared_memory_per_block_optin: 232448
+  memory_bandwidth: 2039040000000
+  l2_cache_size: 41943040
+  clock_rate_ghz: 1.41
+  device_memory_size: 85100068864
+  shared_memory_per_block_optin: 166912
   cuda_compute_capability {
-    major: 9
+    major: 8
   }
+  registers_per_core_limit: 65536
+  registers_per_block_limit: 65536
 }
 platform_name: "CUDA"
 dnn_version_info {
@@ -38,4 +40,4 @@ dnn_version_info {
   minor: 9
   patch: 4
 }
-device_description_str: "NVIDIA H100 80GB HBM3"
+device_description_str: "NVIDIA A100-SXM4-80GB"
