@@ -55,6 +55,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
@@ -153,6 +154,19 @@ class ModelBatchStats {
     return cumulative_processed_size_.load(std::memory_order_relaxed);
   }
 
+  // Returns the list of batch sizes for which this model has statistics.
+  //
+  // The returned list is not guaranteed to be sorted.
+  std::vector<int32> BatchSizes() const {
+    std::vector<int32> result;
+    mutex_lock l(mu_);
+    result.reserve(batch_size_stats_by_batch_size_.size());
+    for (const auto& [key, value] : batch_size_stats_by_batch_size_) {
+      result.push_back(key);
+    }
+    return result;
+  }
+
  private:
   mutable mutex mu_;
 
@@ -191,8 +205,19 @@ class BatchStats {
     return model_batch_stats_by_model_and_op_names_[key];
   }
 
-  // TODO: b/325954758 - Add a public method for scanning model_batch_stats_ and
-  // mention that it will always returns elements in the same order.
+  // Returns a list of all model and op names.
+  //
+  // This is the set of model/op names tracked by this BatchStats instance.
+  // Note that the returned list is not guaranteed to be sorted.
+  std::vector<std::tuple<std::string, std::string>> ModelAndOpNames() const {
+    std::vector<std::tuple<std::string, std::string>> result;
+    mutex_lock l(mu_);
+    result.reserve(model_batch_stats_by_model_and_op_names_.size());
+    for (const auto& [key, value] : model_batch_stats_by_model_and_op_names_) {
+      result.push_back(key);
+    }
+    return result;
+  }
 
  private:
   mutable mutex mu_;
