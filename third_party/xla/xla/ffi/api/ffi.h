@@ -144,7 +144,7 @@ class Span {
 };
 
 //===----------------------------------------------------------------------===//
-// Error
+// Error and ErrorOr
 //===----------------------------------------------------------------------===//
 
 enum class ErrorCode : uint8_t {
@@ -188,6 +188,12 @@ class Error {
  private:
   ErrorCode errc_ = ErrorCode::kOk;
   std::string message_;
+};
+
+template <typename T>
+class ErrorOr : public Expected<T, Error> {
+ public:
+  using Expected<T, Error>::Expected;
 };
 
 //===----------------------------------------------------------------------===//

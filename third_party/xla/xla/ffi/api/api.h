@@ -975,6 +975,7 @@ class Expected {
   constexpr const T* operator->() const { return &value(); }
 
   constexpr bool has_value() const { return std::holds_alternative<T>(data_); }
+  constexpr bool has_error() const { return std::holds_alternative<E>(data_); }
 
   constexpr T& value() & { return std::get<T>(data_); }
   constexpr const T& value() const& { return std::get<T>(data_); }
@@ -993,7 +994,7 @@ class Expected {
 template <typename E>
 class Unexpected {
  public:
-  explicit constexpr Unexpected(E error) : error_(std::move(error)) {}
+  constexpr Unexpected(E error) : error_(std::move(error)) {}  // NOLINT
 
  private:
   template <typename, typename>

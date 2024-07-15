@@ -187,6 +187,18 @@ TEST(FfiTest, ErrorEnumValue) {
             encoded(ErrorCode::kUnauthenticated));
 }
 
+TEST(FfiTest, Expected) {
+  ErrorOr<int32_t> value(42);
+  EXPECT_TRUE(value.has_value());
+  EXPECT_FALSE(value.has_error());
+  EXPECT_EQ(*value, 42);
+
+  ErrorOr<int32_t> error(Error(ErrorCode::kInternal, "Test error"));
+  EXPECT_FALSE(error.has_value());
+  EXPECT_TRUE(error.has_error());
+  EXPECT_THAT(error.error().message(), HasSubstr("Test error"));
+}
+
 TEST(FfiTest, ReturnError) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
