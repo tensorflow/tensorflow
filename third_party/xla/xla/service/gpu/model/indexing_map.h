@@ -162,7 +162,7 @@ class IndexingMap;
 class RangeEvaluator {
  public:
   RangeEvaluator(const IndexingMap& indexing_map,
-                 mlir::MLIRContext* mlir_context);
+                 mlir::MLIRContext* mlir_context, bool use_constraints = true);
 
   // Checks whether an `AffineExpr` always describes a non-negative value.
   bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
@@ -179,7 +179,7 @@ class RangeEvaluator {
  private:
   mlir::MLIRContext* mlir_context_;
   const IndexingMap& indexing_map_;
-  llvm::DenseMap<mlir::AffineExpr, Interval> expression_ranges_cache_;
+  bool use_constraints_;
 };
 
 // Dimension variable represents a dimension of a tensor or a GPU grid.

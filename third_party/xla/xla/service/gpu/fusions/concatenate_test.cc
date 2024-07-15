@@ -77,8 +77,8 @@ TEST_F(ConcatenateTest, ThreadIndexing) {
   ASSERT_NE(fusion, nullptr);
 
   constexpr auto kIndexing = R"(
-    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    (bl_x * 128 + th_x) mod 400)
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
+      (bl_x * 128 + th_x)
     domain:
     th_x in [0, 128)
     th_y in [0, 1)

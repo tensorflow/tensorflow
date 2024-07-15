@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -64,7 +63,6 @@ using mlir::AffineExpr;
 using mlir::AffineExprKind;
 using mlir::AffineMap;
 using mlir::AffineSymbolExpr;
-using mlir::getAffineBinaryOpExpr;
 using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
 using mlir::MLIRContext;
@@ -1108,8 +1106,10 @@ SmallVector<int64_t, 4> IndexingMap::Evaluate(
 }
 
 RangeEvaluator::RangeEvaluator(const IndexingMap& indexing_map,
-                               MLIRContext* mlir_context)
-    : mlir_context_(mlir_context), indexing_map_(indexing_map) {}
+                               MLIRContext* mlir_context, bool use_constraints)
+    : mlir_context_(mlir_context),
+      indexing_map_(indexing_map),
+      use_constraints_(use_constraints) {}
 
 bool RangeEvaluator::IsAlwaysPositiveOrZero(mlir::AffineExpr expr) {
   return ComputeExpressionRange(expr).lower >= 0;
@@ -1132,42 +1132,52 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
       return indexing_map_.GetSymbolBound(
           mlir::cast<AffineSymbolExpr>(expr).getPosition());
     default:
-      auto bound = expression_ranges_cache_.find(expr);
-      if (bound != expression_ranges_cache_.end()) {
-        return bound->second;
-      }
-      auto binary_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
-      CHECK(binary_op);
-      auto lhs = ComputeExpressionRange(binary_op.getLHS());
-      auto rhs = ComputeExpressionRange(binary_op.getRHS());
-
-      auto& result = expression_ranges_cache_[expr];
-      switch (expr.getKind()) {
-        case AffineExprKind::Add:
-          return result = lhs + rhs;
-        case AffineExprKind::Mul:
-          return result = lhs * rhs;
-        case AffineExprKind::Mod: {
-          CHECK(rhs.IsPoint()) << "RHS of mod must be a constant";
-          int64_t m = rhs.lower;
-          if (0 <= lhs.lower && lhs.upper < m) {
-            return result = lhs;
-          }
-          return result = {0, m - 1};
-        }
-        case AffineExprKind::FloorDiv: {
-          CHECK(rhs.IsPoint()) << "RHS of floor_div must be a constant";
-          int64_t d = rhs.lower;
-          // TODO(jreiffers): Implement saturating semantics.
-          int64_t a = llvm::divideFloorSigned(lhs.lower, d);
-          int64_t b = llvm::divideFloorSigned(lhs.upper, d);
-          return result = {std::min(a, b), std::max(a, b)};
-        }
-        default:
-          // We don't use ceildiv, so we don't support it.
-          LOG(FATAL) << "Unsupported expression";
-      }
+      break;
   }
+  auto binary_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
+  CHECK(binary_op);
+  auto lhs = ComputeExpressionRange(binary_op.getLHS());
+  auto rhs = ComputeExpressionRange(binary_op.getRHS());
+
+  Interval result;
+  switch (expr.getKind()) {
+    case AffineExprKind::Add:
+      result = lhs + rhs;
+      break;
+    case AffineExprKind::Mul:
+      result = lhs * rhs;
+      break;
+    case AffineExprKind::Mod: {
+      CHECK(rhs.IsPoint()) << "RHS of mod must be a constant";
+      int64_t m = rhs.lower;
+      if (0 <= lhs.lower && lhs.upper < m) {
+        result = lhs;
+      } else {
+        result = {0, m - 1};
+      }
+      break;
+    }
+    case AffineExprKind::FloorDiv: {
+      CHECK(rhs.IsPoint()) << "RHS of floor_div must be a constant";
+      int64_t d = rhs.lower;
+      // TODO(jreiffers): Implement saturating semantics.
+      int64_t a = llvm::divideFloorSigned(lhs.lower, d);
+      int64_t b = llvm::divideFloorSigned(lhs.upper, d);
+      result = {std::min(a, b), std::max(a, b)};
+      break;
+    }
+    default:
+      // We don't use ceildiv, so we don't support it.
+      LOG(FATAL) << "Unsupported expression";
+  }
+
+  if (use_constraints_) {
+    auto constraint = indexing_map_.GetConstraints().find(expr);
+    if (constraint != indexing_map_.GetConstraints().end()) {
+      return result.Intersect(constraint->second);
+    }
+  }
+  return result;
 }
 
 std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
@@ -1272,12 +1282,13 @@ bool IndexingMap::Simplify() {
 
   // Simplify affine_map using the optimized ranges.
   // Potentially, we can be smarter about recreating the range_evaluator.
-  RangeEvaluator range_evaluator(*this, GetMLIRContext());
-  AffineExprSimplifier simplifier(&range_evaluator);
+  RangeEvaluator constraint_range_evaluator(*this, GetMLIRContext(),
+                                            /*use_constraints=*/false);
+  AffineExprSimplifier constraint_simplifier(&constraint_range_evaluator);
   while (true) {
     bool did_simplify = false;
-    did_simplify |= simplifier.SimplifyConstraintExprs(*this);
-    did_simplify |= simplifier.SimplifyConstraintRanges(*this);
+    did_simplify |= constraint_simplifier.SimplifyConstraintExprs(*this);
+    did_simplify |= constraint_simplifier.SimplifyConstraintRanges(*this);
     if (!did_simplify) {
       break;
     }
@@ -1285,7 +1296,10 @@ bool IndexingMap::Simplify() {
   }
   // Simplify dependent constraints.
   constraints_were_simplified |= MergeModConstraints();
-  AffineMap simplified_affine_map = simplifier.Simplify(affine_map_);
+  RangeEvaluator range_evaluator(*this, GetMLIRContext(),
+                                 /*use_constraints=*/true);
+  AffineMap simplified_affine_map =
+      AffineExprSimplifier(&range_evaluator).Simplify(affine_map_);
   bool affine_map_was_simplified = simplified_affine_map != affine_map_;
   if (affine_map_was_simplified) {
     affine_map_ = simplified_affine_map;
@@ -1630,7 +1644,8 @@ SmallBitVector IndexingMap::RemoveUnusedVars() {
 }
 
 bool IndexingMap::MergeModConstraints() {
-  RangeEvaluator range_evaluator(*this, GetMLIRContext());
+  RangeEvaluator range_evaluator(*this, GetMLIRContext(),
+                                 /*use_constraints=*/false);
   bool did_simplify = false;
 
   // Group constraints by LHS.
