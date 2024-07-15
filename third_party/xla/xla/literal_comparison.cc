@@ -345,18 +345,13 @@ class NearComparator {
     if (error_.low_precision_fp_error_spec.type ==
         PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return -1;
-    switch (error_.low_precision_fp_error_spec.type) {
-      case PrimitiveType::F8E4M3FN:
-        return CalculateDistanceInFloats(tsl::float8_e4m3fn(expected),
-                                         tsl::float8_e4m3fn(actual));
-      case PrimitiveType::F8E5M2:
-        return CalculateDistanceInFloats(tsl::float8_e5m2(expected),
-                                         tsl::float8_e5m2(actual));
-      default:
-        LOG(WARNING) << "Comparing error for unsupported type: "
-                     << error_.low_precision_fp_error_spec.type;
-        return -1;
-    }
+    return primitive_util::FloatingPointTypeSwitch<int>(
+        [&](const auto kType) -> int {
+          using NarrowNativeT = primitive_util::NativeTypeOf<kType>;
+          return CalculateDistanceInFloats(NarrowNativeT(expected),
+                                           NarrowNativeT(actual));
+        },
+        error_.low_precision_fp_error_spec.type);
   }
 
   // Compares the two given elements from the expected and actual literals at

@@ -390,89 +390,6 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
   return absl::OkStatus();
 }
 
-absl::Status ConvertTFExecutorToStablehloFlatbuffer(
-    mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
-    mlir::StatusScopedDiagnosticHandler& status_handler,
-    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
-    std::optional<Session*> session, std::string* result,
-    const std::unordered_set<std::string>& saved_model_tags) {
-  // Currently, TF quantization only support dynamic range quant, as such
-  // when toco flag post training quantization is specified with converting to
-  // stablehlo, we automatically enable dynamic range quantization
-
-  if (toco_flags.post_training_quantize()) {
-    const auto status = quantization::PreprocessAndFreezeGraph(
-        module, module.getContext(), session);
-    if (!status.ok()) {
-      return status_handler.Combine(
-          absl::InternalError("Failed to preprocess & freeze TF graph."));
-    }
-
-    // TODO: b/264218457 - Refactor the component below once StableHLO Quantizer
-    // can run DRQ. Temporarily using TF Quantization for StableHLO DRQ.
-    if (!toco_flags.has_quantization_options()) {
-      // The default minimum number of elements a weights array must have to be
-      // quantized by this transformation.
-      const int kWeightsMinNumElementsDefault = 1024;
-
-      quantization::QuantizationOptions quantization_options;
-
-      quantization_options.mutable_quantization_method()->set_preset_method(
-          quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8);
-      quantization_options.set_op_set(quantization::UNIFORM_QUANTIZED);
-      quantization_options.set_min_num_elements_for_weights(
-          kWeightsMinNumElementsDefault);
-      quantization::AddQuantizePtqDynamicRangePasses(pass_manager,
-                                                     quantization_options);
-    }
-    if (failed(pass_manager.run(module))) {
-      return status_handler.ConsumeStatus();
-    }
-  }
-
-  pass_manager.clear();
-  mlir::odml::AddTFToStablehloPasses(pass_manager, /*skip_resize=*/true,
-                                     /*smuggle_disallowed_ops=*/true);
-  // Print out a detailed report of non-converted stats.
-  pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
-      mlir::odml::GetAcceptedStableHLODialects()));
-  mlir::odml::AddStablehloOptimizationPasses(pass_manager);
-  if (toco_flags.has_quantization_options()) {
-    stablehlo::quantization::AddQuantizationPasses(
-        pass_manager, toco_flags.quantization_options());
-  }
-  if (failed(pass_manager.run(module))) {
-    return status_handler.ConsumeStatus();
-  }
-  if (export_to_mlir) {
-    llvm::raw_string_ostream os(*result);
-    module.print(os);
-    return status_handler.ConsumeStatus();
-  }
-  pass_manager.clear();
-  pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
-  pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
-  if (failed(pass_manager.run(module))) {
-    return status_handler.Combine(
-        absl::InvalidArgumentError("VHLO lowering failed"));
-  }
-
-  // Write MLIR Stablehlo dialect into FlatBuffer
-  OpOrArgLocNameMapper op_or_arg_name_mapper;
-  tflite::FlatbufferExportOptions options;
-  options.toco_flags = toco_flags;
-  options.saved_model_tags = saved_model_tags;
-  options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
-  options.metadata[tflite::kModelUseStablehloTensorKey] = "true";
-  if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result,
-                                                 true)) {
-    return status_handler.Combine(
-        absl::InternalError("Could not translate MLIR to FlatBuffer."));
-  }
-
-  return absl::OkStatus();
-}
-
 absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::unique_ptr<mlir::MLIRContext>&& context,
     mlir::OwningOpRef<mlir::ModuleOp> module, toco::TocoFlags& toco_flags,
@@ -508,18 +425,6 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   Session* session = saved_model_bundle == nullptr
                          ? nullptr
                          : saved_model_bundle->GetSession();
-  if (pass_config.enable_stablehlo_conversion) {
-    // `ConvertTFExecutorToStablehloFlatbuffer` expects a `std::nullopt` if the
-    // `Session*` is a nullptr.
-    std::optional<Session*> session_opt =
-        session == nullptr ? std::nullopt : std::make_optional(session);
-
-    // return to avoid adding TFL converter path
-    return ConvertTFExecutorToStablehloFlatbuffer(
-        *pass_manager, module.get(), export_to_mlir, *status_handler,
-        toco_flags, pass_config, std::move(session_opt), result,
-        saved_model_tags);
-  }
 
   if (pass_config.enable_hlo_to_tf_conversion) {
     if (failed(RunHloToTfConversion(
