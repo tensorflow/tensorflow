@@ -51,11 +51,12 @@ pybind_extension(
     ],
     deps = [
         ":calibration_wrapper_lib",
+        "@pybind11",
+        "//third_party/python_runtime:headers",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
+        # "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 

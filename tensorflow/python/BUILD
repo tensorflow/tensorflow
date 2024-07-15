@@ -649,6 +649,15 @@ py_strict_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "pywrap_tflite_internal",
+    srcs = ["pywrap_tflite_internal.cc"],
+    deps = [
+        "//tensorflow/lite/delegates/flex:delegate",
+        "@pybind11",
+    ],
+)
+
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
@@ -745,6 +754,11 @@ pywrap_tensorflow_macro(
     ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
@@ -773,6 +787,9 @@ pywrap_tensorflow_macro(
         "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl",
         "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
         "//tensorflow/compiler/tf2xla:tf2xla_opset",
+        "@local_xla//xla/backends/profiler/cpu:python_tracer",
+        "@local_xla//xla/stream_executor:stream_executor_impl",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal_impl",
@@ -807,7 +824,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
         "//tensorflow/dtensor/cc:tensor_layout",
-        "//tensorflow/lite/delegates/flex:delegate",
+        # "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/client:tf_session_helper",
@@ -831,16 +848,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/util:function_parameter_canonicalizer",
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_xla//xla/backends/profiler/cpu:python_tracer",
-        "@local_xla//xla/stream_executor:stream_executor_impl",
-        "@local_xla//xla/tsl/python/lib/core:numpy",
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
         "//conditions:default": [
@@ -1190,6 +1199,7 @@ py_strict_library(
     deps = [
         ":_pywrap_tfe",
         ":pywrap_tensorflow",
+        ":pywrap_tflite_internal",
     ],
 )
 
@@ -1225,6 +1235,16 @@ tf_python_pybind_extension(
     ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "//third_party/py/numpy:headers",
+        "@pybind11",
+        # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        "//third_party/python_runtime:headers",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/compiler/jit:flags_headers_only",
@@ -1237,19 +1257,10 @@ tf_python_pybind_extension(
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform",
+        # "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "@pybind11",
-        # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",

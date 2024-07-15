@@ -2354,13 +2354,81 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
   return pipeline.Run(module).status();
 }
 
+HloCostAnalysis::Options CreateHloAnalysisOpts(
+    const HloModule& module, const se::DeviceDescription& gpu_device_info,
+    ShapeSizeFn shape_size_fn) {
+  HloCostAnalysis::Options hlo_cost_analysis_options;
+  hlo_cost_analysis_options.shape_size = shape_size_fn;
+  std::optional<HloRematerialization::HostMemoryOffloadConfig>
+      offloading_config = std::nullopt;
+  if (module.config().debug_options().xla_gpu_enable_host_memory_offloading()) {
+    constexpr float kGiga = 1e+9;
+    // Fused multiply-add means that these two instructions are computed as
+    // one, so for this case the maximum flops is doubled.
+    constexpr float kFma = 2;
+    float flops_per_sec = gpu_device_info.core_count() *
+                          gpu_device_info.fpus_per_core() *
+                          gpu_device_info.clock_rate_ghz() * kGiga * kFma;
+    int64_t host_memory_space_color =
+        static_cast<int64_t>(se::MemoryType::kHost);
+    hlo_cost_analysis_options.set_flops_per_second(flops_per_sec);
+    hlo_cost_analysis_options.set_transcendentals_per_second(flops_per_sec);
+    offloading_config =
+        std::make_optional<HloRematerialization::HostMemoryOffloadConfig>(
+            /*host_memory_space=*/host_memory_space_color,
+            /*bandwidth_to_host_bytes_per_second=*/
+            gpu_device_info.memory_bandwidth(),
+            /*bandwidth_from_host_bytes_per_second=*/
+            gpu_device_info.memory_bandwidth());
+  }
+  return hlo_cost_analysis_options;
+}
+
+HloRematerialization::Options CreateRematOpts(
+    const HloModule& module, const se::DeviceDescription& gpu_device_info,
+    HloCostAnalysis& hlo_cost_analysis, int64_t scheduler_mem_limit) {
+  bool enable_offloading =
+      module.config().debug_options().xla_gpu_enable_host_memory_offloading();
+  std::optional<HloRematerialization::HostMemoryOffloadConfig>
+      offloading_config = std::nullopt;
+  if (enable_offloading) {
+    int64_t host_memory_space_color =
+        static_cast<int64_t>(se::MemoryType::kHost);
+    offloading_config =
+        std::make_optional<HloRematerialization::HostMemoryOffloadConfig>(
+            /*host_memory_space=*/host_memory_space_color,
+            /*bandwidth_to_host_bytes_per_second=*/
+            gpu_device_info.memory_bandwidth(),
+            /*bandwidth_from_host_bytes_per_second=*/
+            gpu_device_info.memory_bandwidth());
+  }
+  HloRematerialization::RematerializationModeConfig
+      rematerialization_mode_config(/*recompute=*/true, /*compress=*/true,
+                                    /*host_offload=*/enable_offloading);
+  HloRematerialization::Options options(
+      hlo_cost_analysis, rematerialization_mode_config,
+      // Assume 75% of the total device memory is available for XLA.
+      /*memory_limit_bytes=*/scheduler_mem_limit,
+      /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+      /*min_remat_size=*/0, /*compact_shape_function=*/nullptr,
+      /*host_memory_offload_config=*/offloading_config);
+  return options;
+}
+
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit,
     const se::DeviceDescription& gpu_device_info) const {
   TF_RETURN_IF_ERROR(
       RunPostSchedulingCopyInsertion(module, GetCanShareBuffer()));
+  HloPassPipeline main_pipeline("post-scheduling-passes");
+
+  // Pipeline for async -> sync conversion on for non-overlapped async ops.
+  HloPredicate is_nop =
+      HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
+                       HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
   {
-    HloPassPipeline pipeline("post-scheduling-passes");
+    HloPassPipeline& pipeline =
+        main_pipeline.AddPass<HloPassPipeline>("async-to-sync-converter");
 
     if (module->config()
             .debug_options()
@@ -2368,90 +2436,50 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
         module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
       pipeline.AddPass<PipelinedP2PRewriter>();
     }
-    HloPredicate is_nop =
-        HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
-                         HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
     pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
-
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
+  // Pipeline rematerialization passes with optional host offloading.
+  HloRematerialization::RematerializationSizes sizes;
+  // `HloCostAnalysis` initialization.
+  HloCostAnalysis::Options hlo_cost_analysis_opts =
+      CreateHloAnalysisOpts(*module, gpu_device_info, ShapeSizeBytesFunction());
+  HloCostAnalysis hlo_cost_analysis(hlo_cost_analysis_opts);
+  // `HloRematerialization` options initialization.
+  HloRematerialization::Options remat_opts = CreateRematOpts(
+      *module, gpu_device_info, hlo_cost_analysis, scheduler_mem_limit);
   {
-    HloPassPipeline pipeline("remat-pipeline");
+    HloPassPipeline& pipeline =
+        main_pipeline.AddPass<HloPassPipeline>("remat-pipeline");
 
-    const bool enable_offloading = module->config()
-                                       .debug_options()
-                                       .xla_gpu_enable_host_memory_offloading();
-    HloRematerialization::RematerializationModeConfig
-        rematerialization_mode_config(/*recompute=*/true, /*compress=*/true,
-                                      /*host_offload=*/enable_offloading);
-    HloCostAnalysis::Options hlo_cost_analysis_options;
-    hlo_cost_analysis_options.shape_size = ShapeSizeBytesFunction();
-    std::optional<HloRematerialization::HostMemoryOffloadConfig>
-        offloading_config = std::nullopt;
-    if (enable_offloading) {
-      constexpr float kGiga = 1e+9;
-      // Fused multiply-add means that these two instructions are computed as
-      // one, so for this case the maximum flops is doubled.
-      constexpr float kFma = 2;
-      float flops_per_sec = gpu_device_info.core_count() *
-                            gpu_device_info.fpus_per_core() *
-                            gpu_device_info.clock_rate_ghz() * kGiga * kFma;
-      int64_t host_memory_space_color =
-          static_cast<int64_t>(se::MemoryType::kHost);
-      hlo_cost_analysis_options.set_flops_per_second(flops_per_sec);
-      hlo_cost_analysis_options.set_transcendentals_per_second(flops_per_sec);
-      offloading_config =
-          std::make_optional<HloRematerialization::HostMemoryOffloadConfig>(
-              /*host_memory_space=*/host_memory_space_color,
-              /*bandwidth_to_host_bytes_per_second=*/
-              gpu_device_info.memory_bandwidth(),
-              /*bandwidth_from_host_bytes_per_second=*/
-              gpu_device_info.memory_bandwidth());
-    }
-    HloCostAnalysis hlo_cost_analysis(hlo_cost_analysis_options);
-    HloRematerialization::Options options(
-        hlo_cost_analysis, rematerialization_mode_config,
-        // Assume 75% of the total device memory is available for XLA.
-        /*memory_limit_bytes=*/scheduler_mem_limit,
-        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
-        /*min_remat_size=*/0, /*compact_shape_function=*/nullptr,
-        /*host_memory_offload_config=*/offloading_config);
-    HloRematerialization::RematerializationSizes sizes;
-    pipeline.AddPass<HloRematerialization>(options, sizes);
+    pipeline.AddPass<HloRematerialization>(remat_opts, sizes);
     pipeline.AddPass<StreamAttributeAnnotator>();
     pipeline.AddPass<OptimizationBarrierExpander>();
-
-    TF_ASSIGN_OR_RETURN(bool changed, pipeline.Run(module));
-    if (changed) {
-      VLOG(1) << "HloRematerialization saved "
-              << sizes.before_bytes - sizes.after_bytes << " bytes";
-    }
   }
 
+  // Wrap remaining unfused ops that have no LHLO equivalent in single-op
+  // fusions. This needs to happen after rematerialization, because that
+  // will insert additional copies.
   {
-    HloPassPipeline pipeline("fusion-wrapper");
+    HloPassPipeline& pipeline =
+        main_pipeline.AddPass<HloPassPipeline>("fusion-wrapper");
     pipeline.AddPass<FusionWrapper>();
-    // Wrap remaining unfused ops that have no LHLO equivalent in single-op
-    // fusions. This needs to happen after rematerialization, because that
-    // will insert additional copies.
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
-  // After we have a scheduled module and all operations wrapped into fusions
-  // we can decide how to wrap them into command buffers.
+  // Pipeline with passes which wrap a scheduled module into command buffers.
   {
-    HloPassPipeline pipeline("command-buffer-scheduling");
-    auto driver_version = se::gpu::GpuDriver::GetDriverVersion();
-    const int32_t toolkit_version = GetToolkitVersion();
+    absl::StatusOr<int32_t> driver_version =
+        se::gpu::GpuDriver::GetDriverVersion();
+    int32_t toolkit_version = GetToolkitVersion();
+    HloPassPipeline& pipeline =
+        main_pipeline.AddPass<HloPassPipeline>("command-buffer-scheduling");
     pipeline.AddPass<CommandBufferScheduling>(
         gpu_device_info, toolkit_version,
         driver_version.value_or(toolkit_version));
     pipeline.AddPass<GpuSanitizeConstantNames>();
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
-  return absl::OkStatus();
+  return main_pipeline.Run(module).status();
 }
 
 absl::Status GpuCompiler::LoadAutotuneResultsFromFile(

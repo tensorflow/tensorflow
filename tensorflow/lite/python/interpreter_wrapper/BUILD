@@ -31,6 +31,9 @@ cc_library(
         ":numpy",
         ":python_error_reporter",
         ":python_utils",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/lite:framework",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite:string_util",
@@ -39,12 +42,10 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        # "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

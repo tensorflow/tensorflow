@@ -60,6 +60,7 @@ cc_library(
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "//xla:status_macros",
+        "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
@@ -67,8 +68,10 @@ cc_library(
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
