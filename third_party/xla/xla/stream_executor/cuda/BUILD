@@ -672,6 +672,11 @@ xla_cc_test(
         # have this issue.
         "--heap_check_max_pointer_offset=-1",
     ]),
+    # The test fails with msan/tsan since its introduction.
+    tags = [
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":nvjitlink",
         ":nvjitlink_support",
