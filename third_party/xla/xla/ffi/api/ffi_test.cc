@@ -39,10 +39,6 @@ limitations under the License.
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla::ffi {
-namespace {
-
-using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 enum class Int32BasedEnum : int32_t {
   kOne = 1,
@@ -56,13 +52,15 @@ enum class Int64BasedEnum : int64_t {
   kTwo = kI32MaxValue + 2,
 };
 
-}  // namespace
 }  // namespace xla::ffi
 
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int32BasedEnum);
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int64BasedEnum);
 
 namespace xla::ffi {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, DataTypeEnumValue) {
   // Verify that xla::PrimitiveType and xla::ffi::DataType use the same

@@ -776,8 +776,6 @@ struct AttrDecoding;
 //                                      XLA_FFI_ExecutionContext* ctx);
 //   }
 //
-// Second template parameter is used to conditionally enable/disable context
-// decoding specialization for a given type via SFINAE.
 template <typename T>
 struct CtxDecoding;
 
@@ -790,12 +788,15 @@ struct CtxDecoding;
 //
 // Example: encoding `absl::Status` result
 //
-//   template<>
+//   template<ExecutionStage stage>
 //   struct ResultEncoding<absl::Status> {
 //     XLA_FFI_Error* Encode(const XLA_FFI_Api* api, absl::Status status) {...}
 //   }
 //
-template <typename T>
+// Result encoding is execution stage specific, for example at instantiation
+// stage FFI handler can return an FFI handler state, while at execution stage
+// we only support returning a status-like type.
+template <ExecutionStage stage, typename T>
 struct ResultEncoding;
 
 //===----------------------------------------------------------------------===//
@@ -1376,8 +1377,8 @@ class Handler : public Ffi {
     }
 
     auto result = fn_(std::move(*std::get<Is>(args))...);
-    return ResultEncoding<ResultType>::Encode(call_frame->api,
-                                              std::move(result));
+    return ResultEncoding<stage, ResultType>::Encode(call_frame->api,
+                                                     std::move(result));
   }
 
   XLA_FFI_Error* FailedDecodeError(const XLA_FFI_CallFrame* call_frame,
