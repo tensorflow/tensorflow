@@ -81,13 +81,13 @@ class ExecutionState {
 template <typename T>
 absl::Status ExecutionState::Set(std::unique_ptr<T> state) {
   return Set(TypeIdRegistry::GetTypeId<T>(), state.release(),
-             [](void* data) { delete reinterpret_cast<T*>(data); });
+             [](void* state) { delete reinterpret_cast<T*>(state); });
 }
 
 template <typename T>
 absl::StatusOr<T*> ExecutionState::Get() const {
-  TF_ASSIGN_OR_RETURN(void* data, Get(TypeIdRegistry::GetTypeId<T>()));
-  return reinterpret_cast<T*>(data);
+  TF_ASSIGN_OR_RETURN(void* state, Get(TypeIdRegistry::GetTypeId<T>()));
+  return reinterpret_cast<T*>(state);
 }
 
 }  // namespace xla::ffi

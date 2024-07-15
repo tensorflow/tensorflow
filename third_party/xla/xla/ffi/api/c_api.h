@@ -426,9 +426,44 @@ struct XLA_FFI_ExecutionContext_Get_Args {
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ExecutionContext_Get_Args, data);
 
-// Returns an opaque data from the execution context for a given name.
+// Returns an opaque data from the execution context for a given type id.
 typedef XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
     XLA_FFI_ExecutionContext_Get_Args* args);
+
+//===----------------------------------------------------------------------===//
+// State
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_State_Set_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_TypeId* type_id;
+  void* state;
+  void (*deleter)(void* state);
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, deleter);
+
+// Sets execution state to the `state` of type `type_id`. Returns an error if
+// state already set.
+typedef XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args);
+
+struct XLA_FFI_State_Get_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_TypeId* type_id;
+  void* state;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Get_Args, state);
+
+// Gets execution state of type `type_id`. Returns an error if state is not set,
+// or set with a state of a different type.
+typedef XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args);
 
 //===----------------------------------------------------------------------===//
 // Stream
@@ -502,6 +537,8 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_TypeId_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_Get);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Set);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Allocate);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Free);
 };

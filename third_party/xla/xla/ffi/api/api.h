@@ -198,6 +198,9 @@ class Ffi {
   template <ExecutionStage stage = ExecutionStage::kExecute>
   static Binding<stage> Bind();
 
+  // Creates an empty binding for the instantiate stage.
+  static Binding<ExecutionStage::kInstantiate> BindInstantiate();
+
   // Automatic FFI binding that does binding specification inference from the
   // `fn` type signature and binds `fn` to it. This enables a more concise FFI
   // handler registration with fully automatic type inference at the cost of
@@ -475,8 +478,12 @@ class Binding {
 };
 
 template <ExecutionStage stage>
-inline Binding<stage> Ffi::Bind() {
+Binding<stage> Ffi::Bind() {
   return xla::ffi::Binding<stage>();
+}
+
+inline Binding<ExecutionStage::kInstantiate> Ffi::BindInstantiate() {
+  return Bind<ExecutionStage::kInstantiate>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -790,7 +797,9 @@ struct CtxDecoding;
 //
 //   template<ExecutionStage stage>
 //   struct ResultEncoding<absl::Status> {
-//     XLA_FFI_Error* Encode(const XLA_FFI_Api* api, absl::Status status) {...}
+//     XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
+//                           XLA_FFI_ExecutionContext* ctx,
+//.                          absl::Status status) {...}
 //   }
 //
 // Result encoding is execution stage specific, for example at instantiation
@@ -1377,9 +1386,9 @@ class Handler : public Ffi {
       }
     }
 
-    auto result = fn_(std::move(*std::get<Is>(args))...);
-    return ResultEncoding<stage, ResultType>::Encode(call_frame->api,
-                                                     std::move(result));
+    ResultType result = fn_(std::move(*std::get<Is>(args))...);
+    return ResultEncoding<stage, ResultType>::Encode(
+        call_frame->api, call_frame->ctx, std::move(result));
   }
 
   XLA_FFI_Error* FailedDecodeError(const XLA_FFI_CallFrame* call_frame,

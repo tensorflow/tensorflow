@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/ffi/type_id_registry.h"
 #include "xla/primitive_util.h"
@@ -594,6 +595,45 @@ TEST(FfiTest, UserData) {
   auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
+}
+
+struct MyState {
+  static TypeId id;
+
+  explicit MyState(int32_t value) : value(value) {}
+  int32_t value;
+};
+
+TypeId MyState::id = {};  // zero-initialize type id
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id);
+
+TEST(FfiTest, StatefulHandler) {
+  ExecutionState execution_state;
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  CallOptions options;
+  options.execution_state = &execution_state;
+
+  // FFI instantiation handler that creates a state for FFI handler.
+  auto instantiate =
+      Ffi::BindInstantiate().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
+        return std::make_unique<MyState>(42);
+      });
+
+  // FFI execute handler that uses state created by the instantiation handler.
+  auto execute = Ffi::Bind().Ctx<State<MyState>>().To([](MyState* state) {
+    EXPECT_EQ(state->value, 42);
+    return Error::Success();
+  });
+
+  // Create `State` and store it in the execution state.
+  TF_ASSERT_OK(
+      Call(*instantiate, call_frame, options, ExecutionStage::kInstantiate));
+
+  // Check that state was created and forwarded to the execute handler.
+  TF_ASSERT_OK(Call(*execute, call_frame, options));
 }
 
 TEST(FfiTest, ScratchAllocator) {

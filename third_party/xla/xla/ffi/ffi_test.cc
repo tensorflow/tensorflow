@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -701,6 +702,40 @@ TEST(FfiTest, UserData) {
   auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
+}
+
+struct StrState {
+  explicit StrState(std::string str) : str(std::move(str)) {}
+  std::string str;
+};
+
+TEST(FfiTest, StatefulHandler) {
+  ExecutionState execution_state;
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  CallOptions options;
+  options.execution_state = &execution_state;
+
+  // FFI instantiation handler that creates a state for FFI handler.
+  auto instantiate = Ffi::BindInstantiate().To(
+      []() -> absl::StatusOr<std::unique_ptr<StrState>> {
+        return std::make_unique<StrState>("foo");
+      });
+
+  // FFI execute handler that uses state created by the instantiation handler.
+  auto execute = Ffi::Bind().Ctx<State<StrState>>().To([](StrState* state) {
+    EXPECT_EQ(state->str, "foo");
+    return absl::OkStatus();
+  });
+
+  // Create `State` and store it in the execution state.
+  TF_ASSERT_OK(
+      Call(*instantiate, call_frame, options, ExecutionStage::kInstantiate));
+
+  // Check that state was created and forwarded to the execute handler.
+  TF_ASSERT_OK(Call(*execute, call_frame, options));
 }
 
 TEST(FfiTest, UpdateBufferArgumentsAndResults) {

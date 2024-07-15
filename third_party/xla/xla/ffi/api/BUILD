@@ -80,6 +80,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/ffi:call_frame",
         "//xla/ffi:execution_context",
+        "//xla/ffi:execution_state",
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_id_registry",
         "//xla/stream_executor:device_memory",

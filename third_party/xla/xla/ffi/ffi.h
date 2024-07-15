@@ -25,6 +25,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 
 // IWYU pragma: begin_exports
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_memory.h"
@@ -401,7 +403,7 @@ struct CtxDecoding<CalledComputation> {
 // UserData
 //===----------------------------------------------------------------------===//
 
-// A type tag for automatic decoding user data passed via the execution context.
+// A type tag for automatic user data decoding passed via the execution context.
 template <typename T>
 struct UserData {};
 
@@ -431,12 +433,71 @@ struct CtxDecoding<UserData<T>> {
 };
 
 //===----------------------------------------------------------------------===//
+// State
+//===----------------------------------------------------------------------===//
+
+// A type tag for automatic state decoding passed via the execution context.
+template <typename T>
+struct State {};
+
+template <typename T>
+struct CtxDecoding<State<T>> {
+  using Type = T*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    auto* execution_state = reinterpret_cast<const ExecutionState*>(
+        api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(ctx));
+
+    if (execution_state == nullptr) {
+      return diagnostic.Emit(
+          "Execution state must be not null to fetch State parameter");
+    }
+
+    auto state = execution_state->Get<T>();
+    if (!state.ok()) {
+      return diagnostic.Emit("Failed to get state from execution context: ")
+             << state.status().message();
+    }
+
+    return *std::move(state);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Result encoding
 //===----------------------------------------------------------------------===//
 
 template <ExecutionStage stage>
 struct ResultEncoding<stage, absl::Status> {
-  static XLA_FFI_Error* Encode(const XLA_FFI_Api* api, absl::Status status) {
+  static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
+                               XLA_FFI_ExecutionContext* ctx,
+                               absl::Status status) {
+    if (ABSL_PREDICT_TRUE(status.ok())) {
+      return nullptr;
+    }
+    return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
+  }
+};
+
+template <typename T>
+struct ResultEncoding<ExecutionStage::kInstantiate,
+                      absl::StatusOr<std::unique_ptr<T>>> {
+  static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
+                               XLA_FFI_ExecutionContext* ctx,
+                               absl::StatusOr<std::unique_ptr<T>> state) {
+    if (ABSL_PREDICT_TRUE(state.ok())) {
+      auto* execution_state = reinterpret_cast<ExecutionState*>(
+          api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(ctx));
+      absl::Status status = execution_state->Set<T>(*std::move(state));
+      if (ABSL_PREDICT_TRUE(status.ok())) {
+        return nullptr;
+      }
+      return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
+    }
+
+    absl::Status status = state.status();
     return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
   }
 };

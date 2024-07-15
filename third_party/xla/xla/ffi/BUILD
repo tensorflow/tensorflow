@@ -116,6 +116,7 @@ cc_library(
     deps = [
         ":api",
         ":execution_context",
+        ":execution_state",
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
@@ -144,6 +145,7 @@ cc_library(
         ":api",
         ":call_frame",
         ":execution_context",
+        ":execution_state",
         ":type_id_registry",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
@@ -184,6 +186,7 @@ xla_cc_test(
     deps = [
         ":call_frame",
         ":execution_context",
+        ":execution_state",
         ":ffi",
         ":ffi_api",
         "//xla:xla_data_proto_cc",
