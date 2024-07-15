@@ -537,6 +537,33 @@ mlir::AffineExpr AffineExprSimplifier::RewriteSum(
       // Erase the div.
       divs[div_i].first = nullptr;
     }
+
+    // We can rewrite a mod and a div into just a div if the LHS and RHS are the
+    // same:
+    //   x floordiv c * a + x mod c * b
+    // = x floordiv c * a + x * b - x floordiv c * c * b
+    // = x floordiv c * (a - b * c) + x * b
+    for (int div_i = 0; div_i < divs.size(); ++div_i) {
+      auto [div, div_mul] = divs[div_i];
+      if (!div) continue;
+
+      for (int mod_i = 0; mod_i < mods.size(); ++mod_i) {
+        auto [mod, mod_mul] = mods[mod_i];
+        if (!mod) continue;
+        if (GetLhs(mod) != GetLhs(div)) continue;
+        if (GetRhs(mod) != GetRhs(div)) continue;
+
+        std::optional<int64_t> c =
+            GetConstantRhs(div, AffineExprKind::FloorDiv);
+        if (!c) continue;
+
+        divs[div_i].second -= mod_mul * c.value();
+        summands[GetLhs(div)] += mod_mul;
+        // Erase the mod.
+        mods[mod_i].first = nullptr;
+        break;
+      }
+    }
   }
 
   for (auto [expr, mul] : mods) {

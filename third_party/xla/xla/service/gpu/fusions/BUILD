@@ -635,8 +635,10 @@ xla_cc_test(
     srcs = ["triton_test.cc"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
+        ":fusion_emitter",
         ":fusions",
         ":triton",
+        "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/stream_executor:device_description",
