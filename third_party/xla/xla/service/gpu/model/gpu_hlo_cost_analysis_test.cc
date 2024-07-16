@@ -659,8 +659,11 @@ HloModule m
 ENTRY entry_computation {
   param_0 = f32[10] parameter(0)
   param_1 = f32[10] parameter(1)
-  add = f32[10] add(param_0, param_1)
-  ROOT mul = f32[10] multiply(add, param_0)
+  param_2 = f32[10] parameter(2)
+  param_3 = f32[10] parameter(3)
+  tanh = f32[10] tanh(param_0)
+  mul = f32[10] multiply(tanh, param_1)
+  ROOT clamp = f32[10] clamp(mul, param_2, param_3)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -668,24 +671,31 @@ ENTRY entry_computation {
 
   HloOpProfiles::HloOpProfile hlo_op_profile;
 
-  const int kF32AddFlopsPerElement = 7;
+  const int kF32ClampFlopsPerElement = 7;
   const int kF32MultiplyFlopsPerElement = 11;
+  const int kF32TanhFlopsPerElement = 13;
+
   const int kNumElements = 10;
 
-  hlo_op_profile[{HloOpcode::kAdd, PrimitiveType::F32}] =
-      kF32AddFlopsPerElement;
+  hlo_op_profile[{HloOpcode::kClamp, PrimitiveType::F32}] =
+      kF32ClampFlopsPerElement;
   hlo_op_profile[{HloOpcode::kMultiply, PrimitiveType::F32}] =
       kF32MultiplyFlopsPerElement;
+  hlo_op_profile[{HloOpcode::kTanh, PrimitiveType::F32}] =
+      kF32TanhFlopsPerElement;
 
   GpuHloCostAnalysis analysis(options_, hlo_op_profile);
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
-  const HloInstruction* mul = module->entry_computation()->root_instruction();
-  const HloInstruction* add = mul->operand(0);
+  const HloInstruction* clamp = module->entry_computation()->root_instruction();
+  const HloInstruction* mul = clamp->operand(0);
+  const HloInstruction* tanh = mul->operand(0);
 
-  EXPECT_EQ(analysis.flop_count(*add), kF32AddFlopsPerElement * kNumElements);
+  EXPECT_EQ(analysis.flop_count(*clamp),
+            kF32ClampFlopsPerElement * kNumElements);
   EXPECT_EQ(analysis.flop_count(*mul),
             kF32MultiplyFlopsPerElement * kNumElements);
+  EXPECT_EQ(analysis.flop_count(*tanh), kF32TanhFlopsPerElement * kNumElements);
 };
 
 }  // namespace gpu

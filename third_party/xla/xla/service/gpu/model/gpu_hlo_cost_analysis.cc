@@ -485,16 +485,6 @@ absl::Status GpuHloCostAnalysis::HandleElementwiseOp(
   return absl::OkStatus();
 }
 
-absl::Status GpuHloCostAnalysis::HandleElementwiseUnary(
-    const HloInstruction* hlo) {
-  return HandleElementwiseOp(hlo);
-}
-
-absl::Status GpuHloCostAnalysis::HandleElementwiseBinary(
-    const HloInstruction* hlo) {
-  return HandleElementwiseOp(hlo);
-}
-
 std::unique_ptr<HloCostAnalysis>
 GpuHloCostAnalysis::CreateNestedCostAnalysis() {
   return std::make_unique<GpuHloCostAnalysis>(options_,

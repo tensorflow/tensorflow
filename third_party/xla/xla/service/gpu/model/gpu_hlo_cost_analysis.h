@@ -66,9 +66,7 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   int64_t GetConvolutionFlops(const HloInstruction* convolution) override;
 
-  absl::Status HandleElementwiseOp(const HloInstruction* hlo);
-  absl::Status HandleElementwiseUnary(const HloInstruction* hlo) override;
-  absl::Status HandleElementwiseBinary(const HloInstruction* hlo) override;
+  absl::Status HandleElementwiseOp(const HloInstruction* hlo) override;
 
   absl::Status HandleConcatenate(const HloInstruction* hlo) override;
   absl::Status HandleAllReduce(const HloInstruction* allreduce) override;
