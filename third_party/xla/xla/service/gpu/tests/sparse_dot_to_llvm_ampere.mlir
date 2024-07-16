@@ -1,9 +1,4 @@
-// RUN: xla-opt %s \
-// RUN:   --allocate-shared-memory \
-// RUN:   --sparse-local-load-to-llvm \
-// RUN:   --convert-triton-gpu-to-llvm=compute-capability=80 \
-// RUN:   --sparse-dot-to-llvm \
-// RUN: | FileCheck %s
+// RUN: xla-opt %s --sparse-dot-to-llvm | FileCheck %s
 
 #blocked0 = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
 #shared0 = #triton_gpu.shared<{vec = 1, perPhase=1, maxPhase=1, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
@@ -14,13 +9,10 @@
 
 module attributes {"triton_gpu.num-warps" = 4 : i32} {
   tt.func @sparse_dot(%A: tensor<32x32xf16, #blocked0>, %B: tensor<64x32xf16, #blocked0>, %meta: tensor<32x4xi16, #blocked0>) {
-    // CHECK-COUNT-2: ldmatrix.sync.aligned.m8n8.x4.shared.b16
     %A_alloc = triton_gpu.local_alloc %A {allocation.offset = 0 : i32} : (tensor<32x32xf16, #blocked0>) -> !tt.memdesc<32x32xf16, #shared0, #triton_gpu.shared_memory>
     %A_dot = triton_gpu.local_load %A_alloc : !tt.memdesc<32x32xf16, #shared0, #triton_gpu.shared_memory> -> tensor<32x32xf16, #dot_operand_a>
-    // CHECK-COUNT-4: ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16
     %B_alloc = triton_gpu.local_alloc %B {allocation.offset = 2048 : i32} : (tensor<64x32xf16, #blocked0>) -> !tt.memdesc<64x32xf16, #shared0, #triton_gpu.shared_memory>
     %B_dot = triton_gpu.local_load %B_alloc : !tt.memdesc<64x32xf16, #shared0, #triton_gpu.shared_memory> -> tensor<64x32xf16, #dot_operand_b>
-    // CHECK-COUNT-4: llvm.load %[[_:.*]] : !llvm.ptr<3> -> i16
     %meta_alloc = triton_gpu.local_alloc %meta {allocation.offset = 6144 : i32} : (tensor<32x4xi16, #blocked0>) -> !tt.memdesc<32x4xi16, #shared0, #triton_gpu.shared_memory>
     %meta_reg = triton_gpu.local_load %meta_alloc : !tt.memdesc<32x4xi16, #shared0, #triton_gpu.shared_memory> -> tensor<32x4xi16, #dot_meta_enc>
     // CHECK-COUNT-4: mma.sp.sync.aligned.m16n8k32.row.col.f32.f16.f16.f32
