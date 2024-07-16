@@ -18,17 +18,19 @@ limitations under the License.
 #include <string>
 #include <typeinfo>
 
-#include "absl/strings/string_view.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/utils/string_container_utils.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 
 // Generated dialect defs.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.cc.inc"
+#include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 
 namespace mlir {
 namespace dtensor {
