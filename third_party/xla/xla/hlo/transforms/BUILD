@@ -18,6 +18,44 @@ package_group(
 )
 
 cc_library(
+    name = "hlo_collective_deduplicator",
+    srcs = ["hlo_collective_deduplicator.cc"],
+    hdrs = ["hlo_collective_deduplicator.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_collective_deduplicator_test",
+    srcs = ["hlo_collective_deduplicator_test.cc"],
+    deps = [
+        ":hlo_collective_deduplicator",
+        "//xla:test",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_parser",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "hlo_constant_splitter",
     srcs = ["hlo_constant_splitter.cc"],
     hdrs = ["hlo_constant_splitter.h"],

@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/transforms/hlo_collective_deduplicator.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir/utils/error_util.h"
@@ -3765,7 +3766,10 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
   // Modify config with values stored in MLIR module attributes
   mhlo::ExportHloModuleConfig(config, module);
 
-  return xla::HloModule::CreateFromProto(module_proto, config);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloModule> hlo_module,
+                      xla::HloModule::CreateFromProto(module_proto, config));
+  (void)xla::HloCollectiveDeduplicator().Run(hlo_module.get());
+  return hlo_module;
 }
 
 absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,

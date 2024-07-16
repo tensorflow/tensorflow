@@ -111,6 +111,7 @@ cc_library(
         "//xla/client/lib:quantize",
         "//xla/client/lib:slicing",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:hlo_collective_deduplicator",
         "//xla/mlir/utils:error_util",
         "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",

@@ -44711,6 +44711,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -44746,6 +44753,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
   is_stateful: true
@@ -44785,6 +44799,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -44822,6 +44843,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -44857,6 +44885,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
   is_stateful: true
@@ -49725,6 +49760,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ScatterNdMax"
@@ -49788,6 +49830,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -49855,6 +49904,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ScatterNdNonAliasingAdd"
@@ -49910,6 +49966,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -49977,6 +50040,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ScatterNdUpdate"
@@ -50017,6 +50087,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -63074,6 +63151,13 @@ op {
       }
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "TensorScatterMax"
@@ -63105,6 +63189,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -63140,6 +63231,13 @@ op {
       }
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "TensorScatterSub"
@@ -63171,6 +63269,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -63206,6 +63311,13 @@ op {
         type: DT_INT64
         type: DT_UINT16
       }
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
