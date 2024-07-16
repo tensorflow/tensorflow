@@ -110,6 +110,7 @@ xla_test(
     tags = ["no_rocm"],
     deps = [
         ":custom_kernel_fusion_pattern",
+        ":cutlass_gemm_custom_kernel",
         ":cutlass_gemm_fusion",
         "//xla:array",
         "//xla:array2d",
