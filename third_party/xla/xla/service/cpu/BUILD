@@ -1657,6 +1657,23 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "scoped_ir_builder_test",
+    srcs = ["scoped_ir_builder_test.cc"],
+    deps = [
+        ":ir_emitter",
+        ":target_machine_features_fake",
+        "//xla/service:buffer_assignment",
+        "//xla/service:hlo_ordering",
+        "//xla/service:logical_buffer",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 tf_proto_library(
     name = "onednn_config_proto",
     srcs = ["onednn_config.proto"],

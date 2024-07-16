@@ -179,18 +179,10 @@ class HloRematerialization : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
-  // Rematerializes instructions within the given computation. 'order' is the
-  // order in which the computation's instructions will be emitted in the
-  // backend. Rematerialized instructions will be added to the HLO computation
-  // and inserted into 'order'.
-  absl::StatusOr<bool> RematerializeComputation(HloComputation* computation,
-                                                HloSchedule* schedule,
-                                                int64_t memory_limit_bytes,
-                                                int64_t min_remat_size) {
-    return RematerializeComputation(computation, schedule, memory_limit_bytes,
-                                    min_remat_size, /*execution_threads=*/{});
-  }
-
+  // Rematerializes instructions within the given computation. 'schedule'
+  // constains the order in which the computation's instructions will be emitted
+  // in the backend. Rematerialized instructions will be added to the HLO
+  // computation and inserted into 'schedule'.
   virtual absl::StatusOr<bool> RematerializeComputation(
       HloComputation* computation, HloSchedule* schedule,
       int64_t memory_limit_bytes, int64_t min_remat_size,
