@@ -18,7 +18,7 @@
 # pretend the path is a directory.
 TFCI_ARTIFACT_FINAL_GCS_ENABLE=1
 TFCI_ARTIFACT_FINAL_GCS_SA_PATH="${KOKORO_KEYSTORE_DIR}/73361_tensorflow_release_binary_uploader_service_account"
-TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow/versions/"
+TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow/versions"
 TFCI_ARTIFACT_FINAL_PYPI_ARGS="--config-file=$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token --repository pypi-warehouse"
 TFCI_ARTIFACT_FINAL_PYPI_ENABLE=1
 TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow/versions/latest/"
