@@ -52,6 +52,14 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+// Enum representing the partitioning methods for gather and scatter.
+enum class PartitioningMethod {
+  kIndexParallel,
+  kOperandPassthrough,
+  kTrivialSlicedOperand,
+  kIndexPassthrough,
+};
+
 struct SpmdPartitionerOptions {
   // Always exchange halo on LHS for all convolutions. If false, backprop filter
   // convolution exchanges halo on RHS.
@@ -100,6 +108,14 @@ struct SpmdPartitionerOptions {
   // Whether disable rewrite for dots that share the same
   // operand as an already rewritten windowed einsum loop.
   bool disable_ag_rewrite_for_multiple_consumers = false;
+
+  // Partitioning method to prioritize for gather operations.
+  PartitioningMethod gather_partition_method =
+      PartitioningMethod::kIndexParallel;
+
+  // Partitioning method to prioritize for scatter operations.
+  PartitioningMethod scatter_partition_method =
+      PartitioningMethod::kIndexParallel;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
