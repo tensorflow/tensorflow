@@ -17,13 +17,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
-#include <optional>
-#include <sstream>
-#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -31,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"

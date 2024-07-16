@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_MOCK_STREAM_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_MOCK_STREAM_EXECUTOR_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
