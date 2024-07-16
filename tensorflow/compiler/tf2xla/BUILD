@@ -667,6 +667,10 @@ cc_library(
     hdrs = [
         "xla_resource.h",
     ],
+    visibility = [
+        ":internal",
+        "//learning/deepmind/tensorflow/tpufunc:__pkg__",
+    ],
     deps = [
         ":common",
         ":sharding_util",
