@@ -50,7 +50,7 @@ class GpuSpmdPartitioningTest : public HloTestBase,
     config.set_num_partitions(num_devices);
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
-    EXPECT_FALSE(config.debug_options().xla_use_shardonnay())
+    EXPECT_FALSE(config.debug_options().xla_use_shardy())
         << "Shardy not supported yet";
 
     HloPassPipeline spmd_pipeline("spmd-partitioner");
@@ -69,7 +69,7 @@ class GpuSpmdPartitioningTest : public HloTestBase,
 
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_use_shardonnay(UseShardy());
+    debug_options.set_xla_use_shardy(UseShardy());
     return debug_options;
   }
 };

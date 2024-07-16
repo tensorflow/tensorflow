@@ -33,7 +33,7 @@ bool ShardyCallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
          !(instruction->GetModule()
                ->config()
                .debug_options()
-               .xla_use_shardonnay() &&
+               .xla_use_shardy() &&
            prefix_check(instruction->to_apply()->name()));
 }
 

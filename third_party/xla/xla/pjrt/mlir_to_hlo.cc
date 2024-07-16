@@ -95,7 +95,7 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
 
   // TODO(b/345414638): Delete when we move Shardy as the first pass in the
   // XLA pipeline.
-  if (use_tuple_args && GetDebugOptionsFromFlags().xla_use_shardonnay()) {
+  if (use_tuple_args && GetDebugOptionsFromFlags().xla_use_shardy()) {
     // Shardy can't handle tuple args when round-tripping. So delay using
     // tuples until after Shardy is run.
     sdy::addFrontendAttribute(module, sdy::kUseTupleArgs,
