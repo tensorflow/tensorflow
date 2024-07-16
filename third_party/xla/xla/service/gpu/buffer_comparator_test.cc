@@ -261,6 +261,16 @@ TEST_F(BufferComparatorTest, TestNumbers) {
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({11}, {12}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({12}, {11}));
 #endif  // GOOGLE_CUDA
+
+  // Rerunning tests with increased relative tolerance
+  const double tol = 0.001;
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({0.9}, {1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({0.9}, {0.901}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({10}, {10.1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({10}, {10.01}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({100}, {101}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({20}, {20.1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({20}, {20.01}, tol));
 }
 
 TEST_F(BufferComparatorTest, TestMultiple) {

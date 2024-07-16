@@ -49,30 +49,10 @@ class BufferComparator {
   absl::StatusOr<bool> CompareEqual(se::Stream* stream,
                                     se::DeviceMemoryBase current,
                                     se::DeviceMemoryBase expected) const;
-
  private:
-  template <typename ElementT, typename ComparisonT>
-  absl::StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
-                                                 se::DeviceMemoryBase current,
-                                                 se::DeviceMemoryBase expected,
-                                                 std::string_view kernel_name,
-                                                 void* kernel_symbol) const;
-
-  template <typename ElementType, typename ComparisonType>
-  absl::StatusOr<bool> HostCompare(se::Stream* stream,
-                                   se::DeviceMemoryBase current,
-                                   se::DeviceMemoryBase expected) const;
-
-  template <typename ElementT>
-  absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
-                                     se::DeviceMemoryBase current,
-                                     se::DeviceMemoryBase expected,
-                                     std::string_view kernel_name,
-                                     void* kernel_symbol) const;
-
   Shape shape_;
   HloModuleConfig config_;
-  double tolerance_;
+  double relative_tol_;
 };
 
 namespace buffer_comparator {
