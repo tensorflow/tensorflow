@@ -134,6 +134,53 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
   check_metadata(cp2);
 }
 
+TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithWhileLoop) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  while_cond {
+    param = (u32[], f32[]) parameter(0)
+    iter = u32[] get-tuple-element(param), index=0
+    max_iter = u32[] constant(5)
+    ROOT cmp = pred[] compare(iter, max_iter), direction=LT
+  }
+
+  while_body {
+    param = (u32[], f32[]) parameter(0)
+    iter = u32[] get-tuple-element(param), index=0
+    data = f32[] get-tuple-element(param), index=1
+    ten = f32[] constant(10)
+    sum = f32[] add(data, ten)
+    cp = f32[] collective-permute(sum), channel_id=1, source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+    iter_increment = u32[] constant(1)
+    next_iter = u32[] add(iter, iter_increment)
+    ROOT result = (u32[], f32[]) tuple(next_iter, cp)
+  }
+
+  ENTRY test_computation {
+    iter = u32[] constant(0)
+    data = f32[] parameter(0)
+    input = (u32[], f32[]) tuple(iter, data)
+    while_res = (u32[], f32[]) while(input), condition=while_cond, body=while_body
+    ROOT data_out = f32[] get-tuple-element(while_res), index=1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  CollectivePermuteCycleDecomposer decomposer(/*threshold_in_bytes=*/0);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloCollectivePermuteInstruction* cp1 =
+      DynCast<HloCollectivePermuteInstruction>(
+          FindInstruction(module.get(), "collective-permute"));
+  HloCollectivePermuteInstruction* cp2 =
+      DynCast<HloCollectivePermuteInstruction>(
+          FindInstruction(module.get(), "collective-permute.1"));
+  EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{3,0}}"));
+  EXPECT_THAT(cp2->ToString(),
+              HasSubstr("source_target_pairs={{0,1},{1,2},{2,3}}"));
+}
+
 TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {
   const absl::string_view kModuleStr = R"(
       HloModule test
