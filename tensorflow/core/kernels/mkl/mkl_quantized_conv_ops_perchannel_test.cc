@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if defined(INTEL_MKL)
 #define EIGEN_USE_THREADS
 
 #include <functional>
@@ -191,4 +191,4 @@ TEST_F(QuantizedConv2DPerChannelTest, SmallOldAPI) { TestSmall(true); }
 TEST_F(QuantizedConv2DPerChannelTest, SmallNewAPI) { TestSmall(false); }
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL && ENABLE_MKL
+#endif  // INTEL_MKL
