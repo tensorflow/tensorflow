@@ -245,78 +245,75 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   // Set read/write access to all GPUs.
   static auto* all_pools_ = new std::vector<CUmemoryPool>();
   static auto* all_ids_ = new std::vector<tsl::PlatformDeviceId>();
-  if (!create_new_pool_) {
-    DCHECK(all_pools_->size() == all_ids_->size());
+  DCHECK(all_pools_->size() == all_ids_->size());
 
-    // If the cuda_state_->pool is found in all_pools_, it means it has been
-    // initialized before. This can happen in some cases, such as when multiple
-    // virtual devices are created from one physical GPU, the virtual devices
-    // will actually share the same CUDA memory pool. So the following pool
-    // initialization steps should be skipped to avoid duplicated initialization
-    // of the same pool.
-    for (auto pool_item_ : *all_pools_) {
-      if (pool_item_ == cuda_state_->pool) {
-        VLOG(2) << Name()
-                << " GpuCudaMallocAsyncAllocator pool already initialized. "
-                   "PoolSize "
-                << pool_size;
-        return;
-      }
+  // If the cuda_state_->pool is found in all_pools_, it means it has been
+  // initialized before. This can happen in some cases, such as when multiple
+  // virtual devices are created from one physical GPU, the virtual devices
+  // will actually share the same CUDA memory pool. So the following pool
+  // initialization steps should be skipped to avoid duplicated initialization
+  // of the same pool.
+  for (auto pool_item_ : *all_pools_) {
+    if (pool_item_ == cuda_state_->pool) {
+      VLOG(2) << Name()
+              << " GpuCudaMallocAsyncAllocator pool already initialized. "
+                 "PoolSize "
+              << pool_size;
+      return;
     }
-    for (int i = 0; i < all_pools_->size(); ++i) {
-      // Set the current pool access to the previous GPUs.
-      CUmemAccessDesc map;
-      map.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-      map.location.id = (*all_ids_)[i].value();
-
-      map.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-      VLOG(2) << "Setting access of the current pool to "
-              << " location id: " << map.location.id;
-      int canAccessPeer;
-      if (auto status = cuDeviceCanAccessPeer(
-              &canAccessPeer, platform_device_id.value(), map.location.id)) {
-        cuda_state_->pool = nullptr;
-        LOG(FATAL)  // Crash OK.
-            << "cuDeviceCanAccessPeer failed to know if GPU id "
-            << map.location.id << " can access GPU id "
-            << platform_device_id.value() << ": "
-            << GetCudaErrorMessage(status);
-      }
-      if (canAccessPeer == 1) {
-        if (auto status = cuMemPoolSetAccess(cuda_state_->pool, &map, 1)) {
-          cuda_state_->pool = nullptr;
-          LOG(FATAL)  // Crash OK.
-              << "Error when setting access to the pool id: " << i
-              << " location id: " << map.location.id
-              << " error: " << GetCudaErrorMessage(status);
-        }
-      }
-
-      // Set the previous pools access to the current GPU.
-      map.location.id = platform_device_id.value();
-
-      int previous_pool_id = (*all_ids_)[i].value();
-      VLOG(2) << "Set access to the pool id: " << previous_pool_id
-              << " location id: " << map.location.id;
-      if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, previous_pool_id,
-                                              platform_device_id.value())) {
-        cuda_state_->pool = nullptr;
-        LOG(FATAL)  // Crash OK.
-            << "cuDeviceCanAccessPeer failed: " << GetCudaErrorMessage(status);
-      }
-      if (canAccessPeer == 1) {
-        if (auto status = cuMemPoolSetAccess((*all_pools_)[i], &map, 1)) {
-          cuda_state_->pool = nullptr;
-          LOG(FATAL)  // Crash OK.
-              << "Error when setting access to the pool id: "
-              << previous_pool_id << " location id: " << map.location.id
-              << " error: " << GetCudaErrorMessage(status);
-        }
-      }
-    }
-    all_pools_->push_back(cuda_state_->pool);
-    all_ids_->push_back(platform_device_id);
   }
+  for (int i = 0; i < all_pools_->size(); ++i) {
+    // Set the current pool access to the previous GPUs.
+    CUmemAccessDesc map;
+    map.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+    map.location.id = (*all_ids_)[i].value();
+
+    map.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    VLOG(2) << "Setting access of the current pool to "
+            << " location id: " << map.location.id;
+    int canAccessPeer;
+    if (auto status = cuDeviceCanAccessPeer(
+            &canAccessPeer, platform_device_id.value(), map.location.id)) {
+      cuda_state_->pool = nullptr;
+      LOG(FATAL)  // Crash OK.
+          << "cuDeviceCanAccessPeer failed to know if GPU id "
+          << map.location.id << " can access GPU id "
+          << platform_device_id.value() << ": " << GetCudaErrorMessage(status);
+    }
+    if (canAccessPeer == 1) {
+      if (auto status = cuMemPoolSetAccess(cuda_state_->pool, &map, 1)) {
+        cuda_state_->pool = nullptr;
+        LOG(FATAL)  // Crash OK.
+            << "Error when setting access to the pool id: " << i
+            << " location id: " << map.location.id
+            << " error: " << GetCudaErrorMessage(status);
+      }
+    }
+
+    // Set the previous pools access to the current GPU.
+    map.location.id = platform_device_id.value();
+
+    int previous_pool_id = (*all_ids_)[i].value();
+    VLOG(2) << "Set access to the pool id: " << previous_pool_id
+            << " location id: " << map.location.id;
+    if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, previous_pool_id,
+                                            platform_device_id.value())) {
+      cuda_state_->pool = nullptr;
+      LOG(FATAL)  // Crash OK.
+          << "cuDeviceCanAccessPeer failed: " << GetCudaErrorMessage(status);
+    }
+    if (canAccessPeer == 1) {
+      if (auto status = cuMemPoolSetAccess((*all_pools_)[i], &map, 1)) {
+        cuda_state_->pool = nullptr;
+        LOG(FATAL)  // Crash OK.
+            << "Error when setting access to the pool id: " << previous_pool_id
+            << " location id: " << map.location.id
+            << " error: " << GetCudaErrorMessage(status);
+      }
+    }
+  }
+  all_pools_->push_back(cuda_state_->pool);
+  all_ids_->push_back(platform_device_id);
 
   VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator PoolSize " << pool_size;
 }
