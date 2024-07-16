@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
@@ -67,8 +68,8 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 
   RewritePatternSet patterns(context);
   patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp,
-               ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax>(
-      context);
+               ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax,
+               LegalizeConv>(context);
   populateWithGenerated(patterns);
 
   ConversionTarget target(*context);
@@ -76,6 +77,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
+  target.addDynamicallyLegalOp<mhlo::ConvolutionOp>(IsConvLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
 
