@@ -36,9 +36,9 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class AddF32HostKernels : public Thunk::HostKernels {
+class AddF32HostKernel : public Thunk::FunctionRegistry {
  public:
-  absl::StatusOr<SE_HOST_Kernel*> Find(std::string_view name) override {
+  absl::StatusOr<Kernel> FindKernel(std::string_view name) override {
     return +[](const SE_HOST_KernelCallFrame* call_frame) {
       const SE_HOST_KernelArg& in = call_frame->args[0];
       const SE_HOST_KernelArg& out = call_frame->args[1];
@@ -82,7 +82,7 @@ TEST(KernelThunkTest, AddF32) {
       auto thunk, KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice},
                                       "add_f32", se::ThreadDim(4)));
 
-  AddF32HostKernels host_kernels;
+  AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
 
   auto execute_event = thunk->Execute(params);

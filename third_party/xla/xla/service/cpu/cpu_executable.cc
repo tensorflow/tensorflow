@@ -64,7 +64,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
@@ -77,11 +76,12 @@ namespace xla {
 namespace cpu {
 
 using ConstantAllocation = CpuExecutable::ConstantAllocation;
-using HostKernels = CpuExecutable::HostKernels;
+using FunctionRegistry = CpuExecutable::FunctionRegistry;
 
-HostKernels::HostKernels(SimpleOrcJIT* jit) : jit_(jit) {}
+FunctionRegistry::FunctionRegistry(SimpleOrcJIT* jit) : jit_(jit) {}
 
-absl::StatusOr<SE_HOST_Kernel*> HostKernels::Find(std::string_view name) {
+absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
+    std::string_view name) {
   VLOG(2) << "Find host kernel with a name " << name;
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
@@ -91,7 +91,7 @@ absl::StatusOr<SE_HOST_Kernel*> HostKernels::Find(std::string_view name) {
         absl::StrCat("Can't resolve host kernel with a name ", name,
                      " in the jit compiled module."));
   }
-  return reinterpret_cast<SE_HOST_Kernel*>(sym->getAddress().getValue());
+  return reinterpret_cast<Kernel>(sym->getAddress().getValue());
 }
 
 se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
@@ -161,7 +161,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_profile_index_map), std::move(assignment)));
 
   executable->jit_ = std::move(jit);
-  executable->host_kernels_ = HostKernels(executable->jit_.get());
+  executable->function_registry_ = FunctionRegistry(executable->jit_.get());
 
   TF_ASSIGN_OR_RETURN(executable->thunks_,
                       ThunkExecutor::Create(std::move(thunks)));
@@ -371,7 +371,7 @@ absl::Status CpuExecutable::ExecuteThunks(
   };
 
   Thunk::ExecuteParams execute_params = {
-      &*host_kernels_,
+      &*function_registry_,
       &allocations,
       runtime::GetXfeedManager(run_options->device_ordinal()),
       run_options->intra_op_thread_pool(),

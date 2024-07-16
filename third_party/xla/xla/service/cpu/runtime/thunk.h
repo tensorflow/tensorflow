@@ -134,17 +134,25 @@ class Thunk {
   virtual ResourceUses resource_uses() const { return {}; }
 
   //===--------------------------------------------------------------------===//
-  // HostKernels
+  // FunctionRegistry
   //===--------------------------------------------------------------------===//
 
-  // Interface for finding host kernels (function pointers with host kernel API)
-  // by name. At run time this is typically backed by an LLVM jit compiler that
-  // compiles LLVM IR to executables on demand.
-  class HostKernels {
+  // An API to resolve function pointers required for running ThunkSequence:
+  //
+  // 1. Host kernels that are executed by a KernelThunk via StreamExecutor APIs.
+  // 2. Comparator functions required by a SortThunk.
+  //
+  // At run time this is typically backed by an LLVM JIT compiler that compiles
+  // LLVM IR to function pointers on demand. At compile time, together with
+  // thunks themselves, we emit LLVM module(s) and metadata describing all the
+  // functions required for running emitted thunks (number of threads, etc.).
+  class FunctionRegistry {
    public:
-    virtual ~HostKernels() = default;
+    using Kernel = SE_HOST_Kernel*;
 
-    virtual absl::StatusOr<SE_HOST_Kernel*> Find(std::string_view name) = 0;
+    virtual ~FunctionRegistry() = default;
+
+    virtual absl::StatusOr<Kernel> FindKernel(std::string_view name) = 0;
   };
 
   //===--------------------------------------------------------------------===//
@@ -247,7 +255,7 @@ class Thunk {
   // Parameters passed to Execute. Execute is responsible for launching "work"
   // on device, i.e., it launches host kernels, calls into libraries, etc.
   struct ExecuteParams {
-    HostKernels* host_kernels = nullptr;
+    FunctionRegistry* function_registry = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
     runtime::XfeedManager* xfeed = nullptr;
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
