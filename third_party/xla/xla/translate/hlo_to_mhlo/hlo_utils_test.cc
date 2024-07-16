@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"

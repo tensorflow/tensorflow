@@ -41,9 +41,9 @@ limitations under the License.
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/Support/FileUtilities.h"
+#include "mlir/Transforms/LocationSnapshot.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

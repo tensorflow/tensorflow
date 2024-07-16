@@ -16,8 +16,8 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_TYPE_UTIL_H_
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Types.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 

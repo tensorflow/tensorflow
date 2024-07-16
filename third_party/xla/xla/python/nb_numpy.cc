@@ -22,7 +22,7 @@ limitations under the License.
 #include <stdexcept>
 
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 
 namespace nb = nanobind;

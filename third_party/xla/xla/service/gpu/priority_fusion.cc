@@ -37,7 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

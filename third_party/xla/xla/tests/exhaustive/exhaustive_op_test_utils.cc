@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/literal.h"
 #include "xla/types.h"
 

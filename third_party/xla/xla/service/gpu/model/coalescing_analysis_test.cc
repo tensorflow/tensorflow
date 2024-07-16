@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"

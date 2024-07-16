@@ -28,11 +28,11 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/nb_class_ptr.h"
 #include "tsl/platform/platform.h"

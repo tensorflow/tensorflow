@@ -19,10 +19,10 @@ limitations under the License.
 #include <type_traits>
 
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir/tools/mlir_interpreter/dialects/util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"

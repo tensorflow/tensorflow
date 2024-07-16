@@ -16,9 +16,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/Support/LogicalResult.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
+#include "mlir/Pass/PassManager.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"

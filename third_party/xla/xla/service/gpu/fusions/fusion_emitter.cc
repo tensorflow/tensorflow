@@ -42,8 +42,8 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/ir_emitter_context.h"

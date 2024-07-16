@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 

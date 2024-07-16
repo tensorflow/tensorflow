@@ -45,7 +45,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"

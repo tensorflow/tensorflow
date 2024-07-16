@@ -19,7 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {

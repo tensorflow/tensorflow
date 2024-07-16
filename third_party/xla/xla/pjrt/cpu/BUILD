@@ -265,10 +265,10 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        "//third_party/gloo",
         "//xla/pjrt:status_casters",
         "//xla/pjrt/distributed:key_value_store_interface",
         "@com_google_absl//absl/time",
+        "@gloo",
     ],
 )
 
@@ -282,7 +282,6 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        "//third_party/gloo",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
@@ -298,6 +297,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@gloo",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -310,7 +310,6 @@ xla_cc_test(
     deps = [
         ":gloo_collectives",
         ":gloo_kv_store",
-        "//third_party/gloo:transport_tcp",
         "//xla:executable_run_options",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt/distributed:in_memory_key_value_store",
@@ -321,6 +320,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@gloo//:transport_tcp",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",

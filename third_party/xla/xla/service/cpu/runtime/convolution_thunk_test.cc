@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"

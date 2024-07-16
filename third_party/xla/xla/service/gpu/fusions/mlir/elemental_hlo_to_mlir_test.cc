@@ -21,19 +21,19 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/DLTI/DLTI.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"

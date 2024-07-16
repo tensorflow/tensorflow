@@ -35,7 +35,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/error_spec.h"
 #include "xla/fp_util.h"
 #include "xla/index_util.h"

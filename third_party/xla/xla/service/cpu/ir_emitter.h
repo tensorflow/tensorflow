@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

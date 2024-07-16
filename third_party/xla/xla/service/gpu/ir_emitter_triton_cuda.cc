@@ -19,11 +19,11 @@ limitations under the License.
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/prevent_mmav3_loop_unrolling.h"

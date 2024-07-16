@@ -33,8 +33,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"

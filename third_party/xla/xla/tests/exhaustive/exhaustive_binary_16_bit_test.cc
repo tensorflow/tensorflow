@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"

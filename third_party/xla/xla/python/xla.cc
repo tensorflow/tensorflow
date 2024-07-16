@@ -34,18 +34,18 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/nb_defs.h"
-#include "third_party/nanobind/include/nanobind/stl/function.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/set.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/nb_defs.h"
+#include "nanobind/stl/function.h"  // IWYU pragma: keep
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/pair.h"  // IWYU pragma: keep
+#include "nanobind/stl/set.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/variant.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -67,8 +67,8 @@ limitations under the License.
 #endif  // XLA_PYTHON_ENABLE_GPU
 
 #ifdef __linux__
-#include "third_party/gloo/gloo/transport/tcp/attr.h"
-#include "third_party/gloo/gloo/transport/tcp/device.h"
+#include "gloo/transport/tcp/attr.h"
+#include "gloo/transport/tcp/device.h"
 #include "xla/pjrt/cpu/gloo_collectives.h"
 #include "xla/pjrt/cpu/gloo_kv_store.h"
 #endif  // __linux__

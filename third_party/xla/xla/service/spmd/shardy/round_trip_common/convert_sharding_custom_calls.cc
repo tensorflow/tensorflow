@@ -23,18 +23,18 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "shardy/dialect/sdy/ir/constants.h"  // from @shardy
-#include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/TypeID.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "shardy/dialect/sdy/ir/constants.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/sharding_op_util.h"

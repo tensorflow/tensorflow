@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"

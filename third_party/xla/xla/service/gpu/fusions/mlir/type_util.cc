@@ -16,10 +16,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Types.h"
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/primitive_util.h"

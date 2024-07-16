@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/loop.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"

@@ -33,9 +33,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/complex.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/complex.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"

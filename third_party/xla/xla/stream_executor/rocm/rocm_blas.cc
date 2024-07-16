@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"

@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 

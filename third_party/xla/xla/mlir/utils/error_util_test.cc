@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/Twine.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 

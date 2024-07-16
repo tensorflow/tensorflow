@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
-#include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
-#include "shardy/dialect/sdy/transforms/passes.h"  // from @shardy
-#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/transforms/passes.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_ops.h"

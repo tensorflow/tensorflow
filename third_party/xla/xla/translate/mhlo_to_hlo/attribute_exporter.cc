@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"

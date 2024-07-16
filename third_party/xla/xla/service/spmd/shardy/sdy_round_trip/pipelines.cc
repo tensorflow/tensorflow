@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <cassert>
 
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"

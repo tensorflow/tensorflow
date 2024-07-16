@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"

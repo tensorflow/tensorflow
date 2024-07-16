@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/tsl/util/onednn_threadpool.h"
 // Below must come after `onednn_threadpool.h`
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive  // NOLINT
+#include "unsupported/Eigen/CXX11/Tensor"  // NOLINT
 
 namespace xla {
 namespace cpu {

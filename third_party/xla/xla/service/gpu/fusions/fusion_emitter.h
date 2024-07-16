@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"

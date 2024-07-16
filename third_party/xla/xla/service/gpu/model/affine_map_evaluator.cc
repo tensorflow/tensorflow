@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/Support/LLVM.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {

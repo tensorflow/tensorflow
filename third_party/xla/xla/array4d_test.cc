@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/test.h"
 

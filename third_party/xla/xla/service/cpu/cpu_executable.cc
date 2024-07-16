@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/Support/Error.h"
 #include "xla/executable_run_options.h"

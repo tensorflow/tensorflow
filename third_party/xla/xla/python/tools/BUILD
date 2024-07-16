@@ -58,7 +58,6 @@ tsl_pybind_extension(
     # Users should depend on ":types" instead.
     visibility = ["//visibility:private"],
     deps = [
-        "//third_party/nanobind",
         "//xla:literal",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:status_casters",
@@ -67,6 +66,7 @@ tsl_pybind_extension(
         "//xla/python:types",
         "//xla/tsl/python/lib/core:numpy",
         "@com_google_absl//absl/strings",
+        "@nanobind",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",

@@ -25,7 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/host/host_platform_id.h"

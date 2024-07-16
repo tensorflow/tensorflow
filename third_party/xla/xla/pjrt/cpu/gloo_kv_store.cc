@@ -25,7 +25,7 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "third_party/gloo/gloo/rendezvous/store.h"
+#include "gloo/rendezvous/store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/status_casters.h"
 

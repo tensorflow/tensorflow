@@ -20,25 +20,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
-#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "mlir/Bytecode/BytecodeWriter.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LogicalResult.h"
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "stablehlo/dialect/ChloOps.h"
+#include "stablehlo/dialect/Serialization.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/client/xla_computation.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"

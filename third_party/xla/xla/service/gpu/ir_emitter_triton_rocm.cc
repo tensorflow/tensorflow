@@ -16,12 +16,12 @@ limitations under the License.
 // included in build.
 #include "third_party/amd/include/TritonAMDGPUToLLVM/Passes.h"
 #include "third_party/amd/include/TritonAMDGPUTransforms/Passes.h"
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"

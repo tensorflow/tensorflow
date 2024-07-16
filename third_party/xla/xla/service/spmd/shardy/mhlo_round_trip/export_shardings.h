@@ -19,12 +19,12 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 
 namespace xla {

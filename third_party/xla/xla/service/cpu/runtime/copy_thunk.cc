@@ -33,7 +33,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/pjrt/transpose.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"

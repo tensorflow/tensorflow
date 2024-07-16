@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Pass/PassManager.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"

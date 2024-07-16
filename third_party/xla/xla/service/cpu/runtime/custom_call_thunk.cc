@@ -29,11 +29,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "unsupported/Eigen/CXX11/Tensor"
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"

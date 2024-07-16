@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"
 
 namespace xla {
 namespace sdy {

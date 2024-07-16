@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_MHLO_EXPORT_H_
 #define XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_MHLO_EXPORT_H_
 
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"
 
 namespace xla {
 namespace sdy {
