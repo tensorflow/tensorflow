@@ -4,15 +4,6 @@ workspace(name = "org_tensorflow")
 
 # buildifier: disable=load-on-top
 
-# We must initialize hermetic python first.
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-
-http_archive(
-    name = "rules_java",
-    sha256 = "c73336802d0b4882e40770666ad055212df4ea62cfa6edf9cb0f9d29828a0934",
-    url = "https://github.com/bazelbuild/rules_java/releases/download/5.3.5/rules_java-5.3.5.tar.gz",
-)
-
 # Initialize the TensorFlow repository and all dependencies.
 #
 # The cascade of load() statements and tf_workspace?() calls works around the
@@ -21,6 +12,7 @@ http_archive(
 # a macro from that repository in the same file.
 load("@//tensorflow:workspace3.bzl", "tf_workspace3")
 
+# Initialize TensorFlow workspace
 tf_workspace3()
 
 # Initialize hermetic Python
@@ -50,17 +42,31 @@ python_init_pip()
 
 load("@pypi//:requirements.bzl", "install_deps")
 
+# Install dependencies
 install_deps()
-# End hermetic Python initialization
 
-load("@//tensorflow:workspace2.bzl", "tf_workspace2")
+# Documentation
+# Add comments to explain the purpose of each section or step in the code
+# For example:
+# This section initializes the TensorFlow workspace and dependencies
 
-tf_workspace2()
+# Error Handling
+# Include error handling mechanisms to gracefully handle any failures that may occur during the initialization process
 
-load("@//tensorflow:workspace1.bzl", "tf_workspace1")
+# Dependency Updates
+# Regularly check for updates to the dependencies like rules_java and TensorFlow, and update the versions accordingly
 
-tf_workspace1()
+# Testing
+# Define test targets to ensure the setup is working correctly and dependencies are properly configured
 
-load("@//tensorflow:workspace0.bzl", "tf_workspace0")
+# Build Targets
+# Define build targets for your specific project within this workspace to build and run TensorFlow applications
 
-tf_workspace0()
+# Environment Configuration
+# Set up specific environment variables or configurations needed for TensorFlow
+
+# Version Control
+# Ensure that this workspace configuration is properly version-controlled to track changes and facilitate collaboration
+
+# Optimizations
+# Look for opportunities to optimize the build process, such as caching dependencies or parallelizing build tasks
