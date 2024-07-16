@@ -1138,8 +1138,7 @@ std::string SymbolicTile::RtVarsToString(
     const AffineMapPrinter& printer) const {
   std::string s;
   std::stringstream ss(s);
-  PrintRTVars(tile_map_.GetRTVars(),
-              /*first_rt_var_symbol_index=*/tile_map_.GetDimensionCount(), ss,
+  PrintRTVars(tile_map_.GetRTVars(), /*first_rt_var_symbol_index=*/0, ss,
               printer);
   return ss.str();
 }
@@ -1163,9 +1162,7 @@ void SymbolicTile::Print(std::ostream& out,
   const std::vector<RTVar>& rt_vars = tile_map_.GetRTVars();
   if (!rt_vars.empty()) {
     out << "\n\trt_vars: ";
-    PrintRTVars(rt_vars,
-                /*first_rt_var_symbol_index=*/tile_map_.GetDimensionCount(),
-                out, printer);
+    PrintRTVars(rt_vars, /*first_rt_var_symbol_index=*/0, out, printer);
   }
   if (!constraints_.IsAlwaysSatisfied()) {
     out << "\n\tconstraints: ";
