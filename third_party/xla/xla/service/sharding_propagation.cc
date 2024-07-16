@@ -2074,7 +2074,20 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       // propagation to the current instruction.
       if (ShapeUtil::CompatibleIgnoringElementType(instruction.shape(),
                                                    user.shape())) {
-        return user.sharding();
+        HloSharding result = user.sharding();
+        for (const HloInstruction* other_operand : user.operands()) {
+          if (other_operand != &instruction && other_operand->has_sharding() &&
+              ShapeUtil::CompatibleIgnoringElementType(
+                  instruction.shape(), other_operand->shape())) {
+            if (auto improved_sharding =
+                    hlo_sharding_util::ReturnImprovedShardingImpl(
+                        other_operand->sharding(), &result, instruction.shape(),
+                        may_combine_partial_sharding)) {
+              result = std::move(*improved_sharding);
+            }
+          }
+        }
+        return result;
       }
       return std::nullopt;
     }
