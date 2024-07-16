@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
