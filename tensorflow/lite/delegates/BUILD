@@ -66,6 +66,8 @@ cc_library(
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
@@ -221,7 +223,6 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:common",
         "@farmhash_archive//:farmhash",
-        "@flatbuffers",
     ],
 )
 
