@@ -186,7 +186,7 @@ class GpuExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override {
     return GpuDriver::GetPointerMemorySpace(
-        reinterpret_cast<GpuDevicePtr>(ptr));
+        reinterpret_cast<GpuDevicePtr>(const_cast<void*>(ptr)));
   }
 
   bool SynchronizeAllActivity() override;
