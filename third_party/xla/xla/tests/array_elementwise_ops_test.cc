@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "ml_dtypes/include/float8.h"  // from @ml_dtypes
+#include "ml_dtypes/include/float8.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"

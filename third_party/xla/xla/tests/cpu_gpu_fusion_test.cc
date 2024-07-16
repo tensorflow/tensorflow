@@ -24,7 +24,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array2d.h"
 #include "xla/client/client_library.h"
 #include "xla/client/xla_builder.h"

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/module_config_importer.h"
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla {

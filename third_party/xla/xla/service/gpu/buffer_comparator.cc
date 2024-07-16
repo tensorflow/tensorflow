@@ -22,7 +22,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"

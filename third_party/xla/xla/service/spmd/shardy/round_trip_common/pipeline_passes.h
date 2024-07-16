@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_PIPELINE_PASSES_H_
 #define XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_PIPELINE_PASSES_H_
 
-#include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"
 
 namespace xla {
 namespace sdy {

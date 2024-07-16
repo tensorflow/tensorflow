@@ -18,9 +18,9 @@ limitations under the License.
 #include <iostream>
 #include <utility>
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"

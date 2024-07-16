@@ -20,7 +20,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/strings/str_format.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"

@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace tsl {
 

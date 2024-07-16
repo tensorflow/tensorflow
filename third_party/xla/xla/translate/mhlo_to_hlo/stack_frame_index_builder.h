@@ -21,7 +21,7 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 
-#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Location.h"
 #include "xla/service/hlo.pb.h"
 
 namespace mlir {

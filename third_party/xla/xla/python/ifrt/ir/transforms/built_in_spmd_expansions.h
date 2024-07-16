@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_BUILT_IN_SPMD_EXPANSIONS_H_
 #define XLA_PYTHON_IFRT_IR_TRANSFORMS_BUILT_IN_SPMD_EXPANSIONS_H_
 
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 
 namespace xla {
 namespace ifrt {

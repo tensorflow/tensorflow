@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"

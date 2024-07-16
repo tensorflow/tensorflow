@@ -20,7 +20,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tsl/util/onednn_threadpool.h"

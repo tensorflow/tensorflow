@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Tools/mlir-translate/Translation.h"
 #include "xla/translate/hlo_to_mhlo/translate.h"
 
 namespace {

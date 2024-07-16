@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/round_trip_common/convert_sharding_custom_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/identity_to_pass_through_while_args.h"

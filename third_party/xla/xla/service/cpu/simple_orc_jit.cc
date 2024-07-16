@@ -42,7 +42,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
 #include "llvm/TargetParser/Host.h"
-#include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
+#include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/service/cpu/runtime_conv2d.h"

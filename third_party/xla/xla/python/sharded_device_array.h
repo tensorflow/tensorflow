@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/variant.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "xla/python/types.h"
 
 // TODO(jblespiau): The current implementation moves the Python logic to C++,

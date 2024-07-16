@@ -24,9 +24,9 @@ limitations under the License.
 #include "numpy/ndarraytypes.h"
 #include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
-#include "pybind11/gil.h"  // from @pybind11
-#include "pybind11/numpy.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/gil.h"
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
 
 namespace tsl {
 namespace ml_dtypes {

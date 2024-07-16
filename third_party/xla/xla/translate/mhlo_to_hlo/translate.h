@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_os_ostream.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace xla {
 

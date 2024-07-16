@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "xla/literal.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/primitive_util.h"

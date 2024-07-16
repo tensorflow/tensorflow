@@ -20,8 +20,8 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
 #include "xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
 

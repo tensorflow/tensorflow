@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"

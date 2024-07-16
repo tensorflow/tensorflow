@@ -18,7 +18,7 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)

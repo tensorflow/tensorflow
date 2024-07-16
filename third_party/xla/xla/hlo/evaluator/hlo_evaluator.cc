@@ -49,7 +49,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"

@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/service/custom_call_status.h"

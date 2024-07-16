@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"
 
 namespace xla::gpu {
 

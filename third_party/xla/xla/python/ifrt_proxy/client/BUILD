@@ -521,7 +521,6 @@ cc_library(
     deps = [
         ":grpc_client",
         ":registry",
-        "//third_party/nanobind",
         "//xla/pjrt:status_casters",
         "//xla/python:nb_class_ptr",
         "//xla/python:py_client",
@@ -535,5 +534,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
+        "@nanobind",
     ],
 )
