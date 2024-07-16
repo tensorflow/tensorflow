@@ -1,4 +1,4 @@
-// RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file | FileCheck %s --dump-input=fail
+// RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file | FileCheck %s --dump-input=fail 
 
 // Just assert that pass is properly registered.
 func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
@@ -36,7 +36,6 @@ func.func @conv2d_nhwc_ohwi_nhwc(%input: tensor<1x256x256x3xf32>, %filter: tenso
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
 // CHECK-LABEL: conv2d_nchw_ohwi_nhwc
 func.func @conv2d_nchw_ohwi_nhwc(%input: tensor<?x3x256x256xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<?x256x256x2xf32> {
   %0 = mhlo.convolution(%input, %filter)
@@ -48,13 +47,15 @@ func.func @conv2d_nchw_ohwi_nhwc(%input: tensor<?x3x256x256xf32>, %filter: tenso
   func.return %0 : tensor<?x256x256x2xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, f, 0, 1]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK-NOT: transpose
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %arg1)
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK-NOT:  transpose
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
 // CHECK-LABEL: conv2d_nchw_ohwi_nhwc_dynamic_batch
 func.func @conv2d_nchw_ohwi_nhwc_dynamic_batch(%input: tensor<?x3x256x256xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<?x256x256x2xf32> {
   %0 = mhlo.convolution(%input, %filter)
@@ -66,13 +67,15 @@ func.func @conv2d_nchw_ohwi_nhwc_dynamic_batch(%input: tensor<?x3x256x256xf32>, 
   func.return %0 : tensor<?x256x256x2xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, f, 0, 1]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK-NOT: transpose
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %arg1)
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK-NOT:  transpose
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
 // CHECK-LABEL: conv2d_nhwc_hwio_nhwc
 func.func @conv2d_nhwc_hwio_nhwc(%input: tensor<1x256x256x3xf32>, %filter: tensor<1x1x3x2xf32>) -> tensor<1x256x256x2xf32> {
   %0 = mhlo.convolution(%input, %filter)
@@ -84,13 +87,16 @@ func.func @conv2d_nhwc_hwio_nhwc(%input: tensor<1x256x256x3xf32>, %filter: tenso
   func.return %0 : tensor<1x256x256x2xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-// CHECK-NOT: transpose
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [3, 0, 1, 2]
+// CHECK:      mhlo.convolution(%arg0, %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK-NOT:  transpose
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
+// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv2d_nhwc_ohwi_nchw
 func.func @conv2d_nhwc_ohwi_nchw(%input: tensor<1x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<1x2x256x256xf32> {
   %0 = mhlo.convolution(%input, %filter)
@@ -108,7 +114,7 @@ func.func @conv2d_nhwc_ohwi_nchw(%input: tensor<1x256x256x3xf32>, %filter: tenso
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
+// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv2d_nchw_oihw_nchw
 func.func @conv2d_nchw_oihw_nchw(%input: tensor<1x3x256x256xf32>, %filter: tensor<2x3x1x1xf32>) -> tensor<1x2x256x256xf32> {
   %0 = mhlo.convolution(%input, %filter)
@@ -120,9 +126,15 @@ func.func @conv2d_nchw_oihw_nchw(%input: tensor<1x3x256x256xf32>, %filter: tenso
   func.return %0 : tensor<1x2x256x256xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
-// CHECK-NOT: transpose
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, f, 0, 1]
+// CHECK-NOT:  transpose
 
 // -----
 
@@ -145,7 +157,6 @@ func.func @conv1d_nsc_osi_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
 // CHECK-LABEL: conv1d_ncs_osi_nsc
 func.func @conv1d_ncs_osi_nsc(%arg0: tensor<16x256x32xf32>, %arg1: tensor<256x1x256xf32>) -> tensor<16x32x256xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -156,13 +167,15 @@ func.func @conv1d_ncs_osi_nsc(%arg0: tensor<16x256x32xf32>, %arg1: tensor<256x1x
   func.return %0 : tensor<16x32x256xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, f, 0]x[o, 0, i]->[b, 0, f]
-// CHECK-NOT: transpose
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 1]
+// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %arg1)
+// CHECK-SAME: [b, 0, f]x[o, 0, i]->[b, 0, f]
+// CHECK-NOT:  transpose
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
 // CHECK-LABEL: conv1d_nsc_sio_nsc
 func.func @conv1d_nsc_sio_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<1x256x256xf32>) -> tensor<16x32x256xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -173,13 +186,16 @@ func.func @conv1d_nsc_sio_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<1x256x
   func.return %0 : tensor<16x32x256xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, 0, f]x[0, i, o]->[b, 0, f]
-// CHECK-NOT: transpose
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [2, 0, 1]
+// CHECK:      mhlo.convolution(%arg0, %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, f]x[o, 0, i]->[b, 0, f]
+// CHECK-NOT:  transpose
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
+// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv1d_nsc_osi_ncs
 func.func @conv1d_nsc_osi_ncs(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x256xf32>) -> tensor<16x256x32xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -196,7 +212,7 @@ func.func @conv1d_nsc_osi_ncs(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard layouts.
+// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv1d_ncs_ois_ncs
 func.func @conv1d_ncs_ois_ncs(%arg0: tensor<16x256x32xf32>, %arg1: tensor<256x256x1xf32>) -> tensor<16x256x32xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -207,9 +223,90 @@ func.func @conv1d_ncs_ois_ncs(%arg0: tensor<16x256x32xf32>, %arg1: tensor<256x25
   func.return %0 : tensor<16x256x32xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, f, 0]x[o, i, 0]->[b, f, 0]
-// CHECK-NOT: transpose
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 1]
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 1]
+// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, f]x[o, 0, i]->[b, f, 0]
+// CHECK-NOT:  transpose
 
+// -----
+
+// 3D
+//=--
+
+// CHECK-LABEL: conv3d_ndhwc_dhwio_ndhwc
+func.func @conv3d_ndhwc_dhwio_ndhwc(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>) -> tensor<1x6x6x1x16xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]>,
+    feature_group_count = 1 : i64} :
+       (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<1x6x6x1x16xf32>
+  func.return %0 : tensor<1x6x6x1x16xf32>
+}
+
+// CHECK-NOT:  transpose
+// CHECK:      mhlo.convolution
+// CHECK-SAME: [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+// CHECK-NOT:  transpose
+
+// -----
+
+// CHECK-LABEL: conv3d_ncdhw_dhwio_ndhwc
+func.func @conv3d_ncdhw_dhwio_ndhwc(%arg0: tensor<1x207x8x8x32xf32>, %arg1: tensor<3x3x32x207x16xf32>) -> tensor<1x6x6x1x16xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, f, 0, 1, 2]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]>,
+    feature_group_count = 1 : i64} :
+       (tensor<1x207x8x8x32xf32>, tensor<3x3x32x207x16xf32>) -> tensor<1x6x6x1x16xf32>
+  func.return %0 : tensor<1x6x6x1x16xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 4, 1]
+// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %arg1)
+// CHECK-SAME: [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+// CHECK-NOT:  transpose
+
+// -----
+
+// CHECK-LABEL: conv3d_ndhwc_odhwi_ndhwc
+func.func @conv3d_ndhwc_odhwi_ndhwc(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<16x3x3x32x207xf32>) -> tensor<1x6x6x1x16xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, 2, f]x[o, 0, 1, 2, i]->[b, 0, 1, 2, f]>,
+    feature_group_count = 1 : i64} :
+       (tensor<1x8x8x32x207xf32>, tensor<16x3x3x32x207xf32>) -> tensor<1x6x6x1x16xf32>
+  func.return %0 : tensor<1x6x6x1x16xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [1, 2, 3, 4, 0]
+// CHECK:      mhlo.convolution(%arg0, %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+// CHECK-NOT:  transpose
+
+// -----
+
+// TODO: b/351437662 - Add support for non-standard output layouts.
+// CHECK-LABEL: conv3d_ndhwc_dhwio_ncdhw
+func.func @conv3d_ndhwc_dhwio_ncdhw(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>) -> tensor<1x16x6x6x1xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, f, 0, 1, 2]>,
+    feature_group_count = 1 : i64} :
+       (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<1x16x6x6x1xf32>
+  func.return %0 : tensor<1x16x6x6x1xf32>
+}
+
+// CHECK-NOT:  transpose
+// CHECK:      mhlo.convolution
+// CHECK-SAME: [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, f, 0, 1, 2]
+// CHECK-NOT:  transpose
 
 

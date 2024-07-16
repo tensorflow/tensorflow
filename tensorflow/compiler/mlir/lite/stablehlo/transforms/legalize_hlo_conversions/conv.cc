@@ -40,12 +40,6 @@ bool IsRankSupported(const ConvData& data) {
   return data.InputShape().size() == 4;
 }
 
-bool AreLayoutsSupported(const ConvData& data) {
-  ArrayRef<Layout> layouts = {data.InputLayout(), data.KernelLayout(),
-                              data.OutputLayout()};
-  return llvm::all_of(layouts, IsTFLNativeLayout);
-}
-
 bool IsShapeFullyStatic(ArrayRef<int64_t> shape) {
   return llvm::all_of(shape, [](int64_t d) { return d >= 0; });
 }
@@ -99,9 +93,9 @@ bool IsConvLegal(mhlo::ConvolutionOp op) {
       IsInputDilationSupported(data) && IsKernelDilationSupported(data);
 
   return !are_groups_supported || !are_dilations_supported ||
-         !AreShapesSupported(data) || !AreLayoutsSupported(data) ||
+         !AreShapesSupported(data) || !IsTFLNativeLayout(data) ||
          !IsStrideSupported(data) || !IsPaddingSupported(data) ||
-         !IsWindowReversalSupported(data);
+         !IsWindowReversalSupported(data) | !IsStandardConv(op);
 }
 
 //===----------------------------------------------------------------------===//

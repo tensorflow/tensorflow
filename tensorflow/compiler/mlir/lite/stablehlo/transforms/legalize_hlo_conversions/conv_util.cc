@@ -25,6 +25,18 @@ limitations under the License.
 
 namespace mlir::odml {
 
+llvm::SmallVector<int64_t, 4> Layout::GetPermForReLayout(
+    const Layout& to_layout) const {
+  llvm::SmallVector<int64_t, 4> perm(to_layout.Rank());
+  perm[to_layout.SpecialDim1()] = SpecialDim1();
+  perm[to_layout.SpecialDim2()] = SpecialDim2();
+  for (const auto [to_spatial, from_spatial] :
+       llvm::zip(to_layout.Spatials(), Spatials())) {
+    perm[to_spatial] = from_spatial;
+  }
+  return perm;
+}
+
 bool Layout::HasSpecialDims(int64_t special_dim1, int64_t special_dim2) const {
   return SpecialDim1() == special_dim1 && SpecialDim2() == special_dim2;
 }
@@ -99,8 +111,8 @@ ConvData::ConvData(mhlo::ConvolutionOp op)
                  op.getDimensionNumbers().getInputFeatureDimension(),
                  op.getDimensionNumbers().getInputSpatialDimensions()}),
       kernel_layout_(
-          Layout{op.getDimensionNumbers().getKernelOutputFeatureDimension(),
-                 op.getDimensionNumbers().getKernelInputFeatureDimension(),
+          Layout{op.getDimensionNumbers().getKernelInputFeatureDimension(),
+                 op.getDimensionNumbers().getKernelOutputFeatureDimension(),
                  op.getDimensionNumbers().getKernelSpatialDimensions()}),
       output_layout_(
           Layout{op.getDimensionNumbers().getOutputBatchDimension(),

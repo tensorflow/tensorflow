@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv_util.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
 
 namespace mlir {
@@ -41,11 +42,13 @@ class PrepareHloPass : public impl::PrepareHloPassBase<PrepareHloPass> {
   void runOnOperation() override;
 };
 
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_prepare_hlo.inc"
 void PrepareHloPass::runOnOperation() {
   MLIRContext* context = &getContext();
   auto func = getOperation();
 
   RewritePatternSet patterns(context);
+  populateWithGenerated(patterns);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     signalPassFailure();

@@ -37,7 +37,6 @@ class Layout {
 
   int64_t Rank() const { return NumSpatials() + 2; }
 
-  // This class should not be instantiated directly, so protect constructor.
   Layout(int64_t special_dim1, int64_t special_dim2, ArrayRef<int64_t> spatials)
       : special_dim1_(special_dim1),
         special_dim2_(special_dim2),
@@ -70,17 +69,26 @@ class Layout {
   // ascending order (HWD).
   bool AreSpatialsIota() const;
 
+  // Gets a "permutation array" to be used for transposing a tensor
+  // of "this" layout to the given layout. A permutation array is some
+  // permutation of [0, 1, i...] for i < rank(layout). Assumes
+  // "this" and given layout have the same rank.
+  llvm::SmallVector<int64_t, 4> GetPermForReLayout(
+      const Layout& to_layout) const;
+
+  bool operator==(const Layout& other) const {
+    return SpecialDim1() == other.SpecialDim1() &&
+           SpecialDim2() == other.SpecialDim2() &&
+           Spatials() == other.Spatials();
+  }
+
+  bool operator!=(const Layout& other) const { return !(*this == other); }
+
  private:
   int64_t special_dim1_;
   int64_t special_dim2_;
   llvm::SmallVector<int64_t> spatials_;
 };
-
-// [b, spatials..., f] / [o, spatials..., i].
-inline bool IsTFLNativeLayout(const Layout& layout) {
-  return layout.AreSpatialsIota() &&
-         layout.HasSpecialDims(0, layout.Rank() - 1);
-}
 
 // Wrapper for the padding attrs along a single dimension.
 class DimPadding {
@@ -156,6 +164,88 @@ class ConvData {
 
   mlir::Type element_type_;
 };
+
+// TFL Native Standard Conv Layouts:
+// 2D : [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// 3D : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+
+// Does this convolution map to a standard conv_2d or conv_3d
+// (not depthwise or tranpose conv).
+inline bool IsStandardConv(mhlo::ConvolutionOp op) {
+  const ConvData data(op);
+  const bool trivial_lhs_dilate =
+      llvm::all_of(data.InputDilations(), [](auto d) { return d == 1; });
+  return trivial_lhs_dilate &&
+         data.InputLayout().SpecialDim2(data.InputShape()) !=
+             data.FeatureGroupCount();
+}
+
+inline int64_t DnumRank(mhlo::ConvDimensionNumbersAttr dnums) {
+  return dnums.getInputSpatialDimensions().size() + 2;
+}
+
+inline Layout GetTFLNativeInputOrOutputLayout(int64_t rank) {
+  auto spatials = llvm::to_vector(llvm::seq<int64_t>(1, rank - 1));
+  return Layout(0, rank - 1, spatials);
+}
+
+inline Layout GetTFLNativeInputOrOutputLayout(
+    mhlo::ConvDimensionNumbersAttr dnums) {
+  return GetTFLNativeInputOrOutputLayout((DnumRank(dnums)));
+}
+
+inline Layout GetTFLNativeKernelLayout(int64_t rank) {
+  if (rank != 5) {
+    auto spatials = llvm::to_vector(llvm::seq<int64_t>(1, rank - 1));
+    return Layout(rank - 1, 0, spatials);
+  }
+  auto spatials = llvm::to_vector(llvm::seq(rank - 2));
+  return Layout(rank - 2, rank - 1, spatials);
+}
+
+inline Layout GetTFLNativeKernelLayout(mhlo::ConvDimensionNumbersAttr dnums) {
+  return GetTFLNativeKernelLayout(DnumRank(dnums));
+}
+
+inline bool IsTFLNativeLayout(const ConvData& data) {
+  const auto rank = data.InputLayout().Rank();
+  const auto native_io_layout = GetTFLNativeInputOrOutputLayout(rank);
+  const auto native_kernel_layout = GetTFLNativeKernelLayout(rank);
+  return data.InputLayout() == native_io_layout &&
+         data.KernelLayout() == native_kernel_layout &&
+         data.OutputLayout() == native_io_layout;
+}
+
+inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithInputLayout(
+    OpBuilder& b, mhlo::ConvDimensionNumbersAttr dnums, const Layout& layout) {
+  return mhlo::ConvDimensionNumbersAttr::get(
+      b.getContext(), layout.SpecialDim1(), layout.SpecialDim2(),
+      layout.Spatials(), dnums.getKernelInputFeatureDimension(),
+      dnums.getKernelOutputFeatureDimension(),
+      dnums.getKernelSpatialDimensions(), dnums.getOutputBatchDimension(),
+      dnums.getOutputFeatureDimension(), dnums.getOutputSpatialDimensions());
+}
+
+inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithKernelLayout(
+    OpBuilder& b, mhlo::ConvDimensionNumbersAttr dnums, const Layout& layout) {
+  return mhlo::ConvDimensionNumbersAttr::get(
+      b.getContext(), dnums.getInputBatchDimension(),
+      dnums.getInputFeatureDimension(), dnums.getInputSpatialDimensions(),
+      layout.SpecialDim1(), layout.SpecialDim2(), layout.Spatials(),
+      dnums.getOutputBatchDimension(), dnums.getOutputFeatureDimension(),
+      dnums.getOutputSpatialDimensions());
+}
+
+inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithOutputLayout(
+    OpBuilder& b, mhlo::ConvDimensionNumbersAttr dnums, const Layout& layout) {
+  return mhlo::ConvDimensionNumbersAttr::get(
+      b.getContext(), dnums.getInputBatchDimension(),
+      dnums.getInputFeatureDimension(), dnums.getInputSpatialDimensions(),
+      dnums.getKernelInputFeatureDimension(),
+      dnums.getKernelOutputFeatureDimension(),
+      dnums.getKernelSpatialDimensions(), layout.SpecialDim1(),
+      layout.SpecialDim2(), layout.Spatials());
+}
 
 }  // namespace mlir::odml
 
