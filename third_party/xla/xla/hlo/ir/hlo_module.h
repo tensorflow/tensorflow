@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/iterator_util.h"
 #include "xla/printer.h"
@@ -490,6 +492,9 @@ class HloModule {
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
 
+  // Returns the NameUniquer for uniquing computation names in this module.
+  NameUniquer& computation_name_uniquer() { return computation_name_uniquer_; }
+
   // Assign a new unique dense id for an instruction
   int NewUniqueInstructionId() {
     int result = next_unique_id_;
@@ -535,6 +540,13 @@ class HloModule {
   // Returns the schedule of the module. CHECK fails if no schedule is set.
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
+
+  HloComputation* AddComputation(std::unique_ptr<HloComputation> computation,
+                                 bool is_entry) {
+    return AddComputationInternal(std::move(computation), is_entry,
+                                  /*uniquify_identifiers=*/false,
+                                  /*preserve_entry_layouts=*/true);
+  }
 
   HloComputation* AddComputationAndUnifyNamesAndIds(
       std::unique_ptr<HloComputation> computation, bool is_entry) {

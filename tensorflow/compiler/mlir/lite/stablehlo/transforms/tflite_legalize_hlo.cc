@@ -67,7 +67,6 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 
   RewritePatternSet patterns(context);
   patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp,
-               ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax,
                LegalizeConv>(context);
   populateWithGenerated(patterns);
 
@@ -75,16 +74,15 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
-  target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
   target.addDynamicallyLegalOp<mhlo::ConvolutionOp>(IsConvLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
 
   PopulatePadPatterns(context, patterns, target);
+  PopulateReducePatterns(context, patterns, target);
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
-    getOperation()->dump();
     getOperation().emitError("mhlo to TFLite legalization failed.");
     signalPassFailure();
   }
