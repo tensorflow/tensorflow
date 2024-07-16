@@ -651,7 +651,7 @@ void registerMhloImportPipeline() {
   mlir::PassPipelineRegistration<> importPipeline(
       "xla-sdy-mhlo-import-pipeline",
       "Run passes to import an mhlo module with `mhlo.shardings` into the SDY "
-      "(Shardonnay) dialect.",
+      "(Shardy) dialect.",
       std::bind(addMhloImportPipeline, std::placeholders::_1, ArrayRef<bool>(),
                 ArrayRef<bool>()));
 }

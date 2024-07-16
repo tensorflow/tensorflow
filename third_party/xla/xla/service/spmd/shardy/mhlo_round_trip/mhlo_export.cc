@@ -39,7 +39,7 @@ void addMhloExportPipeline(mlir::OpPassManager& pm) {
 void registerMhloExportPipeline() {
   mlir::PassPipelineRegistration<> exportPipeline(
       "xla-sdy-mhlo-export-pipeline",
-      "Run passes to export the SDY (Shardonnay) dialect into an MHLO module, "
+      "Run passes to export the SDY (Shardy) dialect into an MHLO module, "
       "which is ready for MHLO -> HLO conversion.",
       addMhloExportPipeline);
 }

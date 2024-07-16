@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/shardonnay_xla_pass.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
 #include <memory>
 
@@ -32,10 +32,9 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace sdy {
 
-using ShardonnayXLATest = xla::HloTestBase;
+using ShardyXLATest = xla::HloTestBase;
 
-TEST_F(ShardonnayXLATest,
-       AllowSpmdShardingPropagationParametersOutputRespected) {
+TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
   const char* const hloString = R"(
     HloModule module, allow_spmd_sharding_propagation_to_parameters={false,true}, allow_spmd_sharding_propagation_to_output={true}
     ENTRY %conv {
@@ -48,7 +47,7 @@ TEST_F(ShardonnayXLATest,
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -63,7 +62,7 @@ TEST_F(ShardonnayXLATest,
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 }
 
-TEST_F(ShardonnayXLATest, ElementWise) {
+TEST_F(ShardyXLATest, ElementWise) {
   const char* const hloString = R"(
     HloModule module
 
@@ -77,7 +76,7 @@ TEST_F(ShardonnayXLATest, ElementWise) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -101,7 +100,7 @@ TEST_F(ShardonnayXLATest, ElementWise) {
   EXPECT_EQ(copy, nullptr);
 }
 
-TEST_F(ShardonnayXLATest, CostantSplitter) {
+TEST_F(ShardyXLATest, CostantSplitter) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %constant_splitter {
@@ -114,7 +113,7 @@ TEST_F(ShardonnayXLATest, CostantSplitter) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -137,7 +136,7 @@ TEST_F(ShardonnayXLATest, CostantSplitter) {
   EXPECT_NE(dot->operand(0)->operand(0), dot->operand(1)->operand(0));
 }
 
-TEST_F(ShardonnayXLATest, Dot) {
+TEST_F(ShardyXLATest, Dot) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -164,7 +163,7 @@ TEST_F(ShardonnayXLATest, Dot) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -184,7 +183,7 @@ TEST_F(ShardonnayXLATest, Dot) {
                    "last_tile_dim_replicate}, {devices=[2,2,2]<=[8]}}"));
 }
 
-TEST_F(ShardonnayXLATest, DotTiledBatchDim) {
+TEST_F(ShardyXLATest, DotTiledBatchDim) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -201,7 +200,7 @@ TEST_F(ShardonnayXLATest, DotTiledBatchDim) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -214,7 +213,7 @@ TEST_F(ShardonnayXLATest, DotTiledBatchDim) {
               op::Sharding("{devices=[2,2]<=[4]}"));
 }
 
-TEST_F(ShardonnayXLATest, DotMergeOperands1) {
+TEST_F(ShardyXLATest, DotMergeOperands1) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -229,7 +228,7 @@ TEST_F(ShardonnayXLATest, DotMergeOperands1) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -244,7 +243,7 @@ TEST_F(ShardonnayXLATest, DotMergeOperands1) {
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 }
 
-TEST_F(ShardonnayXLATest, DotMergeOperands2) {
+TEST_F(ShardyXLATest, DotMergeOperands2) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -257,7 +256,7 @@ TEST_F(ShardonnayXLATest, DotMergeOperands2) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -270,7 +269,7 @@ TEST_F(ShardonnayXLATest, DotMergeOperands2) {
               op::Sharding("{devices=[2,1,1,4]<=[8] last_tile_dim_replicate}"));
 }
 
-TEST_F(ShardonnayXLATest, DotMergeOperands3) {
+TEST_F(ShardyXLATest, DotMergeOperands3) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -282,7 +281,7 @@ TEST_F(ShardonnayXLATest, DotMergeOperands3) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -295,7 +294,7 @@ TEST_F(ShardonnayXLATest, DotMergeOperands3) {
               op::Sharding("{devices=[2,4]<=[2,2,2]T(0,2,1)}"));
 }
 
-TEST_F(ShardonnayXLATest, BackwardDotFromContracting) {
+TEST_F(ShardyXLATest, BackwardDotFromContracting) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -310,7 +309,7 @@ TEST_F(ShardonnayXLATest, BackwardDotFromContracting) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -323,7 +322,7 @@ TEST_F(ShardonnayXLATest, BackwardDotFromContracting) {
               op::Sharding("{devices=[2,1,2,2]<=[8] last_tile_dim_replicate}"));
 }
 
-TEST_F(ShardonnayXLATest, EntryComputationLayoutSingleResult) {
+TEST_F(ShardyXLATest, EntryComputationLayoutSingleResult) {
   const char* const hloString = R"(
     HloModule module, entry_computation_layout={(f32[3,8,32,4]{2,1,3,0:T(8,128)},f32[3,8,32,4]{2,1,3,0:T(8,128)})->f32[3,8,32,4]{2,1,3,0:T(8,128)}}
 
@@ -337,7 +336,7 @@ TEST_F(ShardonnayXLATest, EntryComputationLayoutSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -347,7 +346,7 @@ TEST_F(ShardonnayXLATest, EntryComputationLayoutSingleResult) {
       "f32[3,8,32,4]{2,1,3,0:T(8,128)})->f32[3,8,32,4]{2,1,3,0:T(8,128)}");
 }
 
-TEST_F(ShardonnayXLATest, EntryComputationLayoutNestedTuple) {
+TEST_F(ShardyXLATest, EntryComputationLayoutNestedTuple) {
   const char* const hloString = R"(
     HloModule module, entry_computation_layout={((f32[4,2]{0,1:T(2,128)},(f32[4,2]{0,1:T(2,128)},f32[4,2]{0,1:T(2,128)})),f32[4,2]{0,1:T(2,128)})->((f32[4,2]{0,1:T(2,128)},(f32[4,2]{0,1:T(2,128)},f32[4,2]{0,1:T(2,128)})),f32[4,2]{0,1:T(2,128)})}
 
@@ -358,7 +357,7 @@ TEST_F(ShardonnayXLATest, EntryComputationLayoutNestedTuple) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -370,7 +369,7 @@ TEST_F(ShardonnayXLATest, EntryComputationLayoutNestedTuple) {
             "f32[4,2]{0,1:T(2,128)})");
 }
 
-TEST_F(ShardonnayXLATest, EntryComputationLayoutMissingLayout) {
+TEST_F(ShardyXLATest, EntryComputationLayoutMissingLayout) {
   const char* const hloString = R"(
     HloModule module, entry_computation_layout={(f32[3,8,32,4]{2,1,3,0:T(8,128)},f32[3,8,32,4])->f32[3,8,32,4]}
 
@@ -384,7 +383,7 @@ TEST_F(ShardonnayXLATest, EntryComputationLayoutMissingLayout) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -393,7 +392,7 @@ TEST_F(ShardonnayXLATest, EntryComputationLayoutMissingLayout) {
             "f32[3,8,32,4]{3,2,1,0})->f32[3,8,32,4]{3,2,1,0}");
 }
 
-TEST_F(ShardonnayXLATest, InputOutputAliasConfigSingleResult) {
+TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResult) {
   const char* const hloString = R"(
     HloModule module, input_output_alias={ {}: (1, {}, may-alias) }
 
@@ -405,7 +404,7 @@ TEST_F(ShardonnayXLATest, InputOutputAliasConfigSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -413,7 +412,7 @@ TEST_F(ShardonnayXLATest, InputOutputAliasConfigSingleResult) {
             "{}: (1, {}, may-alias)");
 }
 
-TEST_F(ShardonnayXLATest, InputOutputAliasConfigSingleResultNestedParams) {
+TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResultNestedParams) {
   const char* const hloString = R"(
     HloModule module, input_output_alias={ {}: (0, {1}, may-alias) }
 
@@ -426,7 +425,7 @@ TEST_F(ShardonnayXLATest, InputOutputAliasConfigSingleResultNestedParams) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -434,7 +433,7 @@ TEST_F(ShardonnayXLATest, InputOutputAliasConfigSingleResultNestedParams) {
             "{}: (1, {}, may-alias)");
 }
 
-TEST_F(ShardonnayXLATest, InputOutputAliasConfigNestedResultAndParams) {
+TEST_F(ShardyXLATest, InputOutputAliasConfigNestedResultAndParams) {
   const char* const hloString = R"(
     HloModule module, input_output_alias={ {0, 1, 0}: (0, {1, 0}, may-alias), {1}: (1, {}, may-alias) }
 
@@ -445,7 +444,7 @@ TEST_F(ShardonnayXLATest, InputOutputAliasConfigNestedResultAndParams) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -453,7 +452,7 @@ TEST_F(ShardonnayXLATest, InputOutputAliasConfigNestedResultAndParams) {
             "{1}: (1, {}, may-alias), {3}: (3, {}, may-alias)");
 }
 
-TEST_F(ShardonnayXLATest, BufferDonorConfigSingleResult) {
+TEST_F(ShardyXLATest, BufferDonorConfigSingleResult) {
   const char* const hloString = R"(
     HloModule module, buffer_donor={ (1, {}) }
 
@@ -465,14 +464,14 @@ TEST_F(ShardonnayXLATest, BufferDonorConfigSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(1, {})");
 }
 
-TEST_F(ShardonnayXLATest, BufferDonorConfigNestedTuple) {
+TEST_F(ShardyXLATest, BufferDonorConfigNestedTuple) {
   const char* const hloString = R"(
     HloModule module, buffer_donor={ (0, {0}), (0, {1, 1}) }
 
@@ -483,14 +482,14 @@ TEST_F(ShardonnayXLATest, BufferDonorConfigNestedTuple) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(0, {}), (2, {})");
 }
 
-TEST_F(ShardonnayXLATest, ShardingCustomCall) {
+TEST_F(ShardyXLATest, ShardingCustomCall) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %main {
@@ -501,7 +500,7 @@ TEST_F(ShardonnayXLATest, ShardingCustomCall) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -512,7 +511,7 @@ TEST_F(ShardonnayXLATest, ShardingCustomCall) {
               op::Copy());
 }
 
-TEST_F(ShardonnayXLATest, RngBitGenerator) {
+TEST_F(ShardyXLATest, RngBitGenerator) {
   const char* const hloString = R"(
     HloModule module
 
@@ -526,7 +525,7 @@ TEST_F(ShardonnayXLATest, RngBitGenerator) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -534,7 +533,7 @@ TEST_F(ShardonnayXLATest, RngBitGenerator) {
               op::Sharding("{{devices=[16,2]<=[32]}, {devices=[8,4]<=[32]}}"));
 }
 
-TEST_F(ShardonnayXLATest, WhileWithFreeVariables) {
+TEST_F(ShardyXLATest, WhileWithFreeVariables) {
   const char* const hloString = R"(
     HloModule main
 
@@ -569,7 +568,7 @@ TEST_F(ShardonnayXLATest, WhileWithFreeVariables) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -582,7 +581,7 @@ TEST_F(ShardonnayXLATest, WhileWithFreeVariables) {
           "{{devices=[2,2]<=[4]}, {replicated}, {replicated}, {replicated}}"));
 }
 
-TEST_F(ShardonnayXLATest, ShardMap) {
+TEST_F(ShardyXLATest, ShardMap) {
   const char* const hloString = R"(
     HloModule shard_map
 
@@ -613,7 +612,7 @@ TEST_F(ShardonnayXLATest, ShardMap) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -635,7 +634,7 @@ TEST_F(ShardonnayXLATest, ShardMap) {
 }
 
 // Be able to handle an empty computation layout and input_output_alias_config.
-TEST_F(ShardonnayXLATest, EmptyModule) {
+TEST_F(ShardyXLATest, EmptyModule) {
   const char* const hloString = R"(
     HloModule pjit_f, entry_computation_layout={()->()}, num_partitions=2
 
@@ -644,7 +643,7 @@ TEST_F(ShardonnayXLATest, EmptyModule) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
   EXPECT_EQ(module->entry_computation_layout().ToString(), "()->()");
@@ -657,7 +656,7 @@ TEST_F(ShardonnayXLATest, EmptyModule) {
 // - input_output_alias
 // - entry_computation_layout
 // - buffer_donor
-TEST_F(ShardonnayXLATest, TestUseTuplesTrue) {
+TEST_F(ShardyXLATest, TestUseTuplesTrue) {
   const char* const hloString = R"(
     HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (2, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, f32[8,32]{1,0:T(8,128)})->f32[8,32]{1,0:T(8,128)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
 
@@ -670,7 +669,7 @@ TEST_F(ShardonnayXLATest, TestUseTuplesTrue) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardonnayXLA().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
   EXPECT_EQ(module->entry_computation()->parameter_instructions().size(), 1);

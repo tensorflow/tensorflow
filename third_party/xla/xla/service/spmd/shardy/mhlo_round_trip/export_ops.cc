@@ -166,7 +166,7 @@ class ExportOpsPass
   StringRef getArgument() const override { return "xla-sdy-export-ops"; }
 
   StringRef getDescription() const override {
-    return "Exports Shardonnay ops to MHLO ops. Processes sdy::IdentityOp, "
+    return "Exports Shardy ops to MHLO ops. Processes sdy::IdentityOp, "
            "sdy::ReshardOp, and sdy::ConstantOp.";
   }
 

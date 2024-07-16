@@ -25,7 +25,7 @@ namespace sdy {
 void registerMhloExportPipeline();
 
 // Add the xla-sdy-mhlo-export-pipeline in `pm`. The pipeline, including a
-// sequence of passes, exports the Shardonnay dialect into an MHLO module meant
+// sequence of passes, exports the Shardy dialect into an MHLO module meant
 // for the XLA compiler with HLO shardings.
 void addMhloExportPipeline(mlir::OpPassManager& pm);
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/shardonnay_call_inliner.h"
+#include "xla/service/spmd/shardy/shardy_call_inliner.h"
 
 #include <string>
 #include <string_view>
@@ -23,8 +23,7 @@ limitations under the License.
 
 namespace xla {
 
-bool ShardonnayCallInliner::IsInlineableCallOp(
-    HloInstruction* instruction) const {
+bool ShardyCallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   auto prefix_check = [](std::string_view name) {
     const std::string prefix = "shmap_body";
     return name.substr(0, prefix.size()) == prefix;

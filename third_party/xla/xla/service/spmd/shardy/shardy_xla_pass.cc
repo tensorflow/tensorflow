@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/shardonnay_xla_pass.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
 #include <cstdint>
 #include <functional>
@@ -292,10 +292,10 @@ void removeFrontendAttributes(HloModule* hloModule,
 
 }  // namespace
 
-absl::StatusOr<bool> ShardonnayXLA::Run(
+absl::StatusOr<bool> ShardyXLA::Run(
     HloModule* hloModule,
     const absl::flat_hash_set<absl::string_view>& executionThreads) {
-  LOG(INFO) << "Using Shardonnay for XLA SPMD propagation.";
+  LOG(INFO) << "Using Shardy for XLA SPMD propagation.";
 
   // HLO -> MLIR MHLO
   auto mlirContext = std::make_unique<mlir::MLIRContext>();
@@ -308,13 +308,13 @@ absl::StatusOr<bool> ShardonnayXLA::Run(
                           /*import_all_computations=*/false,
                           /*flatten_computation_args_result=*/true));
 
-  std::string shardonnayDir = hloModule->config().debug_options().xla_dump_to();
-  if (!shardonnayDir.empty()) {
-    shardonnayDir =
-        tsl::io::JoinPath(shardonnayDir, "shardonnay",
+  std::string shardyDir = hloModule->config().debug_options().xla_dump_to();
+  if (!shardyDir.empty()) {
+    shardyDir =
+        tsl::io::JoinPath(shardyDir, "shardy",
                           std::string_view(mlirModule->getName().value_or("")));
   }
-  // MLIR pipeline: (1) import, (2) Shardonnay, and (3) export.
+  // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;
 #ifndef NDEBUG
@@ -367,23 +367,23 @@ absl::StatusOr<bool> ShardonnayXLA::Run(
                                      originalParamIndexToFlattenedNum,
                                      useTupleArgs);
 
-  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardonnayDir,
-                                               "sdy_module_after_import"));
+  pm.addPass(
+      mlir::sdy::createSaveModuleOpPass(shardyDir, "sdy_module_after_import"));
   if (runSdyShardingPropagation) {
-    // Shardonnay is currently operating on stablehlo, since this is what JAX
-    // emits. Long term shardonnay will be fully dialect agnostic, and both mhlo
+    // Shardy is currently operating on stablehlo, since this is what JAX
+    // emits. Long term shardy will be fully dialect agnostic, and both mhlo
     // and stablehlo can register their ops for sdy propagation.
     pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
     // NOTE: if we are using auto-spmd, we will use conservative propagation
     // since the TOAST cost model cannot account for split axes or padding.
     mlir::sdy::addPropagationPipeline(
-        pm, shardonnayDir,
+        pm, shardyDir,
         /*conservativePropagation=*/hloModule->use_auto_spmd_partitioning());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
   addMhloExportPipeline(pm);
-  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardonnayDir,
-                                               "sdy_module_after_export"));
+  pm.addPass(
+      mlir::sdy::createSaveModuleOpPass(shardyDir, "sdy_module_after_export"));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(mlirContext.get());
   TF_RETURN_IF_ERROR(diagnosticHandler.consumeStatus(pm.run(*mlirModule)));
 
@@ -406,7 +406,7 @@ absl::StatusOr<bool> ShardonnayXLA::Run(
       std::move(flattenedInputOutputAliasConfig));
   hloModule->set_buffer_donor_config(std::move(flattenedBufferDonorsConfig));
 
-  // Shardonnay currently propagates shardings to parameters and root
+  // Shardy currently propagates shardings to parameters and root
   // instructions. Hence, we specify `true` for update_output_layout and
   // update_parameters_layout.
   TF_RETURN_IF_ERROR(

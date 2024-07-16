@@ -51,7 +51,7 @@ class GpuSpmdPartitioningTest : public HloTestBase,
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
     EXPECT_FALSE(config.debug_options().xla_use_shardonnay())
-        << "Shardonnay not supported yet";
+        << "Shardy not supported yet";
 
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     se::CudaComputeCapability ampere(8, 0);
@@ -65,18 +65,18 @@ class GpuSpmdPartitioningTest : public HloTestBase,
   }
 
  protected:
-  bool UseShardonnay() const { return GetParam(); }
+  bool UseShardy() const { return GetParam(); }
 
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_use_shardonnay(UseShardonnay());
+    debug_options.set_xla_use_shardonnay(UseShardy());
     return debug_options;
   }
 };
 
 TEST_P(GpuSpmdPartitioningTest, DotWithEntryComputationLayout) {
-  if (UseShardonnay()) {
-    GTEST_SKIP() << "Shardonnay not supported yet";
+  if (UseShardy()) {
+    GTEST_SKIP() << "Shardy not supported yet";
   }
 
   const char* const kHloModule = R"(
@@ -104,7 +104,7 @@ TEST_P(GpuSpmdPartitioningTest, DotWithEntryComputationLayout) {
 
 std::string TestParamToString(
     const ::testing::TestParamInfo<bool>& param_info) {
-  return param_info.param ? "Shardonnay" : "GSPMD";
+  return param_info.param ? "Shardy" : "GSPMD";
 }
 
 INSTANTIATE_TEST_SUITE_P(All, GpuSpmdPartitioningTest,

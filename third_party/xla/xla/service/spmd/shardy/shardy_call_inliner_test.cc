@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/shardonnay_call_inliner.h"
+#include "xla/service/spmd/shardy/shardy_call_inliner.h"
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
@@ -25,9 +25,9 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-using ShardonnayCallInlinerTest = xla::HloTestBase;
+using ShardyCallInlinerTest = xla::HloTestBase;
 
-TEST_F(ShardonnayCallInlinerTest, MhloToHloShmapBodyNotInlined) {
+TEST_F(ShardyCallInlinerTest, MhloToHloShmapBodyNotInlined) {
   const char* const hloString = R"(
     HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
 
@@ -45,8 +45,7 @@ TEST_F(ShardonnayCallInlinerTest, MhloToHloShmapBodyNotInlined) {
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %custom-call.8), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          ShardonnayCallInliner().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyCallInliner().Run(module.get()));
   VLOG(1) << module->ToString();
   // The single call in the module is not inlined.
   EXPECT_FALSE(changed);

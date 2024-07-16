@@ -137,11 +137,11 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   return mlir::success();
 }
 
-class ExportShardonnayShardingsPass
-    : public PassWrapper<ExportShardonnayShardingsPass,
+class SdyRoundTripExportShardingsPass
+    : public PassWrapper<SdyRoundTripExportShardingsPass,
                          mlir::OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportShardonnayShardingsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SdyRoundTripExportShardingsPass)
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
@@ -193,7 +193,7 @@ void registerSdyRoundTripExportShardingsPass() {
 }
 
 std::unique_ptr<Pass> createSdyRoundTripExportShardingsPass() {
-  return std::make_unique<ExportShardonnayShardingsPass>();
+  return std::make_unique<SdyRoundTripExportShardingsPass>();
 }
 
 }  // namespace sdy

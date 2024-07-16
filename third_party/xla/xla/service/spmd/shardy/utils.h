@@ -27,9 +27,6 @@ limitations under the License.
 
 namespace xla {
 namespace sdy {
-// Converts `attr` to string.
-// TODO(bartchr): use the one from Shardonnay when its open sourced.
-std::string attributeToString(mlir::Attribute attr);
 
 // Converts `attr` to a `StringAttr` using the `builder`.
 mlir::StringAttr getStringAttribute(mlir::Attribute attr,

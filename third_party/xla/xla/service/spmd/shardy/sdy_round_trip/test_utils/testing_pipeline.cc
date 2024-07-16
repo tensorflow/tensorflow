@@ -26,8 +26,8 @@ namespace sdy {
 void registerSdyRoundTripTestingPipeline() {
   mlir::PassPipelineRegistration<>(
       "xla-sdy-round-trip-testing-pipeline",
-      "Run Shardonnay export pipeline, then convert to HLO, then convert to "
-      "MHLO, then import back to Shardonnay",
+      "Run Shardy export pipeline, then convert to HLO, then convert to "
+      "MHLO, then import back to Shardy",
       [](mlir::OpPassManager& pm) {
         addSdyRoundTripExportPipeline(pm);
         pm.addPass(createSdyRoundTripMhloToHloToMhloPass());

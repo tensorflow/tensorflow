@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_SHARDONNAY_XLA_PASS_H_
-#define XLA_SERVICE_SPMD_SHARDY_SHARDONNAY_XLA_PASS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_SHARDY_XLA_PASS_H_
+#define XLA_SERVICE_SPMD_SHARDY_SHARDY_XLA_PASS_H_
 
 #include <string>
 
@@ -27,16 +27,16 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// An HloModulePass to run Shardonnay. The pass:
-// 1. converts the HLO module into MLIR MHLO and the SDY (Shardonnay) dialect,
-// 2. runs Shardonnay passes, including sharding propagation and partitioner,
+// An HloModulePass to run Shardy. The pass:
+// 1. converts the HLO module into MLIR MHLO and the SDY (Shardy) dialect,
+// 2. runs Shardy passes, including sharding propagation and partitioner,
 // 3. converts the MLIR MHLO back to the HLO module.
-class ShardonnayXLA : public xla::HloModulePass {
+class ShardyXLA : public xla::HloModulePass {
  public:
-  explicit ShardonnayXLA(bool runSdyShardingPropagation = true)
+  explicit ShardyXLA(bool runSdyShardingPropagation = true)
       : runSdyShardingPropagation(runSdyShardingPropagation) {}
 
-  absl::string_view name() const override { return "shardonnay-xla"; }
+  absl::string_view name() const override { return "shardy-xla"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -55,4 +55,4 @@ class ShardonnayXLA : public xla::HloModulePass {
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_SHARDONNAY_XLA_PASS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_SHARDY_XLA_PASS_H_

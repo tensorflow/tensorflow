@@ -68,7 +68,7 @@ inline constexpr llvm::StringRef kPythonIntegrationComplete =
 
 // Attribute name for determining whether tuple parameters should be used for
 // the rest of the XLA pipeline.
-// TODO(b/345414638): remove this when Shardonnay is the first thing run in the
+// TODO(b/345414638): remove this when Shardy is the first thing run in the
 // XLA pipeline, so no HLO<->MLIR round-tripping.
 inline constexpr llvm::StringRef kUseTupleArgs = "xla.sdy.use_tuple_args";
 

@@ -93,11 +93,11 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
     }
   }
 
-  // TODO(b/345414638): Delete when we move Shardonnay as the first pass in the
+  // TODO(b/345414638): Delete when we move Shardy as the first pass in the
   // XLA pipeline.
   if (use_tuple_args && GetDebugOptionsFromFlags().xla_use_shardonnay()) {
-    // Shardonnay can't handle tuple args when round-tripping. So delay using
-    // tuples until after Shardonnay is run.
+    // Shardy can't handle tuple args when round-tripping. So delay using
+    // tuples until after Shardy is run.
     sdy::addFrontendAttribute(module, sdy::kUseTupleArgs,
                               mlir::StringAttr::get(context, "t"));
     use_tuple_args = false;

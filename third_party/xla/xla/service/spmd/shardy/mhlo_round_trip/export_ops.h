@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// Creates a pass that converts Shardonnay ops to MHLO ops (except
+// Creates a pass that converts Shardy ops to MHLO ops (except
 // sdy::ManualComputationOp).
 std::unique_ptr<mlir::Pass> createExportOpsPass();
 

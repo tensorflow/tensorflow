@@ -50,7 +50,7 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm) {
 void registerSdyRoundTripExportPipeline() {
   PassPipelineRegistration<> exportPipeline(
       "xla-sdy-round-trip-export-pipeline",
-      "Run passes to export the SDY (Shardonnay) dialect into an MHLO module, "
+      "Run passes to export the SDY (Shardy) dialect into an MHLO module, "
       "but with the SDY ops/attrs saved for roundtripping.",
       addSdyRoundTripExportPipeline);
 }
@@ -58,7 +58,7 @@ void registerSdyRoundTripExportPipeline() {
 void registerSdyRoundTripImportPipeline() {
   PassPipelineRegistration<> importPipeline(
       "xla-sdy-round-trip-import-pipeline",
-      "Run passes to import an mhlo module into the SDY (Shardonnay) dialect.",
+      "Run passes to import an mhlo module into the SDY (Shardy) dialect.",
       addSdyRoundTripImportPipeline);
 }
 

@@ -22,20 +22,20 @@ namespace xla {
 namespace sdy {
 
 // Add the xla-sdy-round-trip-export-pipeline in `pm`. The pipeline,
-// including a sequence of passes, exports the Shardonnay dialect into an MHLO
+// including a sequence of passes, exports the Shardy dialect into an MHLO
 // module with no XLA shardings, but SDY shardings and meshes saved as string
 // frontend attributes.
 //
-// This is meant for temporarily saving the Shardonnay attrs/meshes in order to
-// run some HLO passes before coming back to Shardonnay later in the XLA
+// This is meant for temporarily saving the Shardy attrs/meshes in order to
+// run some HLO passes before coming back to Shardy later in the XLA
 // pipeline to run propagation. Should only be used for frontend frameworks like
-// JAX to integrate with Shardonnay while the Shardonnay team works on a more
+// JAX to integrate with Shardy while the Shardy team works on a more
 // long-term solution moving the HLO passes either after propagation or into
 // MLIR (see b/335666088). So this pass will eventually be removed.
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm);
 
 // Add the xla-sdy-round-trip-import-pipeline in `pm`. The pipeline, including a
-// sequence of passes, imports an MHLO module into the SDY (Shardonnay) dialect.
+// sequence of passes, imports an MHLO module into the SDY (Shardy) dialect.
 //
 // The module is assumed to have `kShardingRoundTripAttr` and
 // `kMeshesRoundTripAttr`.

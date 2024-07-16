@@ -48,16 +48,9 @@ using xla::sdy::kFrontendAttributesAttr;
 
 using ::mlir::func::FuncOp;
 
-std::string attributeToString(Attribute attr) {
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  attr.print(os);
-  return out;
-}
-
 mlir::StringAttr getStringAttribute(mlir::Attribute attr,
                                     mlir::OpBuilder& builder) {
-  return builder.getStringAttr(attributeToString(attr));
+  return builder.getStringAttr(mlir::sdy::attributeToString(attr));
 }
 
 DictionaryAttr getFrontendAttrs(Operation* op) {

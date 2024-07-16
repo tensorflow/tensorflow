@@ -87,8 +87,8 @@ AttrTy parseStringAttr(DictionaryAttr dictAttr, llvm::StringRef attrName) {
   return parseStringAttr<AttrTy>(dictAttr.get(attrName));
 }
 
-// Builds the shardings coming from Shardonnay previously. This means
-// the module was exported from Shardonnay and we are now round-tripping back.
+// Builds the shardings coming from Shardy previously. This means
+// the module was exported from Shardy and we are now round-tripping back.
 // This should happen after the meshes were created from the `ModuleOp` attrs
 // (see `SdyRoundTripImportShardingsPass`).
 void convertShardings(FuncOp funcOp) {
@@ -160,7 +160,7 @@ class SdyRoundTripImportShardingsPass
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
     // If there is a dictionary attribute `kFrontendAttributesAttr` and it
     // contains `kMeshesRoundTripAttr`, it means that the function was a
-    // Shardonnay function and we are roundtripping back to Shardonnay. In that
+    // Shardy function and we are roundtripping back to Shardy. In that
     // case, we can use the saved string attributes to restore the original mesh
     // and value shardings with the original mesh axis names and priorities on
     // the sharding.
@@ -168,7 +168,7 @@ class SdyRoundTripImportShardingsPass
     if (!moduleDictAttr) {
       moduleOp.emitError(
           "Expected an attribute `kFrontendAttributesAttr` on the module that "
-          "contains the Shardonnay meshes.");
+          "contains the Shardy meshes.");
       signalPassFailure();
       return;
     }

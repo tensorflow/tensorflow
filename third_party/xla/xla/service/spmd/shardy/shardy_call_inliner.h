@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_SHARDONNAY_CALL_INLINER_H_
-#define XLA_SERVICE_SPMD_SHARDY_SHARDONNAY_CALL_INLINER_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_SHARDY_CALL_INLINER_H_
+#define XLA_SERVICE_SPMD_SHARDY_SHARDY_CALL_INLINER_H_
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/call_inliner.h"
@@ -44,16 +44,16 @@ namespace xla {
 // We specifically match on the `func.call @shmap_body` since we want to inline
 // the body of that function into the `ManualComputationOp` body. So this makes
 // sure we inline all functions except for the shmap_body's when using
-// Shardonnay. When Shardonnay is disabled, then we have the same behavior as
+// Shardy. When Shardy is disabled, then we have the same behavior as
 // CallInliner.
-class ShardonnayCallInliner : public CallInliner {
+class ShardyCallInliner : public CallInliner {
  public:
   using CallInliner::CallInliner;
-  absl::string_view name() const override { return "shardonnay-call-inliner"; }
+  absl::string_view name() const override { return "shardy-call-inliner"; }
 
   bool IsInlineableCallOp(HloInstruction* instruction) const override;
 };
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_SHARDONNAY_CALL_INLINER_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_SHARDY_CALL_INLINER_H_

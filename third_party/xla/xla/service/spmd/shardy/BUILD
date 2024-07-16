@@ -24,9 +24,9 @@ package_group(
 )
 
 cc_library(
-    name = "shardonnay_call_inliner",
-    srcs = ["shardonnay_call_inliner.cc"],
-    hdrs = ["shardonnay_call_inliner.h"],
+    name = "shardy_call_inliner",
+    srcs = ["shardy_call_inliner.cc"],
+    hdrs = ["shardy_call_inliner.h"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:call_inliner",
@@ -34,11 +34,11 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "shardonnay_call_inliner_test",
-    srcs = ["shardonnay_call_inliner_test.cc"],
+    name = "shardy_call_inliner_test",
+    srcs = ["shardy_call_inliner_test.cc"],
     env = {"XLA_FLAGS": "--xla_use_shardonnay=true"},
     deps = [
-        ":shardonnay_call_inliner",
+        ":shardy_call_inliner",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/log",
@@ -48,9 +48,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "shardonnay_xla_pass",
-    srcs = ["shardonnay_xla_pass.cc"],
-    hdrs = ["shardonnay_xla_pass.h"],
+    name = "shardy_xla_pass",
+    srcs = ["shardy_xla_pass.cc"],
+    hdrs = ["shardy_xla_pass.h"],
     deps = [
         ":constants",
         ":utils",
@@ -116,10 +116,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "shardonnay_xla_pass_test",
-    srcs = ["shardonnay_xla_pass_test.cc"],
+    name = "shardy_xla_pass_test",
+    srcs = ["shardy_xla_pass_test.cc"],
     deps = [
-        ":shardonnay_xla_pass",
+        ":shardy_xla_pass",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
