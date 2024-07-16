@@ -229,9 +229,7 @@ cc_library(
 xla_cc_binary(
     name = "pjrt_c_api_cpu_plugin.so",
     linkopts = if_macos(
-        [
-            "-Wl,--no-undefined",
-        ],
+        [],
         [
             "-Wl,--version-script,$(location :pjrt_c_api_cpu_version_script.lds)",
             "-Wl,--no-undefined",
