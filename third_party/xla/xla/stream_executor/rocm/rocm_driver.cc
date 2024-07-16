@@ -281,7 +281,7 @@ std::string ROCMPointerToDeviceString(hipDeviceptr_t pointer) {
 std::string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
   auto value = GpuDriver::GetPointerMemorySpace(pointer);
   if (value.ok()) {
-    return MemorySpaceString(value.value());
+    return MemoryTypeString(value.value());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";
@@ -1779,7 +1779,7 @@ struct BitPatternToValue {
       "failed to query context for device pointer: ", ToString(result)));
 }
 
-/* static */ absl::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
+/* static */ absl::StatusOr<MemoryType> GpuDriver::GetPointerMemorySpace(
     hipDeviceptr_t pointer) {
   unsigned int value;
   hipError_t result = wrap::hipPointerGetAttribute(
@@ -1787,9 +1787,9 @@ struct BitPatternToValue {
   if (result == hipSuccess) {
     switch (value) {
       case hipMemoryTypeDevice:
-        return MemorySpace::kDevice;
+        return MemoryType::kDevice;
       case hipMemoryTypeHost:
-        return MemorySpace::kHost;
+        return MemoryType::kHost;
       default:
         return absl::Status{
             absl::StatusCode::kInternal,

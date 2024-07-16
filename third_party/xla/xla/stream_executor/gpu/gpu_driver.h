@@ -780,8 +780,7 @@ class GpuDriver {
   static absl::StatusOr<GpuDeviceHandle> GetPointerDevice(GpuDevicePtr pointer);
 
   // Returns the memory space addressed by pointer.
-  static absl::StatusOr<MemorySpace> GetPointerMemorySpace(
-      GpuDevicePtr pointer);
+  static absl::StatusOr<MemoryType> GetPointerMemorySpace(GpuDevicePtr pointer);
 
   // Returns the base address and size of the device pointer dptr.
   static absl::Status GetPointerAddressRange(GpuDevicePtr dptr,

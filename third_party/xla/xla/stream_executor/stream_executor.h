@@ -52,18 +52,20 @@ limitations under the License.
 namespace stream_executor {
 
 // Identifies the memory space where an allocation resides.
-enum class MemorySpace { kHost, kDevice };
+enum class MemoryType { kDevice = 0, kUnified, kCollective, kHost = 5 };
 
-inline std::string MemorySpaceString(MemorySpace memory_space) {
-  switch (memory_space) {
-    case MemorySpace::kHost:
-      return "host";
-    case MemorySpace::kDevice:
+inline std::string MemoryTypeString(MemoryType memory_type) {
+  switch (memory_type) {
+    case MemoryType::kDevice:
       return "device";
-    default:
-      LOG(FATAL) << "impossible memory space";
+    case MemoryType::kUnified:
+      return "unified";
+    case MemoryType::kCollective:
+      return "collective";
+    case MemoryType::kHost:
+      return "host";
   }
-};
+}
 
 // Interface which defines the method for interacting with an accelerator device
 // (e.g. GPU, TPU).
@@ -210,7 +212,7 @@ class StreamExecutor {
   virtual void HostMemoryDeallocate(void* mem) = 0;
 
   // Returns the memory space of the given pointer.
-  virtual absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) {
+  virtual absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) {
     return absl::UnimplementedError("Not implemented");
   }
 

@@ -25,9 +25,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-// The type of memory that the allocator will use.
-enum class MemoryType { kDevice = 0, kUnified, kCollective, kHost = 5 };
-
 // Suballocator for StreamExecutor-based device memory.
 class DeviceMemAllocator : public tsl::SubAllocator {
  public:

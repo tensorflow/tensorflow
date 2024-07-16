@@ -41,7 +41,7 @@ TEST_F(GetPointerMemorySpaceTest, Host) {
   TF_ASSERT_OK_AND_ASSIGN(auto host_ptr, executor->HostMemoryAllocate(64));
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
                           executor->GetPointerMemorySpace(host_ptr->opaque()))
-  EXPECT_EQ(memory_space, MemorySpace::kHost);
+  EXPECT_EQ(memory_space, MemoryType::kHost);
 }
 
 TEST_F(GetPointerMemorySpaceTest, Device) {
@@ -50,7 +50,7 @@ TEST_F(GetPointerMemorySpaceTest, Device) {
   ASSERT_NE(mem, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
                           executor->GetPointerMemorySpace(mem.opaque()))
-  EXPECT_EQ(memory_space, MemorySpace::kDevice);
+  EXPECT_EQ(memory_space, MemoryType::kDevice);
   executor->Deallocate(&mem);
 }
 

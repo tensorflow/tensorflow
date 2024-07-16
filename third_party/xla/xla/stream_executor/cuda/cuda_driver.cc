@@ -214,7 +214,7 @@ std::string CUDAPointerToDeviceString(CUdeviceptr pointer) {
 std::string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
   auto value = GpuDriver::GetPointerMemorySpace(pointer);
   if (value.ok()) {
-    return MemorySpaceString(value.value());
+    return MemoryTypeString(value.value());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";
@@ -2154,7 +2154,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
       "failed to query context for device pointer: ", ToString(result)));
 }
 
-/* static */ absl::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
+/* static */ absl::StatusOr<MemoryType> GpuDriver::GetPointerMemorySpace(
     CUdeviceptr pointer) {
   unsigned int value;
   CUresult result =
@@ -2162,9 +2162,9 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   if (result == CUDA_SUCCESS) {
     switch (value) {
       case CU_MEMORYTYPE_DEVICE:
-        return MemorySpace::kDevice;
+        return MemoryType::kDevice;
       case CU_MEMORYTYPE_HOST:
-        return MemorySpace::kHost;
+        return MemoryType::kHost;
       default:
         return absl::InternalError(
             absl::StrCat("unknown memory space provided by CUDA API: ", value));
