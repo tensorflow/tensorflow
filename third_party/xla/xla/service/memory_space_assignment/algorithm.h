@@ -140,6 +140,9 @@ class AllocationValue {
     // All the positions where this use aliases with. The aliased positions
     // must get the same allocation.
     std::vector<HloPosition> aliases;
+    // The sync copy instruction that produced the allocation value that this
+    // use is consuming.
+    HloInstruction* copy_source = nullptr;
 
     bool operator==(const Use& other) const {
       return hlo_use == other.hlo_use && time == other.time &&
@@ -383,6 +386,24 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void AllocateCrossProgramPrefetchBuffer(
       HloModule* module, const MsaBufferInterval& prefetch_candidate);
 
+  // Given an HloValue, returns a group of HloValues that need to be processed
+  // jointly. Normally, HloValues can be processed individually. However, in
+  // case we are trying to replace synchronous copies, we need to process all
+  // copy-connected values together.
+  std::vector<const HloValue*> GenerateJointProcessedValues(
+      const HloValue* entrance_value);
+
+  // Given an HloValue, returns a group of HloValues that are connected to it by
+  // replaceable sync copy candidates that feed into or follow from that value.
+  std::vector<const HloValue*> GetJointProcessedValuesForSyncCopyReplacement(
+      const HloValue* entrance_value) const;
+
+  // Updates sorted_sync_copy_replacement_candidates_ with synchronous copy
+  // instructions that connect the given joint processed values, and meet the
+  // conditions in IsReplaceableSyncCopyCandidate().
+  void UpdateSyncCopyCandidatesForJointProcessedValues(
+      const std::vector<const HloValue*>& joint_processed_values);
+
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
  protected:
@@ -448,14 +469,35 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // If allow_no_copy_alternate_mem_allocation is false, an eviction is forced.
   // If earliest_prefetch_time is set, prefetches cannot start before this
   // value.
+  //
+  // In case we are trying to replace synchronous copies, and for example Use2
+  // is a replaceable sync copy candidate, we now skip Use2 and segments will be
+  // between Def, Use1, Use2.1, Use2.2, Use3:
+  //        +------+----------+-------------------+
+  //       /        \          \                   \
+  //      /          v          v                   v
+  //    Def         Use1       Use2(Sync Copy)     Use3
+  //    |            |           \         \        |
+  //    |            |            v         v       |
+  //    |            |           Use2.1    Use2.2   |
+  //    |<---------->|<---------->|<------->|<----->|
+  //    |  Segment   |   Segment  | Segment |Segment|
+
   struct AllocationRequest {
     int64_t inclusive_start_time;
     int64_t end_time;
     int64_t latest_prefetch_time;
+    // See the comment for require_copy_allocation
+    int64_t required_copy_allocation_latest_time;
     int64_t size;
     bool prefer_no_copy_alternate_mem_allocation;
     bool allow_no_copy_alternate_mem_allocation;
     bool require_no_copy_alternate_mem_allocation;
+    // If true, indicates we are requiring a copy allocation between def and
+    // use, that finishes by required_copy_allocation_latest_time.
+    // required_copy_allocation_for is a synchronous copy instruction that will
+    // be removed, if we are successful in adding the copy allocation.
+    bool require_copy_allocation;
     bool allow_prefetch;
     std::optional<int64_t> earliest_prefetch_time;
     std::optional<int64_t> preferred_prefetch_time;
@@ -463,6 +505,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     const AllocationValue::Use* use;
     AllocationValue* allocation_value;
     absl::Span<const int64_t> all_use_times;
+    // See the comment for require_copy_allocation
+    HloInstruction* required_copy_allocation_for;
   };
 
   // This struct contains mandatory memory assignments at a given time. E.g., an
@@ -652,7 +696,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     // which case, we fallback to an unsliced solution.
     kAllSlicesHaveTheSameStartTime = 128,
     // There were conflicting preferred offsets.
-    kFailConflictingPreferredOffsets = 256
+    kFailConflictingPreferredOffsets = 256,
+    // Could not replace the synchronous copy with an asynchronous one
+    kFailSyncCopyReplacement = 512
   };
 
   // Return true if the result belongs to a failure.
@@ -666,6 +712,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                                  static_cast<int>(failure));
     return result;
   }
+
+  // Return a string representation of a result that has at most a single
+  // failure. Consider using ResultToString for a general case.
+  static std::string SingleFailureResultToString(const Result& result);
+  // Return a string representation of the result, with possibly more than one
+  // failure.
+  static std::string ResultToString(const Result& result);
 
   // Return true if the result is a failure that requires us to uncommit pending
   // chunks.
@@ -690,6 +743,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Identify memory-bound loops in the graph and call OptimizeMemoryBoundLoop
   // for the found loops.
   void IdentifyAndOptimizeMemoryBoundLoops();
+
+  // Not supported instructions for sync copy replacement:
+  // 1. Layout-changing copies
+  // 2. Copied value appears in more than one position
+  // 3. Instruction operand or output has a pre-specified memory space
+  bool IsReplaceableSyncCopyCandidate(const HloInstruction* instruction) const;
 
   // Allocates buffers for instructions that need reserved scoped allocations in
   // the alternate memory space.
@@ -780,7 +839,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Result::kSuccess if the buffer could be placed in alternate memory or some
   // other Result with an OR of reasons why the buffer couldn't be placed in
   // alternate memory.
-  Result AllocateSegment(const AllocationRequest& request);
+  Result AllocateSegment(AllocationRequest& request);
 
   // Try allocating in alternate memory without any copies.
   Result AllocateInAlternateMemoryNoCopy(const AllocationRequest& request);
@@ -841,6 +900,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // corrected time is the time of the parameter of the earliest-scheduled
   // called computation.
   int64_t GetCorrectedUseTime(const HloUse& use) const;
+  int64_t GetCorrectedUseTime(const HloInstruction* instruction) const;
 
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
@@ -982,6 +1042,29 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Clears all pending chunks and asynchronous copies.
   void ClearPendingChunks();
 
+  bool IsInstructionInPendingCopyReplacements(
+      const AllocationValue::Use& use) const {
+    return IsInstructionInPendingCopyReplacements(use.hlo_use.instruction);
+  }
+
+  bool IsInstructionInPendingCopyReplacements(
+      const HloInstruction* instruction) const;
+
+  // Colors the colocated intervals in the alternate memory.
+  void ColorColocatedIntervalsToAlternate(
+      const std::vector<const MsaBufferInterval*>& colocated_intervals);
+
+  // Iterates over joint_processed_values and populates
+  // joint_processed_allocation_values with allocation values created for the
+  // joint-processed values, and populates joint_processed_colocated_intervals
+  // with a vector of colocated buffer intervals, one vector per joint-processed
+  // value.
+  void CreateAllocationValuesForJointProcessedIntervals(
+      const std::vector<const HloValue*>& joint_processed_values,
+      std::vector<AllocationValue>& joint_allocation_values,
+      std::vector<std::vector<const MsaBufferInterval*>>&
+          joint_colocated_intervals);
+
   // Append buffer and allocation infos for debugging and dump it into a file,
   // if enabled.
   void AppendBufferInfoDebugString(const MsaBufferInterval& interval,
@@ -1052,6 +1135,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>
       pending_required_assignments_;
+  // A list of candidate sync copy instructions that we are trying to replace
+  // with asynchronous copies while processing the current interval, sorted by
+  // their order in the instruction schedule. Being in this list doesn't
+  // guarantee that the copy will be replaced. These sync copies are basically
+  // the instructions that connects the values that are being jointly processed.
+  std::vector<const HloInstruction*> sorted_sync_copy_replacement_candidates_;
   // A cache to keep the peak memory usage at each point in the graph. We use
   // this to see if the proposed allocation in the alternate memory would fit
   // ignoring fragmentation, and if not, we can skip the more expensive lookup
@@ -1096,6 +1185,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // alternate memory.
   absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<ShapeIndex>>
       outputs_in_alternate_memory_map_;
+  // HloValues whose allocation values have been finalized and cannot be
+  // uncommitted or changed.
+  absl::flat_hash_set<const HloValue*> finalized_values_;
+  // Set of sync copy instructions that we failed/succeeded in replacing with
+  // asynchronous copies.
+  absl::flat_hash_set<const HloInstruction*> failed_copy_replacements_set_;
+  absl::flat_hash_set<const HloInstruction*> successful_copy_replacements_set_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
