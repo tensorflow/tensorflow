@@ -300,6 +300,26 @@ class HloTestBase : public ManifestCheckingTest {
       const tsl::protobuf::Message* backend_config = nullptr,
       bool use_random_data = true);
 
+  // Same as below, except that it requires all the options to be passed.
+  ::testing::AssertionResult RunAndCompareTwoModulesReplicated(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      HloRunner::ReplicatedExecuteOptions options,
+      const std::optional<ErrorSpec>& error);
+
+  // Same as below, except that it requires the parsed modules to be passed.
+  ::testing::AssertionResult RunAndCompareTwoModulesReplicated(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      bool run_hlo_passes, bool use_threads,
+      const std::optional<ErrorSpec>& error);
+
+  // Parses the modules, and executes them based on `run_hlo_passes` and
+  // `use_threads` flags. The replica count should be mentioned in the module
+  // itself.
+  ::testing::AssertionResult RunAndCompareTwoModulesReplicated(
+      absl::string_view module_0, absl::string_view module_1,
+      bool run_hlo_passes, bool use_threads,
+      const std::optional<ErrorSpec>& error);
+
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
@@ -432,6 +452,12 @@ class HloTestBase : public ManifestCheckingTest {
   static se::Platform* GetReferencePlatform();
   static se::Platform* GetTestPlatform();
 
+  // Compares the inputs shapes of two modules and returns the list of parameter
+  // indices that mismatch. The mismatch could be either in shape or datatype.
+  // If there is no mismatch, an empty vector is returned.
+  [[nodiscard]] std::vector<int> CompareInputs(const HloModule& module_0,
+                                               const HloModule& module_1);
+
  private:
   // Creates or retrieves the allocator.
   se::DeviceMemoryAllocator* GetAllocator();
@@ -455,6 +481,15 @@ class HloTestBase : public ManifestCheckingTest {
       const absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
+
+  // Runs the two module with or without running hlo passes and compares
+  // the results. Returns whether the results are near or equal. If any
+  // error happens before the results are computed, returns the error status.
+  absl::StatusOr<::testing::AssertionResult>
+  RunAndCompareTwoModulesInternalReplicated(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      HloRunner::ReplicatedExecuteOptions options,
+      const std::optional<ErrorSpec>& error);
 
   // Runs the two module on with or without running hlo passes and
   // compares the results. Returns whether the results are near or equal. If any
