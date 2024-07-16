@@ -310,7 +310,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -320,6 +322,7 @@ cc_test(
     srcs = ["tensor_array_test.cc"],
     deps = [
         ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_types",
