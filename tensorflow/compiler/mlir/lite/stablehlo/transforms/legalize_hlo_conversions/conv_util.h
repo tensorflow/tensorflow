@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_CONV_UTIL_H_
 
 #include "llvm/ADT/ArrayRef.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -75,6 +76,11 @@ class Layout {
   // "this" and given layout have the same rank.
   llvm::SmallVector<int64_t, 4> GetPermForReLayout(
       const Layout& to_layout) const;
+
+  // Permutes given shape based on the permutaion implied to take this Layout to
+  // the given one.
+  llvm::SmallVector<int64_t, 4> PermuteShape(const Layout& to_layout,
+                                             ArrayRef<int64_t> shape) const;
 
   bool operator==(const Layout& other) const {
     return SpecialDim1() == other.SpecialDim1() &&

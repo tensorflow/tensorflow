@@ -51,6 +51,15 @@ def AreDnumsFullyDefined : Constraint<CPred<
   "== $0.getDefiningOp<mhlo::ConvolutionOp>()"
     ".getDimensionNumbers().getInputSpatialDimensions().size() + 2">>;
 
+// Given $0: Layout (from layout), $1: Layout (to layout), $2: Value
+// get a new Type with the same element type as value, but with
+// shape permuted based on from and to layouts.
+def PermuteShape : NativeCodeCall<
+  "$2.getType().cast<RankedTensorType>()"
+    ".clone($0.PermuteShape("
+      "$1,"
+      "$2.getType().cast<RankedTensorType>().getShape()))">;
+
 def IsStandardConv : Constraint<CPred<
   "IsStandardConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
 
@@ -97,8 +106,7 @@ def ReLayoutConvInput : Pat<(MHLO_ConvolutionOp:$conv
                                 $batch_groups,
                                 $precision_config
                             ),
-                            (
-                              MHLO_ConvolutionOp
+                            (MHLO_ConvolutionOp
                                 (MHLO_TransposeOp
                                   $input,
                                     (PermForReLayout
@@ -165,12 +173,11 @@ def ReLayoutConvKernel : Pat<(MHLO_ConvolutionOp:$conv
                                 $batch_groups,
                                 $precision_config
                             ),
-                            (
-                              MHLO_ConvolutionOp 
+                            (MHLO_ConvolutionOp
                                 $input,
-                                (MHLO_TransposeOp 
+                                (MHLO_TransposeOp
                                   $kernel,
-                                    (PermForReLayout 
+                                    (PermForReLayout
                                       (KernelLayout $dnums),
                                       (TFLNativeKernelLayout $dnums))
                                 ),
@@ -187,4 +194,75 @@ def ReLayoutConvKernel : Pat<(MHLO_ConvolutionOp:$conv
                             [(AreDnumsFullyDefined $conv),
                              (KernelHasIotaSpatials $dnums),
                              (IsKernelNotTFLNativeLayout $dnums),
+                             (IsStandardConv $conv)]>;
+
+// Re-layout output to [b, spatials..., f]
+//===-------------------------------------
+
+def IsOutputNotTFLNativeLayout : Constraint<CPred<
+    "Layout("
+      "$0.getOutputBatchDimension(),"
+      "$0.getOutputFeatureDimension(),"
+      "$0.getOutputSpatialDimensions())"
+    "!= GetTFLNativeInputOrOutputLayout($0)">>;
+
+def OutputLayout : NativeCodeCall<
+    "Layout($0.getOutputBatchDimension(),"
+                "$0.getOutputFeatureDimension(),"
+                "$0.getOutputSpatialDimensions())">;
+
+def TFLNativeOutputLayout : NativeCodeCall<
+    "GetTFLNativeInputOrOutputLayout($0)">;
+
+def OutputHasIotaSpatials : Constraint<CPred<
+    "Layout($0.getOutputBatchDimension(),"
+                "$0.getOutputFeatureDimension(),"
+                "$0.getOutputSpatialDimensions()).AreSpatialsIota()">>;
+
+// Copy dnums with the output layout set to [b, spatials..., f].
+def CloneDnumsWithTFLNativeOutputLayout : NativeCodeCall<
+    "CloneDnumsWithOutputLayout("
+      "$_builder,"
+      "$0,"
+      "GetTFLNativeInputOrOutputLayout($0))">;
+
+def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
+                                $input,
+                                $kernel,
+                                $strides,
+                                $padding,
+                                $lhs_dilation,
+                                $rhs_dilation,
+                                $window_reversal,
+                                $dnums,
+                                $feature_groups,
+                                $batch_groups,
+                                $precision_config
+                            ),
+                            (MHLO_TransposeOp
+                              (MHLO_ConvolutionOp
+                                  $input,
+                                  $kernel,
+                                  $strides,
+                                  $padding,
+                                  $lhs_dilation,
+                                  $rhs_dilation,
+                                  $window_reversal,
+                                  (CloneDnumsWithTFLNativeOutputLayout $dnums),
+                                  $feature_groups,
+                                  $batch_groups,
+                                  $precision_config,
+                                  (returnType
+                                    (PermuteShape
+                                      (OutputLayout $dnums),
+                                      (TFLNativeOutputLayout $dnums),
+                                      $conv))
+                              ),
+                              (PermForReLayout
+                                (TFLNativeOutputLayout $dnums),
+                                (OutputLayout $dnums))
+                            ),
+                            [(AreDnumsFullyDefined $conv),
+                             (KernelHasIotaSpatials $dnums),
+                             (IsOutputNotTFLNativeLayout $dnums),
                              (IsStandardConv $conv)]>;

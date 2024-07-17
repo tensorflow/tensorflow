@@ -96,7 +96,6 @@ func.func @conv2d_nhwc_hwio_nhwc(%input: tensor<1x256x256x3xf32>, %filter: tenso
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv2d_nhwc_ohwi_nchw
 func.func @conv2d_nhwc_ohwi_nchw(%input: tensor<1x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<1x2x256x256xf32> {
   %0 = mhlo.convolution(%input, %filter)
@@ -108,13 +107,15 @@ func.func @conv2d_nhwc_ohwi_nchw(%input: tensor<1x256x256x3xf32>, %filter: tenso
   func.return %0 : tensor<1x2x256x256xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, 0, 1, f]x[o, 0, 1, i]->[b, f, 0, 1]
-// CHECK-NOT: transpose
+// CHECK-NOT:  transpose
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 3, 1, 2]
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv2d_nchw_oihw_nchw
 func.func @conv2d_nchw_oihw_nchw(%input: tensor<1x3x256x256xf32>, %filter: tensor<2x3x1x1xf32>) -> tensor<1x2x256x256xf32> {
   %0 = mhlo.convolution(%input, %filter)
@@ -132,9 +133,11 @@ func.func @conv2d_nchw_oihw_nchw(%input: tensor<1x3x256x256xf32>, %filter: tenso
 // CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
 // CHECK-SAME: permutation
 // CHECK-SAME: [0, 2, 3, 1]
-// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
-// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, f, 0, 1]
-// CHECK-NOT:  transpose
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 3, 1, 2]
 
 // -----
 
@@ -195,7 +198,6 @@ func.func @conv1d_nsc_sio_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<1x256x
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv1d_nsc_osi_ncs
 func.func @conv1d_nsc_osi_ncs(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x256xf32>) -> tensor<16x256x32xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -206,13 +208,16 @@ func.func @conv1d_nsc_osi_ncs(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x
   func.return %0 : tensor<16x256x32xf32>
 }
 
-// CHECK-NOT: transpose
-// CHECK:     [b, 0, f]x[o, 0, i]->[b, f, 0]
-// CHECK-NOT: transpose
+// CHECK-NOT:  transpose
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution
+// CHECK-SAME: [b, 0, f]x[o, 0, i]->[b, 0, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 1]
+
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv1d_ncs_ois_ncs
 func.func @conv1d_ncs_ois_ncs(%arg0: tensor<16x256x32xf32>, %arg1: tensor<256x256x1xf32>) -> tensor<16x256x32xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -229,9 +234,12 @@ func.func @conv1d_ncs_ois_ncs(%arg0: tensor<16x256x32xf32>, %arg1: tensor<256x25
 // CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
 // CHECK-SAME: permutation
 // CHECK-SAME: [0, 2, 1]
-// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
-// CHECK-SAME: [b, 0, f]x[o, 0, i]->[b, f, 0]
-// CHECK-NOT:  transpose
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, f]x[o, 0, i]->[b, 0, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 1]
+
 
 // -----
 
@@ -293,7 +301,6 @@ func.func @conv3d_ndhwc_odhwi_ndhwc(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tens
 
 // -----
 
-// TODO: b/351437662 - Add support for non-standard output layouts.
 // CHECK-LABEL: conv3d_ndhwc_dhwio_ncdhw
 func.func @conv3d_ndhwc_dhwio_ncdhw(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>) -> tensor<1x16x6x6x1xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -305,8 +312,9 @@ func.func @conv3d_ndhwc_dhwio_ncdhw(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tens
 }
 
 // CHECK-NOT:  transpose
-// CHECK:      mhlo.convolution
-// CHECK-SAME: [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, f, 0, 1, 2]
-// CHECK-NOT:  transpose
-
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution
+// CHECK-SAME: [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 4, 1, 2, 3]
 

@@ -37,6 +37,16 @@ llvm::SmallVector<int64_t, 4> Layout::GetPermForReLayout(
   return perm;
 }
 
+llvm::SmallVector<int64_t, 4> Layout::PermuteShape(
+    const Layout& to_layout, llvm::ArrayRef<int64_t> shape) const {
+  llvm::SmallVector<int64_t, 4> new_shape(to_layout.Rank());
+  const auto perm = GetPermForReLayout(to_layout);
+  for (const auto [ind, val] : llvm::enumerate(perm)) {
+    new_shape[ind] = shape[val];
+  }
+  return new_shape;
+}
+
 bool Layout::HasSpecialDims(int64_t special_dim1, int64_t special_dim2) const {
   return SpecialDim1() == special_dim1 && SpecialDim2() == special_dim2;
 }
