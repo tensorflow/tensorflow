@@ -119,7 +119,9 @@ struct Value {
 // Reference to values stored in the input buffers.
 template <typename... Ts>
 struct Ref {
-  Ref& operator=(Value<Ts...>&& value);
+  explicit Ref(std::tuple<Ts*...> ptr) : ptr(ptr) {}
+
+  Ref& operator=(const Value<Ts...>& value);
   Ref& operator=(const Ref<Ts...>& other);
 
   template <size_t n>
@@ -130,42 +132,34 @@ struct Ref {
   std::tuple<Ts*...> ptr;
 };
 
-// Loads value from a reference.
+// Value to reference assignment.
 template <typename... Ts, size_t... Is>
-static std::tuple<Ts...> Load(const Ref<Ts...>& ref,
-                              std::index_sequence<Is...>) {
-  std::tuple<Ts...> value;
-  ((std::get<Is>(value) = *std::get<Is>(ref.ptr)), ...);
-  return value;
-}
-
-// Stores value into a reference.
-template <typename... Ts, size_t... Is>
-static void Store(Ref<Ts...>& ref, const Value<Ts...>& value,
-                  std::index_sequence<Is...>) {
+static void Assign(Ref<Ts...>& ref, const Value<Ts...>& value,
+                   std::index_sequence<Is...>) {
   ((*std::get<Is>(ref.ptr) = std::get<Is>(value.value)), ...);
 }
 
-// Stores value from one reference to another.
+// Reference to reference assignment.
 template <typename... Ts, size_t... Is>
-static void Store(Ref<Ts...>& ref, const Ref<Ts...>& other,
-                  std::index_sequence<Is...>) {
+static void Assign(Ref<Ts...>& ref, const Ref<Ts...>& other,
+                   std::index_sequence<Is...>) {
   ((*std::get<Is>(ref.ptr) = *std::get<Is>(other.ptr)), ...);
 }
 
 template <typename... Ts>
 Value<Ts...>::Value(const Ref<Ts...>& ref)
-    : value(Load(ref, std::make_index_sequence<sizeof...(Ts)>{})) {}
+    : value(std::apply([](auto*... p) { return std::make_tuple(*p...); },
+                       ref.ptr)) {}
 
 template <typename... Ts>
-Ref<Ts...>& Ref<Ts...>::operator=(Value<Ts...>&& value) {
-  Store(*this, value, std::make_index_sequence<sizeof...(Ts)>{});
+Ref<Ts...>& Ref<Ts...>::operator=(const Value<Ts...>& value) {
+  Assign(*this, value, std::make_index_sequence<sizeof...(Ts)>{});
   return *this;
 }
 
 template <typename... Ts>
 Ref<Ts...>& Ref<Ts...>::operator=(const Ref<Ts...>& other) {
-  Store(*this, other, std::make_index_sequence<sizeof...(Ts)>{});
+  Assign(*this, other, std::make_index_sequence<sizeof...(Ts)>{});
   return *this;
 }
 

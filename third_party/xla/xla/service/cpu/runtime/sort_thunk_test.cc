@@ -34,10 +34,9 @@ namespace xla::cpu {
 namespace {
 
 static bool LessThan(const void** data) {
-  const void* lhs = data[0];
-  const void* rhs = data[1];
-  return *reinterpret_cast<const float*>(lhs) <
-         *reinterpret_cast<const float*>(rhs);
+  auto* lhs = reinterpret_cast<const float*>(data[0]);
+  auto* rhs = reinterpret_cast<const float*>(data[1]);
+  return *lhs < *rhs;
 }
 
 class SortThunkTest : public testing::TestWithParam<bool> {};
