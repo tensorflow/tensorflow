@@ -312,21 +312,7 @@ CodegenDecision CanTritonHandleReduce(
   if (reduce.dimensions().size() == 1 &&
       reduce.dimensions().front() == reduce.operand(0)->shape().rank() - 1 &&
       reduce.operand_count() == 2) {
-    const HloInstruction* operand = reduce.operand(1);
-    // We assume that the reduction init value was input as a constant, or in
-    // the case of a data type affected by float normalization, a convert of a
-    // constant.
-    if (operand->opcode() == HloOpcode::kConvert) {
-      if (operand->operand(0)->opcode() == HloOpcode::kConstant &&
-          operand->operand(0)->shape().element_type() == BF16 &&
-          operand->shape().element_type() == F32) {
-        return CodegenDecision{};
-      }
-    } else if (operand->opcode() == HloOpcode::kConstant) {
-      return CodegenDecision{};
-    }
-    return "Reduction init value should be a constant or a convert of a "
-           "constant.";
+    return CodegenDecision{};
   }
   return "Reduction is not a row-reduction of a single operand.";
 }

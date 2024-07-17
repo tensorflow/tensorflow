@@ -523,10 +523,7 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
-// TODO(b/348565795): add support for non-const reduce values once that is
-// resolved.
-TEST_F(ReduceTest,
-       ReduceWithNonConstReduceValueIsUnsupportedAndFailsWithTriton) {
+TEST_F(ReduceTest, ReduceWithNonConstReduceValueIsSupportedWithTriton) {
   const se::GpuComputeCapability cc = se::CudaComputeCapability::Ampere();
   const std::string kHloTestTemplate = R"(
 add {
@@ -543,9 +540,8 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
                                                          HloOpcode::kReduce));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc,
-                 /*skip_failure_branch_to_avoid_crash=*/true);
+  EXPECT_TRUE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2}, cc);
 }
 
 TEST_P(ReduceTest, UnsupportedReductionComputationFailsGracefullyWithTriton) {

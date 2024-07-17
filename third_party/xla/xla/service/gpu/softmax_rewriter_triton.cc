@@ -506,6 +506,19 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
     return is_supported;
   }
 
+  // Ensure that the reduction's identity is either a constant or a supported
+  // convert of a constant.
+  const HloInstruction* identity = reduce->operand(1);
+  bool should_fuse_identity =
+      identity->opcode() == HloOpcode::kConstant ||
+      (identity->opcode() == HloOpcode::kConvert &&
+       identity->operand(0)->opcode() == HloOpcode::kConstant &&
+       IsTritonSupportedInstruction(*identity, cc));
+  if (!should_fuse_identity) {
+    return "Reduction identity is not a constant or a supported convert of a "
+           "constant.";
+  }
+
   if (!HasOneUse(broadcast) || !HasOneUse(reduce)) {
     return "More than one use of broadcast or reduce.";
   }
