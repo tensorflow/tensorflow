@@ -87,6 +87,7 @@ class Thunk {
     kReduceScatter,
     kReplicaId,
     kRngGetAndUpdateState,
+    kSort,
     kTopK,
     kWhile,
   };
