@@ -24,10 +24,14 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "xla/hlo/ir/tile_assignment.h"
-#include "xla/util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+std::string ReplicaGroupsToString(
+    absl::Span<const ReplicaGroup> replica_groups);
 
 // Represents a list of replica groups (a list of list of devices) with
 // reshaping and transposing an iota array (iota tile assignment). Can be used
@@ -64,6 +68,10 @@ class IotaReplicaGroupList {
 
   std::string ToString() const;
 
+  IotaReplicaGroupListProto ToProto() const;
+
+  static IotaReplicaGroupList FromProto(const IotaReplicaGroupListProto& proto);
+
  private:
   IotaTileAssignment iota_tile_assignment_;
   int64_t num_replica_groups_ = -1;
@@ -96,16 +104,25 @@ class CollectiveDeviceList {
 
   std::string ToString() const;
 
+  CollectiveDeviceListProto ToProto() const;
+
+  static CollectiveDeviceList FromProto(const CollectiveDeviceListProto& proto);
+
+  static CollectiveDeviceList FromProto(const HloInstructionProto& proto);
+
  private:
+  // Construct collective device list from replica group start and end
+  // iterators.
+  CollectiveDeviceList(
+      tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator start,
+      tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end);
+
   void MaybeMaterializeFullReplicaGroupList() const;
   std::optional<IotaReplicaGroupList> iota_replica_group_list_ = std::nullopt;
   mutable std::shared_ptr<const std::vector<ReplicaGroup>>
       replica_groups_shared_ = nullptr;
   mutable const std::vector<ReplicaGroup>* replica_groups_ = nullptr;
 };
-
-std::string ReplicaGroupsToString(
-    absl::Span<const ReplicaGroup> replica_groups);
 
 }  // namespace xla
 

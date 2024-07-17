@@ -5377,6 +5377,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_pass",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",

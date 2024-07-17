@@ -58,7 +58,6 @@ struct TestData {
   std::string module_string;
   int64_t replica_count = 1;
   bool enable_verification = true;
-  bool skip_proto_round_trip = false;
 };
 
 std::string TestDataToString(const ::testing::TestParamInfo<TestData>& data) {
@@ -1856,8 +1855,6 @@ ENTRY AllReduceWithSubgroups {
 /*replica_count=*/4,
 },
 // all-reduce with subgroups in iota group list format
-// TODO(b/316622399): Enable proto round trip once HloInstructionProto
-// can represent the iota device list format for replica groups.
 {
 "AllReduceWithSubgroupsIotaList",
 R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=20
@@ -1875,8 +1872,6 @@ ENTRY AllReduceWithSubgroupsIotaList {
 
 )",
 /*replica_count=*/20,
-/*enable_verification=*/true,
-/*skip_proto_round_trip=*/true
 },
 // all-reduce with constrained layout
 {
@@ -1990,8 +1985,6 @@ ENTRY AllGatherWithSubgroups {
 /*replica_count=*/4,
 },
 // all-gather with subgroups in iota list format.
-// TODO(b/316622399): Enable proto round trip once HloInstructionProto
-// can represent the iota device list format for replica groups.
 {
 "AllGatherWithSubgroupsIotaList",
 R"(HloModule AllGatherWithSubgroupsIotaList, entry_computation_layout={(f32[128,32]{0,1})->f32[128,320]{0,1}}, replica_count=30
@@ -2003,8 +1996,6 @@ ENTRY AllGatherWithSubgroupsIotaList {
 
 )",
 /*replica_count=*/30,
-/*enable_verification=*/true,
-/*skip_proto_round_trip=*/true
 },
 // all-to-all
 {
@@ -2033,8 +2024,6 @@ ENTRY AllToAllWithSubgroups {
 /*replica_count=*/4,
 },
 // all-to-all with subgroups in iota list format.
-// TODO(b/316622399): Enable proto round trip once HloInstructionProto
-// can represent the iota device list format for replica groups.
 {
 "AllToAllWithSubgroupsIotaList",
 R"(HloModule AllToAllWithSubgroupsIotaList, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=32
@@ -2045,9 +2034,7 @@ ENTRY AllToAllWithSubgroupsIotaList {
 }
 
 )",
-/*replica_count=*/40,
-/*enable_verification=*/true,
-/*skip_proto_round_trip=*/true
+/*replica_count=*/40
 },
 // collective-broadcast
 {
@@ -2589,7 +2576,7 @@ class HloParameterizedParserTest
       TF_ASSERT_OK_AND_ASSIGN(module,
                               ParseAndReturnUnverifiedModule(original, config));
     }
-    if (proto_round_trip && !GetParam().skip_proto_round_trip) {
+    if (proto_round_trip) {
       TF_ASSERT_OK_AND_ASSIGN(module, HloModule::CreateFromProto(
                                           module->ToProto(), module->config()));
     }

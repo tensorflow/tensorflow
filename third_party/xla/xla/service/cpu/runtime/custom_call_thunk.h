@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -41,6 +44,7 @@ class CustomCallThunk final : public Thunk {
 
     std::vector<BufferAllocation::Slice> results_buffers;
     std::vector<Shape> results_shapes;
+    bool is_tuple_result;
   };
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
