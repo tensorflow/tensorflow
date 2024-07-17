@@ -33,6 +33,7 @@ absl::Status IfrtModelContext::Freeze() {
   for (auto& program_handle : handles_) {
     TF_RETURN_IF_ERROR(program_handle.Freeze());
   }
+  frozen_ = true;
   return absl::OkStatus();
 }
 
