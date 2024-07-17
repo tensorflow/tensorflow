@@ -24,9 +24,10 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 
 TfLiteOperator* TfLiteOperatorCreate(TfLiteBuiltinOperator builtin_code,
-                                     const char* custom_name, int version) {
+                                     const char* custom_name, int version,
+                                     void* user_data) {
   return TfLiteOperatorCreateWithData(builtin_code, custom_name, version,
-                                      /*user_data=*/nullptr);
+                                      user_data);
 }
 
 TfLiteOperator* TfLiteOperatorCreateWithData(TfLiteBuiltinOperator builtin_code,

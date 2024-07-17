@@ -446,10 +446,9 @@ std::vector<int>* g_nodes_to_replace;
 TfLiteOpaqueDelegate* g_opaque_delegate_struct;
 
 TfLiteOperator* CreateDelegateKernelExternalRegistration() {
-  TfLiteOperator* delegate_kernel_registration_external =
-      TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate,
-                                   "TEST DELEGATE KERNEL", /*version=*/1,
-                                   /*user_data=*/nullptr);
+  TfLiteOperator* delegate_kernel_registration_external = TfLiteOperatorCreate(
+      kTfLiteBuiltinDelegate, "TEST DELEGATE KERNEL", /*version=*/1,
+      /*user_data=*/nullptr);
   TfLiteOperatorSetInitWithData(
       delegate_kernel_registration_external,
       [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
@@ -756,9 +755,9 @@ struct DelegateKernelState {
 };
 
 TfLiteOperator* CreateReg() {
-  auto reg_ex = TfLiteOperatorCreateWithData(
-      kTfLiteBuiltinDelegate, "Test driver delegate", /*version=*/1,
-      /*user_data=*/nullptr);
+  auto reg_ex = TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                                     "Test driver delegate", /*version=*/1,
+                                     /*user_data=*/nullptr);
   TfLiteOperatorSetInitWithData(
       reg_ex,
       [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
@@ -1152,8 +1151,8 @@ TEST(CApiSimple, CustomOpSupport) {
   ASSERT_NE(model, nullptr);
 
   TfLiteOperator* reg =
-      TfLiteOperatorCreateWithData(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
-                                   /*user_data=*/nullptr);
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/nullptr);
   TfLiteOperatorSetPrepareWithData(reg, &FlexSinhPrepare);
   TfLiteOperatorSetInitWithData(reg, &FlexSinhInit);
   TfLiteOperatorSetFreeWithData(reg, &FlexSinhFree);
@@ -1522,9 +1521,9 @@ TEST(CApiSimple, OpaqueApiAccessors) {
     // Define a delegate kernel that checks that the properties of the model
     // are accessible via the opaque API function.
     //
-    TfLiteOperator* reg = TfLiteOperatorCreateWithData(
-        kTfLiteBuiltinDelegate, "my delegate", /*version=*/123,
-        /*user_data=*/nullptr);
+    TfLiteOperator* reg = TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                                               "my delegate", /*version=*/123,
+                                               /*user_data=*/nullptr);
     EXPECT_EQ(123, TfLiteOperatorGetVersion(reg));
     TfLiteOperatorSetInitWithData(
         reg,
@@ -1845,7 +1844,7 @@ TEST(CApiSimple, OpaqueApiAccessorsStrings) {
   opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* context,
                                        TfLiteOpaqueDelegate* delegate,
                                        void* data) -> TfLiteStatus {
-    TfLiteOperator* registration = TfLiteOperatorCreateWithData(
+    TfLiteOperator* registration = TfLiteOperatorCreate(
         kTfLiteBuiltinDelegate, "my delegate", /*version=*/123,
         /*user_data=*/nullptr);
     TfLiteOperatorSetInitWithData(
