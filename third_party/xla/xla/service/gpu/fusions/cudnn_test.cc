@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/cudnn_fusion_compiler.h"
-#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
@@ -112,7 +112,7 @@ ENTRY e {
     backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
 })",
                                                        config));
-  Thunk::BinaryMap dnn_compiled_graphs;
+  BinaryMap dnn_compiled_graphs;
   CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
                                      dnn_compiled_graphs);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
@@ -185,7 +185,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  Thunk::BinaryMap dnn_compiled_graphs;
+  BinaryMap dnn_compiled_graphs;
   CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
                                      dnn_compiled_graphs);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));

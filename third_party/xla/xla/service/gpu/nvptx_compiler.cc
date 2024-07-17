@@ -76,7 +76,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_sort_rewriter.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/metrics.h"
-#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/triangular_solve_rewriter.h"
 #include "xla/service/hlo_constant_folding.h"
@@ -389,7 +388,7 @@ absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
 
 absl::Status NVPTXCompiler::RunCudnnFusionCompilerPass(
     HloModule* module, se::StreamExecutor* stream_exec,
-    Thunk::BinaryMap* dnn_compiled_graphs) {
+    BinaryMap* dnn_compiled_graphs) {
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());

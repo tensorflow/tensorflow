@@ -1130,6 +1130,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor",
         "//xla/translate/mhlo_to_hlo:location_exporter",
         "@com_google_absl//absl/algorithm:container",

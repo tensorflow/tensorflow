@@ -42,6 +42,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// <HLO computation fingerprint, serialized compiled object>.
+using BinaryMap = absl::flat_hash_map<std::string, std::string>;
+
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled = 16;

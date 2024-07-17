@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/executable.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
@@ -126,7 +127,7 @@ class GpuCompiler : public LLVMCompiler {
   struct BackendCompileResult {
     std::string asm_text;
     std::vector<uint8_t> binary;
-    Thunk::BinaryMap dnn_compiled_graphs;
+    BinaryMap dnn_compiled_graphs;
   };
 
   // During compilation with device, stream_exec != null and autotune_results
@@ -170,10 +171,10 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
-  // Runs CUDNN fusion compiler pass.
+  // Runs cuDNN fusion compiler pass.
   virtual absl::Status RunCudnnFusionCompilerPass(
       HloModule* module, se::StreamExecutor* stream_exec,
-      Thunk::BinaryMap* dnn_compiled_graphs) {
+      BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 

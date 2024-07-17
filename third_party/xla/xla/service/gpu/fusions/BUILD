@@ -697,6 +697,7 @@ xla_test(
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu:cudnn_fusion_compiler",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/runtime:thunk",
         "//xla/service/gpu/tests:gpu_codegen_test",

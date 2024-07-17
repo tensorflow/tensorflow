@@ -314,7 +314,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   FromModule(const HloModule* hlo_module,
              const BufferAssignment* buffer_assignment,
              std::string_view asm_text, absl::Span<const uint8_t> binary,
-             const Thunk::BinaryMap& dnn_compiled_graphs) {
+             const BinaryMap& dnn_compiled_graphs) {
     CompilationResultProto proto;
     *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
     *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
@@ -427,8 +427,8 @@ GpuThunkAotCompilationResult::LoadExecutable(
           /*asm_text=*/proto_.asm_text(),
           /*binary=*/binary,
           /*dnn_compiled_graphs=*/
-          Thunk::BinaryMap(proto_.dnn_compiled_graphs().cbegin(),
-                           proto_.dnn_compiled_graphs().cend()),
+          BinaryMap(proto_.dnn_compiled_graphs().cbegin(),
+                    proto_.dnn_compiled_graphs().cend()),
           /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
           /*executable=*/ir_emitter->ConsumeThunkSequence(),
           /*constants=*/std::move(constants),
@@ -2134,7 +2134,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     return absl::StrFormat("XlaCompileBackend:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   }};
-  Thunk::BinaryMap dnn_compiled_graphs;
+  BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
     TF_RETURN_IF_ERROR(RunCudnnFusionCompilerPass(module.get(), stream_exec,
                                                   &dnn_compiled_graphs));
