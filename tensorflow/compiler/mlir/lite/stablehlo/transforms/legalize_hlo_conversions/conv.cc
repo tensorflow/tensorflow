@@ -60,10 +60,6 @@ bool IsInputDilationSupported(const ConvData& data) {
   return llvm::all_of(data.InputDilations(), [](int64_t v) { return v == 1; });
 }
 
-bool IsFeatureGroupSupported(const ConvData& data) {
-  return data.FeatureGroupCount() == 1;
-}
-
 bool IsBatchGroupSupported(const ConvData& data) {
   return data.BatchGroupCount() == 1;
 }
@@ -79,7 +75,7 @@ bool IsConvLegal(mhlo::ConvolutionOp op) {
   const ConvData data(op);
 
   const bool are_groups_supported =
-      IsFeatureGroupSupported(data) && IsBatchGroupSupported(data);
+      IsStandardFeatureGroup(data) && IsBatchGroupSupported(data);
 
   return !are_groups_supported || !IsInputDilationSupported(data) ||
          !AreShapesSupported(data) || !IsTFLNativeLayout(data) ||

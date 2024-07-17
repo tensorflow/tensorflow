@@ -787,6 +787,25 @@ func.func @conv2d_nhwc_ohwi_nhwc_with_strides(%input: tensor<1x115x115x96xf32>, 
 
 // -----
 
+// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_grouped_features
+func.func @conv2d_nhwc_ohwi_nhwc_grouped_features(%input: tensor<1x256x256x6xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {stride = [1, 1], pad = [[0, 0], [0, 0]]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 2 : i64,
+    window_strides = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
+    lhs_dilation = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<1x256x256x6xf32>, tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32>
+  func.return %0 : tensor<1x256x256x2xf32>
+}
+
+// CHECK: "tfl.conv_2d"(%arg0, %arg1, %cst) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x256x256x6xf32>, tensor<2x1x1x3xf32>, tensor<2xf32>) -> tensor<1x256x256x2xf32>
+
+// -----
+
 // TODO: b/351437662 - Add support for dynamic batch.
 // CHECK-LABEL: conv2d_nhwc_ohwi_nhwc
 func.func @conv2d_nhwc_ohwi_nhwc_dynamic_batch(%input: tensor<?x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<?x256x256x2xf32> {
