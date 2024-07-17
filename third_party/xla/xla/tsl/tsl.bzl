@@ -789,3 +789,9 @@ def nvtx_headers():
 
 def tsl_google_bzl_deps():
     return []
+
+def tsl_extra_config_settings():
+    pass
+
+def tsl_extra_config_settings_targets():
+    return []
