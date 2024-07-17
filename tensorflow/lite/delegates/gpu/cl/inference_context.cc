@@ -239,7 +239,7 @@ absl::Status ClarifyWithCommandBuffer(ProfilingCommandQueue* queue,
       RETURN_IF_ERROR(cb.Init(queue, /*simultaneous_use=*/false));
       const int num_kernels_in_cb = get_tasks_count(node_index);
       for (int j = 0; j < num_kernels_in_cb; ++j) {
-        RETURN_IF_ERROR(nodes[node_index]->cl_operation.AddToCommanBuffer(
+        RETURN_IF_ERROR(nodes[node_index]->cl_operation.AddToCommandBuffer(
             cb.GetCommandBuffer()));
       }
       RETURN_IF_ERROR(cb.Finalize());
@@ -316,6 +316,13 @@ absl::Status InferenceContext::InitFromGpuModel(
   shared_buffers_parent_ptr_ = shared_buffer;
   RETURN_IF_ERROR(AllocateMemory(*gpu_model, env->GetDevicePtr()->GetInfo(),
                                  &create_info, &env->context()));
+
+  gpu_info_ = env->device().GetInfo();
+  if (gpu_info_.opencl_info.IsCLVK() &&
+      gpu_info_.SupportsExtension("cl_khr_command_buffer")) {
+    use_command_buffer_ = true;
+  }
+
   InitFromGpuModel(gpu_model);
 
   CreationContext creation_context;
@@ -368,8 +375,6 @@ absl::Status InferenceContext::InitFromGpuModel(
     external_tensor.second = nullptr;
   }
 
-  gpu_info_ = env->device().GetInfo();
-
   if (serialized_model) {
     auto encoded_fb = Encode(*env->GetDevicePtr(), *env->program_cache(),
                              gpu_model_fb, &builder);
@@ -381,9 +386,9 @@ absl::Status InferenceContext::InitFromGpuModel(
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AddToCommanBuffer(cl_command_buffer_khr cb) {
+absl::Status InferenceContext::AddToCommandBuffer(cl_command_buffer_khr cb) {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.cl_operation.AddToCommanBuffer(cb));
+    RETURN_IF_ERROR(node.cl_operation.AddToCommandBuffer(cb));
   }
   return absl::OkStatus();
 }
@@ -469,6 +474,9 @@ void InferenceContext::InitFromGpuModel(GpuModel* gpu_model) {
   }
   for (const auto& output : gpu_model->output_ids_and_refs) {
     output_ids_.push_back(output.first);
+  }
+  if (use_command_buffer_) {
+    command_buffer_ = nullptr;
   }
   nodes_.resize(gpu_model->nodes.size());
   for (int i = 0; i < gpu_model->nodes.size(); ++i) {
@@ -840,6 +848,23 @@ void InferenceContext::PrepareExternal() {
   }
 }
 
+absl::Status InferenceContext::AddCommandBufferToQueue(CLCommandQueue* queue) {
+  if (command_buffer_ == nullptr) {
+    command_buffer_ = std::make_unique<CLCommandBuffer>();
+    RETURN_IF_ERROR(command_buffer_->Init(queue));
+    RETURN_IF_ERROR(AddToCommandBuffer(command_buffer_->GetCommandBuffer()));
+    RETURN_IF_ERROR(command_buffer_->Finalize());
+  }
+  RETURN_IF_ERROR(command_buffer_->Enqueue(queue));
+  return absl::OkStatus();
+}
+
+void InferenceContext::FlushQueue(CLCommandQueue* queue) {
+  if (!gpu_info_.opencl_info.IsCLVK()) {
+    clFlush(queue->queue());
+  }
+}
+
 absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
   if (recordable_queue_ && recordable_queue_->IsSupported()) {
     return recordable_queue_->Execute(queue);
@@ -851,13 +876,17 @@ absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
     RETURN_IF_ERROR(
         queue->EnqueueEvent(&execution_hints_.prev_enqueue_start_point));
   }
-  int counter = 0;
-  for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.cl_operation.AddToQueue(queue));
-    counter++;
-    if (execution_hints_.flush_periodically &&
-        counter % execution_hints_.flush_period == 0) {
-      clFlush(queue->queue());
+  if (use_command_buffer_) {
+    RETURN_IF_ERROR(AddCommandBufferToQueue(queue));
+  } else {
+    int counter = 0;
+    for (auto& node : nodes_) {
+      RETURN_IF_ERROR(node.cl_operation.AddToQueue(queue));
+      counter++;
+      if (execution_hints_.flush_periodically &&
+          counter % execution_hints_.flush_period == 0) {
+        clFlush(queue->queue());
+      }
     }
   }
   if (execution_hints_.need_flush) {
