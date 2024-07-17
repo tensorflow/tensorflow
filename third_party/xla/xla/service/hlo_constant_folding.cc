@@ -16,22 +16,26 @@ limitations under the License.
 #include "xla/service/hlo_constant_folding.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
