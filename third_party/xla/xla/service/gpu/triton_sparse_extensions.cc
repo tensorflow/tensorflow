@@ -84,7 +84,7 @@ triton::nvgpu::WGMMAEltType getMmaOperandType(Value, bool);
 namespace {
 
 // Add sparse encoding for all the arguments of a SparseDotOp.
-struct AddSparseEncodingPattern
+struct AddSparseEncoding
     : public OpConversionPattern<triton::gpu::SparseDotOp> {
   using OpConversionPattern<triton::gpu::SparseDotOp>::OpConversionPattern;
 
@@ -199,8 +199,7 @@ class AddSparseEncodingPass
     MLIRContext *context = &getContext();
     TritonGPUTypeConverter type_converter(context, num_warps_,
                                           threads_per_warp_, num_ctas_);
-    auto pattern =
-        std::make_unique<AddSparseEncodingPattern>(type_converter, context);
+    auto pattern = std::make_unique<AddSparseEncoding>(type_converter, context);
     RewritePatternSet patterns(context, std::move(pattern));
     TritonGPUConversionTarget target(*context, type_converter);
     target.addDynamicallyLegalOp<triton::gpu::SparseDotOp>(
@@ -225,10 +224,11 @@ class AddSparseEncodingPass
                             llvm::cl::init(1)};
 };
 
+// Add convert layouts to and from MMA before and after SparseDotOp. In MMAV3,
+// shared memory allocations will be used for A and B operands.
 class SparseBlockedToMMA : public RewritePattern {
   using ConvertLayoutOp = triton::gpu::ConvertLayoutOp;
   using SparseDotOp = triton::gpu::SparseDotOp;
-  using SparseDotMetaEncodingAttr = triton::gpu::SparseDotMetaEncodingAttr;
   using NvidiaMmaEncodingAttr = triton::gpu::NvidiaMmaEncodingAttr;
 
  public:
@@ -238,84 +238,91 @@ class SparseBlockedToMMA : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    auto dotOp = cast<SparseDotOp>(op);
-    auto ctx = op->getContext();
-    Value a = dotOp.getA();
-    Value b = dotOp.getB();
+    auto dot_op = cast<SparseDotOp>(op);
+    auto context = op->getContext();
+    Value a = dot_op.getA();
+    Value b = dot_op.getB();
 
     // Check data-types and SM compatibility
-    RankedTensorType oldRetType = dotOp.getType();
-    if (!oldRetType.getEncoding() ||
-        isa<NvidiaMmaEncodingAttr>(oldRetType.getEncoding()))
+    RankedTensorType ret_type = dot_op.getType();
+    if (!ret_type.getEncoding() ||
+        isa<NvidiaMmaEncodingAttr>(ret_type.getEncoding()))
       return failure();
 
     assert(compute_capability_ >= 80 &&
-           "SparseDot is supported on Ampere and higher");
-    bool allowV3 = !triton::tools::getBoolEnv("DISABLE_MMA_V3");
-    int versionMajor = compute_capability_ >= 90 && allowV3 ? 3 : 2;
+           "SparseDot is only supported on Ampere or higher");
+    bool allow_v3 = !triton::tools::getBoolEnv("DISABLE_MMA_V3");
+    int version_major = compute_capability_ >= 90 && allow_v3 ? 3 : 2;
 
-    // get MMA encoding for the given number of warps
-    auto retShapePerCTA = triton::gpu::getShapePerCTA(oldRetType);
+    // get MMA encoding and new return type given the number of warps
+    auto ret_shape_per_cta = triton::gpu::getShapePerCTA(ret_type);
     auto mod = op->getParentOfType<ModuleOp>();
-    int numWarps = triton::gpu::TritonGPUDialect::getNumWarps(mod);
-    auto CTALayout = triton::gpu::getCTALayout(oldRetType.getEncoding());
+    int num_warps = triton::gpu::TritonGPUDialect::getNumWarps(mod);
+    auto cta_layout = triton::gpu::getCTALayout(ret_type.getEncoding());
 
-    auto instrShape =
-        mmaVersionToInstrShape(versionMajor, retShapePerCTA,
-                               cast<RankedTensorType>(a.getType()), numWarps);
-    auto warpsPerTile = getWarpsPerTile(dotOp, retShapePerCTA, versionMajor,
-                                        numWarps, instrShape);
-    NvidiaMmaEncodingAttr mmaEnc =
-        NvidiaMmaEncodingAttr::get(ctx, versionMajor, /*versionMinor=*/0,
-                                   warpsPerTile, CTALayout, instrShape);
-    auto newRetType = RankedTensorType::get(
-        oldRetType.getShape(), oldRetType.getElementType(), mmaEnc);
+    auto instr_shape =
+        mmaVersionToInstrShape(version_major, ret_shape_per_cta,
+                               cast<RankedTensorType>(a.getType()), num_warps);
+    auto warps_per_tile = getWarpsPerTile(
+        dot_op, ret_shape_per_cta, version_major, num_warps, instr_shape);
+    NvidiaMmaEncodingAttr mma_enc =
+        NvidiaMmaEncodingAttr::get(context, version_major, /*versionMinor=*/0,
+                                   warps_per_tile, cta_layout, instr_shape);
+    auto new_ret_type = RankedTensorType::get(
+        ret_type.getShape(), ret_type.getElementType(), mma_enc);
 
     // convert accumulator
-    auto oldAcc = dotOp.getOperand(2);
-    auto newAcc = rewriter.create<triton::gpu::ConvertLayoutOp>(
-        oldAcc.getLoc(), newRetType, oldAcc);
+    auto acc = dot_op.getOperand(2);
+    auto new_acc =
+        rewriter.create<ConvertLayoutOp>(acc.getLoc(), new_ret_type, acc);
 
-    if (versionMajor == 2) {
-      int minBitwidth = std::min(triton::gpu::computeOrigBitWidth(a),
-                                 triton::gpu::computeOrigBitWidth(b));
-      int kWidth = 32 / minBitwidth;
+    if (version_major == 2) {  // MMAV2
+      int min_bit_width = std::min(triton::gpu::computeOrigBitWidth(a),
+                                   triton::gpu::computeOrigBitWidth(b));
+      int k_width = 32 / min_bit_width;
 
       // convert A operand
-      auto oldAType = cast<RankedTensorType>(a.getType());
-      auto newAEncoding = DotOperandEncodingAttr::get(ctx, 0, mmaEnc, kWidth);
-      auto newAType = RankedTensorType::get(
-          oldAType.getShape(), oldAType.getElementType(), newAEncoding);
-      a = rewriter.create<ConvertLayoutOp>(a.getLoc(), newAType, a);
+      auto new_a_encoding =
+          DotOperandEncodingAttr::get(context, 0, mma_enc, k_width);
+      auto a_type = cast<RankedTensorType>(a.getType());
+      a_type = RankedTensorType::get(a_type.getShape(), a_type.getElementType(),
+                                     new_a_encoding);
+      a = rewriter.create<ConvertLayoutOp>(a.getLoc(), a_type, a);
 
       // convert B operand
-      auto oldBType = cast<RankedTensorType>(b.getType());
-      auto newBEncoding = DotOperandEncodingAttr::get(ctx, 1, mmaEnc, kWidth);
-      auto newBType = RankedTensorType::get(
-          oldBType.getShape(), oldBType.getElementType(), newBEncoding);
-      b = rewriter.create<ConvertLayoutOp>(b.getLoc(), newBType, b);
-    } else {
-      auto eltType = dotOp.getA().getType().getElementType();
+      auto new_b_encoding =
+          DotOperandEncodingAttr::get(context, 1, mma_enc, k_width);
+      auto b_type = cast<RankedTensorType>(b.getType());
+      b_type = RankedTensorType::get(b_type.getShape(), b_type.getElementType(),
+                                     new_b_encoding);
+      b = rewriter.create<ConvertLayoutOp>(b.getLoc(), b_type, b);
+
+    } else {  // MMAV3
+      assert(version_major == 3 &&
+             "Sparsity is only supported with MMAV2 or higher");
+      auto elt_type = dot_op.getA().getType().getElementType();
       // In MMAV3 transpose is only supported for f16 and bf16.
-      bool allowTranspose = eltType.isF16() || eltType.isBF16();
-      a = triton::gpu::getSharedMemMMAOperand(a, rewriter, 0, allowTranspose);
-      b = triton::gpu::getSharedMemMMAOperand(b, rewriter, 1, allowTranspose);
+      bool allow_transpose = elt_type.isF16() || elt_type.isBF16();
+      // Shared memory allocations that will be used by the dot op.
+      a = triton::gpu::getSharedMemMMAOperand(a, rewriter, 0, allow_transpose);
+      b = triton::gpu::getSharedMemMMAOperand(b, rewriter, 1, allow_transpose);
     }
 
     // convert metadata
-    Value meta = dotOp.getAMeta();
-    auto oldMetaType = cast<RankedTensorType>(meta.getType());
-    auto newMetaType = RankedTensorType::get(
-        oldMetaType.getShape(), oldMetaType.getElementType(),
-        SparseDotMetaEncodingAttr::get(ctx, mmaEnc));
-    meta = rewriter.create<ConvertLayoutOp>(meta.getLoc(), newMetaType, meta);
+    Value meta = dot_op.getAMeta();
+    auto meta_type = cast<RankedTensorType>(meta.getType());
+    meta_type = RankedTensorType::get(
+        meta_type.getShape(), meta_type.getElementType(),
+        triton::gpu::SparseDotMetaEncodingAttr::get(context, mma_enc));
+    meta = rewriter.create<ConvertLayoutOp>(meta.getLoc(), meta_type, meta);
 
     // convert dot instruction
-    auto newDot = rewriter.create<SparseDotOp>(dotOp.getLoc(), newRetType, a, b,
-                                               newAcc, meta);
+    auto new_dot = rewriter.create<SparseDotOp>(dot_op.getLoc(), new_ret_type,
+                                                a, b, new_acc, meta);
 
-    rewriter.replaceOpWithNewOp<ConvertLayoutOp>(op, oldRetType,
-                                                 newDot.getResult());
+    // convert back to return type
+    rewriter.replaceOpWithNewOp<ConvertLayoutOp>(op, ret_type,
+                                                 new_dot.getResult());
     return success();
   }
 
