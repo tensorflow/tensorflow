@@ -113,8 +113,8 @@ absl::StatusOr<HandlerRegistration> FindHandler(std::string_view name,
                                                 std::string_view platform);
 
 // Returns all registered calls in the static registry for a given platform.
-absl::flat_hash_map<std::string, HandlerRegistration> StaticRegisteredHandlers(
-    std::string_view platform);
+absl::StatusOr<absl::flat_hash_map<std::string, HandlerRegistration>>
+StaticRegisteredHandlers(std::string_view platform);
 
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation
