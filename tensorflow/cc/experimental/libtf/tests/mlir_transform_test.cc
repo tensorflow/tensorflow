@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/cc/experimental/libtf/object.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace tf {
 namespace libtf {

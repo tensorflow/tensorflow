@@ -945,8 +945,7 @@ void HloCollectiveInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
   HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
   printer.Next([this](Printer* printer) {
-    AppendCat(printer,
-              "replica_groups=", ReplicaGroupsToString(replica_groups()));
+    AppendCat(printer, "replica_groups=", device_list_.ToString());
   });
   if (constrain_layout_) {
     printer.Next(

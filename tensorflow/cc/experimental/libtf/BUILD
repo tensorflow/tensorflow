@@ -115,7 +115,7 @@ tf_cc_test(
         ":libtf",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -127,6 +127,7 @@ tf_cc_test(
         ":libtf",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_benchmark//:benchmark",
     ],
 )
 
@@ -147,6 +148,7 @@ tf_cc_test(
     srcs = ["tests/visit_test.cc"],
     deps = [
         ":libtf",
+        "//tensorflow/cc/experimental/libtf/impl:scalars",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -173,8 +175,11 @@ cc_library(
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "//testing/base/public:gunit_for_library_testonly",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -186,8 +191,8 @@ tf_cc_test(
     ],
     deps = [
         ":runtime_test",
-        "//tensorflow/cc/experimental/libtf/runtime",
         "//tensorflow/cc/experimental/libtf/runtime/core",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -200,15 +205,18 @@ tf_cc_test(
         ":libtf",
         ":module",
         "//tensorflow/cc/experimental/libexport:load",
+        "//tensorflow/cc/experimental/libtf/runtime",
         "//tensorflow/cc/experimental/libtf/runtime/core",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "//third_party/protobuf",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -219,18 +227,19 @@ tf_cc_test(
     tags = ["no_oss"],  # TODO(b/193268458): Need to disable TFRT.
     deps = [
         ":libtf",
+        "//tensorflow/c:tf_datatype_hdrs",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api_experimental",
-        "//tensorflow/c/eager:c_api_unified_internal",
         "//tensorflow/c/eager:unified_api_testutil",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
-        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -242,19 +251,25 @@ tf_cc_test(
     deps = [
         ":function",
         ":libtf",
+        "//tensorflow/c:tf_datatype_hdrs",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_hdrs",
         "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:abstract_function",
         "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:graph_function",
         "//tensorflow/c/eager:unified_api_testutil",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:refcount",
-        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -264,13 +279,15 @@ tf_cc_test(
     srcs = ["tests/variable_test.cc"],
     tags = ["no_oss"],  # TODO(b/193268458): Need to disable TFRT.
     deps = [
-        ":function",
         ":libtf",
+        "//tensorflow/c:tf_datatype_hdrs",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_hdrs",
         "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:abstract_function",
         "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/eager:graph_function",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:unified_api_testutil",
         "//tensorflow/c/experimental/ops:resource_variable_ops",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
@@ -279,8 +296,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:refcount",
-        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -298,6 +315,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/platform:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

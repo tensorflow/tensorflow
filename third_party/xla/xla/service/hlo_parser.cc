@@ -310,6 +310,7 @@ class HloParserImpl : public HloParser {
     // A double-quoted string, or a string that looks like a JSON dictionary
     // enclosed in matching curly braces (returned value includes the curlies).
     kStringOrJsonDict,
+    kCollectiveDeviceList,
   };
 
   struct AttrConfig {
@@ -492,8 +493,13 @@ class HloParserImpl : public HloParser {
   bool ParseOpShardingType(OpSharding::Type* type);
   bool ParseListShardingType(std::vector<OpSharding::Type>* types);
   bool ParseSharding(OpSharding* sharding);
+  bool ParseCollectiveDeviceList(CollectiveDeviceList* device_list);
   bool ParseFrontendAttributes(FrontendAttributes* frontend_attributes);
   bool ParseStatisticsViz(StatisticsViz* statistics_viz);
+  bool ParseTileAssignment(std::vector<int64_t>& tile_assignment_dimensions,
+                           std::vector<int64_t>& iota_reshape_dims,
+                           std::vector<int>& iota_transpose_perm,
+                           std::vector<int64_t>* devices);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
   bool ParseBooleanListOrSingleBoolean(BoolList* boolean_list);
@@ -1657,14 +1663,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
-      optional<std::vector<std::vector<int64_t>>> tmp_groups;
-      optional<std::vector<int64_t>> replica_group_ids;
+      CollectiveDeviceList device_list;
       optional<int64_t> channel_id;
       optional<std::vector<int64_t>> dimensions;
       optional<bool> constrain_layout;
       optional<bool> use_global_device_ids;
       attrs["replica_groups"] = {/*required=*/false,
-                                 AttrTy::kBracedInt64ListList, &tmp_groups};
+                                 AttrTy::kCollectiveDeviceList, &device_list};
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
@@ -1676,11 +1681,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
-      std::vector<ReplicaGroup> replica_groups;
-      if (tmp_groups) {
-        replica_groups = CreateReplicaGroups(*tmp_groups);
-      }
-      CollectiveDeviceList device_list(replica_groups);
       if (opcode == HloOpcode::kAllGather) {
         return builder->AddInstruction(HloInstruction::CreateAllGather(
             *shape, operands, dimensions->at(0), device_list,
@@ -1695,9 +1695,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kReduceScatter: {
-      optional<std::vector<std::vector<int64_t>>> tmp_groups;
+      CollectiveDeviceList device_list;
       optional<HloComputation*> to_apply;
-      optional<std::vector<int64_t>> replica_group_ids;
       optional<int64_t> channel_id;
       optional<bool> constrain_layout;
       optional<bool> use_global_device_ids;
@@ -1705,7 +1704,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
-                                 AttrTy::kBracedInt64ListList, &tmp_groups};
+                                 AttrTy::kCollectiveDeviceList, &device_list};
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
                                    &constrain_layout};
@@ -1719,11 +1718,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
-      std::vector<ReplicaGroup> replica_groups;
-      if (tmp_groups) {
-        replica_groups = CreateReplicaGroups(*tmp_groups);
-      }
-      CollectiveDeviceList device_list(replica_groups);
       if (opcode == HloOpcode::kAllReduce) {
         return builder->AddInstruction(HloInstruction::CreateAllReduce(
             *shape, operands, *to_apply, device_list,
@@ -1742,9 +1736,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           use_global_device_ids ? *use_global_device_ids : false));
     }
     case HloOpcode::kAllToAll: {
-      optional<std::vector<std::vector<int64_t>>> tmp_groups;
+      CollectiveDeviceList device_list;
       attrs["replica_groups"] = {/*required=*/false,
-                                 AttrTy::kBracedInt64ListList, &tmp_groups};
+                                 AttrTy::kCollectiveDeviceList, &device_list};
       optional<int64_t> channel_id;
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       optional<std::vector<int64_t>> dimensions;
@@ -1758,36 +1752,27 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           (dimensions && dimensions->size() != 1)) {
         return nullptr;
       }
-      std::vector<ReplicaGroup> replica_groups;
-      if (tmp_groups) {
-        replica_groups = CreateReplicaGroups(*tmp_groups);
-      }
       optional<int64_t> split_dimension;
       if (dimensions) {
         split_dimension = dimensions->at(0);
       }
       return builder->AddInstruction(HloInstruction::CreateAllToAll(
-          *shape, operands, CollectiveDeviceList(replica_groups),
+          *shape, operands, device_list,
           constrain_layout ? *constrain_layout : false, channel_id,
           split_dimension));
     }
     case HloOpcode::kCollectiveBroadcast: {
-      optional<std::vector<std::vector<int64_t>>> tmp_groups;
+      CollectiveDeviceList device_list;
       attrs["replica_groups"] = {/*required=*/true,
-                                 AttrTy::kBracedInt64ListList, &tmp_groups};
+                                 AttrTy::kCollectiveDeviceList, &device_list};
       optional<int64_t> channel_id;
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
-      std::vector<ReplicaGroup> replica_groups;
-      if (tmp_groups) {
-        replica_groups = CreateReplicaGroups(*tmp_groups);
-      }
       return builder->AddInstruction(HloInstruction::CreateCollectiveBroadcast(
-          *shape, operands, CollectiveDeviceList(replica_groups), false,
-          channel_id));
+          *shape, operands, device_list, false, channel_id));
     }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {
@@ -3322,6 +3307,51 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
   }
 }  // NOLINT(readability/fn_size)
 
+// ::= '{' <full_device_list> '}' | iota_list
+// full_device_list ::= '{' <int_list> '}' ( ',' '{' <int_list> '}' )*
+// iota_list ::= ('[' d ']')  '<=[' reshape_d ']' ('T(' transpose_d ')')?
+// d ::= int_list
+// reshape_d ::= int_list
+// transpose_d ::= int_list
+bool HloParserImpl::ParseCollectiveDeviceList(
+    CollectiveDeviceList* device_list) {
+  // If the first token is a '{', then we are parsing legacy version of
+  // collective device list, which is a list of lists.
+  if (lexer_.GetKind() == TokKind::kLbrace) {
+    std::vector<ReplicaGroup> replica_groups;
+    if (!ParseReplicaGroupsOnly(&replica_groups)) {
+      return false;
+    }
+    *device_list = CollectiveDeviceList(replica_groups);
+    return true;
+  }
+
+  // Otherwise, we are parsing the new version of collective device list, which
+  // is an iota tile assignment.
+  std::vector<int64_t> tile_assignment_dimensions;
+  std::vector<int64_t> iota_reshape_dims;
+  std::vector<int> iota_transpose_perm;
+  // Parse the tile assignment expecting an iota tile assignment.
+  if (!ParseTileAssignment(tile_assignment_dimensions, iota_reshape_dims,
+                           iota_transpose_perm, nullptr)) {
+    return false;
+  }
+
+  // Iota tile assignment associated with collective device list should only
+  // have 2 dimensions.
+  if (tile_assignment_dimensions.size() != 2) {
+    VLOG(1) << "Expected tile assignment to have 2 dimensions for collective "
+               "device list but got "
+            << tile_assignment_dimensions.size();
+    return false;
+  }
+
+  *device_list = CollectiveDeviceList(IotaReplicaGroupList(
+      tile_assignment_dimensions[0], tile_assignment_dimensions[1],
+      iota_reshape_dims, iota_transpose_perm));
+  return true;
+}
+
 // ::= '{' (single_sharding | tuple_sharding) '}'
 //
 // tuple_sharding ::= single_sharding* (',' single_sharding)*
@@ -3430,6 +3460,97 @@ bool HloParserImpl::ParseStatisticsViz(StatisticsViz* statistics_viz) {
   return ParseToken(TokKind::kRbrace, "expects '}' at the end of statistics");
 }
 
+// devices argument is optional: if not present, the tile assignment is assumed
+// to be an iota tile assignment.
+bool HloParserImpl::ParseTileAssignment(
+    std::vector<int64_t>& tile_assignment_dimensions,
+    std::vector<int64_t>& iota_reshape_dims,
+    std::vector<int>& iota_transpose_perm, std::vector<int64_t>* devices) {
+  if (!ParseToken(TokKind::kLsquare,
+                  "expected '[' to start sharding devices shape")) {
+    return false;
+  }
+
+  do {
+    int64_t dim;
+    if (!ParseInt64(&dim)) {
+      return false;
+    }
+    tile_assignment_dimensions.push_back(dim);
+  } while (EatIfPresent(TokKind::kComma));
+
+  if (!ParseToken(TokKind::kRsquare,
+                  "expected ']' to end sharding devices shape")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kLeq) {
+    lexer_.Lex();
+    if (!ParseToken(TokKind::kLsquare,
+                    "expected '[' to start sharding iota_reshape_dims")) {
+      return false;
+    }
+    do {
+      int64_t dim;
+      if (!ParseInt64(&dim)) {
+        return false;
+      }
+      iota_reshape_dims.push_back(dim);
+    } while (EatIfPresent(TokKind::kComma));
+    if (iota_reshape_dims.empty()) {
+      return TokenError("expected non-empty iota_reshape_dims");
+    }
+    if (!ParseToken(TokKind::kRsquare,
+                    "expected ']' to end sharding iota_reshape_dims")) {
+      return false;
+    }
+    if (iota_reshape_dims.size() == 1) {
+      iota_transpose_perm.push_back(0);
+    } else {
+      if (lexer_.GetKind() != TokKind::kIdent || lexer_.GetStrVal() != "T") {
+        return TokenError(
+            "expected 'T(' to start sharding devices "
+            "iota_transpose_perm");
+      }
+      lexer_.Lex();
+      if (!ParseToken(TokKind::kLparen,
+                      "expected 'T(' to start sharding devices "
+                      "iota_transpose_perm")) {
+        return false;
+      }
+      do {
+        int64_t dim;
+        if (!ParseInt64(&dim)) {
+          return false;
+        }
+        if (dim >= iota_reshape_dims.size()) {
+          return TokenError(absl::StrFormat(
+              "Out of range iota minor_to_major value %lld.", dim));
+        }
+        iota_transpose_perm.push_back(dim);
+      } while (EatIfPresent(TokKind::kComma));
+      if (!ParseToken(TokKind::kRparen,
+                      "expected ')' to end sharding devices "
+                      "iota_transpose_perm")) {
+        return false;
+      }
+    }
+  } else {
+    if (!devices) {
+      return TokenError(
+          "Caller expected iota tile assignment when parsing, which should not "
+          "have any manual device entries.");
+    }
+    do {
+      int64_t device;
+      if (!ParseInt64(&device)) {
+        return false;
+      }
+      devices->push_back(device);
+    } while (EatIfPresent(TokKind::kComma));
+  }
+  return true;
+}
+
 // ::= '{' 'replicated'? 'manual'? 'maximal'? 'unknown'? ('device=' int)? shape?
 //         ('devices=' ('[' dims ']')* device_list)?
 //         (('shard_like' | 'shard_as') int)* '}'
@@ -3490,84 +3611,10 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
           lexer_.Lex();
         } else if (lexer_.GetStrVal() == "devices") {
           lexer_.Lex();
-          if (!ParseToken(TokKind::kLsquare,
-                          "expected '[' to start sharding devices shape")) {
+          if (!ParseTileAssignment(tile_assignment_dimensions,
+                                   iota_reshape_dims, iota_transpose_perm,
+                                   &devices)) {
             return false;
-          }
-
-          do {
-            int64_t dim;
-            if (!ParseInt64(&dim)) {
-              return false;
-            }
-            tile_assignment_dimensions.push_back(dim);
-          } while (EatIfPresent(TokKind::kComma));
-
-          if (!ParseToken(TokKind::kRsquare,
-                          "expected ']' to end sharding devices shape")) {
-            return false;
-          }
-          if (lexer_.GetKind() == TokKind::kLeq) {
-            lexer_.Lex();
-            if (!ParseToken(
-                    TokKind::kLsquare,
-                    "expected '[' to start sharding iota_reshape_dims")) {
-              return false;
-            }
-            do {
-              int64_t dim;
-              if (!ParseInt64(&dim)) {
-                return false;
-              }
-              iota_reshape_dims.push_back(dim);
-            } while (EatIfPresent(TokKind::kComma));
-            if (iota_reshape_dims.empty()) {
-              return TokenError("expected non-empty iota_reshape_dims");
-            }
-            if (!ParseToken(TokKind::kRsquare,
-                            "expected ']' to end sharding iota_reshape_dims")) {
-              return false;
-            }
-            if (iota_reshape_dims.size() == 1) {
-              iota_transpose_perm.push_back(0);
-            } else {
-              if (lexer_.GetKind() != TokKind::kIdent ||
-                  lexer_.GetStrVal() != "T") {
-                return TokenError(
-                    "expected 'T(' to start sharding devices "
-                    "iota_transpose_perm");
-              }
-              lexer_.Lex();
-              if (!ParseToken(TokKind::kLparen,
-                              "expected 'T(' to start sharding devices "
-                              "iota_transpose_perm")) {
-                return false;
-              }
-              do {
-                int64_t dim;
-                if (!ParseInt64(&dim)) {
-                  return false;
-                }
-                if (dim >= iota_reshape_dims.size()) {
-                  return TokenError(absl::StrFormat(
-                      "Out of range iota minor_to_major value %lld.", dim));
-                }
-                iota_transpose_perm.push_back(dim);
-              } while (EatIfPresent(TokKind::kComma));
-              if (!ParseToken(TokKind::kRparen,
-                              "expected ')' to end sharding devices "
-                              "iota_transpose_perm")) {
-                return false;
-              }
-            }
-          } else {
-            do {
-              int64_t device;
-              if (!ParseInt64(&device)) {
-                return false;
-              }
-              devices.push_back(device);
-            } while (EatIfPresent(TokKind::kComma));
           }
         } else if (lexer_.GetStrVal() == "metadata") {
           lexer_.Lex();
@@ -4765,6 +4812,14 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<OpSharding>*>(attr_out_ptr)->emplace(sharding);
+        return true;
+      }
+      case AttrTy::kCollectiveDeviceList: {
+        CollectiveDeviceList device_list;
+        if (!ParseCollectiveDeviceList(&device_list)) {
+          return false;
+        }
+        *(static_cast<CollectiveDeviceList*>(attr_out_ptr)) = device_list;
         return true;
       }
       case AttrTy::kFrontendAttributes: {

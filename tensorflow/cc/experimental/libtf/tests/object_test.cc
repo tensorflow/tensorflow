@@ -17,10 +17,9 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/cc/experimental/libtf/value.h"
-#include "tensorflow/cc/experimental/libtf/value_iostream.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace tf {
 namespace libtf {

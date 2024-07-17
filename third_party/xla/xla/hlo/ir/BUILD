@@ -217,3 +217,14 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+xla_cc_test(
+    name = "collective_device_list_test",
+    srcs = ["collective_device_list_test.cc"],
+    deps = [
+        ":hlo",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
