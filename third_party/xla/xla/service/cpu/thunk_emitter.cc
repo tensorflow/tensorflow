@@ -874,6 +874,7 @@ static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
       /*arguments_shapes=*/std::move(arguments_shapes),
       /*results_buffers=*/std::move(results_buffers),
       /*results_shapes=*/std::move(results_shapes),
+      /*is_tuple_result=*/instruction->shape().IsTuple(),
   };
 }
 
