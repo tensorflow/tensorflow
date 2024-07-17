@@ -15,10 +15,19 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h"  // from @eigen_archive
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 // TODO(intel-tf): Move all MKL ops in this file to a separate file,
 // mkl_math_ops.cc.
