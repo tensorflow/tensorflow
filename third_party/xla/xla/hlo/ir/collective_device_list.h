@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -35,12 +36,21 @@ namespace xla {
 class IotaReplicaGroupList {
  public:
   explicit IotaReplicaGroupList(int64_t num_replica_groups,
+                                int64_t num_devices_per_group)
+      : iota_tile_assignment_(IotaTileAssignment::Create(
+            {num_replica_groups, num_devices_per_group})),
+        num_replica_groups_(num_replica_groups),
+        num_devices_per_group_(num_devices_per_group) {}
+
+  explicit IotaReplicaGroupList(int64_t num_replica_groups,
                                 int64_t num_devices_per_group,
                                 absl::Span<const int64_t> reshape_dims,
                                 absl::Span<const int> transpose_perm)
       : iota_tile_assignment_(IotaTileAssignment::Create(
             {num_replica_groups, num_devices_per_group}, reshape_dims,
-            transpose_perm)) {}
+            transpose_perm)),
+        num_replica_groups_(num_replica_groups),
+        num_devices_per_group_(num_devices_per_group) {}
 
   int64_t num_replica_groups() const;
   int64_t num_devices_per_group() const;
@@ -52,10 +62,12 @@ class IotaReplicaGroupList {
   }
   Array<int64_t> ToArray() const { return iota_tile_assignment_.ToArray(); }
 
+  std::string ToString() const;
+
  private:
   IotaTileAssignment iota_tile_assignment_;
-  mutable int64_t num_replica_groups_ = -1;
-  mutable int64_t num_devices_per_group_ = -1;
+  int64_t num_replica_groups_ = -1;
+  int64_t num_devices_per_group_ = -1;
 };
 
 // Represents a series of devices participating in a collective operation
@@ -82,6 +94,8 @@ class CollectiveDeviceList {
     return iota_replica_group_list_;
   }
 
+  std::string ToString() const;
+
  private:
   void MaybeMaterializeFullReplicaGroupList() const;
   std::optional<IotaReplicaGroupList> iota_replica_group_list_ = std::nullopt;
@@ -89,6 +103,9 @@ class CollectiveDeviceList {
       replica_groups_shared_ = nullptr;
   mutable const std::vector<ReplicaGroup>* replica_groups_ = nullptr;
 };
+
+std::string ReplicaGroupsToString(
+    absl::Span<const ReplicaGroup> replica_groups);
 
 }  // namespace xla
 
