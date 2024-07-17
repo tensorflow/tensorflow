@@ -768,6 +768,25 @@ func.func @conv2d_nhwc_ohwi_nhwc_rhs_dilated(%input: tensor<1x256x256x3xf32>, %f
 
 // -----
 
+// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_with_strides
+func.func @conv2d_nhwc_ohwi_nhwc_with_strides(%input: tensor<1x115x115x96xf32>, %filter: tensor<96x7x7x96xf32>) -> tensor<1x55x55x96xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {stride = [2, 2], pad = [[0, 0], [0, 0]]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    window_strides = dense<2> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
+    lhs_dilation = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<1x115x115x96xf32>, tensor<96x7x7x96xf32>) -> tensor<1x55x55x96xf32>
+  func.return %0 : tensor<1x55x55x96xf32>
+}
+
+// CHECK: "tfl.conv_2d"(%arg0, %arg1, %cst) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<1x115x115x96xf32>, tensor<96x7x7x96xf32>, tensor<96xf32>) -> tensor<1x55x55x96xf32>
+
+// -----
+
 // TODO: b/351437662 - Add support for dynamic batch.
 // CHECK-LABEL: conv2d_nhwc_ohwi_nhwc
 func.func @conv2d_nhwc_ohwi_nhwc_dynamic_batch(%input: tensor<?x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<?x256x256x2xf32> {
@@ -778,146 +797,6 @@ func.func @conv2d_nhwc_ohwi_nhwc_dynamic_batch(%input: tensor<?x256x256x3xf32>, 
     feature_group_count = 1 : i64
   } : (tensor<?x256x256x3xf32>, tensor<2x1x1x3xf32>) -> tensor<?x256x256x2xf32>
   func.return %0 : tensor<?x256x256x2xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_nhwc_hwio_nhwc
-func.func @conv2d_nhwc_hwio_nhwc(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<1> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
-  func.return %0 : tensor<1x8x8x16xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_nhwc_hwio_hwnc
-func.func @conv2d_nhwc_hwio_hwnc(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<8x8x1x16xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[0, 1, b, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<1> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<8x8x1x16xf32>
-  func.return %0 : tensor<8x8x1x16xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_nhwc_hwio_nhwc_dynamic_batch
-func.func @conv2d_nhwc_hwio_nhwc_dynamic_batch(%arg0: tensor<?x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<?x8x8x16xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<1> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<?x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<?x8x8x16xf32>
-  func.return %0 : tensor<?x8x8x16xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_explicit_padding
-func.func @conv2d_nhwc_ohwi_nhwc_explicit_padding(%arg0: tensor<64x8x8x8xf32>, %arg1: tensor<64x8x8x8xf32>) -> tensor<64x3x3x64xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<1> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<64x8x8x8xf32>, tensor<64x8x8x8xf32>) -> tensor<64x3x3x64xf32>
-  func.return %0 : tensor<64x3x3x64xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_explicit_padding_dynamic_batch
-func.func @conv2d_nhwc_ohwi_nhwc_explicit_padding_dynamic_batch(%arg0: tensor<?x8x8x8xf32>, %arg1: tensor<64x8x8x8xf32>) -> tensor<?x3x3x64xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<1> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<?x8x8x8xf32>, tensor<64x8x8x8xf32>) -> tensor<?x3x3x64xf32>
-  func.return %0 : tensor<?x3x3x64xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_negative_explicit_padding
-func.func @conv2d_nhwc_ohwi_nhwc_negative_explicit_padding(%arg0: tensor<128x7x9x64xf32>, %arg1: tensor<4x3x2x64xf32>) -> tensor<128x4x3x4xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<[[4, -2], [-5, 2]]> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<2> : tensor<2xi64>
-  } : (tensor<128x7x9x64xf32>, tensor<4x3x2x64xf32>) -> tensor<128x4x3x4xf32>
-  func.return %0 : tensor<128x4x3x4xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_negative_explicit_padding_dynamic_batch
-func.func @conv2d_nhwc_ohwi_nhwc_negative_explicit_padding_dynamic_batch(%arg0: tensor<?x7x9x64xf32>, %arg1: tensor<4x3x2x64xf32>) -> tensor<?x4x3x4xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<[[4, -2], [-5, 2]]> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<2> : tensor<2xi64>
-  } : (tensor<?x7x9x64xf32>, tensor<4x3x2x64xf32>) -> tensor<?x4x3x4xf32>
-  func.return %0 : tensor<?x4x3x4xf32>
 }
 
 // CHECK-NOT: tfl
@@ -999,65 +878,6 @@ func.func @group_conv2d_nhwc_ohwi_nhwc(%arg0: tensor<1x14x14x2240xf32>, %arg1: t
     window_strides = dense<2> : tensor<2xi64>
   } : (tensor<1x14x14x2240xf32>, tensor<2240x3x3x112xf32>) -> tensor<1x7x7x2240xf32>
   func.return %0 : tensor<1x7x7x2240xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_back_prop_input_same_pad_nhwc_hwoi_nhwc
-func.func @conv2d_back_prop_input_same_pad_nhwc_hwoi_nhwc(%arg0: tensor<1x256x256x2xf32>, %arg1: tensor<4x4x2x2xf32>) -> tensor<1x512x512x2xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<2> : tensor<2xi64>,
-    padding = dense<[[2, 2], [2, 2]]> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<1x256x256x2xf32>, tensor<4x4x2x2xf32>) -> tensor<1x512x512x2xf32>
-  func.return %0 : tensor<1x512x512x2xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-// CHECK-LABEL: conv2d_back_prop_input_nhwc_hwoi_nhwc
-func.func @conv2d_back_prop_input_nhwc_hwoi_nhwc(%arg0: tensor<8x4x4x32xf32>, %arg1: tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<2> : tensor<2xi64>,
-    padding = dense<[[2, 1], [2, 1]]> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<8x4x4x32xf32>, tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32>
-  func.return %0 : tensor<8x8x8x64xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Copy this test case to "prepare" phase when it exists.
-func.func @conv2d_back_prop_input_negative_pad_nhwc_hwoi_nhwc(%arg0: tensor<1x256x256x2xf32>, %arg1: tensor<4x4x2x2xf32>) -> tensor<1x504x504x2xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<2> : tensor<2xi64>,
-    padding = dense<[[-2, -2], [-2, -2]]> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<1x256x256x2xf32>, tensor<4x4x2x2xf32>) -> tensor<1x504x504x2xf32>
-  func.return %0 : tensor<1x504x504x2xf32>
 }
 
 // CHECK-NOT: tfl
