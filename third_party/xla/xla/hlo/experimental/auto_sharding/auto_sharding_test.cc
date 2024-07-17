@@ -809,7 +809,7 @@ ENTRY %entry {
                       op::Sharding("{devices=[2,2]0,1,2,3}"))));
 }
 
-TEST_F(AutoShardingTest, TwoMatmul) {
+TEST_F(AutoShardingTest, TwoMatmulWithoutDotReplicationEnabled) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 ENTRY twomatmul {
@@ -852,9 +852,22 @@ ENTRY twomatmul {
   ASSERT_NE(dot5, nullptr);
   EXPECT_THAT(dot5,
               op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}"));
+}
 
-  // Test with replicated strategies on for dot
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHloString));
+TEST_F(AutoShardingTest, TwoMatmulWithDotReplicationEnabled) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+ENTRY twomatmul {
+  parameter.1 = f32[64,64]{1,0} parameter(0)
+  parameter.2 = f32[64,128]{1,0} parameter(1)
+  dot.4 = f32[64,128]{1,0} dot(parameter.1, parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  parameter.3 = f32[128,64]{1,0} parameter(2)
+  ROOT dot.5 = f32[64,64]{1,0} dot(dot.4, parameter.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
   option.enable = true;
   option.allow_recompute_heavy_op = true;
   option.allow_mixed_mesh_shape = false;
@@ -862,14 +875,14 @@ ENTRY twomatmul {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(changed, AutoSharding(option).Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  param1 = FindInstruction(module.get(), "parameter.1");
-  param2 = FindInstruction(module.get(), "parameter.2");
-  param3 = FindInstruction(module.get(), "parameter.3");
-  dot4 = FindInstruction(module.get(), "dot.4");
-  dot5 = FindInstruction(module.get(), "dot.5");
+  const HloInstruction* param1 = FindInstruction(module.get(), "parameter.1");
+  const HloInstruction* param2 = FindInstruction(module.get(), "parameter.2");
+  const HloInstruction* param3 = FindInstruction(module.get(), "parameter.3");
+  const HloInstruction* dot4 = FindInstruction(module.get(), "dot.4");
+  const HloInstruction* dot5 = FindInstruction(module.get(), "dot.5");
   ASSERT_NE(param1, nullptr);
   ASSERT_NE(param2, nullptr);
   ASSERT_NE(param3, nullptr);
