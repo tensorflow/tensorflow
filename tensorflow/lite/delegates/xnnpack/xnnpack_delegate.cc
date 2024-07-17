@@ -4286,10 +4286,15 @@ class Subgraph {
                              -1);
           return kTfLiteError;
         }
+        // TODO(b/340399245) - Remove the flags parameter once we have a better
+        // solution for `qp8` kernels.
         status = xnn_define_convert(
             subgraph,
             /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-            dq_quantized_id, /*flags=*/0);
+            dq_quantized_id, /*flags=*/
+            (filter_tensor.type == kTfLiteInt4)
+                ? 0x00000080 /*XNN_FLAG_MAYBE_PACK_FOR_GEMM*/
+                : 0);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(
               logging_context, "failed to delegate %s node #%d",
