@@ -181,56 +181,6 @@ absl::Status RegisterExtraTfOpDefs(
   return absl::OkStatus();
 }
 
-// The hlo->tf conversion is done in three steps; pre-quantization,
-// quantization, and post-quantization. Quantization is optional, enabled only
-// when `pass_config.enable_stablehlo_quantizer` is `true`. If quantization is
-// not run, it only performs the hlo->tf conversion.
-//
-// All parameters except for `pass_config`, `pass_manager`, `status_handler`,
-// and `module` are only required for quantization. See the comments of
-// `RunQuantization` for details. If quantization is not performed, they will be
-// ignored.
-//
-// Returns a failure status when any of the three steps fail. `pass_manager`
-// will be cleared before returning.
-mlir::LogicalResult RunHloToTfConversion(
-    const mlir::TFL::PassConfig& pass_config,
-    const absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& saved_model_tags,
-    QuantizationConfig* quantization_config,
-    const PyFunctionLibrary* quantization_py_function_lib,
-    const SavedModelBundle* saved_model_bundle, mlir::PassManager& pass_manager,
-    mlir::StatusScopedDiagnosticHandler& status_handler, ModuleOp module) {
-  // TODO: b/194747383 - We need to valid that indeed the "main" func is
-  // presented.
-  AddPreQuantizationStableHloToTfPasses(/*entry_function_name=*/"main",
-                                        pass_config, pass_manager);
-  if (failed(pass_manager.run(module))) {
-    return mlir::failure();
-  }
-  pass_manager.clear();
-
-  if (pass_config.enable_stablehlo_quantizer) {
-    const absl::StatusOr<mlir::ModuleOp> quantized_module_op = RunQuantization(
-        saved_model_bundle, saved_model_dir, saved_model_tags,
-        *quantization_config, quantization_py_function_lib, module);
-    if (!quantized_module_op.ok()) {
-      LOG(ERROR) << "Failed to run quantization: "
-                 << quantized_module_op.status();
-      return mlir::failure();
-    }
-    module = *quantized_module_op;
-  }
-
-  AddPostQuantizationStableHloToTfPasses(pass_config, pass_manager);
-  if (failed(pass_manager.run(module))) {
-    return mlir::failure();
-  }
-  pass_manager.clear();
-
-  return mlir::success();
-}
-
 // This function estimates the size of the module in bytes. It does so by
 // iterating through all the constant-like attributes and tensors in the module
 // and summing up their sizes.
@@ -482,6 +432,10 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::unique_ptr<SavedModelBundle>&& saved_model_bundle, std::string* result,
     bool serialize_stablehlo_ops, bool export_to_mlir,
     const PyFunctionLibrary* quantization_py_function_lib) {
+  // TODO: b/353597396 - Remove this once the StableHLO Quantizer is fully
+  // eliminated from the TFLite Converter.
+  (void)quantization_py_function_lib;
+
   // Explicitly disable dumping Op details on failures.
   context->printOpOnDiagnostic(false);
 
@@ -522,13 +476,20 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   if (pass_config.enable_hlo_to_tf_conversion) {
-    if (failed(RunHloToTfConversion(
-            pass_config, saved_model_dir, saved_model_tags,
-            toco_flags.mutable_quantization_config(),
-            quantization_py_function_lib, saved_model_bundle.get(),
-            *pass_manager, *status_handler, module.get()))) {
+    // TODO: b/194747383 - We need to valid that indeed the "main" func is
+    // presented.
+    AddPreQuantizationStableHloToTfPasses(/*entry_function_name=*/"main",
+                                          pass_config, *pass_manager);
+    if (failed(pass_manager->run(module.get()))) {
       return status_handler->ConsumeStatus();
     }
+    pass_manager->clear();
+
+    AddPostQuantizationStableHloToTfPasses(pass_config, *pass_manager);
+    if (failed(pass_manager->run(module.get()))) {
+      return status_handler->ConsumeStatus();
+    }
+    pass_manager->clear();
   }
 
   AddPreVariableFreezingTFToTFLConversionPasses(pass_config,
