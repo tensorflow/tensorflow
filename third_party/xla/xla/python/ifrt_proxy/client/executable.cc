@@ -40,6 +40,7 @@
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -180,8 +181,6 @@ absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
 LoadedExecutable::LoadedExecutable(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     uint64_t handle, std::string name, int num_devices,
-    std::vector<xla::ifrt::LoadedExecutable::LogicalDeviceIds>
-        addressable_device_logical_device_ids,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
     Future<> ready_future,
@@ -193,8 +192,6 @@ LoadedExecutable::LoadedExecutable(
       handle_(handle),
       name_(std::move(name)),
       num_devices_(num_devices),
-      addressable_device_logical_device_ids_(
-          std::move(addressable_device_logical_device_ids)),
       addressable_devices_(std::move(addressable_devices)),
       fingerprint_(std::move(fingerprint)),
       ready_future_(std::move(ready_future)) {
@@ -396,9 +393,8 @@ LoadedExecutable::GetHloModules() const {
       "HloModule does not provide stable serialization");
 }
 
-absl::StatusOr<
-    absl::flat_hash_map<std::string, xla::ifrt::Executable::CostAnalysisValue>>
-LoadedExecutable::GetCostAnalysis() const {
+absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
+    const {
   return absl::UnimplementedError("Unimplemented");
 }
 
@@ -486,11 +482,6 @@ bool LoadedExecutable::IsDeleted() const {
     return false;
   }
   return (*response)->is_deleted();
-}
-
-absl::Span<const LoadedExecutable::LogicalDeviceIds>
-LoadedExecutable::addressable_device_logical_ids() const {
-  return addressable_device_logical_device_ids_;
 }
 
 absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()

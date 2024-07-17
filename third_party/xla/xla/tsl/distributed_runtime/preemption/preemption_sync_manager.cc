@@ -15,21 +15,29 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tsl/lib/monitoring/gauge.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 
@@ -88,11 +96,11 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   // midway.
   void CancelPreemptionBarrier();
 
-  mutex mu_;
+  absl::Mutex mu_;
   // Tracks the last step_counter passed into ReachedSyncPoint();
-  int64_t call_counter_ TF_GUARDED_BY(mu_) = 0;
+  int64_t call_counter_ ABSL_GUARDED_BY(mu_) = 0;
   // If set, determines the sync point.
-  int64_t preemption_sync_counter_ TF_GUARDED_BY(mu_) =
+  int64_t preemption_sync_counter_ ABSL_GUARDED_BY(mu_) =
       kPreemptionSyncUnsetCounter;
   std::string current_call_counter_key_;
 
@@ -137,7 +145,7 @@ absl::Status PreemptionSyncManagerImpl::Initialize(
         if (!death_time.ok()) {
           // The preemption notifier invokes callback with Cancelled error when
           // its being destructed.
-          if (errors::IsCancelled(death_time.status())) {
+          if (absl::IsCancelled(death_time.status())) {
             LOG(INFO) << "Preemption sync protocol cancelled by notifier: "
                       << death_time.status()
                       << ". This is expected during program shutdown.";
@@ -162,7 +170,11 @@ absl::Status PreemptionSyncManagerImpl::Initialize(
   call_opts_ = agent_->GetKeyValueAsync(
       kPreemptionNoticeKey,
       [this, agent = agent_](absl::StatusOr<std::string> status_or_death_time) {
-        if (errors::IsCancelled(status_or_death_time.status())) {
+        if (absl::IsCancelled(status_or_death_time.status()) ||
+            // TODO(b/349613356): Investigate if we can always ensure that
+            // the RPC is cancelled before the server goes away, so we can
+            // differentiate between network failure and shutdown behaviour.
+            absl::IsUnavailable(status_or_death_time.status())) {
           // The agent cancels pending GetKeyValue RPCs because of shutdown,
           // so simply log and return.
           LOG(INFO) << "Cancelled call to retrieve preemption notice. This is "
@@ -232,7 +244,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
   // function exits, implying that we have decided on a new
   // `preemption_sync_counter_` or the protocol failed. This ensures correctness
   // of the preemption sync protocol.
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   const absl::Status notified_status = agent_->InsertKeyValue(
       current_call_counter_key_, std::to_string(call_counter_));
   if (!notified_status.ok()) {
@@ -304,7 +316,7 @@ bool PreemptionSyncManagerImpl::ReachedSyncPoint(int step_counter) {
   // is ongoing , this method will be blocked until it acquires the lock. This
   // prevents updates to `call_counter_` while `preemption_sync_counter_` is
   // being computed, which ensures correctness of the preemption sync protocol.
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   // Track current call.
   call_counter_ = step_counter;
   VLOG(3) << "Current call counter: " << call_counter_

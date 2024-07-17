@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/literal.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"

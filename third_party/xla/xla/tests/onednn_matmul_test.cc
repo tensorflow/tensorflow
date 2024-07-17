@@ -41,7 +41,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -50,7 +52,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BINARY_ADD"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BINARY_ADD"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -59,7 +63,6 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":[]
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -68,7 +71,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","GELU_TANH"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","GELU_TANH"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -77,7 +82,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","GELU_ERF"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","GELU_ERF"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -86,7 +93,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","ELU"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","ELU"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -95,7 +104,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","TANH"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","TANH"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -104,7 +115,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","RELU6"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","RELU6"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -113,7 +126,17 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","SIGMOID"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","SIGMOID"]
+    ; CHECK-DAG:     }
+    ; CHECK:     }
+    )";
+  const char* fused_matmul_bias_add_str_ = R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:     "onednn_matmul_config":{
+    ; CHECK-DAG:       "fused_ops":["BIAS","BINARY_ADD"]
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -406,7 +429,9 @@ TEST_F(MatmulTest, ApproxGELUTestF32) {
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["GELU_TANH"]
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["GELU_TANH"]
+  ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
@@ -597,7 +622,9 @@ TEST_F(MatmulTest, ExactGELUTestF32) {
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["GELU_ERF"]
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["GELU_ERF"]
+  ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
@@ -810,7 +837,9 @@ TEST_F(MatmulTest, ReLUTestF32) {
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["RELU"]
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["RELU"]
+  ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
@@ -888,7 +917,9 @@ TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["LINEAR"]
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["LINEAR"]
+  ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
@@ -1264,7 +1295,9 @@ TEST_F(MatmulTest, SimpleTestF32WithMulAndAddFusion) {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )");
@@ -1437,7 +1470,9 @@ TEST_F(MatmulTest, SimpleTestBF16WithMulAndAddFusion) {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )");
@@ -1511,6 +1546,133 @@ TEST_F(MatmulTest, ConsecutiveBinaryAdd) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(MatmulTest, SimpleTestF32WithBiasAndAddFusion) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.bias.add.test.f32
+  ENTRY matmul.bias.add.test.f32 {
+    arg0.1 = f32[32,32,40,30] parameter(0), parameter_replication={false}
+    arg0.2 = f32[32,32,30,40]parameter(1), parameter_replication={false}
+    dot.7 = f32[32,32,40,40] dot(arg0.1, arg0.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    const.0 = f32[40] constant(15)
+    bcast.1 = f32[32,32,40,40] broadcast(const.0), dimensions={3}
+    add.0 = f32[32,32,40,40] add(dot.7,bcast.1)
+    const.1 = f32[32,32,40,40] constant(0.65)
+    add.1 = f32[32,32,40,40] add(add.0, const.1)
+    tuple.12 = (f32[32,32,40,40]) tuple(add.1)
+    ROOT get-tuple-element.13 = f32[32,32,40,40] get-tuple-element(tuple.12), index=0
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_add_str_);
+}
+
+TEST_F(MatmulTest, SimpleTestF32WithBiasAndAddFusion2) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
+    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
+    dot.378 = f32[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.11 = f32[32,197,3072] reshape(dot.378)
+    constant.381 = f32[3072] constant(0.3)
+    broadcast.382 = f32[32,197,3072] broadcast(constant.381), dimensions={2}
+    add.0 = f32[32,197,3072] add(reshape.11, broadcast.382)
+    const.1 = f32[32,197,3072] constant(0.65)
+    add.1 = f32[32,197,3072] add(add.0, const.1)
+    ROOT out = f32[6304,3072] reshape(add.1)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_add_str_);
+}
+
+TEST_F(MatmulTest, SimpleTestF32WithAddFusion) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
+    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
+    dot.378 = f32[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.11 = f32[32,197,3072] reshape(dot.378)
+    const.1 = f32[32,197,3072] constant(0.65)
+    add.1 = f32[32,197,3072] add(reshape.11, const.1)
+    ROOT out = f32[6304,3072] reshape(add.1)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "outer_dimension_partitions":[],
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-DAG:       "fused_ops":["BINARY_ADD"]
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
+}
+
+TEST_F(MatmulTest, SimpleTestF32WithAddFusion_2) {
+  // Only the first Bias should get fused as Bias
+  const char* matmul_module_str = R"(
+  HloModule matmul.add.test.f32
+  ENTRY matmul.add.test.f32 {
+    arg0.1 = f32[32,32,40,30] parameter(0), parameter_replication={false}
+    arg0.2 = f32[32,32,30,40]parameter(1), parameter_replication={false}
+    dot.7 = f32[32,32,40,40] dot(arg0.1, arg0.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    const.0 = f32[40] constant(15)
+    bcast.1 = f32[32,32,40,40] broadcast(const.0), dimensions={3}
+    add.0 = f32[32,32,40,40] add(dot.7,bcast.1)
+    const.1 = f32[40] constant(0.65)
+    bcast.2 = f32[32,32,40,40] broadcast(const.1), dimensions={3}
+    add.1 = f32[32,32,40,40] add(add.0, bcast.2)
+    tuple.12 = (f32[32,32,40,40]) tuple(add.1)
+    ROOT get-tuple-element.13 = f32[32,32,40,40] get-tuple-element(tuple.12), index=0
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "outer_dimension_partitions":[],
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-DAG:       "fused_ops":["BIAS","BINARY_ADD"]
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
+}
+
+TEST_F(MatmulTest, BroadcastedAddAfterFusion) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.nonscalar.test.1
+  ENTRY matmul.nonscalar.test.f32 {
+    arg.0 = f32[16,400,500] parameter(0)
+    arg.1 = f32[16,500,3] parameter(1)
+    onednn.matmul.0 = f32[16,400,3] dot(arg.0, arg.1), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+    constant.0 = f32[] constant(6)
+    broadcast.0 = f32[16,400,3] broadcast(constant.0), dimensions={}
+    mult.0 = f32[16,400,3] multiply(onednn.matmul.0, broadcast.0)
+    constant.1 = f32[3]{0} constant({0.625, 0.875, 0.375})
+    broadcast.2 = f32[16,400,3] broadcast(constant.1), dimensions={2}
+    ROOT add.0 = f32[16,400,3] add(mult.0, broadcast.2)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-4, 1e-4)));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "outer_dimension_partitions":[],
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["LINEAR"]
+  ; CHECK-DAG:     }
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
 }
 
 }  // namespace cpu

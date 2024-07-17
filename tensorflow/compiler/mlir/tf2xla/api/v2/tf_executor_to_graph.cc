@@ -766,6 +766,10 @@ Status Exporter::Convert(mlir::ModuleOp module,
     }
   }
 
+  if (flib_def != nullptr) {
+    TF_RETURN_IF_ERROR(flib_def->AddLibrary(temp_flib_def));
+  }
+
   if (!configs.export_entry_func_to_flib) {
     if (!entry_func.has_value())
       return errors::FailedPrecondition(
@@ -782,11 +786,11 @@ Status Exporter::Convert(mlir::ModuleOp module,
     // calls), they are ignored.
     TF_RETURN_IF_ERROR(
         graph->get()->mutable_flib_def()->AddLibrary(temp_flib_def));
+  } else if (graph != nullptr) {
+    TF_RETURN_IF_ERROR(
+        graph->get()->mutable_flib_def()->AddLibrary(std::move(*flib_def)));
   }
 
-  if (flib_def != nullptr) {
-    TF_RETURN_IF_ERROR(flib_def->AddLibrary(temp_flib_def));
-  }
   return absl::OkStatus();
 }
 
@@ -801,35 +805,6 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
   if (failed(VerifyExportSuitable(module))) return sh.ConsumeStatus();
   return sh.Combine(
       Exporter::Convert(module, configs, graph, flib_def, control_ret_nodes));
-}
-
-Status ConvertMlirToGraph(mlir::ModuleOp module,
-                          const GraphExportConfig& configs,
-                          std::unique_ptr<Graph>* graph,
-                          FunctionLibraryDefinition* flib_def) {
-  absl::flat_hash_set<Node*> control_ret_nodes;
-  return ConvertMlirToGraph(module, configs, graph, flib_def,
-                            &control_ret_nodes);
-}
-
-absl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
-    mlir::ModuleOp module, const GraphExportConfig& configs) {
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
-                                     FunctionDefLibrary());
-  std::unique_ptr<Graph> graph;
-  TF_RETURN_IF_ERROR(ConvertMlirToGraph(module, configs, &graph, &flib_def));
-
-  // If the entry function is exported to flib, then no graph is constructed.
-  // Construct one in that case.
-  if (configs.export_entry_func_to_flib) {
-    graph = std::make_unique<Graph>(OpRegistry::Global());
-    TF_RETURN_IF_ERROR(
-        graph->mutable_flib_def()->AddLibrary(std::move(flib_def)));
-  }
-
-  auto graphdef = std::make_unique<GraphDef>();
-  graph->ToGraphDef(graphdef.get());
-  return graphdef;
 }
 
 absl::Status ConvertMlirFunctionToFunctionLibraryDef(

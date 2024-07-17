@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/interpreter/executable.h"
 #include "xla/backends/interpreter/platform_id.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/cholesky_expander.h"
-#include "xla/service/comparison_expander.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/triangular_solve_expander.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"

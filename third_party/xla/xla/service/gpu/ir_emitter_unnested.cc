@@ -55,22 +55,22 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Export.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi_api.h"
@@ -105,12 +105,14 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
+#include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/topk_custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -122,6 +124,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/fft_thunk.h"
 #include "xla/service/gpu/runtime/fused_mha_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/runtime/infeed_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
@@ -166,12 +169,7 @@ limitations under the License.
 #include "tsl/protobuf/dnn.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
-#include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/runtime/cholesky_thunk.h"
 #include "xla/service/gpu/runtime/cub_sort_thunk.h"
 #include "xla/service/gpu/runtime/triangular_solve_thunk.h"
@@ -224,28 +222,23 @@ absl::Status IrEmitterUnnested::EmitConstant(
 
 static ConditionalThunkConfig GetConditionalThunkConfig(
     const HloInstruction* instr,
-    std::vector<ThunkSequence> branch_thunk_sequences) {
+    std::vector<std::unique_ptr<SequentialThunk>> branch_thunk_sequences) {
   ConditionalThunkConfig config;
   config.branch_index_is_bool =
       instr->operand(0)->shape().element_type() == PRED;
   config.branch_count = instr->branch_count();
-  config.branch_thunks.reserve(config.branch_count);
-  for (auto& branch_thunk_sequence : branch_thunk_sequences) {
-    config.branch_thunks.emplace_back(
-        new SequentialThunk(Thunk::ThunkInfo::WithProfileAnnotation(instr),
-                            std::move(branch_thunk_sequence)));
-  }
+  config.branch_thunks = std::move(branch_thunk_sequences);
   return config;
 }
 
 absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
-  std::vector<ThunkSequence> branch_thunks;
+  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
   branch_thunks.reserve(instr->branch_count());
 
   for (auto comp : instr->branch_computations()) {
     auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
     TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(comp));
-    branch_thunks.push_back(std::move(*ir_emitter->ConsumeThunkSequence()));
+    branch_thunks.push_back(ir_emitter->ConsumeThunkSequence());
   }
 
   ConditionalThunkConfig config =
@@ -568,7 +561,7 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
   const HloComputation* command_buffer = instr->called_computations().front();
   auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
   TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(command_buffer));
-  std::unique_ptr<ThunkSequence> thunk_sequence =
+  std::unique_ptr<SequentialThunk> thunk_sequence =
       ir_emitter->ConsumeThunkSequence();
 
   // Maybe serialize all commands in a sequence by forcing barriers between all
@@ -580,12 +573,13 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
           ? CommandBufferCmdSequence::SynchronizationMode::kAutomatic
           : CommandBufferCmdSequence::SynchronizationMode::kSerialize;
 
-  TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence cmd_sequence,
-                      ConvertToCommands(*thunk_sequence, synchronization_mode));
+  TF_ASSIGN_OR_RETURN(
+      CommandBufferCmdSequence cmd_sequence,
+      ConvertToCommands(thunk_sequence->thunks(), synchronization_mode));
 
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      std::move(*thunk_sequence)));
+      std::move(thunk_sequence)));
 
   return absl::OkStatus();
 }
@@ -1141,6 +1135,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
+  bool force_deterministic = config.force_deterministic();
   GpufMHABackwardDescriptor descriptor = {
       kind,
       config,
@@ -1161,7 +1156,8 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
       fwd_output_shape,
       mask_shape,
       d_bias_shape,
-      bias_shape};
+      bias_shape,
+      force_deterministic};
 
   TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig fmha_backward_config,
                       GpufMHABackwardConfig::For(descriptor));
@@ -1424,20 +1420,22 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
 
   auto ffi_thunk = [&] {
     auto& called_computations = instr->called_computations();
-    return std::make_unique<CustomCallThunk>(
+    return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->bundle,
         std::move(operands), std::move(results), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&] {
-    return std::make_unique<CustomCallThunk>(
+    return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(instr),
         std::move(custom_call_target), std::move(operands), std::move(results),
         std::move(opaque));
   };
 
-  AddThunkToThunkSequence(found_ffi_handler ? ffi_thunk() : legacy_thunk());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CustomCallThunk> custom_call_thunk,
+                      found_ffi_handler ? ffi_thunk() : legacy_thunk());
+  AddThunkToThunkSequence(std::move(custom_call_thunk));
 
   return absl::OkStatus();
 }
@@ -1587,8 +1585,8 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
 
 absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     const HloCustomCallInstruction* instr) {
-#if !GOOGLE_CUDA
-  return absl::UnimplementedError("Triton support requires CUDA");
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+  return absl::UnimplementedError("Triton support requires CUDA or ROCm");
 #else
   auto generate = [this, &instr]() -> absl::StatusOr<KernelReuseCache::Entry> {
     mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
@@ -1607,15 +1605,18 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     triton_fn.setName(kernel_name);
 
     HloModule* hlo_module = instr->GetModule();
-    auto gemm_config = TritonGemmConfig(
-        /*block_m=*/-1, /*block_n=*/-1, /*block_k=*/-1, /*split_k=*/-1,
-        call.num_stages, call.num_warps);
+
+    BlockLevelParameters block_level_parameters;
+    block_level_parameters.num_stages = call.num_stages;
+    block_level_parameters.num_warps = call.num_warps;
+    block_level_parameters.num_ctas = 1;
+
     TF_ASSIGN_OR_RETURN(
         auto result,
         CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
-                            ir_emitter_context_->cuda_compute_capability(),
-                            ir_emitter_context_->gpu_device_info(), gemm_config,
-                            triton_module.get(),
+                            ir_emitter_context_->gpu_compute_capability(),
+                            ir_emitter_context_->gpu_device_info(),
+                            block_level_parameters, triton_module.get(),
                             ir_emitter_context_->llvm_module(), mlir_context));
 
     llvm::Function* impl_fn =
@@ -1687,10 +1688,8 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
   const HloFusionAnalysis fusion_analysis =
       HloFusionAnalysis::Create(instr, &device_info);
 
-  std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(HloFusionInfo(fusion_analysis, instr,
-                                     &ir_emitter_context_->buffer_assignment()),
-                       /*is_emission_phase=*/true);
+  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(HloFusionInfo(
+      fusion_analysis, instr, &ir_emitter_context_->buffer_assignment()));
   TF_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
 
   const ExecutionStreamAssignment& stream_assignment =
@@ -1702,6 +1701,49 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
     AddThunkToThunkSequence(std::move(thunk));
   }
   return absl::OkStatus();
+}
+
+absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
+    const HloInstruction* instr) {
+  const HloInstruction* wrapped = instr->async_wrapped_instruction();
+  auto* async_start = Cast<HloAsyncInstruction>(instr);
+  const ExecutionStreamAssignment& stream_assignment =
+      ir_emitter_context_->execution_stream_assignment();
+  TF_ASSIGN_OR_RETURN(
+      ExecutionStreamAssignment::AsyncExecutionStreamIds streams,
+      stream_assignment.GetAsyncExecutionStreamIds(async_start));
+  AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      streams.destination_stream_id, streams.source_stream_id));
+  TF_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
+                      stream_assignment.GetSyncExecutionStreamId(wrapped));
+
+  auto* custom_call = Cast<HloCustomCallInstruction>(wrapped);
+  if (IsLegacyCublasMatmul(*wrapped)) {
+    auto status = EmitGemmThunk(custom_call);
+    if (status.ok()) {
+      thunk_sequence_.back()->set_execution_stream_id(execution_stream_id);
+    }
+    return status;
+  }
+#if GOOGLE_CUDA || TF_HIPBLASLT
+  if (IsCublasLtMatmul(*wrapped)) {
+    auto status = EmitCublasLtMatmulThunk(custom_call);
+    if (status.ok()) {
+      thunk_sequence_.back()->set_execution_stream_id(execution_stream_id);
+    }
+    return status;
+  }
+  if (IsCublasLtMatmulF8(*wrapped)) {
+    auto status = EmitCublasLtMatmulThunkF8(custom_call);
+    if (status.ok()) {
+      thunk_sequence_.back()->set_execution_stream_id(execution_stream_id);
+    }
+    return status;
+  }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
+  return Internal("Unsupported async custom call instruction: %s",
+                  HloOpcodeString(wrapped->opcode()));
 }
 
 absl::Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
@@ -2282,9 +2324,11 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   }
 
   if (should_use_nccl_thunk) {
+    auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(inst);
+    // The wrapper name is used when an op is wrapped by syntactic sugar.
+    thunk_info.profile_annotation = async_start->name();
     auto thunk = std::make_unique<NcclThunkType>(
-        Thunk::ThunkInfo::WithProfileAnnotation(inst), NcclApi::Default(), inst,
-        /*buffers=*/std::move(buffers));
+        thunk_info, NcclApi::Default(), inst, /*buffers=*/std::move(buffers));
     GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
@@ -2767,7 +2811,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
         case HloOpcode::kCollectiveBroadcast:
           return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
-        case HloOpcode::kFusion: {
+        case HloOpcode::kFusion:
+        case HloOpcode::kCustomCall: {
           // Wait until the concurrent stream has finished.
           auto* async_done = Cast<HloAsyncInstruction>(instr);
           const ExecutionStreamAssignment& stream_assignment =
@@ -2824,6 +2869,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               Thunk::ThunkInfo::WithProfileAnnotation(instr),
               streams.destination_stream_id, streams.source_stream_id));
           return EmitFusion(Cast<HloFusionInstruction>(wrapped));
+        }
+        case HloOpcode::kCustomCall: {
+          return EmitAsyncCustomCallStart(instr);
         }
         default:
           return Internal("Unsupported async start wrapped instruction: %s",

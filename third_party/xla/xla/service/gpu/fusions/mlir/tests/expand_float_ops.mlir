@@ -92,3 +92,17 @@ module {
 // correctness.
 // CHECK-LABEL: @fptoi8
 // CHECK-NOT: arith.fptosi {{.*}}f8E5M2
+
+// -----
+
+module {
+  func.func @double_to_f8(%arg0: f64) -> f8E5M2 {
+    %ret = arith.truncf %arg0 : f64 to f8E5M2
+    return %ret : f8E5M2
+  }
+}
+
+// Just check that this lowers successfully. We have integration tests to verify
+// correctness.
+// CHECK-LABEL: @double_to_f8
+// CHECK-NOT: arith.truncf

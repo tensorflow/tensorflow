@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_compiler.h"

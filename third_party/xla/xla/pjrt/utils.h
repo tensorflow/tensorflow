@@ -20,19 +20,21 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -43,7 +45,7 @@ using MemorySpaceColor = int;
 // ExecutableBuildOptions and whether we want a portable executable.
 absl::Status ParseDeviceAssignmentCompileOptions(
     bool compile_portable_executable, ExecutableBuildOptions* build_options,
-    std::function<StatusOr<DeviceAssignment>(int, int)>
+    std::function<absl::StatusOr<DeviceAssignment>(int, int)>
         GetDefaultDeviceAssignmentFunction,
     int* num_replicas, int* num_partitions,
     std::shared_ptr<DeviceAssignment>* device_assignment);
@@ -107,7 +109,7 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     std::vector<LayoutMode> out_layout_modes,
     const std::vector<MemorySpaceColor>& arg_memory_spaces,
     const std::vector<MemorySpaceColor>& out_memory_spaces,
-    std::function<StatusOr<Shape>(Shape)>
+    std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function);
 
 // Generates useful data structures for communciating desired layouts to XLA:
@@ -120,7 +122,7 @@ LayoutModesToXla(const XlaComputation& computation,
                  std::vector<LayoutMode> out_layout_modes,
                  const std::vector<MemorySpaceColor>& arg_memory_spaces,
                  const std::vector<MemorySpaceColor>& out_memory_spaces,
-                 std::function<StatusOr<Shape>(Shape)>
+                 std::function<absl::StatusOr<Shape>(Shape)>
                      choose_compact_layout_for_shape_function,
                  ExecutableBuildOptions& build_options);
 
@@ -128,7 +130,7 @@ LayoutModesToXla(const XlaComputation& computation,
 // ExecutableBuildOptions.
 absl::Status DetermineArgumentLayoutsFromCompileOptions(
     const XlaComputation& computation,
-    std::function<StatusOr<Shape>(Shape)>
+    std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function,
     std::optional<std::vector<Shape>>& argument_layouts,
     ExecutableBuildOptions* build_options,
@@ -165,6 +167,10 @@ absl::Status TestBufferDonationClashes(
     void* opaque_key,
     absl::flat_hash_map<const void*, std::pair<bool, int>>& donation_clashes,
     bool is_donated, int arg_idx, int replica, int partition);
+
+// Capitalizes the first character in a string, which can be empty.
+std::string MakeAsciiTitlecase(absl::string_view s);
+void MakeAsciiTitlecase(std::string* s);
 
 }  // namespace xla
 

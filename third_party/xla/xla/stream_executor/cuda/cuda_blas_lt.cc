@@ -404,33 +404,6 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
     DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
     std::optional<DeviceMemoryBase> workspace,
-    blas::ProfileResult* profile_result) const {
-  return DoMatmul(stream, alpha, a, b, beta, c, d, algorithm, bias, aux,
-                  a_scale, b_scale, c_scale, d_scale, d_amax, workspace,
-                  std::nullopt, profile_result);
-}
-
-// Tensorflow use this API
-absl::Status BlasLt::MatmulPlan::DoMatmul(
-    Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
-    const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
-    const MatmulAlgorithm& algorithm, ScratchAllocator& scratch_allocator,
-    DeviceMemoryBase bias, DeviceMemoryBase aux, DeviceMemoryBase a_scale,
-    DeviceMemoryBase b_scale, DeviceMemoryBase c_scale,
-    DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    blas::ProfileResult* profile_result) const {
-  return DoMatmul(stream, alpha, a, b, beta, c, d, algorithm, bias, aux,
-                  a_scale, b_scale, c_scale, d_scale, d_amax, std::nullopt,
-                  &scratch_allocator, profile_result);
-}
-
-absl::Status BlasLt::MatmulPlan::DoMatmul(
-    Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
-    const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
-    const MatmulAlgorithm& algorithm, DeviceMemoryBase bias,
-    DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    std::optional<DeviceMemoryBase> workspace,
     std::optional<ScratchAllocator*> scratch_allocator,
     blas::ProfileResult* profile_result = nullptr) const {
   TF_ASSIGN_OR_RETURN(
@@ -609,190 +582,64 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   std::tuple operand_types{a_desc_.type(), b_desc_.type(), c_desc_.type(),
                            d_desc_.type()};
 
-#define TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(SCALENTYPE, ATYPE, BTYPE, CTYPE, \
-                                            DTYPE)                           \
-  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {        \
-    return gpu::BlasLt::MatmulPlan::DoMatmul<                                \
-        SCALENTYPE, CudaToNativeT<ATYPE>::type, CudaToNativeT<BTYPE>::type,  \
-        CudaToNativeT<CTYPE>::type, CudaToNativeT<DTYPE>::type>(             \
-        stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,      \
-        c_scale, d_scale, d_amax, algorithm, *scratch_allocator.value(),     \
-        profile_result);                                                     \
-  }
-
-#define TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(SCALENTYPE, ATYPE, BTYPE,   \
-                                                CTYPE, DTYPE)               \
-  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {       \
+#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)                \
+  if (operand_types == std::tuple{ATYPE, BTYPE, CTYPE, DTYPE}) {            \
     return gpu::BlasLt::MatmulPlan::DoMatmul<                               \
         SCALENTYPE, CudaToNativeT<ATYPE>::type, CudaToNativeT<BTYPE>::type, \
         CudaToNativeT<CTYPE>::type, CudaToNativeT<DTYPE>::type>(            \
         stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,     \
-        c_scale, d_scale, d_amax, algorithm, workspace, profile_result);    \
+        c_scale, d_scale, d_amax, algorithm, workspace, scratch_allocator,  \
+        profile_result);                                                    \
   }
 
-  if (workspace.has_value()) {
 #if CUDA_VERSION >= 11080
-    // FP8 compatible type combinations (see cuBLASLt documentation):
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
+  // FP8 compatible type combinations (see cuBLASLt documentation):
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
 
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_16BF)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_8F_E5M2)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_8F_E5M2)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_16F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_32F, CUDA_R_32F)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_32F, CUDA_R_32F)
 
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E5M2)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E5M2)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
-        float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
 #endif
 
-    // Other data types:
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, CUDA_R_16BF, CUDA_R_16BF,
-                                            CUDA_R_16BF, CUDA_R_16BF)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, CUDA_R_16F, CUDA_R_16F,
-                                            CUDA_R_16F, CUDA_R_16F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, CUDA_R_16BF, CUDA_R_16BF,
-                                            CUDA_R_32F, CUDA_R_32F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, CUDA_R_16F, CUDA_R_16F,
-                                            CUDA_R_32F, CUDA_R_32F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, CUDA_R_32F, CUDA_R_32F,
-                                            CUDA_R_32F, CUDA_R_32F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(double, CUDA_R_64F, CUDA_R_64F,
-                                            CUDA_R_64F, CUDA_R_64F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(xla::complex64, CUDA_C_32F,
-                                            CUDA_C_32F, CUDA_C_32F, CUDA_C_32F)
-    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(xla::complex128, CUDA_C_64F,
-                                            CUDA_C_64F, CUDA_C_64F, CUDA_C_64F)
-  } else if (scratch_allocator.has_value()) {
-#if CUDA_VERSION >= 11080
-    // FP8 compatible type combinations (see cuBLASLt documentation):
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3,
-                                        CUDA_R_16BF, CUDA_R_16BF)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3,
-                                        CUDA_R_16BF, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3,
-                                        CUDA_R_16F, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3,
-                                        CUDA_R_16F, CUDA_R_16F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3,
-                                        CUDA_R_32F, CUDA_R_32F)
+  // Other data types:
+  TYPED_MATMUL(float, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_32F, CUDA_R_32F)
+  TYPED_MATMUL(float, CUDA_R_16F, CUDA_R_16F, CUDA_R_32F, CUDA_R_32F)
+  TYPED_MATMUL(float, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F)
+  TYPED_MATMUL(double, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F)
+  TYPED_MATMUL(xla::complex64, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F)
+  TYPED_MATMUL(xla::complex128, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F)
 
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                        CUDA_R_16BF, CUDA_R_16BF)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                        CUDA_R_16BF, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                        CUDA_R_16BF, CUDA_R_8F_E5M2)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                        CUDA_R_16F, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                        CUDA_R_16F, CUDA_R_8F_E5M2)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                        CUDA_R_16F, CUDA_R_16F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                        CUDA_R_32F, CUDA_R_32F)
-
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                        CUDA_R_16BF, CUDA_R_16BF)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                        CUDA_R_16BF, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                        CUDA_R_16BF, CUDA_R_8F_E5M2)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                        CUDA_R_16F, CUDA_R_8F_E4M3)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                        CUDA_R_16F, CUDA_R_8F_E5M2)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                        CUDA_R_16F, CUDA_R_16F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                        CUDA_R_32F, CUDA_R_32F)
-#endif
-
-    // Other data types:
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_16BF, CUDA_R_16BF,
-                                        CUDA_R_16BF, CUDA_R_16BF)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_16F, CUDA_R_16F,
-                                        CUDA_R_16F, CUDA_R_16F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_16BF, CUDA_R_16BF,
-                                        CUDA_R_32F, CUDA_R_32F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_16F, CUDA_R_16F,
-                                        CUDA_R_32F, CUDA_R_32F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, CUDA_R_32F, CUDA_R_32F,
-                                        CUDA_R_32F, CUDA_R_32F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(double, CUDA_R_64F, CUDA_R_64F,
-                                        CUDA_R_64F, CUDA_R_64F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(xla::complex64, CUDA_C_32F, CUDA_C_32F,
-                                        CUDA_C_32F, CUDA_C_32F)
-    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(xla::complex128, CUDA_C_64F, CUDA_C_64F,
-                                        CUDA_C_64F, CUDA_C_64F)
-  }
-
-#undef TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR
-#undef TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE
+#undef TYPED_MATMUL
 
   return xla::Internal("Unexpected dtype");
-}
-
-absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
-    Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
-    DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
-    DeviceMemoryBase bias_buffer,  // may be null
-    DeviceMemoryBase aux_buffer,   // may be null
-    DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
-    DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
-    DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
-    ScratchAllocator& scratch_allocator,
-    blas::ProfileResult* profile_result) const {
-  return ExecuteOnStream(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                         bias_buffer, aux_buffer, a_scale_buffer,
-                         b_scale_buffer, c_scale_buffer, d_scale_buffer,
-                         d_amax_buffer, algorithm, std::nullopt,
-                         &scratch_allocator, profile_result);
-}
-
-absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
-    Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
-    DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
-    DeviceMemoryBase bias_buffer,  // may be null
-    DeviceMemoryBase aux_buffer,   // may be null
-    DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
-    DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
-    DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
-    std::optional<DeviceMemoryBase> workspace,
-    blas::ProfileResult* profile_result) const {
-  return ExecuteOnStream(
-      stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer, aux_buffer,
-      a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-      d_amax_buffer, algorithm, workspace, std::nullopt, profile_result);
 }
 
 }  // namespace cuda

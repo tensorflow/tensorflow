@@ -104,7 +104,7 @@ TEST(AsyncValueTest, AddAndDropRef) {
 TEST(AsyncValueTest, KeepPayloadOnError) {
   int payload_value = 0;
 
-  struct Payload : internal::KeepAsyncValuePayloadOnError {
+  struct Payload : AsyncPayload::KeepOnError {
     explicit Payload(int* value) : value{value} { *value = 1; }
     ~Payload() { *value = 2; }
 

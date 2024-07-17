@@ -19,11 +19,11 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/attributes.h"
-#include "Eigen/Core"  // from @eigen_archive
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "Eigen/Core"
+#include "unsupported/Eigen/CXX11/Tensor"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 namespace xla {

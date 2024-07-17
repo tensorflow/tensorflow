@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

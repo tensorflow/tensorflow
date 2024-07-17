@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
@@ -382,11 +383,12 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto status = mlir::lite::QuantizeModel(
       input_model_buffer, input_type, output_type, inference_tensor_type,
       /*operator_names=*/{}, disable_per_channel, fully_quantize, output_model,
-      error_reporter.get(), enable_numeric_verify, enable_whole_model_verify,
+      enable_numeric_verify, enable_whole_model_verify,
       /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes,
       enable_variable_quantization, disable_per_channel_for_dense_layers,
       debug_options);
-  if (status != kTfLiteOk) {
+  if (!status.ok()) {
+    ABSL_LOG(ERROR) << "QuantizeModel failed: " << status.message();
     error_reporter->exception();
     return nullptr;
   }

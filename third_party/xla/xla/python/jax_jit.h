@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/py_values.h"
@@ -162,7 +162,7 @@ H AbslHashValue(H h, const ArgumentSignature& s) {
 //   arguments
 // static_argnames: the names of the static arguments
 // pytree_registry: the registry to use to convert the arguments to pytrees
-// arguments: output; describes the static arguments and the identities of the
+// signature: output; describes the static arguments and the identities of the
 //  dynamic arguments.
 // flat_dynamic_args: output; the concatenation of the dynamic positional
 //  arguments and sorted keyword arguments.

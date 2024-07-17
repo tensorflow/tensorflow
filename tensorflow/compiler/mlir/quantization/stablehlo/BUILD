@@ -344,6 +344,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -657,8 +658,8 @@ tf_cc_test(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/framework:numeric_types",
         "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/tsl/framework:numeric_types",
     ],
 )
 
@@ -706,8 +707,8 @@ tf_cc_test(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/framework:numeric_types",
         "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/tsl/framework:numeric_types",
     ],
 )
 
@@ -774,6 +775,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -782,7 +784,6 @@ tf_cc_binary(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/mlir_hlo:mhlo_passes",

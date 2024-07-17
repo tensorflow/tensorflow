@@ -156,10 +156,9 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
 
 // CHECK-LABEL: "attr_custom_call_api_version_typed_ffi"
 func.func @attr_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
-  //      CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{backend_config = "", call_target_name = "mhlo.custom_call"}> {
-  // CHECK-SAME:   mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"},
-  // CHECK-SAME:   mhlo.version = 1 : i64
-  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  //      CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{api_version = 4 : i32, backend_config = {foo = "bar"},
+  // CHECK-SAME:  call_target_name = "foo"}>
+  // CHECK-SAME: (tensor<f32>) -> tensor<f32>
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo",
     backend_config = {foo = "bar"},
@@ -533,6 +532,13 @@ func.func @op_ceil(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: "quantized_op_ceil"
+func.func @quantized_op_ceil(%arg0: tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>> {
+  // CHECK: "stablehlo.ceil"([[ARG0:%arg[0-9]+]]) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  %0 = "mhlo.ceil"(%arg0) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+}
+
 // CHECK-LABEL: "op_cholesky"
 func.func @op_cholesky(%arg0: tensor<1x16x16xf32>) -> tensor<1x16x16xf32> {
   //      CHECK: "stablehlo.cholesky"([[ARG0:%arg[0-9]+]]) <{
@@ -739,7 +745,9 @@ func.func @op_custom_call_api_version_original(%arg0: tensor<f32>) -> tensor<f32
 
 // CHECK-LABEL: "op_custom_call_custom_call_schedule_none"
 func.func @op_custom_call_custom_call_schedule_none(%arg0: tensor<f32>) -> tensor<f32> {
-  //      CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{backend_config = "", call_target_name = "foo"}> : (tensor<f32>) -> tensor<f32>
+  //      CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:  call_target_name = "foo"}>
+  // CHECK-SAME: (tensor<f32>) -> tensor<f32>
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo",
     custom_call_schedule = #mhlo<custom_call_schedule NONE>
@@ -749,10 +757,10 @@ func.func @op_custom_call_custom_call_schedule_none(%arg0: tensor<f32>) -> tenso
 
 // CHECK-LABEL: "op_custom_call_custom_call_schedule_none_ffi"
 func.func @op_custom_call_custom_call_schedule_none_ffi(%arg0: tensor<f32>) -> tensor<f32> {
-  //      CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{backend_config = "", call_target_name = "mhlo.custom_call"}> {
-  // CHECK-SAME:   mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"},
-  // CHECK-SAME:   mhlo.version = 1 : i64
-  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  //      CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:   api_version = 4 : i32, backend_config = {foo = "bar"},
+  // CHECK-SAME:   call_target_name = "foo"}>
+  // CHECK-SAME: (tensor<f32>) -> tensor<f32>
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo",
     backend_config = {foo = "bar"},
@@ -954,6 +962,13 @@ func.func @op_floor(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.floor"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
   %0 = "mhlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: "quantized_op_floor"
+func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>> {
+  // CHECK: "stablehlo.floor"([[ARG0:%arg[0-9]+]]) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  %0 = "mhlo.floor"(%arg0) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
 }
 
 // FusionOp aka mhlo.fusion is unsupported at the moment (see negative test below).
@@ -1568,10 +1583,9 @@ func.func @op_subtract(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
 // CHECK-LABEL: "op_tan"
 func.func @op_tan(%arg0: tensor<f32>) -> tensor<f32> {
-  //               CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]])  <{backend_config = "", call_target_name = "mhlo.tan"}> {
-  // CHECK-SAME{LITERAL}:    mhlo.attributes = {}
-  // CHECK-SAME{LITERAL}:    mhlo.version = 1 : i64
-  //          CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  // CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]])  <{
+  // CHECK-SAME:   call_target_name = "mhlo.tan"}> {mhlo.attributes = {}, mhlo.version = 1 : i64}
+  // CHECK-SAME: (tensor<f32>) -> tensor<f32>
   %0 = "mhlo.tan"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
@@ -1585,10 +1599,9 @@ func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
 
 // CHECK-LABEL: "op_topk"
 func.func @op_topk(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>) {
-  //               CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{backend_config = "", call_target_name = "mhlo.topk"}> {
-  // CHECK-SAME{LITERAL}:    mhlo.attributes = {k = 8 : i64, largest = true}
-  // CHECK-SAME{LITERAL}:    mhlo.version = 1 : i64
-  //          CHECK-SAME: } : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  // CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:   call_target_name = "mhlo.topk"}> {mhlo.attributes = {k = 8 : i64, largest = true}, mhlo.version = 1 : i64}
+  // CHECK-SAME: (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
   %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<5x10xf32> -> (tensor<5x8xf32>, tensor<5x8xi32>)
   func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
 }
@@ -1639,17 +1652,6 @@ func.func @op_tuple(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
   // CHECK: "stablehlo.tuple"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tuple<tensor<f32>>
   %0 = "mhlo.tuple"(%arg0) : (tensor<f32>) -> tuple<tensor<f32>>
   func.return %0 : tuple<tensor<f32>>
-}
-
-// CHECK-LABEL: "op_unary_einsum"
-func.func @op_unary_einsum(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
-  //      CHECK: "stablehlo.unary_einsum"([[ARG0:%arg[0-9]+]]) <{
-  // CHECK-SAME:   einsum_config = "ab->a"
-  // CHECK-SAME: }> : (tensor<8x16xf32>) -> tensor<8xf32>
-  %0 = "mhlo.unary_einsum"(%arg0) {
-    einsum_config = "ab->a"
-  } : (tensor<8x16xf32>) -> tensor<8xf32>
-  func.return %0 : tensor<8xf32>
 }
 
 // CHECK-LABEL: "op_uniform_dequantize"

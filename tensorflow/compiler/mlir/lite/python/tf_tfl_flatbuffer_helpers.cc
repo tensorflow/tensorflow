@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -23,19 +24,16 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -50,8 +48,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
-#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 
@@ -327,37 +323,14 @@ absl::Status PopulateQuantizationSpecs(
   return absl::OkStatus();
 }
 
-// Dumps the op graph of the `module` to `filename` in DOT format.
-absl::Status DumpOpGraphToFile(mlir::ModuleOp module,
-                               const std::string& filename) {
-  std::string error_message;
-  auto output = mlir::openOutputFile(filename, &error_message);
-  if (!error_message.empty()) {
-    return errors::InvalidArgument("Failed to open file in ", filename);
-  }
-  mlir::PassManager pm(module.getContext());
-  pm.addPass(mlir::createPrintOpGraphPass(output->os()));
-  if (failed(pm.run(module))) {
-    return errors::Unknown("Failed to dump Op Graph from MLIR module.");
-  }
-  output->keep();
-  return absl::OkStatus();
-}
-
 absl::Status ConvertMLIRToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    std::unique_ptr<mlir::MLIRContext>&& context,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    std::string* result, SavedModelBundle* saved_model_bundle,
+    std::string* result, std::unique_ptr<SavedModelBundle>&& saved_model_bundle,
     const PyFunctionLibrary* quantization_py_function_lib) {
-  if (toco_flags.has_dump_graphviz_dir()) {
-    TF_RETURN_IF_ERROR(DumpOpGraphToFile(
-        module.get(),
-        // rename once we enable the new converter feature flag.
-        absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
-  }
-
   mlir::TFL::PassConfig pass_config_copy = pass_config;
   pass_config_copy.outline_tf_while = true;
 
@@ -373,15 +346,11 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
   });
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
-      module.get(), /*export_to_mlir=*/false, toco_flags, pass_config_copy,
-      saved_model_tags, model_flags.saved_model_dir(), saved_model_bundle,
-      result, /*serialize_stablehlo_ops=*/false, quantization_py_function_lib);
-  if (toco_flags.has_dump_graphviz_dir()) {
-    TF_RETURN_IF_ERROR(DumpOpGraphToFile(
-        // rename once we enable the new converter feature flag.
-        module.get(), absl::StrCat(toco_flags.dump_graphviz_dir(),
-                                   "/toco_AFTER_TRANSFORMATIONS.dot")));
-  }
+      std::move(context), std::move(module), toco_flags, pass_config_copy,
+      saved_model_tags, model_flags.saved_model_dir(),
+      std::move(saved_model_bundle), result,
+      /*serialize_stablehlo_ops=*/false, /*export_to_mlir=*/false,
+      quantization_py_function_lib);
 
   return status;
 }

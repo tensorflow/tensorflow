@@ -28,15 +28,18 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -52,7 +55,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
@@ -137,7 +139,7 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 
 absl::Status ParseDeviceAssignmentCompileOptions(
     bool compile_portable_executable, ExecutableBuildOptions* build_options,
-    std::function<StatusOr<DeviceAssignment>(int, int)>
+    std::function<absl::StatusOr<DeviceAssignment>(int, int)>
         GetDefaultDeviceAssignmentFunction,
     int* num_replicas, int* num_partitions,
     std::shared_ptr<DeviceAssignment>* device_assignment) {
@@ -533,7 +535,7 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
 static absl::StatusOr<Shape> LayoutModeToXlaShape(
     const LayoutMode& layout_mode, const Shape& unsharded_shape,
     const Shape& sharded_shape,
-    std::function<StatusOr<Shape>(Shape)>
+    std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function) {
   if (unsharded_shape.IsToken() || unsharded_shape.IsOpaque()) {
     return unsharded_shape;
@@ -574,7 +576,7 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     std::vector<LayoutMode> out_layout_modes,
     const std::vector<MemorySpaceColor>& arg_memory_spaces,
     const std::vector<MemorySpaceColor>& out_memory_spaces,
-    std::function<StatusOr<Shape>(Shape)>
+    std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function) {
   // Compute sharded argument and output shapes.
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
@@ -683,7 +685,7 @@ LayoutModesToXla(const XlaComputation& computation,
                  std::vector<LayoutMode> out_layout_modes,
                  const std::vector<MemorySpaceColor>& arg_memory_spaces,
                  const std::vector<MemorySpaceColor>& out_memory_spaces,
-                 std::function<StatusOr<Shape>(Shape)>
+                 std::function<absl::StatusOr<Shape>(Shape)>
                      choose_compact_layout_for_shape_function,
                  ExecutableBuildOptions& build_options) {
   TF_ASSIGN_OR_RETURN(
@@ -710,7 +712,7 @@ LayoutModesToXla(const XlaComputation& computation,
 
 absl::Status DetermineArgumentLayoutsFromCompileOptions(
     const XlaComputation& computation,
-    std::function<StatusOr<Shape>(Shape)>
+    std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function,
     std::optional<std::vector<Shape>>& argument_layouts,
     ExecutableBuildOptions* build_options,
@@ -929,6 +931,18 @@ absl::Status TestBufferDonationClashes(
     }
   }
   return absl::OkStatus();
+}
+
+void MakeAsciiTitlecase(std::string* s) {
+  if (!s->empty()) {
+    s->at(0) = absl::ascii_toupper(s->at(0));
+  }
+}
+
+std::string MakeAsciiTitlecase(absl::string_view s) {
+  std::string result(s);
+  MakeAsciiTitlecase(&result);
+  return result;
 }
 
 }  // namespace xla

@@ -114,9 +114,10 @@ absl::Status CheckNestedComputationThreadNameEqual(
     for (const HloComputation* called_cmp : instr->called_computations()) {
       if (called_cmp->execution_thread() != comp->execution_thread()) {
         return Internal(
-            "Nested computations expects same computation's thread name (%s vs "
-            "%s).",
-            called_cmp->execution_thread(), comp->execution_thread());
+            "Nested computations expects same computation's thread name: %s vs "
+            "%s, in called computation `%s` vs caller computation `%s`",
+            called_cmp->execution_thread(), comp->execution_thread(),
+            called_cmp->name(), comp->name());
       }
       TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
           called_cmp, skip_nested_async_op_check));
@@ -151,6 +152,15 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (!opts_.allow_unbounded_dynamism && hlo->shape().is_unbounded_dynamic()) {
     return InvalidArgument("Unbounded dynamism is disabled for instruction: %s",
                            hlo->ToString());
+  }
+  if (hlo->shape().has_layout()) {
+    if (hlo->shape().layout().minor_to_major_size() !=
+        hlo->shape().dimensions_size()) {
+      return InvalidArgument(
+          "Instruction has mismatched minor-to-major size and dimension size: "
+          "%s",
+          hlo->ToString());
+    }
   }
   return absl::OkStatus();
 }
@@ -1320,7 +1330,8 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
   const HloCustomCallInstruction* custom_call =
       DynCast<const HloCustomCallInstruction>(instruction);
   TF_RET_CHECK(custom_call != nullptr);
-  if (custom_call->layout_constrained()) {
+  if (custom_call->layout_constrained() &&
+      !custom_call->IsCustomCall("LayoutConstraint")) {
     // If the layout is constrained, verify all the respective shapes have
     // layouts and that the constrained operand shapes match the shapes of the
     // operands.
@@ -1574,12 +1585,6 @@ absl::Status ShapeVerifier::CheckAsyncOpComputationShapes(
         HloOpcodeString(async_op->opcode()), async_shape.ToString());
   }
 
-  // The semantics of an async custom call are defined by the custom call
-  // implementation, so we stop checking here.
-  if (async_op->async_wrapped_opcode() == HloOpcode::kCustomCall) {
-    return absl::OkStatus();
-  }
-
   ProgramShape computation_shape =
       async_op->async_wrapped_computation()->ComputeProgramShape();
   Shape param_shape = ShapeUtil::MakeTupleShape(computation_shape.parameters());
@@ -1663,7 +1668,9 @@ absl::Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
   const Shape& dest_shape = ShapeUtil::GetTupleElementShape(operand_shape, 0);
   const Shape& src_shape = ShapeUtil::GetTupleElementShape(operand_shape, 1);
   if (!ShapesSame(dest_shape, src_shape,
-                  Shape::Equal().IgnoreMemorySpaceInLayout())) {
+                  Shape::Equal()
+                      .IgnoreMemorySpaceInLayout()
+                      .IgnoreSplitConfigInLayout())) {
     return Internal(
         "Source and destination buffers in CopyDone arguments need to be the "
         "same shape found %s and %s\n%s",

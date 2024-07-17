@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/service/global_device_id.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
@@ -58,6 +58,8 @@ class DeviceAssignment : public Array2D<int64_t> {
   absl::StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
   // Finds the replica ID for the given device.
   absl::StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
+  // Finds the partition ID for the given device.
+  absl::StatusOr<int> PartitionIdForDevice(GlobalDeviceId device_id) const;
   // Returns a map from device ID to logical ID. Querying this map is much more
   // efficient than `LogicalIdForDevice` if queried repeatedly.
   absl::flat_hash_map<GlobalDeviceId, LogicalID> GetDeviceToLogicalIdMap()

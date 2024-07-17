@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/pytypes.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -57,8 +57,6 @@ class TraceMeWrapper {
   }
 
   void Stop() { traceme_.Stop(); }
-
-  static bool IsEnabled() { return tsl::profiler::TraceMe::Active(); }
 
  private:
   // Converts kwargs to strings and appends them to name encoded as TraceMe

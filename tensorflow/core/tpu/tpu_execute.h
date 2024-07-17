@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tpu/tpu_node_context.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"

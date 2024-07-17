@@ -28,6 +28,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "xla/tsl/framework/device_id.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 

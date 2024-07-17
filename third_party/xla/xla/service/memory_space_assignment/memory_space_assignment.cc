@@ -45,13 +45,13 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/algorithm.h"
 #include "xla/service/memory_space_assignment/allocation.h"
-#include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/simulator.h"
@@ -217,8 +217,10 @@ void ProcessBuffersProducedInAlternateMemory(
   for (auto& [_, eviction] : evictions_map) {
     MakeEvictionImmediate(eviction);
   }
-  VLOG(2) << "AllocationSequence after making spills immediate spills\n";
-  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "AllocationSequence after making spills immediate spills\n";
+    XLA_LOG_LINES(INFO, AllocationSequenceToString(allocations, true));
+  }
   // Process all buffers produced in the alternate memory:
   // 1. Make the buffer short lived.
   // 2. Service immediate use if any.
@@ -262,16 +264,22 @@ void ProcessBuffersProducedInAlternateMemory(
 
 void TransformAllocationSequenceToSpill(AllocationSequence& allocations,
                                         const HloLiveRange& hlo_live_range) {
-  VLOG(2) << "InstructionSchedule before transform\n";
-  XLA_LOG_LINES(2, InstructionScheduleToString(hlo_live_range));
-  VLOG(2) << "AllocationSequence before transform\n";
-  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "InstructionSchedule before transform\n";
+    XLA_LOG_LINES(INFO, InstructionScheduleToString(hlo_live_range));
+    LOG(INFO) << "AllocationSequence before transform\n";
+    XLA_LOG_LINES(INFO, AllocationSequenceToString(allocations, true));
+  }
   ProcessPrefetchesToAlternateMemory(allocations, hlo_live_range);
-  VLOG(2) << "AllocationSequence after processing prefetches\n";
-  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "AllocationSequence after processing prefetches\n";
+    XLA_LOG_LINES(INFO, AllocationSequenceToString(allocations, true));
+  }
   ProcessBuffersProducedInAlternateMemory(allocations, hlo_live_range);
-  VLOG(2) << "AllocationSequence after processing buffers produced in kAlt\n";
-  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "AllocationSequence after processing buffers produced in kAlt\n";
+    XLA_LOG_LINES(INFO, AllocationSequenceToString(allocations, true));
+  }
   SortAllocationSequence(allocations);
 }
 
@@ -327,9 +335,11 @@ MemorySpaceAssignment::Run(HloModule* module,
                            const HloAliasAnalysis& alias_analysis,
                            const Options& options) {
   CHECK(module->has_schedule());
-  VLOG(3) << "Module before memory space assignment: ";
-  XLA_VLOG_LINES(3, module->ToString());
-  VLOG(3) << "Schedule: " << module->schedule().ToString();
+  if (VLOG_IS_ON(3)) {
+    LOG(INFO) << "Module before memory space assignment: ";
+    XLA_LOG_LINES(INFO, module->ToString());
+    LOG(INFO) << "Schedule: " << module->schedule().ToString();
+  }
   MemorySpaceAssignment memory_space_assignment(module, options,
                                                 hlo_live_range);
 
@@ -356,8 +366,10 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   TF_RETURN_IF_ERROR(FixSchedule());
   TF_RETURN_IF_ERROR(ExportAndColorBuffers());
 
-  VLOG(3) << "Module after memory space assignment: ";
-  XLA_VLOG_LINES(3, module_->ToString());
+  if (VLOG_IS_ON(3)) {
+    LOG(INFO) << "Module after memory space assignment: ";
+    XLA_LOG_LINES(INFO, module_->ToString());
+  }
   TF_CHECK_OK(module_->schedule().Verify());
   TF_ASSIGN_OR_RETURN(AsyncCopyStats stats, CalculateAsyncCopyStats());
   VLOG(1) << "Maximum number of outstanding async copies/slices: "

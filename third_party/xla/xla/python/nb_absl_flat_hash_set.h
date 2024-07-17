@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_PYTHON_NB_ABSL_FLAT_HASH_SET_H_
 
 #include "absl/container/flat_hash_set.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/detail/nb_set.h"
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/detail/nb_set.h"
 
 namespace nanobind {
 namespace detail {

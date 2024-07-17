@@ -258,7 +258,7 @@ static void AssignStructPhaseOrderingConfig(HloModuleConfig& config,
   *config.mutable_phase_ordering_config() = std::move(module_config);
 }
 
-absl::StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
+HloModuleConfigProto HloModuleConfig::ToProto() const {
   HloModuleConfigProto proto;
   if (has_entry_computation_layout()) {
     *proto.mutable_entry_computation_layout() =

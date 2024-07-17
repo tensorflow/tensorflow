@@ -25,11 +25,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"

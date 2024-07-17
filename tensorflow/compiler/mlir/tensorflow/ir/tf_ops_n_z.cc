@@ -2374,8 +2374,8 @@ void TPUExecuteOp::getEffects(
   // effects on resources. For the MLIR bridge, this op will never be
   // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
   // used instead.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 
@@ -2393,8 +2393,8 @@ void _XlaRunOp::getEffects(
   // Conservatively mark resource handles as read and write, as without
   // analyzing _XlaCompile, there is not sufficient information to determine
   // effects on resources.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 
@@ -2455,22 +2455,24 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
   effects.reserve(getDeviceVarReadsIndices().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUExecute::get());
-  auto resource_handles = llvm::make_filter_range(getArgs(), [](Value value) {
-    return value.getType()
-        .cast<TensorType>()
-        .getElementType()
-        .isa<ResourceType>();
-  });
+  auto resource_handles =
+      llvm::make_filter_range(getArgsMutable(), [](OpOperand &op_operand) {
+        return op_operand.get()
+            .getType()
+            .cast<TensorType>()
+            .getElementType()
+            .isa<ResourceType>();
+      });
 
-  for (const auto &entry : llvm::enumerate(resource_handles)) {
-    Value value = entry.value();
-    effects.emplace_back(MemoryEffects::Read::get(), value,
+  for (const auto& entry : llvm::enumerate(resource_handles)) {
+    OpOperand &op_operand = entry.value();
+    effects.emplace_back(MemoryEffects::Read::get(), &op_operand,
                          ResourceEffects::Variable::get());
     if (getDeviceVarUpdatesIndices()
             .getValue()[entry.index()]
             .cast<IntegerAttr>()
             .getInt() >= 0)
-      effects.emplace_back(MemoryEffects::Write::get(), value,
+      effects.emplace_back(MemoryEffects::Write::get(), &op_operand,
                            ResourceEffects::Variable::get());
   }
 }
@@ -3070,8 +3072,8 @@ void XlaLaunchOp::getEffects(
   // Conservatively mark resource handles as read and write, as without
   // analyzing XlaLaunch, there is not sufficient information to determine
   // effects on resources.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 

@@ -24,13 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal.h"
@@ -70,11 +69,6 @@ inline constexpr absl::string_view kTritonFusionKind = "__triton";
 
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
-
-// SoftmaxRewriterTriton sets backend_config of Triton Softmax custom fusions to
-// this string.
-inline constexpr absl::string_view kTritonSoftmaxFusionKind =
-    "__triton_softmax";
 
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
@@ -119,29 +113,25 @@ bool IsContiguousSlice(const Shape& orig, const Shape& sliced);
 // can't correctly do so on both Volta and earlier GPUs.
 //
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
-llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
-                                     llvm::IRBuilder<>* builder);
+llvm::Value* EmitFullWarpShuffleDown(
+    llvm::Value* value, llvm::Value* offset, llvm::IRBuilder<>* builder,
+    const se::DeviceDescription& gpu_device_info);
 
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
-llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
-
-bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
-
-absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-    mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
-    std::string* constant_name = nullptr);
-
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index);
 
+// Returns whether 'fusion' can be emitted with the dynamic update slice
+// in-place emitter.
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
-    const BufferAssignment* buffer_assignment,
+    std::function<absl::StatusOr<BufferAllocation::Slice>(
+        const HloInstruction* instr, const ShapeIndex& index)>
+        get_allocation_slice,
     absl::Span<HloInstructionAdaptor const> roots);
 
 // Returns the dynamic-update-slice instructions defining the results of a
@@ -151,8 +141,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 // handled as a no-op.
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     absl::Span<HloInstructionAdaptor const> roots);
-
-Shape GetShape(mlir::Value value);
 
 // Returns the first hero instruction reachable from `instr` as root. Hero
 // instruction can be in a different computation if the parent HloFusionAdaptor
@@ -213,13 +201,6 @@ void VerifyModule(const llvm::Module& module);
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
                                   int64_t launch_size, llvm::IRBuilder<>* b);
 
-// The same as GetIndexTypeForKernel, but works with MLIR ops.
-llvm::Type* GetIndexTypeForKernel(mlir::Operation* op, int64_t launch_size,
-                                  llvm::IRBuilder<>* b);
-
-// Returns a sanitized (doesn't need quoting) identifier name from a location.
-std::string GetIrNameFromLoc(mlir::Location loc);
-
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
 
@@ -257,6 +238,31 @@ class DenseDataIntermediate {
 
 absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
     const Literal& literal);
+
+// Returns a deterministic encoded string representation of the proto message.
+absl::StatusOr<std::string> GetProtoFingerprint(
+    const tsl::protobuf::MessageLite&);
+
+// Returns a deterministic encoded string representation of the backend config.
+template <typename ConfigType>
+absl::StatusOr<std::string> GetBackendConfigFingerprint(
+    const BackendConfigWrapper& wrapper) {
+  ConfigType proto;
+  TF_RETURN_IF_ERROR(wrapper.GetProto(&proto));
+  return GetProtoFingerprint(proto);
+}
+
+// Returns concatenated fingerprint of an HLO instruction without its backend
+// config and its backend config's deterministic fingerprint.
+template <typename ConfigType>
+absl::StatusOr<std::string> FingerprintWithBackendConfig(
+    const HloInstruction& hlo) {
+  TF_ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
+  TF_ASSIGN_OR_RETURN(const std::string fingerprint,
+                      GetProtoFingerprint(config));
+  return absl::StrCat(hlo.ToString(HloPrintOptions::Fingerprint()),
+                      ", backend_config_fingerprint=", fingerprint);
+}
 
 }  // namespace gpu
 }  // namespace xla

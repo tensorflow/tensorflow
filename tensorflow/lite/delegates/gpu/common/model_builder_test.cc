@@ -1547,7 +1547,7 @@ TEST(CastOperationParserTest, TestIsSupported) {
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
 
-  context->tensor(1)->type = kTfLiteInt64;
+  context->tensor(1)->type = kTfLiteInt8;
   context->tensor(2)->type = kTfLiteFloat32;
   EXPECT_FALSE(
       parser

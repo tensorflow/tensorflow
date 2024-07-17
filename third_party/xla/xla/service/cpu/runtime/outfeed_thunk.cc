@@ -21,14 +21,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -37,16 +38,21 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<std::unique_ptr<OutfeedThunk>> OutfeedThunk::Create(
-    Info info, absl::Span<const OutfeedBuffer> outfeed_buffers) {
-  return absl::WrapUnique(new OutfeedThunk(std::move(info), outfeed_buffers));
+    Info info, absl::Span<const OutfeedBuffer> outfeed_buffers,
+    OutfeedResources outfeed_resources) {
+  return absl::WrapUnique(new OutfeedThunk(std::move(info), outfeed_buffers,
+                                           std::move(outfeed_resources)));
 }
 
 OutfeedThunk::OutfeedThunk(Info info,
-                           absl::Span<const OutfeedBuffer> outfeed_buffers)
+                           absl::Span<const OutfeedBuffer> outfeed_buffers,
+                           OutfeedResources outfeed_resources)
     : Thunk(Kind::kOutfeed, info),
-      outfeed_buffers_(outfeed_buffers.begin(), outfeed_buffers.end()) {}
+      outfeed_buffers_(outfeed_buffers.begin(), outfeed_buffers.end()),
+      outfeed_resources_(std::move(outfeed_resources)) {}
 
-absl::Status OutfeedThunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
+    const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   VLOG(3) << absl::StreamFormat("Outfeed %d buffers", outfeed_buffers_.size());
@@ -88,7 +94,7 @@ absl::Status OutfeedThunk::Execute(const ExecuteParams& params) {
                                            outfeed_buffer.shape);
   }
 
-  return absl::OkStatus();
+  return OkExecuteEvent();
 }
 
 OutfeedThunk::BufferUses OutfeedThunk::buffer_uses() const {
@@ -97,6 +103,11 @@ OutfeedThunk::BufferUses OutfeedThunk::buffer_uses() const {
     buffer_uses.emplace_back(outfeed_buffer.slice, BufferUse::kRead);
   }
   return buffer_uses;
+}
+
+OutfeedThunk::ResourceUses OutfeedThunk::resource_uses() const {
+  return {ResourceUse::Read(outfeed_resources_.consume_token),
+          ResourceUse::Write(outfeed_resources_.produce_token)};
 }
 
 }  // namespace xla::cpu

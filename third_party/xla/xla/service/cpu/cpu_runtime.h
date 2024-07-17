@@ -47,6 +47,7 @@ extern const char* const kEigenMatMulF64SymbolName;
 extern const char* const kEigenMatMulC64SymbolName;
 extern const char* const kEigenMatMulC128SymbolName;
 extern const char* const kEigenMatMulS32SymbolName;
+extern const char* const kEigenMatMulU8SymbolName;
 extern const char* const kEigenBatchMatMulF32SymbolName;
 extern const char* const kMKLConv2DF32SymbolName;
 extern const char* const kACLConv2DF32SymbolName;
@@ -64,6 +65,7 @@ extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
 extern const char* const kEigenSingleThreadedMatMulC64SymbolName;
 extern const char* const kEigenSingleThreadedMatMulC128SymbolName;
 extern const char* const kEigenSingleThreadedMatMulS32SymbolName;
+extern const char* const kEigenSingleThreadedMatMulU8SymbolName;
 extern const char* const kEigenSingleThreadedConv2DF16SymbolName;
 extern const char* const kEigenSingleThreadedConv2DF32SymbolName;
 extern const char* const kEigenSingleThreadedConv3DF16SymbolName;
@@ -89,6 +91,7 @@ extern const char* const kReduceScatterSymbolName;
 extern const char* const kOneDnnMatMulSymbolName;
 extern const char* const kOneDnnSoftmaxSymbolName;
 extern const char* const kOneDnnLayerNormSymbolName;
+extern const char* const kOneDnnConvolutionSymbolName;
 extern const char* const kOneDnnMatMulReorderSymbolName;
 extern const char* const kHandleFfiCallSymbolName;
 
@@ -110,7 +113,7 @@ extern int __xla_cpu_runtime_PrintfToStderr(const char* format, ...);
 
 extern int64_t __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    const char* name, const char* hlo_module, int64_t hlo_module_id);
+    const char* name, const char* hlo_module, int64_t program_id);
 extern void __xla_cpu_runtime_TracingEnd(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int64_t id);
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
-#include "tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
@@ -88,7 +88,8 @@ TEST(IfrtBackendCompilerTest, Basic) {
       &graph_execution_options, /*export_dir=*/"", &resource_context);
 
   tsl::test_util::MockServingDeviceSelector mock_serving_device_selector;
-  IfrtServingCoreSelector core_selector(&mock_serving_device_selector);
+  IfrtServingCoreSelector core_selector(&mock_serving_device_selector,
+                                        client->addressable_device_count());
 
   runtime_context.resource_context().CreateResource<IfrtModelContext>(
       "IfrtModelContext", client, &core_selector, &GetThreadPool(),

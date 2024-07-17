@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/tsl/c/tsl_status_internal.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/framework/cancellation.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tsl/framework/cancellation.h"
 
 using tensorflow::string;
 

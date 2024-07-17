@@ -56,18 +56,18 @@ TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
   MlirConcatenateFusion fusion(analysis);
 
   constexpr auto kIndexing = R"(
-    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    (bl_x * 128 + th_x) mod 400)
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
+      (bl_x * 128 + th_x)
     domain:
-    th_x in [0, 127]
-    th_y in [0, 0]
-    th_z in [0, 0]
-    bl_x in [0, 3]
-    bl_y in [0, 0]
-    bl_z in [0, 0]
-    chunk_id in [0, 0]
-    unroll_id in [0, 0]
-    th_x + bl_x * 128 in [0, 399]
+    th_x in [0, 128)
+    th_y in [0, 1)
+    th_z in [0, 1)
+    bl_x in [0, 4)
+    bl_y in [0, 1)
+    bl_z in [0, 1)
+    chunk_id in [0, 1)
+    unroll_id in [0, 1)
+    bl_x * 128 + th_x in [0, 400)
   )";
   auto thread_id_to_output_indexing_0 = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
@@ -102,9 +102,9 @@ TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-DAG: #[[MAP_1:.*]] = affine_map<(d0, d1) -> ((d1 * 128 + d0) mod 400)>
-    // CHECK-DAG: #[[MAP_2:.*]] = affine_map<(d0, d1) -> ((d1 * 128 + d0) mod 400 + 200)>
-    // CHECK-DAG: #[[MAP_3:.*]] = affine_map<(d0, d1) -> ((d1 * 128 + d0) mod 400 + 600)>
+    // CHECK-DAG: #[[MAP_1:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0)>
+    // CHECK-DAG: #[[MAP_2:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0 + 200)>
+    // CHECK-DAG: #[[MAP_3:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0 + 600)>
 
     // CHECK-LABEL: fused_computation
     // CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
@@ -171,10 +171,6 @@ TEST_F(MlirConcatenateFusionTest, PrologueEpilogue) {
     // CHECK: %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[INDEX_2]]]
 
     // CHECK: return %[[INSERTED_2]]
-
-    // CHECK: func.func private @fused_computation_log
-    // CHECK: func.func private @fused_computation_exp
-    // CHECK: func.func private @fused_computation_neg
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

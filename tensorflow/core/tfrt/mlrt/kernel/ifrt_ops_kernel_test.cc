@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/refcount.h"
@@ -407,7 +407,8 @@ class KernelTest : public ::testing::Test {
         std::make_unique<tsl::test_util::MockServingDeviceSelector>();
     ifrt_core_selector_ =
         std::make_unique<ifrt_serving::IfrtServingCoreSelector>(
-            serving_device_selector_.get());
+            serving_device_selector_.get(),
+            client_->addressable_device_count());
   }
 
   std::unique_ptr<tsl::test_util::MockServingDeviceSelector>

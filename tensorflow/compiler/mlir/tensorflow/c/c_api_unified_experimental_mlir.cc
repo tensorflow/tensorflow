@@ -52,10 +52,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -564,7 +564,8 @@ MlirFunction::GetFunctionRecord() {
 
   tensorflow::FunctionDef fdef;
   TF_RETURN_IF_ERROR(
-      ConvertMlirFunctionToFunctionLibraryDef(func_, configs, &fdef));
+      tensorflow::tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(
+          func_, configs, &fdef));
   func_record_ = tensorflow::core::RefCountPtr<tensorflow::FunctionRecord>(
       new tensorflow::FunctionRecord(std::move(fdef), {}, true));
 

@@ -24,10 +24,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "xla/array3d.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"

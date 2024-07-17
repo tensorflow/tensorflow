@@ -134,6 +134,7 @@ package_group(
         "//perftools/accelerators/xprof/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
         "//smartass/brain/server/...",
+        "//waymo/ml/deploy/benchmark/...",
     ],
 )
 
@@ -423,9 +424,9 @@ tf_cuda_library(
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_group",
         "//tensorflow/lite/kernels/shim:tf_headers",
-        "@local_tsl//tsl/framework:allocator_hdrs",
-        "@local_tsl//tsl/framework:cancellation_hdrs",
-        "@local_tsl//tsl/framework:device_type.h",
+        "@local_xla//xla/tsl/framework:allocator_hdrs",
+        "@local_xla//xla/tsl/framework:cancellation_hdrs",
+        "@local_xla//xla/tsl/framework:device_type.h",
     ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
@@ -465,7 +466,7 @@ cc_library(
     name = "framework_types_hdr",
     hdrs = [
         "//tensorflow/core/framework:types.h",
-        "@local_tsl//tsl/framework:device_type.h",
+        "@local_xla//xla/tsl/framework:device_type.h",
     ],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -478,11 +479,11 @@ cc_library(
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
-        "@local_tsl//tsl/framework:numeric_types.h",
-        "@local_tsl//tsl/framework:type_traits.h",
         "@local_tsl//tsl/platform:framework_lite_hdrs",
         "@local_tsl//tsl/platform/default:integral_types.h",
         "@local_tsl//tsl/platform/default:logging.h",
+        "@local_xla//xla/tsl/framework:numeric_types.h",
+        "@local_xla//xla/tsl/framework:type_traits.h",
     ],
     visibility = ["//visibility:public"],
     deps =
@@ -497,7 +498,7 @@ cc_library(
             "//tensorflow/core/platform:platform_port",
             "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform:mutex",
-            "@local_tsl//tsl/framework:fixedpoint_types",
+            "@local_xla//xla/tsl/framework:fixedpoint_types",
             "//tensorflow/core/platform:types",
         ],
 )
@@ -818,9 +819,9 @@ filegroup(
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:mobile_srcs",
-        "@local_tsl//tsl/framework:mobile_srcs_no_runtime",
-        "@local_tsl//tsl/framework/fixedpoint:mobile_srcs_no_runtime",
         "@local_tsl//tsl/platform:mobile_srcs_no_runtime",
+        "@local_xla//xla/tsl/framework:mobile_srcs_no_runtime",
+        "@local_xla//xla/tsl/framework/fixedpoint:mobile_srcs_no_runtime",
     ],
     visibility = ["//visibility:public"],
 )
@@ -865,8 +866,8 @@ filegroup(
         "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
         "//tensorflow/core/platform:mobile_srcs_only_runtime",
         "@local_tsl//tsl/platform:mobile_srcs_only_runtime",
-        "@local_tsl//tsl/framework:mobile_srcs_only_runtime",
-        "@local_tsl//tsl/framework/fixedpoint:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/framework:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/framework/fixedpoint:mobile_srcs_only_runtime",
 
         # Wav io files
         "//tensorflow/core/lib/wav:wav_io.h",
@@ -1058,10 +1059,10 @@ cc_library(
 #         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
+#         "@local_xla//xla/tsl/framework/fixedpoint",
 #         "//tensorflow/core/platform:resource",
 #         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
-#         "@local_tsl//tsl/framework/fixedpoint",
 #         "@local_tsl//tsl/platform:logging",
 #     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
 #     alwayslink = 1,
@@ -1568,7 +1569,7 @@ filegroup(
         "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
-        "@local_tsl//tsl/framework:framework_internal_private_hdrs",
+        "@local_xla//xla/tsl/framework:framework_internal_private_hdrs",
     ],
     visibility = ["//visibility:private"],
 )
@@ -1589,7 +1590,7 @@ filegroup(
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
         "//tensorflow/core/framework:variant.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
-        "@local_tsl//tsl/framework:tracking_allocator.h",  # only needed for tests
+        "@local_xla//xla/tsl/framework:tracking_allocator.h",  # only needed for tests
     ],
     visibility = ["//visibility:private"],
 )
@@ -1702,9 +1703,9 @@ tf_cuda_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/framework:cancellation",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:stringpiece",
+        "@local_xla//xla/tsl/framework:cancellation",
         "@local_xla//xla/tsl/util:command_line_flags",
         "@local_xla//xla/tsl/util:device_name_utils",
     ] + if_cuda([

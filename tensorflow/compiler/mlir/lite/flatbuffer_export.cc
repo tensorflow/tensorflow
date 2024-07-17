@@ -81,14 +81,23 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
+#include "tensorflow/compiler/mlir/lite/core/macros.h"
+#include "tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops.h"
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
+#include "tensorflow/compiler/mlir/lite/version.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -104,20 +113,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
-#include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
-#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
-#include "tensorflow/lite/version.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/tstring.h"
@@ -994,11 +994,16 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   // TensorFlow and TensorFlow Lite use different string encoding formats.
   // Convert to TensorFlow Lite format is it's a constant string tensor.
   if (tensor.dtype() == tensorflow::DT_STRING) {
-    ::tflite::DynamicBuffer dynamic_buffer;
+    ::mlir::TFL::SimpleDynamicBuffer dynamic_buffer;
     auto flat = tensor.flat<::tensorflow::tstring>();
     for (int i = 0; i < flat.size(); ++i) {
       const auto& str = flat(i);
-      dynamic_buffer.AddString(str.c_str(), str.length());
+      if (!dynamic_buffer.AddString(str.c_str(), str.length())) {
+        inst->emitError(
+            Twine("failed to add string to dynamic buffer with error: " +
+                  status.ToString()));
+        return std::nullopt;
+      }
     }
     char* tensor_buffer;
     int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
@@ -1512,7 +1517,7 @@ void CreateFlexbufferVector(
     const std::unique_ptr<flexbuffers::Builder>& flex_builder,
     std::string& name, const mlir::Attribute& attr) {
   auto start = flex_builder->StartVector(name.c_str());
-  auto array = attr.cast<mlir::ArrayAttr>().getValue();
+  auto array = attr.cast<mlir::vhlo::ArrayV1Attr>().getValue();
 
   for (int i = 0; i < array.size(); i++) {
     if (llvm::isa<mlir::BoolAttr>(array[i])) {
@@ -1666,6 +1671,11 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
       flex_builder->Float(
           name.c_str(),
           attr.cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
+    else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(attr))
+      CreateFlexbufferVector(flex_builder, name, attr);
+    else
+      // Unhandled attribute type.
+      return std::nullopt;
   }
 
   flex_builder->EndMap(map_start);
@@ -2156,8 +2166,12 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       return BuildVhloPadV1Op(vhlo_op, operands, results, vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::CompositeOpV1>(inst)) {
-      return BuildVhloCompositeV1Op(vhlo_op, operands, results,
-                                    inst->getName().getStringRef().str());
+      auto op = BuildVhloCompositeV1Op(vhlo_op, operands, results,
+                                       inst->getName().getStringRef().str());
+      if (!op)
+        return inst->emitOpError("Failed to build VhloCompositeOpV1."),
+               std::nullopt;
+      return op;
     }
     // for ops don't have kernels, only serialize when conversion is set to
     // true

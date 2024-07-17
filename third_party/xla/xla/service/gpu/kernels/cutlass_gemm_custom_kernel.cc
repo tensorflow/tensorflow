@@ -100,7 +100,7 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
   // object constructed in the storage. For now we ignore it, and it's textbook
   // definition of UB, but for CUTLASS kernels we use today it's perfectly safe.
   struct Params {
-    alignas(64) std::byte storage[1024];
+    alignas(128) std::byte storage[1024];
   };
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {

@@ -21,11 +21,11 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

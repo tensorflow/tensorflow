@@ -215,7 +215,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
              llvm::zip(src_shape.dimensions(), dst_shape.dimensions()))) {
       auto [src_dim, dst_dim] = values;
       int64_t start_index =
-          std::min(std::max(offset_value(argument_idx, offset_idx), 0L),
+          std::min(std::max(offset_value(argument_idx, offset_idx), int64_t{0}),
                    src_dim - dst_dim);
       slice_starts.push_back(start_index);
     }

@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -42,12 +44,15 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
        from.GetInstr().opcode() == HloOpcode::kAsyncDone)) {
     absl::string_view wrapped_inst_name =
         from.GetInstr().async_wrapped_instruction()->name();
-    VLOG(10) << "PGLE found async wrapped instruction: " << wrapped_inst_name
-             << " in " << from.GetInstr().name();
+    VLOG(2) << "PGLE found async wrapped instruction: " << wrapped_inst_name
+            << " in " << from.GetInstr().name();
     it = instr_map_.find(wrapped_inst_name);
   }
 
   if (it == instr_map_.end()) {
+    VLOG(1)
+        << "PGLE did NOT find wrapped instruction name or async start. From: "
+        << from.GetInstr().name();
     return latency_estimator_->GetLatencyBetween(from, target);
   }
 
@@ -59,8 +64,8 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
         target.GetInstr().async_wrapped_instruction()->name());
   }
   if (it2 != it->second.latencies.end()) {
-    VLOG(10) << "PGLE found latency between " << from.GetInstr().name()
-             << " and " << target.GetInstr().name() << " in latency info";
+    VLOG(2) << "PGLE found latency between " << from.GetInstr().name()
+            << " and " << target.GetInstr().name() << " in latency info";
     return it2->second * CyclesPerMicrosecond();
   }
 
@@ -68,12 +73,15 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
   // back to using instruction cost as the latency.
   if (it->second.cost.has_value() &&
       (IsAsyncPair(from, target) || IsP2pPair(from, target))) {
-    VLOG(10) << "PGLE found latency for async op " << from.GetInstr().name()
-             << " and (assumed)" << target.GetInstr().name()
-             << " in instruction costs";
+    VLOG(2) << "PGLE found latency for async op " << from.GetInstr().name()
+            << " and (assumed)" << target.GetInstr().name()
+            << " in instruction costs";
     return *it->second.cost * CyclesPerMicrosecond();
   }
 
+  VLOG(1) << "PGLE did not find relevant profiling info for '"
+          << from.GetInstr().name() << "', and '" << target.GetInstr().name()
+          << "'.";
   return latency_estimator_->GetLatencyBetween(from, target);
 }
 
@@ -86,10 +94,10 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::NodeCost(
   }
   if (auto it = instr_map_.find(instr->name());
       it != instr_map_.end() && it->second.cost.has_value()) {
-    VLOG(10) << "PGLE found cost for: " << instr->name();
+    VLOG(2) << "PGLE found cost for: " << instr->name();
     return *it->second.cost;
   }
-  VLOG(10) << "PGLE missed cost for: " << instr->name();
+  VLOG(1) << "PGLE missed cost for: " << instr->name();
   return latency_estimator_->NodeCost(instr);
 }
 

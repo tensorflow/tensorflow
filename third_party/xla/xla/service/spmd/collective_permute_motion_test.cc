@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/service/spmd/collective_permute_motion.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"

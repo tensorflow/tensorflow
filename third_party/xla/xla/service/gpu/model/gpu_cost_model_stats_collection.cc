@@ -40,7 +40,7 @@ absl::StatusOr<bool> GpuCostModelStatsCollection::Run(
       if (fusion_instr->opcode() != HloOpcode::kFusion) continue;
 
       GpuPerformanceModel::RecordEstimatedRunTime(
-          fusion_instr, &cost_analysis_,
+          fusion_instr, device_info_, &cost_analysis_,
           GpuPerformanceModelOptions::ForModule(module));
     }
   }

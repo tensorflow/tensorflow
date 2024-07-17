@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Value.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
@@ -521,11 +521,6 @@ absl::Status NcclCollectiveDoneThunk::ExecuteOnStream(
   se::StreamExecutor* executor = params.stream->parent();
   TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
   return params.stream->WaitFor(event);
-}
-
-absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
-  Shape shape = GetShape(operand);
-  return IsValidOperand(shape, reduction_op);
 }
 
 absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {

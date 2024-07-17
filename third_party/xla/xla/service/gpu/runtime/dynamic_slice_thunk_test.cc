@@ -552,10 +552,9 @@ TEST(DynamicSliceThunkTest, MulipleSlicedOperandsGemm) {
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
-  return stream->MemcpyD2D(
-      &dst->data, src.data,
-      absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
-          sizeof(float));
+  se::DeviceMemoryBase dst_mem = dst->device_memory();
+  se::DeviceMemoryBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
@@ -625,10 +624,12 @@ TEST(DynamicSliceThunkTest, SlicedMemcpy) {
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
-  seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->bundle, operands, results,
-      /*attributes=*/CustomCallThunk::AttributesMap(),
-      /*called_computation=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      seq.emplace_back(),
+      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
+                              operands, results,
+                              /*attributes=*/CustomCallThunk::AttributesMap(),
+                              /*called_computation=*/nullptr));
 
   // Wrapping address computation thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_offsets{
@@ -783,10 +784,12 @@ TEST(DynamicSliceThunkTest, SlicedOutputMemcpy) {
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
-  seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->bundle, operands, results,
-      /*attributes=*/CustomCallThunk::AttributesMap(),
-      /*called_computation=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      seq.emplace_back(),
+      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
+                              operands, results,
+                              /*attributes=*/CustomCallThunk::AttributesMap(),
+                              /*called_computation=*/nullptr));
 
   // Wrapping address computation thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_src_offsets{
@@ -1422,10 +1425,12 @@ TEST(DynamicSliceThunkTest, SlicedMemcpyOOB) {
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
-  seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->bundle, operands, results,
-      /*attributes=*/CustomCallThunk::AttributesMap(),
-      /*called_computation=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      seq.emplace_back(),
+      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
+                              operands, results,
+                              /*attributes=*/CustomCallThunk::AttributesMap(),
+                              /*called_computation=*/nullptr));
 
   // Wrapping address computation thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_src_offsets{

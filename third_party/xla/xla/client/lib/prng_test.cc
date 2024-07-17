@@ -18,11 +18,11 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"

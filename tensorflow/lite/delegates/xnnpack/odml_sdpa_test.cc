@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
@@ -23,65 +24,78 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(ODMLSDPA, MQA) {
+struct SDPATestParams {
+  std::string model_name;
+  std::string custom_test_name;
+  int batch;
+  int input_seq_len;
+  int max_seq_len;
+  int q_heads;
+  int kv_heads;
+  int head_dim;  // embedding_dim//q_heads
+};
+
+std::string TestName(const testing::TestParamInfo<SDPATestParams>& info) {
+  if (info.param.model_name != kOdmlSdpaCustom) {
+    return info.param.model_name;
+  }
+  return "CustomOp" + info.param.custom_test_name;
+}
+
+class SDPATest : public testing::TestWithParam<SDPATestParams> {};
+
+TEST_P(SDPATest, CompareWithTFLiteReference) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
+  const SDPATestParams& p = GetParam();
 
-  const auto batch = 1;
-  const auto input_seq_len = 1;
-  const auto max_seq_len = 64;
-  const auto q_heads = 32;
-  const auto kv_heads = 1;
-  const auto head_dim = 4;  // embedding_dim//q_heads
-
-  ODMLSDPATester()
-      .QueryShape({batch, input_seq_len, q_heads, head_dim})  // q
-      .KeyShape({batch, max_seq_len, kv_heads, head_dim})     // k
-      .ValueShape({batch, max_seq_len, kv_heads, head_dim})   // v
-      .MaskShape({batch, 1, input_seq_len, max_seq_len})      // mask
-      .Test(xnnpack_delegate.get());
+  ODMLSDPATester tester(p.model_name);
+  if (p.model_name == kOdmlSdpaCustom) {
+    tester
+        .QueryShape({p.batch, p.input_seq_len, p.q_heads, p.head_dim})  // q
+        .KeyShape({p.batch, p.max_seq_len, p.kv_heads, p.head_dim})     // k
+        .ValueShape({p.batch, p.max_seq_len, p.kv_heads, p.head_dim})   // v
+        .MaskShape({p.batch, 1, p.input_seq_len, p.max_seq_len});       // mask
+  }
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(ODMLSDPA, MHA) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  const auto batch = 1;
-  const auto input_seq_len = 1;
-  const auto max_seq_len = 64;
-  const auto q_heads = 32;
-  const auto kv_heads = 32;
-  const auto head_dim = 4;  // embedding_dim//q_heads
-
-  ODMLSDPATester()
-      .QueryShape({batch, input_seq_len, q_heads, head_dim})  // q
-      .KeyShape({batch, max_seq_len, kv_heads, head_dim})     // k
-      .ValueShape({batch, max_seq_len, kv_heads, head_dim})   // v
-      .MaskShape({batch, 1, input_seq_len, max_seq_len})      // mask
-      .Test(xnnpack_delegate.get());
-}
-
-TEST(ODMLSDPA, GQA) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  const auto batch = 1;
-  const auto input_seq_len = 1;
-  const auto max_seq_len = 64;
-  const auto q_heads = 32;
-  const auto kv_heads = 4;
-  const auto head_dim = 4;  // embedding_dim//q_heads
-
-  ODMLSDPATester()
-      .QueryShape({batch, input_seq_len, q_heads, head_dim})  // q
-      .KeyShape({batch, max_seq_len, kv_heads, head_dim})     // k
-      .ValueShape({batch, max_seq_len, kv_heads, head_dim})   // v
-      .MaskShape({batch, 1, input_seq_len, max_seq_len})      // mask
-      .Test(xnnpack_delegate.get());
-}
+INSTANTIATE_TEST_SUITE_P(SDPA, SDPATest,
+                         testing::Values(SDPATestParams{kOdmlSdpaCompositeMqa},
+                                         SDPATestParams{kOdmlSdpaCompositeMha},
+                                         SDPATestParams{kOdmlSdpaCompositeGqa},
+                                         SDPATestParams{
+                                             kOdmlSdpaCustom,
+                                             /*.custom_test_name=*/"MQA",
+                                             /*.batch=*/1,
+                                             /*.input_seq_len=*/1,
+                                             /*.max_seq_len=*/64,
+                                             /*.q_heads=*/32,
+                                             /*.kv_heads=*/1,
+                                             /*.head_dim=*/4,
+                                         },
+                                         SDPATestParams{
+                                             kOdmlSdpaCustom,
+                                             /*.custom_test_name=*/"MHA",
+                                             /*.batch=*/1,
+                                             /*.input_seq_len=*/1,
+                                             /*.max_seq_len=*/64,
+                                             /*.q_heads=*/32,
+                                             /*.kv_heads=*/32,
+                                             /*.head_dim=*/4,
+                                         },
+                                         SDPATestParams{
+                                             kOdmlSdpaCustom,
+                                             /*.custom_test_name=*/"GQA",
+                                             /*.batch=*/1,
+                                             /*.input_seq_len=*/1,
+                                             /*.max_seq_len=*/64,
+                                             /*.q_heads=*/32,
+                                             /*.kv_heads=*/4,
+                                             /*.head_dim=*/4,
+                                         }),
+                         TestName);
 
 }  // namespace xnnpack
 }  // namespace tflite

@@ -43,6 +43,7 @@ tf_cc_test(
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@tf_runtime//:init_tfrt_dialects",
     ],

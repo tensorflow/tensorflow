@@ -148,6 +148,11 @@ struct TfrtPipelineOptions
           "The minimum of the maximum number of outstanding enqueued batches"),
       llvm::cl::init(1)};
 
+  Option<std::string> batch_padding_policy{
+      *this, "tfrt-batch-padding-policy",
+      llvm::cl::desc("The policy used when padding (or splitting) batches."),
+      llvm::cl::init("")};
+
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",
       llvm::cl::desc("If true, streams with inter data depenedencies will be "

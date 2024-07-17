@@ -28,8 +28,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/threadpool.h"
@@ -162,9 +161,7 @@ class Compiler {
     // If non-null, it will be used to construct relevant MLIR contexts.
     mlir::DialectRegistry* registry = nullptr;
 
-    int process_index = 0;
-    int process_count = 1;
-    std::shared_ptr<KeyValueStoreInterface> key_value_store;
+    MultiProcessKeyValueStore key_value_store;
   };
 
   virtual ~Compiler() = default;

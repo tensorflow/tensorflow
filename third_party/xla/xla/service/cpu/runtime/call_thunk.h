@@ -18,9 +18,10 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/runtime/thunk_executor.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
@@ -31,14 +32,15 @@ class CallThunk final : public Thunk {
   static absl::StatusOr<std::unique_ptr<CallThunk>> Create(
       Info info, ThunkSequence called_sequence);
 
-  absl::Status Execute(const ExecuteParams& params) final;
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
+  ResourceUses resource_uses() const final;
 
  private:
-  CallThunk(Info info, ThunkSequence called_sequence);
+  CallThunk(Info info, ThunkExecutor called_executor);
 
-  ThunkSequence called_sequence_;
+  ThunkExecutor called_executor_;
 };
 
 }  // namespace xla::cpu

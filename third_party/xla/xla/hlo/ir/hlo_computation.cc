@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -964,10 +965,6 @@ std::string HloComputation::ToString(
   StringPrinter printer;
   Print(&printer, options, instruction_order);
   return std::move(printer).ToString();
-}
-
-absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
-  return ToCord(options, MakeInstructionPostOrder());
 }
 
 absl::Cord HloComputation::ToCord(

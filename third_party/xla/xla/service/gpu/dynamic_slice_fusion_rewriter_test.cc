@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
@@ -932,10 +933,9 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::AnyBuffer dst) {
-  return stream->MemcpyD2D(
-      &dst.data, src.data,
-      absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
-          sizeof(float));
+  se::DeviceMemoryBase dst_mem = dst.device_memory();
+  se::DeviceMemoryBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,

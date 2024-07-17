@@ -243,3 +243,9 @@ py_library(
 )
 
 %{copy_rules}
+
+cc_library(
+    # This is not yet fully supported, but we need the rule
+    # to make bazel query happy.
+    name = "nvptxcompiler",
+)

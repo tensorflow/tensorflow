@@ -493,7 +493,7 @@ absl::StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(
   return local_service_->ReplicaNumberToDeviceOrdinal(replica_number);
 }
 
-absl::StatusOr<TransferToServerResponse> LocalClient::TransferToLocalServer(
+absl::StatusOr<GlobalDataHandle> LocalClient::TransferToLocalServer(
     const ::xla::BorrowingLiteral& literal, int device_ordinal) {
   const ::xla::Shape& shape = literal.shape();
 
@@ -506,14 +506,13 @@ absl::StatusOr<TransferToServerResponse> LocalClient::TransferToLocalServer(
       stream.get(), literal, shaped_buffer));
   std::vector<::xla::ScopedShapedBuffer> replicated_buffer;
   replicated_buffer.emplace_back(std::move(shaped_buffer));
-  ::xla::TransferToServerResponse result;
-  TF_ASSIGN_OR_RETURN(*result.mutable_data(),
+  TF_ASSIGN_OR_RETURN(GlobalDataHandle data,
                       local_service_->RegisterReplicatedBuffers(
                           std::move(replicated_buffer),
                           absl::StrCat("TransferToServer literal of shape ",
                                        ::xla::ShapeUtil::HumanString(shape))));
 
-  return result;
+  return data;
 }
 
 }  // namespace xla

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -344,8 +344,6 @@ class HloComputation {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
-  absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Overload which accepts an order to emit the instructions in.
   absl::Cord ToCord(

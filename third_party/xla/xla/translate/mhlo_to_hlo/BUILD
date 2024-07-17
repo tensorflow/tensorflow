@@ -20,7 +20,6 @@ cc_library(
     hdrs = ["attribute_exporter.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -28,6 +27,7 @@ cc_library(
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:dnn",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -39,11 +39,11 @@ cc_library(
     hdrs = ["layout_util.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -177,13 +177,16 @@ cc_library(
         ":mlir_hlo_to_hlo",
         ":type_to_shape",
         "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -191,13 +194,18 @@ cc_library(
 cc_library(
     name = "translate_registration",
     testonly = True,
-    srcs = ["translate_registration.cc"],
+    srcs = [
+        "translate_registration.cc",
+        "translate_registration.h",
+    ],
     deps = [
         ":translate",
         "//xla/mlir_hlo:hlo_dialect_registration",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TranslateLib",
     ],

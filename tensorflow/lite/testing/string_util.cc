@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "tensorflow/lite/testing/string_util.h"
+
+#include <memory>
 
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {

@@ -21,8 +21,8 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_COMMON_H_
 #define XLA_STREAM_EXECUTOR_STREAM_COMMON_H_
 
-#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -32,18 +32,15 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -71,18 +68,6 @@ class StreamCommon : public Stream {
   absl::StatusOr<Stream *> GetOrCreateSubStream() override
       TF_LOCKS_EXCLUDED(mu_);
   void ReturnSubStream(Stream *sub_stream) override TF_LOCKS_EXCLUDED(mu_);
-  absl::Status WaitFor(Stream *other) override;
-  absl::Status WaitFor(Event *event) override;
-  absl::Status RecordEvent(Event *event) override;
-  absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                      uint64_t size) override;
-  absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                      uint64_t size) override;
-  absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
-                      const DeviceMemoryBase &gpu_src, uint64_t size) override;
-  absl::Status MemZero(DeviceMemoryBase *location, uint64_t size) override;
-  absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
-                        uint64_t size) override;
   absl::Status BlockHostUntilDone() override TF_LOCKS_EXCLUDED(mu_);
   absl::Status DoHostCallback(absl::AnyInvocable<void() &&> callback) override;
   absl::Status DoHostCallbackWithStatus(
@@ -104,6 +89,13 @@ class StreamCommon : public Stream {
   }
   absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
                       const Kernel &k, const KernelArgs &args) override;
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      const ClusterDim &cluster_dims, const Kernel &k,
+                      const KernelArgs &args) override;
+
+  // Doesn't do anything interesting by default; GpuStream connects this to NVTX
+  absl::string_view name() const override { return name_; }
+  void set_name(absl::string_view name) override { name_ = name; }
 
  protected:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
@@ -119,6 +111,8 @@ class StreamCommon : public Stream {
   void CheckStatus(absl::Status status) TF_LOCKS_EXCLUDED(mu_);
 
   void SetError() { CheckError(false /* = operation_retcode */); }
+
+  std::string name_;
 
  private:
   // The StreamExecutor that supports the operation of this stream.

@@ -92,9 +92,11 @@ struct NodeSubset {
   std::vector<int> output_tensors;
 };
 
+// LINT.IfChange
 // Node edge.second depends on node edge.first.
 using ControlEdge = std::pair<int32_t, int32_t>;
 using ControlEdges = std::vector<ControlEdge>;
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/utils/control_edges.h)
 
 // Partitions a list of node indices `nodes_to_partition` into node subsets.
 // Each node subset is in dependency order internally (i.e. all members of the

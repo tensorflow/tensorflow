@@ -17236,6 +17236,42 @@ func FakeQuantWithMinMaxArgsGradientNarrowRange(value bool) FakeQuantWithMinMaxA
 //
 // Returns Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
 // `gradients * (inputs >= min && inputs <= max)`.
+//
+// ```
+// import tensorflow as tf
+//
+// # Define some sample data
+// gradients = tf.random.uniform((2, 3), minval=-5.0, maxval=5.0, dtype=tf.float32)
+// inputs = tf.random.uniform((2, 3), minval=-10.0, maxval=10.0, dtype=tf.float32)
+//
+// # Define quantization parameters (adjust as needed)
+// min_val = -2.0
+// max_val = 8.0
+// num_bits = 4  # Number of bits for quantization
+//
+// # Calculate gradients for fake quantization with specified parameters
+// output_gradients = tf.quantization.fake_quant_with_min_max_args_gradient(
+//
+//	gradients=gradients, inputs=inputs, min=min_val, max=max_val, num_bits=num_bits, narrow_range = False, name=None
+//
+// )
+//
+// # Print the original gradients and the gradients after the fake-quant operation
+// print("Original Gradients:")
+// print(gradients)
+// print("\nGradients after Fake-Quantization:")
+// print(output_gradients)
+//
+// ```
+// #Original Gradients:
+// #tf.Tensor(
+// #[[ 1.242547    3.217492    3.568469  ]
+// #[-0.55371046  0.23130894  2.608243  ]], shape=(2, 3), dtype=float32)
+//
+// #Gradients after Fake-Quantization:
+// #tf.Tensor(
+// #[[ 0.          3.217492    3.568469  ]
+// # [-0.55371046  0.23130894  2.608243  ]], shape=(2, 3), dtype=float32)
 func FakeQuantWithMinMaxArgsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsGradientAttr) (backprops tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -17300,6 +17336,26 @@ func FakeQuantWithMinMaxVarsNarrowRange(value bool) FakeQuantWithMinMaxVarsAttr 
 //
 // This operation has a gradient and thus allows for training `min` and `max`
 // values.
+//
+// >>> constant_input = tf.constant([[1.2, -0.3, 0.7], [2.1, 0.5, -1.0]], dtype=tf.float32)
+// >>>
+// >>> min_val = -0.5
+// >>> max_val = 0.8
+// >>> num_bits = 8
+// >>> narrow_range = False #False:for the quantization range [0; 2^num_bits - 1]
+// >>>
+// >>> quantized_data = tf.quantization.fake_quant_with_min_max_vars(
+// ...   inputs=constant_input, min=min_val, max=max_val, num_bits=num_bits, narrow_range=narrow_range
+// ... )
+// >>>
+// >>> print("Input:\n", constant_input.numpy())
+// Input:
+// [[ 1.2 -0.3  0.7]
+// [ 2.1  0.5 -1. ]]
+// >>> print("Output:\n", quantized_data.numpy())
+// Output:
+// [[ 0.8003921 -0.3007843  0.6984313]
+// [ 0.8003921  0.4996078 -0.4996078]]
 func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return

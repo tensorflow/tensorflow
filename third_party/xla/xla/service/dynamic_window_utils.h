@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 namespace xla {
 struct DynamicWindowDims {

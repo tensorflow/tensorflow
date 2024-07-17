@@ -462,6 +462,66 @@ TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
                                    Property(&OpMetrics::name, "IDLE")));
 }
 
+// Verifies that the step db is generated correctly by intersecting for
+// multi-device TPU.
+TEST(ConvertXPlaneToOpStats, TpuMultiDeviceStepDbTest) {
+  auto space = std::make_unique<XSpace>();
+
+  XPlaneBuilder device_plane_builder1(
+      GetOrCreateTpuXPlane(space.get(), /*device_ordinal=*/0, "TPU V4", 0, 0));
+  XPlaneBuilder device_plane_builder2(
+      GetOrCreateTpuXPlane(space.get(), /*device_ordinal=*/1, "TPU V4", 0, 0));
+  device_plane_builder1.ReserveLines(1);
+  device_plane_builder2.ReserveLines(1);
+
+  // Create 1 step in xplane in TPU ordinal 0.
+  XStatMetadata* kGroupId1 = device_plane_builder1.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kGroupId));
+  XLineBuilder line = device_plane_builder1.GetOrCreateLine(1);
+  line.SetName(kXlaOpLineName);
+  // Step 1
+  XEventMetadata* event_metadata =
+      device_plane_builder1.GetOrCreateEventMetadata(1);
+  event_metadata->set_name("Step 1");
+  XEventBuilder event_builder = line.AddEvent(*event_metadata);
+  event_builder.AddStatValue(*kGroupId1, 1);  // step num
+  event_builder.SetDurationNs(100);
+  event_builder.SetOffsetNs(100);
+
+  // Create 2 steps in xplane in TPU ordinal 1.
+  line = device_plane_builder2.GetOrCreateLine(1);
+  line.SetName(kXlaOpLineName);
+  // Step 1
+  XStatMetadata* kGroupId2 = device_plane_builder2.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kGroupId));
+  XEventMetadata* event_metadata2 =
+      device_plane_builder2.GetOrCreateEventMetadata(2);
+  event_metadata2->set_name("Step 1");
+  XEventBuilder event_builder2 = line.AddEvent(*event_metadata2);
+  event_builder2.AddStatValue(*kGroupId2, 1);  // step num
+  event_builder2.SetDurationNs(100);
+  event_builder2.SetOffsetNs(300);
+  // Step 2
+  XStatMetadata* kGroupId3 = device_plane_builder2.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kGroupId));
+  XEventMetadata* event_metadata3 =
+      device_plane_builder2.GetOrCreateEventMetadata(2);
+  event_metadata3->set_name("Step 2");
+  XEventBuilder event_builder3 = line.AddEvent(*event_metadata3);
+  event_builder3.AddStatValue(*kGroupId3, 2);  // step num
+  event_builder3.SetDurationNs(100);
+  event_builder3.SetOffsetNs(300);
+
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  options.generate_step_db = true;
+  OpStats op_stats = ConvertXSpaceToOpStats(*space, options);
+  const StepDatabaseResult& step_db = op_stats.step_db();
+  // For TPU step events, we intersect the step events by step num across
+  // different TPU devices.
+  EXPECT_EQ(step_db.step_sequence_size(), 1);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

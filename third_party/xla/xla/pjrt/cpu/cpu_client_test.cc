@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
+#include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -30,6 +33,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "xla/client/xla_computation.h"
 #include "xla/ffi/ffi.h"
@@ -366,8 +370,8 @@ struct MemsetValue {
 static absl::Status MemsetFromValue(
     ffi::Result<ffi::BufferR1<PrimitiveType::F32>> result,
     MemsetValue* memset_value) {
-  for (size_t i = 0; i < result->dimensions.at(0); ++i) {
-    result->data.base()[i] = memset_value->value;
+  for (size_t i = 0; i < result->element_count(); ++i) {
+    result->typed_data()[i] = memset_value->value;
   }
   return absl::OkStatus();
 }

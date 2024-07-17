@@ -28,10 +28,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device_id_utils.h"
@@ -43,14 +46,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/bfc_allocator.h"
-#include "tsl/framework/device_id.h"
-#include "tsl/framework/device_id_utils.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/types.h"
+
+#if GOOGLE_CUDA
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -73,12 +76,12 @@ static bool UseCudaMallocAsyncAllocator() {
   const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
   auto result = allocator_env != nullptr &&
                 std::strcmp(allocator_env, "cuda_malloc_async") == 0;
-#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+#if GOOGLE_CUDA
   return result;
 #else
   if (result)
     LOG(ERROR) << "TF_GPU_ALLOCATOR=cuda_malloc_async environment found, "
-               << "but TensorFlow was not compiled with CUDA 11.2+.";
+               << "but TensorFlow was not compiled with CUDA support.";
   return false;
 #endif
 }
@@ -202,8 +205,10 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // compute-sanitizer.
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
       gpu_bfc_allocator.reset();
+#if GOOGLE_CUDA
       gpu_allocator =
           new se::GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
+#endif
     }
 
     Allocator* recording_allocator = nullptr;

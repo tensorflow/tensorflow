@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/client.h"
 #include "xla/client/executable_build_options.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -104,7 +104,8 @@ class LocalExecutable {
   absl::StatusOr<T> AsyncCallAndBlockHostUntilDone(
       absl::Span<Shape const* const> argument_shapes,
       const ExecutableRunOptions& run_options,
-      std::function<StatusOr<T>(const ExecutableRunOptions&)> async_callback) {
+      std::function<absl::StatusOr<T>(const ExecutableRunOptions&)>
+          async_callback) {
     TF_ASSIGN_OR_RETURN(auto options_and_stream,
                         RunHelper(argument_shapes, run_options));
     ExecutableRunOptions options = options_and_stream.first.run_options();
@@ -170,7 +171,7 @@ class LocalClient : public Client {
       se::DeviceMemoryAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
-  absl::StatusOr<TransferToServerResponse> TransferToLocalServer(
+  absl::StatusOr<GlobalDataHandle> TransferToLocalServer(
       const ::xla::BorrowingLiteral& literal, int device_ordinal);
 
   // Copy the data from the device contained in the given ShapedBuffer and

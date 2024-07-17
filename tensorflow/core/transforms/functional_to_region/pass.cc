@@ -44,7 +44,8 @@ struct FunctionalToRegionPass
     // Use top-down traversal for more efficient conversion. Disable region
     // simplification as all regions are single block.
     config.useTopDownTraversal = true;
-    config.enableRegionSimplification = false;
+    config.enableRegionSimplification =
+        mlir::GreedySimplifyRegionLevel::Disabled;
     // If there are deeply nested conditionals, instantiating them too deep will
     // cause the verifiers, which are implemented recursively, to stack
     // overflow. Set a relatively low iteration limit.

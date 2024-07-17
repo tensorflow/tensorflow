@@ -4104,6 +4104,18 @@ op {
     }
   }
   attr {
+    name: "batch_padding_policy"
+    type: "string"
+    default_value {
+      s: "PAD_UP"
+    }
+    allowed_values {
+      list {
+        s: "PAD_UP"
+      }
+    }
+  }
+  attr {
     name: "Tin"
     type: "list(type)"
     has_minimum: true
@@ -18234,6 +18246,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "force_synchronous"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ExperimentalMatchingFilesDataset"
@@ -27293,6 +27312,13 @@ op {
   }
   attr {
     name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "force_synchronous"
     type: "bool"
     default_value {
       b: false

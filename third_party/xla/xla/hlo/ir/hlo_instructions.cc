@@ -2365,10 +2365,12 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
             break;
           }
         }
-        if (has_outside_user) {
-          new_roots.insert(
-              FindOrDie(old_to_new, old_fusion_outputs.back().first));
+        if (!has_outside_user && !user->IsRoot()) {
+          continue;
         }
+
+        new_roots.insert(
+            FindOrDie(old_to_new, old_fusion_outputs.back().first));
       }
       continue;
     }

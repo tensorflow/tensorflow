@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/service.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"

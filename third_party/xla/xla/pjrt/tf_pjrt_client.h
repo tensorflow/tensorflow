@@ -209,10 +209,6 @@ class TfPjRtClient : public PjRtClient {
     return wrapped_->LookupDevice(global_device_id);
   }
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const override {
-    return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
-  }
-  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override {
     if (wrapped_ == nullptr) {
       return tsl::errors::Internal(

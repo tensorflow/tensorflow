@@ -66,10 +66,12 @@ class TF_LOCKABLE mutex {
   void lock() TF_EXCLUSIVE_LOCK_FUNCTION();
   bool try_lock() TF_EXCLUSIVE_TRYLOCK_FUNCTION(true);
   void unlock() TF_UNLOCK_FUNCTION();
+  void assert_held() const TF_ASSERT_EXCLUSIVE_LOCK();
 
   void lock_shared() TF_SHARED_LOCK_FUNCTION();
   bool try_lock_shared() TF_SHARED_TRYLOCK_FUNCTION(true);
   void unlock_shared() TF_UNLOCK_FUNCTION();
+  void assert_held_shared() const TF_ASSERT_SHARED_LOCK();
 
   // -------
   // Conditional critical sections.

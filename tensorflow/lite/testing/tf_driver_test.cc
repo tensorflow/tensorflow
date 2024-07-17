@@ -17,9 +17,14 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/escaping.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {

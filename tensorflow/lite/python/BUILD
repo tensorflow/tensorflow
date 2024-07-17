@@ -52,6 +52,9 @@ py_strict_test(
         "//tensorflow/lite/python/testdata:interpreter_test_data",
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
+    # Static linking is required because this loads a cc_binary as a shared
+    # library, which would otherwise create ODR violations.
+    # copybara:uncomment linking_mode = "static",
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
@@ -474,10 +477,10 @@ pytype_strict_library(
         ":convert_phase",
         ":lite_constants",
         ":util",
+        "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
         "//tensorflow/compiler/mlir/lite/python:wrap_converter",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_py",
-        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
@@ -517,7 +520,7 @@ pytype_strict_contrib_test(
         ":convert",
         ":interpreter",
         ":op_hint",
-        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
+        "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python/client:session",
@@ -618,8 +621,8 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics",
-        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
     ],
 )
 

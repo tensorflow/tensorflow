@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_frontend_attributes.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -1184,6 +1185,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_RET_CHECK(proto.called_computation_ids_size() == 2)
             << "While should have 2 called computation but has "
             << proto.called_computation_ids_size();
+        computation_map.at(proto.called_computation_ids(0))
+            ->SetWhileCallInstruction(instruction.get());
       }
 
       for (const int64_t operand_id : proto.operand_ids()) {
@@ -2798,8 +2801,8 @@ bool HloInstruction::IdenticalInternal(
                          : ShapeUtil::Compatible(shape(), other.shape()))) {
     return false;
   }
-  if (sharding_sensitive && has_sharding() && other.has_sharding() &&
-      sharding() != other.sharding()) {
+  if (sharding_sensitive &&
+      !hlo_instruction_utils::HasEquivalentShardings(*this, other)) {
     return false;
   }
   if (operands().size() != other.operands().size()) {

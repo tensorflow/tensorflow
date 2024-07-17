@@ -568,10 +568,11 @@ std::optional<HloInstructionAdaptor> HloFindIf(
   return result;
 }
 
-std::optional<const HloInstruction*> HloFindIf(
+std::vector<const HloInstruction*> HloFindAllImpl(
     absl::Span<const HloInstruction* const> roots,
     const std::function<bool(const HloInstruction* node)>& visit,
-    bool visit_operands) {
+    bool visit_operands, bool find_first_only = false) {
+  std::vector<const HloInstruction*> result;
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> q;
   auto enqueue = [&](const HloInstruction* node) {
@@ -598,11 +599,34 @@ std::optional<const HloInstruction*> HloFindIf(
     const HloInstruction* node = q.front();
     q.pop();
     if (visit(node)) {
-      return node;
+      result.push_back(node);
+      if (find_first_only) {
+        return result;
+      }
     }
     enqueue(node);
   }
-  return std::nullopt;
+  return result;
+}
+
+std::optional<const HloInstruction*> HloFindIf(
+    absl::Span<const HloInstruction* const> roots,
+    const std::function<bool(const HloInstruction* node)>& visit,
+    bool visit_operands) {
+  auto result = HloFindAllImpl(roots, visit, visit_operands,
+                               /*find_first_only=*/true);
+  if (result.empty()) {
+    return std::nullopt;
+  }
+  return result[0];
+}
+
+std::vector<const HloInstruction*> HloFindAll(
+    absl::Span<const HloInstruction* const> roots,
+    const std::function<bool(const HloInstruction* node)>& visit,
+    bool visit_operands) {
+  std::vector<const HloInstruction*> result;
+  return HloFindAllImpl(roots, visit, visit_operands);
 }
 
 std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,

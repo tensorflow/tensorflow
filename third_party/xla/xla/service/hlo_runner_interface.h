@@ -23,13 +23,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -98,8 +98,6 @@ class HloRunnerInterface {
   static absl::StatusOr<std::unique_ptr<HloModule>>
   ReadModuleFromBinaryProtoFile(const std::string& filename,
                                 const DebugOptions& debug_options);
-  static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
-      const std::string& filename, const DebugOptions& debug_options);
 
   // Reads the proto file in xla.HloModule format, creates and returns the
   // HloModule.

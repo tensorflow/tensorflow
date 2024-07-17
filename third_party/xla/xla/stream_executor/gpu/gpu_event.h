@@ -20,12 +20,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
 namespace gpu {
 
+class GpuExecutor;
 // GpuEvent wraps a GpuEventHandle in the platform-independent Event interface.
 class GpuEvent : public Event {
  public:
@@ -41,7 +41,7 @@ class GpuEvent : public Event {
   absl::Status Destroy();
 
   // Inserts the event at the current position into the specified stream.
-  absl::Status Record(GpuStream* stream);
+  absl::Status Record(GpuStreamHandle stream_handle);
 
   // The underlying CUDA event element.
   GpuEventHandle gpu_event();

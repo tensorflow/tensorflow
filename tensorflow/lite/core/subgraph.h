@@ -592,7 +592,7 @@ class Subgraph {
   // Returns true if the subgraph has been fully delegated.
   bool IsFullyDelegated() const;
 
-  const std::unordered_map<size_t, size_t>& GetTensorBufferIdentifiers() {
+  const std::unordered_map<size_t, size_t>& GetTensorBufferIdentifiers() const {
     return tensor_buffer_identifiers_;
   }
 

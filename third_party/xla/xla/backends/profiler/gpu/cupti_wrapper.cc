@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 
-#include <type_traits>
+#include "third_party/gpus/cuda/include/cuda.h"
 
 namespace xla {
 namespace profiler {
@@ -70,6 +70,14 @@ CUptiResult CuptiWrapper::ActivityUsePerThreadBuffer() {
 #endif
 }
 
+CUptiResult CuptiWrapper::SetActivityFlushPeriod(uint32_t period_ms) {
+#if CUDA_VERSION >= 11010
+  return cuptiActivityFlushPeriod(period_ms);
+#else
+  return CUPTI_ERROR_NOT_SUPPORTED;
+#endif
+}
+
 CUptiResult CuptiWrapper::GetDeviceId(CUcontext context, uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);
 }
@@ -111,6 +119,22 @@ CUptiResult CuptiWrapper::GetResultString(CUptiResult result,
 CUptiResult CuptiWrapper::GetContextId(CUcontext context,
                                        uint32_t* context_id) {
   return cuptiGetContextId(context, context_id);
+}
+
+CUptiResult CuptiWrapper::GetGraphId(CUgraph graph, uint32_t* graph_id) {
+#if CUDA_VERSION >= 11010
+  return cuptiGetGraphId(graph, graph_id);
+#else
+  // Do not treat it as error if the interface is not available.
+  if (graph_id) *graph_id = 0;
+  return CUPTI_SUCCESS;
+#endif
+}
+
+CUptiResult CuptiWrapper::GetGraphExecId(CUgraphExec graph_exec,
+                                         uint32_t* graph_id) {
+  // TODO: (b/350105610), Using cuptiGetGraphExecId() for CUDA 12.3 and later
+  return GetGraphId(reinterpret_cast<CUgraph>(graph_exec), graph_id);
 }
 
 CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,

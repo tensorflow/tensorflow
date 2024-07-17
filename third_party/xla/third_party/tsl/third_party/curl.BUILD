@@ -311,6 +311,7 @@ cc_library(
         "lib/vquic/curl_msh3.h",
         "lib/vquic/curl_ngtcp2.c",
         "lib/vquic/curl_ngtcp2.h",
+        "lib/vquic/curl_osslq.h",
         "lib/vquic/curl_quiche.c",
         "lib/vquic/curl_quiche.h",
         "lib/vquic/vquic.c",

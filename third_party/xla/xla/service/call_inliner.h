@@ -45,7 +45,7 @@ class CallInliner : public HloModulePass {
                        bool update_domain = false)
       : single_call_site_(single_call_site), update_domain_(update_domain) {}
   ~CallInliner() override = default;
-  absl::string_view name() const override { return "CallInliner"; }
+  absl::string_view name() const override { return "call-inliner"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(

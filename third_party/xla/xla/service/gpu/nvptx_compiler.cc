@@ -42,6 +42,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/convert_mover.h"
 #include "xla/service/dot_dimension_merger.h"
@@ -74,7 +76,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_sort_rewriter.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/metrics.h"
-#include "xla/service/gpu/move_copy_to_users.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/triangular_solve_rewriter.h"
 #include "xla/service/hlo_constant_folding.h"
@@ -85,9 +87,7 @@ limitations under the License.
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/layout_normalization.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/reshape_decomposer.h"
 #include "xla/service/reshape_mover.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
@@ -98,7 +98,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -112,6 +111,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -372,9 +372,10 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
 
 absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+    const MultiProcessKeyValueStore& key_value_store) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
-                                         thread_pool);
+                                         thread_pool, key_value_store);
   return absl::OkStatus();
 }
 
@@ -739,20 +740,32 @@ static bool IsNvlinkEnabled() {
   return use_nvlink;
 }
 
+// Returns the version of the PTX compiler that will be used for the given
+// debug options and preferred CUDA directory (Either libnvptxcompiler or ptxas)
+static absl::StatusOr<stream_executor::ToolVersion> GetAsmCompilerVersion(
+    const DebugOptions& debug_options, const std::string& preferred_cuda_dir) {
+  if (debug_options.xla_gpu_enable_libnvptxcompiler() &&
+      se::IsLibNvPtxCompilerSupported()) {
+    return stream_executor::GetLibNvPtxCompilerVersion();
+  }
+
+  return se::GetAsmCompilerVersion(preferred_cuda_dir);
+}
+
 absl::StatusOr<NVPTXCompiler::LinkingMethod> ChooseLinkingMethodImpl(
     const DebugOptions& debug_options, const std::string& preferred_cuda_dir) {
   using LinkingMethod = NVPTXCompiler::LinkingMethod;
-  TF_ASSIGN_OR_RETURN(auto ptxas_version_tuple,
-                      se::GetAsmCompilerVersion(preferred_cuda_dir));
+  TF_ASSIGN_OR_RETURN(auto asm_compiler_version,
+                      GetAsmCompilerVersion(debug_options, preferred_cuda_dir));
 
   auto nvlink_version = stream_executor::GetNvLinkVersion(preferred_cuda_dir);
   if (IsNvlinkEnabled() && nvlink_version.ok() &&
-      nvlink_version.value() >= ptxas_version_tuple) {
+      nvlink_version.value() >= asm_compiler_version) {
     return LinkingMethod::kNvLink;
   }
 
-  int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
-                      std::get<1>(ptxas_version_tuple) * 10;
+  int ptxas_version = std::get<0>(asm_compiler_version) * 1000 +
+                      std::get<1>(asm_compiler_version) * 10;
   TF_ASSIGN_OR_RETURN(int driver_version,
                       se::gpu::GpuDriver::GetDriverVersion());
 
@@ -764,15 +777,13 @@ absl::StatusOr<NVPTXCompiler::LinkingMethod> ChooseLinkingMethodImpl(
       << "The NVIDIA driver's CUDA version is "
       << absl::StrFormat("%d.%d", driver_version / 1000,
                          (driver_version % 1000) / 10)
-      << " which is older than the ptxas CUDA version "
-      << absl::StrFormat("(%d.%d.%d)", std::get<0>(ptxas_version_tuple),
-                         std::get<1>(ptxas_version_tuple),
-                         std::get<2>(ptxas_version_tuple))
-      << ". Because the driver is older than the ptxas version, XLA is "
-         "disabling parallel compilation, which may slow down "
-         "compilation. "
-         "You should update your NVIDIA driver or use the "
-         "NVIDIA-provided "
+      << " which is older than the PTX compiler version "
+      << absl::StrFormat("(%d.%d.%d)", std::get<0>(asm_compiler_version),
+                         std::get<1>(asm_compiler_version),
+                         std::get<2>(asm_compiler_version))
+      << ". Because the driver is older than the PTX compiler version, XLA is "
+         "disabling parallel compilation, which may slow down compilation. "
+         "You should update your NVIDIA driver or use the NVIDIA-provided "
          "CUDA forward compatibility packages.";
 
   return LinkingMethod::kNone;

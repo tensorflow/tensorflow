@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/testing/utils.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -50,11 +51,7 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::OwningOpRef;
 using ::tensorflow::monitoring::testing::CellReader;
-
-std::string TestDataPath() {
-  return tensorflow::GetDataDependencyFilepath(
-      "tensorflow/compiler/mlir/tf2xla/api/v2/testdata/");
-}
+using ::tensorflow::tf2xla::v2::testing::TestDataPath;
 
 size_t CountSubstring(absl::string_view str, absl::string_view substr) {
   size_t count = 0;

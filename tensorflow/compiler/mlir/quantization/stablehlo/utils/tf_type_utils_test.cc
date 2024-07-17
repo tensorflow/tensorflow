@@ -34,11 +34,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/tsl/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
-#include "tsl/framework/numeric_types.h"
 
 namespace mlir::quant::tensorflow {
 namespace {

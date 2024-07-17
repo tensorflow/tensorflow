@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/local_client.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"

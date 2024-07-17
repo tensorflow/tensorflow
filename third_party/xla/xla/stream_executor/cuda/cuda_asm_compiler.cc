@@ -202,16 +202,19 @@ absl::StatusOr<std::string> FindCudaExecutable(
   }
 
   // #3 - Check the PATH environment variable
-  std::string_view path_env = std::getenv("PATH");
+  if (const auto* path_env_ptr = std::getenv("PATH")) {
+    std::string_view path_env{path_env_ptr};
 
 #if defined(PLATFORM_WINDOWS)
-  constexpr char kSearchPathSeparator = ';';
+    constexpr char kSearchPathSeparator = ';';
 #else
-  constexpr char kSearchPathSeparator = ':';
+    constexpr char kSearchPathSeparator = ':';
 #endif
 
-  for (std::string_view path : absl::StrSplit(path_env, kSearchPathSeparator)) {
-    candidates.emplace_back(tsl::io::JoinPath(path, binary_filename));
+    for (std::string_view path :
+         absl::StrSplit(path_env, kSearchPathSeparator)) {
+      candidates.emplace_back(tsl::io::JoinPath(path, binary_filename));
+    }
   }
 
   // #4 - Check generic CUDA locations if we didn't do that already in #2

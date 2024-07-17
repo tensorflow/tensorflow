@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/ffi/execution_context.h"
+#include "xla/ffi/type_id_registry.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -34,7 +35,7 @@ static PJRT_Error* PJRT_FFI_TypeID_Register(
 
   PJRT_ASSIGN_OR_RETURN(
       auto type_id,
-      xla::ffi::ExecutionContext::RegisterExternalTypeId(
+      xla::ffi::TypeIdRegistry::RegisterExternalTypeId(
           std::string_view(args->type_name, args->type_name_size)));
   args->type_id = type_id.value();
   return nullptr;
@@ -50,7 +51,7 @@ static PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args) {
         "PJRT FFI extension requires execute context to be not nullptr")};
   }
 
-  xla::ffi::ExecutionContext::TypeId type_id(args->user_data.type_id);
+  xla::ffi::TypeIdRegistry::TypeId type_id(args->user_data.type_id);
   PJRT_RETURN_IF_ERROR(args->context->execute_context->ffi_context().Insert(
       type_id, args->user_data.data, args->user_data.deleter));
   return nullptr;

@@ -18,9 +18,13 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 
@@ -69,6 +73,12 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
   absl::Status PreprocessSharding(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // This adds an unsafe attribute labelling the while loop as a pipelined
+  // while loop. This attribute lets the rest of the passes ignore the
+  // computations in the pipeline bubble.
+  absl::Status HandleRotateRightWhilePreprocessing(
+      HloComputation* computation) override;
   bool CanSideEffectingHaveReplicatedSharding(
       const HloInstruction* hlo) override;
 

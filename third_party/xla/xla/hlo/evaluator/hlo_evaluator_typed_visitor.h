@@ -33,14 +33,13 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/index_util.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/shape_inference.h"
 #include "xla/types.h"
@@ -809,8 +808,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
                  rhs_literal_data, feature_group_count, batch_group_count,
-                 is_packed_nibble](const absl::Span<const int64_t> out_index,
-                                   int /*thread_id*/) {
+                 is_packed_nibble, result_shape,
+                 this](const absl::Span<const int64_t> out_index,
+                       int /*thread_id*/) {
       // Dimension number applicable for input (lhs).
       const int64_t input_batch_dim = dnums.input_batch_dimension();
       const int64_t input_z_dim = dnums.input_feature_dimension();
@@ -940,6 +940,15 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             result_val += (lhs_n0 * rhs_n0) + (lhs_n1 * rhs_n1);
           } else {
             result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+
+            if (parent_->trace_mac_handler_ != nullptr) {
+              const int64_t result_linear_index =
+                  IndexUtil::MultidimensionalIndexToLinearIndex(result_shape,
+                                                                out_index);
+
+              parent_->trace_mac_handler_(result_linear_index, lhs_linear_index,
+                                          rhs_linear_index);
+            }
           }
         }
       cnt: {}
@@ -1187,6 +1196,21 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             } else {
               result_val +=
                   ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+
+              if (parent_->trace_mac_handler_ != nullptr) {
+                const int64_t result_linear_index =
+                    IndexUtil::MultidimensionalIndexToLinearIndex(dot->shape(),
+                                                                  result_index);
+                const int64_t lhs_linear_index =
+                    IndexUtil::MultidimensionalIndexToLinearIndex(
+                        lhs_literal.shape(), lhs_index);
+                const int64_t rhs_linear_index =
+                    IndexUtil::MultidimensionalIndexToLinearIndex(
+                        rhs_literal.shape(), rhs_index);
+
+                parent_->trace_mac_handler_(result_linear_index,
+                                            lhs_linear_index, rhs_linear_index);
+              }
             }
 
             // If there are no contracting dimensions, do not try to count down

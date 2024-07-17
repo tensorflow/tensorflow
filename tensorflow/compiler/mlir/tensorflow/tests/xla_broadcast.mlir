@@ -3,14 +3,18 @@ module attributes {tf.devices = {"/job:tpu_host_worker/replica:0/task:0/device:C
 // CHECK-LABEL: func @move_broadcast
 func.func @move_broadcast(%arg0: tensor<f32>) -> () {
   // CHECK:      %[[ELEM_0:.*]] = "tf.Const"()
+  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK-NEXT: %[[SHAPE_0:.*]] = "tf.Const"()
-  // CHECK-NEXT: %[[FULL_0:.*]] = "tf.Fill"(%[[SHAPE_0]], %[[ELEM_0]])
+  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK-NEXT: %[[FULL_0:.*]] = "tf.Fill"(%[[SHAPE_0]], %[[ELEM_0]]) {ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK:      %[[ELEM_1:.*]] = "tf.Const"()
+  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK-NEXT: %[[SHAPE_1:.*]] = "tf.Const"()
-  // CHECK-NEXT: %[[FULL_1:.*]] = "tf.Fill"(%[[SHAPE_1]], %[[ELEM_1]])
+  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK-NEXT: %[[FULL_1:.*]] = "tf.Fill"(%[[SHAPE_1]], %[[ELEM_1]]) {ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK-NEXT: tf_device.replicate([%arg0, %[[FULL_0]], %[[FULL_1]], %[[FULL_0]]] as %[[REPVAR:.*]]: tensor<f32>) {n = 4 : i32} {
   // CHECK-NEXT:   %[[ID:.*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-  // CHECK-NEXT:     %[[IDINSIDE:.*]] = "tf.Identity"(%[[REPVAR]]) : (tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:     %[[IDINSIDE:.*]] = "tf.Identity"(%[[REPVAR]]) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<f32>) -> tensor<f32>
   // CHECK-NEXT:     tf_device.return %[[IDINSIDE]] : tensor<f32>
   // CHECK-NEXT:   }) : () -> tensor<f32>
   // CHECK-NEXT:   "tf_device.cluster"() ({

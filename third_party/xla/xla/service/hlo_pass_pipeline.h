@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {

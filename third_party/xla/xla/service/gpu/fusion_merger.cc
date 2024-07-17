@@ -277,7 +277,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
         GpuHloCostAnalysis::Options{shape_size_function_,
                                     /*per_second_rates=*/{},
                                     /*count_multiple_input_accesses=*/true},
-        &gpu_device_info_);
+        gpu_device_info_);
     TF_CHECK_OK(computation_->Accept(&cost_analysis_.value()));
   }
 
@@ -290,8 +290,8 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   }
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, GpuPerformanceModelOptions::Default(),
-      producer->users());
+      producer, gpu_device_info_, &*cost_analysis_,
+      GpuPerformanceModelOptions::Default(), producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";

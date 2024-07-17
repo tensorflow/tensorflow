@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/tools/run_hlo_module.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
@@ -200,8 +201,6 @@ absl::Status RunAndCompareInternal(
                                ModuleResult::kCompilationError, test_run_result)
             .status());
   }
-
-  const HloModuleProto test_module_proto = test_module->ToProto();
 
   TF_ASSIGN_OR_RETURN(
       auto args, copy_result_on_failure(
@@ -543,5 +542,24 @@ absl::Status RunAndCompare(
                                                : nullptr,
       test_runner, reference_runner, engine, options, iteration_literals_proto,
       reference_module_modifier_hook, config_modifier_hook);
+}
+
+void ReadInputLiteralsFromFile(const std::string& file_path,
+                               RunHloModuleLiterals* input_literals_proto) {
+  if (!tsl::ReadTextOrBinaryProto(tsl::Env::Default(), file_path,
+                                  input_literals_proto)
+           .ok() ||
+      input_literals_proto->iterations().empty()) {
+    // Fallback to trying to read RunHloModuleIterationLiterals
+    xla::RunHloModuleIterationLiterals iteration_literals_proto;
+    if (!tsl::ReadTextOrBinaryProto(tsl::Env::Default(), file_path,
+                                    &iteration_literals_proto)
+             .ok()) {
+      LOG(QFATAL) << "Failed to deserialize input literals from file "
+                  << file_path << "\n";
+    }
+    input_literals_proto->clear_iterations();
+    *input_literals_proto->add_iterations() = iteration_literals_proto;
+  }
 }
 }  // namespace xla

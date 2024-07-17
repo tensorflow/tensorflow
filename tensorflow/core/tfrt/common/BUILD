@@ -242,9 +242,9 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/framework:device_type",
         "@local_tsl//tsl/platform:errors",
         "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/tsl/framework:device_type",
     ],
 )
 

@@ -18,27 +18,13 @@ limitations under the License.
 #include <cctype>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #include "absl/strings/ascii.h"
-#include "absl/strings/escaping.h"
-#include "absl/strings/match.h"
-#include "absl/strings/strip.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace str_util {
-
-string CEscape(StringPiece src) { return absl::CEscape(src); }
-
-bool CUnescape(StringPiece source, string* dest, string* error) {
-  return absl::CUnescape(source, dest, error);
-}
-
-void StripTrailingWhitespace(string* s) {
-  absl::StripTrailingAsciiWhitespace(s);
-}
 
 size_t RemoveLeadingWhitespace(StringPiece* text) {
   absl::string_view new_text = absl::StripLeadingAsciiWhitespace(*text);
@@ -105,28 +91,6 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   }
 }
 
-bool ConsumePrefix(StringPiece* s, StringPiece expected) {
-  return absl::ConsumePrefix(s, expected);
-}
-
-bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
-  return absl::ConsumeSuffix(s, expected);
-}
-
-StringPiece StripPrefix(StringPiece s, StringPiece expected) {
-  return absl::StripPrefix(s, expected);
-}
-
-StringPiece StripSuffix(StringPiece s, StringPiece expected) {
-  return absl::StripSuffix(s, expected);
-}
-
-// Return lower-cased version of s.
-string Lowercase(StringPiece s) { return absl::AsciiStrToLower(s); }
-
-// Return upper-cased version of s.
-string Uppercase(StringPiece s) { return absl::AsciiStrToUpper(s); }
-
 void TitlecaseString(string* s, StringPiece delimiters) {
   bool upper = true;
   for (string::iterator ss = s->begin(); ss != s->end(); ++ss) {
@@ -154,18 +118,6 @@ string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
     }
   }
   return res;
-}
-
-bool StartsWith(StringPiece text, StringPiece prefix) {
-  return absl::StartsWith(text, prefix);
-}
-
-bool EndsWith(StringPiece text, StringPiece suffix) {
-  return absl::EndsWith(text, suffix);
-}
-
-bool StrContains(StringPiece haystack, StringPiece needle) {
-  return absl::StrContains(haystack, needle);
 }
 
 size_t Strnlen(const char* str, const size_t string_max_len) {

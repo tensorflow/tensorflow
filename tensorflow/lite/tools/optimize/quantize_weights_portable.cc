@@ -24,6 +24,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/model.h"
@@ -380,7 +381,7 @@ inline bool IsOpDenylisted(const flat_hash_set<BuiltinOperator>& op_denylist,
   return op_denylist.find(op_code) != op_denylist.end();
 }
 
-TfLiteStatus QuantizeWeightsInt8(
+absl::Status QuantizeWeightsInt8(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
     bool use_hybrid_evaluation, uint64_t weights_min_num_elements,
     const CustomOpMap& custom_op_map, bool use_updated_hybrid_scheme,
@@ -395,20 +396,28 @@ TfLiteStatus QuantizeWeightsInt8(
     absl::flat_hash_map<int32_t, TensorPerChannel> tensor_map;
     for (int i = 0; i < subgraph->operators.size(); ++i) {
       OperatorT* op = subgraph->operators[i].get();
-      TF_LITE_ENSURE_STATUS(InsertQuantizableInputTensorsFromOperator(
-          model.get(), op, weights_min_num_elements, custom_op_map, &tensor_map,
-          subgraph_index, use_updated_hybrid_scheme));
+      if (InsertQuantizableInputTensorsFromOperator(
+              model.get(), op, weights_min_num_elements, custom_op_map,
+              &tensor_map, subgraph_index,
+              use_updated_hybrid_scheme) != kTfLiteOk) {
+        return absl::InternalError(
+            "Failed to insert quantizable input tensors from operator");
+      }
     }
 
     for (std::pair<int32_t, TensorPerChannel> tensor_pair : tensor_map) {
       // Quantize the tensor.
       if (tensor_pair.second.is_per_channel) {
-        TF_LITE_ENSURE_STATUS(utils::SymmetricQuantizeTensorPerChannel(
-            model.get(), tensor_pair.second.t, tensor_pair.second.channel_dim,
-            nullptr));
+        if (utils::SymmetricQuantizeTensorPerChannel(
+                model.get(), tensor_pair.second.t,
+                tensor_pair.second.channel_dim, nullptr) != kTfLiteOk) {
+          return absl::InternalError("Failed to quantize tensor per channel");
+        }
       } else {
-        TF_LITE_ENSURE_STATUS(
-            utils::SymmetricQuantizeTensor(model.get(), tensor_pair.second.t));
+        if (utils::SymmetricQuantizeTensor(model.get(), tensor_pair.second.t) !=
+            kTfLiteOk) {
+          return absl::InternalError("Failed to quantize tensor");
+        }
       }
     }
 
@@ -424,7 +433,8 @@ TfLiteStatus QuantizeWeightsInt8(
                                             consumer_op_infos, custom_op_map);
         if (tensor_idx < 0) {
           // Error message is already logged by PassQuantizationAndGetConsumers.
-          return kTfLiteError;
+          return absl::InternalError(
+              "Failed to pass quantization and get consumers");
         }
       }
 
@@ -505,10 +515,10 @@ TfLiteStatus QuantizeWeightsInt8(
       Model::Pack(*builder, model.get());
   FinishModelBuffer(*builder, output_model_location);
 
-  return kTfLiteOk;
+  return absl::OkStatus();
 }
 
-TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
+absl::Status QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
                                     const Model* input_model) {
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
@@ -528,7 +538,7 @@ TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
         TensorT* tensor = subgraph->tensors[tensor_idx].get();
         BufferT* buffer = model->buffers[tensor->buffer].get();
         if (buffer == nullptr) {
-          return kTfLiteError;
+          return absl::InternalError("Buffer is null");
         }
         // Quantize tensors that have data to quantize.
         bool is_constant = !model->buffers[tensor->buffer].get()->data.empty();
@@ -541,8 +551,10 @@ TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
     // The hash map ensures that we quantize each tensor exactly once.
     for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
       // Quantize the tensor.
-      TF_LITE_ENSURE_STATUS(
-          utils::QuantizeTensorFloat16(model.get(), tensor_pair.second));
+      if (utils::QuantizeTensorFloat16(model.get(), tensor_pair.second) !=
+          kTfLiteOk) {
+        return absl::InternalError("QuantizeTensorFloat16 failed");
+      }
 
       int32_t tensor_idx = tensor_pair.first;
       TensorT* tensor = tensor_pair.second;
@@ -581,19 +593,20 @@ TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
   flatbuffers::Offset<Model> output_model_location =
       Model::Pack(*builder, model.get());
   FinishModelBuffer(*builder, output_model_location);
-  return kTfLiteOk;
+  return absl::OkStatus();
 }
 }  // namespace
 
 namespace internal {
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
                              uint64_t weights_min_num_elements,
                              bool use_hybrid_evaluation,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
     LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return kTfLiteError;
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   // By default we require that only weights with more than
   // kWeightsMinSizeDefault elements are quantized.
@@ -604,13 +617,14 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
 }
 }  // namespace internal
 
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
                              uint64_t weights_min_num_elements,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
     LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return kTfLiteError;
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, true,
@@ -618,13 +632,14 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              kUseUpdatedHybridSchemeDefault);
 }
 
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model, BufferType quant_type,
                              bool use_updated_hybrid_scheme,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
     LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return kTfLiteError;
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   switch (quant_type) {
     case BufferType::QUANTIZED_INT8: {
@@ -640,21 +655,22 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
   }
 }
 
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
                              uint64_t weights_min_num_elements,
                              const CustomOpMap& custom_op_map,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
     LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return kTfLiteError;
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   return QuantizeWeightsInt8(builder, input_model, true,
                              weights_min_num_elements, custom_op_map,
                              kUseUpdatedHybridSchemeDefault);
 }
 
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
                              uint64_t weights_min_num_elements,
                              const CustomOpMap& custom_op_map,
@@ -663,7 +679,8 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
     LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return kTfLiteError;
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   return QuantizeWeightsInt8(builder, input_model,
                              /*use_hybrid_evaluation=*/true,

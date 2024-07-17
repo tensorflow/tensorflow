@@ -1137,6 +1137,7 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$low_priority_allowed_batch_sizes,
     DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_enqueued_batches,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP"]>, "\"PAD_UP\"">:$batch_padding_policy,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting
   );
 
@@ -5458,7 +5459,42 @@ def TF_FakeQuantWithMinMaxArgsGradientOp : TF_Op<"FakeQuantWithMinMaxArgsGradien
 
   let results = (outs
     Res<TF_Float32Tensor, [{Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
-`gradients * (inputs >= min && inputs <= max)`.}]>:$backprops
+`gradients * (inputs >= min && inputs <= max)`.
+
+```
+import tensorflow as tf
+
+# Define some sample data
+gradients = tf.random.uniform((2, 3), minval=-5.0, maxval=5.0, dtype=tf.float32)
+inputs = tf.random.uniform((2, 3), minval=-10.0, maxval=10.0, dtype=tf.float32)
+
+# Define quantization parameters (adjust as needed)
+min_val = -2.0
+max_val = 8.0
+num_bits = 4  # Number of bits for quantization
+
+# Calculate gradients for fake quantization with specified parameters
+output_gradients = tf.quantization.fake_quant_with_min_max_args_gradient(
+    gradients=gradients, inputs=inputs, min=min_val, max=max_val, num_bits=num_bits, narrow_range = False, name=None
+)
+
+# Print the original gradients and the gradients after the fake-quant operation
+print("Original Gradients:")
+print(gradients)
+print("\nGradients after Fake-Quantization:")
+print(output_gradients)
+
+```
+#Original Gradients:
+#tf.Tensor(
+#[[ 1.242547    3.217492    3.568469  ]
+#[-0.55371046  0.23130894  2.608243  ]], shape=(2, 3), dtype=float32)
+
+#Gradients after Fake-Quantization:
+#tf.Tensor(
+#[[ 0.          3.217492    3.568469  ]
+# [-0.55371046  0.23130894  2.608243  ]], shape=(2, 3), dtype=float32)
+}]>:$backprops
   );
 
   let extraClassDeclaration = [{
@@ -5498,6 +5534,26 @@ the behavior can be unexpected:
 
 This operation has a gradient and thus allows for training `min` and `max`
 values.
+
+>>> constant_input = tf.constant([[1.2, -0.3, 0.7], [2.1, 0.5, -1.0]], dtype=tf.float32)
+>>>
+>>> min_val = -0.5
+>>> max_val = 0.8
+>>> num_bits = 8
+>>> narrow_range = False #False:for the quantization range [0; 2^num_bits - 1]
+>>>
+>>> quantized_data = tf.quantization.fake_quant_with_min_max_vars(
+...   inputs=constant_input, min=min_val, max=max_val, num_bits=num_bits, narrow_range=narrow_range
+... )
+>>>
+>>> print("Input:\n", constant_input.numpy())
+Input:
+[[ 1.2 -0.3  0.7]
+[ 2.1  0.5 -1. ]]
+>>> print("Output:\n", quantized_data.numpy())
+Output:
+[[ 0.8003921 -0.3007843  0.6984313]
+[ 0.8003921  0.4996078 -0.4996078]]
   }];
 
   let arguments = (ins
@@ -8604,6 +8660,7 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
     ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$force_synchronous,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -21445,6 +21502,59 @@ Operator that connects the output of an XLA computation to other consumer graph 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaConcatNDOp : TF_Op<"XlaConcatND", [Pure]> {
+  let summary = "Concats input tensor across all dimensions.";
+
+  let description = [{
+An op which merges slices the input tensor based on the given num_splits
+attribute, strips paddings optionally, and returns the merged tensor without
+paddings.
+
+This op may be generated via the TPU bridge.
+
+For example, with `input` tensor:
+```
+[[0, 1],
+ [4, 5]]
+[[2, 3],
+ [6, 7]]
+[[8, 9],
+ [12, 13]]
+[[10, 11],
+ [14, 15]]
+```
+`num_splits`:
+```
+[2, 2]
+```
+and `paddings`:
+```
+[1, 1]
+```
+the expected `outputs` is:
+```
+[[0, 1, 2],
+ [4, 5, 6],
+ [8, 9, 10]]
+```
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{Input tensor slices in row-major order to merge across all dimensions. All
+inputs must have the same shape.}]>:$inputs,
+
+    I64ArrayAttr:$num_concats,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$paddings
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{Output tensor formed from merging input slices based on num_concats defined.}]>:$output
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_XlaConvOp : TF_Op<"XlaConv", [Pure, TF_NoConstantFold]> {
   let summary = "Wraps the XLA ConvGeneralDilated operator, documented at";
 
@@ -22283,6 +22393,58 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSplitNDOp : TF_Op<"XlaSplitND", [Pure]> {
+  let summary = "Splits input tensor across all dimensions.";
+
+  let description = [{
+An op which slices the input tensor based on the given num_splits attribute,
+pads slices optionally, and returned the slices. Slices are returned in
+row-major order.
+
+This op may be generated via the TPU bridge.
+
+For example, with `input` tensor:
+```
+[[0, 1, 2],
+ [3, 4, 5],
+ [6, 7, 8]]
+```
+`num_splits`:
+```
+[2, 2]
+```
+and `paddings`:
+```
+[1, 1]
+```
+the expected `outputs` is:
+```
+[[0, 1],
+ [3, 4]]
+[[2, 0],
+ [5, 0]]
+[[6, 7],
+ [0, 0]]
+[[8, 0],
+ [0, 0]]
+```
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{Input tensor to split across all dimensions.}]>:$input,
+
+    I64ArrayAttr:$num_splits,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$paddings
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{Output slices based on input and num_splits defined, in row-major order.}]>:$outputs
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr N = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF_XlaSpmdFullToShardShapeOp : TF_Op<"XlaSpmdFullToShardShape", [Pure]> {

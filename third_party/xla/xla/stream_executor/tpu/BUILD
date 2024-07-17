@@ -63,7 +63,6 @@ cc_library(
         "//xla:shape_layout",
         "//xla:shape_tree",
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -102,7 +101,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -374,6 +372,7 @@ cc_library(
         ":tpu_api",
         ":tpu_ops_c_api_hdrs",
         ":tpu_platform_interface",
+        "//xla:executable_run_options",
         "//xla/service",
         "//xla/service:backend",
         "//xla/service:stream_pool",
@@ -480,7 +479,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:macros",
     ],
 )
@@ -584,7 +582,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
-        "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
@@ -597,6 +594,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -619,7 +617,6 @@ cc_library(
         ":tpu_executor",
         ":tpu_executor_api",
         ":tpu_executor_c_api_hdrs",
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
@@ -631,6 +628,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",

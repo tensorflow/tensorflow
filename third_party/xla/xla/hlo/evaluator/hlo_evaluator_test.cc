@@ -27,7 +27,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -52,7 +54,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -5032,38 +5033,6 @@ TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
   TestRecursivelyEvaluateInstruction(gte2, expected);
 }
 
-TEST_F(HloEvaluatorTest, SlowReduceWindow) {
-#ifdef THREAD_SANITIZER
-  GTEST_SKIP();
-#endif
-  constexpr absl::string_view kHloModule = R"(
-    HloModule SlowReduceWindow
-    %add {
-      %lhs = s32[] parameter(0)
-      %rhs = s32[] parameter(1)
-      ROOT %sum = s32[] add(%lhs, %rhs)
-    }
-    ENTRY slow_reduce_window {
-      %input = s32[8192] parameter(0)
-      %zero = s32[] constant(0)
-      ROOT %scan = s32[8192] reduce-window(%input, %zero), window={size=8192 pad=8191_0}, to_apply=%add
-    }
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  std::vector<int32_t> data(8192, 1);
-  auto input = LiteralUtil::CreateR1<int32_t>(data);
-  HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal actual_literal,
-      evaluator.Evaluate(*hlo_module->entry_computation(), {&input}));
-  std::vector<int32_t> expected(8192);
-  std::iota(expected.begin(), expected.end(), 1);
-  EXPECT_THAT(actual_literal.data<int32_t>(),
-              ::testing::ElementsAreArray(expected));
-}
-
 class PatternMatchParseWhileLoopTest : public HloTestBase {};
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
@@ -5689,6 +5658,148 @@ TEST_F(PatternMatchParseWhileLoopTest, CopiedLoopCond) {
   EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_init_value, 0);
   EXPECT_EQ(parsed_while_loop->static_while_loop->step_size, 1);
   EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 5);
+}
+
+TEST_F(HloEvaluatorTest, DotTraced) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY DotUpcast {
+    l = s16[4,3]{1,0} parameter(0)
+    r = s8[3,2]{1,0} parameter(1)
+    ROOT result = s32[4,2] dot(l, r), lhs_contracting_dims={1},
+                                      rhs_contracting_dims={0}
+  }
+  )";
+  // lhs:
+  // s16[4,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  //  { 9, 10, 11 },
+  //  { 13, 14, 15 },
+  // }
+  auto lhs_array = std::make_unique<Array2D<int16_t>>(4, 3);
+  lhs_array->FillUnique(1);
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<int16_t>(*lhs_array);
+
+  // rhs:
+  // s8[3,2] {
+  //  { 1, 2 },
+  //  { 3, 4 },
+  //  { 5, 6 },
+  // }
+  auto rhs_array = std::make_unique<Array2D<int8_t>>(3, 2);
+  rhs_array->FillUnique(1);
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<int8_t>(*rhs_array);
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  absl::flat_hash_set<std::array<int64_t, 3>> macs_traced;
+  auto mac_handler = [&macs_traced](int64_t result_index, int64_t lhs_index,
+                                    int64_t rhs_index) -> void {
+    macs_traced.insert(
+        std::array<int64_t, 3>{result_index, lhs_index, rhs_index});
+  };
+  evaluator_.set_trace_mac_handler(mac_handler);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          Evaluate({&lhs_literal, &rhs_literal}));
+
+  auto expected_array =
+      Array2D<int32_t>({{22, 28}, {58, 76}, {94, 124}, {130, 172}});
+  auto expected = LiteralUtil::CreateR2FromArray2D<int32_t>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+
+  const absl::flat_hash_set<std::array<int64_t, 3>> macs_expected = {
+      {1, 0, 1},  {0, 0, 0},  {2, 4, 2}, {5, 6, 1}, {2, 5, 4}, {4, 7, 2},
+      {2, 3, 0},  {5, 7, 3},  {5, 8, 5}, {4, 6, 0}, {6, 9, 0}, {7, 10, 3},
+      {7, 11, 5}, {1, 1, 3},  {0, 2, 4}, {3, 4, 3}, {1, 2, 5}, {7, 9, 1},
+      {6, 10, 2}, {6, 11, 4}, {3, 5, 5}, {4, 8, 4}, {0, 1, 2}, {3, 3, 1}};
+
+  EXPECT_EQ(macs_traced, macs_expected);
+}
+
+TEST_F(HloEvaluatorTest, SimpleConvTraced) {
+  HloComputation::Builder b(TestName());
+
+  Array4D<float> lhs_array(1, 1, 4, 4);
+  // clang-format off
+  lhs_array.FillWithYX(Array2D<float>({
+    {1,  2,  3,  4 },
+    {5,  6,  7,  8 },
+    {9,  10, 11, 12},
+    {13, 14, 15, 16},
+  }));
+  // clang-format on
+  auto lhs_literal = LiteralUtil::CreateR4FromArray4D<float>(lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  Array4D<float> rhs_array(1, 1, 2, 2);
+  // clang-format off
+  rhs_array.FillWithYX(Array2D<float>({
+    {5, 6},
+    {7, 8},
+  }));
+  // clang-format on
+  auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_low(0);
+  dim.set_padding_high(1);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  ConvolutionDimensionNumbers dnums =
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  absl::flat_hash_set<std::array<int64_t, 3>> macs_traced;
+  auto mac_handler = [&macs_traced](int64_t result_index, int64_t lhs_index,
+                                    int64_t rhs_index) -> void {
+    macs_traced.insert(
+        std::array<int64_t, 3>{result_index, lhs_index, rhs_index});
+  };
+  evaluator_.set_trace_mac_handler(mac_handler);
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  Array4D<float> expected_array(1, 1, 4, 4);
+  // clang-format off
+  expected_array.FillWithYX(Array2D<float>({
+    {100, 126, 152,  76},
+    {204, 230, 256, 124},
+    {308, 334, 360, 172},
+    {149, 160, 171,  80},
+  }));
+  // clang-format on
+  auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+
+  const absl::flat_hash_set<std::array<int64_t, 3>> macs_expected = {
+      {10, 14, 2}, {7, 7, 0},   {11, 15, 2}, {4, 4, 0},   {3, 7, 2},
+      {5, 9, 2},   {8, 9, 1},   {12, 12, 0}, {6, 10, 2},  {5, 6, 1},
+      {13, 14, 1}, {15, 15, 0}, {11, 11, 0}, {0, 5, 3},   {10, 10, 0},
+      {2, 7, 3},   {13, 13, 0}, {1, 6, 3},   {0, 0, 0},   {4, 9, 3},
+      {8, 12, 2},  {8, 13, 3},  {9, 9, 0},   {6, 7, 1},   {9, 13, 2},
+      {2, 6, 2},   {0, 1, 1},   {6, 6, 0},   {5, 10, 3},  {10, 15, 3},
+      {14, 14, 0}, {7, 11, 2},  {0, 4, 2},   {10, 11, 1}, {6, 11, 3},
+      {2, 2, 0},   {3, 3, 0},   {9, 14, 3},  {12, 13, 1}, {1, 5, 2},
+      {5, 5, 0},   {14, 15, 1}, {1, 1, 0},   {2, 3, 1},   {4, 5, 1},
+      {4, 8, 2},   {9, 10, 1},  {8, 8, 0},   {1, 2, 1},
+  };
+
+  EXPECT_EQ(macs_traced, macs_expected);
 }
 
 }  // namespace

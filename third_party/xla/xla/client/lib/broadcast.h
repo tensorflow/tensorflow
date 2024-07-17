@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_BROADCAST_H_
 #define XLA_CLIENT_LIB_BROADCAST_H_
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/types.h"

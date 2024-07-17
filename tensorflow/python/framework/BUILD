@@ -437,6 +437,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     visibility = visibility + [
+        "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",

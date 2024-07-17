@@ -18,9 +18,11 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/cc/experimental/base/public/status.h"
 #include "tensorflow/cc/experimental/base/tests/tensor_types_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace {

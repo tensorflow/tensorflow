@@ -57,7 +57,7 @@ from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: 
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
-from tensorflow.lite.python.util import _xla_computation
+from tensorflow.lite.python.util import _jit
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
 from tensorflow.lite.python.util import convert_debug_info_func as _convert_debug_info_func
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
@@ -1981,15 +1981,15 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
 
     Raises:
       ImportError:
-        If cannot import the xla_computation from jax.
+        If cannot import the jit from jax.
       ValueError:
         No serving function is specified.
         Input tensors are not specified.
         The truth value of an array with more than one element is ambiguous.
         Failed to convert the given Jax function to hlo.
     """
-    if not _xla_computation:
-      raise ImportError("Cannot import xla_computation from jax.")
+    if not _jit:
+      raise ImportError("Cannot import jit from jax.")
 
     if not self._serving_funcs:
       raise ValueError("No serving func is specified.")
@@ -2024,10 +2024,13 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
       ordered_inputs.append(tensor)
 
     try:
-      xla_compuation = _xla_computation(self._serving_funcs[0], backend="cpu")
-      hlo_proto = xla_compuation(
-          *ordered_inputs
-      ).as_serialized_hlo_module_proto()
+      hlo_proto = (
+          _jit(self._serving_funcs[0])
+          .trace(*ordered_inputs)
+          .lower(lowering_platforms=("cpu",))
+          .compiler_ir("hlo")
+          .as_serialized_hlo_module_proto()
+      )
     except Exception:  # pylint: disable=broad-except
       raise ValueError("Failed to convert the given Jax function to hlo.")
 

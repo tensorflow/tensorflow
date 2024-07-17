@@ -125,7 +125,8 @@ absl::StatusOr<bool> HloConstantSplitter::Run(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       VLOG(10) << "Considering: " << instruction->ToString();
-      if (IsSupportedConstant(instruction, split_expressions_)) {
+      if (IsSupportedConstant(instruction, split_expressions_) &&
+          extra_constraints_(instruction)) {
         VLOG(10) << "Adding to constant list: " << instruction->ToString();
         constants_set.insert(instruction);
         constants_list.push_back(instruction);

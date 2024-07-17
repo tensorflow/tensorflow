@@ -35,11 +35,10 @@ As with all the tools, `--help` can be used to obtain the full list of options.
 ## Running HLO snippets with SPMD support: `multihost_hlo_runner`
 
 Multihost HLO runner is a very similar tool, with the caveat that it supports
-SPMD, including cross host communication. A typical invocation looks like:
+SPMD, including cross host communication. See
+[Multi-Host HLO Runner](./tools_multihost_hlo_runner) for details.
 
-```
-$ hlo_runner_main  /path/to/module.hlo
-```
+## Multi-HLO replay
 
 Invocation with multiple modules is supported for both `run_hlo_module` and
 `hlo_runner_main`, which is often convenient to replay all modules in a dump
@@ -84,7 +83,7 @@ GPU spec on the command line we can get e.g. PTX output without access to an
 accelerator:
 
 ```
-$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=(pwd)/tools/data/gpu_specs/a100_80.txtpb input.hlo
+$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=(pwd)/tools/data/gpu_specs/a100_pcie_80.txtpb input.hlo
 ```
 
 Note: For the above invocation to work, the user would usually either need to
@@ -123,7 +122,7 @@ Deviceless compilation might run into issues if autotuning is required. Luckily,
 we can also provide those on the command line:
 
 ```
-$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
+$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_pcie_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
 ```
 
 The autotune file is text serialization of `autotune_results.proto`, with

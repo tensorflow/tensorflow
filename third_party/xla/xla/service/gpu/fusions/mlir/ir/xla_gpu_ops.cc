@@ -24,23 +24,23 @@ limitations under the License.
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Builders.h"  // IWYU pragma: keep
+#include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
+#include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"  // IWYU pragma: keep
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -98,6 +98,24 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
     auto region = func_op.getCallableRegion();
     if (!region) {
       return false;
+    }
+
+    // If callee and caller call the same third function, inline. We have no
+    // guarantee that the indices are the same, but there is a good chance they
+    // are (or if the callee gets inlined as well, there will be CSE
+    // opportunities).
+    // This is duct tape to work around the limitations of our partitioner.
+    // Ideally, the partitioner would be aware of the actual indexing and create
+    // the partitions based on it (i.e., the case where the indices are the same
+    // would never happen).
+    llvm::SmallDenseSet<llvm::StringRef> callee_calls;
+    for (auto call : region->getOps<PureCallOp>()) {
+      callee_calls.insert(call.getCallee());
+    }
+    for (auto call : call->getParentRegion()->getOps<PureCallOp>()) {
+      if (callee_calls.contains(call.getCallee())) {
+        return true;
+      }
     }
 
     constexpr int kMaxOperationsToInline = 8;
@@ -225,12 +243,12 @@ mlir::ParseResult parseOperandsWithBoundsList(
         if (parser.parseOperand(operand) || parser.parseKeyword("in") ||
             parser.parseLSquare() || parser.parseInteger(lower_bound) ||
             parser.parseComma() || parser.parseInteger(upper_bound) ||
-            parser.parseRSquare()) {
+            parser.parseRParen()) {
           return failure();
         }
         operands->push_back(operand);
         lower_bounds->push_back(lower_bound);
-        upper_bounds->push_back(upper_bound);
+        upper_bounds->push_back(upper_bound - 1);
         return success();
       })) {
     return failure();
@@ -291,7 +309,7 @@ void ApplyIndexingOp::print(mlir::OpAsmPrinter& p) {
     p << '(';
     for (int dim_id = 0; dim_id < num_dimensions; ++dim_id) {
       p << operands[dim_id] << " in " << '[' << lower_bounds[dim_id] << ", "
-        << upper_bounds[dim_id] << ']';
+        << upper_bounds[dim_id] + 1 << ')';
       if (dim_id != num_dimensions - 1) {
         p << ", ";
       }
@@ -304,7 +322,7 @@ void ApplyIndexingOp::print(mlir::OpAsmPrinter& p) {
     for (int symbol_id = 0; symbol_id < num_symbols; ++symbol_id) {
       unsigned operand_id = num_dimensions + symbol_id;
       p << operands[operand_id] << " in " << '[' << lower_bounds[operand_id]
-        << ", " << upper_bounds[operand_id] << ']';
+        << ", " << upper_bounds[operand_id] + 1 << ')';
       if (symbol_id != num_symbols - 1) {
         p << ", ";
       }

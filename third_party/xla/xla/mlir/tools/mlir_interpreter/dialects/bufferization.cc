@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 
 // clang-format erroneously puts the Bufferization header above.
 #include <algorithm>  // NOLINT
 #include <cstdint>    // NOLINT
 #include <optional>   // NOLINT
 
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir/tools/mlir_interpreter/dialects/util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"

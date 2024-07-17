@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/array4d.h"
 #include "xla/client/client.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"

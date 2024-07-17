@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
-#include "tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
@@ -66,7 +66,8 @@ TEST(SavedModelIfrt, Basic) {
       /*num_threads=*/4, /*num_blocking_threads=*/4);
 
   tsl::test_util::MockServingDeviceSelector selector;
-  ifrt_serving::IfrtServingCoreSelector core_selector(&selector);
+  ifrt_serving::IfrtServingCoreSelector core_selector(
+      &selector, client->addressable_device_count());
 
   // Use IFRT compiler
   runtime->AddCreateRuntimeResourceFn(

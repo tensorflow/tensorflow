@@ -123,8 +123,8 @@ TFRecordDatasetParams TFRecordDatasetParams1() {
                                                {"a", "bb", "ccc"}};
   CompressionType compression_type = CompressionType::ZLIB;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TFRecordDatasetParams(filenames,
                                /*compression_type=*/compression_type,
@@ -142,8 +142,8 @@ TFRecordDatasetParams TFRecordDatasetParams2() {
                                                {"a", "bb", "ccc"}};
   CompressionType compression_type = CompressionType::GZIP;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TFRecordDatasetParams(filenames,
                                /*compression_type=*/compression_type,
@@ -161,8 +161,8 @@ TFRecordDatasetParams TFRecordDatasetParams3() {
                                                {"a", "bb", "ccc"}};
   CompressionType compression_type = CompressionType::UNCOMPRESSED;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TFRecordDatasetParams(filenames,
                                /*compression_type=*/compression_type,

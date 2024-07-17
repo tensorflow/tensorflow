@@ -19,12 +19,16 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 
+#include <cstdint>
 #include <variant>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 
 namespace stream_executor {
@@ -93,6 +97,20 @@ class GpuStream : public StreamCommon {
   GpuStreamHandle cuda_stream() const { return gpu_stream(); }
 
   GpuExecutor* parent() const { return parent_; }
+  absl::Status WaitFor(Stream* other) override;
+  absl::Status WaitFor(Event* event) override;
+  absl::Status RecordEvent(Event* event) override;
+  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
+  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                        uint64_t size) override;
+  absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+                      uint64_t size) override;
+  absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+                      uint64_t size) override;
+  absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
+                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
+
+  void set_name(absl::string_view name) override;
 
  private:
   GpuExecutor* parent_;         // Executor that spawned this stream.

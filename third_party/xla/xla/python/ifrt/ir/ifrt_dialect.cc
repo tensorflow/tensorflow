@@ -24,17 +24,17 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
@@ -131,7 +131,7 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
 
 mlir::LogicalResult IfrtShardingParamAttr::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    ShardingParam sharding_param, mlir::StringAttr memory_kind) {
+    ShardingParam sharding_param) {
   return sharding_param.verify(emitError);
 }
 
@@ -156,12 +156,6 @@ IfrtShardingParamAttr::LocalShapeFromGlobalShape(
 // Returns the number of devices the sharding applies to.
 int IfrtShardingParamAttr::NumDevices() const {
   return getSharding().NumDevices();
-};
-
-xla::ifrt::MemoryKind IfrtShardingParamAttr::MemoryKind() const {
-  return getMemoryKind() == nullptr
-             ? xla::ifrt::MemoryKind()
-             : xla::ifrt::MemoryKind(getMemoryKind().str());
 };
 
 //===----------------------------------------------------------------------===//
@@ -195,10 +189,6 @@ IfrtUnspecifiedShardingAttr::LocalShapeFromGlobalShape(
 
 int IfrtUnspecifiedShardingAttr::NumDevices() const { return 0; }
 
-xla::ifrt::MemoryKind IfrtUnspecifiedShardingAttr::MemoryKind() const {
-  return xla::ifrt::MemoryKind();
-}
-
 //===----------------------------------------------------------------------===//
 // IfrtArrayType
 //===----------------------------------------------------------------------===//
@@ -211,9 +201,15 @@ llvm::ArrayRef<int> IfrtArrayType::getDevices() const {
 mlir::LogicalResult IfrtArrayType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::RankedTensorType shape, IfrtShardingAttrInterface sharding_attr,
-    IfrtDevicesAttr devices) {
+    IfrtDevicesAttr devices, mlir::StringAttr memory_kind) {
   return sharding_attr.CanApplyTo(emitError, shape, devices.getIds());
 }
+
+xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {
+  return getMemoryKindAttr() == nullptr
+             ? xla::ifrt::MemoryKind()
+             : xla::ifrt::MemoryKind(getMemoryKindAttr().str());
+};
 
 //===----------------------------------------------------------------------===//
 // IfrtDevicesAttr

@@ -29,13 +29,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "unsupported/Eigen/CXX11/Tensor"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -208,15 +208,11 @@ class TfrtCpuDevice final : public PjRtDevice {
     return process_index() == client()->process_index();
   }
 
-  int local_hardware_id() const override {
-    return local_hardware_id_typed().value();
-  }
-
   PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+    return PjRtLocalDeviceId(local_hardware_id().value());
   }
 
-  PjRtLocalHardwareId local_hardware_id_typed() const override {
+  PjRtLocalHardwareId local_hardware_id() const override {
     return PjRtLocalHardwareId(description_.local_hardware_id());
   }
 
@@ -282,8 +278,6 @@ class TfrtCpuClient final : public PjRtClient {
   absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override;
 
-  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const override;
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/thunk_executor.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
 
 namespace xla {
 namespace cpu {
@@ -60,7 +60,7 @@ class CpuExecutable : public Executable {
     se::DeviceMemoryBase AsDeviceMemoryBase() const;
 
     BufferAllocation::Index index = -1;
-    std::variant<std::monostate, std::vector<uint8_t>,
+    std::variant<std::monostate, std::unique_ptr<Literal>,
                  absl::Span<const uint8_t>>
         data;
   };
@@ -142,18 +142,18 @@ class CpuExecutable : public Executable {
     return assignment_->Allocations();
   }
 
-  // A Thunk::HostKernels implementation that jit-compiles host kernels on
+  // A Thunk::FunctionRegistry implementation that jit-compiles functions on
   // demand using the SimpleOrcJIT instance owned by the CpuExecutable.
-  class HostKernels : public Thunk::HostKernels {
+  class FunctionRegistry : public Thunk::FunctionRegistry {
    public:
-    explicit HostKernels(SimpleOrcJIT* jit);
-    absl::StatusOr<SE_HOST_Kernel*> Find(std::string_view name) final;
+    explicit FunctionRegistry(SimpleOrcJIT* jit);
+    absl::StatusOr<Kernel> FindKernel(std::string_view name) final;
 
    private:
     SimpleOrcJIT* jit_;
   };
 
-  Thunk::HostKernels& host_kernels() { return *host_kernels_; }
+  Thunk::FunctionRegistry& function_registry() { return *function_registry_; }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -227,8 +227,8 @@ class CpuExecutable : public Executable {
   std::optional<ThunkExecutor> thunks_;
   // Vector indexed by BufferAllocation::Index for efficient access.
   std::vector<ConstantAllocation> constants_;
-  // On-demand JIT host kernels compiler.
-  std::optional<HostKernels> host_kernels_;
+  // On-demand JIT compiler for functions required by thunks.
+  std::optional<FunctionRegistry> function_registry_;
 
   // Entry function name for the computation.
   const std::string entry_function_name_;

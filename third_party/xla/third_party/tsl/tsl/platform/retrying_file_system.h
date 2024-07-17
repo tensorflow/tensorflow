@@ -151,8 +151,8 @@ class RetryingFileSystem : public FileSystem {
     return base_file_system_->HasAtomicMove(path, has_atomic_move);
   }
 
-  Status CanCreateTempFile(const std::string& fname,
-                           bool* can_create_temp_file) override {
+  absl::Status CanCreateTempFile(const std::string& fname,
+                                 bool* can_create_temp_file) override {
     // this method does not need to be retried
     return base_file_system_->CanCreateTempFile(fname, can_create_temp_file);
   }

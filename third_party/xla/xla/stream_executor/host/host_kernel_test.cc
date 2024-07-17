@@ -15,14 +15,16 @@ limitations under the License.
 
 #include "xla/stream_executor/host/host_kernel.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
@@ -44,9 +46,9 @@ limitations under the License.
 namespace stream_executor::host {
 
 static SE_HOST_KernelError* AddI32(const SE_HOST_KernelCallFrame* call_frame) {
-  SE_HOST_KernelArg& lhs = call_frame->args[0];
-  SE_HOST_KernelArg& rhs = call_frame->args[1];
-  SE_HOST_KernelArg& out = call_frame->args[2];
+  const SE_HOST_KernelArg& lhs = call_frame->args[0];
+  const SE_HOST_KernelArg& rhs = call_frame->args[1];
+  const SE_HOST_KernelArg& out = call_frame->args[2];
 
   int32_t* lhs_ptr = reinterpret_cast<int32_t*>(lhs.data);
   int32_t* rhs_ptr = reinterpret_cast<int32_t*>(rhs.data);
@@ -159,8 +161,7 @@ TEST(HostKernelTest, Addition3D) {
                           KernelFactory::Create(executor.get(), spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
-  TF_ASSERT_OK(executor->Launch(stream.get(), ThreadDim(2, 2, 3), BlockDim(1),
-                                *add, kargs));
+  TF_ASSERT_OK(stream->Launch(ThreadDim(2, 2, 3), BlockDim(1), *add, kargs));
 
   std::vector<int32_t> expected = {11, 13, 15, 17, 19, 21,
                                    23, 25, 27, 29, 31, 33};
@@ -187,11 +188,67 @@ TEST(HostKernelTest, JitAddition) {
                           KernelFactory::Create(executor.get(), spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
-  TF_ASSERT_OK(
-      executor->Launch(stream.get(), ThreadDim(4), BlockDim(1), *add, kargs));
+  TF_ASSERT_OK(stream->Launch(ThreadDim(4), BlockDim(1), *add, kargs));
 
   std::vector<int32_t> expected = {6, 8, 10, 12};
   EXPECT_EQ(out, expected);
+}
+
+TEST(HostKernelTest, LaunchAsync) {
+  auto* no_op = +[](const SE_HOST_KernelCallFrame*) {
+    return static_cast<SE_HOST_KernelError*>(nullptr);
+  };
+
+  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
+
+  std::atomic<size_t> num_tasks = 0;
+
+  HostKernel::TaskRunner runner = [&](HostKernel::Task task) {
+    num_tasks.fetch_add(1, std::memory_order_relaxed);
+    thread_pool->Schedule(std::move(task));
+  };
+
+  HostKernel host_kernel(/*arity=*/0, no_op);
+  auto event = host_kernel.Launch(ThreadDim(4, 4, 4),
+                                  absl::Span<const SE_HOST_KernelArg>(),
+                                  std::move(runner));
+
+  tsl::BlockUntilReady(event);
+  EXPECT_TRUE(event.IsConcrete());
+  EXPECT_EQ(num_tasks.load(std::memory_order_relaxed), 4 * 4 * 4 - 1);
+}
+
+TEST(HostKernelTest, LaunchAsyncError) {
+  // SE_HOST_KernelError type is not defined so we simply return a non-nullptr
+  // pointer to signal error to the runtime.
+  auto* maybe_error = +[](const SE_HOST_KernelCallFrame* call_frame) {
+    if (call_frame->thread->x == 2 && call_frame->thread->z == 2) {
+      return reinterpret_cast<SE_HOST_KernelError*>(0xDEADBEEF);
+    }
+    return static_cast<SE_HOST_KernelError*>(nullptr);
+  };
+
+  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
+
+  std::atomic<size_t> num_tasks = 0;
+
+  HostKernel::TaskRunner runner = [&](HostKernel::Task task) {
+    num_tasks.fetch_add(1, std::memory_order_relaxed);
+    thread_pool->Schedule(std::move(task));
+  };
+
+  HostKernel host_kernel(/*arity=*/0, maybe_error);
+  auto event = host_kernel.Launch(ThreadDim(4, 4, 4),
+                                  absl::Span<const SE_HOST_KernelArg>(),
+                                  std::move(runner));
+
+  tsl::BlockUntilReady(event);
+  ASSERT_TRUE(event.IsError());
+  EXPECT_TRUE(absl::StrContains(event.GetError().message(),
+                                "Failed to call host kernel:"));
+  EXPECT_EQ(num_tasks.load(std::memory_order_relaxed), 4 * 4 * 4 - 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -204,18 +261,14 @@ static SE_HOST_KernelError* NoOp(const SE_HOST_KernelCallFrame*) {
   return nullptr;
 }
 
-static auto ToCopyableTask(absl::AnyInvocable<void()> task) {
-  return [shared_task = std::make_shared<decltype(task)>(std::move(task))] {
-    (*shared_task)();
-  };
-}
-
 static void BM_HostKernelSyncLaunch(benchmark::State& state) {
   int32_t tdim_x = state.range(0);
 
   HostKernel kernel(/*arity=*/0, NoOp);
+  absl::Span<const SE_HOST_KernelArg> args;
+
   for (auto _ : state) {
-    benchmark::DoNotOptimize(kernel.Launch(ThreadDim(tdim_x), /*buffers=*/{}));
+    benchmark::DoNotOptimize(kernel.Launch(ThreadDim(tdim_x), args));
   }
 }
 
@@ -225,11 +278,15 @@ static void BM_HostKernelAsyncLaunch(benchmark::State& state) {
   auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
       tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
 
+  auto task_runner = [&thread_pool](HostKernel::Task task) {
+    thread_pool->Schedule(std::move(task));
+  };
+
   HostKernel kernel(/*arity=*/0, NoOp);
+  absl::Span<const SE_HOST_KernelArg> args;
+
   for (auto _ : state) {
-    auto event = kernel.Launch(ThreadDim(tdim_x), {}, [&](auto task) {
-      thread_pool->Schedule(ToCopyableTask(std::move(task)));
-    });
+    auto event = kernel.Launch(ThreadDim(tdim_x), args, task_runner);
     tsl::BlockUntilReady(event);
   }
 }

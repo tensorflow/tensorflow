@@ -113,7 +113,7 @@ class FuncOpSignatureConversion final
     });
 
     // Update the entry block
-    if (rewriter.applySignatureConversion(&func_op.getBody(),
+    if (rewriter.applySignatureConversion(&func_op.getBody().front(),
                                           converted_signature,
                                           &type_converter_) == nullptr) {
       return mlir::failure();

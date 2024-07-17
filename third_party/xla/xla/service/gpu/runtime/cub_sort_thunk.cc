@@ -33,6 +33,8 @@ limitations under the License.
 #include "xla/service/gpu/cub_sort_kernel.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -63,8 +65,9 @@ absl::Status CopyOffsets(se::Stream* stream, se::DeviceMemoryBase scratch,
 // Template class for sorting a single tensor.
 class CubSortKeysImpl : public CubSortRunnerInterface {
  public:
-  using SortKeysFn = std::function<const char*(void*, size_t&, const void*,
-                                               void*, size_t, bool, size_t)>;
+  using SortKeysFn =
+      std::function<const char*(void*, size_t&, const void*, void*, size_t,
+                                bool, size_t, se::gpu::GpuStreamHandle)>;
 
   explicit CubSortKeysImpl(SortKeysFn sort_keys_fn, PrimitiveType type)
       : sort_keys_fn_(sort_keys_fn), type_(type) {}
@@ -100,9 +103,9 @@ absl::Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
         CopyOffsets(stream, scratch, batch_size, num_items / batch_size));
     temp_bytes -= GetOffsetsSize(batch_size);
   }
-  const char* error =
-      sort_keys_fn_(scratch.opaque(), temp_bytes, input_keys.opaque(),
-                    output_keys.opaque(), num_items, descending, batch_size);
+  const char* error = sort_keys_fn_(
+      scratch.opaque(), temp_bytes, input_keys.opaque(), output_keys.opaque(),
+      num_items, descending, batch_size, se::gpu::AsGpuStreamValue(stream));
   if (error != nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("CubSortKeys error: ", error));
@@ -123,7 +126,7 @@ absl::StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items,
                                                         int64_t batch_size) {
   size_t temp_bytes = 0;
   const char* error = sort_keys_fn_(nullptr, temp_bytes, nullptr, nullptr,
-                                    num_items, false, batch_size);
+                                    num_items, false, batch_size, nullptr);
   if (error != nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("CubSortKeys error: ", error));
@@ -134,9 +137,9 @@ absl::StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items,
 // Template class for sorting a pair of tensors.
 class CubSortPairsImpl : public CubSortRunnerInterface {
  public:
-  using SortPairsFn =
-      std::function<const char*(void*, size_t&, const void*, void*, const void*,
-                                void*, size_t, bool, size_t)>;
+  using SortPairsFn = std::function<const char*(
+      void*, size_t&, const void*, void*, const void*, void*, size_t, bool,
+      size_t, se::gpu::GpuStreamHandle)>;
 
   explicit CubSortPairsImpl(SortPairsFn sort_pairs_fn, PrimitiveType type)
       : sort_pairs_fn_(sort_pairs_fn), type_(type) {}
@@ -171,10 +174,10 @@ absl::Status CubSortPairsImpl::Run(se::DeviceMemoryBase input_keys,
         CopyOffsets(stream, scratch, batch_size, num_items / batch_size));
     temp_bytes -= GetOffsetsSize(batch_size);
   }
-  const char* error =
-      sort_pairs_fn_(scratch.opaque(), temp_bytes, input_keys.opaque(),
-                     output_keys.opaque(), input_values.opaque(),
-                     output_values.opaque(), num_items, descending, batch_size);
+  const char* error = sort_pairs_fn_(
+      scratch.opaque(), temp_bytes, input_keys.opaque(), output_keys.opaque(),
+      input_values.opaque(), output_values.opaque(), num_items, descending,
+      batch_size, se::gpu::AsGpuStreamValue(stream));
   if (error != nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("CubSortPairs error: ", error));
@@ -198,7 +201,7 @@ absl::StatusOr<int64_t> CubSortPairsImpl::GetScratchSize(int64_t num_items,
   size_t temp_bytes = 0;
   const char* error =
       sort_pairs_fn_(nullptr, temp_bytes, nullptr, nullptr, nullptr, nullptr,
-                     num_items, false, batch_size);
+                     num_items, false, batch_size, nullptr);
   if (error != nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("CubSortPairs error: ", error));

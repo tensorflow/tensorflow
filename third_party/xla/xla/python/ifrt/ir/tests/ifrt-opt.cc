@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -64,6 +66,7 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_remap.h"
@@ -87,6 +90,26 @@ namespace {
 // explicitly said this is WAI. See b/258212655#comment10.
 absl::AnyInvocable<void() &&> FromStdFunction(std::function<void()>&& f) {
   return f ? std::move(f) : absl::AnyInvocable<void() &&>();
+}
+
+// Returns an `AttributeMap` with the attributes of the given `PjRtClient`.
+AttributeMap MakeAttributeMap(xla::PjRtClient* pjrt_client) {
+  absl::flat_hash_map<std::string, PjRtValueType> attributes;
+  attributes.insert({"supports_executable_serialization", true});
+  if (std::optional<PjRtPluginAttributes> plugin_attributes =
+          pjrt_client->plugin_attributes();
+      plugin_attributes.has_value()) {
+    attributes.insert(
+        {"pjrt_c_api_major_version",
+         PjRtValueType(plugin_attributes->pjrt_c_api_major_version)});
+    attributes.insert(
+        {"pjrt_c_api_minor_version",
+         PjRtValueType(plugin_attributes->pjrt_c_api_minor_version)});
+    for (const auto& [key, value] : plugin_attributes->attributes) {
+      attributes.insert({key, value});
+    }
+  }
+  return FromPjRtAttributeMap(std::move(attributes));
 }
 
 void SerializePjRtDeviceAttributes(
@@ -455,7 +478,9 @@ std::unique_ptr<PjRtClient> PjRtClient::Create(
 }
 
 PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
-    : pjrt_client_(std::move(pjrt_client)), default_compiler_(this) {}
+    : pjrt_client_(std::move(pjrt_client)),
+      default_compiler_(this),
+      attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
 PjRtClient::~PjRtClient() = default;
 
@@ -493,31 +518,12 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
     int local_hardware_id) const {
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
-                      pjrt_client_->LookupAddressableDevice(local_hardware_id));
+                      pjrt_client_->LookupAddressableDevice(
+                          xla::PjRtLocalDeviceId(local_hardware_id)));
   return LookupPjRtDevice(pjrt_device);
 }
 
-absl::flat_hash_map<std::string, Client::ClientAttribute>
-PjRtClient::attributes() const {
-  absl::flat_hash_map<std::string, ClientAttribute> attributes;
-  attributes.insert({"supports_executable_serialization", true});
-
-  if (std::optional<PjRtPluginAttributes> plugin_attributes =
-          pjrt_client_->plugin_attributes();
-      plugin_attributes.has_value()) {
-    attributes.insert(
-        {"pjrt_c_api_major_version",
-         ClientAttribute(plugin_attributes->pjrt_c_api_major_version)});
-    attributes.insert(
-        {"pjrt_c_api_minor_version",
-         ClientAttribute(plugin_attributes->pjrt_c_api_minor_version)});
-    for (const auto& [key, value] : plugin_attributes->attributes) {
-      attributes.insert({key, value});
-    }
-  }
-
-  return attributes;
-}
+const AttributeMap& PjRtClient::Attributes() const { return attributes_; }
 
 absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
 PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer) {
@@ -545,60 +551,78 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
                                          sharding, semantics,
                                          on_done_with_host_buffer);
   }
-  if (!llvm::isa<const SingleDeviceSharding>(sharding.get())) {
+  if (!llvm::isa<const SingleDeviceSharding>(sharding.get()) &&
+      !sharding->IsFullyReplicated()) {
     return InvalidArgument(
-        "Only SingleDeviceSharding is supported: sharding=%s",
+        "Only SingleDeviceSharding or fully-replicated sharding is supported: "
+        "sharding=%s",
         sharding->DebugString());
   }
   TF_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
 
-  std::unique_ptr<PjRtBuffer> buffer;
-  // If the sharding has memory_kind specified, use a version of
-  // `PjRtClient::BufferFromHostBuffer` that accepts `PjRtMemorySpace`.
-  // Otherwise, use a non-`PjRtMemorySpace` version that is compatible with
-  // PjRt implementations without memories support.
-  if (sharding->memory_kind().memory_kind().has_value()) {
-    // Find `PjRtMemorySpace` that is associated with the sharding's device
-    // and matches the sharding's memory_kind.
-    Memory* memory = nullptr;
-    for (Memory* ms : sharding->devices().front()->Memories()) {
-      if (ms->Kind() == sharding->memory_kind()) {
-        memory = ms;
-        break;
-      }
-    }
-    if (memory == nullptr) {
-      return InvalidArgument(
-          "Invalid memory kind: %s; available memory kinds: %s",
-          *sharding->memory_kind().memory_kind(),
-          absl::StrJoin(sharding->devices().front()->Memories(), ", ",
-                        [](std::string* out, Memory* ms) {
-                          absl::StrAppend(out, *ms->Kind().memory_kind());
-                        }));
-    }
-    TF_ASSIGN_OR_RETURN(
-        buffer, pjrt_client_->BufferFromHostBuffer(
-                    data, primitive_type, shape.dims(), byte_strides, semantics,
-                    FromStdFunction(std::move(on_done_with_host_buffer)),
-                    tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
-                    /*device_layout=*/nullptr));
+  auto count = std::make_shared<std::atomic<int>>(sharding->devices().size());
+  std::function<void()> on_done_with_host_buffer_per_device;
+  if (on_done_with_host_buffer) {
+    on_done_with_host_buffer_per_device =
+        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
+         count]() {
+          if (count->fetch_sub(1, std::memory_order_relaxed) == 1) {
+            on_done_with_host_buffer();
+          }
+        };
   } else {
-    Device* device = sharding->devices().front();
-    if (!device->IsAddressable()) {
-      return InvalidArgument("Cannot copy array to non-addressable device %s",
-                             device->DebugString());
-    }
-    TF_ASSIGN_OR_RETURN(
-        buffer,
-        pjrt_client_->BufferFromHostBuffer(
-            data, primitive_type, shape.dims(), byte_strides, semantics,
-            FromStdFunction(std::move(on_done_with_host_buffer)),
-            tensorflow::down_cast<PjRtDevice*>(sharding->devices().front())
-                ->pjrt_device()));
+    on_done_with_host_buffer_per_device = []() {};
   }
-  return PjRtArray::Create(
-      this, dtype, std::move(shape), std::move(sharding),
-      PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
+
+  PjRtArray::PjRtBuffers buffers;
+  buffers.reserve(sharding->devices().size());
+  for (xla::ifrt::Device* const device : sharding->devices()) {
+    std::unique_ptr<PjRtBuffer> buffer;
+    // If the sharding has memory_kind specified, use a version of
+    // `PjRtClient::BufferFromHostBuffer` that accepts `PjRtMemorySpace`.
+    // Otherwise, use a non-`PjRtMemorySpace` version that is compatible with
+    // PjRt implementations without memories support.
+    if (sharding->memory_kind().memory_kind().has_value()) {
+      // Find `PjRtMemorySpace` that is associated with the sharding's device
+      // and matches the sharding's memory_kind.
+      Memory* memory = nullptr;
+      for (Memory* ms : device->Memories()) {
+        if (ms->Kind() == sharding->memory_kind()) {
+          memory = ms;
+          break;
+        }
+      }
+      if (memory == nullptr) {
+        return InvalidArgument(
+            "Invalid memory kind: %s; available memory kinds: %s",
+            *sharding->memory_kind().memory_kind(),
+            absl::StrJoin(sharding->devices().front()->Memories(), ", ",
+                          [](std::string* out, Memory* ms) {
+                            absl::StrAppend(out, *ms->Kind().memory_kind());
+                          }));
+      }
+      TF_ASSIGN_OR_RETURN(
+          buffer, pjrt_client_->BufferFromHostBuffer(
+                      data, primitive_type, shape.dims(), byte_strides,
+                      semantics, on_done_with_host_buffer_per_device,
+                      tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
+                      /*device_layout=*/nullptr));
+    } else {
+      if (!device->IsAddressable()) {
+        return InvalidArgument("Cannot copy array to non-addressable device %s",
+                               device->DebugString());
+      }
+      TF_ASSIGN_OR_RETURN(
+          buffer,
+          pjrt_client_->BufferFromHostBuffer(
+              data, primitive_type, shape.dims(), byte_strides, semantics,
+              on_done_with_host_buffer_per_device,
+              tensorflow::down_cast<PjRtDevice*>(device)->pjrt_device()));
+    }
+    buffers.push_back(std::move(buffer));
+  }
+  return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
+                           std::move(buffers));
 }
 
 absl::StatusOr<tsl::RCReference<Array>>
@@ -672,6 +696,42 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<Array>>> PjRtClient::CopyArrays(
+    absl::Span<tsl::RCReference<Array>> arrays,
+    std::optional<DeviceList> devices, std::optional<MemoryKind> memory_kind,
+    ArrayCopySemantics semantics) {
+  if (arrays.empty()) {
+    return std::vector<tsl::RCReference<Array>>();
+  }
+
+  for (int i = 1; i < arrays.size(); ++i) {
+    const auto& sharding = arrays[i]->sharding();
+    if (sharding.devices() != arrays[0]->sharding().devices() ||
+        sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
+      return absl::InvalidArgumentError(
+          "CopyArrays only supports arrays with the same device list and "
+          "memory kind");
+    }
+  }
+
+  std::vector<tsl::RCReference<Array>> new_arrays;
+  new_arrays.reserve(arrays.size());
+  for (const auto& array : arrays) {
+    if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+      TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+                          pjrt_array->Copy(devices, memory_kind, semantics));
+    } else if (auto* const string_array =
+                   llvm::dyn_cast<BasicStringArray>(array.get())) {
+      TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+                          string_array->Copy(devices, memory_kind, semantics));
+    } else {
+      return absl::InvalidArgumentError(
+          "Unsupported array type for PjRtClient::CopyArrays");
+    }
+  }
+  return new_arrays;
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>

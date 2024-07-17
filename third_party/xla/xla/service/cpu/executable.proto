@@ -21,11 +21,6 @@ import "xla/service/cpu/xla_framework.proto";
 import "xla/service/hlo.proto";
 import "xla/xla.proto";
 
-message XlaRuntimeCpuExecutableProto {
-  optional XlaRuntimeExecutableProto xla_runtime_executable = 1;
-  optional XlaFrameworkMappingProto xla_framework_mapping = 2;
-}
-
 message CompilationResultProto {
   HloModuleProtoWithConfig hlo_module = 1;
   BufferAssignmentProto buffer_assignment = 2;

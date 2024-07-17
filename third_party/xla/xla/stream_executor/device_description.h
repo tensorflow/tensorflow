@@ -24,6 +24,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -73,16 +74,20 @@ struct CudaComputeCapability {
     this->minor = proto.minor();
   }
 
-  static CudaComputeCapability Hopper() {
-    return CudaComputeCapability{HOPPER, 0};
-  }
-
   static CudaComputeCapability Volta() {
     return CudaComputeCapability{VOLTA, 0};
   }
 
   static CudaComputeCapability Ampere() {
     return CudaComputeCapability{AMPERE, 0};
+  }
+
+  static CudaComputeCapability Hopper() {
+    return CudaComputeCapability{HOPPER, 0};
+  }
+
+  static CudaComputeCapability Blackwell() {
+    return CudaComputeCapability{BLACKWELL, 0};
   }
 
   bool IsAtLeast(int other_major, int other_minor = 0) const {
@@ -105,6 +110,10 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::HOPPER;
   }
 
+  bool IsAtLeastBlackwell() const {
+    return major >= CudaComputeCapabilities::BLACKWELL;
+  }
+
   bool operator<(const CudaComputeCapability &other) const {
     return ToPair() < other.ToPair();
   }
@@ -115,32 +124,6 @@ struct CudaComputeCapability {
 
   bool operator!=(const CudaComputeCapability &other) const {
     return !(*this == other);
-  }
-
-  // Maximum resident blocks per multiprocessor, values taken from
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities.
-  int GetMaxResidentBlocksPerSM() const {
-    if (IsAtLeast(8, 6)) {
-      return 16;
-    } else if (IsAtLeast(8)) {
-      return 32;
-    } else if (IsAtLeast(7, 5)) {
-      return 16;
-    }
-    return 32;
-  }
-
-  // Maximum resident warps per multiprocessor, values taken from
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities.
-  int GetMaxResidentWarpsPerSM() const {
-    if (IsAtLeast(8, 6)) {
-      return 48;
-    } else if (IsAtLeast(8)) {
-      return 64;
-    } else if (IsAtLeast(7, 5)) {
-      return 32;
-    }
-    return 64;
   }
 
   std::string ToString() const { return absl::StrCat(major, ".", minor); }
@@ -167,7 +150,6 @@ class RocmComputeCapability {
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
   RocmComputeCapability() = default;
-  ~RocmComputeCapability() = default;
 
   std::string gcn_arch_name() const { return gcn_arch_name_; }
 
@@ -218,6 +200,11 @@ class RocmComputeCapability {
   }
 
   bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
+
+  bool has_amd_matrix_core() const {
+    return (gfx9_mi100_or_later() || gfx_version().find("gfx11") ||
+            gfx_version().find("gfx12"));
+  }
 
   bool has_fp16_atomics_support() const {
     // TODO(rocm): Check. This should be the same as has_fast_fp16_support().

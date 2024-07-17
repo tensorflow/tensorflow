@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.h"

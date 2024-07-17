@@ -38,12 +38,13 @@ _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
     test_output="errors",
+    verbose_failures=True,
     keep_going=True,
     nobuild_tests_only=True,
-    features="layering_check",
     profile="profile.json.gz",
     flaky_test_attempts=3,
     jobs=150,
+    bes_upload_mode="fully_async",
 )
 
 _DEFAULT_DOCKER_OPTIONS = dict(
@@ -81,6 +82,12 @@ class BuildType(enum.Enum):
   CPU_ARM64 = enum.auto()
   GPU = enum.auto()
   GPU_CONTINUOUS = enum.auto()
+
+  JAX_CPU = enum.auto()
+  JAX_GPU = enum.auto()
+
+  TENSORFLOW_CPU = enum.auto()
+  TENSORFLOW_GPU = enum.auto()
 
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
@@ -155,19 +162,28 @@ class Build:
   docker_image: DockerImage
   target_patterns: Tuple[str, ...]
   configs: Tuple[str, ...] = ()
-  tag_filters: Tuple[str, ...] = ()
+  build_tag_filters: Tuple[str, ...] = ()
+  test_tag_filters: Tuple[str, ...] = ()
   action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
   def bazel_test_command(self) -> List[str]:
+    """Returns a bazel test command for this build.
+
+    Returns: List of command line arguments
+    """
     options = _dict_to_cli_options(self.options)
     configs = [f"--config={config}" for config in self.configs]
-    build_tag_filters = f"--build_tag_filters={','.join(self.tag_filters)}"
-    test_tag_filters = f"--test_tag_filters={','.join(self.tag_filters)}"
-    action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
-    all_options = (
-        [build_tag_filters, test_tag_filters] + configs + action_env + options
+    build_tag_filters = (
+        f"--build_tag_filters={','.join(self.build_tag_filters)}"
     )
+    test_tag_filters = f"--test_tag_filters={','.join(self.test_tag_filters)}"
+    action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
+    test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
+
+    tag_filters = [build_tag_filters, test_tag_filters]
+    all_options = tag_filters + configs + action_env + test_env + options
     return ["bazel", "test", *all_options, "--", *self.target_patterns]
 
 
@@ -190,7 +206,7 @@ _DEFAULT_IMAGE = DockerImage(
 
 # TODO(b/338885148): Remove this once the TF containers have cuDNN 9
 _CUDNN_9_IMAGE = DockerImage(
-    image_url="gcr.io/tensorflow-sigs/build@sha256:dddcaf30321e9007103dce75c51b83fea3c06de462fcf41e7c6ae93f37fc3545",
+    image_url="gcr.io/tensorflow-sigs/build@sha256:0a9728e258d7e0e5830d1960a65968ffdc1d138af5441e30948918e0d50ab2c7",
 )
 
 _ARM64_JAX_MULTI_PYTHON_IMAGE = DockerImage(
@@ -199,7 +215,7 @@ _ARM64_JAX_MULTI_PYTHON_IMAGE = DockerImage(
 
 
 def nvidia_gpu_build_with_compute_capability(
-    *, type_: BuildType, compute_capability: int
+    *, type_: BuildType, configs: Tuple[str, ...], compute_capability: int
 ) -> Build:
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
   return Build(
@@ -207,52 +223,157 @@ def nvidia_gpu_build_with_compute_capability(
       repo="openxla/xla",
       docker_image=_CUDNN_9_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
-      configs=("warnings", "rbe_linux_cuda_nvcc"),
-      tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
-      action_env={"TF_CUDA_COMPUTE_CAPABILITIES": compute_capability / 10},
+      configs=configs,
+      test_tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
+      build_tag_filters=("-no_oss", "requires-gpu-nvidia"),
       options=dict(
           run_under="//tools/ci_build/gpu_build:parallel_gpu_execute",
+          repo_env=f"TF_CUDA_COMPUTE_CAPABILITIES={compute_capability/10}",
           **_DEFAULT_BAZEL_OPTIONS,
       ),
   )
 
+
+cpu_x86_tag_filter = (
+    "-no_oss",
+    "-gpu",
+    "-requires-gpu-nvidia",
+    "-requires-gpu-amd",
+)
 _CPU_X86_BUILD = Build(
     type_=BuildType.CPU_X86,
     repo="openxla/xla",
     docker_image=_DEFAULT_IMAGE,
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
-    tag_filters=(
-        "-no_oss",
-        "-gpu",
-        "-requires-gpu-nvidia",
-        "-requires-gpu-amd",
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS
+    + (
+        "-//xla/service/gpu/model/fuzztest/...",
+        "-//xla/service/gpu:triton_support_test",
     ),
+    build_tag_filters=cpu_x86_tag_filter,
+    test_tag_filters=cpu_x86_tag_filter,
     options=_DEFAULT_BAZEL_OPTIONS,
+)
+
+cpu_arm_tag_filter = (
+    "-no_oss",
+    "-gpu",
+    "-requires-gpu-nvidia",
+    "-requires-gpu-amd",
+    "-not_run:arm",
 )
 _CPU_ARM64_BUILD = Build(
     type_=BuildType.CPU_ARM64,
     repo="openxla/xla",
     docker_image=_ARM64_JAX_MULTI_PYTHON_IMAGE,
     configs=("warnings", "rbe_cross_compile_linux_arm64_xla", "nonccl"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
-    tag_filters=(
-        "-no_oss",
-        "-gpu",
-        "-requires-gpu-nvidia",
-        "-not_run:arm",
-        "-requires-gpu-amd",
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS
+    + (
+        "-//xla/service/gpu/model/fuzztest/...",
+        "-//xla/service/gpu:triton_support_test",
     ),
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
+    build_tag_filters=cpu_arm_tag_filter,
+    test_tag_filters=cpu_arm_tag_filter,
 )
+# TODO(ddunleavy): Setup additional build for a100 tests once L4 RBE is ready.
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU, compute_capability=75
+    type_=BuildType.GPU,
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    compute_capability=75,
 )
 
-# NOTE(ddunleavy): compute_cability=80 should really be 89, but I want to catch
-# anything marked as `requires_sm80_only`.
-_GPU_CONTINUOUS_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU_CONTINUOUS, compute_capability=80
+_JAX_CPU_BUILD = Build(
+    type_=BuildType.JAX_CPU,
+    repo="google/jax",
+    docker_image=_DEFAULT_IMAGE,
+    configs=(
+        "avx_posix",
+        "mkl_open_source_only",
+        "rbe_cpu_linux_py3.12",
+        "tensorflow_testing_rbe_linux",
+    ),
+    target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
+    test_env=dict(
+        JAX_NUM_GENERATED_CASES=25,
+        JAX_SKIP_SLOW_TESTS=1,
+    ),
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS, override_repository="xla=/github/xla"
+    ),
+)
+
+_JAX_GPU_BUILD = Build(
+    type_=BuildType.JAX_GPU,
+    repo="google/jax",
+    docker_image=_DEFAULT_IMAGE,
+    configs=(
+        "avx_posix",
+        "mkl_open_source_only",
+        "rbe_linux_cuda12.3_nvcc_py3.10",
+        "tensorflow_testing_rbe_linux",
+    ),
+    target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
+    build_tag_filters=("-multiaccelerator",),
+    test_tag_filters=("-multiaccelerator",),
+    test_env=dict(
+        JAX_SKIP_SLOW_TESTS=1,
+        TF_CPP_MIN_LOG_LEVEL=0,
+        JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
+    ),
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS, override_repository="xla=/github/xla"
+    ),
+)
+
+_TENSORFLOW_CPU_BUILD = Build(
+    type_=BuildType.TENSORFLOW_CPU,
+    repo="tensorflow/tensorflow",
+    docker_image=_DEFAULT_IMAGE,
+    configs=(
+        "release_cpu_linux",
+        "rbe_linux_cpu",
+        "linux_cpu_pycpp_test_filters",
+    ),
+    target_patterns=(
+        "//tensorflow/compiler/...",
+        "-//tensorflow/compiler/tf2tensorrt/...",
+        "//tensorflow/python/...",
+        "-//tensorflow/python/distribute/...",
+        "-//tensorflow/python/compiler/tensorrt/...",
+    ),
+    options=dict(
+        verbose_failures=True,
+        test_output="errors",
+        override_repository="xla=/github/xla",
+        profile="profile.json.gz",
+    ),
+)
+
+_TENSORFLOW_GPU_BUILD = Build(
+    type_=BuildType.TENSORFLOW_GPU,
+    repo="tensorflow/tensorflow",
+    docker_image=_DEFAULT_IMAGE,
+    configs=(
+        "release_gpu_linux",
+        "rbe_linux_cuda",
+        "linux_cuda_pycpp_test_filters",
+    ),
+    target_patterns=(
+        "//tensorflow/compiler/...",
+        "-//tensorflow/compiler/tf2tensorrt/...",
+        "//tensorflow/python/...",
+        "-//tensorflow/python/distribute/...",
+        "-//tensorflow/python/compiler/tensorrt/...",
+    ),
+    build_tag_filters=("-no_oss", "+gpu"),
+    test_tag_filters=("-no_oss", "+gpu"),
+    options=dict(
+        verbose_failures=True,
+        test_output="errors",
+        override_repository="xla=/github/xla",
+        profile="profile.json.gz",
+    ),
 )
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
@@ -260,8 +381,12 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
     "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
-    "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_CONTINUOUS_BUILD,
+    "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
     "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
+    "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
+    "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
+    "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
+    "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
 }
 
 
@@ -273,6 +398,16 @@ def main():
 
   sh(["./github/xla/.kokoro/generate_index_html.sh", "index.html"])
 
+  _, repo_name = build.repo.split("/")
+  if build.repo != "openxla/xla":
+    sh([
+        "git",
+        "clone",
+        "--depth=1",
+        f"https://github.com/{build.repo}",
+        f"./github/{repo_name}",
+    ])
+
   # TODO(b/338885148): Remove this block after TF was updated to cuDNN 9
   if build.type_ in (BuildType.GPU, BuildType.GPU_CONTINUOUS):
     sh(
@@ -283,8 +418,8 @@ def main():
             "github/xla/.bazelrc",
         ],
     )
+    sh(["nvidia-smi"])
 
-  _, repo_name = build.repo.split("/")
   with build.docker_image.pull_and_run(
       workdir=f"/github/{repo_name}", **_DEFAULT_DOCKER_OPTIONS
   ) as docker_exec:

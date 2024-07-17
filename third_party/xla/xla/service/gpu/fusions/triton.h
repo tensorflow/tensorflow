@@ -15,16 +15,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_H_
 #define XLA_SERVICE_GPU_FUSIONS_TRITON_H_
 
-#include <cstdint>
 #include <optional>
-#include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/Module.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -33,7 +37,7 @@ class TritonFusion : public FusionInterface {
  public:
   struct LaunchConfig {
     LaunchDimensions launch_dimensions;
-    std::vector<int64_t> output_tile_sizes;
+    BlockLevelParameters block_level_parameters;
   };
 
   explicit TritonFusion(const HloFusionAnalysis& analysis)
@@ -43,9 +47,18 @@ class TritonFusion : public FusionInterface {
       IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 
-  // Returns the launch dimensions and output tile sizes for softmax fusions.
+  // Returns the launch config for Triton fusions that have a block level fusion
+  // config.
   // Not supported for MatMul fusions yet.
   std::optional<LaunchConfig> launch_config() const;
+
+  // Generates a Triton kernel for the given fusion into the provided LLVM
+  // module, and returns the `TritonWrapperResult` corresponding to the
+  // generated kernel.
+  absl::StatusOr<TritonWrapperResult> GenerateTritonKernelAndWrapper(
+      const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
+      const se::DeviceDescription& device_info, llvm::Module* llvm_module,
+      mlir::MLIRContext* mlir_context) const;
 
  private:
   const HloFusionAnalysis& analysis_;

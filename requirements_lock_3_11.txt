@@ -346,6 +346,7 @@ ml-dtypes==0.4.0 \
     --hash=sha256:ee9f91d4c4f9959a7e1051c141dc565f39e54435618152219769e24f5e9a4d06 \
     --hash=sha256:f1724ddcdf5edbaf615a62110af47407f1719b8d02e68ccee60683acb5f74da1
     # via
+    #   -r requirements.in
     #   jax
     #   keras-nightly
 namex==0.0.8 \
@@ -482,8 +483,8 @@ six==1.16.0 \
     # via
     #   astunparse
     #   tb-nightly
-tb-nightly==2.17.0a20240605 \
-    --hash=sha256:b7116f29ea6b79cf7201596fa3ebba1609ee00a77e017518d69b2d8df0b3f2b7
+tb-nightly==2.18.0a20240611 \
+    --hash=sha256:c299eb7dc3de22c7164a1b0c0091b784f2214d65b9a8b967eeeba9818314016d
     # via -r requirements.in
 tblib==2.0.0 \
     --hash=sha256:9100bfa016b047d5b980d66e7efed952fbd20bd85b56110aaf473cb97d18709a \
@@ -502,9 +503,9 @@ typing-extensions==4.8.0 \
     --hash=sha256:8f92fc8806f9a6b641eaa5318da32b44d401efaac0f6678c9bc448ba3605faa0 \
     --hash=sha256:df8e4339e9cb77357558cbdbceca33c303714cf861d1eef15e1070055ae8b7ef
     # via -r requirements.in
-urllib3==2.2.1 \
-    --hash=sha256:450b20ec296a467077128bff42b73080516e71b56ff59a60a02bef2232c4fa9d \
-    --hash=sha256:d0570876c61ab9e520d776c38acbbb5b05a776d3f9ff98a5c8fd5162a444cf19
+urllib3==2.2.2 \
+    --hash=sha256:a448b2f64d686155468037e1ace9f2d2199776e17f0a46610480d311f73e3472 \
+    --hash=sha256:dd505485549a7a552833da5e6063639d0d177c04f23bc3864e41e5dc5f612168
     # via requests
 werkzeug==3.0.3 \
     --hash=sha256:097e5bfda9f0aba8da6b8545146def481d06aa7d3266e7448e2cccf67dd8bd18 \
@@ -589,9 +590,9 @@ wrapt==1.16.0 \
     --hash=sha256:ffa565331890b90056c01db69c0fe634a776f8019c143a5ae265f9c6bc4bd6d4
     # via -r requirements.in
 
-setuptools==68.2.2 \
-    --hash=sha256:4ac1475276d2f1c48684874089fefcd83bd7162ddaafb81fac866ba0db282a87 \
-    --hash=sha256:b454a35605876da60632df1a60f736524eb73cc47bbc9f3f1ef1b644de74fd2a
+setuptools==70.0.0 \
+    --hash=sha256:54faa7f2e8d2d11bcd2c07bed282eef1046b5c080d1c32add737d7b5817b1ad4 \
+    --hash=sha256:f211a66637b8fa059bb28183da127d4e86396c991a942b028c6650d4319c3fd0
     # via
     #   -r requirements.in
     #   tb-nightly

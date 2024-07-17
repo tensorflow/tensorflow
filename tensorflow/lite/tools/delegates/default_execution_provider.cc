@@ -112,7 +112,7 @@ void DefaultExecutionProvider::LogParams(const ToolParams& params,
   LOG_TOOL_PARAM(params, int32_t, "first_delegate_node_index",
                  "Index of the first node that could be delegated", verbose);
   LOG_TOOL_PARAM(params, int32_t, "last_delegate_node_index",
-                 "Index of the first node that could be delegated", verbose);
+                 "Index of the last node that could be delegated", verbose);
   LOG_TOOL_PARAM(params, int32_t, "gpu_invoke_loop_times",
                  "Number of GPU delegate invoke loop iterations", verbose);
   LOG_TOOL_PARAM(params, std::string, "delegate_serialize_dir",

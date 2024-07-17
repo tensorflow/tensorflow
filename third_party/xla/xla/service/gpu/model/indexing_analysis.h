@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -63,8 +63,6 @@ struct HloInstructionIndexing {
 };
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
-
-std::string ToString(const mlir::AffineMap& affine_map);
 
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
@@ -132,6 +130,9 @@ bool FuseProducerConsumerOutputToInputIndexing(
 // Equivalent to linearizing the input_shape index and then delinearizing it
 // to output_shape.
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
+                          mlir::MLIRContext* mlir_context);
+IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
+                          const Shape& output_shape,
                           mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the physical layout of the tensor to its logical

@@ -34,6 +34,7 @@ TraceCommandBufferFactory::Create(
     absl::AnyInvocable<absl::Status(Stream*)> function,
     CommandBuffer::Mode mode) {
   TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  stream->set_name("Command buffer tracer");
   return TraceCommandBufferFactory::Create(executor, stream.get(),
                                            std::move(function), mode);
 }

@@ -183,7 +183,11 @@ class PerDeviceCollector {
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
           absl::StrCat("$$", static_cast<uint64_t>(event.context_id)));
     }
-
+    if (event.graph_id != 0) {
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kCudaGraphId)),
+                          event.graph_id);
+    }
     if (event.type == CuptiTracerEventType::Kernel &&
         event.source == CuptiTracerEventSource::Activity) {
       DeviceOccupancyParams params{};
@@ -268,6 +272,15 @@ class PerDeviceCollector {
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
                               StatType::kMemoryResidencyDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
+    } else if (event.type == CuptiTracerEventType::CudaGraph) {
+      if (event.cuda_graph_info.orig_graph_id) {
+        std::string value =
+            absl::StrCat("orig_graph_id:", event.cuda_graph_info.orig_graph_id);
+        VLOG(7) << "Add CudaGraph stat. " << value;
+        xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kCudaGraphDetails)),
+                            *plane->GetOrCreateStatMetadata(std::move(value)));
+      }
     }
 
     std::vector<Annotation> annotation_stack =
@@ -508,7 +521,8 @@ class EventInQueue {
 }  // namespace
 
 void CuptiTraceCollector::OnTracerCollectedCallbackData(
-    std::vector<CallbackAnnotationsAndEvents> callback_annotations_and_events) {
+    std::vector<CallbackAnnotationsAndEvents> callback_annotations_and_events,
+    bool need_callback_events) {
   // Build merged annotation first.
   std::priority_queue<EventInQueue> min_heap;
   for (auto& annotations_and_events : callback_annotations_and_events) {
@@ -545,6 +559,9 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
     }
   }
 
+  // If we are not collecting CPU events from Callback API, we can return now.
+  if (!need_callback_events) return;
+
   size_t total_dropped_callback_event_count = 0;
   for (auto& annotations_and_events : callback_annotations_and_events) {
     for (auto& event : annotations_and_events.event_queue()) {
@@ -561,14 +578,15 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
 }
 
 void CuptiTraceCollector::OnTracerCachedActivityBuffers(
-    std::unique_ptr<CuptiActivityBufferManager> activity_buffers) {
+    std::list<CuptiActivityBufferManager::ActivityBufferAndSize>
+        activity_buffers) {
   size_t dropped_activity_event_count = 0;
   CuptiEventCollectorDelegate collector(
       *annotation_map(),
       [this](CuptiTracerEvent&& ev) { this->AddEvent(std::move(ev)); });
-  activity_buffers->AddCachedActivityEventsTo(collector,
-                                              options_.max_activity_api_events,
-                                              dropped_activity_event_count);
+  AddActivityBufferListEventsTo(collector, activity_buffers,
+                                options_.max_activity_api_events,
+                                dropped_activity_event_count);
   if (dropped_activity_event_count > 0) {
     OnEventsDropped("total device(activity) events reaches max",
                     dropped_activity_event_count);
@@ -603,27 +621,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     dropped_events_[reason] += num_events;
   }
 
-  void OnTracerCollectedCallbackData(
-      std::vector<CallbackAnnotationsAndEvents> callback_events) override {
-    callback_events_ = std::move(callback_events);
-  }
-
-  void OnTracerCachedActivityBuffers(
-      std::unique_ptr<CuptiActivityBufferManager> activity_buffers) override {
-    activity_buffers_ = std::move(activity_buffers);
-  }
-
   void Flush() override {}
   // Returns true if some GPU events are captured.
   bool Export(XSpace* space, uint64_t end_gpu_ns) override {
-    // The callback API events must be processed before activity API buffers
-    // because the AnnotationMap is populated from the callback API events and
-    // queried by the activity API events.
-    CuptiTraceCollector::OnTracerCollectedCallbackData(
-        std::move(callback_events_));
-    CuptiTraceCollector::OnTracerCachedActivityBuffers(
-        std::move(activity_buffers_));
-
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
@@ -674,8 +674,6 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
  private:
   size_t num_callback_events_ = 0;
   size_t num_activity_events_ = 0;
-  std::unique_ptr<CuptiActivityBufferManager> activity_buffers_;
-  std::vector<CallbackAnnotationsAndEvents> callback_events_;
   absl::flat_hash_map<std::string, uint64_t> dropped_events_;
   uint64_t start_walltime_ns_;
   uint64_t start_gpu_ns_;

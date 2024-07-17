@@ -127,6 +127,8 @@ class IfrtModelContext {
   // leads to an error.
   absl::Status Freeze();
 
+  bool IsFrozen() const { return frozen_; }
+
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
   IfrtServingCoreSelector* ifrt_serving_core_selector_;  // May be nullptr
@@ -145,6 +147,7 @@ class IfrtModelContext {
 
   IfrtLoadedVariableRegistry loaded_variable_registry_;
   IfrtRestoreTensorRegistry restore_tensor_registry_;
+  bool frozen_ = false;
 };
 
 }  // namespace ifrt_serving

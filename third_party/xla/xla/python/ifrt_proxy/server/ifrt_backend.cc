@@ -22,6 +22,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -167,6 +168,8 @@ Future<BackendInterface::Response> IfrtBackend::Process(
           HandleDisassembleIntoSingleDeviceArraysRequest(std::move(request)));
     case IfrtRequest::RequestCase::kCheckValueReadyRequest:
       return Future<Response>(HandleCheckValueReadyRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kCopyArraysRequest:
+      return Future<Response>(HandleCopyArraysRequest(std::move(request)));
     case IfrtRequest::RequestCase::kReshardRequest:
       return Future<Response>(HandleReshardRequest(std::move(request)));
     case IfrtRequest::RequestCase::kFullyReplicatedShardRequest:
@@ -272,9 +275,16 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     }
     d->set_debug_string(AsProtoStringData(device->DebugString()));
     d->set_to_string(AsProtoStringData(device->ToString()));
-    for (const auto& [name, attr] : device->Attributes()) {
-      TF_ASSIGN_OR_RETURN((*d->mutable_attributes())[name],
-                          ToVariantProto(attr));
+    if (version_.protocol_version() <= 3) {
+      for (const auto& [name, attr] : device->Attributes().map()) {
+        TF_ASSIGN_OR_RETURN(
+            (*d->mutable_deprecated_attributes())[name],
+            std::visit(
+                [&](const auto& attr) { return ToVariantProto(attr.value); },
+                attr));
+      }
+    } else {
+      *d->mutable_attributes() = device->Attributes().ToProto();
     }
   }
   for (auto* addressable_device : client_->addressable_devices()) {
@@ -630,6 +640,59 @@ IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
   return response;
 }
 
+absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const auto& copy_arrays_request = request->copy_arrays_request();
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  arrays.reserve(copy_arrays_request.array_handles_size());
+  for (const auto& handle : copy_arrays_request.array_handles()) {
+    TF_ASSIGN_OR_RETURN(arrays.emplace_back(), GetArray(handle));
+  }
+  std::optional<DeviceList> devices;
+  if (!copy_arrays_request.device_ids().empty()) {
+    DeviceList::Devices ds;
+    for (const auto& device_id : copy_arrays_request.device_ids()) {
+      TF_ASSIGN_OR_RETURN(ds.emplace_back(),
+                          client_->LookupDevice(DeviceId(device_id)));
+    }
+    devices.emplace(std::move(ds));
+  }
+  std::optional<MemoryKind> memory_kind;
+  if (copy_arrays_request.has_memory_kind()) {
+    if (const absl::string_view m = copy_arrays_request.memory_kind();
+        !m.empty()) {
+      memory_kind.emplace(MemoryKind(m));
+    } else {
+      memory_kind.emplace(MemoryKind());
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto semantics,
+      FromArrayCopySemanticsProto(copy_arrays_request.copy_semantics()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto new_arrays,
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(devices),
+                          memory_kind, semantics));
+
+  std::unique_ptr<IfrtResponse> ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id());
+  auto* const copy_arrays_resp = ifrt_resp->mutable_copy_arrays_response();
+
+  std::vector<uint64_t> new_handles(new_arrays.size());
+  handle_generator_.BulkNew(absl::MakeSpan(new_handles));
+  {
+    absl::MutexLock lock(&arrays_mutex_);
+    for (int i = 0; i < new_arrays.size(); ++i) {
+      arrays_.insert({new_handles[i], new_arrays[i]});
+      copy_arrays_resp->add_array_handles(new_handles[i]);
+    }
+  }
+
+  return ifrt_resp;
+}
+
 absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& reshard_request = request->reshard_request();
@@ -642,13 +705,24 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
   TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
                                           reshard_request.copy_semantics()));
 
-  TF_ASSIGN_OR_RETURN(auto resharded_array,
-                      array->Reshard(sharding, semantics));
+  // Emulate the old `Array::Reshard` behavior using `Client::CopyArrays`. No
+  // existing IFRT implementations before `Array::Reshard` was deleted actually
+  // supported resharding, so this should be safe.
+  if (!array->sharding().HasSamePartitioning(*sharding)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "IFRT Proxy does not support resharding, but got ",
+        array->sharding().DebugString(), " as the original sharding and ",
+        sharding->DebugString(), " as the target sharding"));
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto copied_arrays,
+      client_->CopyArrays(absl::MakeSpan(&array, 1), sharding->devices(),
+                          sharding->memory_kind(), semantics));
 
   uint64_t resharded_array_handle = handle_generator_.New();
   {
     absl::MutexLock lock(&arrays_mutex_);
-    arrays_.insert({resharded_array_handle, std::move(resharded_array)});
+    arrays_.insert({resharded_array_handle, std::move(copied_arrays[0])});
   }
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
@@ -805,13 +879,6 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     // Populate executable metadata.
     compile_resp->set_name(AsProtoStringData(executable->name()));
     compile_resp->set_num_devices(executable->num_devices());
-    for (const auto& logical_device_id :
-         executable->addressable_device_logical_ids()) {
-      LogicalDeviceIds* proto =
-          compile_resp->add_addressable_device_logical_ids();
-      proto->set_replica(logical_device_id.replica);
-      proto->set_partition(logical_device_id.partition);
-    }
     for (const auto* device : executable->addressable_devices()) {
       compile_resp->add_addressable_device_ids(device->Id().value());
     }

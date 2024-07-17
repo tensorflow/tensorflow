@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
@@ -32,13 +33,25 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/blocking_counter.h"
 
 namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
+
+constexpr std::string_view ReductionKindToString(ReductionKind reduction_kind) {
+  switch (reduction_kind) {
+    case ReductionKind::SUM:
+      return "sum";
+    case ReductionKind::PRODUCT:
+      return "prod";
+    case ReductionKind::MIN:
+      return "min";
+    case ReductionKind::MAX:
+      return "max";
+  }
+}
 
 // Attempts to match instruction to one of the possible cases for ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
@@ -160,6 +173,11 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
 // Returns true if the two replica group are Equal.
 bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
                         absl::Span<const ReplicaGroup> second);
+
+// Returns true if all subgroups in replica_groups are exclusively cross-module.
+absl::StatusOr<bool> IsExclusivelyCrossModule(
+    absl::Span<const ReplicaGroup> replica_groups, bool use_global_ids,
+    bool has_channel_id, const DeviceAssignment& device_assignment);
 
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.

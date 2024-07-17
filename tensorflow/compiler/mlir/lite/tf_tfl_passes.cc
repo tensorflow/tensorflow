@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "stablehlo/experimental/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
@@ -151,10 +151,12 @@ void AddPreQuantizationStableHloToTfPasses(
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // Decompose CHLO into StableHLO ops
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::CreateLegalizeChloToTflPass());
   // TODO(b/331843141): There are some CHLO's like TopK which we could instead
   // lower to TFL ops.
-  mlir::stablehlo::experimental::createChloLegalizeToStablehloPipeline(
-      pass_manager);
+  mlir::stablehlo_ext::createChloLegalizeToStablehloPipeline(pass_manager);
+
   pass_manager.addPass(mlir::odml::CreateTransposeCommuteOpsPass());
   // The following two passes find specific uniform quantization patterns in
   // StableHLO and converts them to TFLite ops that accept or produce uniform
@@ -234,6 +236,8 @@ void AddPostQuantizationStableHloToTfPasses(
 
   // TFLite dialect passes.
   if (!pass_config.disable_hlo_to_tfl_conversion) {
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::odml::CreatePrepareHloPass());
     pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
   }
   // TF dialect passes

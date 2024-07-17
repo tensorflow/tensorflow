@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -24,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -60,7 +60,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace spmd {
@@ -152,32 +151,6 @@ std::optional<HloSharding> PropagateDimwiseSharding(
   }
 
   return input_spec;
-}
-
-HloSharding PropagateDimwiseShardingSlice(const HloSharding& input_spec,
-                                          const Shape& old_shape,
-                                          const Shape& new_shape,
-                                          const Array<int64_t>& device_mesh) {
-  if (input_spec.IsReplicated()) {
-    return input_spec;
-  }
-
-  CHECK(old_shape.IsArray());
-
-  std::vector<int64_t> tensor_to_mesh_dim =
-      GetTensorDimToMeshDim(new_shape.rank(), input_spec, device_mesh,
-                            /* consider_reverse_device_meshes */ true);
-
-  std::vector<int64_t> tensor_dims;
-  std::vector<int64_t> mesh_dims;
-  for (size_t i = 0; i < new_shape.rank(); ++i) {
-    if (new_shape.dimensions(i) == old_shape.dimensions(i) &&
-        tensor_to_mesh_dim[i] > -1) {
-      tensor_dims.push_back(i);
-      mesh_dims.push_back(tensor_to_mesh_dim[i]);
-    }
-  }
-  return Tile(new_shape, tensor_dims, mesh_dims, device_mesh);
 }
 
 // Propagate sharding for ReduceWindow-like operations.
@@ -1442,8 +1415,7 @@ absl::Status FixMixedMeshShapeReshardingGetTupleElement(
   HloInstruction* replace_with =
       ReshardTensor(inst, src_sharding, dst_sharding, device_mesh);
   inst->set_sharding(src_sharding);
-  size_t size =
-      GetInstructionSize(replace_with->shape()) / (1024 * 1024 * 1024);
+  size_t size = ByteSizeOfShape(replace_with->shape()) / (1024 * 1024 * 1024);
   if (size > 1) {
     LOG(WARNING) << "Large reshape instruction inserted (operand of "
                  << inst->name() << ") with size " << size
@@ -1510,8 +1482,7 @@ absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
       }
     }
 
-    size_t size =
-        GetInstructionSize(replace_with->shape()) / (1024 * 1024 * 1024);
+    size_t size = ByteSizeOfShape(replace_with->shape()) / (1024 * 1024 * 1024);
     if (size > 1) {
       LOG(WARNING) << "Large reshape instruction inserted (operand of "
                    << inst->name() << ") with size " << size
@@ -1880,50 +1851,70 @@ std::vector<int64_t> VectorGreaterThanOneElementIndices(
   return result;
 }
 
-int64_t GetInstructionSize(const Shape& shape) {
-  if (shape.IsTuple()) {
-    int64_t size = 0;
-    for (const Shape& subshape : shape.tuple_shapes()) {
-      size += GetInstructionSize(subshape);
-    }
-    return size;
-  }
-  return GetBytes(shape);
+// Given a sharding, and a shape index, obtains the subsharding corresponding to
+// that shape index. This function works whether or not the provided sharding is
+// a tuple, unlike HloSharding::GetSubSharding.
+HloSharding GetSubSharding(const HloSharding& sharding,
+                           const Shape& original_tuple_shape,
+                           const ShapeIndex& index) {
+  return sharding.IsTuple()
+             ? sharding.GetSubSharding(original_tuple_shape, index)
+             : sharding;
 }
 
-int64_t GetShardedInstructionSize(const Shape& shape, int64_t num_devices,
-                                  std::optional<HloSharding> sharding) {
-  if (sharding && sharding->IsUnknown()) {
-    sharding = HloSharding::Replicate();
-  }
-  if (shape.IsTuple()) {
-    int64_t size = 0;
-    for (size_t i = 0; i < shape.tuple_shapes_size(); i++) {
-      Shape subshape = shape.tuple_shapes().at(i);
-      size += GetShardedInstructionSize(
-          subshape,
-          sharding.has_value()
-              ? sharding
-                    ->GetSubSharding(shape, ShapeIndex{static_cast<int64_t>(i)})
-                    .NumTiles()
-              : num_devices);
+int64_t ByteSizeOfShapeWithSharding(const Shape& original_shape,
+                                    std::optional<HloSharding> sharding) {
+  int64_t total_size = 0;
+  auto add_to_total_size = [&total_size](const Shape& shape) {
+    total_size +=
+        ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/kAutoShardingPointerSize);
+  };
+  ShapeUtil::ForEachSubshape(original_shape, [&total_size, &add_to_total_size,
+                                              &sharding, &original_shape](
+                                                 const Shape& subshape,
+                                                 const ShapeIndex& index) {
+    if (subshape.IsTuple()) {
+      add_to_total_size(subshape);
+    } else if (subshape.IsArray() && sharding.has_value()) {
+      add_to_total_size(
+          GetSubSharding(*sharding, original_shape, index).TileShape(subshape));
+    } else if (subshape.IsArray()) {
+      add_to_total_size(subshape);
+    } else if (subshape.IsToken()) {
+      // Tokens are considered to have a size of 0
+    } else {
+      total_size += kAutoShardingPointerSize;
     }
-    return size;
+  });
+  return total_size;
+}
+
+int64_t ByteSizeOfShapeIfShardedAcrossDevices(
+    const Shape& shape, int64_t num_devices,
+    std::optional<HloSharding> sharding) {
+  if (sharding.has_value()) {
+    return ByteSizeOfShapeWithSharding(shape, sharding);
   }
-  if (sharding && sharding->NumTiles() > 0) {
-    return GetBytes(shape) / sharding->NumTiles();
-  }
-  bool shardable = false;
-  for (const auto dim : shape.dimensions()) {
-    if (dim >= num_devices) {
-      shardable = true;
-      break;
-    }
-  }
-  if (shardable) {
-    return GetBytes(shape) / num_devices;
-  }
-  return GetBytes(shape);
+
+  int64_t total_size = 0;
+  ShapeUtil::ForEachSubshape(
+      shape, [&total_size, &num_devices](const Shape& subshape,
+                                         const ShapeIndex& index) {
+        if (subshape.IsTuple()) {
+          total_size += ShapeUtil::ByteSizeOf(
+              subshape, /*pointer_size=*/kAutoShardingPointerSize);
+          return;
+        }
+        int64_t byte_size = ByteSizeOfShape(subshape);
+        absl::Span<const int64_t> subshape_dims = subshape.dimensions();
+        auto max_dim_it = absl::c_max_element(subshape_dims);
+        if (max_dim_it != subshape_dims.end() && *max_dim_it >= num_devices) {
+          byte_size /= num_devices;
+        }
+        total_size += byte_size;
+      });
+
+  return total_size;
 }
 
 HloInstruction* FindInstruction(
@@ -2371,6 +2362,47 @@ absl::StatusOr<int64_t> GetPartialReduceReductionDim(
   }
 
   return parsed_json[kReductionDimKey].asInt64();
+}
+
+bool OpEncountersShardToFull(const HloInstruction* op) {
+  std::queue<const HloInstruction*> queue;
+  queue.push(op);
+
+  absl::flat_hash_set<const HloInstruction*> visited;
+  while (!queue.empty()) {
+    const HloInstruction* instruction = queue.front();
+    queue.pop();
+    if (visited.contains(instruction)) {
+      continue;
+    }
+    visited.insert(instruction);
+
+    for (const HloComputation* computation :
+         instruction->called_computations()) {
+      for (const HloInstruction* parameter :
+           computation->parameter_instructions()) {
+        if (spmd::IsSPMDShardToFullShapeCustomCall(parameter)) {
+          return true;
+        } else if (spmd::IsSPMDFullToShardShapeCustomCall(parameter) ||
+                   parameter == instruction || visited.contains(parameter)) {
+          continue;
+        }
+        queue.push(parameter);
+      }
+    }
+
+    for (const HloInstruction* user : instruction->users()) {
+      if (spmd::IsSPMDShardToFullShapeCustomCall(user)) {
+        return true;
+      } else if (spmd::IsSPMDFullToShardShapeCustomCall(user) ||
+                 visited.contains(user)) {
+        continue;
+      }
+      queue.push(user);
+    }
+  }
+
+  return false;
 }
 
 }  // namespace spmd

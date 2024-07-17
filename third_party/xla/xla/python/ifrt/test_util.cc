@@ -19,12 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace ifrt {

@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <vector>
 
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/Parser/Parser.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"

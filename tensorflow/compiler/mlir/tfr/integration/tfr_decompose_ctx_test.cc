@@ -18,9 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/test.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -28,11 +25,9 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/platform/statusor.h"
 
 using testing::ElementsAreArray;
 using testing::Test;

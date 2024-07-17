@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -56,7 +57,8 @@ RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
       delta_(delta),
       state_(kRngStateInitialValue) {}
 
-absl::Status RngGetAndUpdateStateThunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
+    const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   TF_ASSIGN_OR_RETURN(
@@ -83,7 +85,7 @@ absl::Status RngGetAndUpdateStateThunk::Execute(const ExecuteParams& params) {
 
   state_ += delta_;
 
-  return absl::OkStatus();
+  return OkExecuteEvent();
 }
 
 }  // namespace xla::cpu

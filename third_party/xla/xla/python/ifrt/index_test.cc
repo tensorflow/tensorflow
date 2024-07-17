@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 
 namespace xla {
 namespace ifrt {
@@ -57,6 +58,19 @@ TEST(IndexTest, Operations) {
     Index c = a;
     EXPECT_EQ(c *= std::vector<int64_t>({1, 2}), Index({11, 44}));
   }
+}
+
+TEST(IndexTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      Index({}),
+      Index({1}),
+      Index({2}),
+      Index({1, 2}),
+      Index({1, 3}),
+      Index({2, 1}),
+      Index({1, 2, 3}),
+      Index({1, 2, 4}),
+  }));
 }
 
 }  // namespace

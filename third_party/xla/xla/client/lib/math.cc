@@ -22,14 +22,23 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/loops.h"
 #include "xla/client/xla_builder.h"
 #include "xla/primitive_util.h"
-#include "xla/shape_util.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -1311,9 +1320,22 @@ XlaOp Atanh(XlaOp x) {
 // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
 // we deem this acceptable.
 XlaOp Cosh(XlaOp x) {
-  return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+  XlaBuilder* b = x.builder();
+  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
+
     auto log_one_half = Log(ScalarLike(x, 0.5));
-    return Exp(x + log_one_half) + Exp(-x + log_one_half);
+    auto result = Exp(x + log_one_half) + Exp(-x + log_one_half);
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      return result;
+    }
+
+    // Cosh(x) has a minimum value of 1.0 near 0.0, clamp to 1.0 to handle
+    // rounding errors in Exp().
+    return Max(result, ScalarLike(result, 1.0));
+  };
+  return DoWithUpcastToF32(x, {BF16, F16}, [&](XlaOp x) {
+    return b->ReportErrorOrReturn(do_it(x));
   });
 }
 

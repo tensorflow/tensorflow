@@ -22,11 +22,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -53,15 +55,16 @@ struct CallOptions {
 
   const HloComputation* called_computation = nullptr;
   const ExecutionContext* execution_context = nullptr;
+  ExecutionState* execution_state = nullptr;
 };
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
 // `error` if it's not nullptr; returns OK status otherwise.
 absl::Status TakeStatus(XLA_FFI_Error* error);
 
-absl::Status Call(
-    Ffi& handler, CallFrame& call_frame, const CallOptions& options = {},
-    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options = {},
+                  ExecutionStage stage = ExecutionStage::kExecute);
 
 absl::Status Call(
     XLA_FFI_Handler* handler, CallFrame& call_frame,

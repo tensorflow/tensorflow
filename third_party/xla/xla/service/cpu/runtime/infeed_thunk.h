@@ -19,12 +19,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
@@ -36,17 +37,26 @@ class InfeedThunk final : public Thunk {
     Shape shape;
   };
 
-  static absl::StatusOr<std::unique_ptr<InfeedThunk>> Create(
-      Info info, absl::Span<const InfeedBuffer> infeed_buffers);
+  struct InfeedResources {
+    std::shared_ptr<Resource> consume_token;
+    std::shared_ptr<Resource> produce_token;
+  };
 
-  absl::Status Execute(const ExecuteParams& params) final;
+  static absl::StatusOr<std::unique_ptr<InfeedThunk>> Create(
+      Info info, absl::Span<const InfeedBuffer> infeed_buffers,
+      InfeedResources infeed_resources);
+
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
+  ResourceUses resource_uses() const final;
 
  private:
-  InfeedThunk(Info info, absl::Span<const InfeedBuffer> infeed_buffers);
+  InfeedThunk(Info info, absl::Span<const InfeedBuffer> infeed_buffers,
+              InfeedResources infeed_resources);
 
   std::vector<InfeedBuffer> infeed_buffers_;
+  InfeedResources infeed_resources_;
 };
 
 }  // namespace xla::cpu

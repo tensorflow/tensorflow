@@ -76,12 +76,29 @@ option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 option(TFLITE_ENABLE_EXTERNAL_DELEGATE "Enable External Delegate backend" ON)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
-if(TFLITE_KERNEL_TEST AND ${CMAKE_CROSSCOMPILING})
+
+if(${CMAKE_CROSSCOMPILING})
   set(TFLITE_HOST_TOOLS_DIR "" CACHE PATH "Host tools directory")
   if(TFLITE_HOST_TOOLS_DIR STREQUAL "")
-    message(FATAL_ERROR "Path to the natively compiled 'flatc' compiler binary has not been provided!\
-                        Please specify it using -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path> launch argument.")
+    message(FATAL_ERROR "When cross-compiling, some tools need to be available to run on the host (current required tools: flatc). Please specify where those binaries can be found by using -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path>.")
   endif()
+
+  # Setup the host FlatBuffers compiler.
+  set(FLATC_PATHS
+      ${TFLITE_HOST_TOOLS_DIR}
+      ${TFLITE_HOST_TOOLS_DIR}/bin
+      ${TFLITE_HOST_TOOLS_DIR}/flatbuffers-flatc/bin
+      )
+  find_program(FLATC_BIN flatc PATHS ${FLATC_PATHS})
+  if(${FLATC_BIN} STREQUAL "FLATC_BIN-NOTFOUND")
+    message(FATAL_ERROR "Host 'flatc' compiler has not been found in the following locations: ${FLATC_PATHS}")
+  else()
+    message(STATUS "Pre-built 'flatc' compiler for cross-compilation purposes found: ${FLATC_BIN}")
+    set(FLATBUFFERS_FLATC_EXECUTABLE "${FLATC_BIN}")
+  endif()
+else()
+  set(FLATBUFFERS_FLATC_EXECUTABLE "${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc")
+  set(FLATC_TARGET "flatbuffers-flatc")
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -165,26 +182,29 @@ include_directories(
   ${XLA_SOURCE_DIR}
 )
 # Download necessary dependencies.
-# Download pthreadpool source package if it doesn't exist.
-if(SYSTEM_PTHREADPOOL)
-  find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
-elseif(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
-    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
-    configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
-    execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
-    execute_process(COMMAND "${CMAKE_COMMAND}" --build .
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
-    set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
-endif()
-# Configure pthreadpool
-if(NOT SYSTEM_PTHREADPOOL AND NOT TARGET pthreadpool)
-  set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
-  set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
-  set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
-  add_subdirectory(
-    "${PTHREADPOOL_SOURCE_DIR}"
-    "${CMAKE_BINARY_DIR}/pthreadpool")
+if(TFLITE_ENABLE_XNNPACK)
+  # pthreadpool is used by XNNPACK.
+  if(SYSTEM_PTHREADPOOL)
+    find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
+  elseif(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
+      message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
+      configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
+      execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+      execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+      set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
+  endif()
+  # Configure pthreadpool
+  if(NOT SYSTEM_PTHREADPOOL AND NOT TARGET pthreadpool)
+    set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
+    set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
+    set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
+    add_subdirectory(
+      "${PTHREADPOOL_SOURCE_DIR}"
+      "${CMAKE_BINARY_DIR}/pthreadpool")
+  endif()
+  list(APPEND TFLITE_TARGET_DEPENDENCIES pthreadpool)
 endif()
 set(TF_TARGET_PRIVATE_OPTIONS "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
@@ -495,7 +515,38 @@ if(TFLITE_ENABLE_XNNPACK)
     TFLITE_DELEGATES_XNNPACK_SRCS
     FILTER ".*(_test|_tester)\\.(cc|h)"
   )
+  add_custom_command(
+    OUTPUT "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+    COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c
+      -o "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/"
+      --gen-mutable --gen-object-api
+      "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
+    DEPENDS "${FLATC_TARGET}" "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
+  )
+
+  add_library(xnnpack-delegate STATIC
+    "${TFLITE_DELEGATES_XNNPACK_SRCS}"
+    "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+  )
+  target_include_directories(xnnpack-delegate
+    PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE "${PROJECT_BINARY_DIR}"
+  )
+  target_link_libraries(xnnpack-delegate
+    Eigen3::Eigen
+    flatbuffers::flatbuffers
+    gemmlowp::gemmlowp
+    ruy::ruy
+    )
+
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_KERNEL_USE_XNNPACK")
+  target_compile_options(xnnpack-delegate
+    PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
+    PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
+  )
+
   list(APPEND TFLITE_TARGET_DEPENDENCIES
+    xnnpack-delegate
     XNNPACK
   )
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_BUILD_WITH_XNNPACK_DELEGATE")
@@ -603,7 +654,6 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_DELEGATES_GPU_SRCS}
   ${TFLITE_DELEGATES_NNAPI_SRCS}
   ${TFLITE_DELEGATES_SRCS}
-  ${TFLITE_DELEGATES_XNNPACK_SRCS}
   ${TFLITE_DELEGATES_EXTERNAL_SRCS}
   ${TFLITE_EXPERIMENTAL_REMAT_SRCS}
   ${TFLITE_EXPERIMENTAL_RESOURCE_SRCS}
@@ -626,6 +676,11 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/control_edges.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )
 add_library(tensorflow-lite
@@ -651,7 +706,6 @@ target_link_libraries(tensorflow-lite
     gemmlowp::gemmlowp
     ml_dtypes
     ruy::ruy
-    pthreadpool
     ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )

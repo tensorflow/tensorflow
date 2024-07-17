@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/hlo_value.h"
 
 namespace xla {
 

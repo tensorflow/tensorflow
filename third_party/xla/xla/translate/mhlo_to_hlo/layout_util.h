@@ -21,10 +21,10 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace mlir {

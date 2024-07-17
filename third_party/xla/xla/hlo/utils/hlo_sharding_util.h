@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
 #include "xla/util.h"
 
@@ -68,9 +69,12 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
                    bool may_combine_partial_sharding);
 
 // Merges `to_merge` into `dst` only if they are compatible, and the merged
-// sharding has >= minimum_tiles tiles. Returns if merging happened.
+// sharding has >= `minimum_tiles` tiles. Returns if merging happened.
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst);
+
+// Same as above, but with `minimum_tiles` = `dst->NumTiles() + 1`.
+bool MergeShardingIfCompatible(const HloSharding& to_merge, HloSharding* dst);
 
 // Find a reasonable common sharding for a list of shardings. The reasonable
 // sharding should incur little(the least) amount of total resharding cost when
@@ -521,6 +525,19 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     HloSharding from, const HloSharding* to_improved,
     const Shape& to_improved_shape, bool may_combine_partial_sharding,
     bool allow_aggressive_resharding = false);
+
+// Infers the sharding of the operand of a dot operation.
+//
+// If `operand_index` is 0, the sharding of the LHS is inferred. If it is 1,
+// the sharding of the RHS is inferred.
+//
+// If `consider_other_operand` is true, the sharding of the other operand is
+// considered. `may_combine_partial_sharding` is used when considering other
+// operand.
+HloSharding InferDotOperandSharding(
+    const HloInstruction* dot, int64_t operand_index,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
+    bool consider_other_operand, bool may_combine_partial_sharding);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

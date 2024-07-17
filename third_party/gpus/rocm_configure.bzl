@@ -707,6 +707,7 @@ def _create_local_rocm_repository(repository_ctx):
         "-DTENSORFLOW_USE_ROCM=1",
         "-D__HIP_PLATFORM_AMD__",
         "-DEIGEN_USE_HIP",
+        "-DUSE_ROCM",
     ])
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
@@ -761,6 +762,8 @@ def _create_local_rocm_repository(repository_ctx):
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
             "%{hipblaslt_flag}": have_hipblaslt,
+            "%{hip_soversion_number}": "6" if int(rocm_config.rocm_version_number) >= 60000 else "5",
+            "%{rocblas_soversion_number}": "4" if int(rocm_config.rocm_version_number) >= 60000 else "3",
         },
     )
 

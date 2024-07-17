@@ -18,6 +18,7 @@ limitations under the License.
 
 namespace tsl {
 
+// An empty struct to signal completion of asynchronous events.
 class Chain {};
 
 }  // namespace tsl

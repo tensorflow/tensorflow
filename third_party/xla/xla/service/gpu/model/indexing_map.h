@@ -30,10 +30,10 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 
@@ -57,6 +57,9 @@ struct Interval {
   bool Contains(int64_t value) const {
     return value >= lower && value <= upper;
   }
+
+  // Returns true if this interval contains the entire other interval.
+  bool Contains(Interval other) const { return Intersect(other) == other; }
 
   // The result of a range comparison. We wrap std::optional in a struct to
   // avoid accidental implicit conversion to bool:
@@ -82,12 +85,16 @@ struct Interval {
 
   // All comparison operators here return true or false if the result is known,
   // or nullopt if it may be either true or false.
-  ComparisonResult operator>(const Interval& b) const;
-  ComparisonResult operator<(const Interval& b) const { return b > *this; }
-  ComparisonResult operator>=(const Interval& b) const { return !(b > *this); }
-  ComparisonResult operator<=(const Interval& b) const { return !(*this > b); }
-  ComparisonResult operator==(const Interval& b) const;
-  ComparisonResult operator!=(const Interval& b) const { return !(*this == b); }
+  // We don't use operators here, because the "==" used for hashing is not the
+  // same as "Eq".
+  ComparisonResult Gt(const Interval& b) const;
+  ComparisonResult Lt(const Interval& b) const { return b.Gt(*this); }
+  ComparisonResult Ge(const Interval& b) const { return !b.Gt(*this); }
+  ComparisonResult Le(const Interval& b) const { return !this->Gt(b); }
+  // This is not the same as "==".  See the implementations.
+  ComparisonResult Eq(const Interval& b) const;
+  // This is not the same as "!=".  See the implementations.
+  ComparisonResult Ne(const Interval& b) const { return !this->Eq(b); }
 
   Interval Intersect(const Interval& rhs) const {
     Interval result{std::max(lower, rhs.lower), std::min(upper, rhs.upper)};
@@ -111,6 +118,11 @@ struct Interval {
   // Computes the range of the product of the two intervals. Implements
   // saturating semantics.
   Interval operator*(const Interval& rhs) const;
+  // Computes the range of the difference of the two intervals. Implements
+  // saturating semantics.
+  Interval operator-(const Interval& rhs) const { return *this + (-rhs); }
+  Interval operator-() const;
+  Interval FloorDiv(int64_t rhs) const;
 
   Interval min(const Interval& rhs) const {
     return {std::min(lower, rhs.lower), std::min(upper, rhs.upper)};
@@ -120,9 +132,12 @@ struct Interval {
     return {std::max(lower, rhs.lower), std::max(upper, rhs.upper)};
   }
 
-  bool Equals(const Interval& rhs) const {
+  // This is not the same as "Eq".  See the implementations.
+  bool operator==(const Interval& rhs) const {
     return lower == rhs.lower && upper == rhs.upper;
   }
+  // This is not the same as "Ne".  See the implementations.
+  bool operator!=(const Interval& rhs) const { return !(*this == rhs); }
 
   int64_t lower = 0;
   int64_t upper = 0;
@@ -135,13 +150,19 @@ H AbslHashValue(H h, const Interval& range) {
   return H::combine(std::move(h), range.lower, range.upper);
 }
 
+// For use in llvm::hash_combine.
+inline size_t hash_value(const Interval& range) {
+  return llvm::hash_combine(range.lower, range.upper);
+}
+
+class IndexingMap;
+
 // Evaluates lower and upper bounds for expressions given the domain.
-// Not thread safe.
+// Not thread safe. Lifetime is tied to the owning IndexingMap's lifetime.
 class RangeEvaluator {
  public:
-  RangeEvaluator(absl::Span<const Interval> dim_ranges,
-                 absl::Span<const Interval> symbol_ranges,
-                 mlir::MLIRContext* mlir_context);
+  RangeEvaluator(const IndexingMap& indexing_map,
+                 mlir::MLIRContext* mlir_context, bool use_constraints = true);
 
   // Checks whether an `AffineExpr` always describes a non-negative value.
   bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
@@ -157,7 +178,8 @@ class RangeEvaluator {
 
  private:
   mlir::MLIRContext* mlir_context_;
-  llvm::DenseMap<mlir::AffineExpr, Interval> expression_ranges_cache_;
+  const IndexingMap& indexing_map_;
+  bool use_constraints_;
 };
 
 // Dimension variable represents a dimension of a tensor or a GPU grid.
@@ -166,6 +188,9 @@ struct DimVar {
   Interval bounds;
 };
 bool operator==(const DimVar& lhs, const DimVar& rhs);
+inline bool operator!=(const DimVar& lhs, const DimVar& rhs) {
+  return !(lhs == rhs);
+}
 
 template <typename H>
 H AbslHashValue(H h, const DimVar& dimension) {
@@ -180,6 +205,9 @@ struct RangeVar {
   Interval range;
 };
 bool operator==(const RangeVar& lhs, const RangeVar& rhs);
+inline bool operator!=(const RangeVar& lhs, const RangeVar& rhs) {
+  return !(lhs == rhs);
+}
 
 template <typename H>
 H AbslHashValue(H h, const RangeVar& range_var) {
@@ -198,6 +226,9 @@ struct RTVar {
   mlir::AffineMap map;
 };
 bool operator==(const RTVar& lhs, const RTVar& rhs);
+inline bool operator!=(const RTVar& lhs, const RTVar& rhs) {
+  return !(lhs == rhs);
+}
 
 template <typename H>
 H AbslHashValue(H h, const RTVar& rt_var) {
@@ -242,7 +273,7 @@ class IndexingMap {
   IndexingMap(
       mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
       std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
-      absl::Span<std::pair<mlir::AffineExpr, Interval>> constraints = {});
+      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints = {});
 
   IndexingMap(mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
               std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
@@ -310,6 +341,8 @@ class IndexingMap {
   // bounds for the `expr`, then computes intersection of the current and new
   // ranges.
   void AddConstraint(mlir::AffineExpr expr, Interval range);
+  void ClearConstraints() { constraints_.clear(); }
+  void EraseConstraint(mlir::AffineExpr expr);
 
   // Evaluates the constraints at a given point and returns `true` if all
   // constraints are satisfied.
@@ -330,11 +363,6 @@ class IndexingMap {
   bool IsKnownEmpty() const { return is_known_empty_; }
 
   bool IsUndefined() const { return affine_map_ == mlir::AffineMap(); }
-
-  // Removes unused dimensions from the `affine_map_` and constraints.
-  // Returns a bit vector of dimensions that were removed. If none of the
-  // dimensions were removed, returns {}.
-  llvm::SmallBitVector RemoveUnusedDimensions();
 
   // Removes unused symbols from the `affine_map_` and constraints.
   // Returns a bit vector of symbols that were removed. If none of the symbols
@@ -364,19 +392,12 @@ class IndexingMap {
  private:
   IndexingMap() = default;
 
-  // Performs AffineExpr simplification for all constraints.
-  // Returns true if simplification was performed.
-  bool SimplifyConstraintExprs();
-
-  // Performs range simplification for all constraints.
-  // Returns true if simplification was performed.
-  bool SimplifyConstraintRanges();
-
   // Merges "mod" constraints for the same AffineExpr.
-  void MergeModConstraints();
+  // Returns true if simplification was performed.
+  bool MergeModConstraints();
 
   // Replace RTVars that yield constants by indexing expressions.
-  // Returns true if a replacement was performed, otherwise false.
+  // Returns true if simplification was performed.
   bool ReplaceConstantRTVars();
 
   // Removes DimVars, RangeVars, RTVars that correspond to the unused dimensions
@@ -409,6 +430,9 @@ class IndexingMap {
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
+inline bool operator!=(const IndexingMap& lhs, const IndexingMap& rhs) {
+  return !(lhs == rhs);
+}
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs);
 
 // Composes affine maps, i.e. second ∘ first.
@@ -434,14 +458,18 @@ template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
   llvm::hash_code affine_map_hash =
       llvm::hash_combine(indexing_map.GetAffineMap());
-  return H::combine(std::move(h), static_cast<size_t>(affine_map_hash),
-                    indexing_map.GetDimVars(), indexing_map.GetRangeVars(),
-                    indexing_map.GetRTVars(),
-                    indexing_map.GetConstraintsCount());
+  llvm::SmallVector<size_t> constraint_hashes;
+  constraint_hashes.reserve(indexing_map.GetConstraintsCount());
+  for (const auto& [expr, interval] : indexing_map.GetConstraints()) {
+    constraint_hashes.push_back(llvm::hash_combine(expr, interval));
+  }
+  h = H::combine(std::move(h), static_cast<size_t>(affine_map_hash),
+                 indexing_map.GetDimVars(), indexing_map.GetRangeVars(),
+                 indexing_map.GetRTVars());
+  h = H::combine_unordered(std::move(h), constraint_hashes.begin(),
+                           constraint_hashes.end());
+  return h;
 }
-
-int64_t FloorDiv(int64_t dividend, int64_t divisor);
-int64_t CeilDiv(int64_t dividend, int64_t divisor);
 
 }  // namespace gpu
 }  // namespace xla

@@ -28,11 +28,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/Support/Casting.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/function.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/function.h"  // IWYU pragma: keep
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"

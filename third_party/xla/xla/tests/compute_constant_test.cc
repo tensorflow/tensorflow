@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "xla/client/client_library.h"
 #include "xla/client/global_data.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"

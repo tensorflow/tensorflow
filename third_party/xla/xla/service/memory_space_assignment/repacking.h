@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/heap_simulator/allocation_block.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {

@@ -16,20 +16,138 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
 #define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
 
+#include <cstddef>
 #include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
 
 #include "absl/log/check.h"
-#include "llvm/ADT/DenseMap.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "absl/types/span.h"
+#include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
+
+// `ConstraintExpression` represents a "flat" constraint expression of the form
+//   ((expr0 in interval0) && (expr1 in interval1)...) ||
+//   ((expr{n} in interval{n}) &&...)...
+//
+// The underlying constraints are stored in a vector of vectors, such that each
+// innermost vector represents the conjunction of some constraints, and the
+// outermost vector represents the disjunction of all its elements
+// (conjunctions). This representation is effective because `&&` (`And`) is
+// distributive over `||` (`Or`), ensuring that we can always flatten any given
+// `ConstraintExpression` in this way, and that we have reasonable combinators
+// for `&&` and `||`.
+//
+// We store a boolean `is_satisfiable_` to indicate whether we expect that the
+// constraints can be satisfied. When set to `false`, we expect the
+// `ConstraintExpression` to be empty (bottom).
+class ConstraintExpression {
+ public:
+  struct Constraint {
+    mlir::AffineExpr expr;
+    Interval interval;
+
+    bool operator==(const Constraint& other) const {
+      CHECK_EQ(expr.getContext(), other.expr.getContext())
+          << "AffineExpr should be from the same MLIRContext.";
+      return expr == other.expr && interval == other.interval;
+    }
+  };
+
+  using ConjointConstraints = llvm::SmallVector<Constraint, 2>;
+  // Takes the conjunction of the constraints of `first` and `second`.
+  static ConstraintExpression And(ConstraintExpression first,
+                                  ConstraintExpression second);
+
+  // Takes the disjunction of the constraints of `first` and `second`.
+  static ConstraintExpression Or(ConstraintExpression first,
+                                 ConstraintExpression second);
+
+  // Produces the unsatisfiable constraint expression.
+  static ConstraintExpression GetUnsatisfiableConstraintExpression() {
+    ConstraintExpression unsatisfiable;
+    unsatisfiable.is_satisfiable_ = false;
+    return unsatisfiable;
+  }
+
+  // Convenience util to take the disjunction of `this` and unwrapped
+  // `ConjointConstraints`.
+  void Or(ConjointConstraints conjunction);
+
+  // Convenience util to take the conjunction of `this` and unwrapped
+  // `ConjointConstraints`.
+  void And(ConjointConstraints conjunction);
+
+  // Whether the constraints can be satisfied. When this is set to `false`,
+  // the domain of the `TileConstraints` must be considered empty.
+  bool is_satisfiable() const { return is_satisfiable_; }
+
+  // Returns `true` if the constraint expression is marked satisfiable and does
+  // not contain any constraint. We expect this to be the case for a default
+  // constructed `ConstraintExpression`.
+  bool IsAlwaysSatisfied() const {
+    return is_satisfiable_ && disjoint_conjoint_constraints_.empty();
+  }
+
+  // Accessor for the underlying disjoint conjunctions of constraints. This is
+  // expected to be empty if `is_satisfiable()` is `false`.
+  absl::Span<ConjointConstraints const> DisjointConjointConstraints() const {
+    return disjoint_conjoint_constraints_;
+  }
+
+  std::string ToString(
+      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+
+  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+
+  // Simplifies the constraint expression.
+  //
+  // We remove conjunctions that are always satisfied, and we remove
+  // disjunctions that are unsatisfiable. If we can deduce that the whole
+  // expression is unsatisfiable or always satisfied, than we change the whole
+  // expression to the canonical form.
+  //
+  // E.g., if we find that one of the conjunctions is always satisfied, we don't
+  // just throw away that part---we throw away everything and make the
+  // ConstraintExpression canonically always satisfied.
+  void Simplify();
+
+  // This allows GUnit to print the expression.
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ConstraintExpression& expr) {
+    sink.Append(expr.ToString());
+  }
+
+  // TODO(bchetioui): add a util to verify constraints here later.
+ private:
+  bool is_satisfiable_ = true;
+  llvm::SmallVector<ConjointConstraints, 2> disjoint_conjoint_constraints_;
+};
+
+template <typename H>
+H AbslHashValue(H h, const ConstraintExpression::Constraint& constraint) {
+  llvm::hash_code expr_hash = mlir::hash_value(constraint.expr);
+  return H::combine(std::move(h), static_cast<size_t>(expr_hash),
+                    constraint.interval);
+}
+
+template <typename H>
+H AbslHashValue(
+    H h,
+    const ConstraintExpression::ConjointConstraints& conjoint_constraints) {
+  for (const auto& constraint : conjoint_constraints) {
+    h = H::combine(std::move(h), constraint);
+  }
+  return h;
+}
 
 // Tiling in the simpler case, when we don't have dynamic offsets (see the
 // general case later):
@@ -53,9 +171,9 @@ namespace gpu {
 //
 // We can get three AffineMap projections of tile_map(), which are just
 // convenience methods to get the components that we need:
-// offset_map(): ()[size0, ..., size{M-1}] -> (offset0, ..., offset{N-1})
-// size_map():   ()[size0, ..., size{M-1}] -> (size'0, ..., size'{N-1})
-// stride_map(): ()[size0, ..., size{M-1}] -> (stride0, ..., stride{N-1})
+//     offset_map(): (size0, ..., size{M-1}) -> (offset0, ..., offset{N-1})
+//     size_map():   (size0, ..., size{M-1}) -> (size'0, ..., size'{N-1})
+//     stride_map(): (size0, ..., size{M-1}) -> (stride0, ..., stride{N-1})
 //
 // The maps respectively encode the offset, size, and stride component of each
 // strided expression in the result tile.
@@ -98,7 +216,7 @@ namespace gpu {
 //    sizes: (N+)^n
 //
 // Notation. We can represent n-dimensional tiles as:
-// (offsets, strides, sizes): (Z^k -> N^n) x N^n x (N+)^n
+//   (offsets, strides, sizes): (Z^k -> N^n) x N^n x (N+)^n
 // where A x B means a Cartesian product.
 //
 // Def. Let Tiles(n) denote the set of n-dimensional tiles.
@@ -136,9 +254,9 @@ namespace gpu {
 //
 // We can get three AffineMap projections of tile_map(), which are just
 // convenience methods to get the components that we need:
-// offset_map(): ()[sizes..., rt_vars...] -> offsets'
-// size_map():   ()[sizes...] -> sizes'
-// stride_map(): ()[sizes...] -> strides'
+// offset_map(): (sizes...)[rt_vars...] -> offsets'
+// size_map():   (sizes...) -> sizes'
+// stride_map(): (sizes...) -> strides'
 //
 // The size parameters of the projections may be arbitrarily constrained, in
 // order to ensure that applying the symbolic tile on an input tile yields a
@@ -157,10 +275,7 @@ namespace gpu {
 // simplified later.
 class SymbolicTile {
  public:
-  static std::optional<SymbolicTile> FromIndexingMap(
-      const IndexingMap& indexing_map);
-
-  using ConstraintMap = llvm::DenseMap<mlir::AffineExpr, Interval>;
+  static std::optional<SymbolicTile> FromIndexingMap(IndexingMap indexing_map);
 
   // For printing in tests.
   std::string RtVarsToString(
@@ -174,17 +289,16 @@ class SymbolicTile {
   mlir::AffineMap size_map() const;
   mlir::AffineMap stride_map() const;
 
-  // Constraints on the `sizes` of the input tile. The variable names in this
-  // map correspond to the parameter names of `offset_map()`, `size_map()`, and
-  // `stride_map()`. Contents are irrelevant when `is_satisfiable()` is false.
-  const ConstraintMap& constraints() const {
-    CHECK(is_satisfiable_);
+  // Constraints on the `sizes` of the input tile. Content is irrelevant when
+  // `is_satisfiable()` is false.
+  const ConstraintExpression& constraints() const {
+    CHECK(constraints_.is_satisfiable());
     return constraints_;
   }
 
   // Whether the `SymbolicTile` constraints can be satisfied. When this is set
-  // to true, the domain of the `SymbolicTile` must be considered empty.
-  bool is_satisfiable() const { return is_satisfiable_; }
+  // to `false`, the domain of the `SymbolicTile` must be considered empty.
+  bool is_satisfiable() const { return constraints_.is_satisfiable(); }
 
   // A map from one tile's sizes and RTVars to another tile's offsets, sizes,
   // and strides.
@@ -193,13 +307,6 @@ class SymbolicTile {
   // [rt_var0, ..., rt_var{k-1}] -> (offset0, ..., offset{n-1},
   //                                 size'0, ..., size'{n-1},
   //                                 stride0, ..., stride{n-1})
-  //
-  //
-  // Its type is IndexingMap, but it's not a map of indices.
-  // This indexing map wraps the relevant domain constraints.
-  //
-  // Warning: The dimensions and symbols in tile_map do not match the dimensions
-  // and symbols in offset_map, size_map, and stride_map.
   const IndexingMap& tile_map() const { return tile_map_; }
 
   // This allows GUnit to print the tile.
@@ -213,16 +320,10 @@ class SymbolicTile {
   IndexingMap tile_map_;
 
   // See the comment of constraints().
-  ConstraintMap constraints_;
+  ConstraintExpression constraints_;
 
-  // See the comment of is_satisfiable().
-  bool is_satisfiable_ = true;
-
-  explicit SymbolicTile(IndexingMap tile_map, ConstraintMap constraints,
-                        bool is_satisfiable = true)
-      : tile_map_(std::move(tile_map)),
-        constraints_(std::move(constraints)),
-        is_satisfiable_(is_satisfiable) {}
+  explicit SymbolicTile(IndexingMap tile_map, ConstraintExpression constraints)
+      : tile_map_(std::move(tile_map)), constraints_(std::move(constraints)) {}
 };
 
 }  // namespace gpu

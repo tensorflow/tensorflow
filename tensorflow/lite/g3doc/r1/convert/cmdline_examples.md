@@ -143,7 +143,7 @@ Since TensorFlow Lite only supports a limited number of TensorFlow operators,
 not every model is convertible. For details, refer to
 [operator compatibility](https://www.tensorflow.org/lite/guide/ops_compatibility).
 To allow conversion, users can enable the usage of
-[certain TensorFlow ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc)
+[certain TensorFlow ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops.cc)
 in their TensorFlow Lite model, as shown in the following example.
 
 ```

@@ -48,6 +48,6 @@ deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main
 deb-src http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main
 
 # LLVM/Clang repository
-deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main
-deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main
+deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main
+deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main
 SOURCES

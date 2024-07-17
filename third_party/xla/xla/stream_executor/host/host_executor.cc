@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -142,63 +143,8 @@ absl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
   return absl::OkStatus();
 }
 
-absl::Status HostExecutor::Memcpy(Stream* stream, void* host_dst,
-                                  const DeviceMemoryBase& gpu_src,
-                                  uint64_t size) {
-  // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
-  // with the HostExecutor.
-  void* src_mem = const_cast<void*>(gpu_src.opaque());
-  AsHostStream(stream)->EnqueueTask(
-      [host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
-  return absl::OkStatus();
-}
-
-absl::Status HostExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                                  const void* host_src, uint64_t size) {
-  void* dst_mem = gpu_dst->opaque();
-  // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
-  // with the HostExecutor.
-  AsHostStream(stream)->EnqueueTask(
-      [dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
-  return absl::OkStatus();
-}
-
-bool HostExecutor::MemcpyDeviceToDevice(Stream* stream,
-                                        DeviceMemoryBase* gpu_dst,
-                                        const DeviceMemoryBase& gpu_src,
-                                        uint64_t size) {
-  void* dst_mem = gpu_dst->opaque();
-  void* src_mem = const_cast<void*>(gpu_src.opaque());
-  // Enqueue this [asynchronous] "device-to-device" (i.e., host-to-host, given
-  // the nature of the HostExecutor) memcpy  on the stream (HostStream)
-  // associated with the HostExecutor.
-  AsHostStream(stream)->EnqueueTask(
-      [src_mem, dst_mem, size]() { memcpy(dst_mem, src_mem, size); });
-  return true;
-}
-
-absl::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                                   uint64_t size) {
-  void* gpu_mem = location->opaque();
-  // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
-  // with the HostExecutor.
-  AsHostStream(stream)->EnqueueTask(
-      [gpu_mem, size]() { memset(gpu_mem, 0, size); });
-  return absl::OkStatus();
-}
-
 absl::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
                                   uint8 pattern, uint64_t size) {
-  void* gpu_mem = location->opaque();
-  // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
-  // with the HostExecutor.
-  AsHostStream(stream)->EnqueueTask(
-      [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return absl::OkStatus();
-}
-
-absl::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                    uint32_t pattern, uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
@@ -229,32 +175,6 @@ bool HostExecutor::HostCallback(
 
 void HostExecutor::DeallocateStream(Stream* stream) {}
 
-bool HostExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
-  auto event = std::make_shared<absl::Notification>();
-  AsHostStream(other)->EnqueueTask([event]() { event->Notify(); });
-  AsHostStream(dependent)->EnqueueTask(
-      [event]() { event->WaitForNotification(); });
-  return true;
-}
-
-class HostEvent : public Event {
- public:
-  HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
-
-  std::shared_ptr<absl::Notification>& notification() { return notification_; }
-
-  Status PollForStatus() override {
-    return notification_->HasBeenNotified() ? Event::Status::kComplete
-                                            : Event::Status::kPending;
-  }
-
- private:
-  // We use a std::shared_ptr here because the client may delete the HostEvent
-  // object while there are still RecordEvent and WaitForEvent callbacks pending
-  // on a stream.
-  std::shared_ptr<absl::Notification> notification_;
-};
-
 absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
   return std::make_unique<HostEvent>();
 }
@@ -262,24 +182,6 @@ absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
 static HostEvent* AsHostEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<HostEvent*>(event);
-}
-
-absl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
-  std::shared_ptr<absl::Notification> notification =
-      AsHostEvent(event)->notification();
-  AsHostStream(stream)->EnqueueTask([notification]() {
-    CHECK(!notification->HasBeenNotified());
-    notification->Notify();
-  });
-  return absl::OkStatus();
-}
-
-absl::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
-  std::shared_ptr<absl::Notification> notification =
-      AsHostEvent(event)->notification();
-  AsHostStream(stream)->EnqueueTask(
-      [notification]() { notification->WaitForNotification(); });
-  return absl::OkStatus();
 }
 
 absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {

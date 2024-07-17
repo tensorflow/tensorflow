@@ -17,28 +17,20 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
-#include <optional>
-#include <sstream>
-#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/stacktrace.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -54,15 +46,18 @@ absl::Status StreamCommon::Launch(const ThreadDim &thread_dims,
   return parent_->Launch(this, thread_dims, block_dims, k, args);
 }
 
+absl::Status StreamCommon::Launch(const ThreadDim &thread_dims,
+                                  const BlockDim &block_dims,
+                                  const ClusterDim &cluster_dims,
+                                  const Kernel &k, const KernelArgs &args) {
+  return parent_->Launch(this, thread_dims, block_dims, cluster_dims, k, args);
+}
+
 StreamCommon::PlatformSpecificHandle StreamCommon::platform_specific_handle()
     const {
   PlatformSpecificHandle handle;
   handle.stream = nullptr;
   return handle;
-}
-
-absl::Status StreamCommon::RecordEvent(Event *event) {
-  return parent_->RecordEvent(this, event);
 }
 
 absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
@@ -104,6 +99,7 @@ absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
   // No streams are reusable; create a new stream.
   TF_ASSIGN_OR_RETURN(auto stream, parent_->CreateStream());
   Stream *sub_stream = stream.get();
+  sub_stream->set_name(absl::StrFormat("Sub-stream of %s", name()));
   sub_streams_.emplace_back(std::move(stream), false);
   VLOG(1) << "stream=" << this << " created new sub_stream=" << sub_stream;
 
@@ -145,49 +141,6 @@ void StreamCommon::ReturnSubStream(Stream *sub_stream) {
 
   LOG(FATAL) << "stream=" << this << " did not create the returned sub-stream "
              << sub_stream;
-}
-
-absl::Status StreamCommon::WaitFor(Stream *other) {
-  if (this == other) {
-    return absl::InternalError("stream cannot wait for itself");
-  }
-  if (parent_->CreateStreamDependency(this, other)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("stream cannot wait for other");
-}
-
-absl::Status StreamCommon::WaitFor(Event *event) {
-  return parent_->WaitForEvent(this, event);
-}
-
-absl::Status StreamCommon::Memcpy(void *host_dst,
-                                  const DeviceMemoryBase &gpu_src,
-                                  uint64_t size) {
-  return parent_->Memcpy(this, host_dst, gpu_src, size);
-}
-
-absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
-                                  const void *host_src, uint64_t size) {
-  return parent_->Memcpy(this, gpu_dst, host_src, size);
-}
-
-absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
-                                  const DeviceMemoryBase &gpu_src,
-                                  uint64_t size) {
-  if (parent_->MemcpyDeviceToDevice(this, gpu_dst, gpu_src, size)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to memcpy");
-}
-
-absl::Status StreamCommon::MemZero(DeviceMemoryBase *location, uint64_t size) {
-  return parent_->MemZero(this, location, size);
-}
-
-absl::Status StreamCommon::Memset32(DeviceMemoryBase *location,
-                                    uint32_t pattern, uint64_t size) {
-  return parent_->Memset32(this, location, pattern, size);
 }
 
 absl::Status StreamCommon::DoHostCallback(

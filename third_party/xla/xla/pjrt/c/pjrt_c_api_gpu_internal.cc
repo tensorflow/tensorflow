@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -186,9 +187,25 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     device_ids.push_back(executor->device_ordinal());
   }
   auto gpu_target_config = xla::Compiler::TargetConfig(executor);
+  // TODO(b/341334898): Create a single-host GPU topology. Will be updated for
+  // multi-host support in the future.
+  auto gpu_topology = std::make_shared<const xla::GpuTopology>(
+      device_ids, description.name(),
+      /*num_slices=*/1,
+      /*num_hosts_per_slice=*/1,
+      /*num_devices_per_host=*/device_ids.size());
+
+  // Determine the platform ID and name based on the platform.
+  xla::PjRtPlatformId platform_id =
+      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmId()
+                                                             : xla::CudaId();
+  std::string platform_name =
+      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmName()
+                                                             : xla::CudaName();
+
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
-          xla::CudaId(), xla::CudaName(), description.name(), device_ids,
+          platform_id, platform_name, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
               {"target_config",
                gpu_target_config.ToProto().SerializeAsString()}});

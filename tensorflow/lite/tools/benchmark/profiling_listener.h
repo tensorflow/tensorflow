@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/profiling/profile_summarizer.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 
 namespace tflite {
 namespace benchmark {

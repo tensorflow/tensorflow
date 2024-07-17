@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_MEMORY_HANDLE_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_MEMORY_HANDLE_H_
 
-#include <utility>
 
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"

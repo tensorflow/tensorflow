@@ -152,18 +152,8 @@ namespace triton_fusion {
 // instructions between source and target.
 class DimensionOrder {
  public:
-  // Softmax fusions have a fixed tiling scheme. These numbers are chosen to
-  // reflect that reductions in softmax fusions currently happen on the minor-
-  // most dimension (dimensions_minor(0)) and the rest (1+) is treated as a
-  // single non-tiled batch dimension. The numbers have to match those the
-  // emitter uses in the queries to the analysis.
-  static constexpr int kSoftmaxReductionDimension = 0;
-  static constexpr int kSoftmaxBatchDimension = 1;
-
   static DimensionOrder FromDotOperandOrOutput(
       const HloInstruction& hlo, int split_k_dimension_index = -1);
-
-  static DimensionOrder FromSoftmaxRoot(const HloInstruction& hlo);
 
   // Description of a continuous fragment of one dimension of a tensor.
   class Fragment {
@@ -238,13 +228,6 @@ struct DotProperties {
   // Currently typically LHS non-contracting one.
   const int splittable_dimension_index;
 };
-struct SoftmaxProperties {
-  const int softmax_reduction_dimension;
-  const int softmax_batch_dimension;
-};
-// HeroProperties depend only on the hero op and they don't change as we
-// change the fusion.
-using HeroProperties = std::variant<DotProperties, SoftmaxProperties>;
 
 // A special value for splittable_dimension_major_part_size.
 inline constexpr int kNoSplitRequirement = 1;
@@ -258,13 +241,11 @@ struct DotRequirements {
   // dimension must be the given value.
   int64_t splittable_dimension_major_part_size;
 };
-struct SoftmaxRequirements {};
-// Requirements can change depending on what we fuse.
-using Requirements = std::variant<DotRequirements, SoftmaxRequirements>;
-using RequirementsOrError = std::variant<Requirements, FusionDecision>;
 
-RequirementsOrError CombineRequirements(Requirements a,
-                                        RequirementsOrError b_or_error);
+using DotRequirementsOrError = std::variant<DotRequirements, FusionDecision>;
+
+DotRequirementsOrError CombineDotRequirements(
+    DotRequirements a, DotRequirementsOrError b_or_error);
 
 enum class TransformDirection { kInputToOutput, kOutputToInput };
 using DimOrderMap = absl::flat_hash_map<const HloInstruction*, DimensionOrder>;
@@ -274,7 +255,7 @@ using DimOrderMapOrError = std::variant<DimOrderMap, FusionDecision>;
 // dimension orders through an HLO.
 struct DimOrdersAndReqs {
   DimOrderMap dim_orders;
-  Requirements requirements;
+  DotRequirements requirements;
 };
 using DimOrdersAndReqsOrError = std::variant<DimOrdersAndReqs, FusionDecision>;
 
@@ -284,7 +265,7 @@ using DimOrdersAndReqsOrError = std::variant<DimOrdersAndReqs, FusionDecision>;
 // fusion.
 DimOrdersAndReqsOrError GetPropagatedDimOrdersAndRequirements(
     const HloInstruction& hlo, const DimensionOrder& src_dim_order,
-    TransformDirection direction, const HeroProperties& properties);
+    TransformDirection direction, const DotProperties& properties);
 // If fusing the instruction is possible *and profitable* then it propagates
 // the `src_dim_order` (describing one side of `hlo`) to the other side and
 // returns those dim orders and the requirements that they impose on the
@@ -298,7 +279,7 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
     const std::optional<int>& src_operand_index,
     const DimensionOrder& src_dim_order,
     const se::GpuComputeCapability& gpu_version,
-    const HeroProperties& properties);
+    const DotProperties& properties);
 
 }  // namespace triton_fusion
 }  // namespace gpu

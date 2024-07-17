@@ -17,13 +17,16 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/graph/regularization/util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow::graph_regularization {
 

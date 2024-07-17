@@ -39,8 +39,7 @@ class XlaShardingSerDesTest : public test_util::ShardingTest {};
 
 TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   auto device_list = GetDevices({0, 1});
-  auto xla_hlo_sharding = xla::HloSharding::Tile(
-      xla::TileAssignment((absl::Span<const int64_t>){2, 1}));
+  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({2, 1}));
   auto sharding = HloSharding::Create(device_list, MemoryKind("abc"),
                                       /*xla_hlo_sharding=*/xla_hlo_sharding);
 

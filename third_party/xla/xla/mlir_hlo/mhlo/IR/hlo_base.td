@@ -105,6 +105,9 @@ defvar MHLO_PredOrIntTensor = HLO_PredOrIntTensor;
 // Any floating-point or complex tensor types
 defvar MHLO_FpOrComplexTensor = HLO_FpOrComplexTensor;
 
+// Any floating-point or quantized tensor types
+defvar MHLO_FpOrQuantizedIntTensor = HLO_FpOrQuantizedIntTensor;
+
 // Any floating-point, complex or quantized tensor types
 defvar MHLO_FpComplexOrQuantizedIntTensor = HLO_FpComplexOrQuantizedIntTensor;
 

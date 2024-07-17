@@ -240,9 +240,12 @@ def make_replica_groups(
 def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...
 
-def copy_array_to_devices_with_sharding(
-    self: ArrayImpl, devices: list[Device], sharding: Any
-) -> ArrayImpl: ...
+def batched_copy_array_to_devices_with_sharding(
+    arrays: Sequence[ArrayImpl],
+    devices: Sequence[list[Device]],
+    sharding: Sequence[Any],
+) -> Sequence[ArrayImpl]: ...
+
 def batched_device_put(
     aval: Any,
     sharding: Any,
@@ -285,3 +288,5 @@ def register_custom_call_handler(
 def custom_call_targets(platform: str) -> dict[str, Any]: ...
 
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
+
+register_custom_call_partitioner = _xla.register_custom_call_partitioner

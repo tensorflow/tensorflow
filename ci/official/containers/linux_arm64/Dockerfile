@@ -1,5 +1,5 @@
 ################################################################################
-FROM ubuntu:20.04 as builder
+FROM ubuntu:20.04@sha256:0b897358ff6624825fb50d20ffb605ab0eaea77ced0adb8c6a4b756513dec6fc as builder
 ################################################################################
 
 # Install devtoolset build dependencies
@@ -23,7 +23,7 @@ COPY apt.conf /etc/apt/
 RUN /build_patchelf.sh
 
 ################################################################################
-FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 as devel
+FROM nvidia/cuda:12.3.2-devel-ubuntu20.04@sha256:cf1404fc25ae571d26e2185d37bfa3258124ab24eb96b6ac930ac71908970d0b as devel
 ################################################################################
 COPY --from=builder /dt10 /dt10
 COPY --from=builder /patchelf/patchelf_0.14.3-1_arm64.deb /patchelf/patchelf_0.14.3-1_arm64.deb

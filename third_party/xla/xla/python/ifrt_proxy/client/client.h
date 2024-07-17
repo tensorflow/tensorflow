@@ -33,11 +33,13 @@
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -75,6 +77,11 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
+      absl::Span<tsl::RCReference<Array>> arrays,
+      std::optional<DeviceList> devices, std::optional<MemoryKind> memory_kind,
+      ArrayCopySemantics semantics) override;
+
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
       const RemapPlan& plan,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
@@ -95,11 +102,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return platform_version_;
   }
   PlatformId platform_id() const override { return platform_id_; }
-  absl::flat_hash_map<std::string, ClientAttribute> attributes()
-      const override {
-    // TODO(b/309059940): Forward the backend attributes to the client.
-    return {};
-  }
+  const AttributeMap& Attributes() const override { return attributes_; }
   int device_count() const override { return devices().size(); }
   int addressable_device_count() const override {
     return addressable_devices().size();
@@ -157,6 +160,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   const uint64_t platform_id_;
   const uint64_t process_index_;
   const std::string runtime_type_;
+
+  const AttributeMap attributes_;
 
   const absl::flat_hash_map<int, std::unique_ptr<Device>> devices_;
   const std::vector<xla::ifrt::Device*> device_ptrs_;

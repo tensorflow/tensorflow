@@ -31,14 +31,17 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/threadpool.h"
 
@@ -74,8 +77,8 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
-      AutotuneConfig& autotune_config,
-      tsl::thread::ThreadPool* thread_pool) override;
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+      const MultiProcessKeyValueStore& key_value_store) override;
 
   absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
@@ -97,10 +100,10 @@ class NVPTXCompiler : public GpuCompiler {
     kDriver,
   };
 
- private:
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config) override;
 
+ private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,

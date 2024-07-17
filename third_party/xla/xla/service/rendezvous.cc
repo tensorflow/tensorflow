@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <string_view>
 
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tsl/platform/logging.h"
@@ -28,18 +29,35 @@ limitations under the License.
 namespace xla {
 namespace internal {
 
-void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
-                        size_t num_threads, absl::Duration warn_stuck_timeout,
+void AwaitAndLogIfStuck(std::atomic<int32_t>& ack, absl::Notification& ready,
+                        std::string_view name, size_t num_threads,
+                        absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
   if (ready.WaitForNotificationWithTimeout(warn_stuck_timeout)) {
     return;
   }
 
-  LOG(ERROR) << "This thread has been waiting for `" << name << "` for "
-             << absl::ToInt64Seconds(warn_stuck_timeout)
-             << " seconds and may be stuck. Expected " << num_threads
-             << " threads to join the rendezvous, but not all of them arrived"
-             << " on time.";
+  // Check if all rendezvous participants arrived to the rendezvous point and
+  // incremented `ack` counter. We still can be stuck because the leader is
+  // waiting for completion of rendezvous callback, but it must not be confused
+  // with participants not arriving to the rendezvous point.
+  bool is_all_participants_arrived = ack.load() == num_threads;
+
+  if (is_all_participants_arrived) {
+    LOG(ERROR) << absl::StreamFormat(
+        "This thread has been waiting for `%s` for %d seconds and may be "
+        "stuck. All %d threads joined the rendezvous, however the leader has "
+        "not marked the rendezvous as completed. Leader can be deadlocked "
+        "inside the rendezvous callback.",
+        name, absl::ToInt64Seconds(warn_stuck_timeout), num_threads);
+
+  } else {
+    LOG(ERROR) << absl::StreamFormat(
+        "This thread has been waiting for `%s` for %d seconds and may be "
+        "stuck. Expected %d threads to join the rendezvous, but not all of "
+        "them arrived on time.",
+        name, absl::ToInt64Seconds(warn_stuck_timeout), num_threads);
+  }
 
   if (ready.WaitForNotificationWithTimeout(terminate_timeout)) {
     LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
@@ -47,13 +65,21 @@ void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
     return;
   }
 
-  LOG(ERROR) << "Termination timeout for `" << name << "` of "
-             << absl::ToInt64Seconds(terminate_timeout)
-             << " seconds exceeded. Exiting to ensure a consistent program"
-             << " state. Expected " << num_threads
-             << " threads to join the rendezvous, but not all of them arrived"
-             << " on time.";
-  std::exit(42);
+  if (is_all_participants_arrived) {
+    LOG(FATAL) << absl::StreamFormat(
+        "Termination timeout for `%s` of %d seconds exceeded. Exiting to "
+        "ensure a consistent program state. All %d threads joined the "
+        "rendezvous, however the leader has not marked the rendezvous as "
+        "completed. Leader can be deadlocked inside the rendezvous callback.",
+        name, absl::ToInt64Seconds(terminate_timeout), num_threads);
+
+  } else {
+    LOG(FATAL) << absl::StreamFormat(
+        "Termination timeout for `%s` of %d seconds exceeded. Exiting to "
+        "ensure a consistent program state. Expected %d threads to join the "
+        "rendezvous, but not all of them arrived on time.",
+        name, absl::ToInt64Seconds(terminate_timeout), num_threads);
+  }
 }
 
 }  // namespace internal

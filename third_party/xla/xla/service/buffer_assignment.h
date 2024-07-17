@@ -16,29 +16,40 @@ limitations under the License.
 #ifndef XLA_SERVICE_BUFFER_ASSIGNMENT_H_
 #define XLA_SERVICE_BUFFER_ASSIGNMENT_H_
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <memory>
+#include <optional>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_assignment.pb.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
+#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
+#include "xla/service/hlo_ordering.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
-#include "xla/service/tuple_points_to_analysis.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -94,7 +105,7 @@ class BufferAllocation {
     return !is_thread_local() && !is_tuple();
   }
 
-  // Whether this allocation is readonly i.e. backed by memory we cannot write
+  // Whether this allocation is read-only i.e. backed by memory we cannot write
   // to.
   bool is_readonly() const {
     // Entry parameters are generally readonly, except when they are aliased
@@ -152,6 +163,7 @@ class BufferAllocation {
   // color can reside in this allocation.
   LogicalBuffer::Color color() const { return color_; }
 
+  void set_color(LogicalBuffer::Color color) { color_ = color; }
   struct OffsetSize {
     int64_t offset = 0;
     int64_t size = 0;
@@ -249,9 +261,7 @@ class BufferAllocation {
 
   // Return the set of heap traces used to assign slices to logical buffers in
   // this allocation.
-  const std::vector<HeapSimulatorTrace> HeapTraces() const {
-    return heap_traces_;
-  }
+  std::vector<HeapSimulatorTrace> HeapTraces() const { return heap_traces_; }
 
   // Returns the LogicalBuffers which are live at the point of peak memory usage
   // for this allocation. The point of peak memory usage is the point at which
@@ -570,7 +580,8 @@ class BufferAssignment {
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   void CombineTempAllocations(
-      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors);
+      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
+      std::optional<BufferValue::Color> temp_buffer_color);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
   absl::Status ComputeSummaryStats();
@@ -614,8 +625,8 @@ class BufferAssigner {
  public:
   using Colorer =
       std::function<absl::Status(HloAliasAnalysis*, const HloOrdering&)>;
-  using MustNotLiveOut =
-      std::function<bool(const HloInstruction*, const ShapeIndex&)>;
+  using MustNotLiveOut = std::function<bool(
+      const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
                                             std::vector<const HloComputation*>>;
 
@@ -656,7 +667,8 @@ class BufferAssigner {
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare = nullptr,
       std::optional<BufferAssignment::BufferIsolationOptions>
-          isolation_options = std::nullopt);
+          isolation_options = std::nullopt,
+      std::optional<BufferValue::Color> temp_buffer_color = std::nullopt);
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
@@ -678,8 +690,8 @@ class BufferAssigner {
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,
-      std::optional<BufferAssignment::BufferIsolationOptions>
-          isolation_options);
+      std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
+      std::optional<BufferValue::Color> temp_buffer_color);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is

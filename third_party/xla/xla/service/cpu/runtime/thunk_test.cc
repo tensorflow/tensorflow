@@ -15,15 +15,101 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/thunk.h"
 
+#include <cstdint>
+#include <utility>
+
 #include "tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
 
-TEST(ThunkTest, CompletionEvent) {
-  auto event = Thunk::ReadyCompletionEvent();
-  ASSERT_TRUE(event.IsAvailable());
-  ASSERT_EQ(event->num_tasks, 1);
+class ThunkExecuteStateTestHelper : public Thunk {
+ public:
+  static ExecuteState CreateExecuteState(int64_t parallel_tasks) {
+    return ExecuteState(parallel_tasks);
+  }
+};
+
+TEST(ThunkTest, OkExecuteEvent) {
+  auto event = Thunk::OkExecuteEvent();
+  ASSERT_TRUE(event.IsConcrete());
+}
+
+TEST(ThunkExecuteStateTest, OneTask) {
+  auto execute_state =
+      ThunkExecuteStateTestHelper::CreateExecuteState(/*parallel_tasks=*/1);
+
+  // State should not be available right after construction.
+  EXPECT_FALSE(execute_state.event.IsAvailable());
+
+  // Notifying once should make the state available.
+  execute_state.Notify();
+  EXPECT_TRUE(execute_state.event.IsAvailable());
+}
+
+TEST(ThunkExecuteStateTest, MultipleTasks) {
+  int parallel_tasks = 10;
+  auto execute_state =
+      ThunkExecuteStateTestHelper::CreateExecuteState(parallel_tasks);
+
+  for (int i = 0; i < parallel_tasks; ++i) {
+    // State should not be available until all tasks are notified.
+    EXPECT_FALSE(execute_state.event.IsAvailable());
+    execute_state.Notify();
+  }
+
+  // All tasks are notified, state should be available.
+  EXPECT_TRUE(execute_state.event.IsAvailable());
+}
+
+TEST(ThunkTest, ExecuteSession) {
+  Thunk::ExecuteSession session(/*max_workers=*/2, /*split_threshold=*/2);
+  EXPECT_EQ(session.num_workers(), 0);
+
+  {  // Test that destructor releases the lock.
+    Thunk::ExecuteSession::Lock lock = session.Join();
+    EXPECT_TRUE(lock);
+    EXPECT_EQ(session.num_workers(), 1);
+  }
+
+  EXPECT_EQ(session.num_workers(), 0);
+
+  // Test that we can join the session multiple times.
+  Thunk::ExecuteSession::Lock lock0 = session.TryJoin();
+  Thunk::ExecuteSession::Lock lock1 = session.TryJoin();
+
+  EXPECT_TRUE(lock0);
+  EXPECT_TRUE(lock1);
+
+  EXPECT_EQ(session.num_workers(), 2);
+
+  // At this point we have reached the maximum number of workers.
+  Thunk::ExecuteSession::Lock lock2 = session.TryJoin();
+  EXPECT_FALSE(lock2);
+
+  EXPECT_EQ(session.num_workers(), 2);
+
+  // Test that `Join` always returns a valid lock.
+  Thunk::ExecuteSession::Lock lock3 = session.Join();
+  EXPECT_TRUE(lock3);
+  EXPECT_EQ(session.num_workers(), 3);
+
+  // Test that we can move the lock and safely destroy it.
+  auto sink = [](Thunk::ExecuteSession::Lock lock) {};
+  sink(std::move(lock0));
+  sink(std::move(lock1));
+  sink(std::move(lock3));
+
+  EXPECT_EQ(session.num_workers(), 0);
+
+  // Test that lock is copyable.
+  Thunk::ExecuteSession::Lock lock4 = session.Join();
+  Thunk::ExecuteSession::Lock lock5 = lock4;
+
+  EXPECT_TRUE(lock4);
+  EXPECT_TRUE(lock5);
+
+  EXPECT_EQ(session.num_workers(), 2);
 }
 
 }  // namespace

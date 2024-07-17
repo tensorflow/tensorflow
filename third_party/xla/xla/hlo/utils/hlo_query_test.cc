@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_parser.h"
@@ -107,6 +108,28 @@ ENTRY main {
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kAdd), 2);
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kSubtract), 1);
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kMultiply), 3);
+}
+
+TEST_F(HloQueryTest, GetUniqueGteTest) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule m
+
+  ENTRY main {
+    param.0 = (f32[32]{0}, f32[32]{0}, f32[32]{0}, f32[32]{0}) parameter(0)
+    gte1 = f32[32]{0} get-tuple-element(param.0), index=0
+    gte2 = f32[32]{0} get-tuple-element(param.0), index=1
+    dup_gte2 = f32[32]{0} get-tuple-element(param.0), index=1
+    gte3 = f32[32]{0} get-tuple-element(param.0), index=2
+    ROOT gte4 = f32[32]{0} get-tuple-element(param.0), index=3
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHloString));
+  HloInstruction* param = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* gte1 = hlo_query::GetUniqueGteInstruction(param, /*index=*/0);
+  EXPECT_NE(gte1, nullptr);
+  HloInstruction* gte2 = hlo_query::GetUniqueGteInstruction(param, /*index=*/1);
+  EXPECT_EQ(gte2, nullptr);
 }
 
 }  // namespace

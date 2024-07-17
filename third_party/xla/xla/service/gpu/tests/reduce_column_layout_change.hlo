@@ -98,7 +98,7 @@ ENTRY kernel_entry {
 // CHECK:         %[[VAL_51:.*]] = addrspacecast ptr addrspace(3) %[[VAL_50]] to ptr
 // CHECK:         %[[VAL_52:.*]] = load float, ptr %[[VAL_51]], align 4
 // CHECK-PTX:         %[[VAL_53:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_52]], i32 16, i32 31)
-// CHECK-GCN:         %[[VAL_53_:.*]] = call i32 @__ockl_readuplane_i32
+// CHECK-GCN:         %[[VAL_53_:.*]] = call i32 @llvm.amdgcn.ds.swizzle
 // CHECK-GCN:         %[[VAL_53:.*]] = bitcast i32
 // CHECK:         store float %[[VAL_53]], ptr{{( addrspace\(5\))?}} %[[VAL_9]], align 4
 // CHECK-PTX:         call void @[[REDUCTION0:reduction0.*]](ptr %[[VAL_51]], ptr %[[VAL_9]], ptr %[[VAL_8]])
@@ -106,7 +106,7 @@ ENTRY kernel_entry {
 // CHECK:         store float %[[VAL_54]], ptr %[[VAL_51]], align 4
 // CHECK:         %[[VAL_55:.*]] = load float, ptr{{( addrspace\(5\))?}} %[[VAL_51]], align 4
 // CHECK-PTX:         %[[VAL_56:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_55]], i32 8, i32 31)
-// CHECK-GCN:         %[[VAL_56_1_:.*]] = call i32 @__ockl_readuplane_i32
+// CHECK-GCN:         %[[VAL_56_1_:.*]] = call i32 @llvm.amdgcn.ds.swizzle
 // CHECK-GCN:         %[[VAL_56:.*]] = bitcast i32
 // CHECK:         store float %[[VAL_56]], ptr{{( addrspace\(5\))?}} %[[VAL_7]], align 4
 // CHECK-PTX:         call void @[[REDUCTION0]](ptr %[[VAL_51]], ptr %[[VAL_7]], ptr %[[VAL_6]])
@@ -114,7 +114,7 @@ ENTRY kernel_entry {
 // CHECK:         store float %[[VAL_57]], ptr{{( addrspace\(5\))?}} %[[VAL_51]], align 4
 // CHECK:         %[[VAL_58:.*]] = load float, ptr{{( addrspace\(5\))?}} %[[VAL_51]], align 4
 // CHECK-PTX:         %[[VAL_59:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_58]], i32 4, i32 31)
-// CHECK-GCN:         %[[VAL_59_:.*]] = call i32 @__ockl_readuplane_i32
+// CHECK-GCN:         %[[VAL_59_:.*]] = call i32 @llvm.amdgcn.ds.swizzle
 // CHECK-GCN:         %[[VAL_59:.*]] = bitcast i32
 // CHECK:         store float %[[VAL_59]], ptr{{( addrspace\(5\))?}} %[[VAL_5]], align 4
 // CHECK-PTX:         call void @[[REDUCTION0]](ptr %[[VAL_51]], ptr %[[VAL_5]], ptr %[[VAL_4]])
@@ -122,7 +122,7 @@ ENTRY kernel_entry {
 // CHECK:         store float %[[VAL_60]], ptr{{( addrspace\(5\))?}} %[[VAL_51]], align 4
 // CHECK:         %[[VAL_61:.*]] = load float, ptr{{( addrspace\(5\))?}} %[[VAL_51]], align 4
 // CHECK-PTX:         %[[VAL_62:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_61]], i32 2, i32 31)
-// CHECK-GCN:         %[[VAL_62_:.*]] = call i32 @__ockl_readuplane_i32
+// CHECK-GCN:         %[[VAL_62_:.*]] = call i32 @llvm.amdgcn.ds.swizzle
 // CHECK-GCN:         %[[VAL_62:.*]] = bitcast i32
 // CHECK:         store float %[[VAL_62]], ptr{{( addrspace\(5\))?}} %[[VAL_3]], align 4
 // CHECK-PTX:         call void @[[REDUCTION0]](ptr %[[VAL_51]], ptr %[[VAL_3]], ptr %[[VAL_2]])
@@ -130,7 +130,7 @@ ENTRY kernel_entry {
 // CHECK:         store float %[[VAL_63]], ptr{{( addrspace\(5\))?}} %[[VAL_51]], align 4
 // CHECK:         %[[VAL_64:.*]] = load float, ptr{{( addrspace\(5\))?}} %[[VAL_51]], align 4
 // CHECK-PTX:         %[[VAL_65:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_64]], i32 1, i32 31)
-// CHECK-GCN:         %[[VAL_65_:.*]] = call i32 @__ockl_readuplane_i32
+// CHECK-GCN:         %[[VAL_65_:.*]] = call i32 @llvm.amdgcn.ds.swizzle
 // CHECK-GCN:         %[[VAL_65:.*]] = bitcast i32
 // CHECK:         store float %[[VAL_65]], ptr{{( addrspace\(5\))?}} %[[VAL_1]], align 4
 // CHECK-PTX:         call void @[[REDUCTION0]](ptr %[[VAL_51]], ptr %[[VAL_1]], ptr %[[VAL_0]])

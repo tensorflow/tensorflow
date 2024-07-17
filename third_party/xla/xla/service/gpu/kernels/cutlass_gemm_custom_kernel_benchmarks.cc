@@ -74,8 +74,8 @@ static void BM_RowMajorGemm(benchmark::State& state) {
       custom_kernel->shared_memory_bytes());
 
   for (auto s : state) {
-    TF_CHECK_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
-                                 custom_kernel->block_dims(), *gemm, args));
+    TF_CHECK_OK(stream->Launch(custom_kernel->thread_dims(),
+                               custom_kernel->block_dims(), *gemm, args));
     TF_CHECK_OK(stream->BlockHostUntilDone());
   }
 }

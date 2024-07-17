@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "xla/service/rendezvous.h"
 
 #include <cstdint>
@@ -269,14 +270,16 @@ BENCHMARK(BM_Rendezvous)
     ->Arg(2)
     ->Arg(4)
     ->Arg(8)
-    ->Arg(16);
+    ->Arg(16)
+    ->Arg(32);
 
 BENCHMARK(BM_RendezvousWithValues)
     ->MeasureProcessCPUTime()
     ->Arg(2)
     ->Arg(4)
     ->Arg(8)
-    ->Arg(16);
+    ->Arg(16)
+    ->Arg(32);
 
 }  // namespace
 }  // namespace xla

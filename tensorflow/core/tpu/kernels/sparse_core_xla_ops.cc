@@ -538,17 +538,14 @@ class XlaSparseDenseMatmulGradWithSgdAndCsrInputOp
       xla::XlaOp gradient = xla::Parameter(sgd_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
 
-      xla::XlaOp tables = xla::Parameter(
-          sgd_optimizer_builder.get(), 1,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "tables");
+      xla::XlaOp embedding_table = xla::Parameter(
+          sgd_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
 
-      xla::XlaOp hyperparameters = xla::Parameter(
-          sgd_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
+      xla::XlaOp learning_rate = xla::Parameter(sgd_optimizer_builder.get(), 2,
+                                                per_row_shape, "learning_rate");
 
       xla::XlaOp updated_embedding_table =
-          xla::GetTupleElement(tables, 0) -
-          xla::GetTupleElement(hyperparameters, 0) * gradient;
+          embedding_table - learning_rate * gradient;
 
       // Apply the weight clipping.
       xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
@@ -610,20 +607,14 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
       xla::XlaOp gradient = xla::Parameter(adagrad_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
 
-      xla::XlaOp tables = xla::Parameter(
-          adagrad_optimizer_builder.get(), 1,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape, per_row_shape}),
-          "tables");
+      xla::XlaOp embedding_table = xla::Parameter(
+          adagrad_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
 
-      xla::XlaOp hyperparameters = xla::Parameter(
-          adagrad_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
+      xla::XlaOp accumulator = xla::Parameter(adagrad_optimizer_builder.get(),
+                                              2, per_row_shape, "accumulator");
 
-      xla::XlaOp embedding_table = xla::GetTupleElement(tables, 0);
-
-      xla::XlaOp accumulator = xla::GetTupleElement(tables, 1);
-
-      xla::XlaOp learning_rate = xla::GetTupleElement(hyperparameters, 0);
+      xla::XlaOp learning_rate = xla::Parameter(
+          adagrad_optimizer_builder.get(), 3, per_row_shape, "learning_rate");
 
       xla::XlaOp new_accumulator = accumulator + gradient * gradient;
 
@@ -702,22 +693,18 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
       xla::XlaOp gradient =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 0,
                          per_row_shape, "gradient");
-
-      xla::XlaOp tables =
+      xla::XlaOp embedding_table =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 1,
-                         xla::ShapeUtil::MakeTupleShape(
-                             {per_row_shape, per_row_shape, per_row_shape}),
-                         "tables");
-
-      xla::XlaOp hyperparameters = xla::Parameter(
-          adagrad_momentum_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
-
-      xla::XlaOp embedding_table = xla::GetTupleElement(tables, 0);
-      xla::XlaOp accumulator = xla::GetTupleElement(tables, 1);
-      xla::XlaOp momenta = xla::GetTupleElement(tables, 2);
-
-      xla::XlaOp learning_rate = xla::GetTupleElement(hyperparameters, 0);
+                         per_row_shape, "embedding_table");
+      xla::XlaOp accumulator =
+          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 2,
+                         per_row_shape, "accumulator");
+      xla::XlaOp momenta =
+          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 3,
+                         per_row_shape, "momenta");
+      xla::XlaOp learning_rate =
+          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 4,
+                         per_row_shape, "learning_rate");
 
       xla::XlaOp beta1 =
           xla::ConstantR0(adagrad_momentum_optimizer_builder.get(), beta1_);
@@ -833,21 +820,14 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
 
       xla::XlaOp gradient = xla::Parameter(adam_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
-      xla::XlaOp tables =
-          xla::Parameter(adam_optimizer_builder.get(), 1,
-                         xla::ShapeUtil::MakeTupleShape(
-                             {per_row_shape, per_row_shape, per_row_shape}),
-                         "tables");
-
-      xla::XlaOp hyperparameters = xla::Parameter(
-          adam_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
-
-      xla::XlaOp embedding_table = xla::GetTupleElement(tables, 0);
-      xla::XlaOp momenta = xla::GetTupleElement(tables, 1);
-      xla::XlaOp velocity = xla::GetTupleElement(tables, 2);
-
-      xla::XlaOp learning_rate = xla::GetTupleElement(hyperparameters, 0);
+      xla::XlaOp embedding_table = xla::Parameter(
+          adam_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
+      xla::XlaOp momenta = xla::Parameter(adam_optimizer_builder.get(), 2,
+                                          per_row_shape, "momenta");
+      xla::XlaOp velocity = xla::Parameter(adam_optimizer_builder.get(), 3,
+                                           per_row_shape, "velocity");
+      xla::XlaOp learning_rate = xla::Parameter(adam_optimizer_builder.get(), 4,
+                                                per_row_shape, "learning_rate");
 
       xla::XlaOp beta1 = xla::ConstantR0(adam_optimizer_builder.get(), beta1_);
       xla::XlaOp beta2 = xla::ConstantR0(adam_optimizer_builder.get(), beta2_);
@@ -956,21 +936,14 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
       xla::XlaOp gradient = xla::Parameter(ftrl_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
 
-      xla::XlaOp tables =
-          xla::Parameter(ftrl_optimizer_builder.get(), 1,
-                         xla::ShapeUtil::MakeTupleShape(
-                             {per_row_shape, per_row_shape, per_row_shape}),
-                         "tables");
-
-      xla::XlaOp hyperparameters = xla::Parameter(
-          ftrl_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
-
-      xla::XlaOp embedding_table = xla::GetTupleElement(tables, 0);
-      xla::XlaOp accumulator = xla::GetTupleElement(tables, 1);
-      xla::XlaOp linear = xla::GetTupleElement(tables, 2);
-
-      xla::XlaOp learning_rate = xla::GetTupleElement(hyperparameters, 0);
+      xla::XlaOp embedding_table = xla::Parameter(
+          ftrl_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
+      xla::XlaOp accumulator = xla::Parameter(ftrl_optimizer_builder.get(), 2,
+                                              per_row_shape, "accumulator");
+      xla::XlaOp linear = xla::Parameter(ftrl_optimizer_builder.get(), 3,
+                                         per_row_shape, "linear");
+      xla::XlaOp learning_rate = xla::Parameter(ftrl_optimizer_builder.get(), 4,
+                                                per_row_shape, "learning_rate");
 
       // accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
       xla::XlaOp new_accumulator = accumulator + gradient * gradient;

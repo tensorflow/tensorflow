@@ -34,15 +34,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/ndarray.h"
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/ndarray.h"
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/pair.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/stl/variant.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/array.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
@@ -354,13 +354,14 @@ absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
         return reinterpret_cast<XLA_FFI_Handler*>(capsule.data());
       };
 
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * prepare, handler("prepare"));
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * initialize, handler("initialize"));
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * execute, handler("execute"));
+      XLA_FFI_Handler_Bundle bundle;
+      TF_ASSIGN_OR_RETURN(bundle.instantiate, handler("instantiate"));
+      TF_ASSIGN_OR_RETURN(bundle.prepare, handler("prepare"));
+      TF_ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
+      TF_ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
 
       return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
-          xla::ffi::GetXlaFfiApi(), fn_name, platform,
-          XLA_FFI_Handler_Bundle{prepare, initialize, execute}, traits));
+          xla::ffi::GetXlaFfiApi(), fn_name, platform, bundle, traits));
     }
 
     return absl::InvalidArgumentError(
@@ -401,12 +402,37 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
   // Shapes
   nb::class_<Layout> layout_class(m, "Layout");
   layout_class.def(nb::init<absl::Span<const int64_t>>())
+      .def("__init__",
+           [](Layout* self, nb::sequence minor_to_major, nb::sequence tiling,
+              int64_t element_size_in_bits) {
+             std::vector<Tile> xla_tiles;
+             xla_tiles.reserve(nb::len(tiling.ptr()));
+             for (auto tile : tiling) {
+               xla_tiles.push_back(Tile(
+                   SequenceToVector<int64_t>(nb::cast<nb::sequence>(tile))));
+             }
+             std::vector<int64_t> xla_minor_to_major =
+                 SequenceToVector<int64_t>(minor_to_major);
+             new (self)
+                 Layout(xla_minor_to_major, xla_tiles, element_size_in_bits);
+           })
       .def("minor_to_major",
            [](Layout layout) { return SpanToNbTuple(layout.minor_to_major()); })
+      .def("element_size_in_bits", &Layout::element_size_in_bits)
+      .def("tiling",
+           [](Layout layout) {
+             std::vector<nb::tuple> result;
+             result.reserve(layout.tiles().size());
+             for (auto& t : layout.tiles()) {
+               result.push_back(SpanToNbTuple(t.dimensions()));
+             }
+             return result;
+           })
       .def("__eq__", [](const Layout& layout,
                         const Layout& other) { return layout == other; })
       .def("__ne__", [](const Layout& layout,
                         const Layout& other) { return layout != other; })
+      .def("__str__", &Layout::ToString)
       .def("__hash__",
            [](const Layout& layout) { return absl::HashOf(layout); })
       .def("to_string", &Layout::ToString)

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -38,9 +39,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -123,7 +124,7 @@ static bool NeedsAsyncCommsStream(Thunk& thunk) {
 // `GpuExecutable`. At run time `Thunks` may use additional streams to launch
 // compute operations in parallel.
 static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
-    const ThunkSequence& thunks) {
+    const SequentialThunk& thunks) {
   absl::flat_hash_set<ExecutionStreamId> stream_ids;
   ForAllThunks(
       [&](const Thunk* thunk) {
@@ -255,6 +256,15 @@ class ResourceRequests : public Thunk::ResourceRequests {
             << params.collective_max_nchannels
             << "; max number of channels for p2p " << params.p2p_max_nchannels;
 
+    std::vector<CliqueRequest> ordered_cliques = GetOrderedCliqueRequests();
+    for (size_t i = 0; i < ordered_cliques.size(); ++i) {
+      const CliqueRequest& r = ordered_cliques[i];
+      VLOG(2) << "  clique #" << i << " (for global device id "
+              << params.global_device_id.value() << ")"
+              << ": num_local_participants=" << r.num_local_participants
+              << "; id=" << r.id << "; key=" << r.key.ToString();
+    }
+
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode("AcquireCollectiveCliques",
                                           {{"num_cliques", cliques_.size()}});
@@ -264,7 +274,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     NcclClique::AcquiredCliquesMap cliques_map;
 
-    for (const CliqueRequest& r : GetOrderedCliqueRequests()) {
+    for (const CliqueRequest& r : ordered_cliques) {
       std::optional<int64_t> rank = r.key.rank(params.global_device_id);
 
       if (!rank.has_value()) {
@@ -355,12 +365,18 @@ absl::Status RendezvousAfterInitialization(
 
 absl::Status ExecuteThunks(
     const DebugOptions* debug_options, const std::string& module_name,
-    ModuleIdentifier module_id, const ThunkSequence& thunk_sequence,
+    ModuleIdentifier module_id, SequentialThunk& thunk_sequence,
     Thunk::ExecutableSource executable_source,
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
-    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids,
-    const ModuleAnnotations& module_annotations) {
+    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids) {
+  bool mock_collectives =
+      run_options->run_options().gpu_executable_run_options()
+          ? run_options->run_options()
+                .gpu_executable_run_options()
+                ->enable_mock_nccl_collectives()
+          : false;
+
   int64_t collective_max_nchannels =
       debug_options ? debug_options->xla_gpu_nccl_collective_max_nchannels()
                     : 0;
@@ -382,21 +398,22 @@ absl::Status ExecuteThunks(
   // Borrow streams required for NcclCollectiveThunk.
   absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams(
       kAsyncStreamTotal, nullptr);
-  absl::StatusOr<std::vector<StreamPool::Ptr>> streams =
-      run_options->BorrowStreams(executor->device_ordinal(), kAsyncStreamTotal,
-                                 stream_priority);
-  if (streams.ok()) {
-    for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
-      async_comms_streams[i] = streams->at(i).get();
-    }
-  }
-
-  // Borrow stream for tracing command buffers.
   se::Stream* command_buffer_trace_stream = nullptr;
-  absl::StatusOr<StreamPool::Ptr> borrowed_command_buffer_trace_stream =
-      run_options->BorrowStream(executor->device_ordinal());
-  if (borrowed_command_buffer_trace_stream.ok()) {
-    command_buffer_trace_stream = borrowed_command_buffer_trace_stream->get();
+  std::vector<StreamPool::Ptr> async_comms_streams_ownr;
+  StreamPool::Ptr borrowed_command_buffer_trace_stream;
+  if (run_options->HasStreamBorrower()) {
+    TF_ASSIGN_OR_RETURN(
+        async_comms_streams_ownr,
+        run_options->BorrowStreams(executor->device_ordinal(),
+                                   kAsyncStreamTotal, stream_priority));
+    for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
+      async_comms_streams[i] = async_comms_streams_ownr[i].get();
+    }
+
+    // Borrow stream for tracing command buffers.
+    TF_ASSIGN_OR_RETURN(borrowed_command_buffer_trace_stream,
+                        run_options->BorrowStream(executor->device_ordinal()));
+    command_buffer_trace_stream = borrowed_command_buffer_trace_stream.get();
   }
 
   // Borrow stream for additional compute streams
@@ -443,15 +460,17 @@ absl::Status ExecuteThunks(
     Thunk::PrepareParams prepare_params{&collective_params};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Prepare"; });
-    for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
-      TF_RETURN_IF_ERROR(thunk->Prepare(prepare_params, resource_requests));
-    }
+    TF_RETURN_IF_ERROR(
+        thunk_sequence.Prepare(prepare_params, resource_requests));
   }
 
   // Acquire collective cliques requested by thunks.
-  TF_ASSIGN_OR_RETURN(
-      Thunk::CollectiveCliques collective_cliques,
-      resource_requests.AcquireCollectiveCliques(collective_params));
+  Thunk::CollectiveCliques collective_cliques;
+  if (!mock_collectives) {
+    TF_ASSIGN_OR_RETURN(
+        collective_cliques,
+        resource_requests.AcquireCollectiveCliques(collective_params));
+  }
 
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
@@ -465,9 +484,7 @@ absl::Status ExecuteThunks(
         run_options->run_options().ffi_execution_context()};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
-    for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
-      TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
-    }
+    TF_RETURN_IF_ERROR(thunk_sequence.Initialize(initialize_params));
   }
 
   // Maybe join a round of rendezvous after thunk initialization. We do this
@@ -483,22 +500,8 @@ absl::Status ExecuteThunks(
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       std::move(additional_execution_streams));
 
-  for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
-    // Annotate execution of this op if tracing was enabled when we started
-    // running this module.  If tracing is enabled *while* we're running the
-    // module, we won't get any data, but that's probably an OK trade-off.
-    auto scoped_annotation =
-        GetKernelAnnotation(&module_annotations, thunk->profile_annotation());
-    VLOG(3) << "Executing the thunk for " << thunk->profile_annotation();
-    if (NeedsAsyncCommsStream(*thunk)) {
-      for (se::Stream* async_stream : async_comms_streams) {
-        TF_RET_CHECK(async_stream != nullptr)
-            << "`run_options` must have a stream borrower for async thunks.";
-      }
-    }
+  TF_RETURN_IF_ERROR(thunk_sequence.ExecuteOnStream(execute_params));
 
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(execute_params));
-  }
   return MaybeSyncAndProfile(run_options, std::move(execution_timer),
                              block_host_until_done ? main_stream : nullptr);
 }
@@ -1022,7 +1025,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     TF_RETURN_IF_ERROR(ExecuteThunks(
         has_module() ? &module_config().debug_options() : nullptr, module_name_,
         unique_id, *thunks_, executable_source, run_options, buffer_allocations,
-        block_host_until_done, execution_stream_ids_, module_annotations_));
+        block_host_until_done, execution_stream_ids_));
   }
 
   TF_RETURN_IF_ERROR(

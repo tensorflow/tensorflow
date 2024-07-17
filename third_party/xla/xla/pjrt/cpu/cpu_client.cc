@@ -44,8 +44,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "unsupported/Eigen/CXX11/Tensor"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/array.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
@@ -84,7 +84,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
-#include "xla/service/cpu/runtime/task.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/service/cpu/simple_orc_jit.h"
@@ -282,8 +281,8 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
   std::vector<CpuTopology::CpuDevice> cpu_devices;
   cpu_devices.reserve(devices.size());
   for (auto& device : devices) {
-    cpu_devices.push_back(CpuTopology::CpuDevice{device->process_index(),
-                                                 device->local_hardware_id()});
+    cpu_devices.push_back(CpuTopology::CpuDevice{
+        device->process_index(), device->local_hardware_id().value()});
   }
   return TfrtCpuTopologyDescription(platform_id, platform_name,
                                     platform_version, cpu_devices,
@@ -322,12 +321,12 @@ TfrtCpuDevice::TfrtCpuDevice(int process_id, int local_device_id,
           /*capacity=*/max_inflight_computations) {}
 
 absl::Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
-  return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
+  return TransferLiteralToInfeedOnCpu(local_hardware_id().value(), literal);
 }
 
 absl::Status TfrtCpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
-  return TransferLiteralFromOutfeedOnCpu(local_hardware_id(), literal);
+  return TransferLiteralFromOutfeedOnCpu(local_hardware_id().value(), literal);
 }
 
 void TfrtCpuDevice::AttachMemorySpace(PjRtMemorySpace* memory_space) {
@@ -442,7 +441,7 @@ TfrtCpuClient::TfrtCpuClient(
 
     device->SetClient(this);
     if (device->IsAddressable()) {
-      int idx = device->local_hardware_id();
+      int idx = device->local_hardware_id().value();
       if (idx >= addressable_devices_.size()) {
         addressable_devices_.resize(idx + 1);
       }
@@ -477,11 +476,6 @@ absl::StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(
   }
   return InvalidArgument("No matching device found for device_id %d",
                          global_device_id.value());
-}
-
-absl::StatusOr<PjRtDevice*> TfrtCpuClient::LookupAddressableDevice(
-    int local_hardware_id) const {
-  return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
 }
 
 absl::StatusOr<PjRtDevice*> TfrtCpuClient::LookupAddressableDevice(
@@ -683,7 +677,7 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
 
     if (build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id());
+          addressable_devices.front()->local_hardware_id().value());
     }
   }
 
@@ -737,7 +731,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
-  tsl::profiler::TraceMe traceme("TfrtCpuClient::Compile");
+  tsl::profiler::TraceMe traceme("TfrtCpuClient::Compile (XlaComputation)");
   auto input_options = options;
   ExecutableBuildOptions& build_options = options.executable_build_options;
 
@@ -805,7 +799,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
 
     if (build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id());
+          addressable_devices.front()->local_hardware_id().value());
     }
   }
 
@@ -856,6 +850,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
+  tsl::profiler::TraceMe traceme("TfrtCpuClient::Compile (mlir::ModuleOp)");
   XlaComputation xla_computation;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
@@ -1587,16 +1582,36 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       }
 
       cpu::BufferAllocations allocations(buffer_device_mem);
-      cpu::Thunk::ExecuteParams execute_params = {
-          &cpu_executable->host_kernels(), &allocations,
-          cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
-          run_options.intra_op_thread_pool()};
 
-      TF_RETURN_IF_ERROR(cpu_executable->thunks().Execute(
-          execute_params, [&](cpu::ThunkExecutor::Task task) {
-            client_->eigen_intraop_device()->getPool()->Schedule(
-                cpu::ToCopyableTask(std::move(task)));
-          }));
+      TF_ASSIGN_OR_RETURN(
+          cpu::Thunk::CollectiveExecuteParams collective_params,
+          cpu::Thunk::CollectiveExecuteParams::Create(&run_options));
+
+      TF_ASSIGN_OR_RETURN(
+          cpu::Thunk::CustomCallExecuteParams custom_call_execute_params,
+          cpu::Thunk::CustomCallExecuteParams::Create(&run_options));
+
+      cpu::Thunk::TaskRunner task_runner =
+          [&run_options](cpu::Thunk::Task task) {
+            run_options.intra_op_thread_pool()->getPool()->Schedule(
+                std::move(task));
+          };
+
+      cpu::Thunk::ExecuteParams execute_params = {
+          &cpu_executable->function_registry(),
+          &allocations,
+          cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
+          run_options.intra_op_thread_pool(),
+          &task_runner,
+          &collective_params,
+          &custom_call_execute_params};
+
+      auto execute_event = cpu_executable->thunks().Execute(execute_params);
+
+      tsl::profiler::TraceMe trace(
+          "ThunkExecutor::Execute (wait for completion)");
+      tsl::BlockUntilReady(execute_event);
+      if (execute_event.IsError()) return execute_event.GetError();
 
     } else {
       return Internal("CpuExecutable has no compute function or thunks.");
@@ -1703,15 +1718,42 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             }
 
             cpu::BufferAllocations allocations(buffer_device_mem);
-            cpu::Thunk::ExecuteParams execute_params = {
-                &cpu_executable->host_kernels(), &allocations,
-                cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
-                run_options.intra_op_thread_pool()};
-            status = cpu_executable->thunks().Execute(
-                execute_params, [&](cpu::ThunkExecutor::Task task) {
-                  eigen_device->getPool()->Schedule(
-                      cpu::ToCopyableTask(std::move(task)));
-                });
+
+            absl::StatusOr<cpu::Thunk::CollectiveExecuteParams>
+                collective_params =
+                    cpu::Thunk::CollectiveExecuteParams::Create(&run_options);
+
+            absl::StatusOr<cpu::Thunk::CustomCallExecuteParams>
+                custom_call_params =
+                    cpu::Thunk::CustomCallExecuteParams::Create(&run_options);
+
+            cpu::Thunk::TaskRunner task_runner =
+                [&run_options](cpu::Thunk::Task task) {
+                  run_options.intra_op_thread_pool()->getPool()->Schedule(
+                      std::move(task));
+                };
+
+            if (collective_params.ok()) {
+              cpu::Thunk::ExecuteParams execute_params = {
+                  &cpu_executable->function_registry(),
+                  &allocations,
+                  cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
+                  run_options.intra_op_thread_pool(),
+                  &task_runner,
+                  &*collective_params,
+                  &*custom_call_params};
+
+              auto execute_event =
+                  cpu_executable->thunks().Execute(execute_params);
+
+              tsl::profiler::TraceMe trace(
+                  "ThunkExecutor::Execute (wait for completion)");
+              tsl::BlockUntilReady(execute_event);
+              status = execute_event.IsError() ? execute_event.GetError()
+                                               : absl::OkStatus();
+            } else {
+              status = collective_params.status();
+            }
 
           } else {
             status =

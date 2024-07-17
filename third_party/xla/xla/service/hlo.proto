@@ -798,22 +798,3 @@ message HloPassMetadata {
   // Custom metadata for the pass.
   google.protobuf.Any custom_metadata = 10;
 }
-
-// Encodes the underlying Xla runtime executable compiled from the XLA module.
-message XlaRuntimeExecutableProto {
-  HloModuleProto hlo_module_proto = 1;
-
-  // TODO(b/232263665)): We need to know the TargetMachine this executable was
-  // compiled for, otherwise we can accidentally use illegal instrauctions (e.g.
-  // use AVX512 when it's not available).
-
-  // TODO(b/232263665)): Serialized executable has to know what APIs it has to
-  // be linked with, including the version. For example Gpu executable must be
-  // linked with a runtime layer that abstracts over CUDA.
-
-  // Serialized object file compiled from the XLA module.
-  bytes obj_file = 3;
-
-  // Serialized MLIR module corresponding to compiled object file.
-  string mlir_module = 4;
-}

@@ -15,7 +15,7 @@ bc0 = f32[10, 20, 30] broadcast(p0), dimensions={1}
 ```
 
 the indexing map from the output to input is `(i, j, k) -> (j)` for `i in
-[0, 10]`, `j in [0, 20]` and `k in [0, 30]`.
+[0, 10]`, `j in [0, 21)` and `k in [0, 31)`.
 
 ## Motivation
 
@@ -166,8 +166,8 @@ The output to input maps:
 ```
 (d0, d1) -> (d0, d1)
 domain:
-d0 in [0, 9]
-d1 in [0, 19]
+d0 in [0, 10)
+d1 in [0, 20)
 ```
 
 The input to output maps
@@ -177,8 +177,8 @@ The input to output maps
 ```
 (d0, d1) -> (d0, d1)
 domain:
-d0 in [0, 9]
-d1 in [0, 19]
+d0 in [0, 10)
+d1 in [0, 20)
 ```
 
 ### [Broadcast](https://openxla.org/xla/operation_semantics#broadcastindim)
@@ -196,9 +196,9 @@ The output to input map:
 ```
 (d0, d1, d2) -> (d1)
 domain:
-d0 in [0, 9]
-d1 in [0, 19]
-d2 in [0, 29]
+d0 in [0, 10)
+d1 in [0, 20)
+d2 in [0, 30)
 ```
 
 The input to output map
@@ -206,9 +206,9 @@ The input to output map
 ```
 (d0)[s0, s1] -> (s0, d0, s1)
 domain:
-d0 in [0, 19]
-s0 in [0, 9]
-s1 in [0, 29]
+d0 in [0, 20)
+s0 in [0, 10)
+s1 in [0, 30)
 ```
 
 Note that now we have **s** on the right side for the input-to-output
@@ -235,16 +235,16 @@ The output to input map for `src`:
 ```
 (d0, d1, d2)[s0, s1, s2] -> (d0 + s0, d1 + s1, d2 + s2)
 domain:
-d0 in [0, 0]
-d1 in [0, 1]
-d2 in [0, 31]
-s0 in [0, 1]
+d0 in [0, 1)
+d1 in [0, 2)
+d2 in [0, 32)
+s0 in [0, 2)
   hlo: of1 = s32[] parameter(1)
   (d0, d1, d2)  -> ()
-s1 in [0, 0]
+s1 in [0, 1)
   hlo: of2 = s32[] parameter(2)
   (d0, d1, d2)  -> ()
-s2 in [0, 226]
+s2 in [0, 227)
   hlo: of3 = s32[] parameter(3)
   (d0, d1, d2) -> ()
 ```
@@ -260,9 +260,9 @@ The output to input map for `of1`, `of2` and `of3`:
 ```
 (d0, d1, d2)  -> ()
 domain:
-d0 in [0, 0]
-d1 in [0, 1]
-d2 in [0, 31]
+d0 in [0, 1)
+d1 in [0, 2)
+d2 in [0, 32)
 ```
 
 ### [DynamicUpdateSlice](https://openxla.org/xla/operation_semantics#dynamicupdateslice)
@@ -281,20 +281,20 @@ do not support inqequality constraints.
 ```
 (d0, d1) -> (d0, d1)
 domain:
-d0 in [0, 19]
-d1 in [0, 29]
+d0 in [0, 20)
+d1 in [0, 30)
 ```
 
 The output to input map for `upd`:
 ```
 (d0, d1)[s0, s1]  -> (d0 - s0, d1 - s1)
 domain:
-d0 in [0, 19]
-d1 in [0, 29]
-s0 in [0, 15]
+d0 in [0, 20)
+d1 in [0, 30)
+s0 in [0, 16)
   hlo: of1 = s32[] parameter(2)
   (d0, d1)  -> ()
-s1 in [0, 20]
+s1 in [0, 21)
   hlo: of2 = s32[] parameter(3)
   (d0, d1)  -> ()
 ```
@@ -311,8 +311,8 @@ The output to input map for `of1` and `of2`:
 ```
 (d0, d1)  -> ()
 domain:
-d0 in [0, 19]
-d1 in [0, 29]
+d0 in [0, 20)
+d1 in [0, 30)
 ```
 
 ### [Gather](https://openxla.org/xla/operation_semantics#gather)
@@ -334,14 +334,14 @@ The output to input map for `operand`:
 
 (d0, d1, d2, d3)[s0, s1] -> (d1 + s0, d2 + s1, d3)
 domain:
-d0 in [0, 1805]
-d1 in [0, 6]
-d2 in [0, 7]
-d3 in [0, 3]
-s0 in [0, 26]
+d0 in [0, 1806)
+d1 in [0, 7)
+d2 in [0, 8)
+d3 in [0, 4)
+s0 in [0, 27)
   hlo: indices = s32[1806,2]{1,0} parameter(1)
   (d0, d1, d2, d3) -> (d0, 0)
-s1 in [0, 68]
+s1 in [0, 69)
   hlo: indices = s32[1806,2]{1,0} parameter(1)
   (d0, d1, d2, d3) -> (d0, 1)
 ```
@@ -356,11 +356,11 @@ The output to input map for `indices`:
 ```
   (d0, d1, d2, d3)[s0] -> (d0, s0)
   domain:
-  d0 in [0, 1805]
-  d1 in [0, 6]
-  d2 in [0, 7]
-  d3 in [0, 3]
-  s0 in [0, 1]
+  d0 in [0, 1806)
+  d1 in [0, 7)
+  d2 in [0, 8)
+  d3 in [0, 4)
+  s0 in [0, 2)
 ```
 The range variable `s0` shows that we need the entire row (d0, *) of the
 `indices` tensor to compute an element of the output.
@@ -380,10 +380,10 @@ The output to input map:
 ```
 (d0, d1, d2, d3) -> (d0, d3, d1, d2)
 domain:
-d0 in [0, 2]
-d1 in [0, 5]
-d2 in [0, 127]
-d3 in [0, 12287]
+d0 in [0, 3)
+d1 in [0, 6)
+d2 in [0, 128)
+d3 in [0, 12288)
 ```
 
 The input to output map:
@@ -391,10 +391,10 @@ The input to output map:
 ```
 (d0, d1, d2, d3) -> (d0, d2, d3, d1)
 domain:
-d0 in [0, 2]
-d1 in [0, 12287]
-d2 in [0, 5]
-d3 in [0, 127]
+d0 in [0, 3)
+d1 in [0, 12288)
+d2 in [0, 6)
+d3 in [0, 128)
 ```
 
 ### [Reverse](https://openxla.org/xla/operation_semantics#rev_reverse)
@@ -412,10 +412,10 @@ The output to input map:
 ```
 (d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)
 domain:
-d0 in [0, 0]
-d1 in [0, 16]
-d2 in [0, 8]
-d3 in [0, 8]
+d0 in [0, 1)
+d1 in [0, 17)
+d2 in [0, 9)
+d3 in [0, 9)
 ```
 
 The input to output map:
@@ -423,10 +423,10 @@ The input to output map:
 ```
 (d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)
 domain:
-d0 in [0, 0]
-d1 in [0, 16]
-d2 in [0, 8]
-d3 in [0, 8]
+d0 in [0, 1)
+d1 in [0, 17)
+d2 in [0, 9)
+d3 in [0, 9)
 ```
 
 ### **[(Variadic)Reduce](https://openxla.org/xla/operation_semantics#reduce)**
@@ -451,8 +451,8 @@ The output to input maps:
 ```
 (d0)[s0] -> (s0, d0)
 domain:
-d0 in [0, 9]
-s0 in [0, 255]
+d0 in [0, 10)
+s0 in [0, 256)
 ```
 
 -   output -> init_j:
@@ -460,7 +460,7 @@ s0 in [0, 255]
 ```
 (d0) -> ()
 domain:
-d0 in [0, 9]
+d0 in [0, 10)
 ```
 
 The input to output maps:
@@ -470,8 +470,8 @@ The input to output maps:
 ```
 (d0, d1) -> (d1)
 domain:
-d0 in [0, 255]
-d1 in [0, 9]
+d0 in [0, 256)
+d1 in [0, 10)
 ```
 
 -   init_i -> output_j:
@@ -479,7 +479,7 @@ d1 in [0, 9]
 ```
 ()[s0] -> (s0)
 domain:
-s0 in [0, 9]
+s0 in [0, 10)
 ```
 
 for i, j = 0, ... INPUT_COUNT.
@@ -501,9 +501,9 @@ The output to input map:
 ```
 (d0, d1, d2) -> (d0 + 5, d1 * 7 + 3, d2 * 2)
 domain:
-d0 in [0, 4]
-d1 in [0, 2]
-d2 in [0, 24]
+d0 in [0, 5)
+d1 in [0, 3)
+d2 in [0, 25)
 ```
 
 The input to output map:
@@ -511,11 +511,11 @@ The input to output map:
 ```
 (d0, d1, d2) -> (d0 - 5, (d1 - 3) floordiv 7, d2 floordiv 2)
 domain:
-d0 in [5, 9]
-d1 in [3, 17]
-d2 in [0, 48]
-(d1 - 3) mod 7 in [0, 0]
-d2 mod 2 in [0, 0]
+d0 in [5, 10)
+d1 in [3, 18)
+d2 in [0, 49)
+(d1 - 3) mod 7 in [0, 1)
+d2 mod 2 in [0, 1)
 ```
 
 ### [Reshape](https://openxla.org/xla/operation_semantics#reshape)
@@ -536,7 +536,7 @@ The output to input map:
 ```
 (d0) -> (d0 floordiv 8, d0 mod 8)
 domain:
-d0 in [0, 31]
+d0 in [0, 32)
 ```
 
 The input to output map:
@@ -544,8 +544,8 @@ The input to output map:
 ```
 (d0, d1) -> (d0 * 8 + d1)
 domain:
-d0 in [0, 3]
-d1 in [0, 7]
+d0 in [0, 4)
+d1 in [0, 8)
 ```
 
 #### Expand shape
@@ -562,8 +562,8 @@ The output to input map:
 ```
 (d0, d1) -> (d0 * 8 + d1)
 domain:
-d0 in [0, 3]
-d1 in [0, 7]
+d0 in [0, 4)
+d1 in [0, 8)
 ```
 
 The input to output map:
@@ -571,7 +571,7 @@ The input to output map:
 ```
 (d0) -> (d0 floordiv 8, d0 mod 8)
 domain:
-d0 in [0, 31]
+d0 in [0, 32)
 ```
 
 #### Generic reshape
@@ -594,11 +594,11 @@ This reshape can be represented as a composition of collapse shape of
 The output to input map:
 
 ```
-(d0, d1, d2) -> (d0 * 2 + d1 floordiv 2, d2 + (d1 mod 2) * 4) 
+(d0, d1, d2) -> (d0 * 2 + d1 floordiv 2, d2 + (d1 mod 2) * 4)
 domain:
-d0 in [0, 1]
-d1 in [0, 3]
-d2 in [0, 3]
+d0 in [0, 2)
+d1 in [0, 4)
+d2 in [0, 4)
 ```
 
 The input to output map:
@@ -606,8 +606,8 @@ The input to output map:
 ```
 (d0, d1) -> (d0 floordiv 2, d1 floordiv 4 + (d0 mod 2) * 2, d1 mod 4)
 domain:
-d0 in [0, 3]
-d1 in [0, 7]
+d0 in [0, 4)
+d1 in [0, 8)
 ```
 
 ##### Example 2: Expanded and collapsed subshapes
@@ -627,9 +627,9 @@ The output to input map:
 ```
 (d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)
 domain:
-d0 in [0, 31]
-d1 in [0, 2]
-d2 in [0, 3]
+d0 in [0, 32)
+d1 in [0, 3)
+d2 in [0, 4)
 ```
 
 The input to output map:
@@ -637,9 +637,9 @@ The input to output map:
 ```
 (d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4)
 domain:
-d0 in [0, 3]
-d1 in [0, 7]
-d2 in [0, 11]
+d0 in [0, 4)
+d1 in [0, 8)
+d2 in [0, 12)
 ```
 
 ### Bitcast
@@ -668,9 +668,9 @@ The output to inputs maps:
 ```
 (d0, d1, d2) -> (d0, d1, d2)
 domain:
-d0 in [0, 1]
-d1 in [0, 4]
-d2 in [0, 6]
+d0 in [0, 2)
+d1 in [0, 5)
+d2 in [0, 7)
 ```
 
 -   output -> input 2:
@@ -678,9 +678,9 @@ d2 in [0, 6]
 ```
 (d0, d1, d2) -> (d0, d1 - 5, d2)
 domain:
-d0 in [0, 1]
-d1 in [5, 15]
-d2 in [0, 6]
+d0 in [0, 2)
+d1 in [5, 16)
+d2 in [0, 7)
 ```
 
 -   output -> input 3:
@@ -688,9 +688,9 @@ d2 in [0, 6]
 ```
 (d0, d1, d2) -> (d0, d1 - 16, d2)
 domain:
-d0 in [0, 1]
-d1 in [16, 32]
-d2 in [0, 6]
+d0 in [0, 2)
+d1 in [16, 33)
+d2 in [0, 7)
 ```
 
 
@@ -701,9 +701,9 @@ The inputs to output maps:
 ```
 (d0, d1, d2) -> (d0, d1, d2)
 domain:
-d0 in [0, 1]
-d1 in [0, 4]
-d2 in [0, 6]
+d0 in [0, 2)
+d1 in [0, 5)
+d2 in [0, 7)
 ```
 
 -   input 2 -> output:
@@ -711,9 +711,9 @@ d2 in [0, 6]
 ```
 (d0, d1, d2) -> (d0, d1 + 5, d2)
 domain:
-d0 in [0, 1]
-d1 in [0, 10]
-d2 in [0, 6]
+d0 in [0, 2)
+d1 in [0, 11)
+d2 in [0, 7)
 ```
 
 -   input 3 -> output:
@@ -721,9 +721,9 @@ d2 in [0, 6]
 ```
 (d0, d1, d2) -> (d0, d1 + 16, d2)
 domain:
-d0 in [0, 1]
-d1 in [0, 16]
-d2 in [0, 6]
+d0 in [0, 2)
+d1 in [0, 17)
+d2 in [0, 7)
 ```
 
 ### [Dot](https://openxla.org/xla/operation_semantics#dot)
@@ -745,10 +745,10 @@ The output to inputs maps:
 ```
 (d0, d1, d2)[s0] -> (d0, d1, s0)
 domain:
-d0 in [0, 3]
-d1 in [0, 127]
-d2 in [0, 63]
-s0 in [0, 255]
+d0 in [0, 4)
+d1 in [0, 128)
+d2 in [0, 64)
+s0 in [0, 256)
 ```
 
 -   output -> input_2:
@@ -756,10 +756,10 @@ s0 in [0, 255]
 ```
 (d0, d1, d2)[s0] -> (d0, s0, d2)
 domain:
-d0 in [0, 3]
-d1 in [0, 127]
-d2 in [0, 63]
-s0 in [0, 255]
+d0 in [0, 4)
+d1 in [0, 128)
+d2 in [0, 64)
+s0 in [0, 256)
 ```
 
 The inputs to output maps:
@@ -769,10 +769,10 @@ The inputs to output maps:
 ```
 (d0, d1, d2)[s0] -> (d0, d1, s0)
 domain:
-d0 in [0, 3]
-d1 in [0, 127]
-d2 in [0, 255]
-s0 in [0, 63]
+d0 in [0, 4)
+d1 in [0, 128)
+d2 in [0, 256)
+s0 in [0, 64)
 ```
 
 -   input_2 -> output:
@@ -780,10 +780,10 @@ s0 in [0, 63]
 ```
 (d0, d1, d2)[s0] -> (d0, s0, d1)
 domain:
-d0 in [0, 3]
-d1 in [0, 255]
-d2 in [0, 63]
-s0 in [0, 127]
+d0 in [0, 4)
+d1 in [0, 256)
+d2 in [0, 64)
+s0 in [0, 128)
 ```
 
 ### [Pad](https://openxla.org/xla/operation_semantics#pad)
@@ -805,9 +805,9 @@ The output to input maps:
 ```
 (d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4)
 domain:
-d0 in [1, 7]
-d1 in [4, 7]
-(d0 - 1) mod 2 in [0, 0]
+d0 in [1, 8)
+d1 in [4, 8)
+(d0 - 1) mod 2 in [0, 1)
 ```
 
 -   output -> init:
@@ -815,8 +815,8 @@ d1 in [4, 7]
 ```
 (d0, d1) -> ()
 domain:
-d0 in [0, 11]
-d1 in [0, 15]
+d0 in [0, 12)
+d1 in [0, 16)
 ```
 
 
@@ -841,9 +841,9 @@ The output to input maps:
 ```
 (d0, d1)[s0] -> (d0, d1 + s0)
 domain:
-d0 in [0, 1023]
-d1 in [0, 2]
-s0 in [0, 511]
+d0 in [0, 1024)
+d1 in [0, 3)
+s0 in [0, 512)
 ```
 
 -   output -> init:
@@ -851,8 +851,8 @@ s0 in [0, 511]
 ```
 (d0, d1) -> ()
 domain:
-d0 in [0, 1023]
-d1 in [0, 2]
+d0 in [0, 1024)
+d1 in [0, 3)
 ```
 
 ## Indexing Maps for Fusion
@@ -873,7 +873,7 @@ f {
 }
 ```
 
-The output-to-input indexing maps for `p0` will be `(d0, d1) -> (d0, d1)` and 
+The output-to-input indexing maps for `p0` will be `(d0, d1) -> (d0, d1)` and
 `(d0, d1) -> (d1, d0)`. It means that to compute one element
 of the output we might need to read the input parameter twice.
 
@@ -909,10 +909,10 @@ The output-to-input indexing maps for `parameter 0` for softmax:
 ```
 (d0, d1, d2)[s0] -> (d0, d1, s0)
 domain:
-d0 in [0, 1]
-d1 in [0, 64]
-d2 in [0, 124]
-s0 in [0, 124]
+d0 in [0, 2)
+d1 in [0, 65)
+d2 in [0, 125)
+s0 in [0, 125)
 ```
 
 and
@@ -920,9 +920,9 @@ and
 ```
 (d0, d1, d2) -> (d0, d1, d2)
 domain:
-d0 in [0, 1]
-d1 in [0, 64]
-d2 in [0, 124]
+d0 in [0, 2)
+d1 in [0, 65)
+d2 in [0, 125)
 ```
 
 where `s0` refers to the inner-most dimension of the input.
@@ -941,10 +941,10 @@ The simplifier can rewrite the following expressions.
 1.  `(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)` for **d** in `[0,
     6] x [0, 14]` becomes `(d0, d1) -> (d0, d1)`
 2.  `(d0, d1, d2) -> ((100d0 + 10d1 + d2) floorDiv 100, ((100d0 + 10d1 +
-    d2) mod 100) floordiv 10, d2 mod 10)` for `di in [0, 9]` becomes `(d0, d1,
+    d2) mod 100) floordiv 10, d2 mod 10)` for `di in [0, 10)` becomes `(d0, d1,
     d2) -> (d0, d1, d2)`.
 3.  `(d0, d1, d2) -> ((16d0 + 4d1 + d2) floordiv 8, (16d0 + 4d1 + d2) mod
-    8)` for `d_i in [0, 9]` becomes `(d0, d1, d2) -> (2d0 + (4d1 +
+    8)` for `d_i in [0, 10)` becomes `(d0, d1, d2) -> (2d0 + (4d1 +
     d2) floordiv 8,(4d1 + d2) mod 8)`.
 4.  `(d0, d1) -> (-(-11d0 - d1 + 109) floordiv 11 + 9)` for **d**
     in `[0, 9] x [0, 10]` becomes `(d0, d1) -> (d0)`.
@@ -967,8 +967,8 @@ Indexing map simplification also simplifies the constraints.
 1. Constraints of type
 `lower_bound <= affine_expr (floordiv, +, -, *) constant <= upper_bound` are
 rewritten as `updated_lower_bound <= affine_expr <= updated_upped_bound`.
-2. Constraints that are always satisfied, e.g. `d0 + s0 in [0, 20]`
-for `d0 in [0, 5]` and `s0 in [1, 3]` are eliminated.
+2. Constraints that are always satisfied, e.g. `d0 + s0 in [0, 21)`
+for `d0 in [0, 6)` and `s0 in [1, 4)` are eliminated.
 3. Affine expressions in the constraints are optimized as the indexing affine
 map above.
 

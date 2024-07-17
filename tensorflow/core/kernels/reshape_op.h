@@ -109,7 +109,7 @@ class ReshapeOp : public OpKernel {
     // Actually produce the reshaped output.
     Tensor output(input.dtype());
     CHECK(output.CopyFrom(input, shape));
-    context->set_output(0, output);
+    context->set_output(0, std::move(output));
   }
 
   bool IsExpensive() override { return false; }

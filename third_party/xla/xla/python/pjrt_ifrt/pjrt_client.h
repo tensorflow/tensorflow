@@ -37,10 +37,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -149,6 +151,11 @@ class PjRtClient final
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
+      absl::Span<tsl::RCReference<Array>> arrays,
+      std::optional<DeviceList> devices, std::optional<MemoryKind> memory_kind,
+      ArrayCopySemantics semantics) override;
+
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
       const RemapPlan& plan,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
@@ -178,7 +185,7 @@ class PjRtClient final
     return pjrt_client_->platform_id();
   }
 
-  absl::flat_hash_map<std::string, ClientAttribute> attributes() const override;
+  const AttributeMap& Attributes() const override;
 
   int device_count() const override {
     DCHECK(this);
@@ -240,6 +247,8 @@ class PjRtClient final
 
   std::shared_ptr<xla::PjRtClient> pjrt_client_;
   PjRtCompiler default_compiler_;
+
+  AttributeMap attributes_;
 
   std::vector<std::unique_ptr<PjRtDevice>> owned_devices_;
   std::vector<std::unique_ptr<PjRtMemory>> owned_memories_;

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 

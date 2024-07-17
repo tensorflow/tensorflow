@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
