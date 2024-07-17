@@ -40,6 +40,11 @@ class ScatterFusionTest : public HloTestBase {
         AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
                          {"chunk_id", "unroll_id", "index_id"});
   }
+  DebugOptions GetDebugOptionsForTest() override {
+    auto opts = HloTestBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_mlir_emitter_level(0);
+    return opts;
+  }
 
  protected:
   AffineMapPrinter printer_;

@@ -246,7 +246,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
 
 #if GOOGLE_CUDA
-  opts.set_xla_gpu_mlir_emitter_level(1);
+  opts.set_xla_gpu_mlir_emitter_level(2);
 #else
   opts.set_xla_gpu_mlir_emitter_level(0);
 #endif
