@@ -727,19 +727,24 @@ SmallVector<AffineExpr, 4> GetComposedSymbolsPermutationToCorrectOrder(
   for (int id = 0; id < second.GetRangeVarsCount(); ++id) {
     symbol_replacements.push_back(getAffineSymbolExpr(id, mlir_context));
   }
+  int64_t first_range_vars_count = first.GetRangeVarsCount();
+  int64_t second_range_vars_count = second.GetRangeVarsCount();
+  int64_t first_rt_vars_count = first.GetRTVarsCount();
+  int64_t second_rt_vars_count = second.GetRTVarsCount();
   int64_t rt_vars_second_start =
-      first.GetRangeVarsCount() + second.GetRangeVarsCount();
-  for (int64_t id = 0; id < second.GetRTVarsCount(); ++id) {
+      first_range_vars_count + second_range_vars_count;
+  for (int64_t id = 0; id < second_rt_vars_count; ++id) {
     symbol_replacements.push_back(
         getAffineSymbolExpr(rt_vars_second_start++, mlir_context));
   }
-  int64_t range_vars_first_start = second.GetRangeVarsCount();
-  for (int64_t id = 0; id < first.GetRangeVarsCount(); ++id) {
+  int64_t range_vars_first_start = second_range_vars_count;
+  for (int64_t id = 0; id < first_range_vars_count; ++id) {
     symbol_replacements.push_back(
         getAffineSymbolExpr(range_vars_first_start++, mlir_context));
   }
-  int64_t rt_vars_first_start = rt_vars_second_start + second.GetRTVarsCount();
-  for (int64_t id = 0; id < first.GetRTVarsCount(); ++id) {
+  int64_t rt_vars_first_start =
+      first_range_vars_count + second_range_vars_count + second_rt_vars_count;
+  for (int64_t id = 0; id < first_rt_vars_count; ++id) {
     symbol_replacements.push_back(
         getAffineSymbolExpr(rt_vars_first_start++, mlir_context));
   }
@@ -1748,6 +1753,9 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   // that range_vars go before rt_vars in the composed affine map symbols list.
   SmallVector<AffineExpr, 4> symbol_replacements =
       GetComposedSymbolsPermutationToCorrectOrder(first, second);
+  composed_map = composed_map.replaceDimsAndSymbols(
+      /*dimReplacements=*/{}, symbol_replacements, composed_map.getNumDims(),
+      composed_map.getNumSymbols());
   IndexingMap composed_indexing_map(composed_map, first.GetDimVars(),
                                     std::move(combined_range_vars),
                                     std::move(combined_rt_vars));

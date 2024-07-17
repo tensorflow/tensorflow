@@ -19,7 +19,6 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <optional>
 #include <ostream>

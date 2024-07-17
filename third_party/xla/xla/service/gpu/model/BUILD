@@ -465,7 +465,6 @@ cc_library(
         "indexing_map.h",
     ],
     deps = [
-        ":affine_map_evaluator",
         ":affine_map_printer",
         "//xla:permutation_util",
         "//xla:shape_util",
