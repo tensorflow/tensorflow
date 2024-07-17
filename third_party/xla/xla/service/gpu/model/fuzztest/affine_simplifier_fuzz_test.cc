@@ -15,12 +15,14 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
 #include "absl/log/check.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/fuzztest/affine_grammar.h"
 #include "xla/service/gpu/model/indexing_map.h"
