@@ -720,8 +720,13 @@ bool AffineExprSimplifier::SimplifyConstraintRange(AffineExpr* expr,
 // [range_vars(second)|rt_vars(second)|range_vars(first)|rt_vars(first)]
 // to
 // [range_vars(second)|range_vars(first)|rt_vars(second)|rt_vars(first)].
+// If an empty vector is returned, no replacement is needed.
 SmallVector<AffineExpr, 4> GetComposedSymbolsPermutationToCorrectOrder(
     const IndexingMap& first, const IndexingMap& second) {
+  // No permutation is needed if the second map has no RTVars.
+  if (second.GetRTVarsCount() == 0) {
+    return {};
+  }
   SmallVector<AffineExpr, 4> symbol_replacements;
   MLIRContext* mlir_context = first.GetMLIRContext();
   for (int id = 0; id < second.GetRangeVarsCount(); ++id) {
@@ -1753,9 +1758,11 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   // that range_vars go before rt_vars in the composed affine map symbols list.
   SmallVector<AffineExpr, 4> symbol_replacements =
       GetComposedSymbolsPermutationToCorrectOrder(first, second);
-  composed_map = composed_map.replaceDimsAndSymbols(
-      /*dimReplacements=*/{}, symbol_replacements, composed_map.getNumDims(),
-      composed_map.getNumSymbols());
+  if (!symbol_replacements.empty()) {
+    composed_map = composed_map.replaceDimsAndSymbols(
+        /*dimReplacements=*/{}, symbol_replacements, composed_map.getNumDims(),
+        composed_map.getNumSymbols());
+  }
   IndexingMap composed_indexing_map(composed_map, first.GetDimVars(),
                                     std::move(combined_range_vars),
                                     std::move(combined_rt_vars));
