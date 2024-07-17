@@ -21,17 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/util/json_util.h"
 #include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_graph_view.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_memory_visualization_utils.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace profiler {

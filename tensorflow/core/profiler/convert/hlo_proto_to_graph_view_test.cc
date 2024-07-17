@@ -18,11 +18,13 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include <gmock/gmock.h>
 #include "xla/service/hlo_graph_dumper.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace profiler {
