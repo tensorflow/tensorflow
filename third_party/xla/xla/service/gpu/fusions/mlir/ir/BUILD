@@ -26,6 +26,24 @@ td_library(
 )
 
 gentbl_cc_library(
+    name = "xla_gpu_dialect_inc_gen",
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            ["-gen-dialect-decls"],
+            "xla_gpu_dialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "xla_gpu_dialect.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "xla_gpu_dialect.td",
+    deps = [":xla_gpu_ops_td_files"],
+)
+
+gentbl_cc_library(
     name = "xla_gpu_ops_inc_gen",
     strip_include_prefix = ".",
     tbl_outs = [
@@ -36,14 +54,6 @@ gentbl_cc_library(
         (
             ["-gen-op-defs"],
             "xla_gpu_ops.cc.inc",
-        ),
-        (
-            ["-gen-dialect-decls"],
-            "xla_gpu_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "xla_gpu_dialect.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -56,6 +66,7 @@ cc_library(
     srcs = ["xla_gpu_ops.cc"],
     hdrs = ["xla_gpu_ops.h"],
     deps = [
+        ":xla_gpu_dialect_inc_gen",
         ":xla_gpu_ops_inc_gen",
         "//xla/service/gpu/model:indexing_analysis",
         "@llvm-project//llvm:Support",

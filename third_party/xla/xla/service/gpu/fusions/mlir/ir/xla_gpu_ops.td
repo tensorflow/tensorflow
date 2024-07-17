@@ -16,23 +16,13 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_OPS
 
 include "mlir/IR/AttrTypeBase.td"
-include "mlir/IR/DialectBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-
-def XlaGpuDialect : Dialect {
-  let name = "xla_gpu";
-
-  let description = [{
-    This dialect contains ops required for lowering HLO to LLVM.
-  }];
-
-  let cppNamespace = "::xla::gpu";
-}
+include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.td"
 
 class XLAGPU_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaGpuDialect, mnemonic, traits> {
