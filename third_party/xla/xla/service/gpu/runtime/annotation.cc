@@ -558,11 +558,11 @@ std::optional<ScopedAnnotation> GetKernelAnnotation(
     const auto iter = current_annotations->kernels.find(profile_annotation);
     if (iter != current_annotations->kernels.end()) {
       // Have a pre-prepared annotation, use it
-      return std::optional<ScopedAnnotation>{[&] { return iter->second; }};
+      return std::optional<ScopedAnnotation>{[iter] { return iter->second; }};
     }
   }
   return std::optional<ScopedAnnotation>{
-      [&] { return absl::StrFormat("Thunk:#hlo_op=%s#", profile_annotation); }};
+      [=] { return absl::StrFormat("Thunk:#hlo_op=%s#", profile_annotation); }};
 }
 
 }  // namespace xla::gpu

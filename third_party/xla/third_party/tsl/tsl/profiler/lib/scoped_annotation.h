@@ -20,6 +20,7 @@ limitations under the License.
 #include <atomic>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 #include "tsl/platform/macros.h"
@@ -34,7 +35,7 @@ namespace tsl::profiler {
 // Adds an annotation to all activities through the currently registered
 // TraceCollector until PopAnnotation() is called.
 template <typename T>
-void PushAnnotation(const T& generator) {
+void PushAnnotation(T generator) {
   if (auto domain = DefaultProfilerDomain();
       TF_PREDICT_FALSE(domain != nullptr)) {
     RangePush(domain, generator());
@@ -42,15 +43,14 @@ void PushAnnotation(const T& generator) {
   }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-    AnnotationStack::PushAnnotation(static_cast<std::string_view>(generator()));
-  }
+  AnnotationStack::PushAnnotation(std::move(generator));
 #endif
 }
 
 inline void PushAnnotation(const char* name) {
-  PushAnnotation([&] { return name; });
+  PushAnnotation([=] { return name; });
 }
+
 inline void PushAnnotation(const std::string& name) {
   PushAnnotation([&] { return name; });
 }
@@ -67,9 +67,7 @@ inline void PopAnnotation() {
   }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-    AnnotationStack::PopAnnotation();
-  }
+  AnnotationStack::PopAnnotation();
 #endif
 }
 
@@ -85,8 +83,8 @@ inline void PopAnnotation() {
 class ScopedAnnotation {
  public:
   template <typename T>
-  explicit ScopedAnnotation(T&& annotation) {
-    PushAnnotation(std::forward<T>(annotation));
+  explicit ScopedAnnotation(T annotation) {
+    PushAnnotation(std::move(annotation));
   }
 
   // Pops the name passed in the constructor from the current annotation.

@@ -16,7 +16,12 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_ANNOTATION_STACK_H_
 
 #include <atomic>
+#include <cstddef>
+#include <functional>
+#include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 
 #include "tsl/platform/types.h"
 
@@ -26,10 +31,53 @@ namespace profiler {
 // Backend for ScopedAnnotation.
 class AnnotationStack {
  public:
-  // Appends name to the annotations for the current thread, separated by "::".
+  using Generator = std::function<std::string_view()>;
+
+  // One level of annotation name will be append to annotations for the current
+  // thread, separated by "::".
   // The choice of separator "::" is based on characters not used by TensorFlow
   // for its TensorOps.
-  static void PushAnnotation(std::string_view name);
+  // For complex annotation, use generator so that when not enabled, the
+  // generator is not called. The generator is only called when tracing is
+  // enabled. Generator and its internal state must be valid before it is
+  // popped.
+  static void PushAnnotationGenerator(Generator generator);
+
+  static void PushAnnotation(std::string_view name) {
+    PushAnnotationGenerator([=] { return name; });
+  }
+
+  // For generator that returns std::string, the string will be saved in a
+  // wrapper functor, and string_view of it will be returned.
+  template <
+      typename NameGeneratorT,
+      std::enable_if_t<std::is_invocable_v<NameGeneratorT>, bool> = true,
+      std::enable_if_t<
+          std::is_same_v<std::invoke_result_t<NameGeneratorT>, std::string>,
+          bool> = true>
+  static void PushAnnotation(NameGeneratorT&& gen) {
+    std::string str;
+    PushAnnotationGenerator(
+        [str, gen = std::forward<NameGeneratorT>(gen)]() mutable {
+          str = gen();
+          return std::string_view(str);
+        });
+  }
+
+  // For generator that returns std::string_view, std::string&, const
+  // std::string&, const char*, direct convert the return value to
+  // std::string_view.
+  template <
+      typename NameGeneratorT,
+      std::enable_if_t<std::is_invocable_v<NameGeneratorT>, bool> = true,
+      std::enable_if_t<
+          !std::is_same_v<std::invoke_result_t<NameGeneratorT>, std::string>,
+          bool> = true>
+  static void PushAnnotation(NameGeneratorT&& gen) {
+    PushAnnotationGenerator([gen = std::forward<NameGeneratorT>(gen)]() {
+      return static_cast<std::string_view>(gen());
+    });
+  }
 
   // Resizes the annotation stack for the current thread.
   static void PopAnnotation();
