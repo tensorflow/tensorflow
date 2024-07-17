@@ -1026,8 +1026,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
           targets[nb::str(name.data(), name.size())] = nb::capsule(target);
         }
 
-        for (const auto& [name, registration] :
-             ffi::StaticRegisteredHandlers(platform)) {
+        auto ffi_handlers = ffi::StaticRegisteredHandlers(platform);
+        if (!ffi_handlers.ok()) return targets;
+
+        for (const auto& [name, registration] : *ffi_handlers) {
           nb::dict bundle;
           auto export_handler = [&](std::string_view name, XLA_FFI_Handler* h) {
             if (h != nullptr) {

@@ -130,32 +130,67 @@ bool AreAllInNodesQualifiedConst(const Node& node) {
   }
   return true;
 }
-}  // namespace
 
-Status ColocatePredecessorTreesPass::Run(
-    const GraphOptimizationPassOptions& options) {
+bool ShouldRunPass(const GraphOptimizationPassOptions& options) {
   if (!flags::Global().enable_tf2min_ici_weight.value()) {
-    return absl::OkStatus();
+    LOG(INFO) << "ColocatePredecessorTreesPass is disabled.";
+    return false;
   }
+  LOG(INFO) << "ColocatePredecessorTreesPass is enabled.";
 
   // find all potential node.
   if (options.graph == nullptr) {
-    VLOG(1) << "No graph in colocate_predecessor_trees_pass.\n";
+    LOG(INFO) << "No graph in colocate_predecessor_trees_pass.\n";
+    return false;
+  }
+  return true;
+}
+
+void LogGraphProperties(bool is_graph_changed, bool has_valid_fill_op,
+                        bool has_colocation_name, bool has_qualified_const,
+                        Graph* graph,
+                        const GraphOptimizationPassOptions& options) {
+  if (is_graph_changed) {
+    VLOG(1) << "Graph is changed by ColocatePredecessorTreesPass.";
+    VLOG(1) << DumpGraphToFile("graph_changed_after_colocate_predecessor_trees",
+                               *graph, options.flib_def);
+  } else {
+    VLOG(1) << "Graph is not changed by ColocatePredecessorTreesPass.";
+    VLOG(1) << "has_valid_fill_op: " << has_valid_fill_op;
+    VLOG(1) << "has_colocation_name: " << has_colocation_name;
+    VLOG(1) << "has_qualified_const: " << has_qualified_const;
+    VLOG(1) << DumpGraphToFile(
+        "graph_not_changed_after_colocate_predecessor_trees", *graph,
+        options.flib_def);
+  }
+}
+
+}  // namespace
+Status ColocatePredecessorTreesPass::Run(
+    const GraphOptimizationPassOptions& options) {
+  if (!ShouldRunPass(options)) {
     return absl::OkStatus();
   }
-  Graph* graph = options.graph->get();
-  if (VLOG_IS_ON(1)) {
-    VLOG(1) << DumpGraphToFile("before_colocate_predecessor_trees", *graph,
-                               options.flib_def);
-  }
 
+  Graph* graph = options.graph->get();
+  VLOG(1) << DumpGraphToFile("graph_before_colocate_predecessor_trees", *graph,
+                             options.flib_def);
+
+  bool is_graph_changed = false;
+  bool has_valid_fill_op = false;
+  bool has_colocation_name = false;
+  bool has_qualified_const = false;
   for (Node* node : graph->nodes()) {
     if (!IsValidFillOp(*node)) {
       continue;
     }
+    has_valid_fill_op = true;
     auto colocation_name = GetColocateStringName(*node);
     if (!colocation_name.has_value()) continue;
+    has_colocation_name = true;
     if (!AreAllInNodesQualifiedConst(*node)) continue;
+    has_qualified_const = true;
+    is_graph_changed = true;
     node->AddAttr(std::string(kClassAttr), {*colocation_name});
     for (auto in_node : node->in_nodes()) {
       in_node->AddAttr(std::string(kClassAttr), {*colocation_name});
@@ -165,11 +200,8 @@ Status ColocatePredecessorTreesPass::Run(
     }
   }
 
-  if (VLOG_IS_ON(1)) {
-    VLOG(1) << DumpGraphToFile("after_colocate_predecessor_trees", *graph,
-                               options.flib_def);
-  }
-
+  LogGraphProperties(is_graph_changed, has_valid_fill_op, has_colocation_name,
+                     has_qualified_const, graph, options);
   return absl::OkStatus();
 }
 

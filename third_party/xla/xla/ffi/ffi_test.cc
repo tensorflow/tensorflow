@@ -74,7 +74,10 @@ TEST(FfiTest, StaticHandlerRegistration) {
   ASSERT_EQ(handler0->traits, 0);
   ASSERT_EQ(handler1->traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 
-  EXPECT_THAT(StaticRegisteredHandlers("Host"),
+  // Check that platform name was canonicalized an we can find handlers
+  // registered for "Host" platform as "Cpu" handlers.
+  TF_ASSERT_OK_AND_ASSIGN(auto handlers, StaticRegisteredHandlers("Cpu"));
+  EXPECT_THAT(handlers,
               UnorderedElementsAre(Pair("no-op-0", _), Pair("no-op-1", _)));
 }
 
@@ -90,8 +93,9 @@ TEST(FfiTest, StaticHandlerSymbolRegistration) {
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op-sym-1", "Host", NoOpHandler,
                            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 
-  auto handler0 = FindHandler("no-op-sym-0", "Host");
-  auto handler1 = FindHandler("no-op-sym-1", "Host");
+  // Use "Cpu" platform to check that platform name was canonicalized.
+  auto handler0 = FindHandler("no-op-sym-0", "Cpu");
+  auto handler1 = FindHandler("no-op-sym-1", "Cpu");
 
   TF_ASSERT_OK(handler0.status());
   TF_ASSERT_OK(handler1.status());
