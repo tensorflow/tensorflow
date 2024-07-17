@@ -42,6 +42,9 @@ void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst) {
   if (dst->long_name().empty()) {
     dst->set_long_name(src.long_name());
   }
+  if (dst->fingerprint() == 0) {
+    dst->set_fingerprint(src.fingerprint());
+  }
   if (dst->category().empty()) {
     dst->set_category(src.category());
   }
@@ -126,7 +129,8 @@ void OpMetricsDbCombiner::Combine(const OpMetricsDb& src,
 
   for (const auto& src_metrics : src.metrics_db()) {
     auto* dst_metrics = LookupOrInsertNewOpMetrics(src_metrics.hlo_module_id(),
-                                                   src_metrics.name());
+                                                   src_metrics.name(),
+                                                   src_metrics.fingerprint());
     CopyOpMetricsMetadata(src_metrics, dst_metrics);
     CombineOpMetrics(src_metrics, dst_metrics, update_num_cores);
   }
