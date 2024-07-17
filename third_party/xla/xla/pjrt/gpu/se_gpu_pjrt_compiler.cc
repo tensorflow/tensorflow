@@ -189,7 +189,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false));
+      /*return_tuple=*/false,
+      /*use_shardy=*/false));
   return Compile(std::move(input_options), xla_computation, topology, client);
 #else
   return absl::InternalError(

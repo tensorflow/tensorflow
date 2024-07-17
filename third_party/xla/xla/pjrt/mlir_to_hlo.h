@@ -28,9 +28,12 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context);
 
 // Converts an CHLO/MHLO module to XLA HLO.
+// TODO(b/345414638): Delete `use_shardy` when we move Shardy as the first pass
+// in the XLA pipeline.
 absl::Status MlirToXlaComputation(mlir::ModuleOp module,
                                   XlaComputation& xla_computation,
-                                  bool use_tuple_args, bool return_tuple);
+                                  bool use_tuple_args, bool return_tuple,
+                                  bool use_shardy);
 
 // Converts an MHLO/CHLO module string to an XLA computation.
 absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
