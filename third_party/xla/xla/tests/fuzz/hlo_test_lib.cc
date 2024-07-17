@@ -19,9 +19,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "xla/error_spec.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

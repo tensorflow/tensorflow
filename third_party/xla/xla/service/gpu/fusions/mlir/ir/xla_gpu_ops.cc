@@ -20,10 +20,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
@@ -42,7 +45,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
-#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -693,6 +695,15 @@ void AtomicRMWOp::build(OpBuilder& builder, OperationState& result,
   Region* body = result.addRegion();
   builder.createBlock(body);
   body->addArgument(tensor_type.getElementType(), tensor.getLoc());
+}
+
+mlir::OpFoldResult AtomicRMWOp::fold(FoldAdaptor adaptor) {
+  auto* body = getBody();
+  if (&body->front() == body->getTerminator() &&
+      body->front().getOperand(0) == body->getArgument(0)) {
+    return getOperand(0);
+  }
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

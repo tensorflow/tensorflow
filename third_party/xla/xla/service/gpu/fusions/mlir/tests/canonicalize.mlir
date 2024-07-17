@@ -145,3 +145,35 @@ func.func @fold_sequence_shared_operands(%arg0: index, %arg1: index) -> index {
 // CHECK-SAME:      %[[ARG0:.*]]: index, %[[ARG1:.*]]: index)
 // CHECK-NEXT:  xla_gpu.apply_indexing #[[$MAP]]
 // CHECK-SAME:      (%[[ARG1]] in [0, 5), %[[ARG0]] in [0, 6))
+
+// -----
+
+func.func @atomic_rmw_empty(%in: tensor<2x3xf32>, %i: index, %j: index)
+    -> (tensor<2x3xf32>) {
+  %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {
+    ^bb0(%current : f32):
+      xla_gpu.yield %current : f32
+  }
+  return %ret : tensor<2x3xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_empty
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>
+// CHECK: return %[[ARG0]]
+
+
+// -----
+
+func.func @atomic_rmw_cst(%in: tensor<2x3xf32>, %i: index, %j: index)
+    -> (tensor<2x3xf32>) {
+  %cst = arith.constant 0.0 : f32
+  %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {
+    ^bb0(%current : f32):
+      xla_gpu.yield %cst : f32
+  }
+  return %ret : tensor<2x3xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_cst
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>
+// CHECK-NEXT: %[[CST:.*]] = arith.constant
+// CHECK-NEXT: atomic_rmw
+// CHECK:      xla_gpu.yield %[[CST]]
