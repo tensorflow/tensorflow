@@ -6220,11 +6220,16 @@ ENTRY entry {
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
-
-  for (absl::string_view name : {"lhs", "rhs", "add"}) {
-    HloInstruction* instruction = FindInstruction(module.get(), name);
-    ASSERT_NE(instruction, nullptr);
-    EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
+  auto* lhs = FindInstruction(module.get(), "lhs");
+  ASSERT_NE(lhs, nullptr);
+  EXPECT_THAT(lhs, op::Sharding("{devices=[2,2]0,2,1,3}"));
+  auto* rhs = FindInstruction(module.get(), "rhs");
+  ASSERT_NE(rhs, nullptr);
+  EXPECT_THAT(rhs, op::Sharding("{devices=[2,2]0,2,1,3}"));
+  auto* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_THAT(add, op::Sharding("{devices=[2,2]0,2,1,3}"));
+  for (HloInstruction* instruction : {lhs, rhs, add}) {
     if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
       EXPECT_THAT(instruction->sharding(),
                   ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
@@ -6240,9 +6245,9 @@ HloModule module
 
 ENTRY entry {
   %p0 = f32[2,9] parameter(0),
-    sharding={devices=[1,2,4]<=[8] last_tile_dim_replicate metadata={op_name="a"}}
+    sharding={devices=[1,2,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate metadata={op_name="a"}}
   %p1 = f32[2,9] parameter(1),
-    sharding={devices=[2,1,4]<=[2,2,2]T(1,0,2) last_tile_dim_replicate metadata={op_name="b"}}
+    sharding={devices=[2,1,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate metadata={op_name="b"}}
   %lhs = f32[2,9] copy(%p0)
   %rhs = f32[2,9] copy(%p1)
   %add = f32[2,9] add(%lhs, %rhs)
@@ -6259,62 +6264,31 @@ ENTRY entry {
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
+  auto* lhs = FindInstruction(module.get(), "lhs");
+  ASSERT_NE(lhs, nullptr);
+  EXPECT_THAT(
+      lhs,
+      op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+  auto* rhs = FindInstruction(module.get(), "rhs");
+  ASSERT_NE(rhs, nullptr);
+  EXPECT_THAT(
+      rhs,
+      op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+  auto* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_THAT(
+      add,
+      op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(lhs->sharding(),
+                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
+    EXPECT_THAT(rhs->sharding(),
+                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
+    EXPECT_THAT(add->sharding(),
+                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
 
-  for (absl::string_view name : {"lhs", "rhs", "add"}) {
-    HloInstruction* instruction = FindInstruction(module.get(), name);
-    ASSERT_NE(instruction, nullptr);
-    EXPECT_THAT(
-        instruction,
-        op::Sharding(
-            "{devices=[2,2,2]<=[2,2,2]T(1,0,2) last_tile_dim_replicate}"));
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(ParameterizedMetadataTest, PartialShardingOnElementwise3) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  %p0 = f32[2,9] parameter(0),
-    sharding={devices=[1,2,4]<=[8] last_tile_dim_replicate metadata={op_name="a"}}
-  %p1 = f32[2,9] parameter(1),
-    sharding={devices=[2,1,4]<=[2,2,2]T(1,0,2) last_tile_dim_replicate metadata={op_name="b"}}
-  %lhs = f32[2,9] copy(%p0)
-  %rhs = f32[2,9] copy(%p1)
-  ROOT %add = f32[2,9] add(%lhs, %rhs), sharding={replicated}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Sharding("{replicated}"));
-
-  for (absl::string_view name : {"lhs", "rhs"}) {
-    HloInstruction* instruction = FindInstruction(module.get(), name);
-    ASSERT_NE(instruction, nullptr);
-    EXPECT_THAT(
-        instruction,
-        op::Sharding(
-            "{devices=[2,2,2]<=[2,2,2]T(1,0,2) last_tile_dim_replicate}"));
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a"), CreateMetadata("b")}));
-    } else {
+  } else {
+    for (HloInstruction* instruction : {lhs, rhs}) {
       EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
     }
   }
