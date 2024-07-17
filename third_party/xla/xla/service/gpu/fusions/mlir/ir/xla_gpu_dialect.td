@@ -26,6 +26,7 @@ def XlaGpuDialect : Dialect {
   }];
 
   let cppNamespace = "::xla::gpu";
+  let useDefaultAttributePrinterParser = 1;
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_DIALECT
