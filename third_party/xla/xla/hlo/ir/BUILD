@@ -223,6 +223,8 @@ xla_cc_test(
     srcs = ["collective_device_list_test.cc"],
     deps = [
         ":hlo",
+        "//xla:xla_data_proto_cc",
+        "//xla/service:hlo_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",

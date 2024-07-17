@@ -680,17 +680,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (opcode == HloOpcode::kAllGather) {
         instruction = CreateAllGather(
             shape, all_operands(), all_gather_dimension,
-            CollectiveDeviceList(std::vector<ReplicaGroup>(
-                proto.replica_groups().begin(), proto.replica_groups().end())),
-            proto.constrain_layout(), channel_id,
-            proto.use_global_device_ids());
+            CollectiveDeviceList::FromProto(proto), proto.constrain_layout(),
+            channel_id, proto.use_global_device_ids());
       } else {
         instruction = CreateAllGatherStart(
             shape, all_operands(), all_gather_dimension,
-            CollectiveDeviceList(std::vector<ReplicaGroup>(
-                proto.replica_groups().begin(), proto.replica_groups().end())),
-            proto.constrain_layout(), channel_id,
-            proto.use_global_device_ids());
+            CollectiveDeviceList::FromProto(proto), proto.constrain_layout(),
+            channel_id, proto.use_global_device_ids());
       }
       break;
     }
@@ -709,9 +705,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      std::vector<ReplicaGroup> replica_groups(proto.replica_groups().begin(),
-                                               proto.replica_groups().end());
-      CollectiveDeviceList device_list(replica_groups);
+      CollectiveDeviceList device_list = CollectiveDeviceList::FromProto(proto);
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
             CreateAllReduce(shape, all_operands(), computations(0), device_list,
@@ -748,12 +742,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         split_dimension = proto.dimensions(0);
       }
       instruction = CreateAllToAll(
-          shape, all_operands(),
-          /*replica_groups=*/
-          CollectiveDeviceList(std::vector<ReplicaGroup>(
-              proto.replica_groups().begin(), proto.replica_groups().end())),
-          /*constrain_layout=*/proto.constrain_layout(),
-          /*channel_id=*/channel_id, split_dimension);
+          shape, all_operands(), CollectiveDeviceList::FromProto(proto),
+          proto.constrain_layout(), channel_id, split_dimension);
       break;
     }
     case HloOpcode::kCollectiveBroadcast: {
@@ -761,10 +751,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      auto replica_groups = std::vector<ReplicaGroup>(
-          proto.replica_groups().begin(), proto.replica_groups().end());
       instruction = CreateCollectiveBroadcast(
-          shape, all_operands(), CollectiveDeviceList(replica_groups), false,
+          shape, all_operands(), CollectiveDeviceList::FromProto(proto), false,
           channel_id);
       break;
     }
