@@ -96,9 +96,9 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
 #include "xla/python/py_client_gpu.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
 
 namespace xla {
 
@@ -627,7 +627,7 @@ PyClient::GetEmitPythonCallbackDescriptor(nb::callable callable,
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
                                              &XlaPythonCpuCallback);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
     "xla_python_gpu_callback", &XlaPythonGpuCallback,
     absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));

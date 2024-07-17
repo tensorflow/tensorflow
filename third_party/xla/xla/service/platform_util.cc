@@ -54,9 +54,12 @@ std::string CanonicalPlatformName(const std::string& platform_name) {
   }
   // When configured on CUDA, "gpu" and "cuda" mean the same thing.
   // When configured on ROCm, "gpu" and "rocm" mean the same thing.
+  // When configured on SYCL, "gpu" and "sycl" mean the same thing.
   if (lowercase_platform_name == "gpu") {
 #if TENSORFLOW_USE_ROCM
     return "rocm";
+#elif TENSORFLOW_USE_SYCL
+    return "sycl";
 #else
     return "cuda";
 #endif
