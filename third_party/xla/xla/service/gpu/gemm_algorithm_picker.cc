@@ -197,7 +197,8 @@ class GemmAutotuner {
     };
 
     return GetBestAlgorithm<BlasLt::MatmulAlgorithm>(
-        gemm, algorithms, gemm_config.beta, tuned_func);
+        gemm, algorithms, gemm_config.beta, /*return_algo_index*/ true,
+        tuned_func);
   }
 
   absl::StatusOr<AutotuneResult> TuneGpuBlas(const HloInstruction* gemm,
@@ -217,7 +218,6 @@ class GemmAutotuner {
                                 &gemm_config.alpha, &gemm_config.beta,
                                 &algorithms);
 
-    AutotuneResult best_algorithm;
     auto tuned_func = [&](const se::blas::AlgorithmType& algorithm)
         -> absl::StatusOr<se::blas::ProfileResult> {
       // Do a warm-up run first, without a profile result. RunGemm swallows
@@ -242,21 +242,16 @@ class GemmAutotuner {
       return std::move(profile_result);
     };
 
-    TF_ASSIGN_OR_RETURN(best_algorithm,
-                        GetBestAlgorithm<se::blas::AlgorithmType>(
-                            gemm, algorithms, gemm_config.beta, tuned_func));
-    if (best_algorithm.has_gemm()) {
-      int alg_idx = best_algorithm.gemm().algorithm();
-      best_algorithm.mutable_gemm()->set_algorithm(algorithms[alg_idx]);
-    }
-    return best_algorithm;
+    return GetBestAlgorithm<se::blas::AlgorithmType>(
+        gemm, algorithms, gemm_config.beta, /*return_algo_index*/ false,
+        tuned_func);
   }
 
   // Returns the index (into `algorithms`) of the fastest algorithm.
   template <typename AlgoT, typename TunedFunc>
   absl::StatusOr<AutotuneResult> GetBestAlgorithm(
       const HloInstruction* gemm, absl::Span<const AlgoT> algorithms,
-      double beta, TunedFunc&& run_benchmark) {
+      double beta, bool return_algo_index, TunedFunc&& run_benchmark) {
     static_assert(std::is_invocable_r_v<absl::StatusOr<se::blas::ProfileResult>,
                                         TunedFunc, const AlgoT&>,
                   "Tuned function has incorrect prototype!");
@@ -352,6 +347,14 @@ class GemmAutotuner {
     absl::StatusOr<AutotuneResult> best =
         PickBestResult(results, gemm->ToString(), hlo_module_config);
     if (best.ok()) {
+      // Note that, cublas-lt returns an opaque object as an algorithm ID,
+      // therefore we need to convert it to the index from the algorithms list
+      // (otherwise, we cannot store this ID inside a gemm_backend_config).
+      // In contrast, legacy cublas returns a 32-bit integer algorithm ID which
+      // can be readily stored inside an HLO (hence return_algo_index is false
+      // for cublas case).
+      if (!return_algo_index) return best;
+      // Otherwise, map a real algorithm ID to its index among the results.
       for (size_t i = 0; i < results.size(); ++i) {
         if (best->gemm().algorithm() == results[i].gemm().algorithm()) {
           best->mutable_gemm()->set_algorithm(i);
