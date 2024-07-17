@@ -86,17 +86,6 @@ bool ShouldLaunchDelayKernel() {
                                   stop_event, stream};
 }
 
-/*deprecated*/ /*static*/ absl::StatusOr<std::optional<GpuTimer>>
-GpuTimer::CreateIfNeeded(GpuStream* stream, bool is_needed) {
-  // This deprecated factory does not launch the delay kernel and may lead to
-  // reduced measurement accuracy.
-  if (is_needed) {
-    TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
-    return {std::make_optional(std::move(t))};
-  }
-  return std::nullopt;
-}
-
 /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(Stream* real_stream,
                                                      bool use_delay_kernel) {
   GpuStream* stream = AsGpuStream(real_stream);

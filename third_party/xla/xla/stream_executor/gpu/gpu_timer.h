@@ -55,9 +55,6 @@ class GpuTimer {
   // empty optional, acts like `Create` otherwise.
   static absl::StatusOr<std::optional<GpuTimer>> CreateIfNeeded(
       Stream* stream, bool use_delay_kernel, bool is_needed);
-  [[deprecated("Pass Stream* not GpuStream*")]] static absl::StatusOr<
-      std::optional<GpuTimer>>
-  CreateIfNeeded(GpuStream* stream, bool is_needed);
 
   explicit GpuTimer(GpuExecutor* parent, GpuEventHandle start_event,
                     GpuEventHandle stop_event, GpuStream* stream,
