@@ -33,7 +33,6 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -174,14 +173,12 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
 
   std::vector<std::string> custom_opdefs(toco_flags.custom_opdefs().begin(),
                                          toco_flags.custom_opdefs().end());
-  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
   TF_ASSIGN_OR_RETURN(
       auto module,
       ImportSavedModel(model_flags.saved_model_dir(),
                        model_flags.saved_model_version(), tags,
                        absl::MakeSpan(custom_opdefs), exported_names, specs,
-                       !toco_flags.enable_tflite_resource_variables(),
-                       context.get(), &bundle));
+                       true, context.get(), nullptr));
 
   if (!model_flags.input_arrays().empty() ||
       !model_flags.output_arrays().empty()) {
@@ -242,8 +239,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(context), std::move(module),
-      pass_config, tags, result, std::move(bundle),
-      quantization_py_function_lib);
+      pass_config, tags, result, quantization_py_function_lib);
 
   return status;
 }
