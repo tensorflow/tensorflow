@@ -107,6 +107,7 @@ def XLAGPU_AtomicRMWOp : XLAGPU_Op<"atomic_rmw",
       return getRegion().getArgument(0);
     }
   }];
+  let hasFolder = 1;
 
   let assemblyFormat = [{
     $input `[` $indices `]` `:` type($input) $computation attr-dict
