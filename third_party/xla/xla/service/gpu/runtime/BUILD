@@ -135,6 +135,7 @@ cc_library(
         ":wait_for_streams_thunk",
         ":while_thunk",
         "//xla:util",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu/runtime:thunk",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
