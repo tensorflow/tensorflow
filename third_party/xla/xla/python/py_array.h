@@ -153,6 +153,10 @@ class PyArray : public nanobind::object {
 
   static absl::Status RegisterTypes(nanobind::module_& m);
 
+  static PyArray borrow(PyObject* ptr) {
+    return nanobind::borrow<xla::PyArray>(ptr);
+  }
+
   using Storage = PyArray_Storage;
 
   const nanobind::object& aval() const { return GetStorage().aval; }
