@@ -132,11 +132,11 @@ std::string ToString(const std::vector<T>& vector) {
   return absl::StrCat("[", absl::StrJoin(vector, ", "), "]");
 }
 
-template <typename T>
-std::string ToString(const StableHashMap<std::string, T>& map) {
+template <typename K, typename V>
+std::string ToString(const StableHashMap<K, V>& map) {
   std::string result;
-  for (const auto& v : map) {
-    result = absl::StrCat(result, "\n[", v.first, "->", v.second, "]");
+  for (const auto& [k, v] : map) {
+    result = absl::StrCat(result, " [", k, "->", v, "]");
   }
   return result;
 }
@@ -587,7 +587,7 @@ inline int64_t ByteSizeOfShape(const Shape& shape) {
   return ByteSizeOfShapeWithSharding(shape, /*sharding=*/std::nullopt);
 }
 
-// Compute the byte size of a shape recursively if it is sharded across a given
+// Computes the byte size of a shape recursively if it is sharded across a given
 // number of devices per an optionally provided sharding. If the sharding is
 // provided, this function behaves the same as ByteSizeOfShapeWithSharding
 // above. If not, it will give a lower bound on the bytes size of the shape if
