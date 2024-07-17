@@ -935,8 +935,7 @@ HloCollectiveInstruction::HloCollectiveInstruction(
 
 HloInstructionProto HloCollectiveInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
-  *proto.mutable_replica_groups() = {replica_groups().begin(),
-                                     replica_groups().end()};
+  *proto.mutable_collective_device_list() = device_list_.ToProto();
   proto.set_constrain_layout(constrain_layout_);
   return proto;
 }

@@ -196,7 +196,7 @@ ENTRY main {
                     R"(
 // CHECK:  [[bitcast_0:%[^ ]+]] = f32[8,100,256,256]{3,2,1,0} bitcast([[input_1:%[^ ]+]])
 // CHECK:  [[zero_2:%[^ ]+]] = f32[] constant(0)
-// CHECK:  [[reduce_3:%[^ ]+]] = f32[100,256]{1,0} reduce([[bitcast_0]], [[zero_2]]), dimensions={3,0}, to_apply=[[add_4:%[^ ]+]]
+// CHECK:  [[reduce_3:%[^ ]+]] = f32[100,256]{1,0} reduce([[bitcast_0]], [[zero_2]]), dimensions={0,3}, to_apply=[[add_4:%[^ ]+]]
 // CHECK:  ROOT [[out_1_5:%[^ ]+]] = f32[100]{0} reduce([[reduce_3]], [[zero_2]]), dimensions={1}, to_apply=[[add_4]]
       )");
 }
@@ -531,6 +531,26 @@ ENTRY main {
 // CHECK:  [[reduce_3:%[^ ]+]] = f32[1024,140]{1,0} reduce([[bitcast_0]], [[zero_2]]), dimensions={2}, to_apply=[[add_4:%[^ ]+]]
 // CHECK:  ROOT [[out_1_5:%[^ ]+]] = f32[1024]{0} reduce([[reduce_3]], [[zero_2]]), dimensions={1}, to_apply=[[add_4]]
       )");
+}
+
+TEST_F(TreeReductionRewriterTest, NonCosequtiveReductionDims) {
+  const char* hlo = R"(
+    HloModule NonCosequtiveReductionDims
+
+    add {
+      accum = f32[] parameter(0)
+      op = f32[] parameter(1)
+      ROOT out = f32[] add(accum, op)
+    }
+
+    ENTRY main {
+      input = f32[5,3,4,5] parameter(0)
+      zero = f32[] constant(0)
+      ROOT out = f32[5,4] reduce(input, zero), dimensions={1,3}, to_apply=add
+    }
+  )";
+
+  CheckTreeRewriter(hlo, std::nullopt);
 }
 
 }  // namespace

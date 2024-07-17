@@ -194,23 +194,24 @@ static absl::Status RegisterHandler(std::string_view name,
         name, platform);
   }
 
-  auto emplaced = GetHandlerRegistry().try_emplace(
-      MakeHandlerKey(name, platform), HandlerRegistration{bundle, traits});
+  auto emplaced =
+      GetHandlerRegistry().try_emplace(MakeHandlerKey(name, canonical_platform),
+                                       HandlerRegistration{bundle, traits});
   if (!emplaced.second) {
     auto existing = emplaced.first->second;
     if (existing.traits != traits) {
       return InvalidArgument(
-          "Duplicate FFI handler registration for %s on a platform %s with "
-          "different traits",
-          name, platform);
+          "Duplicate FFI handler registration for %s on a platform %s "
+          "(canonical %s) with different traits",
+          name, platform, canonical_platform);
     }
     if (existing.bundle.prepare != bundle.prepare ||
         existing.bundle.initialize != bundle.initialize ||
         existing.bundle.execute != bundle.execute) {
       return InvalidArgument(
-          "Duplicate FFI handler registration for %s on a platform %s with "
-          "different bundle addresses",
-          name, platform);
+          "Duplicate FFI handler registration for %s on a platform %s "
+          "(canonical %s) with different bundle addresses",
+          name, platform, canonical_platform);
     }
   }
   return absl::OkStatus();

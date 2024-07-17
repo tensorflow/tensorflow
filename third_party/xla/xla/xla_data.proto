@@ -937,6 +937,38 @@ message ReplicaGroup {
   repeated int64 replica_ids = 1;
 }
 
+// Represents a list of replica groups (a list of list of devices) with
+// reshaping and transposing an iota array (iota tile assignment). Can be used
+// to represent certain common patterns of device lists in a compact, scalable
+// format.
+message IotaReplicaGroupListProto {
+  // Number of replica groups.
+  int64 num_replica_groups = 1;
+
+  // Number of devices per group.
+  int64 num_devices_per_group = 2;
+
+  // The dimensions used to reshape the 1D iota array of device IDs.
+  repeated int64 iota_reshape_dims = 3;
+
+  // The dimension permutations to transposed the iota array reshaped to
+  // iota_reshape_dims. This must have the same size as iota_reshape_dims.
+  repeated int32 iota_transpose_perm = 4;
+}
+
+// Represents a series of devices participating in a collective operation (e.g.,
+// all-reduce and all-to-all). While this directly translates to a list of
+// replica groups, it may be used to represent these lists in a compact form.
+message CollectiveDeviceListProto {
+  // ReplicaGroupV1: List of replica groups. Legacy way of representing device
+  // lists.
+  repeated ReplicaGroup replica_groups = 1;
+
+  // ReplicaGroupV2: Represents a list of replica groups with reshaping and
+  // transposing an iota array.
+  IotaReplicaGroupListProto iota_replica_group_list = 2;
+}
+
 // Describes the source target pair in the collective permute op.
 message SourceTarget {
   int64 source = 1;

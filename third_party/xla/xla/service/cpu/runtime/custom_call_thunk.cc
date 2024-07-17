@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
@@ -94,7 +95,7 @@ absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
     mlir::MLIRContext mlir_context;
     ffi::CallFrameBuilder::FlatAttributesMap attributes;
     mlir::Attribute attr = mlir::parseAttribute(backend_config, &mlir_context);
-    if (auto dict = attr.dyn_cast_or_null<mlir::DictionaryAttr>()) {
+    if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
       TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     } else {
       return Internal(
@@ -259,7 +260,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
                                   op_buffers_.results_shapes[i].ToString(true),
                                   slice.ToString(), res.opaque());
   }
-  void* out_ptr = results.size() == 1 ? results[0] : results.data();
+
+  void* out_ptr = op_buffers_.is_tuple_result ? results.data() : results[0];
 
   // Set up the correct function type for each API version.
   CustomCallTarget custom_call_target;

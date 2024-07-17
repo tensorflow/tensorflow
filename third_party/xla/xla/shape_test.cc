@@ -90,6 +90,13 @@ TEST_F(ShapeTest, DynamicShapeToString) {
   EXPECT_EQ("f32[?,784]", unbounded_.ToString());
 }
 
+TEST_F(ShapeTest, DeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3, 2, 7, 9},
+                                                    {2, 0, 1, 4, 3});
+  shape.DeleteDimensions({1, 2, 3});
+  EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 9}, {0, 1}));
+}
+
 TEST_F(ShapeTest, EqualityTest) {
   // Different layouts.
   EXPECT_NE(ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}),
