@@ -46,8 +46,13 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/hlo_pass_pipeline.h"
-#include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/service/spmd/spmd_partitioner.h"
+#include "xla/shape.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
