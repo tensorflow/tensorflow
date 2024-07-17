@@ -47,10 +47,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
-#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
 namespace mlir {
@@ -580,7 +580,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
     std::vector<int8_t> quantized_values(real_values_attr.getNumElements());
     if (auto uniform_type = dyn_cast<UniformQuantizedType>(q_type)) {
       float min, max, scale;
-      tflite::tensor_utils::SymmetricQuantizeFloats(
+      mlir::lite::toco_legacy::PortableSymmetricQuantizeFloats(
           real_values.data(), real_values.size(), quantized_values.data(), &min,
           &max, &scale);
       // The scale has been adjusted, so the adjusted scale should be respected.
