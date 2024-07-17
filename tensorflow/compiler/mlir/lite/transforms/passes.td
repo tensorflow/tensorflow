@@ -311,6 +311,8 @@ def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
              "Whether disable set input nodes quantization parameters.">,
       Option<"is_qdq_conversion_", "is-qdq-conversion", "bool", "false",
              "Whether the source graph is a QDQ model intended for conversion only.">,
+      ListOption<"input_ranges_", "input-ranges", "std::string",
+                 "comma separated list of pairs specifying input ranges which correspond to positional func input arguments. Must be in the format '<min double>|<max double>,<min double>|<max double>'. Only used in tests.">,
   ];
 }
 
