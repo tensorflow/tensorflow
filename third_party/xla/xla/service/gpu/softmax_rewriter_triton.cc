@@ -470,6 +470,29 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamondChain(
   return can_tile;
 }
 
+FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
+                                   const se::GpuComputeCapability& cc) {
+  if (CodegenDecision is_supported = IsTritonSupportedInstruction(reduce, cc);
+      !is_supported) {
+    return FusionDecision(is_supported.Explain());
+  }
+
+  // Ensure that the reduction's identity is either a constant or a supported
+  // convert of a constant.
+  const HloInstruction* identity = reduce.operand(1);
+  bool should_fuse_identity =
+      identity->opcode() == HloOpcode::kConstant ||
+      (identity->opcode() == HloOpcode::kConvert &&
+       identity->operand(0)->opcode() == HloOpcode::kConstant &&
+       IsTritonSupportedInstruction(*identity, cc));
+  if (!should_fuse_identity) {
+    return "Reduction identity is not a constant or a supported convert of a "
+           "constant.";
+  }
+
+  return {};
+}
+
 DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
     HloInstruction* instr, const se::GpuComputeCapability& cc) {
   if (!instr->IsElementwiseBinary()) {
@@ -500,10 +523,10 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
     return "Broadcast or reduce have non-default layouts.";
   }
 
-  if (CodegenDecision is_supported = IsTritonSupportedInstruction(*reduce, cc);
-      !is_supported) {
-    VLOG(3) << is_supported.Explain();
-    return is_supported;
+  if (FusionDecision should_fuse_reduction = ShouldFuseReduction(*reduce, cc);
+      !should_fuse_reduction) {
+    VLOG(2) << should_fuse_reduction.Explain();
+    return should_fuse_reduction;
   }
 
   // Ensure that the reduction's identity is either a constant or a supported
