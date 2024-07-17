@@ -64,10 +64,6 @@ bool IsInputDilationSupported(const ConvData& data) {
   return llvm::all_of(data.InputDilations(), [](int64_t v) { return v == 1; });
 }
 
-bool IsKernelDilationSupported(const ConvData& data) {
-  return llvm::all_of(data.KernelDilations(), [](int64_t v) { return v == 1; });
-}
-
 bool IsFeatureGroupSupported(const ConvData& data) {
   return data.FeatureGroupCount() == 1;
 }
@@ -89,13 +85,10 @@ bool IsConvLegal(mhlo::ConvolutionOp op) {
   const bool are_groups_supported =
       IsFeatureGroupSupported(data) && IsBatchGroupSupported(data);
 
-  const bool are_dilations_supported =
-      IsInputDilationSupported(data) && IsKernelDilationSupported(data);
-
-  return !are_groups_supported || !are_dilations_supported ||
+  return !are_groups_supported || !IsInputDilationSupported(data) ||
          !AreShapesSupported(data) || !IsTFLNativeLayout(data) ||
          !IsStrideSupported(data) || !IsPaddingSupported(data) ||
-         !IsWindowReversalSupported(data) | !IsStandardConv(op);
+         !IsWindowReversalSupported(data) || !IsStandardConv(op);
 }
 
 //===----------------------------------------------------------------------===//
