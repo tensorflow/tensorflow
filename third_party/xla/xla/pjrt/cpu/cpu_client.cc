@@ -867,7 +867,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtCpuClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,
-    std::function<void()> on_delete_callback,
+    PjRtMemorySpace* memory, std::function<void()> on_delete_callback,
     std::optional<std::intptr_t> stream) {
   if (stream) {
     return Unimplemented(
@@ -886,8 +886,7 @@ TfrtCpuClient::CreateViewOfDeviceBuffer(
       std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
       shape, std::move(tracked_device_buffer), this,
-      tensorflow::down_cast<TfrtCpuDevice*>(device),
-      *device->default_memory_space()));
+      tensorflow::down_cast<TfrtCpuDevice*>(device), memory));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(

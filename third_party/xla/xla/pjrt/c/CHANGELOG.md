@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.55
+
+* Added ``memory`` field to ``PJRT_Client_CreateViewOfDeviceBuffer_Args``.
+
 ## 0.54
 * Deprecated PJRT_Buffer_GetMemoryLayout.
 

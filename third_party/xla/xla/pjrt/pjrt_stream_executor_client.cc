@@ -1290,7 +1290,7 @@ PjRtStreamExecutorClient::MakeCrossHostReceiveBuffersForGather(
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,
-    std::function<void()> on_delete_callback,
+    PjRtMemorySpace* memory, std::function<void()> on_delete_callback,
     std::optional<std::intptr_t> stream) {
   se::DeviceMemoryBase buffer(device_ptr, ShapeUtil::ByteSizeOf(shape));
 
@@ -1321,8 +1321,7 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
       std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
       std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
-      shape, std::move(device_buffer), this, device,
-      device->default_memory_space().value_or(nullptr)));
+      shape, std::move(device_buffer), this, device, memory));
 }
 
 // Transfer the given literal to the infeed queue of the given local device.

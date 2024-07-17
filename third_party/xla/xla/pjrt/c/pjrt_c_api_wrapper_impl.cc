@@ -766,9 +766,11 @@ PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
   }
   std::unique_ptr<xla::PjRtBuffer> buffer;
   PJRT_ASSIGN_OR_RETURN(
-      buffer, args->client->client->CreateViewOfDeviceBuffer(
-                  args->device_buffer_ptr, shape, args->device->device,
-                  on_delete_callback, stream));
+      buffer,
+      args->client->client->CreateViewOfDeviceBuffer(
+          args->device_buffer_ptr, shape, args->device->device,
+          args->memory != nullptr ? args->memory->memory_space : nullptr,
+          on_delete_callback, stream));
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
   return nullptr;
 }

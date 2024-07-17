@@ -932,7 +932,7 @@ class PjRtClient {
   // platforms.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
-      std::function<void()> on_delete_callback,
+      PjRtMemorySpace* memory, std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream = std::nullopt) = 0;
 
   // Returns platform-dependent address for the given buffer that is often but

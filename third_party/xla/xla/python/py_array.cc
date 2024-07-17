@@ -942,11 +942,14 @@ absl::StatusOr<nb::object> CudaArrayInterfaceToBuffer(
         "This operation is implemented for a PjRt-compatible backend only.");
   }
   TF_RET_CHECK(pjrt_device->IsAddressable());
+  // TODO(slebedev): Query the pointer for the memory space instead.
+  auto* memory =
+      pjrt_device->pjrt_device()->default_memory_space().value_or(nullptr);
   TF_ASSIGN_OR_RETURN(
       auto pjrt_buffer,
       device->client()->pjrt_client()->CreateViewOfDeviceBuffer(
           static_cast<char*>(data_ptr), shape, pjrt_device->pjrt_device(),
-          on_delete_callback,
+          memory, on_delete_callback,
           stream <= 2 ? std::nullopt : std::make_optional(stream)));
   auto* ifrt_client =
       llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
