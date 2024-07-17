@@ -22,23 +22,37 @@ namespace mlir::odml {
 
 // Legalizes mhlo.convolution to the corresponding tfl op.
 //
-// Only considers convolutions with nhwc_ohwi_nhwc layout and trivial (no)
+// Only considers convolutions with tfl-native layout and trivial (no)
 // padding. It is expected that convolutions will re-layouted in upstream
 // prepare pass. Additionally it is expected that padding will be pulled out
 // into an explicit mhlo.pad op in said prepare pass.
 //
+// Note: "tfl-native" layouts are as follows:
+// 2D : [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// 3D : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+//
 // Matches: mhlo.convolution
-//   layout:        nhwc_ohwi_nhwc
-//.  padding:       trivial (all 0)
-//   lhs_dilations: trivial (all 1) TODO: b/351437662 - Add support.
-//   rhs_dilations: trivial (all 1)
-//   strides:       trivial (all 1) TODO: b/351437662 - Add support.
-//.  feature_group: trivial (1) TODO: b/351437662 - Add support.
+//   layout:        tfl-native
+//   padding:       trivial (all 0)
+//   lhs_dilations: trivial (all 1)
+//   rhs_dilations: any
+//   strides:       any
+//   feature_group: 1 or kernel_input_channel * feature_group = input_channel
 //   batch_group:   trivial (1)
 //   reversal:      trivial (all False)
-//.  shape:         static TODO: b/351437662 - Add support for dyn batch.
+//   shape:         static
 //
-// Emits: tfl.conv_2d
+// This pattern emits TFL convs based on the following decision tree:
+// if lhs_dilations are trivial
+//   if feature_group == 1 or kernel_in_channel * feature_group = in_channel
+//      if rank == 4
+//        tfl.conv_2D
+//      if rank == 5
+//        tfl.conv_3D  TODO: b/352952205 - Add support.
+//   else
+//      tfl.depthwise_conv TODO: b/352954597 - Add support.
+// else:
+//   tfl.transpose_conv TODO: b/352954597 - Add support.
 class LegalizeConv : public OpConversionPattern<mhlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
