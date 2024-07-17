@@ -54,7 +54,7 @@ class PreventMmaV3LoopUnrollingPass
       // something.
       builder.create<mlir::triton::ElementwiseInlineAsmOp>(
           forOp.getLoc(), builder.getI32Type(),
-          /*asm_string=*/".pragma \"nounroll\";", /*constraints=*/"",
+          /*asm_string=*/".pragma \"nounroll\";", /*constraints=*/"=r",
           /*isPure=*/false, /*pack=*/1, mlir::ArrayRef<mlir::Value>{});
     });
   }
