@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
@@ -37,7 +37,7 @@ class DeterminismTest;
 namespace stream_executor {
 namespace gpu {
 
-class GpuExecutor;
+class GpuContext;
 class GpuStream;
 
 // When a timer is created it launches a delay kernel into the given stream and
@@ -49,19 +49,21 @@ class GpuStream;
 class GpuTimer : public EventBasedTimer {
  public:
   static absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
-      Stream* stream, bool use_delay_kernel);
+      GpuStream* stream, GpuContext* context, bool use_delay_kernel,
+      std::unique_ptr<GpuEvent> start_event,
+      std::unique_ptr<GpuEvent> stop_event);
 
-  explicit GpuTimer(GpuExecutor* parent, GpuEventHandle start_event,
-                    GpuEventHandle stop_event, GpuStream* stream,
+  explicit GpuTimer(GpuContext* context, std::unique_ptr<GpuEvent> start_event,
+                    std::unique_ptr<GpuEvent> stop_event, GpuStream* stream,
                     GpuSemaphore semaphore = {})
-      : parent_(parent),
-        start_event_(start_event),
-        stop_event_(stop_event),
+      : context_(context),
+        start_event_(std::move(start_event)),
+        stop_event_(std::move(stop_event)),
         stream_(stream),
         semaphore_(std::move(semaphore)) {}
 
   GpuTimer(GpuTimer&& other)
-      : parent_(other.parent_),
+      : context_(other.context_),
         start_event_(std::exchange(other.start_event_, nullptr)),
         stop_event_(std::exchange(other.stop_event_, nullptr)),
         stream_(other.stream_),
@@ -69,7 +71,7 @@ class GpuTimer : public EventBasedTimer {
 
   GpuTimer& operator=(GpuTimer&& other) {
     if (this != &other) {
-      parent_ = other.parent_;
+      context_ = other.context_;
       start_event_ = std::exchange(other.start_event_, nullptr);
       stop_event_ = std::exchange(other.stop_event_, nullptr);
       stream_ = other.stream_;
@@ -83,9 +85,9 @@ class GpuTimer : public EventBasedTimer {
   absl::StatusOr<absl::Duration> GetElapsedDuration() override;
 
  private:
-  GpuExecutor* parent_;
-  GpuEventHandle start_event_ = nullptr;
-  GpuEventHandle stop_event_ = nullptr;
+  GpuContext* context_;
+  std::unique_ptr<GpuEvent> start_event_;
+  std::unique_ptr<GpuEvent> stop_event_;
   GpuStream* stream_;
   GpuSemaphore semaphore_;
   bool is_stopped_ = false;

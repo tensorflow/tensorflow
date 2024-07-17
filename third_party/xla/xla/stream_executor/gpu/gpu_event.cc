@@ -31,9 +31,11 @@ GpuEvent::GpuEvent(GpuExecutor* parent)
 
 GpuEvent::~GpuEvent() { Destroy().IgnoreError(); }
 
-absl::Status GpuEvent::Init() {
+absl::Status GpuEvent::Init(bool allow_timing) {
   return GpuDriver::InitEvent(parent_->gpu_context(), &gpu_event_,
-                              GpuDriver::EventFlags::kDisableTiming);
+                              allow_timing
+                                  ? GpuDriver::EventFlags::kDefault
+                                  : GpuDriver::EventFlags::kDisableTiming);
 }
 
 absl::Status GpuEvent::Destroy() {
