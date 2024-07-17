@@ -245,7 +245,11 @@ _CPU_X86_BUILD = Build(
     repo="openxla/xla",
     docker_image=_DEFAULT_IMAGE,
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS
+    + (
+        "-//xla/service/gpu/model/fuzztest/...",
+        "-//xla/service/gpu:triton_support_test",
+    ),
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options=_DEFAULT_BAZEL_OPTIONS,
@@ -263,7 +267,11 @@ _CPU_ARM64_BUILD = Build(
     repo="openxla/xla",
     docker_image=_ARM64_JAX_MULTI_PYTHON_IMAGE,
     configs=("warnings", "rbe_cross_compile_linux_arm64_xla", "nonccl"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS
+    + (
+        "-//xla/service/gpu/model/fuzztest/...",
+        "-//xla/service/gpu:triton_support_test",
+    ),
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
