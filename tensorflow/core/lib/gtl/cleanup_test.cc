@@ -18,8 +18,10 @@ limitations under the License.
 #include <functional>
 #include <type_traits>
 
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
