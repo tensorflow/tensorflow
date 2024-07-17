@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
@@ -490,6 +491,10 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
         params.buffer_allocations->GetDeviceAddress(input.slice));
     shapes.push_back(input.shape);
 
+    // Annotate memory that might have been initialized by jit-compiled code.
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data.back().opaque(),
+                                        data.back().size());
+
     VLOG(3) << absl::StreamFormat("  sort input #%d: %s in slice %s (%p)", idx,
                                   input.shape.ToString(),
                                   input.slice.ToString(), data.back().opaque());
@@ -509,6 +514,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
     less_than_ = [comparator](const void** data) {
       bool result;
       comparator(&result, nullptr, data, nullptr, nullptr, nullptr);
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
       return result;
     };
     less_than_ptr_.store(less_than = &*less_than_);
