@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/thunk_emitter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -60,6 +61,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/reduce_scatter_thunk.h"
 #include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
+#include "xla/service/cpu/runtime/sort_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/topk_thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
@@ -308,6 +310,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kCustomCall:
       return EmitCustomCallThunk(instruction);
+
+    case HloOpcode::kSort:
+      return EmitSortThunk(instruction);
 
     default:
       return absl::UnimplementedError(
@@ -949,6 +954,34 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicUpdateSliceThunk(
   return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
                                         buffers.arguments, buffers.results,
                                         kernel.name, kernel.thread_dims);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
+    const HloInstruction* instruction) {
+  auto* sort = Cast<HloSortInstruction>(instruction);
+
+  TF_ASSIGN_OR_RETURN(auto comparator, ir_emitter_.EmitSortComparator(sort));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(sort));
+
+  if (!absl::c_equal(buffers.arguments, buffers.results)) {
+    return Internal(
+        "Sort operation expected to be performed inplace and all arguments "
+        "must alias with results");
+  }
+
+  std::vector<SortThunk::Input> inputs;
+  inputs.reserve(sort->operand_count());
+
+  for (size_t i = 0; i < sort->operand_count(); ++i) {
+    inputs.push_back(SortThunk::Input{
+        buffers.arguments[i],
+        sort->operand(i)->shape(),
+    });
+  }
+
+  return ThunkSequence::Of<SortThunk>(ThunkInfo(instruction), inputs,
+                                      sort->sort_dimension(), sort->is_stable(),
+                                      comparator.name);
 }
 
 absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>

@@ -1264,6 +1264,14 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       }
     }
 
+    // Compile auxiliary comparator functions used by sort thunks.
+    for (const auto& comparator : ir_emitter2.comparators()) {
+      if (auto sym = (*jit)->FindCompiledSymbol(comparator.name); !sym) {
+        return Internal("Failed to find compiled symbol for comparator %s",
+                        comparator.name);
+      }
+    }
+
     // Create constant allocations from the buffer assignment.
     TF_ASSIGN_OR_RETURN(
         std::vector<CpuExecutable::ConstantAllocation> constants,

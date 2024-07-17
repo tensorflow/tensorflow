@@ -148,6 +148,7 @@ class CpuExecutable : public Executable {
    public:
     explicit FunctionRegistry(SimpleOrcJIT* jit);
     absl::StatusOr<Kernel> FindKernel(std::string_view name) final;
+    absl::StatusOr<Comparator> FindComparator(std::string_view name) final;
 
    private:
     SimpleOrcJIT* jit_;

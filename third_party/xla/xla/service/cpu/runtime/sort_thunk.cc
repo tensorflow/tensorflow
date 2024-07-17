@@ -22,16 +22,19 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
@@ -48,9 +51,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
-    Info info, absl::Span<const Input> inputs, int64_t dimension,
-    bool is_stable, LessThan less_than) {
+static absl::Status VerifySortInputs(absl::Span<const SortThunk::Input> inputs,
+                                     int64_t dimension) {
   // We should have at least one input buffer.
   if (inputs.empty()) {
     return Internal("Inputs must not be empty");
@@ -60,7 +62,7 @@ absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
   auto equal = Shape::Equal().IgnoreElementType();
   const Shape& shape = inputs[0].shape;
 
-  for (const Input& input : inputs) {
+  for (const SortThunk::Input& input : inputs) {
     if (!equal(shape, input.shape)) {
       return Internal("Inputs must have the same shape");
     }
@@ -81,8 +83,23 @@ absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
                     shape.ToString(/*print_layout=*/true));
   }
 
-  return absl::WrapUnique(
-      new SortThunk(std::move(info), inputs, dimension, is_stable, less_than));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
+    Info info, absl::Span<const Input> inputs, int64_t dimension,
+    bool is_stable, LessThan less_than) {
+  TF_RETURN_IF_ERROR(VerifySortInputs(inputs, dimension));
+  return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
+                                        is_stable, std::move(less_than)));
+}
+
+absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
+    Info info, absl::Span<const Input> inputs, int64_t dimension,
+    bool is_stable, std::string comparator_name) {
+  TF_RETURN_IF_ERROR(VerifySortInputs(inputs, dimension));
+  return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
+                                        is_stable, std::move(comparator_name)));
 }
 
 SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
@@ -91,7 +108,18 @@ SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
       inputs_(inputs.begin(), inputs.end()),
       dimension_(dimension),
       is_stable_(is_stable),
-      less_than_(less_than) {}
+      less_than_(std::move(less_than)),
+      less_than_ptr_(&*less_than_) {}
+
+SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
+                     int64_t dimension, bool is_stable,
+                     std::string comparator_name)
+    : Thunk(Kind::kSort, std::move(info)),
+      inputs_(inputs.begin(), inputs.end()),
+      dimension_(dimension),
+      is_stable_(is_stable),
+      comparator_name_(std::move(comparator_name)),
+      less_than_ptr_(nullptr) {}
 
 namespace {
 
@@ -358,12 +386,12 @@ static SortDims GetSortDims(absl::Span<const int64_t> dimensions,
 template <typename T0>
 static void SortInplace(const SortDims& sort_dims, int64_t offset,
                         absl::Span<se::DeviceMemoryBase> data, bool is_stable,
-                        SortThunk::LessThan less_than) {
+                        SortThunk::LessThan* less_than) {
   T0* base0 = reinterpret_cast<T0*>(data[0].opaque());
 
   auto compare = [&](const auto& a, const auto& b) {
     auto data = ComparatorData1(a, b);
-    return less_than(data.data());
+    return (*less_than)(data.data());
   };
 
   SortIterator<T0> begin(Ptr<T0>(base0 + offset),
@@ -379,13 +407,13 @@ static void SortInplace(const SortDims& sort_dims, int64_t offset,
 template <typename T0, typename T1>
 static void SortInplace(const SortDims& sort_dims, int64_t offset,
                         absl::Span<se::DeviceMemoryBase> data, bool is_stable,
-                        SortThunk::LessThan less_than) {
+                        SortThunk::LessThan* less_than) {
   T0* base0 = reinterpret_cast<T0*>(data[0].opaque());
   T1* base1 = reinterpret_cast<T1*>(data[1].opaque());
 
   auto compare = [&](const auto& a, const auto& b) {
     auto data = ComparatorData2(a, b);
-    return less_than(data.data());
+    return (*less_than)(data.data());
   };
 
   SortIterator<T0, T1> begin(Ptr<T0, T1>(base0 + offset, base1 + offset),
@@ -401,7 +429,7 @@ static void SortInplace(const SortDims& sort_dims, int64_t offset,
 static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
                                 absl::Span<const Shape> shapes,
                                 int64_t dimension, bool is_stable,
-                                SortThunk::LessThan less_than) {
+                                SortThunk::LessThan* less_than) {
   // All inputs have the same dimensions and layout, so we can use the first
   // shape to get the sort dimensions.
   SortDims sort_dims = GetSortDims(shapes[0].dimensions(), dimension);
@@ -456,14 +484,38 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
   shapes.reserve(inputs_.size());
 
   for (const Input& input : inputs_) {
+    size_t idx = data.size();
     TF_ASSIGN_OR_RETURN(
         data.emplace_back(),
         params.buffer_allocations->GetDeviceAddress(input.slice));
     shapes.push_back(input.shape);
+
+    VLOG(3) << absl::StreamFormat("  sort input #%d: %s in slice %s (%p)", idx,
+                                  input.shape.ToString(),
+                                  input.slice.ToString(), data.back().opaque());
+  }
+
+  LessThan* less_than = less_than_ptr_.load();
+
+  // Because thunks are owned by a parent CpuExecutable, we can safely assume
+  // that comparator pointer will not change after we find it the first time,
+  // and we can create a comparator adaptor to a LessThan function.
+  if (ABSL_PREDICT_FALSE(less_than == nullptr)) {
+    TF_ASSIGN_OR_RETURN(
+        FunctionRegistry::Comparator comparator,
+        params.function_registry->FindComparator(comparator_name_));
+
+    absl::MutexLock lock(&mutex_);
+    less_than_ = [comparator](const void** data) {
+      bool result;
+      comparator(&result, nullptr, data, nullptr, nullptr, nullptr);
+      return result;
+    };
+    less_than_ptr_.store(less_than = &*less_than_);
   }
 
   TF_RETURN_IF_ERROR(SortInplace(absl::MakeSpan(data), shapes, dimension_,
-                                 is_stable_, less_than_));
+                                 is_stable_, less_than));
 
   return OkExecuteEvent();
 }

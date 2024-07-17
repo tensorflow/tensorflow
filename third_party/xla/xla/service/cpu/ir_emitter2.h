@@ -109,8 +109,15 @@ class IrEmitter2 {
     se::ThreadDim thread_dims;
   };
 
+  // Emitted comparator function information (for sort operation).
+  struct ComparatorInfo {
+    std::string name;
+  };
+
   // Returns all the kernels emitted so far via this emitter.
   absl::Span<const KernelInfo> kernels() const { return kernels_; }
+
+  absl::Span<const ComparatorInfo> comparators() const { return comparators_; }
 
   // Emits an elemental host kernel for the given HLO instruction.
   absl::StatusOr<KernelInfo> EmitElementalHostKernel(
@@ -143,6 +150,10 @@ class IrEmitter2 {
 
   // Emits a host kernel for the given dynamic-update-slice instruction.
   absl::StatusOr<KernelInfo> EmitDynamicUpdateSliceHostKernel(
+      const HloInstruction* instr);
+
+  // Emits a comparator function for the given sort instruction.
+  absl::StatusOr<ComparatorInfo> EmitSortComparator(
       const HloInstruction* instr);
 
   // Emits a host kernel prototype and prepares function for emitting kernel
@@ -233,8 +244,9 @@ class IrEmitter2 {
   llvm::StructType* thread_ty_;
   llvm::StructType* arg_ty_;
 
-  // Keeps track of all the kernels emitted so far.
+  // Keeps track of all the functions emitted so far.
   std::vector<KernelInfo> kernels_;
+  std::vector<ComparatorInfo> comparators_;
 };
 
 }  // namespace xla::cpu

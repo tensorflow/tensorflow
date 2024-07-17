@@ -850,6 +850,7 @@ cc_library(
         "//xla/service/cpu/runtime:reduce_scatter_thunk",
         "//xla/service/cpu/runtime:resource_use",
         "//xla/service/cpu/runtime:rng_state_thunk",
+        "//xla/service/cpu/runtime:sort_thunk",
         "//xla/service/cpu/runtime:thunk",
         "//xla/service/cpu/runtime:topk_thunk",
         "//xla/service/cpu/runtime:while_thunk",

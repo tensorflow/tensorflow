@@ -1782,6 +1782,7 @@ xla_test(
 xla_test(
     name = "topk_test",
     srcs = ["topk_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
