@@ -312,6 +312,9 @@ absl::StatusOr<bool> HloCSE::Run(
         representatives(/*N=*/computation->instruction_count() + 1,
                         absl::Hash<CseKey>{}, cse_equal);
     for (auto instruction : computation->MakeInstructionPostOrder()) {
+      if (instructions_to_skip_.contains(instruction)) {
+        continue;
+      }
       // If the instruction has zero operands (constants, parameters, etc.) skip
       // over it.
       if (instruction->operand_count() == 0 &&

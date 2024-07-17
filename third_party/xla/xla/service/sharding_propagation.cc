@@ -3371,7 +3371,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         /*ignore_control_dependencies=*/false,
         /*only_scalars=*/false,
         /*is_sharding_sensitive=*/true,
-        /*allow_compatible_sharding=*/false);
+        /*allow_compatible_sharding=*/true,
+        /*instructions_to_skip=*/provided_shardings);
     TF_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
 
     // CSE may invalidate stored HloInstruction pointers, so we need to remove
