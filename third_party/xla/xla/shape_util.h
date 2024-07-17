@@ -823,7 +823,7 @@ class ShapeUtil {
                                           bool ignore_element_type = false);
 
   // If the given bitcast is a transpose, deduce and return `dimensions`
-  // attribute of such a transpose. Otherwise, return nullptr.
+  // attribute of such a transpose. Otherwise, return std::nullopt.
   static std::optional<std::vector<int64_t>>
   DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
                                       const Shape& output_shape);
