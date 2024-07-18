@@ -74,17 +74,25 @@ std::optional<Value> materializeCastToIllegal(OpBuilder& builder, Type type,
       ->getResult(0);
 }
 
-std::optional<Value> scalarToTensor(OpBuilder& builder, Type /*type*/,
+std::optional<Value> scalarToTensor(OpBuilder& builder, Type type,
                                     ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
   if (mlir::isa<ShapedType>(inputs.front().getType())) {
     return std::nullopt;
   }
-  return builder
-      .create<tensor::FromElementsOp>(
-          loc, RankedTensorType::get({}, inputs.front().getType()),
-          inputs.front())
-      .getResult();
+  Value result =
+      builder
+          .create<tensor::FromElementsOp>(
+              loc, RankedTensorType::get({}, inputs.front().getType()),
+              inputs.front())
+          .getResult();
+  // Convert to a signed integer if necessary.
+  Type elementType = mlir::getElementTypeOrSelf(type);
+  if (elementType.isInteger() && !elementType.isSignlessInteger()) {
+    result = builder.create<UnrealizedConversionCastOp>(loc, type, result)
+                 ->getResult(0);
+  }
+  return result;
 }
 
 }  // namespace
