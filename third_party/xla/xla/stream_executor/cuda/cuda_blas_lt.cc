@@ -406,11 +406,12 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     std::optional<DeviceMemoryBase> workspace,
     std::optional<ScratchAllocator*> scratch_allocator,
     blas::ProfileResult* profile_result = nullptr) const {
-  TF_ASSIGN_OR_RETURN(
-      std::optional<gpu::GpuTimer> timer,
-      gpu::GpuTimer::CreateIfNeeded(
-          stream, profile_result && profile_result->warmup_run_executed(),
-          profile_result != nullptr));
+  std::optional<gpu::GpuTimer> timer = std::nullopt;
+  if (profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        timer,
+        gpu::GpuTimer::Create(stream, profile_result->warmup_run_executed()));
+  }
 
   void* workspace_addr;
   uint64_t workspace_size = 0;

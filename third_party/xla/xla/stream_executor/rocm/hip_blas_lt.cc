@@ -395,12 +395,13 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
       blas_lt_ref_.parent_->RecordApiTrace(StreamExecutor::GemmCallTrace{
           StreamExecutor::GemmCallTrace::GemmType::kBlasLt, 0, a.size(),
           b.size()});
+  std::optional<gpu::GpuTimer> timer = std::nullopt;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<gpu::GpuTimer> timer,
-      gpu::GpuTimer::CreateIfNeeded(
-          stream, profile_result && profile_result->warmup_run_executed(),
-          profile_result));
+  if (profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        timer,
+        gpu::GpuTimer::Create(stream, profile_result->warmup_run_executed()));
+  }
 
   void* workspace_addr = nullptr;
   uint64_t workspace_size = 0;

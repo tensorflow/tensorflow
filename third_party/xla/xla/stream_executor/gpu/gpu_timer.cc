@@ -119,15 +119,6 @@ bool ShouldLaunchDelayKernel() {
                                   stop_event,     stream, std::move(semaphore)};
 }
 
-/*static*/ absl::StatusOr<std::optional<GpuTimer>> GpuTimer::CreateIfNeeded(
-    Stream* stream, bool use_delay_kernel, bool is_needed) {
-  if (is_needed) {
-    TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream, use_delay_kernel));
-    return {std::make_optional(std::move(t))};
-  }
-  return std::nullopt;
-}
-
 /*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
   return_random_durations = true;
 }

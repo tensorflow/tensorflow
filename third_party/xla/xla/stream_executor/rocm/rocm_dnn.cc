@@ -2494,13 +2494,13 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
   }
 
   const bool is_profiling = output_profile_result != nullptr;
+  std::optional<GpuTimer> timer = std::nullopt;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(
-          stream,
-          output_profile_result && output_profile_result->warmup_run_executed(),
-          is_profiling));
+  if (is_profiling) {
+    TF_ASSIGN_OR_RETURN(
+        timer,
+        GpuTimer::Create(stream, output_profile_result->warmup_run_executed()));
+  }
 
   // make the forward call
   if (!is_training) {
@@ -2626,13 +2626,13 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
         stream->MemZero(input_c_backprop_data, size_data * type_size));
 
   const bool is_profiling = output_profile_result != nullptr;
+  std::optional<GpuTimer> timer = std::nullopt;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(
-          stream,
-          output_profile_result && output_profile_result->warmup_run_executed(),
-          is_profiling));
+  if (is_profiling) {
+    TF_ASSIGN_OR_RETURN(
+        timer,
+        GpuTimer::Create(stream, output_profile_result->warmup_run_executed()));
+  }
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -3326,12 +3326,12 @@ class RocmConvRunner : public dnn::ConvRunner {
     float beta = 0.0;
 
     const bool is_profiling = output_profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(
-                            stream,
-                            output_profile_result &&
-                                output_profile_result->warmup_run_executed(),
-                            is_profiling));
+    std::optional<GpuTimer> timer = std::nullopt;
+    if (is_profiling) {
+      TF_ASSIGN_OR_RETURN(
+          timer, GpuTimer::Create(
+                     stream, output_profile_result->warmup_run_executed()));
+    }
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
