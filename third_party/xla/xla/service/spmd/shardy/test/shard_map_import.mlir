@@ -55,6 +55,27 @@ func.func private @shmap_body_no_arg() -> tensor<4xf32> {
   return %0 : tensor<4xf32>
 }
 
+// CHECK-LABEL: func.func public @call_op_with_shamp_body_in_middle
+func.func public @call_op_with_shamp_body_in_middle(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
+  // CHECK:          %0 = sdy.manual_computation(%arg0)
+  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_0, [{"a"}, {}]>] out_shardings=[<@mesh_0, [{"a"}, {}]>] manual_axes={"a"} (%arg1: tensor<4x32xf32>) {
+  // CHECK-NEXT:       %1 = mhlo.add %arg1, %arg1 : tensor<4x32xf32>
+  // CHECK-NEXT:       sdy.return %1 : tensor<4x32xf32>
+  // CHECK-NEXT:     } : (tensor<16x32xf32>) -> tensor<16x32xf32>
+  // CHECK-NEXT:     return %0 : tensor<16x32xf32>
+  %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a"}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
+  %1 = mhlo.custom_call @SPMDFullToShardShape(%0) : (tensor<16x32xf32>) -> tensor<4x32xf32>
+  %2 = call @prefix_shmap_body_suffix(%1) : (tensor<4x32xf32>) -> tensor<4x32xf32>
+  %3 = mhlo.custom_call @Sharding(%2) : (tensor<4x32xf32>) -> tensor<4x32xf32>
+  %4 = mhlo.custom_call @SPMDShardToFullShape(%3) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a"}, {}]>]>} : (tensor<4x32xf32>) -> tensor<16x32xf32>
+  return %4 : tensor<16x32xf32>
+}
+// CHECK-NOT: func.func private @shmap_body
+func.func private @prefix_shmap_body_suffix(%arg0: tensor<4x32xf32>) -> (tensor<4x32xf32>) {
+  %0 = mhlo.add %arg0, %arg0 : tensor<4x32xf32>
+  return %0 : tensor<4x32xf32>
+}
+
 // CHECK-LABEL: func.func public @shard_map_single_sharded_input_output_dim_0
 func.func public @shard_map_single_sharded_input_output_dim_0(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   // CHECK:          %0 = sdy.manual_computation(%arg0)
@@ -157,15 +178,15 @@ func.func private @shmap_body_2(%arg0: tensor<2x8xf32>, %arg1: tensor<8x32xf32>)
 func.func public @shard_map_wrong_callee_name(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a"}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
   %1 = mhlo.custom_call @SPMDFullToShardShape(%0) : (tensor<16x32xf32>) -> tensor<4x32xf32>
-  // CHECK: call @prefix_shmap_body
+  // CHECK: call @shmap_head
   // CHECK-NOT: sdy.manual_computation
-  %2 = call @prefix_shmap_body(%1) : (tensor<4x32xf32>) -> tensor<4x32xf32>
+  %2 = call @shmap_head(%1) : (tensor<4x32xf32>) -> tensor<4x32xf32>
   %3 = mhlo.custom_call @Sharding(%2) : (tensor<4x32xf32>) -> tensor<4x32xf32>
   %4 = mhlo.custom_call @SPMDShardToFullShape(%3) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a"}, {}]>]>} : (tensor<4x32xf32>) -> tensor<16x32xf32>
   return %4 : tensor<16x32xf32>
 }
-// CHECK-LABEL: func.func private @prefix_shmap_body
-func.func private @prefix_shmap_body(%arg0: tensor<4x32xf32>) -> (tensor<4x32xf32>) {
+// CHECK-LABEL: func.func private @shmap_head
+func.func private @shmap_head(%arg0: tensor<4x32xf32>) -> (tensor<4x32xf32>) {
   %0 = mhlo.add %arg0, %arg0 : tensor<4x32xf32>
   return %0 : tensor<4x32xf32>
 }

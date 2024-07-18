@@ -15,26 +15,20 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/shardy_call_inliner.h"
 
-#include <string>
-#include <string_view>
-
+#include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/call_inliner.h"
 
 namespace xla {
 
 bool ShardyCallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
-  auto prefix_check = [](std::string_view name) {
-    const std::string prefix = "shmap_body";
-    return name.substr(0, prefix.size()) == prefix;
-  };
   return CallInliner::IsInlineableCallOp(instruction) &&
          !instruction->has_backend_config() &&
          !(instruction->GetModule()
                ->config()
                .debug_options()
                .xla_use_shardy() &&
-           prefix_check(instruction->to_apply()->name()));
+           absl::StrContains(instruction->to_apply()->name(), "shmap_body"));
 }
 
 }  // namespace xla
