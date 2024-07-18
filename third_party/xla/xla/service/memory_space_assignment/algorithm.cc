@@ -1503,14 +1503,6 @@ void MsaAlgorithm::CreateAllocationValuesForJointProcessedIntervals(
       continue;
     }
 
-    if (colocated_intervals.size() > 1 &&
-        !options_.allocate_across_sequential_calls) {
-      VLOG(4) << "Not allocating " << interval.buffer->ToShortString()
-              << " because it aliases with another interval and "
-              << " allocate_across_sequential_calls is false.";
-      continue;
-    }
-
     if (!ConsumeFuel("memory_space_assignment", [&] {
           return absl::StrCat("Ran out of fuel at buffer: ",
                               colocated_intervals[0]->buffer->ToShortString());

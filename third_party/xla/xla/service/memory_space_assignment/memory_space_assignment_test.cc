@@ -151,8 +151,6 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
   const int64_t kDefaultMemorySpace = 0;
   const int64_t kAlternateMemorySpace = 1;
 
-  virtual bool allocate_across_sequential_calls() const { return false; }
-
   HloCostAnalysis::Options DefaultHloCostAnalysisOptions() {
     HloCostAnalysis::Options options;
     options.shape_size = ShapeSize;
@@ -171,8 +169,6 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     options.alternate_memory_space = kAlternateMemorySpace;
     options.max_outstanding_prefetches = -1;
     options.max_outstanding_evictions = -1;
-    options.allocate_across_sequential_calls =
-        allocate_across_sequential_calls();
 
     return options;
   }
@@ -504,13 +500,9 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
   CostAnalysis::Cache cache_;
 };
 
-class MemorySpaceAssignmentTest : public MemorySpaceAssignmentTestBase,
-                                  public ::testing::WithParamInterface<bool> {
- protected:
-  bool allocate_across_sequential_calls() const override { return GetParam(); }
-};
+using MemorySpaceAssignmentTest = MemorySpaceAssignmentTestBase;
 
-TEST_P(MemorySpaceAssignmentTest, ParameterOnly) {
+TEST_F(MemorySpaceAssignmentTest, ParameterOnly) {
   // A module consisting of a single parameter. Inputs/outputs are currently
   // excluded from memory space assignment.
   HloComputation::Builder builder(TestName());
@@ -530,7 +522,7 @@ TEST_P(MemorySpaceAssignmentTest, ParameterOnly) {
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
 }
 
-TEST_P(MemorySpaceAssignmentTest, Simple) {
+TEST_F(MemorySpaceAssignmentTest, Simple) {
   // A simple module with a few simple instructions. Expect this to be
   // transformed with CopyStart and CopyDone instructions inserted after inputs
   // and before outputs.
@@ -578,7 +570,7 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
             preset_assignments->chunks()[1].second.offset);
 }
 
-TEST_P(MemorySpaceAssignmentTest, NegateChain) {
+TEST_F(MemorySpaceAssignmentTest, NegateChain) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -646,7 +638,7 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
 // A simple case where the synchronous copy is actually redundant, because its
 // operand ends up getting prefetched and the its output is only used once, so
 // we remove the sync copy.
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        SyncCopyReplacementRedundantCopyAfterPrefetch) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -684,7 +676,7 @@ ENTRY entry {
 // p0_copy, but we may clobber the data if we use the same async copy used for
 // prefetching to replace the sync copy p0_copy. The pattern here is that the
 // sync copy operand (p0) shows up at more than one position.
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        SyncCopyReplacementWouldNeedMoreThanOneAsyncCopy) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -713,7 +705,7 @@ ENTRY entry {
   ASSERT_NE(tuple0->operand(1), tuple0->operand(2));
 }
 
-TEST_P(MemorySpaceAssignmentTest, SyncCopyReplacementOperandHasMultipleUses) {
+TEST_F(MemorySpaceAssignmentTest, SyncCopyReplacementOperandHasMultipleUses) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -742,7 +734,7 @@ ENTRY entry {
   ASSERT_EQ(add0->operand(0), add0->operand(1));
 }
 
-TEST_P(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
+TEST_F(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   // For buffers produced in alternate memory spill to default and prefetch
@@ -801,7 +793,7 @@ ENTRY entry {
                                                        op::Parameter(1))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, AlwaysSpillPrefetchForSecondUseTest) {
+TEST_F(MemorySpaceAssignmentTest, AlwaysSpillPrefetchForSecondUseTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   //
@@ -878,7 +870,7 @@ ENTRY entry {
   EXPECT_EQ(negate0->name(), "negate0");
 }
 
-TEST_P(MemorySpaceAssignmentTest, AlwaysSpillEvictionTest) {
+TEST_F(MemorySpaceAssignmentTest, AlwaysSpillEvictionTest) {
   // tanh0 buffer is produced in alternate memory and it has two uses that are
   // sufficiently far apart for an eviction to be scheduled. When the
   // always_spill_to_default_memory option is not true, the buffer stays in
@@ -951,7 +943,7 @@ ENTRY entry {
   EXPECT_EQ(tanh0_eviction_done, tanh0_prefetch_start->operand(0));
 }
 
-TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
+TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -1027,7 +1019,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
+TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -1103,7 +1095,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
+TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -1179,7 +1171,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
+TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -1247,7 +1239,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
   EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
-TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
+TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -1327,7 +1319,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
+TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -1408,7 +1400,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
+TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -1485,7 +1477,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetch) {
+TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetch) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
   AssignMemorySpace(module.get());
@@ -1498,7 +1490,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetch) {
                                           kAlternateMemorySpace, op::Tanh()))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
+TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
   AssignMemorySpace(module.get(),
@@ -1508,7 +1500,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
   EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
+TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
   AssignMemorySpace(module.get(),
@@ -1518,7 +1510,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
   EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 1);
 }
 
-TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
+TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
   AssignMemorySpace(module.get(),
@@ -1529,7 +1521,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
 }
 
 // TODO(berkin): This test is broken with some prefetch timing improvements.
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        DISABLED_DontEvictWhenThereIsDefaultMemAllocation) {
   // This test is the same as EvictAndPrefetchLimitAsyncCopies1, except we check
   // that there is no eviction if not necessary (due to an existing allocation
@@ -1600,7 +1592,7 @@ TEST_P(MemorySpaceAssignmentTest,
   EXPECT_THAT(h, op::Multiply(op::Subtract(), op::Multiply()));
 }
 
-TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchAndPrefetch) {
+TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchAndPrefetch) {
   // Test for a memory corruption bug involving evict/prefetch/prefetch pattern,
   // where the last prefetch copied from the original buffer in alternate buffer
   // instead of evicted buffer.
@@ -1697,7 +1689,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchAndPrefetch) {
                                           kAlternateMemorySpace, op::Tanh()))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, While) {
+TEST_F(MemorySpaceAssignmentTest, While) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
@@ -1774,18 +1766,6 @@ TEST_P(MemorySpaceAssignmentTest, While) {
 
   AssignMemorySpace(module.get());
 
-  // Ensure the tuple value and buffers used in the while instruction are
-  // exempted from using the alternate memory when allocating across sequential
-  // calls is disabled. However, body_data_mul is independent and can be safely
-  // be placed in the alternate memory.
-  if (!allocate_across_sequential_calls()) {
-    EXPECT_THAT(tuple, op::ShapeWithLayout(tuple_shape));
-    EXPECT_THAT(data, op::ShapeWithLayout(shape));
-    EXPECT_THAT(iter, op::ShapeWithLayout(scalar_shape));
-    EXPECT_THAT(body_data, op::ShapeWithLayout(shape));
-    EXPECT_THAT(body_iter, op::ShapeWithLayout(scalar_shape));
-    EXPECT_THAT(cond_iter, op::ShapeWithLayout(scalar_shape));
-  }
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*tiles=*/{},
@@ -1794,7 +1774,7 @@ TEST_P(MemorySpaceAssignmentTest, While) {
   EXPECT_THAT(body_data_mul, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
-TEST_P(MemorySpaceAssignmentTest, Tuple) {
+TEST_F(MemorySpaceAssignmentTest, Tuple) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape inner_tuple_shape = ShapeUtil::MakeTupleShape({shape});
@@ -1849,7 +1829,7 @@ TEST_P(MemorySpaceAssignmentTest, Tuple) {
                                  op::GetTupleElement(op::GetTupleElement()))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, Bitcast) {
+TEST_F(MemorySpaceAssignmentTest, Bitcast) {
   // Bitcasts can cause the position in the alternate memory to appear multiple
   // times in the preset assignments. This test ensure the preset assignments
   // refer to unique positions.
@@ -1881,7 +1861,7 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast) {
   EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, Bitcast2) {
+TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape param_shape = ShapeUtil::MakeShape(F32, {6});
@@ -1918,7 +1898,7 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast2) {
             kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, Bitcast3) {
+TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
   HloComputation::Builder builder(TestName());
   Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
   Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});
@@ -1984,7 +1964,7 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast3) {
             kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
+TEST_F(MemorySpaceAssignmentTest, BitcastTuple) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape param_shape = ShapeUtil::MakeShape(F32, {6});
@@ -2035,7 +2015,7 @@ TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
+TEST_F(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
   // This test pattern was encountered in
   // //third_party/tensorflow/compiler/xla/tests:slice_test and was causing a
   // breakage when there is a GetTupleElement(Tuple(Bitcast())) pattern. Also
@@ -2065,7 +2045,7 @@ TEST_P(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, GetSimplifiedOperandBug) {
+TEST_F(MemorySpaceAssignmentTest, GetSimplifiedOperandBug) {
   // Test case for a bug finding Bitcasts in GTE(Tuple(...)) pattern.
   absl::string_view hlo_string = R"(
   HloModule sort.16, is_scheduled=true
@@ -2093,7 +2073,7 @@ TEST_P(MemorySpaceAssignmentTest, GetSimplifiedOperandBug) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
+TEST_F(MemorySpaceAssignmentTest, BitcastMultiUse) {
   // When there is a pattern where a bitcast has multiple uses (negate0 and add)
   // and one is in the default memory and the other is in alternate memory, they
   // both need their own bitcast.
@@ -2135,7 +2115,7 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
   EXPECT_THAT(add->operand(0), op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
-TEST_P(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
+TEST_F(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
   // Same as BitcastMultUse but the second use is a tuple.
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
@@ -2192,7 +2172,7 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
               op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
-TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
+TEST_F(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   // Bitcasts can force asynchronous copies to be scheduled too early, possibly
   // leading to memory corruption.
   //  Bug:
@@ -2264,7 +2244,7 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, AddDependency) {
+TEST_F(MemorySpaceAssignmentTest, AddDependency) {
   // Make sure add-dependency is not optimized away.
   absl::string_view hlo_string = R"(
   HloModule AddDependency, is_scheduled=true
@@ -2292,7 +2272,7 @@ TEST_P(MemorySpaceAssignmentTest, AddDependency) {
               op::Add(op::AddDependency(), op::Negate()));
 }
 
-TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
+TEST_F(MemorySpaceAssignmentTest, WhileAllocationBug) {
   // This test is carefully crafted to include two multiply ops sized [4,3] in a
   // while body. For testing purposes, we have provided a BufferIntervalCompare
   // such that first multiply, then tanh, then other HloValues will be
@@ -2412,7 +2392,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConsecutiveWhileLoops) {
+TEST_F(MemorySpaceAssignmentTest, ConsecutiveWhileLoops) {
   absl::string_view hlo_string = R"(
   HloModule WhileAllocationBug, is_scheduled=true
 
@@ -2489,7 +2469,7 @@ TEST_P(MemorySpaceAssignmentTest, ConsecutiveWhileLoops) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, WhileLiveRangeBug) {
+TEST_F(MemorySpaceAssignmentTest, WhileLiveRangeBug) {
   // Tests against while live ranges being incorrect and the verifier
   // complaining about a conflict.
   absl::string_view hlo_string = R"(
@@ -2554,7 +2534,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileLiveRangeBug) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConsecutiveWhileLoopsOneBuffer) {
+TEST_F(MemorySpaceAssignmentTest, ConsecutiveWhileLoopsOneBuffer) {
   // Tests against a bug when there are consecutive while loops with one buffer
   // (the value doesn't change in the buffer), the parameter can be colored in
   // the alternate memory space.
@@ -2656,7 +2636,7 @@ TEST_P(MemorySpaceAssignmentTest, ConsecutiveWhileLoopsOneBuffer) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
+TEST_F(MemorySpaceAssignmentTest, WhileCondAliasBug) {
   // While loop is the root of the entry computation. We should ensure the
   // output of the entry computation remains to be in default memory space.
   // Test from //third_party/tensorflow/compiler/xla/tests:while_test
@@ -2705,7 +2685,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
+TEST_F(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
   // Ensure that a dynamic update slice within a while loop is able to get an
   // alternate memory allocation.
   absl::string_view hlo_string = R"(
@@ -2754,14 +2734,12 @@ TEST_P(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
   AssignMemorySpace(module.get());
   const HloInstruction* while_op =
       module->entry_computation()->GetInstructionWithName("while");
-  if (allocate_across_sequential_calls()) {
-    EXPECT_EQ(
-        ShapeUtil::GetSubshape(while_op->shape(), {1}).layout().memory_space(),
-        kAlternateMemorySpace);
-  }
+  EXPECT_EQ(
+      ShapeUtil::GetSubshape(while_op->shape(), {1}).layout().memory_space(),
+      kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
+TEST_F(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
   // Tests a spurious verification failure when a while has the same value
   // passed in twice (copy0) and that value is evicted within the while loop.
   absl::string_view hlo_string = R"(
@@ -2814,7 +2792,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, b228599972) {
+TEST_F(MemorySpaceAssignmentTest, b228599972) {
   absl::string_view hlo_string = R"(
 HloModule entry, is_scheduled=true
 
@@ -2842,7 +2820,7 @@ ENTRY entry {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, b172243149) {
+TEST_F(MemorySpaceAssignmentTest, b172243149) {
   // Tests for the failure in b/172243149, where if we skip processing
   // non-copy allocations that are in default memory can actually cause
   // failures. In this case, the problem tensor is copy0, where it is fed to
@@ -2910,7 +2888,7 @@ TEST_P(MemorySpaceAssignmentTest, b172243149) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
+TEST_F(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
   // Having control_predecessors on an HLO was preventing us from DCEing an op
   // that doesn't have any users (tuple.1). The scheduler assumes the graph is
   // fully DCEed, which causes some instructions not to be scheduled.
@@ -2940,7 +2918,7 @@ TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConditionalShouldBeAllocatedInAlternateMem) {
+TEST_F(MemorySpaceAssignmentTest, ConditionalShouldBeAllocatedInAlternateMem) {
   // Checks if simple conditionals get alternate memory allocations.
   absl::string_view hlo_string = R"(
   HloModule CondAllocation, is_scheduled=true
@@ -2969,25 +2947,23 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalShouldBeAllocatedInAlternateMem) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    // Check that copy and gtes got alternate memory allocations.
-    auto copy =
-        module->GetComputationWithName("entry")->GetInstructionWithName("copy");
-    EXPECT_EQ(copy->shape().layout().memory_space(), kAlternateMemorySpace);
-    auto neg1 = module->GetComputationWithName("true_computation")
-                    ->GetInstructionWithName("neg1");
-    auto neg1_operand = neg1->operand(0);
-    EXPECT_EQ(neg1_operand->shape().layout().memory_space(),
-              kAlternateMemorySpace);
-    auto neg2 = module->GetComputationWithName("false_computation")
-                    ->GetInstructionWithName("neg2");
-    auto neg2_operand = neg2->operand(0);
-    EXPECT_EQ(neg2_operand->shape().layout().memory_space(),
-              kAlternateMemorySpace);
-  }
+  // Check that copy and gtes got alternate memory allocations.
+  auto copy =
+      module->GetComputationWithName("entry")->GetInstructionWithName("copy");
+  EXPECT_EQ(copy->shape().layout().memory_space(), kAlternateMemorySpace);
+  auto neg1 = module->GetComputationWithName("true_computation")
+                  ->GetInstructionWithName("neg1");
+  auto neg1_operand = neg1->operand(0);
+  EXPECT_EQ(neg1_operand->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  auto neg2 = module->GetComputationWithName("false_computation")
+                  ->GetInstructionWithName("neg2");
+  auto neg2_operand = neg2->operand(0);
+  EXPECT_EQ(neg2_operand->shape().layout().memory_space(),
+            kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConditionalAvoidsUnnecessaryPrefetch) {
+TEST_F(MemorySpaceAssignmentTest, ConditionalAvoidsUnnecessaryPrefetch) {
   // Checks if we avoid unnecessary allocation in alternate memory if the input
   // won't be used in the computation for a long time.
   absl::string_view hlo_string = R"(
@@ -3030,27 +3006,23 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalAvoidsUnnecessaryPrefetch) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    // Check that copy1 doesn't get unnecessarily allocated in alternate mem
-    // (due to long negate chain in true_computation) but is prefetched before
-    // add.
-    auto copy0 =
-        module->GetComputationWithName("entry")->GetInstructionWithName(
-            "copy0");
-    EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
-    auto copy1 =
-        module->GetComputationWithName("entry")->GetInstructionWithName(
-            "copy1");
-    EXPECT_EQ(copy1->shape().layout().memory_space(), kDefaultMemorySpace);
-    auto add = module->GetComputationWithName("true_computation")
-                   ->GetInstructionWithName("add");
-    auto add_operand = add->operand(1);
-    EXPECT_EQ(add_operand->shape().layout().memory_space(),
-              kAlternateMemorySpace);
-  }
+  // Check that copy1 doesn't get unnecessarily allocated in alternate mem
+  // (due to long negate chain in true_computation) but is prefetched before
+  // add.
+  auto copy0 =
+      module->GetComputationWithName("entry")->GetInstructionWithName("copy0");
+  EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+  auto copy1 =
+      module->GetComputationWithName("entry")->GetInstructionWithName("copy1");
+  EXPECT_EQ(copy1->shape().layout().memory_space(), kDefaultMemorySpace);
+  auto add = module->GetComputationWithName("true_computation")
+                 ->GetInstructionWithName("add");
+  auto add_operand = add->operand(1);
+  EXPECT_EQ(add_operand->shape().layout().memory_space(),
+            kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConditionalMultiUse) {
+TEST_F(MemorySpaceAssignmentTest, ConditionalMultiUse) {
   // Make sure there is an evict when there is a conditional use followed by
   // another use.
   absl::string_view hlo_string = R"(
@@ -3094,29 +3066,25 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalMultiUse) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    // Make sure the copy1->add edge is in alternate memory. Before conditional,
-    // this should be evicted to default memory and neg uses the input from
-    // default memory.
-    auto copy1 =
-        module->GetComputationWithName("entry")->GetInstructionWithName(
-            "copy1");
-    EXPECT_EQ(copy1->shape().layout().memory_space(), kAlternateMemorySpace);
-    auto add0 = module->GetComputationWithName("true_computation")
-                    ->GetInstructionWithName("add0");
-    auto add0_operand = add0->operand(1);
-    EXPECT_EQ(add0_operand->shape().layout().memory_space(),
-              kAlternateMemorySpace);
-    auto add1 =
-        module->GetComputationWithName("entry")->GetInstructionWithName("add1");
-    auto add1_operand = add1->operand(0);
-    EXPECT_EQ(add1_operand->shape().layout().memory_space(),
-              kDefaultMemorySpace);
-    EXPECT_EQ(add1_operand->opcode(), HloOpcode::kCopyDone);
-  }
+  // Make sure the copy1->add edge is in alternate memory. Before conditional,
+  // this should be evicted to default memory and neg uses the input from
+  // default memory.
+  auto copy1 =
+      module->GetComputationWithName("entry")->GetInstructionWithName("copy1");
+  EXPECT_EQ(copy1->shape().layout().memory_space(), kAlternateMemorySpace);
+  auto add0 = module->GetComputationWithName("true_computation")
+                  ->GetInstructionWithName("add0");
+  auto add0_operand = add0->operand(1);
+  EXPECT_EQ(add0_operand->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  auto add1 =
+      module->GetComputationWithName("entry")->GetInstructionWithName("add1");
+  auto add1_operand = add1->operand(0);
+  EXPECT_EQ(add1_operand->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_EQ(add1_operand->opcode(), HloOpcode::kCopyDone);
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConditionalMultiUseInWhile) {
+TEST_F(MemorySpaceAssignmentTest, ConditionalMultiUseInWhile) {
   absl::string_view hlo_string = R"(
   HloModule CondAllocation, is_scheduled=true
 
@@ -3164,32 +3132,29 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalMultiUseInWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    // Make sure copy1/while{0}/cond_tuple{0} gets alternate memory allocation.
-    // This will force an eviction and a prefetch for while body root.
-    auto copy0 =
-        module->GetComputationWithName("entry")->GetInstructionWithName(
-            "copy0");
-    EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
-    auto conditional = module->GetComputationWithName("while_body")
-                           ->GetInstructionWithName("conditional");
-    auto conditional_operand = conditional->operand(1);
-    EXPECT_EQ(ShapeUtil::GetSubshape(conditional_operand->shape(), {0})
-                  .layout()
-                  .memory_space(),
-              kAlternateMemorySpace);
-    auto while_root =
-        module->GetComputationWithName("while_body")->root_instruction();
-    auto while_root_operand = while_root->operand(0);
-    EXPECT_THAT(
-        while_root_operand,
-        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                      op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
-                                    op::GetTupleElement(op::Parameter(0)))));
-  }
+  // Make sure copy1/while{0}/cond_tuple{0} gets alternate memory allocation.
+  // This will force an eviction and a prefetch for while body root.
+  auto copy0 =
+      module->GetComputationWithName("entry")->GetInstructionWithName("copy0");
+  EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+  auto conditional = module->GetComputationWithName("while_body")
+                         ->GetInstructionWithName("conditional");
+  auto conditional_operand = conditional->operand(1);
+  EXPECT_EQ(ShapeUtil::GetSubshape(conditional_operand->shape(), {0})
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  auto while_root =
+      module->GetComputationWithName("while_body")->root_instruction();
+  auto while_root_operand = while_root->operand(0);
+  EXPECT_THAT(
+      while_root_operand,
+      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                    op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                                  op::GetTupleElement(op::Parameter(0)))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, NestedConditional) {
+TEST_F(MemorySpaceAssignmentTest, NestedConditional) {
   absl::string_view hlo_string = R"(
   HloModule CondAllocation, is_scheduled=true
 
@@ -3234,31 +3199,29 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditional) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    // Make sure alternate memory allocation gets propagated into both levels of
-    // conditional.
-    auto copy =
-        module->GetComputationWithName("entry")->GetInstructionWithName("copy");
-    EXPECT_EQ(copy->shape().layout().memory_space(), kAlternateMemorySpace);
-    auto neg1_operand = module->GetComputationWithName("true_computation2")
-                            ->GetInstructionWithName("neg1")
-                            ->operand(0);
-    auto neg2_operand = module->GetComputationWithName("false_computation2")
-                            ->GetInstructionWithName("neg2")
-                            ->operand(0);
-    auto neg3_operand = module->GetComputationWithName("false_computation1")
-                            ->GetInstructionWithName("neg3")
-                            ->operand(0);
-    EXPECT_EQ(neg1_operand->shape().layout().memory_space(),
-              kAlternateMemorySpace);
-    EXPECT_EQ(neg2_operand->shape().layout().memory_space(),
-              kAlternateMemorySpace);
-    EXPECT_EQ(neg3_operand->shape().layout().memory_space(),
-              kAlternateMemorySpace);
-  }
+  // Make sure alternate memory allocation gets propagated into both levels of
+  // conditional.
+  auto copy =
+      module->GetComputationWithName("entry")->GetInstructionWithName("copy");
+  EXPECT_EQ(copy->shape().layout().memory_space(), kAlternateMemorySpace);
+  auto neg1_operand = module->GetComputationWithName("true_computation2")
+                          ->GetInstructionWithName("neg1")
+                          ->operand(0);
+  auto neg2_operand = module->GetComputationWithName("false_computation2")
+                          ->GetInstructionWithName("neg2")
+                          ->operand(0);
+  auto neg3_operand = module->GetComputationWithName("false_computation1")
+                          ->GetInstructionWithName("neg3")
+                          ->operand(0);
+  EXPECT_EQ(neg1_operand->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(neg2_operand->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(neg3_operand->shape().layout().memory_space(),
+            kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
+TEST_F(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
   // Tests a spurious verification failure when there are nested conditionals
   // and the innermost conditional computation reuses the buffer. Here, both the
   // parameter of true_computation2 and neg2 will get the same buffer. Make sure
@@ -3310,7 +3273,7 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, WhileInsideNestedConditionalVerificationBug) {
+TEST_F(MemorySpaceAssignmentTest, WhileInsideNestedConditionalVerificationBug) {
   absl::string_view hlo_string = R"(
   HloModule CondAllocation, is_scheduled=true
 
@@ -3368,7 +3331,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileInsideNestedConditionalVerificationBug) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        ConditionalComputationBufferOverlapBeforeParam) {
   absl::string_view hlo_string = R"(
   HloModule CondAllocation, is_scheduled=true
@@ -3416,7 +3379,7 @@ TEST_P(MemorySpaceAssignmentTest,
   EXPECT_NE(copy_offset, neg0_offset);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        RequestIdentifierShouldNotBeAllocatedInAlternateMem) {
   // Ensure that request identifier returned by Send/Recv HLOs are not allocated
   // in the alternate memory.
@@ -3452,7 +3415,7 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
+TEST_F(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
   // Ensure that SendDone has only a Send operand.
   absl::string_view hlo_string = R"(
   HloModule SendRecv, is_scheduled=true
@@ -3479,7 +3442,7 @@ TEST_P(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
+TEST_F(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
   // Ensure that Send and SendDone have the same allocation.
   absl::string_view hlo_string = R"(
   HloModule SendRecv, is_scheduled=true
@@ -3507,7 +3470,7 @@ TEST_P(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
                     /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/4);
 }
 
-TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
+TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.
   //
@@ -3566,7 +3529,7 @@ TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
                        op::Add(op::Parameter(0), op::Parameter(0)))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
   // Test to ensure CopyStart/CopyDone is placed only in the entry computation.
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
@@ -3650,7 +3613,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 50);
 }
 
-TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
@@ -3721,7 +3684,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
 
-TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
@@ -3788,7 +3751,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
 }
 
 // TODO(berkin): This might be an incorrect input graph, investigate.
-TEST_P(MemorySpaceAssignmentTest, DISABLED_NonEntryComputationSchedule4) {
+TEST_F(MemorySpaceAssignmentTest, DISABLED_NonEntryComputationSchedule4) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
@@ -3861,7 +3824,7 @@ TEST_P(MemorySpaceAssignmentTest, DISABLED_NonEntryComputationSchedule4) {
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
 
-TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
   // This test reproduces the failure in b/143288178.  Given a graph like the
   // following:
   //
@@ -3982,7 +3945,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 20);
 }
 
-TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
@@ -4124,7 +4087,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   EXPECT_THAT(body_out, op::ShapeWithLayout(tuple_shape));
 }
 
-TEST_P(MemorySpaceAssignmentTest, DanglingCopy) {
+TEST_F(MemorySpaceAssignmentTest, DanglingCopy) {
   // This situation was encountered in vss, where there is a mismatch in the
   // memory space in preset assignments and the output graph.
   HloComputation::Builder builder(TestName());
@@ -4170,7 +4133,7 @@ TEST_P(MemorySpaceAssignmentTest, DanglingCopy) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, MultiOutputFusion) {
+TEST_F(MemorySpaceAssignmentTest, MultiOutputFusion) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -4207,7 +4170,7 @@ TEST_P(MemorySpaceAssignmentTest, MultiOutputFusion) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, TupleInput) {
+TEST_F(MemorySpaceAssignmentTest, TupleInput) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -4247,7 +4210,7 @@ TEST_P(MemorySpaceAssignmentTest, TupleInput) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, TupleToTuple1) {
+TEST_F(MemorySpaceAssignmentTest, TupleToTuple1) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -4326,7 +4289,7 @@ TEST_P(MemorySpaceAssignmentTest, TupleToTuple1) {
                                 op::GetTupleElement(op::Fusion(), 1)))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, TupleToTuple2) {
+TEST_F(MemorySpaceAssignmentTest, TupleToTuple2) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -4406,7 +4369,7 @@ TEST_P(MemorySpaceAssignmentTest, TupleToTuple2) {
                                 op::GetTupleElement(op::Fusion(), 1), 1))))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, TupleToTuple3) {
+TEST_F(MemorySpaceAssignmentTest, TupleToTuple3) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -4453,7 +4416,7 @@ TEST_P(MemorySpaceAssignmentTest, TupleToTuple3) {
   EXPECT_THAT(fusion1, op::Fusion(op::Fusion()));
 }
 
-TEST_P(MemorySpaceAssignmentTest, InputOutputAlias) {
+TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -4506,7 +4469,7 @@ TEST_P(MemorySpaceAssignmentTest, InputOutputAlias) {
             kDefaultMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CostAnalysis) {
+TEST_F(MemorySpaceAssignmentTest, CostAnalysis) {
   // This is mostly a smoke test since it's difficult and brittle to work out
   // the cost of the HLO instructions.
   HloComputation::Builder builder(TestName());
@@ -4559,7 +4522,7 @@ TEST_P(MemorySpaceAssignmentTest, CostAnalysis) {
   EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
-TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
+TEST_F(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   // This test is carefully crafted to force only negates to be allocated to the
   // alternate memory. The graph consists of interleaving negate and tanh
   // operations:
@@ -4638,7 +4601,7 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderAssignFirst) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
@@ -4707,7 +4670,7 @@ TEST_P(MemorySpaceAssignmentTest,
   EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderAssignLast) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
@@ -4777,7 +4740,7 @@ TEST_P(MemorySpaceAssignmentTest,
   EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderBySizeLteAssignFirst) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
@@ -4853,7 +4816,7 @@ TEST_P(MemorySpaceAssignmentTest,
   EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderBySizeGteAssignFirst) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
@@ -4929,7 +4892,7 @@ TEST_P(MemorySpaceAssignmentTest,
   EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
+TEST_F(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
   Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
   Shape f32v1 = ShapeUtil::MakeShape(F32, {1});
   Shape t_s32_f32v1 = ShapeUtil::MakeTupleShape({s32, f32v1});
@@ -5037,7 +5000,7 @@ TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
   EXPECT_THAT(while0, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
 }
 
-TEST_P(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
+TEST_F(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
   // This test reproduces an eviction scheduling bug where evictions to default
   // memory can happen later than intended, causing memory corruption. This test
   // is a variant of MemoryBoundednessBufferIntervalCompare but uses f32[4,3]
@@ -5130,7 +5093,7 @@ TEST_P(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        InputOutputsInAlternateMemShouldntBeAssigned) {
   // When input/outputs are marked to be in the alternate memory (e.g.
   // go/tpu-fast-mem-inference), do not allocate those and assume they will live
@@ -5203,7 +5166,7 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
+TEST_F(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
   // Tests a memory corruption bug where the allocated chunk overlaps with a
   // pending chunk. To test this, we provide a new buffer interval compare where
   // we prioritize the allocation of sine, cosine, and tanh to create the
@@ -5296,7 +5259,7 @@ TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
                     buffer_interval_compare, &prefetch_interval_picker);
 }
 
-TEST_P(MemorySpaceAssignmentTest, WhileAliasedArgumentRequiredAssignmentBug) {
+TEST_F(MemorySpaceAssignmentTest, WhileAliasedArgumentRequiredAssignmentBug) {
   // Tests an overly pessimistic assertion when the same HloValue is passed
   // multiple times to a while HLO. We already handle this case that the two
   // arguments must alias and get the same allocation in AllocateSegment so the
@@ -5334,7 +5297,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileAliasedArgumentRequiredAssignmentBug) {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, DisallowedUseBug) {
+TEST_F(MemorySpaceAssignmentTest, DisallowedUseBug) {
   // When we have a disallowed use (in this case tanh), we aren't allowed to
   // allocate this use in alternate memory. However, if we have another use
   // after this on the same buffer (o), this use may refer to "a" instead of the
@@ -5398,7 +5361,7 @@ TEST_P(MemorySpaceAssignmentTest, DisallowedUseBug) {
                     &prefetch_interval_picker);
 }
 
-TEST_P(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
+TEST_F(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
   // Test for situations where we disallow a use (tanh in this case) in the
   // alternate memory space and there is a subsequent use that also requires the
   // buffer to be in the default memory space. In this case, the allocation in
@@ -5460,7 +5423,7 @@ TEST_P(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
   AssignMemorySpace(module.get(), options);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionInWhile) {
+TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInWhile) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -5509,25 +5472,23 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionInWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    // Expect that while{1} is allocated to alternate memory space. Also expect
-    // that this buffer is prefetched at the end of the while loop body but is
-    // never evicted (since it has a copy in the default memory space).
-    const HloInstruction* while_instr = FindInstruction(module.get(), "while");
-    EXPECT_EQ(while_instr->shape().tuple_shapes(1).layout().memory_space(),
-              kAlternateMemorySpace);
-    const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
-    EXPECT_EQ(gte1->user_count(), 1);
-    EXPECT_EQ(gte1->users()[0]->opcode(), HloOpcode::kTanh);
-    const HloInstruction* while_root =
-        while_instr->while_body()->root_instruction();
-    EXPECT_THAT(while_root->operand(1),
-                op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                              op::GetTupleElement(op::Parameter(0))));
-  }
+  // Expect that while{1} is allocated to alternate memory space. Also expect
+  // that this buffer is prefetched at the end of the while loop body but is
+  // never evicted (since it has a copy in the default memory space).
+  const HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  EXPECT_EQ(while_instr->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+  const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
+  EXPECT_EQ(gte1->user_count(), 1);
+  EXPECT_EQ(gte1->users()[0]->opcode(), HloOpcode::kTanh);
+  const HloInstruction* while_root =
+      while_instr->while_body()->root_instruction();
+  EXPECT_THAT(while_root->operand(1),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::GetTupleElement(op::Parameter(0))));
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        RedundantEvictionEliminationShouldntAddRedundantParam) {
   // Check that if there wasn't an eviction in the while loop, we don't add the
   // buffer in default memory as an additional parameter to the while loop.
@@ -5571,7 +5532,7 @@ TEST_P(MemorySpaceAssignmentTest,
   EXPECT_EQ(while_instr->shape().tuple_shapes_size(), 3);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
+TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -5630,31 +5591,27 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    // Expect that while1{1} and while2{1} are allocated to alternate memory
-    // space. Also expect that this buffer is prefetched at the end of the while
-    // loop body but is never evicted (since it has a copy in the default memory
-    // space).
-    const HloInstruction* while1_instr =
-        FindInstruction(module.get(), "while1");
-    EXPECT_EQ(while1_instr->shape().tuple_shapes(1).layout().memory_space(),
-              kAlternateMemorySpace);
-    const HloInstruction* while2_instr =
-        FindInstruction(module.get(), "while2");
-    EXPECT_EQ(while2_instr->shape().tuple_shapes(1).layout().memory_space(),
-              kAlternateMemorySpace);
-    const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
-    EXPECT_EQ(gte1->user_count(), 1);
-    EXPECT_EQ(gte1->users()[0]->opcode(), HloOpcode::kTanh);
-    const HloInstruction* while_root =
-        while2_instr->while_body()->root_instruction();
-    EXPECT_THAT(while_root->operand(1),
-                op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                              op::GetTupleElement(op::Parameter(0))));
-  }
+  // Expect that while1{1} and while2{1} are allocated to alternate memory
+  // space. Also expect that this buffer is prefetched at the end of the while
+  // loop body but is never evicted (since it has a copy in the default memory
+  // space).
+  const HloInstruction* while1_instr = FindInstruction(module.get(), "while1");
+  EXPECT_EQ(while1_instr->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+  const HloInstruction* while2_instr = FindInstruction(module.get(), "while2");
+  EXPECT_EQ(while2_instr->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+  const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
+  EXPECT_EQ(gte1->user_count(), 1);
+  EXPECT_EQ(gte1->users()[0]->opcode(), HloOpcode::kTanh);
+  const HloInstruction* while_root =
+      while2_instr->while_body()->root_instruction();
+  EXPECT_THAT(while_root->operand(1),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::GetTupleElement(op::Parameter(0))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
+TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -5709,18 +5666,16 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
   // while{1} is updated within the body.
   const HloInstruction* while_instr = FindInstruction(module.get(), "while");
   EXPECT_EQ(while_instr->shape().tuple_shapes_size(), 3);
-  if (allocate_across_sequential_calls()) {
-    EXPECT_EQ(while_instr->shape().tuple_shapes(1).layout().memory_space(),
-              kAlternateMemorySpace);
-    const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
-    EXPECT_EQ(gte1->user_count(), 2);
-    EXPECT_NE(
-        absl::c_find_if(gte1->users(), HloPredicateIsOp<HloOpcode::kCopyStart>),
-        gte1->users().end());
-  }
+  EXPECT_EQ(while_instr->shape().tuple_shapes(1).layout().memory_space(),
+            kAlternateMemorySpace);
+  const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
+  EXPECT_EQ(gte1->user_count(), 2);
+  EXPECT_NE(
+      absl::c_find_if(gte1->users(), HloPredicateIsOp<HloOpcode::kCopyStart>),
+      gte1->users().end());
 }
 
-TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
+TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
   // Check against a bug where a while HLO feeding to another while HLO can
   // cause a crash if we performa redundant eviction elimination to the first
   // while but not the other (while operand/parameter shapes would mismatch).
@@ -5789,16 +5744,13 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    // Expect that while1 has one more value than while2 in its shape.
-    EXPECT_EQ(
-        FindInstruction(module.get(), "while1")->shape().tuple_shapes_size(),
-        FindInstruction(module.get(), "while2")->shape().tuple_shapes_size() +
-            1);
-  }
+  // Expect that while1 has one more value than while2 in its shape.
+  EXPECT_EQ(
+      FindInstruction(module.get(), "while1")->shape().tuple_shapes_size(),
+      FindInstruction(module.get(), "while2")->shape().tuple_shapes_size() + 1);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
+TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -5862,14 +5814,12 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    EXPECT_THAT(
-        module->entry_computation()->root_instruction()->operand(1),
-        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, op::Copy()));
-  }
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction()->operand(1),
+      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, op::Copy()));
 }
 
-TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
+TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -5951,16 +5901,14 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    EXPECT_THAT(
-        module->entry_computation()->root_instruction()->operand(1),
-        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                      op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
-                                    op::GetTupleElement(op::While()))));
-  }
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction()->operand(1),
+      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                    op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                                  op::GetTupleElement(op::While()))));
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        AfterWhileRedundantEarlierEvictionModifiedBuffer) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
@@ -6026,16 +5974,14 @@ TEST_P(MemorySpaceAssignmentTest,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (allocate_across_sequential_calls()) {
-    EXPECT_THAT(
-        module->entry_computation()->root_instruction()->operand(1),
-        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                      op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
-                                    op::GetTupleElement(op::While()))));
-  }
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction()->operand(1),
+      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                    op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                                  op::GetTupleElement(op::While()))));
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        WhileRedundantEvictionWithInefficientAllocationBug) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
@@ -6143,7 +6089,7 @@ TEST_P(MemorySpaceAssignmentTest,
   AssignMemorySpace(module.get(), options);
 }
 
-TEST_P(MemorySpaceAssignmentTest, DisablePrefetch) {
+TEST_F(MemorySpaceAssignmentTest, DisablePrefetch) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -6174,7 +6120,7 @@ TEST_P(MemorySpaceAssignmentTest, DisablePrefetch) {
               op::Parameter());
 }
 
-TEST_P(MemorySpaceAssignmentTest, BitcastRoot) {
+TEST_F(MemorySpaceAssignmentTest, BitcastRoot) {
   // Tests against a bug where the root of entry computation is a bitcast
   // instruction and it ends up getting an allocation in the alternate memory.
   absl::string_view hlo_string = R"(
@@ -6219,7 +6165,7 @@ ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s3
               root->shape().layout().memory_space() == kDefaultMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, PrecoloredBuffer) {
+TEST_F(MemorySpaceAssignmentTest, PrecoloredBuffer) {
   absl::string_view hlo_string = R"(
   HloModule bug, is_scheduled=true
 
@@ -6292,7 +6238,7 @@ TEST_P(MemorySpaceAssignmentTest, PrecoloredBuffer) {
   EXPECT_NE(a_entry, preset_assignments->chunks().end());
 }
 
-TEST_P(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
+TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
   // Same as above but there are two 96-byte values that are pinned to the
   // alternate memory (the size of the alternate memory is 128 bytes), which is
   // unsatisfiable.
@@ -6358,7 +6304,7 @@ TEST_P(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
                                "which could not be satisfied")));
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncOpShortLiveRange) {
+TEST_F(MemorySpaceAssignmentTest, AsyncOpShortLiveRange) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6393,7 +6339,7 @@ ENTRY entry {
                   .memory_space() == kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncOpShortLiveRangeInputBufferConsumer) {
+TEST_F(MemorySpaceAssignmentTest, AsyncOpShortLiveRangeInputBufferConsumer) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6428,7 +6374,7 @@ ENTRY entry {
                   .memory_space() == kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncOpLongLiveRange) {
+TEST_F(MemorySpaceAssignmentTest, AsyncOpLongLiveRange) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6473,7 +6419,7 @@ ENTRY entry {
                   .memory_space() == kDefaultMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncOpLongLiveRangeInputBufferConsumer) {
+TEST_F(MemorySpaceAssignmentTest, AsyncOpLongLiveRangeInputBufferConsumer) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6518,7 +6464,7 @@ ENTRY entry {
                   .memory_space() == kDefaultMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, InPlaceAsyncCollectivePermute) {
+TEST_F(MemorySpaceAssignmentTest, InPlaceAsyncCollectivePermute) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6545,22 +6491,20 @@ ENTRY entry {
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
-  if (allocate_across_sequential_calls()) {
-    HloInstruction* collective_permute_start =
-        module->entry_computation()->GetInstructionWithName(
-            "collective-permute-start");
-    EXPECT_TRUE(collective_permute_start->shape()
-                    .tuple_shapes(0)
-                    .layout()
-                    .memory_space() == kAlternateMemorySpace);
-    EXPECT_TRUE(collective_permute_start->shape()
-                    .tuple_shapes(1)
-                    .layout()
-                    .memory_space() == kAlternateMemorySpace);
-  }
+  HloInstruction* collective_permute_start =
+      module->entry_computation()->GetInstructionWithName(
+          "collective-permute-start");
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, InPlaceAsyncCollectivePermuteSameBuffer) {
+TEST_F(MemorySpaceAssignmentTest, InPlaceAsyncCollectivePermuteSameBuffer) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6586,22 +6530,20 @@ ENTRY entry {
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
-  if (allocate_across_sequential_calls()) {
-    HloInstruction* collective_permute_start =
-        module->entry_computation()->GetInstructionWithName(
-            "collective-permute-start");
-    EXPECT_TRUE(collective_permute_start->shape()
-                    .tuple_shapes(0)
-                    .layout()
-                    .memory_space() == kAlternateMemorySpace);
-    EXPECT_TRUE(collective_permute_start->shape()
-                    .tuple_shapes(1)
-                    .layout()
-                    .memory_space() == kAlternateMemorySpace);
-  }
+  HloInstruction* collective_permute_start =
+      module->entry_computation()->GetInstructionWithName(
+          "collective-permute-start");
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        InPlaceAsyncCollectivePermuteSameBufferChained) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -6633,33 +6575,31 @@ ENTRY entry {
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
-  if (allocate_across_sequential_calls()) {
-    HloInstruction* collective_permute_start_1 =
-        module->entry_computation()->GetInstructionWithName(
-            "collective-permute-start.1");
-    EXPECT_TRUE(collective_permute_start_1->shape()
-                    .tuple_shapes(0)
-                    .layout()
-                    .memory_space() == kAlternateMemorySpace);
-    EXPECT_TRUE(collective_permute_start_1->shape()
-                    .tuple_shapes(1)
-                    .layout()
-                    .memory_space() == kAlternateMemorySpace);
-    HloInstruction* collective_permute_start_2 =
-        module->entry_computation()->GetInstructionWithName(
-            "collective-permute-start.2");
-    EXPECT_TRUE(collective_permute_start_2->shape()
-                    .tuple_shapes(0)
-                    .layout()
-                    .memory_space() == kAlternateMemorySpace);
-    EXPECT_TRUE(collective_permute_start_2->shape()
-                    .tuple_shapes(1)
-                    .layout()
-                    .memory_space() == kAlternateMemorySpace);
-  }
+  HloInstruction* collective_permute_start_1 =
+      module->entry_computation()->GetInstructionWithName(
+          "collective-permute-start.1");
+  EXPECT_TRUE(collective_permute_start_1->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+  EXPECT_TRUE(collective_permute_start_1->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+  HloInstruction* collective_permute_start_2 =
+      module->entry_computation()->GetInstructionWithName(
+          "collective-permute-start.2");
+  EXPECT_TRUE(collective_permute_start_2->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+  EXPECT_TRUE(collective_permute_start_2->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        TupleInPlaceAsyncCollectivePermuteSameBufferChained) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -6703,7 +6643,7 @@ ENTRY entry {
   EXPECT_EQ(cp_done2->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        TupleInPlaceAsyncCollectivePermuteSameBuffer) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -6740,7 +6680,7 @@ ENTRY entry {
   EXPECT_EQ(cp_done1->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        TupleInPlaceAsyncCollectivePermuteSameBufferRoot) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -6779,7 +6719,7 @@ ENTRY entry {
       });
 }
 
-TEST_P(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
+TEST_F(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
   absl::string_view hlo_string = R"(
  HloModule inplace_collective_permute, is_scheduled=true
 
@@ -6822,7 +6762,7 @@ TEST_P(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
       });
 }
 
-TEST_P(MemorySpaceAssignmentTest, ReservedScopedMemory) {
+TEST_F(MemorySpaceAssignmentTest, ReservedScopedMemory) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6867,7 +6807,7 @@ ENTRY entry {
   EXPECT_TRUE(get_memory_space("e") == kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConstantAllocationFar) {
+TEST_F(MemorySpaceAssignmentTest, ConstantAllocationFar) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6899,7 +6839,7 @@ ENTRY entry {
                   .memory_space() == kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConstantAllocationNear) {
+TEST_F(MemorySpaceAssignmentTest, ConstantAllocationNear) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -6990,7 +6930,7 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
   bool always_return_modified_;
 };
 
-TEST_P(MemorySpaceAssignmentTest, Repack) {
+TEST_F(MemorySpaceAssignmentTest, Repack) {
   // We initially perform the following allocations at these offsets.
   //
   //    Max memory
@@ -7106,7 +7046,7 @@ TEST_P(MemorySpaceAssignmentTest, Repack) {
   EXPECT_EQ(d->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
+TEST_F(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
   // This test is that we are correctly exporting aliased offsets for repacking.
   // In this example, the buffer produced at HLO "a" will be allocated first,
   // and will consist of four allocations:
@@ -7214,7 +7154,7 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
                     &prefetch_interval_picker);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        RepackExportsAliasedOffsetsForReservedScopedMemory) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -7262,7 +7202,7 @@ ENTRY entry {
   EXPECT_TRUE(repacker_ran);
 }
 
-TEST_P(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
+TEST_F(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
   // This test is designed to test UpdateReservedScopedVmemSize() in MSA, which
   // will invoke reserved_scoped_memory_fn to update scoped allocation
   // size. UpdateReservedScopedVmemSize() should iterate through all scheduled
@@ -7405,7 +7345,7 @@ TEST_P(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
   EXPECT_TRUE(check_reserved_scoped_memory_fn("q"));
 }
 
-TEST_P(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
+TEST_F(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
   // This is test is designed against a bug when
   // allocate_reserved_scoped_memory_at_same_offset to false, repack block of
   // scoped allocation has empty colocations. This is resolved by adding each
@@ -7458,7 +7398,7 @@ TEST_P(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
   options.allocate_reserved_scoped_memory_at_same_offset = false;
   AssignMemorySpace(module.get(), options);
 }
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        RepackShouldntEraseRequiredAssignmentForConditionalOutput) {
   // This is a test case for b/171040271. Repacks erase the required assignments
   // (since some required assignments are inserted conditionally based on
@@ -7507,7 +7447,7 @@ TEST_P(MemorySpaceAssignmentTest,
                     /*buffer_interval_compare=*/{}, &prefetch_interval_picker);
 }
 
-TEST_P(MemorySpaceAssignmentTest, Determinism) {
+TEST_F(MemorySpaceAssignmentTest, Determinism) {
   // Run memory space assignment a few times to make sure every time it compiles
   // to the same thing.
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
@@ -7522,7 +7462,7 @@ TEST_P(MemorySpaceAssignmentTest, Determinism) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, InPlaceOp) {
+TEST_F(MemorySpaceAssignmentTest, InPlaceOp) {
   // Tests that in-place ops like DynamicUpdateSlice get the same allocation as
   // its input.
   absl::string_view hlo_string = R"(
@@ -7557,12 +7497,10 @@ ENTRY main {
       GetAlternateMemoryOffset(*preset_assignments, fusion_instruction);
   // We expect negate and fusion to get the same offsets.
   EXPECT_EQ(negate_offset, fusion_offset);
-  if (allocate_across_sequential_calls()) {
-    EXPECT_NE(negate_offset, -1);
-  }
+  EXPECT_NE(negate_offset, -1);
 }
 
-TEST_P(MemorySpaceAssignmentTest, ConditionalInPlaceOp) {
+TEST_F(MemorySpaceAssignmentTest, ConditionalInPlaceOp) {
   absl::string_view hlo_string = R"(
 HloModule Module, is_scheduled=true
 
@@ -7601,7 +7539,7 @@ ENTRY entry {
   AssignMemorySpace(module.get());
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncCallDisableAlternateMem) {
+TEST_F(MemorySpaceAssignmentTest, AsyncCallDisableAlternateMem) {
   absl::string_view hlo_string = R"(
 HloModule Module, is_scheduled=true
 
@@ -7697,7 +7635,7 @@ ENTRY entry {
                   kDefaultMemorySpace, kAlternateMemorySpace, op::Negate())));
 }
 
-TEST_P(MemorySpaceAssignmentTest, InefficientAllocation) {
+TEST_F(MemorySpaceAssignmentTest, InefficientAllocation) {
   // The DUS in the fusion only accesses 1/3 of its input/output. The fusion
   // input/output buffer is a program input/output buffer, so it creates an
   // prefetch and an eviction. When we turn on detecting inefficient
@@ -7749,15 +7687,13 @@ ENTRY entry {
   options.inefficient_use_to_copy_ratio = 0.0;
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      /*memory_space_options_override=*/options);
-  if (allocate_across_sequential_calls()) {
-    EXPECT_THAT(
-        module->entry_computation()->root_instruction(),
-        op::Tuple(op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
-                                op::Fusion(op::AsyncCopy(kAlternateMemorySpace,
-                                                         kDefaultMemorySpace,
-                                                         op::Parameter()))),
-                  op::Negate()));
-  }
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                              op::Fusion(op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter()))),
+                op::Negate()));
 
   // Re-run MSA with inefficient use-to-copy ratio of 0.5. The fusion only uses
   // 8B of data (f32[2,1]) but copies 48B of data (prefetch and eviction of
@@ -7770,7 +7706,7 @@ ENTRY entry {
               op::Tuple(op::Fusion(op::Parameter()), op::Negate()));
 }
 
-TEST_P(MemorySpaceAssignmentTest, InefficientAllocationLivelockBug) {
+TEST_F(MemorySpaceAssignmentTest, InefficientAllocationLivelockBug) {
   // This is a carefully crafted test where two in-place operations on the same
   // buffer (fusion.1 and fusion.2) have a single very long executing operation
   // between them. This test deliberately sets a very low transcendentals per
@@ -7844,7 +7780,7 @@ ENTRY entry {
       /*hlo_cost_options_override=*/hlo_cost_options);
 }
 
-TEST_P(MemorySpaceAssignmentTest,
+TEST_F(MemorySpaceAssignmentTest,
        CalledComputationInefficientAllocationLiveLockBug) {
   // Parameter 2 is passed into the conditional but it is not actually used. A
   // bug in inefficient allocation pinned this buffer to the default memory at
@@ -7903,7 +7839,7 @@ TEST_P(MemorySpaceAssignmentTest,
       /*hlo_cost_options_override=*/hlo_cost_options);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncOpElapsedTime) {
+TEST_F(MemorySpaceAssignmentTest, AsyncOpElapsedTime) {
   // Test that async ops are treated to take no time. We assume async operations
   // are efficiently scheduled. So, in this example, collective-permute-start
   // should take zero time, which should be insufficient time to overlap a
@@ -7929,7 +7865,7 @@ ENTRY entry {
               op::Parameter(1));
 }
 
-TEST_P(MemorySpaceAssignmentTest, AliasedOperandBug) {
+TEST_F(MemorySpaceAssignmentTest, AliasedOperandBug) {
   // Test for a case where two aliased operands into the same instruction
   // (param0 and custom_call2) cause a violation of the required assignment.
   absl::string_view hlo_string = R"(
@@ -7988,7 +7924,7 @@ ENTRY entry {
                     &prefetch_interval_picker);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncOpCustomFusionShortLiveRange) {
+TEST_F(MemorySpaceAssignmentTest, AsyncOpCustomFusionShortLiveRange) {
   absl::string_view hlo_string = R"(
 HloModule Module, is_scheduled=true
 
@@ -8067,16 +8003,14 @@ ENTRY main {
   EXPECT_THAT(fusion2->operand(3), op::GetTupleElement(fusion1, 1));
   EXPECT_THAT(fusion3->operand(0), op::GetTupleElement(fusion2, 1));
   EXPECT_THAT(fusion3->operand(1), op::GetTupleElement(fusion2, 2));
-  if (allocate_across_sequential_calls()) {
-    EXPECT_THAT(fusion2->operand(2)->shape().layout().memory_space(),
-                kAlternateMemorySpace);
-    EXPECT_THAT(fusion2->operand(3)->shape().layout().memory_space(),
-                kAlternateMemorySpace);
-    EXPECT_THAT(fusion3->operand(0)->shape().layout().memory_space(),
-                kAlternateMemorySpace);
-    EXPECT_THAT(fusion3->operand(1)->shape().layout().memory_space(),
-                kAlternateMemorySpace);
-  }
+  EXPECT_THAT(fusion2->operand(2)->shape().layout().memory_space(),
+              kAlternateMemorySpace);
+  EXPECT_THAT(fusion2->operand(3)->shape().layout().memory_space(),
+              kAlternateMemorySpace);
+  EXPECT_THAT(fusion3->operand(0)->shape().layout().memory_space(),
+              kAlternateMemorySpace);
+  EXPECT_THAT(fusion3->operand(1)->shape().layout().memory_space(),
+              kAlternateMemorySpace);
   // Operand 0 and 1 should get alternate memory allocations and so is the
   // output {0}.
   EXPECT_THAT(fusion2->operand(0)->shape().layout().memory_space(),
@@ -8088,7 +8022,7 @@ ENTRY main {
       kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncOpCustomFusionLongLiveRange) {
+TEST_F(MemorySpaceAssignmentTest, AsyncOpCustomFusionLongLiveRange) {
   absl::string_view hlo_string = R"(
 HloModule Module, is_scheduled=true
 
@@ -8193,7 +8127,7 @@ ENTRY main {
       kAlternateMemorySpace);
 }
 
-TEST_P(MemorySpaceAssignmentTest, AsyncOpCustomFusionMultipleUsers) {
+TEST_F(MemorySpaceAssignmentTest, AsyncOpCustomFusionMultipleUsers) {
   absl::string_view hlo_string = R"(
 HloModule Module, is_scheduled=true
 
@@ -8295,7 +8229,7 @@ ENTRY main {
 // to get MSA to self-assign an async copies with schedule_after=-1 by
 // exploiting how the hidden algorithm works. This is brittle and subject to
 // inadvertent breakage in the future.
-TEST_P(MemorySpaceAssignmentTest, HoistCopyStart) {
+TEST_F(MemorySpaceAssignmentTest, HoistCopyStart) {
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true
 
@@ -8347,9 +8281,6 @@ TEST_P(MemorySpaceAssignmentTest, HoistCopyStart) {
     }
   }
 }
-
-INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
-                         MemorySpaceAssignmentTest, ::testing::Values(true));
 
 using AsynchronousCopyOrderingTest = ::testing::Test;
 
@@ -8867,7 +8798,7 @@ TEST_F(AsynchronousCopyResourceTest,
       resource.HasEnoughResourceMultiCheck({{0, 4, 170.8}, {1, 4, 170.8}}));
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -8910,7 +8841,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
                                     op::Parameter(1))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
+TEST_F(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -8977,7 +8908,7 @@ TEST_P(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
                             op::Parameter(2))));
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -9019,7 +8950,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -9061,7 +8992,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -9107,7 +9038,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNestedTupleTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNestedTupleTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -9149,7 +9080,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNestedTupleTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchUnusedParamTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchUnusedParamTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kFeature = 8;
@@ -9172,7 +9103,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchUnusedParamTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -9206,7 +9137,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTupleTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTupleTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -9244,7 +9175,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTupleTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 2;
@@ -9292,7 +9223,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTupleTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTupleTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 2;
@@ -9345,7 +9276,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTupleTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -9388,7 +9319,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   HloComputation::Builder builder(TestName());
 
   constexpr int kBatch = 8;
@@ -9435,7 +9366,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
     ENTRY CrossProgramPrefetch {
@@ -9457,7 +9388,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
               op::Parameter(0));
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDusFusionMayAlias) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDusFusionMayAlias) {
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
     fused_computation {
@@ -9486,7 +9417,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDusFusionMayAlias) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDup) {
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true
     ENTRY CrossProgramPrefetch {
@@ -9508,7 +9439,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
               op::Parameter(0));
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
   // Cross program prefetch since the parameter and the root don't alias.
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true
@@ -9534,7 +9465,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
                             op::Parameter(0)));
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
     ENTRY CrossProgramPrefetch {
@@ -9555,7 +9486,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
               op::Parameter(0));
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
   // Input-output aliased buffers should not be cross-program prefetched since
   // the update on the buffer will not be reflected on the next program
   // execution (the data in the alternate memory would be stale).
@@ -9587,7 +9518,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true
     ENTRY CrossProgramPrefetch {
@@ -9605,7 +9536,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   // This test is for checking if the cross-program-prefetched buffer is freed
   // after its last use and there is an end-of-program prefetch.
   absl::string_view hlo_string = R"(
@@ -9684,7 +9615,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   EXPECT_TRUE(has_zero_offset_allocations);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
   // This test is for checking if the cross-program-prefetched buffer is freed
   // after its last use and there is an end-of-program prefetch.
   absl::string_view hlo_string = R"(
@@ -9763,7 +9694,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
   EXPECT_TRUE(has_zero_offset_allocations);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   // This tests the scenario that the cross-program-prefetched buffer is used
   // again close to the end of the computation. In this case, it is better not
   // to free the buffer.
@@ -9822,7 +9753,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
             0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
   // This tests the scenario that the cross-program-prefetched buffer is used
   // again close to the end of the computation. In this case, it is better not
   // to free the buffer.
@@ -9882,7 +9813,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
             0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBufferUnused) {
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBufferUnused) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -9940,7 +9871,7 @@ ENTRY %main {
 //   will not be able to prefetch p1 until after p0 is unallocated.
 // - Test: prefetch p1, after p0 is unallocated from alternate memory (after
 //   instruction c).
-TEST_P(MemorySpaceAssignmentTest, CopyResourceIntegration) {
+TEST_F(MemorySpaceAssignmentTest, CopyResourceIntegration) {
   std::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -10971,8 +10902,6 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       return ShapeUtil::MakeShape(S8, {ShapeSize(original_shape)});
     };
   }
-
-  bool allocate_across_sequential_calls() const override { return true; }
 
   // Optional method to setup common ProposeSlices expectations for several
   // tests.

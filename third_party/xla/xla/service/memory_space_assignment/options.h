@@ -147,10 +147,6 @@ struct Options {
   // This is only useful for testing, repack after every allocation.
   bool repack_after_every_allocation = false;
 
-  // If true, tries allocating buffers across (e.g., before and inside a while
-  // loop body) sequential calls (kWhile, kCall, and kConditional).
-  bool allocate_across_sequential_calls = false;
-
   // If true, verifies the memory space assignment against overlapping
   // buffers.
   bool verify = false;
