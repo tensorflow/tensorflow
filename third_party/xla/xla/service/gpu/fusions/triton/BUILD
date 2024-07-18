@@ -180,8 +180,8 @@ cc_library(
 )
 
 xla_test(
-    name = "triton_fusion_emitter_test",
-    srcs = if_gpu_is_configured(["triton_fusion_emitter_test.cc"]),
+    name = "triton_fusion_emitter_device_legacy_test",
+    srcs = if_gpu_is_configured(["triton_fusion_emitter_device_legacy_test.cc"]),
     backends = [
         "gpu_a100",
         "gpu_h100",
@@ -213,7 +213,6 @@ xla_test(
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -225,6 +224,47 @@ xla_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
+    name = "triton_fusion_emitter_device_test",
+    srcs = if_gpu_is_configured(["triton_fusion_emitter_device_test.cc"]),
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_amd_any",
+    ],
+    tags = [
+        "no_rocm",
+        "nomac",
+    ],
+    deps = [
+        ":triton_fusion_emitter",
+        ":triton_test_utils",
+        "//xla:autotuning_proto_cc",
+        "//xla:error_spec",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cublas_plugin",
+        "//xla/tests:verified_hlo_module",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
