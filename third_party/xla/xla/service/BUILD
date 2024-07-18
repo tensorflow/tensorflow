@@ -7463,6 +7463,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
     ],
 )
