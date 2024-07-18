@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/topology.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
@@ -67,8 +68,10 @@ class IfrtModelContext {
       const tsl::thread::ThreadPool* thread_pool,
       tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-      std::unique_ptr<tsl::protobuf::Message> compilation_environment_proto)
+      std::unique_ptr<tsl::protobuf::Message> compilation_environment_proto,
+      std::shared_ptr<const void> topology)
       : client_(std::move(client)),
+        topology_(topology),
         ifrt_serving_core_selector_(ifrt_serving_core_selector),
         thread_pool_(*thread_pool),
         device_mgr_(device_mgr),
@@ -131,6 +134,10 @@ class IfrtModelContext {
 
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
+  // Keep hardware specific topology info alive. This is currently used for
+  // shape determination.
+  std::shared_ptr<const void> topology_;
+
   IfrtServingCoreSelector* ifrt_serving_core_selector_;  // May be nullptr
   const tsl::thread::ThreadPool& thread_pool_;
 
