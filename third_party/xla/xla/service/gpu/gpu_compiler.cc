@@ -2030,9 +2030,8 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
     }
   }
 
-  auto maybe_backend_result =
-      LinkModules(gpu_version, stream_exec, std::move(binaries_to_link),
-                  module_config.debug_options());
+  auto maybe_backend_result = LinkModules(
+      stream_exec, std::move(binaries_to_link), module_config.debug_options());
   if (!maybe_backend_result.ok()) {
     LOG(ERROR) << "The CUDA linking API did not work. Please use XLA_FLAGS="
                   "--xla_gpu_enable_llvm_module_compilation_parallelism=false "

@@ -34,10 +34,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
@@ -94,10 +92,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/ptx_compilation_method.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
-#include "xla/stream_executor/cuda/ptx_linking_method.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
@@ -579,50 +575,6 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
 }
 
-using stream_executor::PtxCompilationMethod;
-
-// Returns the supported compilation methods in the order of priority.
-std::vector<PtxCompilationMethod> GetSupportedCompilationMethods() {
-  std::vector<PtxCompilationMethod> methods;
-  if (se::IsLibNvPtxCompilerSupported()) {
-    methods.emplace_back(PtxCompilationMethod::kNvPtxCompiler);
-  }
-  methods.emplace_back(PtxCompilationMethod::kPtxas);
-  return methods;
-}
-
-absl::StatusOr<PtxCompilationMethod> ChooseCompilationMethod(
-    absl::Span<const PtxCompilationMethod> available_compilation_methods,
-    const DebugOptions& debug_options, bool relocatable) {
-  std::vector<PtxCompilationMethod> compilation_methods(
-      available_compilation_methods.begin(),
-      available_compilation_methods.end());
-  VLOG(2) << "Available compilation methods: "
-          << absl::StrJoin(compilation_methods, ", ");
-
-  auto remove_compilation_method = [&](PtxCompilationMethod method) {
-    auto it = absl::c_find(compilation_methods, method);
-    if (it != compilation_methods.end()) {
-      compilation_methods.erase(it);
-    }
-  };
-
-  if (!debug_options.xla_gpu_enable_libnvptxcompiler()) {
-    VLOG(3) << "Discarding NvPtxCompiler since it is disabled.";
-    remove_compilation_method(PtxCompilationMethod::kNvPtxCompiler);
-  }
-
-  VLOG(2) << "Considered compilation methods: "
-          << absl::StrJoin(compilation_methods, ", ");
-
-  if (compilation_methods.empty()) {
-    return absl::UnavailableError(
-        "No supported compilation method is available.");
-  }
-
-  return compilation_methods.front();
-}
-
 static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
     const std::string& ptx, se::CudaComputeCapability cc,
     const HloModuleConfig& hlo_module_config,
@@ -643,24 +595,15 @@ static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
           .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
       options.is_autotuning_compilation;
 
-  std::vector<PtxCompilationMethod> supported_compilation_methods =
-      GetSupportedCompilationMethods();
-  TF_ASSIGN_OR_RETURN(
-      PtxCompilationMethod compilation_method,
-      ChooseCompilationMethod(supported_compilation_methods,
-                              hlo_module_config.debug_options(), relocatable));
-
-  VLOG(2) << "Using compilation method: " << compilation_method;
-
   absl::StatusOr<std::vector<uint8_t>> maybe_cubin = [&] {
-    switch (compilation_method) {
-      case PtxCompilationMethod::kNvPtxCompiler:
-        return se::CompileGpuAsmUsingLibNvPtxCompiler(
-            cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
-      case PtxCompilationMethod::kPtxas:
-        return se::CompileGpuAsmUsingPtxAs(cc.major, cc.minor, ptx.c_str(),
-                                           ptxas_config, cancel_if_reg_spill);
+    if (hlo_module_config.debug_options().xla_gpu_enable_libnvptxcompiler() &&
+        se::IsLibNvPtxCompilerSupported()) {
+      return se::CompileGpuAsmUsingLibNvPtxCompiler(
+          cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
     }
+
+    return se::CompileGpuAsmUsingPtxAs(cc.major, cc.minor, ptx.c_str(),
+                                       ptxas_config, cancel_if_reg_spill);
   }();
 
   if (maybe_cubin.ok()) {
@@ -808,12 +751,9 @@ static absl::StatusOr<stream_executor::ToolVersion> GetAsmCompilerVersion(
   return se::GetAsmCompilerVersion(preferred_cuda_dir);
 }
 
-absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
-    const DebugOptions& debug_options) {
-  se::GpuAsmOpts ptxas_config = PtxOptsFromDebugOptions(debug_options);
-  std::string& preferred_cuda_dir = ptxas_config.preferred_cuda_dir;
-
-  using LinkingMethod = se::PtxLinkingMethod;
+absl::StatusOr<NVPTXCompiler::LinkingMethod> ChooseLinkingMethodImpl(
+    const DebugOptions& debug_options, const std::string& preferred_cuda_dir) {
+  using LinkingMethod = NVPTXCompiler::LinkingMethod;
   TF_ASSIGN_OR_RETURN(auto asm_compiler_version,
                       GetAsmCompilerVersion(debug_options, preferred_cuda_dir));
 
@@ -845,28 +785,47 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
          "You should update your NVIDIA driver or use the NVIDIA-provided "
          "CUDA forward compatibility packages.";
 
-  return se::PtxLinkingMethod::kNone;
+  return LinkingMethod::kNone;
+}
+
+absl::StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
+    const DebugOptions& debug_options) {
+  se::GpuAsmOpts ptxas_config = PtxOptsFromDebugOptions(debug_options);
+  std::string& preferred_cuda_dir = ptxas_config.preferred_cuda_dir;
+
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = linking_methods_.find(preferred_cuda_dir);
+    if (it != linking_methods_.end()) {
+      return it->second;
+    }
+  }
+
+  // This wrapper only handles caching. The actual choice happens in this call:
+  TF_ASSIGN_OR_RETURN(
+      LinkingMethod linking_method,
+      ChooseLinkingMethodImpl(debug_options, preferred_cuda_dir));
+
+  {
+    absl::MutexLock lock(&mutex_);
+    linking_methods_[preferred_cuda_dir] = linking_method;
+  }
+  return linking_method;
 }
 
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
-  TF_ASSIGN_OR_RETURN(se::PtxLinkingMethod linking_method,
+  TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
                       ChooseLinkingMethod(hlo_module_config.debug_options()));
-  return linking_method != se::PtxLinkingMethod::kNone;
+  return linking_method != LinkingMethod::kNone;
 }
 
 absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
-    se::GpuComputeCapability cc, se::StreamExecutor* stream_exec,
-    std::vector<std::vector<uint8_t>> modules,
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
     const DebugOptions& debug_options) {
-  if (modules.empty()) return std::vector<uint8_t>{};
-
-  TF_ASSIGN_OR_RETURN(se::PtxLinkingMethod linking_method,
-                      ChooseLinkingMethod(debug_options));
-  VLOG(1) << "Linking " << modules.size()
-          << " modules with linking method: " << linking_method;
+  auto ptxas_config = PtxOptsFromDebugOptions(debug_options);
 
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
@@ -874,12 +833,14 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     images.push_back({"", std::move(module)});
   }
   auto context = se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context();
-  if (linking_method == se::PtxLinkingMethod::kNvLink) {
-    return LinkUsingNvlink(std::get<se::CudaComputeCapability>(cc),
-                           debug_options.xla_gpu_cuda_data_dir(), context,
+
+  TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
+                      ChooseLinkingMethod(debug_options));
+  if (linking_method == LinkingMethod::kNvLink) {
+    return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
                            images);
   }
-  return LinkGpuAsm(std::get<se::CudaComputeCapability>(cc), context, images);
+  return LinkGpuAsm(context, images);
 }
 
 }  // namespace gpu
