@@ -15,11 +15,11 @@ filegroup(
     name = "tf_headers",
     srcs = [
         "op_kernel.h",
-        "shape.h",
         "status_macros.h",
         "tensor_view.h",
         "tf_op_shim.h",
         "tf_tensor_view.h",
+        "//tensorflow/compiler/mlir/lite/kernels/shim:shape",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -28,11 +28,11 @@ cc_library(
     name = "tf_kernel_shim",
     deps = [
         ":op_kernel",
-        ":shape",
         ":status_macros",
         ":tensor_view",
         ":tf_op_shim",
         ":tf_tensor_view",
+        "//tensorflow/compiler/mlir/lite/kernels/shim:shape",
     ],
 )
 
@@ -46,26 +46,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "shape",
-    srcs = ["shape.cc"],
-    hdrs = ["shape.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_test(
-    name = "shape_test",
-    srcs = ["shape_test.cc"],
-    deps = [
-        ":shape",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -138,9 +118,9 @@ cc_library(
     hdrs = ["op_kernel.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":shape",
         ":status_macros",
         ":tensor_view",
+        "//tensorflow/compiler/mlir/lite/kernels/shim:shape",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -156,10 +136,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":op_kernel",
-        ":shape",
         ":status_macros",
         ":tensor_view",
         ":tf_tensor_view",
+        "//tensorflow/compiler/mlir/lite/kernels/shim:shape",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -180,10 +160,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":op_kernel",
-        ":shape",
         ":status_macros",
         ":tensor_view",
         ":tflite_tensor_view",
+        "//tensorflow/compiler/mlir/lite/kernels/shim:shape",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",

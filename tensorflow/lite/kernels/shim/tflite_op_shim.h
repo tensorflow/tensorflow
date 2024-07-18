@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
-#include "tensorflow/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
 #include "tensorflow/lite/kernels/shim/tflite_tensor_view.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
