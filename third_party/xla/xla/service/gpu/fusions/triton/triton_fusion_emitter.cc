@@ -661,6 +661,14 @@ absl::StatusOr<Value> EmitScope(
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, Value>& values);
 
+// Adds `n` leading `1` dimensions to the input tensor.
+Value LeftExpandDimNTimes(ImplicitLocOpBuilder& b, Value input, int64_t n) {
+  for (int i = 0; i < n; ++i) {
+    input = b.create<mt::ExpandDimsOp>(input, /*axis=*/0);
+  }
+  return input;
+}
+
 absl::StatusOr<Value> EmitReduce(
     ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_hlo_reduce,
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values,
@@ -683,6 +691,7 @@ absl::StatusOr<Value> EmitReduce(
   llvm::ArrayRef<int64_t> input_shape =
       mlir::cast<ShapedType>(values[tiled_hlo_reduce.operand(0)].getType())
           .getShape();
+  int64_t input_rank = input_shape.size();
 
   // Since every shape is padded to a power of 2 in Triton, the input tile may
   // be padded with arbitrary values. These values could affect the result of
@@ -697,15 +706,16 @@ absl::StatusOr<Value> EmitReduce(
         ma::CmpIPredicate::slt, Range(b, block_row),
         Splat(b, CreateConst(b, b.getI32Type(), row_len), block_row));
 
-    // Make the mask match the rank of the input.
-    for (int dim = 0; dim < input_shape.size() - 1; ++dim) {
-      mask = b.create<mt::ExpandDimsOp>(mask, /*axis=*/0);
-    }
+    // Make the mask match the rank of the input---the mask starts out with
+    // rank 1.
+    mask = LeftExpandDimNTimes(b, mask, input_rank - 1);
     mask = Broadcast(b, mlir::cast<TensorValue>(mask), input_shape);
 
-    input = b.create<ma::SelectOp>(
-        mask, input,
-        Broadcast(b, mlir::cast<TensorValue>(neutral), input_shape));
+    Value broadcasted_neutral = Broadcast(
+        b, mlir::cast<TensorValue>(LeftExpandDimNTimes(b, neutral, input_rank)),
+        input_shape);
+
+    input = b.create<ma::SelectOp>(mask, input, broadcasted_neutral);
   }
 
   // Triton actually only performs reductions on float32 inputs, and we must
@@ -811,10 +821,25 @@ Value EmitTiledBroadcast(
 
   Value expanded_input = values[tiled_broadcast.operand(0)];
 
+  SmallVector<int64_t> padded_output_tile_shape;
+  padded_output_tile_shape.reserve(output_tile_shape.size());
+
+  for (int64_t tile_dim : output_tile_shape) {
+    padded_output_tile_shape.push_back(llvm::PowerOf2Ceil(tile_dim));
+  }
+
   // Returns true if `dim_id` is broadcasted.
   auto is_broadcasted_dim = [&](int64_t dim_id) {
     return !llvm::is_contained(tiled_broadcast.hlo()->dimensions(), dim_id);
   };
+
+  // Handle the 0d special case.
+  if (input_tile_shape.empty()) {
+    expanded_input =
+        LeftExpandDimNTimes(b, expanded_input, output_tile_shape.size());
+    return Broadcast(b, mlir::cast<TensorValue>(expanded_input),
+                     padded_output_tile_shape);
+  }
 
   // The loop below iterates over output dimensions and tracks matching dims in
   // input_tile_shape and expended_input value.
@@ -838,13 +863,6 @@ Value EmitTiledBroadcast(
       ++input_dim_id;
       ++expanded_input_dim_id;
     }
-  }
-
-  SmallVector<int64_t> padded_output_tile_shape;
-  padded_output_tile_shape.reserve(output_tile_shape.size());
-
-  for (int64_t tile_dim : output_tile_shape) {
-    padded_output_tile_shape.push_back(llvm::PowerOf2Ceil(tile_dim));
   }
 
   return Broadcast(b, mlir::cast<TensorValue>(expanded_input),
@@ -2753,6 +2771,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   b.create<mt::ReturnOp>(loc);
 
+  if (mlir::failed(mlir::verify(*triton_module))) {
+    return CreateInternalError(
+        "Failed to verify Triton module for fusion:", fusion, *triton_module);
+  }
+
   mlir::PassManager pm(&mlir_context);
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -2767,10 +2790,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
                             llvm_ir::DumpToString(*triton_module));
   }
 
-  if (mlir::failed(mlir::verify(*triton_module))) {
-    return CreateInternalError(
-        "Failed to verify Triton module for fusion:", fusion, *triton_module);
-  }
   return std::move(triton_module);
 }
 

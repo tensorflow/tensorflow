@@ -700,6 +700,33 @@ CHECK: tt.reshape
       RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
+// TODO(b/353484968): move this test to a deviceless file.
+TEST_F(TritonEmitterTest, GenericEmitterLowersBroadcastFrom0dOperandCorrectly) {
+  const std::string kHloText = R"(
+triton_computation {
+  // TODO(b/348565795): make this a 0D scalar directly once this is known to be
+  // supported.
+  param_0 = f32[1] parameter(0)
+  reshape = f32[] reshape(param_0)
+  ROOT broadcast = f32[127,125]{1,0} broadcast(reshape), dimensions={}
+}
+
+ENTRY main {
+  param_0 = f32[1] parameter(0)
+  ROOT triton_fusion = f32[127,125]{1,0} fusion(param_0), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":
+      {"kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["8","4"],
+                                   "num_warps":"1"}}}
+})";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      this, kHloText, FromOutputTileSizes({8, 4}), "triton_computation", R"(
+CHECK:       tt.broadcast
+CHECK-SAME:    tensor<1x1xf32> -> tensor<8x4xf32>
+)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
