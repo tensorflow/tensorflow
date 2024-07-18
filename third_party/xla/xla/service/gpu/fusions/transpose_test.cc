@@ -36,6 +36,11 @@ namespace {
 
 class TransposeTest : public HloTestBase {
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    auto opts = HloTestBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_mlir_emitter_level(0);
+    return opts;
+  }
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };
