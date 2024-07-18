@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/stream_executor/cuda/ptx_linking_method.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
@@ -94,27 +95,16 @@ class NVPTXCompiler : public GpuCompiler {
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override;
 
-  enum class LinkingMethod {
-    kNone,
-    kNvLink,
-    kDriver,
-  };
-
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config) override;
 
  private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
-      se::StreamExecutor* stream_exec,
+      se::GpuComputeCapability cc, se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) override;
 
-  absl::Mutex mutex_;
-
-  absl::flat_hash_map<std::string, LinkingMethod> linking_methods_
-      ABSL_GUARDED_BY(mutex_);
-
-  absl::StatusOr<LinkingMethod> ChooseLinkingMethod(
+  absl::StatusOr<stream_executor::PtxLinkingMethod> ChooseLinkingMethod(
       const DebugOptions& debug_options);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
@@ -191,6 +181,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   // Don't even think about switching this to flat_hash_map; iterator stability
   // is critical here.
+  absl::Mutex mutex_;
   absl::node_hash_map<CompilationCacheKey, CompilationCacheValue>
       compilation_cache_ ABSL_GUARDED_BY(mutex_);
 
