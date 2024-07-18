@@ -826,10 +826,6 @@ Value EmitTiledBroadcast(
   for (size_t output_dim_id = 0; output_dim_id < output_tile_shape.size();
        ++output_dim_id) {
     if (is_broadcasted_dim(output_dim_id)) {
-      // The dim is broadcasted in the original instruction, but tiled to 1 in
-      // this case. Nothing to broadcast.
-      if (output_tile_shape[output_dim_id] == 1) continue;
-
       // Expand dim for broadcast.
       expanded_input =
           b.create<mt::ExpandDimsOp>(expanded_input, expanded_input_dim_id);
@@ -840,11 +836,7 @@ Value EmitTiledBroadcast(
       CHECK_EQ(input_tile_shape[input_dim_id],
                output_tile_shape[output_dim_id]);
       ++input_dim_id;
-
-      // Size-1 dims are not present in the tensor type.
-      if (output_tile_shape[output_dim_id] != 1) {
-        ++expanded_input_dim_id;
-      }
+      ++expanded_input_dim_id;
     }
   }
 
@@ -852,13 +844,30 @@ Value EmitTiledBroadcast(
   padded_output_tile_shape.reserve(output_tile_shape.size());
 
   for (int64_t tile_dim : output_tile_shape) {
-    if (tile_dim != 1) {
-      padded_output_tile_shape.push_back(llvm::PowerOf2Ceil(tile_dim));
-    }
+    padded_output_tile_shape.push_back(llvm::PowerOf2Ceil(tile_dim));
   }
 
   return Broadcast(b, mlir::cast<TensorValue>(expanded_input),
                    padded_output_tile_shape);
+}
+
+Value EmitTiledReshape(ImplicitLocOpBuilder& b,
+                       const TiledHloInstruction& tiled_reshape_or_bitcast,
+                       Value input) {
+  SmallVector<int64_t> padded_tile_sizes = llvm::to_vector(llvm::map_range(
+      tiled_reshape_or_bitcast.tile_sizes(),
+      [](int64_t size) { return (int64_t)llvm::PowerOf2Ceil(size); }));
+
+  Type input_element_type =
+      mlir::cast<ShapedType>(input.getType()).getElementType();
+  Type output_tensor_type =
+      mlir::RankedTensorType::get(padded_tile_sizes, input_element_type);
+
+  // Conservatively prevent Triton from reordering elements within the tile.
+  // TODO(b/353637689): see if this restriction can be lifted.
+  bool allow_reorder = false;
+  return b.create<mt::ReshapeOp>(output_tensor_type, input, allow_reorder)
+      .getResult();
 }
 
 absl::StatusOr<Value> EmitTiledHloInstruction(
@@ -902,12 +911,16 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     return EmitElementwise(b, libdevice_path, device_info, *hlo, operands);
   }
 
+  if (hlo->opcode() == HloOpcode::kReshape ||
+      hlo->opcode() == HloOpcode::kBitcast) {
+    return EmitTiledReshape(b, tiled_hlo, values[tiled_hlo.operand(0)]);
+  }
+
   // All these operations are currently supported only as operations on indices
   // which are pushed to loads and stores. We don't generate any further code
   // for these operations here.
   std::vector<HloOpcode> passthrough_opcodes(
-      {HloOpcode::kBitcast, HloOpcode::kPad, HloOpcode::kReshape,
-       HloOpcode::kSlice, HloOpcode::kTranspose});
+      {HloOpcode::kPad, HloOpcode::kSlice, HloOpcode::kTranspose});
   if (absl::c_linear_search(passthrough_opcodes, hlo->opcode())) {
     return values[tiled_hlo.operand(0)];
   }
@@ -2528,8 +2541,6 @@ MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
 
   for (auto [size, stride] :
        llvm::zip(tiled_hlo.tile_sizes(), physical_strides)) {
-    if (size == 1) continue;
-
     int dimension_index = sizes.size();
 
     sizes.push_back(CreateConst(b, b.getI64Type(), size));
