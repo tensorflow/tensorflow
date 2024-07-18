@@ -870,6 +870,8 @@ absl::Status RunPostLayoutCollectivePipelinerPasses(HloModule* hlo_module) {
     // We call WhileLoopTripCountAnnotator at the end of the collective
     // pipeline, which might have changed the loop trip count.
     collectives_pipeline.AddPass<WhileLoopTripCountAnnotator>();
+    // Flatten call graph after loop peeling.
+    collectives_pipeline.AddPass<FlattenCallGraph>();
   }
   return collectives_pipeline.Run(hlo_module).status();
 }

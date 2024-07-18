@@ -22,13 +22,14 @@
 #include <string_view>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
