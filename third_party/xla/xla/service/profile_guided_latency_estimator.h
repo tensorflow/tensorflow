@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 

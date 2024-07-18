@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "xla/service/memory_space_propagation.h"
 
+#include <gtest/gtest.h>
+#include "absl/hash/hash.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

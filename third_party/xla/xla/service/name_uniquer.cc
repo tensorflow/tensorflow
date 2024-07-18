@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "xla/service/name_uniquer.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
-#include "xla/types.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

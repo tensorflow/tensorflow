@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "xla/service/real_imag_expander.h"
 
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
