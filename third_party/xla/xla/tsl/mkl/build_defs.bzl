@@ -50,7 +50,7 @@ def if_mkl_ml(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "@local_tsl//third_party/mkl_dnn:build_with_mkl_opensource": if_false,
+        "@local_xla//xla/tsl/mkl:build_with_mkl_opensource": if_false,
         "@local_xla//xla/tsl/mkl:build_with_mkl": if_true,
         "//conditions:default": if_false,
     })

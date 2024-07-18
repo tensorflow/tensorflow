@@ -66,6 +66,30 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "build_with_mkl_opensource",
+    define_values = {
+        "build_with_mkl": "true",
+        "build_with_mkl_opensource": "true",
+    },
+)
+
+config_setting(
+    name = "build_with_mkldnn_openmp",
+    define_values = {
+        "build_with_mkl": "true",
+        "build_with_openmp": "true",
+    },
+)
+
+config_setting(
+    name = "build_with_mkl_aarch64_openmp",
+    define_values = {
+        "build_with_mkl_aarch64": "true",
+        "build_with_openmp": "true",
+    },
+)
+
 filegroup(
     name = "LICENSE",
     srcs = [
