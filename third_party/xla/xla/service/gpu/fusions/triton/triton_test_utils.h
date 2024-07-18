@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRITON_TEST_UTILS_H_
-#define XLA_SERVICE_GPU_TRITON_TEST_UTILS_H_
+#ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_TEST_UTILS_H_
+#define XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_TEST_UTILS_H_
 
 #include <cstdint>
 #include <memory>
@@ -139,4 +139,4 @@ std::string TritonSupportTestTypeOpcodeAndDeviceToString(
         std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data);
 }  //  namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_TRITON_TEST_UTILS_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_TEST_UTILS_H_

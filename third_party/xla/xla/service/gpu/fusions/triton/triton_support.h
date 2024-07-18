@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_TRITON_SUPPORT_H_
-#define XLA_SERVICE_GPU_TRITON_SUPPORT_H_
+#ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_SUPPORT_H_
+#define XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_SUPPORT_H_
 
 // This file is the home of the basic Triton support checks which are used by
 // multiple other components.
@@ -125,4 +125,4 @@ CodegenDecision IsTritonSupportedInstruction(
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRITON_SUPPORT_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_SUPPORT_H_

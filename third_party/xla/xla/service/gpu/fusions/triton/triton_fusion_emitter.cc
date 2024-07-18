@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/ir_emitter_triton.h"
+#include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 
 #include <array>
 #include <climits>

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/prevent_mmav3_loop_unrolling.h"
+#include "xla/service/gpu/fusions/triton/prevent_mmav3_loop_unrolling.h"
 
 #include <memory>
 

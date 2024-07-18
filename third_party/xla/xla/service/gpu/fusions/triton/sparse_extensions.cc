@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/triton_sparse_extensions.h"
+#include "xla/service/gpu/fusions/triton/sparse_extensions.h"
 
 #include <algorithm>
 #include <cassert>

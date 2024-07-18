@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/triton_support.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 
 #include <cstdint>
 #include <iterator>

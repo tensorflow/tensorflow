@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "mlir/InitAllExtensions.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "xla/service/gpu/prevent_mmav3_loop_unrolling.h"
-#include "xla/service/gpu/triton_sparse_extensions.h"
+#include "xla/service/gpu/fusions/triton/prevent_mmav3_loop_unrolling.h"
+#include "xla/service/gpu/fusions/triton/sparse_extensions.h"
 #include "third_party/triton/bin/RegisterTritonDialects.h"
 
 int main(int argc, char **argv) {
