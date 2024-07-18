@@ -653,13 +653,8 @@ Status PreparePjRtExecutableArguments(
             tensor->tensor_data().size());
         absl::Span<const std::shared_ptr<xla::BufferSequencingEvent>>
             definition_events;
-        TF_ASSIGN_OR_RETURN(
-            xla::LocalDeviceState * local_device_state,
-            tensorflow::down_cast<xla::PjRtStreamExecutorDevice*>(pjrt_device)
-                ->GetLocalDeviceState());
         auto device_buffer = std::make_shared<xla::TrackedDeviceBuffer>(
-            /*allocator=*/nullptr,
-            local_device_state->local_device_id().value(),
+            /*allocator=*/nullptr, pjrt_device,
             std::initializer_list<se::DeviceMemoryBase>{dmem},
             definition_events, /*on_delete_callback=*/[]() {});
         xla::Shape device_shape;

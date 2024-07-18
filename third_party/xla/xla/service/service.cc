@@ -921,8 +921,9 @@ absl::StatusOr<Literal> Service::TransferToClient(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
-                                       shaped_buffer->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      auto stream,
+      execute_backend_->BorrowStream(shaped_buffer->physical_device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(
       Literal result_literal,

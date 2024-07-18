@@ -471,7 +471,8 @@ AllocateDestinationBuffer(
       ScopedShapedBuffer dst_buffer,
       transfer_manager->AllocateScopedShapedBuffer(
           on_host_shape, se_client->allocator(),
-          local_device->local_device_id().value(), memory_space_shape_fn));
+          local_device->local_device_id().value(),
+          local_device->local_hardware_id().value(), memory_space_shape_fn));
   if (local_device->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
     if (copy_stream == nullptr) {
@@ -553,7 +554,7 @@ AllocateDestinationBuffer(
   }
   std::shared_ptr<TrackedDeviceBuffer> dst_device_buffer =
       TrackedDeviceBuffer::FromScopedShapedBuffer(&dst_buffer,
-                                                  definition_events);
+                                                  definition_events, device);
 
   auto py_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       on_device_shape, std::move(dst_device_buffer), client, device,
@@ -790,8 +791,8 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
                            original_definition_events.end());
 
   auto new_device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      tracked_buffer->allocator(), device()->local_device_id().value(),
-      std::move(buffers), std::move(definition_events),
+      tracked_buffer->allocator(), device(), std::move(buffers),
+      std::move(definition_events),
       /*on_delete_callback=*/nullptr);
 
   // Make the new buffer which is identical to the old, except for the new
@@ -1123,12 +1124,9 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
 
   // Create an empty buffer.
   auto* se_client = tensorflow::down_cast<PjRtStreamExecutorClient*>(this);
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                          ->GetLocalDeviceState());
   absl::Span<se::DeviceMemoryBase> buffers;
   auto dummy_device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      se_client->allocator(), local_device->local_device_id().value(), buffers,
+      se_client->allocator(), device, buffers,
       absl::MakeSpan(&definition_event, 1),
       /*on_delete_callback=*/nullptr);
 
@@ -1317,7 +1315,7 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
                                                definition_stream);
 
   auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      /*allocator=*/nullptr, device->local_device_id().value(),
+      /*allocator=*/nullptr, device,
       std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
       std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
@@ -2296,7 +2294,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
     std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release) {
   std::shared_ptr<TrackedDeviceBuffer> out_buffer =
       TrackedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
-                                                  {definition_event});
+                                                  {definition_event}, device);
   const Shape& shape = result_buffer->on_device_shape();
   PjRtMemorySpace* memory_space =
       device->default_memory_space().value_or(nullptr);
