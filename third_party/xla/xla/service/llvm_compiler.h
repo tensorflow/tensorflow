@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_COMPILER_H_
 #define XLA_SERVICE_LLVM_COMPILER_H_
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 
 namespace xla {
 
