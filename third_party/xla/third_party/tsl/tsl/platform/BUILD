@@ -847,6 +847,7 @@ cc_library(
     deps = [
         ":logging",
         ":path",
+        ":platform",
         ":test",
     ],
 )

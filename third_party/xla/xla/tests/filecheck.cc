@@ -23,9 +23,9 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/resource_loader.h"
 #include "tsl/platform/subprocess.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -48,7 +48,7 @@ absl::StatusOr<bool> RunFileCheckWithPatternFile(
   std::string binary_name = "FileCheck";
   tsl::io::AppendDotExeIfWindows(binary_name);
   std::string file_check_path = tsl::GetDataDependencyFilepath(
-      tsl::testing::kIsOpenSource
+      tsl::kIsOpenSource
           ? tsl::io::JoinPath("external", "llvm-project", "llvm", binary_name)
           : tsl::io::JoinPath("llvm", "llvm-project", "llvm", binary_name));
 

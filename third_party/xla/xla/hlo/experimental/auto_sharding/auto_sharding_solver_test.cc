@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
-#include "tsl/platform/test.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace spmd {
@@ -858,7 +858,7 @@ TEST(StableHashMap, IterationOrderDeterminism){
   for (const auto& [key, value] : map) {
     iteration_order.push_back(key);
   }
-  if (tsl::testing::kIsOpenSource) {
+  if (tsl::kIsOpenSource) {
     EXPECT_THAT(iteration_order,
                 ::testing::ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
   } else {

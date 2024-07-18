@@ -332,12 +332,12 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:resource_loader",
         "@local_tsl//tsl/platform:subprocess",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

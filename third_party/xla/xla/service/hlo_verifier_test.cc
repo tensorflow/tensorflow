@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -2776,7 +2777,7 @@ TEST_F(HloVerifierTest, DisableS4Veridication) {
 }
 
 TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {
-  if (tsl::testing::kIsOpenSource) {
+  if (tsl::kIsOpenSource) {
     return;
   }
   constexpr absl::string_view hlo = R"(
