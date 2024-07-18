@@ -312,9 +312,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_fuzztest",
-        sha256 = "d922940bde8904937b9e13298f06b1d59388ab4a965122860358b00535438f63",
-        strip_prefix = "fuzztest-e576caaece16bd1f8dcd196736743c36474f3c16",
-        urls = tf_mirror_urls("https://github.com/google/fuzztest/archive/e576caaece16bd1f8dcd196736743c36474f3c16.zip"),
+        sha256 = "9e8f63cdcc95314642859ed840f51f1e46f03f49ea983224a0bb75df027a617d",
+        strip_prefix = "fuzztest-0e7b1dc2e0b073d4d071174cb7904fd2927d7db2",
+        urls = tf_mirror_urls("https://github.com/google/fuzztest/archive/0e7b1dc2e0b073d4d071174cb7904fd2927d7db2.zip"),
     )
 
     tf_http_archive(

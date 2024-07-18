@@ -90,6 +90,10 @@ build --announce_rc
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --define=grpc_no_ares=true
 
+# Disable riegeli in com_google_fuzztest. Otherwise we would have to pull in a
+# few additional repositories.
+build --@com_google_fuzztest//fuzztest:use_riegeli=false
+
 # See https://github.com/bazelbuild/bazel/issues/7362 for information on what
 # --incompatible_remove_legacy_whole_archive flag does.
 # This flag is set to true in Bazel 1.0 and newer versions. We tried to migrate
