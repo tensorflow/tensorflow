@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/sort_simplifier.h"
 #include "xla/service/spmd/collective_permute_motion.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/service/while_loop_constant_sinking.h"
@@ -86,16 +87,21 @@ void AddSPMDPasses(
   spmd_simplify.AddPass<HloConstantFolding>();
   spmd_simplify.AddPass<ConditionalSimplifier>();
 
-  spmd_pipeline.AddPass<HloConstantSplitter>();
-  spmd_simplify.AddPass<HloDCE>();
+  const HloModuleConfig& config = hlo_module->config();
 
-  if (auto_sharding_func.has_value()) {
-    (*auto_sharding_func)(spmd_pipeline);
+  if (config.debug_options().xla_use_shardy()) {
+    spmd_pipeline.AddPass<sdy::ShardyXLA>();
+  } else {
+    spmd_pipeline.AddPass<HloConstantSplitter>();
+    spmd_simplify.AddPass<HloDCE>();
+
+    if (auto_sharding_func.has_value()) {
+      (*auto_sharding_func)(spmd_pipeline);
+    }
+    spmd_pipeline.AddPass<ShardingPropagation>(
+        /*is_spmd=*/true, /*propagate_metadata=*/false,
+        config.allow_spmd_sharding_propagation_to_output());
   }
-
-  spmd_pipeline.AddPass<ShardingPropagation>(
-      /*is_spmd=*/true, /*propagate_metadata=*/false,
-      hlo_module->config().allow_spmd_sharding_propagation_to_output());
   spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
       num_partitions, hlo_module->config().replica_count(),
       hlo_module->config()
