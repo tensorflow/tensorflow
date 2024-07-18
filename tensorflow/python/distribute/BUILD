@@ -1264,6 +1264,7 @@ py_strict_library(
 tf_py_strict_test(
     name = "multi_worker_test_base_test",
     srcs = ["multi_worker_test_base_test.py"],
+    linking_mode = "static",
     srcs_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/170834611)

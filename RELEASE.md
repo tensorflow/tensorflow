@@ -35,6 +35,7 @@
     * `Dequantize` op supports `TensorType_INT4`.
         * This change includes per-channel dequantization.
     * Add support for `stablehlo.composite`.
+    * `EmbeddingLookup` op supports `TensorType_INT4` values.
 
 ## Keras
 
