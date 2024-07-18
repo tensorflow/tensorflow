@@ -2325,8 +2325,10 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
 
   if (should_use_nccl_thunk) {
     auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(inst);
-    // The wrapper name is used when an op is wrapped by syntactic sugar.
-    thunk_info.profile_annotation = async_start->name();
+    // The wrapper name is used when syntactic sugar is turned on.
+    if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
+      thunk_info.profile_annotation = async_start->name();
+    }
     auto thunk = std::make_unique<NcclThunkType>(
         thunk_info, NcclApi::Default(), inst, /*buffers=*/std::move(buffers));
     GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
