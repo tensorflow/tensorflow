@@ -26,13 +26,6 @@ limitations under the License.
 TfLiteOperator* TfLiteOperatorCreate(TfLiteBuiltinOperator builtin_code,
                                      const char* custom_name, int version,
                                      void* user_data) {
-  return TfLiteOperatorCreateWithData(builtin_code, custom_name, version,
-                                      user_data);
-}
-
-TfLiteOperator* TfLiteOperatorCreateWithData(TfLiteBuiltinOperator builtin_code,
-                                             const char* custom_name,
-                                             int version, void* user_data) {
   return new TfLiteOperator{/*custom_name=*/custom_name,
                             /*version=*/version,
                             /*init=*/nullptr,

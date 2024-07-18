@@ -86,11 +86,6 @@ TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreate(
     TfLiteBuiltinOperator builtin_code, const char* custom_name, int version,
     void* user_data);
 
-/// Deprecated alias of `TfLiteOperatorCreate`
-TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreateWithData(
-    TfLiteBuiltinOperator builtin_code, const char* custom_name, int version,
-    void* user_data);
-
 /// Destroys the TfLiteOperator instance.
 ///
 TFL_CAPI_EXPORT extern void TfLiteOperatorDelete(TfLiteOperator* registration);
