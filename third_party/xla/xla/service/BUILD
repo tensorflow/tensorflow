@@ -2406,10 +2406,9 @@ cc_library(
     srcs = ["triangular_solve_expander.cc"],
     hdrs = ["triangular_solve_expander.h"],
     deps = [
+        ":hlo_module_config",
         ":op_expander_pass",
-        "//xla:literal",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
@@ -2417,9 +2416,13 @@ cc_library(
         "//xla/client/lib:math",
         "//xla/client/lib:matrix",
         "//xla/client/lib:slicing",
+        "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
