@@ -271,8 +271,10 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
 
   auto get_text_sections = [&](absl::Span<const uint8_t> binary)
       -> absl::StatusOr<absl::btree_map<std::string, std::string>> {
-    auto buffer = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(
-        reinterpret_cast<const char*>(binary.data()), binary.size()));
+    auto buffer = llvm::MemoryBuffer::getMemBuffer(
+        llvm::StringRef(reinterpret_cast<const char*>(binary.data()),
+                        binary.size()),
+        "", false);
     auto object_file =
         llvm::object::ObjectFile::createObjectFile(buffer->getMemBufferRef());
 
