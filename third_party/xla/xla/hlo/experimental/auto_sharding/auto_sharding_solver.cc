@@ -400,7 +400,12 @@ AutoShardingSolverResult CallORToolsSolver(
   const size_t num_edges = request.edges_size();
   const int num_workers = 32;
   // SAT or SCIP
-  std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::SAT_INTEGER_PROGRAMMING));
+#ifdef PLATFORM_GOOGLE
+  std::unique_ptr<MPSolver> solver(MPSolver::CreateSolver("SAT"));
+#else
+  std::unique_ptr<MPSolver> solver(
+      std::make_unique<MPSolver>("", MPSolver::SAT_INTEGER_PROGRAMMING));
+#endif
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
   std::string solver_parameter_str;
