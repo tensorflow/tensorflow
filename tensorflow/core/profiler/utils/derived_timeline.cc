@@ -464,13 +464,8 @@ void DeriveLinesFromStats(XPlane* device_trace) {
       &plane_builder, tensorflow::profiler::kThreadIdSource,
       tensorflow::profiler::kSourceLineName, start_timestamp_ns, {});
 
-  XLineBuilder host_offload_op_line_builder =
-      plane_builder.GetOrCreateLine(kThreadIdHostOffloadOp);
-  host_offload_op_line_builder.SetName(kHostOffloadOpLineName);
-  host_offload_op_line_builder.SetTimestampNs(start_timestamp_ns);
-
-  HostOffloadEventProcessor host_offload_event_processor(
-      &plane_builder, &host_offload_op_line_builder);
+  HostOffloadEventProcessor host_offload_event_processor(&plane_builder,
+                                                         start_timestamp_ns);
 
   for (const XEventVisitor& event :
        GetSortedEvents<XEventVisitor>(plane_visitor, true)) {
