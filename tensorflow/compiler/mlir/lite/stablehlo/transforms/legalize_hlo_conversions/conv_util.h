@@ -171,10 +171,6 @@ class ConvData {
   mlir::Type element_type_;
 };
 
-// TFL Native Standard Conv Layouts:
-// 2D : [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// 3D : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
-
 inline bool IsStandardFeatureGroup(const ConvData& data) {
   const int64_t input_features =
       data.InputLayout().SpecialDim2(data.InputShape());
