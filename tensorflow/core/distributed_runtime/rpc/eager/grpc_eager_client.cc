@@ -19,9 +19,13 @@ limitations under the License.
 #include <string>
 
 #include "grpcpp/generic/generic_stub.h"
-#include "xla/tsl/distributed_runtime/call_options.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "third_party/grpc/include/grpcpp/completion_queue.h"
+#include "third_party/grpc/include/grpcpp/generic/generic_stub.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -30,10 +34,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace eager {

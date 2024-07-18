@@ -77,10 +77,10 @@ bool IsConvLegal(mhlo::ConvolutionOp op) {
   const bool are_groups_supported =
       IsStandardFeatureGroup(data) && IsBatchGroupSupported(data);
 
-  return !are_groups_supported || !IsInputDilationSupported(data) ||
-         !AreShapesSupported(data) || !IsTFLNativeLayout(data) ||
-         !IsPaddingSupported(data) || !IsWindowReversalSupported(data) ||
-         !IsStandardConv(op);
+  return !are_groups_supported || !IsRankSupported(data) ||
+         !IsInputDilationSupported(data) || !AreShapesSupported(data) ||
+         !IsTFLNativeLayout(data) || !IsPaddingSupported(data) ||
+         !IsWindowReversalSupported(data) || !IsStandardConv(op);
 }
 
 //===----------------------------------------------------------------------===//
