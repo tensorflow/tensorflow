@@ -5571,6 +5571,8 @@ xla_cc_test(
         "//xla/tools/hlo_opt:gpu_specs/a100_sxm_80.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
     ],
+    # TODO(b/354186833): Re-enable msan after fix.
+    tags = ["nomsan"],
     deps = if_cuda_is_configured([
         # keep sorted
         ":autotuner_util",
