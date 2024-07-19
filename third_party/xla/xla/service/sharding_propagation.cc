@@ -1557,29 +1557,10 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
       HloInstruction* instruction = *it;
       if (instruction->IsCustomCall("Sharding")) {
+        HloSharding original_sharding = instruction->sharding();
         TF_RET_CHECK(instruction->has_sharding())
             << "Sharding instruction must have a sharding attribute";
-        HloSharding original_sharding = instruction->sharding();
         VLOG(3) << "ProcessShardingInstruction: " << instruction->ToString();
-
-        // Simplify consecutive Sharding custom-call instructions. If both
-        // shardings are tiled, we do not simplify the instruction since these
-        // two shardings can guide the partitioner. An example is
-        // https://github.com/google/jax/issues/21562.
-        HloInstruction* operand = instruction->mutable_operand(0);
-        if (!original_sharding.IsUnknown() &&
-            operand->IsCustomCall("Sharding") && operand->user_count() == 1 &&
-            !(original_sharding.IsTiled() && operand->sharding().IsTiled())) {
-          operand->set_sharding(original_sharding);
-          TF_ASSIGN_OR_RETURN(
-              std::ignore,
-              computation->ReplaceInstruction(
-                  instruction, operand, /*preserve_sharding=*/false,
-                  /*relay_control_dependency=*/false,
-                  /*remove_unused_operands=*/false));
-          changed = true;
-          continue;
-        }
 
         std::vector<int64_t> unspec_dims;
         TF_RETURN_IF_ERROR(sharding_op_util::ParseAttributes(
@@ -3385,8 +3366,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         /*ignore_control_dependencies=*/false,
         /*only_scalars=*/false,
         /*is_sharding_sensitive=*/true,
-        /*allow_compatible_sharding=*/true,
-        /*instructions_to_skip=*/provided_shardings);
+        /*allow_compatible_sharding=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
 
     // CSE may invalidate stored HloInstruction pointers, so we need to remove

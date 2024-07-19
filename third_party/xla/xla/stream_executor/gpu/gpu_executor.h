@@ -204,9 +204,6 @@ class GpuExecutor : public StreamExecutorCommon {
   absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
                       uint8_t pattern, uint64_t size) override;
 
-  bool HostCallback(Stream* stream,
-                    absl::AnyInvocable<absl::Status() &&> callback) override;
-
   void DeallocateStream(Stream* stream) override;
 
   absl::Status BlockHostUntilDone(Stream* stream) override;
@@ -303,12 +300,6 @@ class GpuExecutor : public StreamExecutorCommon {
   uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
 
  private:
-  // Host callback landing routine invoked by CUDA.
-  // data: User-provided callback provided to HostCallback() above, captured
-  //       as a std::function<void()>. Allocated/initialized inside
-  //       HostCallback() and owned and deleted by this call.
-  static void InternalHostCallback(void* data);
-
   // Collects metadata for the specified kernel.
   absl::Status GetKernelMetadata(GpuKernel* cuda_kernel,
                                  KernelMetadata* kernel_metadata);

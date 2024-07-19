@@ -543,29 +543,6 @@ ENTRY %entry {
   EXPECT_FALSE(cse.Run(m.get()).value());
 }
 
-TEST_F(HloCseTest, DoNotCombineSkippedOps) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %entry {
-  constant = bf16[] constant(0)
-  broadcast.0 = bf16[14,4,32768,3072]{3,2,1,0} broadcast(constant), dimensions={}, sharding={devices=[1,1,8,1,8]<=[64] last_tile_dim_replicate}
-  broadcast.1 = bf16[14,4,32768,3072]{3,2,1,0} broadcast(constant), dimensions={}, sharding={devices=[1,1,8,8]<=[64]}
-  ROOT tuple = (bf16[14,4,32768,3072]{3,2,1,0}, bf16[14,4,32768,3072]{3,2,1,0}) tuple(broadcast.0, broadcast.1)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  HloInstruction* broadcast_0 = FindInstruction(m.get(), "broadcast.0");
-  HloCSE cse(/*is_layout_sensitive=*/false,
-             /*only_fusion_computations=*/false,
-             /*ignore_control_dependencies=*/false,
-             /*only_scalars=*/false,
-             /*is_sharding_sensitive=*/true,
-             /*allow_compatible_sharding=*/true,
-             /*instructions_to_skip=*/{broadcast_0});
-  EXPECT_FALSE(cse.Run(m.get()).value());
-  XLA_VLOG_LINES(0, m->ToString());
-}
-
 TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   // Test that two calls to an impure function are not commoned. RNG
   // is the source of the impurity.

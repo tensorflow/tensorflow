@@ -143,22 +143,6 @@ void StreamCommon::ReturnSubStream(Stream *sub_stream) {
              << sub_stream;
 }
 
-absl::Status StreamCommon::DoHostCallback(
-    absl::AnyInvocable<void() &&> callback) {
-  return DoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
-    std::move(cb)();
-    return absl::OkStatus();
-  });
-}
-
-absl::Status StreamCommon::DoHostCallbackWithStatus(
-    absl::AnyInvocable<absl::Status() &&> callback) {
-  if (parent_->HostCallback(this, std::move(callback))) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to host callback");
-}
-
 void StreamCommon::CheckError(bool operation_retcode) {
   if (operation_retcode) {
     return;

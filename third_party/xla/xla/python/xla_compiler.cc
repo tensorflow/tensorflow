@@ -1275,7 +1275,8 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
             options.set_allow_spmd_sharding_propagation_to_output(v);
           });
 
-  nb::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
+  nb::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type",
+                                               nb::is_arithmetic());
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
       .value("MAXIMAL", OpSharding::MAXIMAL)
       .value("MANUAL", OpSharding::MANUAL)

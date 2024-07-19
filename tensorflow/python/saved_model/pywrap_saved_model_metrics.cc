@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+// Placeholder for lineage logging import.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -237,6 +238,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelWritePathAndSingleprint().Set(
             path_and_singleprint.value());
+        // Placeholder for lineage logging call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
       py::doc("Set the "
