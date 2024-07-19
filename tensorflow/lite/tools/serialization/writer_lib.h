@@ -24,6 +24,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+
 // This #include needs to precede the inclusion of any other TF Lite header
 // file that might depend on the non-mutable schema_generated.h, directly,
 // e.g. core/api/op_resolver.h, or indirectly, e.g. core/subgraph.h.
