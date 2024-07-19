@@ -517,9 +517,15 @@ mlir::ValueRange MlirReductionFusion::EmitterState::ReduceViaSharedMemory(
       owner.GetSharedMemoryReductionReadMap(builder.getContext());
   auto loop_indexing = read_indexing;
   // All threads must participate in the shuffle, so we clear the constraints
-  // for the iteration. Otherwise, some threads might not be part of the loop.
-  // The constraints are still checked inside the loop.
+  // for the iteration. Otherwise, some threads might not be part of the loop,
+  // resulting in incorrect results for the warp shuffle.
+  // The constraints are still checked inside the loop in the
+  // PredicatedExtractOp.
   loop_indexing.ClearConstraints();
+  // The constraints may have reduced the upper bound of the dimension. If
+  // that's the case, we reset it to a multiple of the warp size.
+  auto& bound = loop_indexing.GetMutableDimensionBound(0);
+  bound.upper = RoundUpTo(bound.upper + 1, WarpSize()) - 1;
 
   auto tiles = WriteToSharedMemory(reductions, per_thread.reduction_scalars);
   return mlir_converter::EmitLoopNest(

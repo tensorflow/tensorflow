@@ -860,6 +860,25 @@ TEST_F(MlirMultiRowReductionTest, VectorizedX4Correctness) {
       RunAndCompareNoHloPasses(kMultiRowReductionX2VectorX4, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirRowReductionTest, LargeToUnit) {
+  // Regression test for a bug where not all threads in the warp produced a
+  // valid value for the final warp shuffle.
+  constexpr auto kHloString = R"(
+    and {
+      p0 = pred[] parameter(0)
+      p1 = pred[] parameter(1)
+      ROOT and = pred[] and(p0, p1)
+    }
+
+    %fused_reduce {
+      c1 = pred[] constant(true)
+      p0 = pred[10000] broadcast(c1), dimensions={}
+      ROOT reduce = pred[] reduce(p0, c1), dimensions={0}, to_apply=and
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
