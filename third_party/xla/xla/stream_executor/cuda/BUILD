@@ -759,6 +759,7 @@ cuda_only_cc_library(
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:event",
+        "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:fft",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:module_spec",

@@ -184,6 +184,12 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
   return shared_constant;
 }
 
+absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
+  // TODO(b/301020144) Move this all to the appropriate Executor class.
+  return GpuTimer::CreateEventBasedTimer(stream, use_delay_kernel);
+}
+
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
   auto module_it = gpu_binary_to_module_.find(gpu_binary);
   if (gpu_binary_to_module_.end() == module_it) {

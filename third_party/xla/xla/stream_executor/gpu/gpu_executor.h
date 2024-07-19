@@ -1,3 +1,4 @@
+#include "xla/stream_executor/event_based_timer.h"
 /* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,6 +68,7 @@ namespace gpu {
 
 class GpuKernel;
 class GpuCommandBuffer;
+class GpuStream;
 
 // CUDA-platform implementation of the platform-agnostic
 // StreamExecutor.
@@ -298,6 +300,10 @@ class GpuExecutor : public StreamExecutorCommon {
   }
 
   uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
+
+  // Creates an EventBasedTimer for the given stream.
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      GpuStream* stream, bool use_delay_kernel);
 
  private:
   // Collects metadata for the specified kernel.

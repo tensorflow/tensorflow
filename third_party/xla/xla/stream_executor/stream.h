@@ -22,6 +22,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_STREAM_H_
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -283,6 +285,21 @@ class Stream {
   // Get/set a name for a stream, which can be shown in profiling tools
   virtual absl::string_view name() const = 0;
   virtual void set_name(absl::string_view name) = 0;
+
+  // Create an EventBasedTimer that can be used to time operations on this
+  // stream using Events.
+  //
+  // If use_delay_kernel is true, the timer will launch a delay kernel into the
+  // stream and queue a start event immediately afterwards. This delay kernel
+  // blocks execution on the stream until EventBasedTimer::GetElapsedDuration()
+  // is called, at which point an end event is queued and the delay kernel
+  // exits. This allows the device execution time of the tasks queued to the
+  // stream while the timer is active to be measured more accurately.
+  virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+  CreateEventBasedTimer(bool use_delay_kernel) {
+    return absl::UnimplementedError(
+        "This stream does not support EventBasedTimers.");
+  }
 };
 
 template <typename... Params, typename... Args>

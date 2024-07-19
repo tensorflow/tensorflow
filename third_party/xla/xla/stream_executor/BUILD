@@ -91,6 +91,7 @@ cc_library(
         ":device_description_proto_cc",
         ":dnn",
         ":event",
+        ":event_based_timer",
         ":fft",
         ":host_memory_allocation",  # build_cleaner: keep
         ":host_or_device_scalar",
@@ -476,6 +477,7 @@ cc_library(
         ":device_description",
         ":device_memory",
         ":event",
+        ":event_based_timer",
         ":kernel",
         ":launch_dim",
         ":platform",
@@ -521,6 +523,15 @@ cc_library(
     hdrs = ["allocator_stats.h"],
     visibility = [":internal"],
     deps = ["@com_google_absl//absl/strings:str_format"],
+)
+
+cc_library(
+    name = "event_based_timer",
+    hdrs = ["event_based_timer.h"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+    ],
 )
 
 cc_library(

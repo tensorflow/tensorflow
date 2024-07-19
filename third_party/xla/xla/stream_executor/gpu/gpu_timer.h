@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
 
-#include <optional>
+#include <memory>
 #include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -44,9 +46,11 @@ class GpuStream;
 // an end event is queued and the delay kernel exits. This allows the device
 // execution time of the tasks queued to the stream while the timer is active
 // to be measured more accurately.
-class GpuTimer {
+class GpuTimer : public EventBasedTimer {
  public:
   static absl::StatusOr<GpuTimer> Create(Stream* stream, bool use_delay_kernel);
+  static absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      Stream* stream, bool use_delay_kernel);
   [[deprecated("Pass Stream* not GpuStream*")]] static absl::StatusOr<GpuTimer>
   Create(GpuStream* stream);
 
@@ -77,11 +81,9 @@ class GpuTimer {
     return *this;
   }
 
-  ~GpuTimer();
+  ~GpuTimer() override;
 
-  // Stops the timer on the first call and returns the elapsed duration.
-  // Subsequent calls error out.
-  absl::StatusOr<absl::Duration> GetElapsedDuration();
+  absl::StatusOr<absl::Duration> GetElapsedDuration() override;
 
  private:
   GpuExecutor* parent_;

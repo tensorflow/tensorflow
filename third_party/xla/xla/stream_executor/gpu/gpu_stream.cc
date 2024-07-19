@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -191,6 +193,11 @@ void GpuStream::set_name(absl::string_view name) {
   name_ = name;
   tsl::profiler::NameStream(
       reinterpret_cast<tsl::profiler::StreamHandle>(gpu_stream()), name_);
+}
+
+absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+GpuStream::CreateEventBasedTimer(bool use_delay_kernel) {
+  return parent_->CreateEventBasedTimer(this, use_delay_kernel);
 }
 
 GpuStream* AsGpuStream(Stream* stream) {

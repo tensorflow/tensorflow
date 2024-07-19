@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -263,6 +264,12 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   kernel->set_name(*kernel_name);
   kernel->set_args_packing(spec.kernel_args_packing());
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
+  // TODO(b/301020144) Move this all to the appropriate Executor class.
+  return GpuTimer::CreateEventBasedTimer(stream, use_delay_kernel);
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {

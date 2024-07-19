@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdlib>
-#include <optional>
+#include <memory>
 #include <random>
 #include <string_view>
 #include <utility>
@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/utility/utility.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
@@ -65,6 +66,37 @@ bool ShouldLaunchDelayKernel() {
   return value;
 }
 
+absl::Status CreateGpuTimerParts(Stream* real_stream, bool use_delay_kernel,
+                                 GpuExecutor*& parent,
+                                 GpuEventHandle& start_event,
+                                 GpuEventHandle& stop_event,
+                                 GpuSemaphore& semaphore) {
+  GpuStream* stream = AsGpuStream(real_stream);
+  parent = stream->parent();
+  GpuContext* context = parent->gpu_context();
+  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &start_event,
+                                          GpuDriver::EventFlags::kDefault));
+  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &stop_event,
+                                          GpuDriver::EventFlags::kDefault));
+  CHECK(start_event != nullptr && stop_event != nullptr);
+  if (!use_delay_kernel) {
+    LOG(WARNING)
+        << "Skipping the delay kernel, measurement accuracy will be reduced";
+  }
+
+  if (use_delay_kernel && ShouldLaunchDelayKernel()) {
+    TF_ASSIGN_OR_RETURN(bool is_supported, DelayKernelIsSupported(stream));
+
+    if (is_supported) {
+      TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(real_stream));
+    }
+  }
+
+  // The start event goes after the delay kernel in the stream
+  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
+                                            stream->gpu_stream()));
+  return absl::OkStatus();
+}
 }  // namespace
 
 /*deprecated*/ /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(
@@ -88,35 +120,30 @@ bool ShouldLaunchDelayKernel() {
 
 /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(Stream* real_stream,
                                                      bool use_delay_kernel) {
-  GpuStream* stream = AsGpuStream(real_stream);
-  GpuExecutor* parent = stream->parent();
-  GpuContext* context = parent->gpu_context();
-  GpuEventHandle start_event;
-  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &start_event,
-                                          GpuDriver::EventFlags::kDefault));
-  GpuEventHandle stop_event;
-  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &stop_event,
-                                          GpuDriver::EventFlags::kDefault));
-  CHECK(start_event != nullptr && stop_event != nullptr);
+  GpuExecutor* parent = nullptr;
+  GpuEventHandle start_event = nullptr;
+  GpuEventHandle stop_event = nullptr;
   GpuSemaphore semaphore{};
-  if (!use_delay_kernel) {
-    LOG(WARNING)
-        << "Skipping the delay kernel, measurement accuracy will be reduced";
-  }
+  TF_RETURN_IF_ERROR(CreateGpuTimerParts(real_stream, use_delay_kernel, parent,
+                                         start_event, stop_event, semaphore));
+  return absl::StatusOr<GpuTimer>{absl::in_place,
+                                  parent,
+                                  start_event,
+                                  stop_event,
+                                  AsGpuStream(real_stream),
+                                  std::move(semaphore)};
+}
 
-  if (use_delay_kernel && ShouldLaunchDelayKernel()) {
-    TF_ASSIGN_OR_RETURN(bool is_supported, DelayKernelIsSupported(stream));
-
-    if (is_supported) {
-      TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(real_stream));
-    }
-  }
-
-  // The start event goes after the delay kernel in the stream
-  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
-                                            stream->gpu_stream()));
-  return absl::StatusOr<GpuTimer>{absl::in_place, parent, start_event,
-                                  stop_event,     stream, std::move(semaphore)};
+absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+GpuTimer::CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
+  GpuExecutor* parent = nullptr;
+  GpuEventHandle start_event = nullptr;
+  GpuEventHandle stop_event = nullptr;
+  GpuSemaphore semaphore{};
+  TF_RETURN_IF_ERROR(CreateGpuTimerParts(stream, use_delay_kernel, parent,
+                                         start_event, stop_event, semaphore));
+  return std::make_unique<GpuTimer>(parent, start_event, stop_event,
+                                    AsGpuStream(stream), std::move(semaphore));
 }
 
 /*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
