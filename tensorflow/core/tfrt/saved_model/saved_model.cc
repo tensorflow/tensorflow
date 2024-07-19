@@ -104,6 +104,14 @@ auto* lazy_loading_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/lazy_loading_count", "The total number of lazy loadings.",
     "model_name", "model_version", "use_graph_executor");
 
+auto* use_ifrt_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/use_ifrt", "The total number of instances that use IFRT.",
+    "model_name", "model_version", "use_ifrt");
+auto* use_backend_compiler_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/use_backend_compiler_count",
+    "The total number of instances that use injected backend compiler.",
+    "model_name", "model_version", "use_backend_compiler");
+
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/import_time",
@@ -699,6 +707,23 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
         ->tf_xla_persistent_cache_read_only = true;
     LOG(INFO) << "Set persistent cache directory to "
               << persistent_cache_directory << ", and set it to read-only.";
+  }
+
+  if (options.graph_execution_options.use_ifrt) {
+    use_ifrt_count
+        ->GetCell(options.graph_execution_options.model_metadata.name(),
+                  absl::StrCat(
+                      options.graph_execution_options.model_metadata.version()),
+                  "true")
+        ->IncrementBy(1);
+  }
+  if (options.graph_execution_options.compile_options.backend_compiler) {
+    use_backend_compiler_count
+        ->GetCell(options.graph_execution_options.model_metadata.name(),
+                  absl::StrCat(
+                      options.graph_execution_options.model_metadata.version()),
+                  "true")
+        ->IncrementBy(1);
   }
 
   // Finally, create the saved model.
