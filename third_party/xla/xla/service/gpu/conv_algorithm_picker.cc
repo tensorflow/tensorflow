@@ -732,8 +732,11 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
   if (reference_result->has_value()) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
+
+    const DebugOptions& debug_options =
+        runtime_arguments.hlo_module_config.debug_options();
     BufferComparator comparator(runtime_arguments.rz_buffers.output_shape(),
-                                runtime_arguments.hlo_module_config);
+                                debug_options.xla_gpu_autotune_gemm_rtol());
     for (int i = 0; i < result_buffers.size(); ++i) {
       absl::StatusOr<bool> compare_result = comparator.CompareEqual(
           stream, (*reference_result)->buffers[i], result_buffers[i]);
@@ -747,8 +750,6 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
           // Possibly OOM. Propagate the error.
           return compare_result.status();
         }
-        const DebugOptions& debug_options =
-            runtime_arguments.hlo_module_config.debug_options();
         CHECK(!debug_options.xla_gpu_crash_on_verification_failures());
       } else if (!compare_result.value()) {
         LOG(ERROR)

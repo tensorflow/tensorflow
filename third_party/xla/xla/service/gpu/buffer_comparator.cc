@@ -49,6 +49,7 @@ using ComparisonKernelT =
 
 struct ComparisonParams {
   double relative_tol = 0.1;
+  bool verbose = true;
   const Shape* shape = nullptr;
   se::Stream* stream = nullptr;
   se::DeviceMemoryBase current{};
@@ -129,6 +130,7 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
     return a;
   };
   int differences_seen = 0;
+
   for (int64_t i = 0; i < n && differences_seen < 10; ++i) {
     auto current_value = static_cast<ComparisonType>(host_current[i]);
     auto expected_value = static_cast<ComparisonType>(host_expected[i]);
@@ -150,6 +152,7 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
                         std::abs(expected_value_canonical)) +
                1) <
           params.relative_tol)) {
+      if (!params.verbose) return false;  // Return immediately if not verbose.
       ++differences_seen;
       LOG(ERROR) << "Difference at " << i << ": " << current_value
                  << ", expected " << expected_value;
@@ -180,7 +183,8 @@ static absl::StatusOr<bool> CompareEqualParameterized(
 absl::StatusOr<bool> BufferComparator::CompareEqual(
     se::Stream* stream, se::DeviceMemoryBase current,
     se::DeviceMemoryBase expected) const {
-  ComparisonParams params{relative_tol_, &shape_, stream, current, expected};
+  ComparisonParams params{relative_tol_, verbose_, &shape_,
+                          stream,        current,  expected};
 
   switch (shape_.element_type()) {
 #if GOOGLE_CUDA  // not available for ROCm yet..
@@ -226,10 +230,9 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
   }
 }
 
-BufferComparator::BufferComparator(const Shape& shape,
-                                   const HloModuleConfig& config,
-                                   double tolerance)
-    : shape_(shape), config_(config), relative_tol_(tolerance) {
+BufferComparator::BufferComparator(const Shape& shape, double tolerance,
+                                   bool verbose)
+    : shape_(shape), relative_tol_(tolerance), verbose_(verbose) {
   // Normalize complex shapes: since we treat the passed array as a contiguous
   // storage it does not matter which dimension are we doubling.
   auto double_dim_size = [&]() {

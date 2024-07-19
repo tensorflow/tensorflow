@@ -870,7 +870,10 @@ message DebugOptions {
   //  all-to-all-done = f32[1,4,8]{1,0,2} all-to-all-done(all-to-all-start)
   bool xla_syntax_sugar_async_ops = 315;
 
-  // Next id: 316
+  // Relative precision for comparing different GEMM solutions
+  float xla_gpu_autotune_gemm_rtol = 316;
+
+  // Next id: 317
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
