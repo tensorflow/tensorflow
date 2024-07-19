@@ -202,10 +202,13 @@ class TFQuantTypePattern : public ConversionPattern {
     OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
                          new_results, op->getAttrs(), op->getSuccessors());
     for (Region &region : op->getRegions()) {
-      Region &new_region = *state.addRegion();
-      rewriter.inlineRegionBefore(region, new_region, new_region.begin());
-      if (failed(rewriter.convertRegionTypes(&new_region, *getTypeConverter())))
+      auto new_region = std::make_unique<Region>(op);
+      rewriter.inlineRegionBefore(region, *new_region, new_region->begin());
+      if (failed(rewriter.convertRegionTypes(new_region.get(),
+                                             *getTypeConverter()))) {
         return failure();
+      }
+      state.addRegion(std::move(new_region));
     }
     rewriter.replaceOp(op, rewriter.create(state)->getResults());
 
