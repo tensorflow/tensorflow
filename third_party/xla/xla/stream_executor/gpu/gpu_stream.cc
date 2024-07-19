@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
 #include <cstdint>
+#include <utility>
 #include <variant>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -35,6 +37,14 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
+
+namespace {
+void InternalHostCallback(void* data) {
+  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
+  std::move (*callback)();
+  delete callback;
+}
+}  // namespace
 
 bool GpuStream::Init() {
   int priority = [&]() {
@@ -144,6 +154,21 @@ absl::Status GpuStream::WaitFor(Event* event) {
     return absl::InternalError(absl::StrFormat(
         "error recording waiting for event on stream %p", this));
   }
+}
+absl::Status GpuStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback) {
+  auto callback_ptr =
+      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
+        absl::Status s = std::move(cb)();
+        if (!s.ok()) {
+          LOG(WARNING) << "Host callback failed: " << s;
+        }
+      });
+  if (GpuDriver::AddStreamCallback(parent_->gpu_context(), gpu_stream(),
+                                   InternalHostCallback, callback_ptr)) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("Failed to host callback.");
 }
 
 void GpuStream::Destroy() {

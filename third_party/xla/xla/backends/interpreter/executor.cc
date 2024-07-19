@@ -56,12 +56,6 @@ absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
   return absl::OkStatus();
 }
 
-bool XlaInterpreterExecutor::HostCallback(
-    Stream *stream, absl::AnyInvocable<absl::Status() &&> callback) {
-  AsExecutorStream(stream)->EnqueueTaskWithStatus(std::move(callback));
-  return true;
-}
-
 absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   return AsExecutorStream(stream)->BlockUntilDone();
 }
