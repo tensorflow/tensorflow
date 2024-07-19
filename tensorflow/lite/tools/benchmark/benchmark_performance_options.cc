@@ -27,11 +27,12 @@ limitations under the License.
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_multirun_stats_recorder.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
 #endif
-#include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/command_line_flags.h"

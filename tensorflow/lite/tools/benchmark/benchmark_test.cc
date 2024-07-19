@@ -12,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/log/log.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_multirun_stats_recorder.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #ifndef _WIN32
 #include <fcntl.h>
 #endif  // !defined(_WIN32)
@@ -26,7 +30,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/algorithm.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -37,7 +40,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
-#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace {
