@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -49,8 +50,14 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
