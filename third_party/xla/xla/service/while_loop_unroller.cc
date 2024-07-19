@@ -372,6 +372,9 @@ bool IsLoopInductionVar(const HloInstruction* instr,
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
     const WhileLoopConfig& config) {
+  if (instr->opcode() != opcode) {
+    return std::nullopt;
+  }
   // Based on the instruction type, start indices start from index 1 or 2 of the
   // operands.
   int64_t start_indices_offset;
