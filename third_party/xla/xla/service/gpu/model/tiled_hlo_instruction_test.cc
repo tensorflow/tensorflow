@@ -49,16 +49,16 @@ TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 
-  EXPECT_THAT(TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16},
-                                          /*tile_strides=*/{1, 1},
-                                          block_id_to_tile_offsets_indexing)
+  EXPECT_THAT(TiledHloInstruction::Create(
+                  hlo.get(), /*operands=*/{}, /*tile_sizes=*/{16},
+                  /*tile_strides=*/{1, 1}, block_id_to_tile_offsets_indexing)
                   .status()
                   .message(),
               HasSubstr("Number of tile sizes must be equal to the rank"));
 
-  EXPECT_THAT(TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16, 16},
-                                          /*tile_strides=*/{1, 1, 1},
-                                          block_id_to_tile_offsets_indexing)
+  EXPECT_THAT(TiledHloInstruction::Create(
+                  hlo.get(), /*operands=*/{}, /*tile_sizes=*/{16, 16},
+                  /*tile_strides=*/{1, 1, 1}, block_id_to_tile_offsets_indexing)
                   .status()
                   .message(),
               HasSubstr("Number of tile strides must be equal to the rank"));
@@ -76,9 +76,9 @@ TEST_F(TiledHloInstructionTest,
       /*symbol_upper_bounds=*/{});
 
   EXPECT_THAT(
-      TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16, 16},
-                                  /*tile_strides=*/{1, 1},
-                                  tile_offsets_indexing1)
+      TiledHloInstruction::Create(
+          hlo.get(), /*operands=*/{}, /*tile_sizes=*/{16, 16},
+          /*tile_strides=*/{1, 1}, tile_offsets_indexing1)
           .status()
           .message(),
       HasSubstr(

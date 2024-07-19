@@ -458,23 +458,22 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
             *symbolic_tiled_hlo, output_tiling_info.output_tile_offset_indexing,
             context_));
 
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<TiledHloInstruction> tiled_hlo_holder,
-        TiledHloInstruction::Create(
-            symbolic_tiled_hlo->hlo(), std::move(tile_sizes),
-            std::move(tile_strides), std::move(tile_offset_indexing)));
+    llvm::SmallVector<const TiledHloInstruction*> operands;
+    for (const SymbolicTiledHloInstruction* operand :
+         symbolic_tiled_hlo->operands()) {
+      operands.push_back(symbolic_to_tiled_hlo_map.at(operand));
+    }
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo_holder,
+                        TiledHloInstruction::Create(
+                            symbolic_tiled_hlo->hlo(), std::move(operands),
+                            std::move(tile_sizes), std::move(tile_strides),
+                            std::move(tile_offset_indexing)));
 
     auto [tiled_hlo, inserted] =
         tiled_hlo_instructions_set.Insert(std::move(tiled_hlo_holder));
 
     symbolic_to_tiled_hlo_map[symbolic_tiled_hlo.get()] = tiled_hlo;
-
-    if (inserted) {
-      for (const SymbolicTiledHloInstruction* operand :
-           symbolic_tiled_hlo->operands()) {
-        tiled_hlo->AppendOperand(symbolic_to_tiled_hlo_map.at(operand));
-      }
-    }
   }
   return TiledHloComputation::FromSortedTiledHloInstructions(
       tiled_hlo_instructions_set.ExtractData(),

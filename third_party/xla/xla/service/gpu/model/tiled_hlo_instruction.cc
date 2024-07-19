@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -33,10 +34,12 @@ namespace gpu {
 
 /*static*/
 absl::StatusOr<std::unique_ptr<TiledHloInstruction>>
-TiledHloInstruction::Create(const HloInstruction* hlo,
-                            llvm::SmallVector<int64_t> tile_sizes,
-                            llvm::SmallVector<int64_t> tile_strides,
-                            IndexingMap tile_offsets_indexing) {
+TiledHloInstruction::Create(
+    const HloInstruction* hlo,
+    llvm::SmallVector<const TiledHloInstruction*> operands,
+    llvm::SmallVector<int64_t> tile_sizes,
+    llvm::SmallVector<int64_t> tile_strides,
+    IndexingMap tile_offsets_indexing) {
   int rank = hlo->shape().rank();
 
   if (tile_sizes.size() != rank) {
@@ -61,7 +64,7 @@ TiledHloInstruction::Create(const HloInstruction* hlo,
   }
 
   return absl::WrapUnique(new TiledHloInstruction(
-      hlo, std::move(tile_sizes), std::move(tile_strides),
+      hlo, std::move(operands), std::move(tile_sizes), std::move(tile_strides),
       std::move(tile_offsets_indexing)));
 }
 

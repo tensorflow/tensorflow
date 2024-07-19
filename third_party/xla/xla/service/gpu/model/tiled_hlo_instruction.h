@@ -48,12 +48,24 @@ class TiledHloInstruction {
   // * `tile_offsets_indexing` should have the number of dimensions equal to the
   //   rank of the output tile and 0 symbols.
   static absl::StatusOr<std::unique_ptr<TiledHloInstruction>> Create(
-      const HloInstruction* hlo, llvm::SmallVector<int64_t> tile_sizes,
+      const HloInstruction* hlo,
+      llvm::SmallVector<const TiledHloInstruction*> operands,
+      llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
+
       IndexingMap tile_offsets_indexing);
 
   // Returns the original HLO instruction.
   const HloInstruction* hlo() const { return hlo_; }
+
+  // Operands of the instruction in the tiled computation graph.
+  const TiledHloInstruction* operand(int64_t operand_id) const {
+    return operands_[operand_id];
+  }
+
+  const llvm::SmallVector<const TiledHloInstruction*>& operands() const {
+    return operands_;
+  }
 
   // Returns the tile sizes. The number of tile sizes is equal to the rank of
   // the output shape.
@@ -73,18 +85,6 @@ class TiledHloInstruction {
     return tile_offsets_indexing_;
   }
 
-  const TiledHloInstruction* operand(int64_t operand_id) const {
-    return operands_[operand_id];
-  }
-
-  const std::vector<TiledHloInstruction*>& operands() const {
-    return operands_;
-  }
-
-  void AppendOperand(TiledHloInstruction* operand) {
-    operands_.push_back(operand);
-  }
-
   std::string ToString() const;
 
   // This allows GUnit to print TiledHloInstruction.
@@ -95,10 +95,12 @@ class TiledHloInstruction {
 
  private:
   TiledHloInstruction(const HloInstruction* hlo,
+                      llvm::SmallVector<const TiledHloInstruction*> operands,
                       llvm::SmallVector<int64_t> tile_sizes,
                       llvm::SmallVector<int64_t> tile_strides,
                       IndexingMap tile_offsets_indexing)
       : hlo_(hlo),
+        operands_(std::move(operands)),
         tile_sizes_(std::move(tile_sizes)),
         tile_strides_(std::move(tile_strides)),
         tile_offsets_indexing_(std::move(tile_offsets_indexing)) {}
@@ -106,21 +108,22 @@ class TiledHloInstruction {
   // Pointer to the original HLO instruction.
   const HloInstruction* hlo_;
 
+  // Operands of the instruction in the tiled computation graph.
+  llvm::SmallVector<const TiledHloInstruction*> operands_;
+
   // Tile sizes and strides.
   llvm::SmallVector<int64_t> tile_sizes_;
   llvm::SmallVector<int64_t> tile_strides_;
 
   // Indexing map for tile offsets.
   IndexingMap tile_offsets_indexing_;
-
-  // Operands of the instruction in the tiled computation graph.
-  std::vector<TiledHloInstruction*> operands_;
 };
 
 inline bool operator==(const TiledHloInstruction& lhs,
                        const TiledHloInstruction& rhs) {
   return lhs.hlo() == rhs.hlo() && lhs.tile_sizes() == rhs.tile_sizes() &&
          lhs.tile_strides() == rhs.tile_strides() &&
+         lhs.operands() == rhs.operands() &&
          lhs.tile_offsets_indexing() == rhs.tile_offsets_indexing();
 }
 
@@ -133,11 +136,13 @@ template <typename H>
 H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
   // There is no default hash implementation for llvm::SmallVector neither in
   // AbslHashValue nor in llvm::hash_value. We can use the available hash
-  // implementation for absl::Span instread.
+  // implementation for absl::Span instead.
   return H::combine(
       std::move(h), tiled_hlo_instruction.hlo(),
       absl::Span<int64_t const>(tiled_hlo_instruction.tile_sizes()),
       absl::Span<int64_t const>(tiled_hlo_instruction.tile_strides()),
+      absl::Span<const TiledHloInstruction* const>(
+          tiled_hlo_instruction.operands()),
       tiled_hlo_instruction.tile_offsets_indexing());
 }
 
