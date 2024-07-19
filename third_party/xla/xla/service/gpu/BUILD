@@ -3186,6 +3186,7 @@ cc_library(
         "//xla/service:call_inliner",
         "//xla/service:collective_permute_decomposer",
         "//xla/service:collective_pipeliner",
+        "//xla/service:collective_quantizer",
         "//xla/service:collectives_schedule_linearizer",
         "//xla/service:comparison_expander",
         "//xla/service:compiler",

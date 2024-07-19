@@ -641,6 +641,39 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_quantizer",
+    srcs = ["collective_quantizer.cc"],
+    hdrs = ["collective_quantizer.h"],
+    deps = [
+        ":hlo_pass",
+        ":pattern_matcher",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_quantizer_test",
+    srcs = ["collective_quantizer_test.cc"],
+    deps = [
+        ":collective_quantizer",
+        ":hlo_verifier",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "dump",
     srcs = ["dump.cc"],
     hdrs = ["dump.h"],

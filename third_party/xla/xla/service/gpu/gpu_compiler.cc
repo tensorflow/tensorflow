@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
+#include "xla/service/collective_quantizer.h"
 #include "xla/service/collectives_schedule_linearizer.h"
 #include "xla/service/comparison_expander.h"
 #include "xla/service/compiler.h"
@@ -932,6 +933,10 @@ absl::Status RunCollectiveOptimizationPasses(
       {U16, U32}, {S16, S32}};
   collectives_pipeline.AddPass<AllReducePromotion>(ar_promoted_types);
   // Remove dead computations left over after ar/rs promotion.
+  collectives_pipeline.AddPass<HloDCE>();
+
+  collectives_pipeline.AddPass<CollectiveQuantizer>();
+  // Remove dead computations after collective quantization.
   collectives_pipeline.AddPass<HloDCE>();
 
   // Run WhileLoopTripCountAnnotator after collective pipelining and before
