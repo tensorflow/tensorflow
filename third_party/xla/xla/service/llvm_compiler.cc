@@ -20,7 +20,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/service/executable.h"
+#include "xla/service/stream_pool.h"
 #include "tsl/platform/denormal.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 #ifdef __FAST_MATH__

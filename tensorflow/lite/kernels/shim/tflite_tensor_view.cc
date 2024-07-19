@@ -18,11 +18,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/variant.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/type_to_tflitetype.h"
 
 // Creates a case statement for the switch() clause given the dtype
 #define CASE_FOR_DTYPE_GIVEN_CPP_DTYPE(TFLITE_DTYPE, CPP_DTYPE) \
