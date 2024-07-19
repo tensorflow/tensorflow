@@ -552,8 +552,8 @@ cc_library(
 
 cc_library(
     name = "numeric_options_utils",
-    hdrs = ["numeric_options_utils.h"],
     srcs = ["numeric_options_utils.cc"],
+    hdrs = ["numeric_options_utils.h"],
     deps = [
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
