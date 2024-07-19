@@ -369,6 +369,84 @@ bool IsLoopInductionVar(const HloInstruction* instr,
   }
 }
 
+// Recursively checks if the given instruction is effectively static by checking
+// if it is a constant or a parameter that points to the induction var of the
+// given loop config.
+bool IsEffectivelyStatic(const HloInstruction* instr,
+                         const WhileLoopConfig& config) {
+  switch (instr->opcode()) {
+    case HloOpcode::kConstant:
+      return true;
+    case HloOpcode::kParameter: {
+      if (instr->parent()->IsFusionComputation()) {
+        HloInstruction* caller_fusion = instr->parent()->FusionInstruction();
+        return IsEffectivelyStatic(
+            caller_fusion->operand(instr->parameter_number()), config);
+      }
+      return false;
+    }
+    case HloOpcode::kGetTupleElement: {
+      if (instr->parent() != config.while_instr->while_body()) {
+        return false;
+      }
+      if (!Match(instr, match::GetTupleElement(match::Parameter(),
+                                               config.induction_var_idx))) {
+        return false;
+      }
+      return true;
+    }
+    default: {
+      for (int64_t i = 0; i < instr->operand_count(); ++i) {
+        if (!IsEffectivelyStatic(instr->operand(i), config)) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+}
+
+std::optional<int64_t> MatchEffectivelyStaticDynamicSliceInsideLoop(
+    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
+    const WhileLoopConfig& config) {
+  int64_t start_indices_offset = 1;
+  const HloInstruction* operand = instr->operand(0);
+  if (operand != input) {
+    VLOG(3) << "Input of dynamic index instruction is not the given operand.";
+    return std::nullopt;
+  }
+
+  int64_t dynamic_index = -1;
+  for (int64_t start_index = start_indices_offset;
+       start_index < instr->operand_count(); ++start_index) {
+    const HloInstruction* index = instr->operand(start_index);
+    // All constants must be zero in order to slice the entire shape.
+    if (Match(index, match::ConstantScalar())) {
+      std::optional<int64_t> offset =
+          LiteralUtil::LiteralAsScalarInt64(index->literal());
+      if (offset.has_value() && offset.value() != 0) {
+        VLOG(3) << "Constant index " << start_index << " is not zero.";
+        return std::nullopt;
+      }
+      continue;
+    }
+    if (IsEffectivelyStatic(index, config)) {
+      if (dynamic_index != -1) {
+        VLOG(3) << "Multiple non-constant indices.";
+        return std::nullopt;
+      }
+      dynamic_index = start_index - start_indices_offset;
+    }
+  }
+
+  if (dynamic_index == -1) {
+    VLOG(3) << "No dynamic index found.";
+    return std::nullopt;
+  }
+
+  return dynamic_index;
+}
+
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
     const WhileLoopConfig& config) {
@@ -530,6 +608,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   VLOG(3) << "Loop trip count " << trip_count.value();
 
   WhileLoopConfig config;
+  config.while_instr = while_op;
   config.init =
       LiteralUtil::LiteralAsScalarInt64(std::move(indvar_iter_val)).value();
   config.trip_count = trip_count.value();

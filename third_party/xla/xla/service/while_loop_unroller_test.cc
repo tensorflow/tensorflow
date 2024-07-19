@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
@@ -1099,6 +1100,94 @@ TEST_F(WhileLoopUnrollerTest, UnrollLoopWithDynamicGte) {
        module->entry_computation()->MakeInstructionPostOrder()) {
     EXPECT_FALSE(instr->IsCustomCall("DynamicGte"));
     EXPECT_FALSE(instr->IsCustomCall("DynamicTuple"));
+  }
+}
+
+TEST_F(WhileLoopUnrollerTest, IsEffectivelyStaticDynamicSlice) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  %fused_computation.slice (param_0.51117: s8[6,128,128], p1: s32[]) -> s8[128,128] {
+    %param_0.51117 = s8[6,128,128] parameter(0)
+    static.p1 = s32[] parameter(1)
+    %constant.85694 = s32[] constant(0)
+    %dynamic-slice.static = s8[1,128,128] dynamic-slice(s8[6,128,128] %param_0.51117, static.p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
+    ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.static)
+  }
+  
+  %fused_computation.slice.2 (param_0.51117: s8[6,128,128], p1: s32[]) -> s8[128,128] {
+    %param_0.51117 = s8[6,128,128] parameter(0)
+    dynamic.p1 = s32[] parameter(1)
+    %constant.85694 = s32[] constant(0)
+    %dynamic-slice.dynamic = s8[1,128,128] dynamic-slice(s8[6,128,128] %param_0.51117, dynamic.p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
+    ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.dynamic)
+  }
+
+  %fused_computation.inner (param_0.34523: bf16[8,128], param_1.30691: s8[6,128,128], p2: s32[], p3: s32[]) -> bf16[8,128] {
+    %param_0.34523 = bf16[8,128] parameter(0)
+    %param_1.30691 = s8[6,128,128] parameter(1)
+    static.p2 = s32[] parameter(2)
+    %fusion.1 = s8[128,128] fusion(s8[6,128,128] %param_1.30691, static.p2), kind=kLoop, calls=%fused_computation.slice
+    dynamic.p3 = s32[] parameter(3)
+    %fusion.2 = s8[128,128] fusion(s8[6,128,128] %param_1.30691, dynamic.p3), kind=kLoop, calls=%fused_computation.slice.2
+    out = s8[128,128] add(%fusion.1, %fusion.2)
+    ROOT %convolution.3447 = bf16[8,128] convolution(bf16[8,128] %param_0.34523, s8[128,128] out), dim_labels=bf_io->bf
+  }
+
+  %while.body (wide_param: (s32[], bf16[8,128], s8[6,128,128], s32[])) -> (s32[], bf16[8,128], s8[6,128,128], s32[]) {
+    wide_p = (s32[], bf16[8,128], s8[6,128,128], s32[]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    p0 = bf16[8,128] get-tuple-element(wide_p), index=1
+    p1 = s8[6,128,128] get-tuple-element(wide_p), index=2
+    dynamic.p2 = s32[] get-tuple-element(wide_p), index=3
+    one = s32[] constant(1)
+    inc = s32[] add(i, one)
+    two = s32[] constant(2)
+    mult = s32[] multiply(i, two)
+    fusion.conv = bf16[8,128] fusion(p0, p1, mult, dynamic.p2), kind=kOutput, calls=%fused_computation.inner
+    ROOT out = (s32[], bf16[8,128], s8[6,128,128], s32[]) tuple(inc, fusion.conv, p1, dynamic.p2)
+  }
+
+  %while.cond (wide_param: (s32[], bf16[8,128], s8[6,128,128], s32[])) -> pred[] {
+    wide_p = (s32[], bf16[8,128], s8[6,128,128], s32[]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    %constant.12857 = s32[] constant(3)
+    ROOT %compare.1921 = pred[]{:T(512)} compare(s32[] i, s32[] %constant.12857), direction=LT
+  }
+
+  ENTRY main {
+    p0 = s8[6,128,128] parameter(0)
+    p1 = bf16[8,128] parameter(1)
+    p2 = s32[] parameter(2)
+    init = s32[] constant(0)
+    while.input = (s32[], bf16[8,128], s8[6,128,128], s32[]) tuple(init, p1, p0, p2)
+    while.out = (s32[], bf16[8,128], s8[6,128,128], s32[]) while(while.input), condition=%while.cond , body=%while.body
+    while_use = s8[6,128,128] get-tuple-element(while.out), index=2
+    ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
+  }
+  )";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  HloInstruction* loop =
+      module->entry_computation()->root_instruction()->mutable_operand(0);
+  std::optional<WhileLoopConfig> config =
+      WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    HloInstruction* static_slice =
+        comp->GetInstructionWithName("dynamic-slice.static");
+    if (static_slice != nullptr) {
+      auto index = MatchEffectivelyStaticDynamicSliceInsideLoop(
+          static_slice, static_slice->operand(0), HloOpcode::kDynamicSlice,
+          *config);
+      EXPECT_TRUE(index.has_value());
+    }
+    HloInstruction* dynamic_slice =
+        comp->GetInstructionWithName("dynamic-slice.dynamic");
+    if (dynamic_slice != nullptr) {
+      auto index = MatchEffectivelyStaticDynamicSliceInsideLoop(
+          dynamic_slice, dynamic_slice->operand(0), HloOpcode::kDynamicSlice,
+          *config);
+      EXPECT_FALSE(index.has_value());
+    }
   }
 }
 
