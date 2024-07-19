@@ -714,6 +714,7 @@ cuda_only_cc_library(
         ":ptx_compiler_support",
         "//xla:status_macros",
         "//xla:util",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_types_header",
@@ -851,4 +852,16 @@ cc_library(
     name = "cudnn_frontend_helpers",
     srcs = ["cudnn_frontend_helpers.cc"],
     hdrs = ["cudnn_frontend_helpers.h"],
+)
+
+cc_library(
+    name = "ptx_compilation_method",
+    hdrs = ["ptx_compilation_method.h"],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
+    name = "ptx_linking_method",
+    hdrs = ["ptx_linking_method.h"],
+    deps = ["@com_google_absl//absl/strings"],
 )
