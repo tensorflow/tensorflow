@@ -22,6 +22,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_STREAM_H_
 
 #include <cstdint>
+#include <utility>
 #include <variant>
 
 #include "absl/functional/any_invocable.h"
@@ -234,8 +235,12 @@ class Stream {
   // This is kept for backward compatibility. Future code should use
   // DoHostCallbackWithStatus and explicitly return a success status.
   // TODO(b/112125301): Eventually remove this method.
-  virtual absl::Status DoHostCallback(
-      absl::AnyInvocable<void() &&> callback) = 0;
+  absl::Status DoHostCallback(absl::AnyInvocable<void() &&> callback) {
+    return DoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
+      std::move(cb)();
+      return absl::OkStatus();
+    });
+  }
 
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
