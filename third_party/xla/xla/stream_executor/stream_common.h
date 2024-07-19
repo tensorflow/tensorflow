@@ -69,9 +69,6 @@ class StreamCommon : public Stream {
       TF_LOCKS_EXCLUDED(mu_);
   void ReturnSubStream(Stream *sub_stream) override TF_LOCKS_EXCLUDED(mu_);
   absl::Status BlockHostUntilDone() override TF_LOCKS_EXCLUDED(mu_);
-  absl::Status DoHostCallback(absl::AnyInvocable<void() &&> callback) override;
-  absl::Status DoHostCallbackWithStatus(
-      absl::AnyInvocable<absl::Status() &&> callback) override;
   StreamExecutor *parent() const override {
     CHECK(parent_ != nullptr);
     return parent_;

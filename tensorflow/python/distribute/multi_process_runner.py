@@ -96,6 +96,7 @@ Resources = collections.namedtuple('Resources', [
 
 # Default time out sec is selected so that it's handled before the default
 # "medium" timeout of the test runs.
+# TEST_TIMEOUT_SEC = 2OO
 _DEFAULT_TIMEOUT_SEC = 200
 
 # The timeout in seconds to wait to force kill a child process. When a child

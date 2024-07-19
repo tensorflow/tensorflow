@@ -221,7 +221,6 @@ limitations under the License.
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/tuple_simplifier.h"
-#include "xla/service/unique_channel_id_enforcer.h"
 #include "xla/service/while_loop_all_reduce_code_motion.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_simplifier.h"
@@ -2353,7 +2352,6 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
     HloModule* module, se::StreamExecutor* stream_exec) {
   HloPassPipeline pipeline("pre-scheduling-passes");
   pipeline.AddPass<FusionWrapper>();
-  pipeline.AddPass<UniqueChannelIdEnforcer>();
   return pipeline.Run(module).status();
 }
 

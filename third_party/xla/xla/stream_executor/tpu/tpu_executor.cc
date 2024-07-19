@@ -205,26 +205,6 @@ absl::Status TpuExecutor::EnqueueCompactionOnStreamForHbm(
   return status.status();
 }
 
-struct HostCallbackContext {
-  absl::AnyInvocable<absl::Status() &&> callback;
-};
-
-TSL_Status* HostCallbackTrampoline(void* ctx) {
-  HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
-  absl::Status status = std::move(host_ctx->callback)();
-  TSL_Status* c_status = ExecutorApiFn()->TpuStatus_CreateFn(
-      status.raw_code(), absl::StatusMessageAsCStr(status));
-  delete host_ctx;
-  return c_status;
-}
-
-bool TpuExecutor::HostCallback(Stream* stream,
-                               absl::AnyInvocable<absl::Status() &&> callback) {
-  HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
-  return ExecutorApiFn()->TpuExecutor_HostCallbackFn(
-      executor_, get_stream(stream), &HostCallbackTrampoline, ctx);
-}
-
 absl::StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
 TpuExecutor::CreateDeviceDescription() const {
   StatusHelper status;
