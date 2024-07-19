@@ -457,53 +457,59 @@ class DeviceDescription {
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.
-  static const char *kUndefinedString;
+  static inline const char *const kUndefinedString = "<undefined>";
 
  private:
   friend class internal::DeviceDescriptionBuilder;
 
-  DeviceDescription();
+  DeviceDescription() = default;
 
   // For description of the following members, see the corresponding accessor
   // above.
   //
   // N.B. If another field is added, update ToMap() above.
-  std::string device_vendor_;
-  std::string platform_version_;
-  std::string driver_version_;
-  std::string runtime_version_;
-  std::string pci_bus_id_;
-  std::string name_;
-  std::string model_str_;
+  std::string device_vendor_ = kUndefinedString;
+  std::string platform_version_ = kUndefinedString;
+  std::string driver_version_ = kUndefinedString;
+  std::string runtime_version_ = kUndefinedString;
+  std::string pci_bus_id_ = kUndefinedString;
+  std::string name_ = kUndefinedString;
+  std::string model_str_ = kUndefinedString;
 
-  ThreadDim thread_dim_limit_;
-  BlockDim block_dim_limit_;
+  template <typename T>
+  static constexpr T kUninitialized = T(-1);
 
-  int64_t threads_per_core_limit_;
-  int64_t threads_per_block_limit_;
-  int64_t threads_per_warp_;
+  ThreadDim thread_dim_limit_{kUninitialized<uint64_t>,
+                              kUninitialized<uint64_t>,
+                              kUninitialized<uint64_t>};
+  BlockDim block_dim_limit_{kUninitialized<uint64_t>, kUninitialized<uint64_t>,
+                            kUninitialized<uint64_t>};
 
-  int64_t registers_per_core_limit_;
-  int64_t registers_per_block_limit_;
+  int64_t threads_per_core_limit_ = kUninitialized<int64_t>;
+  int64_t threads_per_block_limit_ = kUninitialized<int64_t>;
+  int64_t threads_per_warp_ = kUninitialized<int64_t>;
 
-  int64_t device_address_bits_;
-  int64_t device_memory_size_;
-  int64_t l2_cache_size_;
-  int64_t memory_bandwidth_;
+  int64_t registers_per_core_limit_ = kUninitialized<int64_t>;
+  int64_t registers_per_block_limit_ = kUninitialized<int64_t>;
+
+  int64_t device_address_bits_ = kUninitialized<int64_t>;
+  int64_t device_memory_size_ = kUninitialized<int64_t>;
+  int64_t l2_cache_size_ = kUninitialized<int64_t>;
+  int64_t memory_bandwidth_ = kUninitialized<int64_t>;
 
   // Shared memory limits on a given device.
-  int64_t shared_memory_per_core_;
-  int64_t shared_memory_per_block_;
-  int64_t shared_memory_per_block_optin_;
+  int64_t shared_memory_per_core_ = kUninitialized<int64_t>;
+  int64_t shared_memory_per_block_ = kUninitialized<int64_t>;
+  int64_t shared_memory_per_block_optin_ = kUninitialized<int64_t>;
 
-  float clock_rate_ghz_;
+  float clock_rate_ghz_ = kUninitialized<float>;
 
-  GpuComputeCapability gpu_compute_capability_;
+  GpuComputeCapability gpu_compute_capability_{};
 
-  int numa_node_;
-  int core_count_;
-  int fpus_per_core_;
-  bool ecc_enabled_;
+  int numa_node_ = kUninitialized<int>;
+  int core_count_ = kUninitialized<int>;
+  int fpus_per_core_ = kUninitialized<int>;
+  bool ecc_enabled_ = false;
 };
 
 namespace internal {
