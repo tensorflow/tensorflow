@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -40,6 +41,8 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace data {
@@ -133,6 +136,11 @@ class MultiDeviceIterator : public ResourceBase {
   Status GetNextFromShard(OpKernelContext* ctx, int shard_num,
                           int64_t incarnation_id,
                           MultiDeviceIteratorCallback callback) {
+    tsl::profiler::TraceMe traceme([&] {
+      return tsl::profiler::TraceMeEncode(
+          absl::StrCat("GetNextFromShard", shard_num),
+          {{"shard_num", shard_num}});
+    });
     tf_shared_lock l(mu_);
     IteratorContext::Params params(ctx);
     params.flr = flr_;

@@ -597,7 +597,10 @@ tf_kernel_library(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 
