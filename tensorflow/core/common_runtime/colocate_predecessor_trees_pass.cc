@@ -133,10 +133,10 @@ bool AreAllInNodesQualifiedConst(const Node& node) {
 
 bool ShouldRunPass(const GraphOptimizationPassOptions& options) {
   if (!flags::Global().enable_tf2min_ici_weight.value()) {
-    LOG(INFO) << "ColocatePredecessorTreesPass is disabled.";
+    VLOG(1) << "ColocatePredecessorTreesPass is disabled.";
     return false;
   }
-  LOG(INFO) << "ColocatePredecessorTreesPass is enabled.";
+  VLOG(1) << "ColocatePredecessorTreesPass is enabled.";
 
   // find all potential node.
   if (options.graph == nullptr) {
