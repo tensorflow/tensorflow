@@ -4317,7 +4317,7 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
-        "@local_xla//xla/stream_executor/gpu:gpu_timer",
+        "@local_xla//xla/stream_executor:event_based_timer",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "//tensorflow/core/platform:stream_executor",
