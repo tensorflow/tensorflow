@@ -273,7 +273,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_use_shardy(false);
 
-  opts.set_xla_gpu_shard_autotuning(false);
+  opts.set_xla_gpu_shard_autotuning(true);
 
   opts.set_xla_syntax_sugar_async_ops(false);
 
