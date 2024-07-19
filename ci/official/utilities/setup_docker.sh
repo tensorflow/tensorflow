@@ -37,8 +37,21 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
   # Pass all existing TFCI_ variables into the Docker container
   env_file=$(mktemp)
   env | grep ^TFCI_ > "$env_file"
-  docker run $TFCI_DOCKER_ARGS --name tf -w "$TFCI_GIT_DIR" -itd --rm \
-      -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
+
+  WORKING_DIR="$TFCI_GIT_DIR"
+  if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
+    env_file=$(cygpath -m $env_file)
+    # Host dirs can only be mapped to an existing drive inside the container, so
+    # T:\ is replaced with C:\.
+    _TFCI_OUTPUT_DIR_WIN=$(replace_drive_letter_with_c "$TFCI_OUTPUT_DIR")
+    sed -iE 's|^TFCI_OUTPUT_DIR=.*|TFCI_OUTPUT_DIR='"$_TFCI_OUTPUT_DIR_WIN"'|g' $env_file
+    WORKING_DIR=$(replace_drive_letter_with_c "$TFCI_GIT_DIR")
+    APPLICATION_CREDS=$(replace_drive_letter_with_c "$GOOGLE_APPLICATION_CREDENTIALS")
+    echo "GOOGLE_APPLICATION_CREDENTIALS=$APPLICATION_CREDS" > "$env_file"
+  fi
+
+  docker run $TFCI_DOCKER_ARGS --name tf -w "$WORKING_DIR" -itd --rm \
+      -v "$TFCI_GIT_DIR:$WORKING_DIR" \
       --env-file "$env_file" \
       "$TFCI_DOCKER_IMAGE" \
     bash

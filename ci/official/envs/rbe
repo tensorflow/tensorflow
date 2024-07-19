@@ -36,4 +36,9 @@ TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_$TFCI_BAZEL_TARGET_
 # These flags share the user's gcloud credentials with the container, so that bazel
 # inside the container can authenticate. Note: TF's CI does not have any credential
 # stored here.
-TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"
+if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
+  KEYSTORE_DIR=`echo "$KOKORO_KEYSTORE_DIR" | sed -E 's/^[a-zA-Z]:/C:/g'`
+  TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $KOKORO_KEYSTORE_DIR:$KEYSTORE_DIR"
+else
+  TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"
+fi
