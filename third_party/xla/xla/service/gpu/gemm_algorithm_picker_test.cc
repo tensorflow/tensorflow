@@ -36,10 +36,6 @@ limitations under the License.
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/dnn.pb.h"
 
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-
 namespace xla::gpu {
 namespace {
 
