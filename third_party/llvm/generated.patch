@@ -209,7 +209,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/ItaniumCXXABI.cpp b/clang/lib/
 diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
 --- a/clang/lib/Driver/ToolChains/Clang.cpp
 +++ b/clang/lib/Driver/ToolChains/Clang.cpp
-@@ -3815,6 +3815,12 @@
+@@ -3822,6 +3822,12 @@
      if (UseBuiltins)
        A->render(Args, CmdArgs);
    }
@@ -578,7 +578,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/TargetParser/Triple.cpp b/llvm/lib/Targ
 diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
 --- a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
 +++ b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
-@@ -6995,7 +6995,7 @@
+@@ -6996,7 +6996,7 @@
    // Ignore ephemeral values.
    CodeMetrics::collectEphemeralValues(TheLoop, AC, ValuesToIgnore);
  
@@ -587,7 +587,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp 
    for (BasicBlock *BB : TheLoop->blocks())
      for (Instruction &I : *BB) {
        // Find all stores to invariant variables. Since they are going to sink
-@@ -7013,7 +7013,7 @@
+@@ -7014,7 +7014,7 @@
          if (Group->getInsertPos() == &I)
            continue;
          Value *PointerOp = getLoadStorePointerOperand(&I);
@@ -596,7 +596,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp 
        }
      }
  
-@@ -7029,7 +7029,7 @@
+@@ -7030,7 +7030,7 @@
          }))
        continue;
      VecValuesToIgnore.insert(Op);
@@ -1119,227 +1119,98 @@ diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/clang/lib/Basic/BUILD.gn
 diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
 --- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-@@ -254,6 +254,7 @@
-     hdrs = ["src/__support/macros/optimization.h"],
+@@ -1911,7 +1911,6 @@
+ libc_math_function(
+     name = "ceil",
+     specializations = [
+-        "aarch64",
+         "generic",
+     ],
+ )
+@@ -1919,7 +1918,6 @@
+ libc_math_function(
+     name = "ceilf",
+     specializations = [
+-        "aarch64",
+         "generic",
+     ],
+ )
+@@ -1936,7 +1934,6 @@
+ libc_math_function(
+     name = "floor",
+     specializations = [
+-        "aarch64",
+         "generic",
+     ],
+ )
+@@ -1944,7 +1941,6 @@
+ libc_math_function(
+     name = "floorf",
+     specializations = [
+-        "aarch64",
+         "generic",
+     ],
+ )
+@@ -1964,7 +1960,6 @@
+ libc_math_function(
+     name = "trunc",
+     specializations = [
+-        "aarch64",
+         "generic",
+     ],
+ )
+@@ -1972,7 +1967,6 @@
+ libc_math_function(
+     name = "truncf",
+     specializations = [
+-        "aarch64",
+         "generic",
+     ],
+ )
+@@ -1984,7 +1978,6 @@
+ libc_math_function(
+     name = "round",
+     specializations = [
+-        "aarch64",
+         "generic",
+     ],
+ )
+@@ -1992,7 +1985,6 @@
+ libc_math_function(
+     name = "roundf",
+     specializations = [
+-        "aarch64",
+         "generic",
+     ],
+ )
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
+@@ -104,16 +104,19 @@
+     name = "qsort_test_helper",
+     hdrs = ["SortingTest.h"],
      deps = [
-         ":__support_macros_attributes",
-+        ":__support_macros_config",
-         ":__support_macros_properties_compiler",
-     ],
- )
-@@ -261,6 +262,9 @@
- libc_support_library(
-     name = "__support_macros_sanitizer",
-     hdrs = ["src/__support/macros/sanitizer.h"],
-+    deps = [
-+        ":__support_macros_config",
-+    ],
- )
- 
- libc_support_library(
-@@ -271,6 +275,7 @@
-     ],
-     deps = [
-         ":__support_macros_attributes",
-+        ":__support_macros_config",
-         ":__support_macros_properties_architectures",
-     ],
- )
-@@ -280,6 +285,7 @@
-     hdrs = ["src/__support/CPP/algorithm.h"],
-     deps = [
-         ":__support_macros_attributes",
-+        ":__support_macros_config",
-     ],
- )
- 
-@@ -317,6 +323,7 @@
-     hdrs = ["src/__support/CPP/bitset.h"],
-     deps = [
-         ":__support_macros_attributes",
-+        ":__support_macros_config",
-     ],
- )
- 
-@@ -334,6 +341,7 @@
-     hdrs = ["src/__support/CPP/expected.h"],
-     deps = [
-         ":__support_macros_attributes",
-+        ":__support_macros_config",
-     ],
- )
- 
-@@ -424,6 +432,7 @@
-     ],
-     deps = [
-         ":__support_macros_attributes",
-+        ":__support_macros_config",
-         ":__support_macros_properties_types",
-         ":llvm_libc_macros_stdfix_macros",
-     ],
-@@ -573,7 +582,10 @@
- libc_support_library(
-     name = "__support_str_to_num_result",
-     hdrs = ["src/__support/str_to_num_result.h"],
--    deps = [":__support_macros_attributes"],
-+    deps = [
-+        ":__support_macros_attributes",
-+        ":__support_macros_config",
-+    ],
- )
- 
- libc_support_library(
-@@ -612,7 +624,10 @@
- libc_support_library(
-     name = "__support_ctype_utils",
-     hdrs = ["src/__support/ctype_utils.h"],
--    deps = [":__support_macros_attributes"],
-+    deps = [
-+        ":__support_macros_attributes",
-+        ":__support_macros_config",
-+    ],
- )
- 
- libc_support_library(
-@@ -785,6 +800,7 @@
-     hdrs = ["src/__support/FPUtil/rounding_mode.h"],
-     deps = [
-         ":__support_macros_attributes",
-+        ":__support_macros_config",
-         ":hdr_fenv_macros",
-     ],
- )
-@@ -1126,6 +1142,7 @@
-     hdrs = ["src/__support/threads/sleep.h"],
-     deps = [
-         ":__support_macros_attributes",
-+        ":__support_macros_config",
-     ],
- )
- 
-@@ -3408,9 +3425,9 @@
-         ":__support_arg_list",
-         ":__support_file_file",
-         ":__support_macros_attributes",
--        ":types_FILE",
-         ":printf_main",
-         ":printf_writer",
-+        ":types_FILE",
-     ],
- )
- 
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
---- a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
-+++ b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
-@@ -43,7 +43,7 @@
-         name = name,
-         copts = copts + libc_common_copts(),
-         local_defines = local_defines + LIBC_CONFIGURE_OPTIONS,
--        deps = deps + ["//libc:__support_macros_config"],
-+        deps = deps,
-         linkstatic = 1,
-         **kwargs
-     )
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
-@@ -298,8 +298,8 @@
-         "//libc:__support_fputil_fp_bits",
-         "//libc:__support_fputil_manipulation_functions",
-         "//libc:hdr_math_macros",
--        "//libc/test/UnitTest:fp_test_helpers",
++        "//libc:__support_macros_config",
+         "//libc:qsort_util",
          "//libc/test/UnitTest:LibcUnitTest",
-+        "//libc/test/UnitTest:fp_test_helpers",
      ],
  )
- 
-@@ -559,7 +559,10 @@
- libc_support_library(
-     name = "sdcomp26094",
-     hdrs = ["sdcomp26094.h"],
--    deps = ["//libc:__support_cpp_array"],
-+    deps = [
-+        "//libc:__support_cpp_array",
-+        "//libc:__support_macros_config",
-+    ],
++
+ libc_test(
+     name = "qsort_test",
+     srcs = ["qsort_test.cpp"],
+     libc_function_deps = ["//libc:qsort"],
+     deps = [":qsort_test_helper"],
  )
- 
- math_test(
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/string/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/string/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/src/string/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/string/BUILD.bazel
-@@ -121,6 +121,7 @@
-     deps = [
-         "//libc:__support_cpp_span",
-         "//libc:__support_libc_assert",
-+        "//libc:__support_macros_config",
-         "//libc:__support_macros_sanitizer",
-         "//libc:string_memory_utils",
-     ],
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-@@ -18,6 +18,7 @@
-         "//libc:__support_big_int",
-         "//libc:__support_cpp_string",
-         "//libc:__support_cpp_string_view",
-+        "//libc:__support_macros_config",
-         "//libc:__support_macros_properties_types",
-         "//libc:__support_osutil_io",
-         "//libc:__support_uint128",
-@@ -52,6 +53,7 @@
-         "//libc:__support_fputil_fp_bits",
-         "//libc:__support_fputil_fpbits_str",
-         "//libc:__support_fputil_rounding_mode",
-+        "//libc:__support_macros_config",
-         "//libc:__support_macros_properties_architectures",
-         "//libc:__support_macros_properties_types",
-         "//libc:__support_stringutil",
-@@ -89,10 +91,11 @@
-         "//libc:__support_fputil_fp_bits",
-         "//libc:__support_fputil_fpbits_str",
-         "//libc:__support_fputil_rounding_mode",
-+        "//libc:__support_macros_config",
-         "//libc:__support_macros_properties_architectures",
-+        "//libc:hdr_fenv_macros",
-         "//libc:hdr_math_macros",
--	    "//libc:hdr_fenv_macros",
--	    "//libc:types_fenv_t",
-+        "//libc:types_fenv_t",
++
+ libc_test(
+     name = "quick_sort_test",
+     srcs = ["quick_sort_test.cpp"],
+@@ -122,6 +125,7 @@
+         "//libc:qsort_util",
      ],
  )
- 
-@@ -110,6 +113,7 @@
-         "//libc:__support_cpp_bitset",
-         "//libc:__support_cpp_span",
-         "//libc:__support_cpp_type_traits",
-+        "//libc:__support_macros_config",
-     ],
- )
- 
-@@ -125,6 +129,7 @@
-         ":LibcUnitTest",
-         ":string_utils",
-         "//libc:__support_fputil_fp_bits",
-+        "//libc:__support_macros_config",
-         "//libc:printf_core_structs",
-     ],
- )
-@@ -138,5 +143,6 @@
-         "//libc:__support_big_int",
-         "//libc:__support_cpp_string",
-         "//libc:__support_cpp_type_traits",
-+        "//libc:__support_macros_config",
-     ],
- )
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
-@@ -48,6 +48,7 @@
-         "//libc:__support_cpp_type_traits",
-         "//libc:__support_fputil_fp_bits",
-         "//libc:__support_fputil_fpbits_str",
-+        "//libc:__support_macros_config",
-         "//libc:__support_macros_properties_types",
-         "//libc:hdr_math_macros",
-         "//libc/test/UnitTest:LibcUnitTest",
++
+ libc_test(
+     name = "heap_sort_test",
+     srcs = ["heap_sort_test.cpp"],
