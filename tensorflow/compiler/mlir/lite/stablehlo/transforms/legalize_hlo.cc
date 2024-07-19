@@ -3636,13 +3636,14 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
             ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
             ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
             ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertSliceOp,
-            ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
             ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
             ConvertReduceOpToTfAll, ConvertReduceOpToTfProd,
             ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
             ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
             ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp,
             ConvertDynamicIotaOp, ConvertRealDynamicSliceOp>(context);
+
+  PopulateReduceArgMinMaxTFPatterns(context, *patterns);
 
   populateWithGenerated(*patterns);
 }

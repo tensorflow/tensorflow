@@ -58,6 +58,7 @@ cc_library(
         "reduce.h",
     ],
     deps = [
+        ":util",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo:hlo_matchers",
         "//tensorflow/compiler/mlir/tensorflow",

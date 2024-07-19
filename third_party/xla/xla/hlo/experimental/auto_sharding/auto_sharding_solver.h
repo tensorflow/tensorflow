@@ -31,7 +31,6 @@ namespace spmd {
 
 struct AutoShardingSolverOutput {
   std::vector<NodeStrategyIdx> s_val;
-  std::vector<EdgeStrategyIdx> e_val;
   double cost = -1.0;
   absl::flat_hash_set<LivenessIdx> peak_times;
 
@@ -94,11 +93,6 @@ struct AutoShardingEvaluation {
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
                                 const AutoShardingSolverResult& result);
-
-// Produces a list of rationales for why an alternate result may be suboptimal.
-std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
-                                     const AutoShardingSolverResult& result,
-                                     const AutoShardingSolverResult& subopt);
 
 // Creates and returns a variable for makespan.
 operations_research::MPVariable* CreateMakespanVar(
