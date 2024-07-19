@@ -49,6 +49,10 @@ void PythonDeprecationWarning(int stacklevel,
   static constexpr auto Name = descr;                    \
   template <typename T_>                                 \
   using Cast = movable_cast_t<T_>;                       \
+  template <typename T_>                                 \
+  static constexpr bool can_cast() {                     \
+    return true;                                         \
+  }                                                      \
   explicit operator Value*() { return &value; }          \
   explicit operator Value&() { return (Value&)value; }   \
   explicit operator Value&&() { return (Value&&)value; } \
