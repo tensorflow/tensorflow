@@ -1171,9 +1171,7 @@ LogicalResult reifyGatherShape(Op* op, OpBuilder& builder, ValueRange operands,
   };
   SmallVector<Value, 4> shapeValues;
   auto getSliceDim = [&sliceSizes](int64_t index) -> Value {
-    llvm::errs() << "ABOUT TO FAIL\n";
     auto ret = sliceSizes[index];
-    llvm::errs() << "DID NOT FAIL\n";
     return ret;
   };
   hlo::reifyGatherDimSizes(resultRank, getStartIndicesDim, getSliceDim,
