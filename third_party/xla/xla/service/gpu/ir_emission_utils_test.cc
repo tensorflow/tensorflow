@@ -565,18 +565,21 @@ TEST_F(IrEmissionUtilsTest, IsContiguousSlice) {
 HloModule module
 
 ENTRY entry {
-  p = f32[8,12,100,11]{3,2,1,0} parameter(0)
-  slice.1 = f32[2,12,100,11]{3,2,1,0} slice(p), slice={[1:3], [0:12], [0:100], [0:11]}
-  slice.2 = f32[1,1,1,11]{3,2,1,0} slice(p), slice={[1:2], [0:1], [0:1], [0:11]}
-  slice.3 = f32[1,1,10,11]{3,2,1,0} slice(p), slice={[1:2], [0:1], [0:10], [0:11]}
-  slice.4 = f32[1,2,10,11]{3,2,1,0} slice(p), slice={[1:2], [0:2], [0:10], [0:11]}
-  slice.5 = f32[8,2,100,11]{3,2,1,0} slice(p), slice={[0:8], [10:12], [0:100], [0:11]}
-  c = f32[8,12,100,11]{0,1,3,2} copy(p)
+  p0 = f32[8,12,100,11]{3,2,1,0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  c = f32[8,12,100,11]{0,1,3,2} copy(p0)
+  slice.1 = f32[2,12,100,11]{3,2,1,0} slice(p0), slice={[1:3], [0:12], [0:100], [0:11]}
+  slice.2 = f32[1,1,1,11]{3,2,1,0} slice(p0), slice={[1:2], [0:1], [0:1], [0:11]}
+  slice.3 = f32[1,1,10,11]{3,2,1,0} slice(p0), slice={[1:2], [0:1], [0:10], [0:11]}
+  slice.4 = f32[1,2,10,11]{3,2,1,0} slice(p0), slice={[1:2], [0:2], [0:10], [0:11]}
+  slice.5 = f32[8,2,100,11]{3,2,1,0} slice(p0), slice={[0:8], [10:12], [0:100], [0:11]}
   slice.6 = f32[8,12,40,11]{0,1,3,2} slice(c), slice={[0:8], [0:12], [10:50], [0:11]}
   slice.7 = f32[8,12,1,2]{0,1,3,2} slice(c), slice={[0:8], [0:12], [0:1], [0:2]}
   slice.8 = f32[8,2,100,11]{0,1,3,2} slice(c), slice={[0:8], [0:2], [0:100], [0:11]}
   slice.9 = f32[8,2,40,11]{0,1,3,2} slice(c), slice={[0:8], [10:12], [10:50], [0:11]}
-  slice.10 = f32[8,2,50,11]{3,2,1,0} slice(p), slice={[0:8:1], [10:12:1], [0:100:2], [0:11:1]}
+  slice.10 = f32[8,2,50,11]{3,2,1,0} slice(p0), slice={[0:8:1], [10:12:1], [0:100:2], [0:11:1]}
+  slice.11 = f32[2]{0} slice(p1), slice={[0:3:2]}
+  slice.12 = f32[1]{0} slice(p1), slice={[0:1:2]}
   ROOT t = (f32[2,12,100,11]{3,2,1,0},
             f32[1,1,1,11]{3,2,1,0},
             f32[1,1,10,11]{3,2,1,0},
@@ -586,7 +589,9 @@ ENTRY entry {
             f32[8,12,1,2]{0,1,3,2},
             f32[8,2,100,11]{0,1,3,2},
             f32[8,2,40,11]{0,1,3,2},
-            f32[8,2,50,11]{3,2,1,0}) tuple(slice.1, slice.2, slice.3, slice.4, slice.5, slice.6, slice.7, slice.8, slice.9, slice.10)
+            f32[8,2,50,11]{3,2,1,0},
+            f32[2]{0},
+            f32[1]{0}) tuple(slice.1, slice.2, slice.3, slice.4, slice.5, slice.6, slice.7, slice.8, slice.9, slice.10, slice.11, slice.12)
 }
 )";
 
@@ -613,16 +618,22 @@ ENTRY entry {
       module->entry_computation()->GetInstructionWithName("slice.9");
   HloInstruction* slice10 =
       module->entry_computation()->GetInstructionWithName("slice.10");
+  HloInstruction* slice11 =
+      module->entry_computation()->GetInstructionWithName("slice.11");
+  HloInstruction* slice12 =
+      module->entry_computation()->GetInstructionWithName("slice.12");
   EXPECT_TRUE(IsContiguousSlice(*slice1));
   EXPECT_TRUE(IsContiguousSlice(*slice2));
   EXPECT_TRUE(IsContiguousSlice(*slice3));
-  EXPECT_TRUE(!IsContiguousSlice(*slice4));
-  EXPECT_TRUE(!IsContiguousSlice(*slice5));
+  EXPECT_FALSE(IsContiguousSlice(*slice4));
+  EXPECT_FALSE(IsContiguousSlice(*slice5));
   EXPECT_TRUE(IsContiguousSlice(*slice6));
   EXPECT_TRUE(IsContiguousSlice(*slice7));
-  EXPECT_TRUE(!IsContiguousSlice(*slice8));
-  EXPECT_TRUE(!IsContiguousSlice(*slice9));
-  EXPECT_TRUE(!IsContiguousSlice(*slice10));
+  EXPECT_FALSE(IsContiguousSlice(*slice8));
+  EXPECT_FALSE(IsContiguousSlice(*slice9));
+  EXPECT_FALSE(IsContiguousSlice(*slice10));
+  EXPECT_FALSE(IsContiguousSlice(*slice11));
+  EXPECT_TRUE(IsContiguousSlice(*slice12));
 }
 
 TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {

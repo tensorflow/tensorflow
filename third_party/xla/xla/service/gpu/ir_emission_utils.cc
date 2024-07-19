@@ -164,26 +164,47 @@ bool IsSliceWithUnitStrides(const HloInstruction* instr) {
                                  [](int64_t stride) { return stride == 1; });
 }
 
-bool IsContiguousSlice(const HloInstruction& instr) {
-  auto slice = DynCast<HloSliceInstruction>(&instr);
-  if (!slice) return false;
-  // No need to check for strides because if stride != 1 there's no way
-  // src and dst dimensions match.
-  const Shape& src_shape = slice->operand(0)->shape();
-  const Shape& dst_shape = slice->shape();
-  return IsContiguousSlice(src_shape, dst_shape);
-}
+static bool IsContiguousSlice(
+    const Shape& orig, const Shape& sliced,
+    std::optional<absl::Span<const int64_t>> slice_strides) {
+  std::optional<int64_t> sliced_dim;
 
-bool IsContiguousSlice(const Shape& orig, const Shape& sliced) {
-  bool sliced_dim_found = false;
   for (auto dim : orig.layout().minor_to_major()) {
-    if (!sliced_dim_found) {
-      sliced_dim_found = sliced.dimensions(dim) < orig.dimensions(dim);
-      continue;
+    // All dimensions before the sliced one must be 1.
+    if (sliced_dim.has_value()) {
+      if (sliced.dimensions(dim) != 1) return false;
     }
-    if (sliced.dimensions(dim) != 1) return false;
+
+    // We found sliced dimension, check that it's not a strided one, because it
+    // means that we can't take a contiguous slice.
+    if (sliced.dimensions(dim) < orig.dimensions(dim)) {
+      if (slice_strides.has_value() && slice_strides.value()[dim] != 1 &&
+          sliced.dimensions(dim) > 1) {
+        return false;
+      }
+      sliced_dim = dim;
+    }
   }
   return true;
+}
+
+bool IsContiguousSlice(const HloInstruction& instr) {
+  if (auto slice = DynCast<HloSliceInstruction>(&instr)) {
+    const Shape& full_shape = slice->operand(0)->shape();
+    const Shape& slice_shape = slice->shape();
+    return IsContiguousSlice(full_shape, slice_shape, slice->slice_strides());
+
+  } else if (auto slice = DynCast<HloDynamicSliceInstruction>(&instr)) {
+    const Shape& full_shape = slice->operand(0)->shape();
+    const Shape& slice_shape = slice->shape();
+    return IsContiguousSlice(full_shape, slice_shape, std::nullopt);
+
+  } else if (auto slice = DynCast<HloDynamicUpdateSliceInstruction>(&instr)) {
+    const Shape& full_shape = slice->shape();
+    const Shape& slice_shape = slice->update()->shape();
+    return IsContiguousSlice(full_shape, slice_shape, std::nullopt);
+  }
+  return false;
 }
 
 // Helper function to emit call to AMDGPU shfl_down function.

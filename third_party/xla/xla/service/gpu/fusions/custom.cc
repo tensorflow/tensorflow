@@ -125,8 +125,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
     auto* slice_instr =
         const_cast<HloInstruction*>(&slice_adaptor->instruction());
 
-    if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
-                           slice_instr->shape())) {
+    if (!IsContiguousSlice(*slice_instr)) {
       return absl::InternalError(
           "DynamicSliceFusion only handles contiguous slices "
           "currently");
@@ -311,10 +310,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
         const_cast<HloInstruction*>(&slice_adaptor->instruction());
     slice_instrs[arg_idx] = slice_instr;
 
-    if (!IsContiguousSlice(slice_instr->shape(),
-                           Cast<HloDynamicUpdateSliceInstruction>(slice_instr)
-                               ->update()
-                               ->shape())) {
+    if (!IsContiguousSlice(*slice_instr)) {
       return absl::InternalError(
           "DynamicSliceFusion only handles contiguous slices "
           "currently");
