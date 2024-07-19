@@ -85,7 +85,7 @@ std::unique_ptr<HloComputation> MakeTrivialLoopCondition(
           param_instruction.value(), induction_idx));
 
   HloInstruction* init_value_constant = condition_builder.AddInstruction(
-      MakeConstantWithShape(indvar_instruction->shape(), init_value));
+      MakeScalarConstantWithShape(indvar_instruction->shape(), init_value));
 
   return condition_builder.Build(
       condition_builder.AddInstruction(HloInstruction::CreateCompare(
@@ -168,8 +168,9 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
       indvar_uses.push_back(indvar_use);
     }
 
-    HloInstruction* induction_value_constant = while_body_clone->AddInstruction(
-        MakeConstantWithShape(induction_var_hlo->shape(), induction_value));
+    HloInstruction* induction_value_constant =
+        while_body_clone->AddInstruction(MakeScalarConstantWithShape(
+            induction_var_hlo->shape(), induction_value));
 
     // Finds all the uses of induction var within the while body and replace it
     // with the constant.
