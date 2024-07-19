@@ -304,7 +304,6 @@ CHECK:  }
 )"));
 }
 
-
 TEST_F(TritonTest, PredParametersAreTruncatedToI1) {
   const std::string kHloText = R"(
 HloModule m
@@ -4771,6 +4770,37 @@ CHECK: $L__BB0_1:
 CHECK-NEXT: // begin inline asm
 CHECK-NEXT: .pragma "nounroll";
 CHECK: wgmma
+)");
+}
+
+TEST_F(TritonGemmTest, WgmmaIsUsedForMemBoundShape) {
+  if (GetCudaComputeCapability().major != se::CudaComputeCapability::HOPPER) {
+    GTEST_SKIP() << "wgmma instruction is only available on Hopper";
+  }
+  const std::string hlo_text = R"(
+gemm_fusion_dot {
+  p0 = s8[128,128]{1,0} parameter(0)
+  p1 = bf16[128,16]{1,0} parameter(1)
+  convert = bf16[128,128]{1,0} convert(p0)
+  ROOT %dot = bf16[128,16]{1,0} dot(convert, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s8[128,128]{1,0} parameter(0)
+  p1 = bf16[128,16]{1,0} parameter(1)
+  ROOT triton_gemm_fusion_dot = bf16[128,16]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=gemm_fusion_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+      triton_gemm_config:
+        {"block_m":128,"block_n":16,"block_k":16,
+         "split_k":1,"num_stages":1,"num_warps":4,
+         "num_ctas":1}}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  CompileAndOptionallyVerifyPtx(std::move(verified_module), R"(
+CHECK: wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16
 )");
 }
 
