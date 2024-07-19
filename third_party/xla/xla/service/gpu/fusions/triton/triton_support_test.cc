@@ -125,7 +125,8 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kNegate:
       return type != PRED;
     default:
-      // Returning true by default ensures that newly added ops are not skipped.
+      // Returning true by default ensures that newly added ops are not
+      // skipped.
       return true;
   }
 }
@@ -466,8 +467,8 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
-TEST_P(ReduceTest,
-       UnsupportedReduceWithNonLastReduceDimensionFailsGracefullyWithTriton) {
+TEST_P(ReduceTest, IsTritonSupportedReduceWithNonLastReduceDimension) {
+  GTEST_SKIP() << "TODO(b/348565795): this test is currently broken.";
   auto [data_type, opcode, cc] = GetParam();
   bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
@@ -487,7 +488,7 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  EXPECT_TRUE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 

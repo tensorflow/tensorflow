@@ -58,7 +58,138 @@ class TritonEmitterTest : public GpuCodegenTest {
   }
 };
 
-TEST_F(TritonEmitterTest, TestGenericEmitterWithSingleParameter) {
+TEST_F(TritonEmitterTest, ReductionOnMinormostAxisIsEmittedCorrectly) {
+  const std::string kHloText = R"(
+HloModule t
+maximum {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(Arg_0, Arg_1)
+}
+
+triton_reduction_computation {
+  parameter_0 = f32[8,4] parameter(0)
+  constant_0 = f32[] constant(0)
+  ROOT reduce = f32[8] reduce(parameter_0, constant_0), dimensions={1}, to_apply=maximum
+}
+
+ENTRY main {
+  param_0 = f32[8,4] parameter(0)
+  ROOT triton_reduction = f32[8] fusion(param_0), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["4"],"num_warps":"1"}}}
+})";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
+                                          FromOutputTileSizes({4}),
+                                          "triton_reduction_computation", R"(
+CHECK:  "tt.reduce"(%[[LOAD:.*]]) <{axis = 1 : i32}>
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(TritonEmitterTest, ReductionOnMajormostAxisIsEmittedCorrectly) {
+  const std::string kHloText = R"(
+HloModule t
+maximum {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(Arg_0, Arg_1)
+}
+
+triton_reduction_computation {
+  parameter_0 = f32[8,4] parameter(0)
+  constant_0 = f32[] constant(0)
+  ROOT reduce = f32[4] reduce(parameter_0, constant_0), dimensions={0}, to_apply=maximum
+}
+
+ENTRY main {
+  param_0 = f32[8,4] parameter(0)
+  ROOT triton_reduction = f32[4] fusion(param_0), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["4"],"num_warps":"1"}}}
+})";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
+                                          FromOutputTileSizes({4}),
+                                          "triton_reduction_computation", R"(
+CHECK:  "tt.reduce"(%[[LOAD:.*]]) <{axis = 0 : i32}>
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(TritonEmitterTest, ReductionOnIntermediateAxisIsEmittedCorrectly) {
+  const std::string kHloText = R"(
+HloModule t
+maximum {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(Arg_0, Arg_1)
+}
+
+triton_reduction_computation {
+  parameter_0 = f32[5,5,5,5,3] parameter(0)
+  constant_0 = f32[] constant(0)
+  ROOT reduction = f32[5,5,5,3] reduce(parameter_0, constant_0), dimensions={2}, to_apply=maximum
+}
+
+ENTRY main {
+  param_0 = f32[5,5,5,5,3] parameter(0)
+  ROOT triton_reduction = f32[5,5,5,3] fusion(param_0), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["4", "2", "5", "1"],"num_warps":"1"}}}
+})";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
+                                          FromOutputTileSizes({4, 2, 5, 1}),
+                                          "triton_reduction_computation", R"(
+CHECK:  tt.make_range
+CHECK-COUNT-4:  tt.expand_dims
+CHECK:  "tt.reduce"(%[[SELECT:.*]]) <{axis = 2 : i32}>
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(TritonEmitterTest, TestReductionWithTileSizeLargerThanSourceTensor) {
+  const std::string kHloText = R"(
+HloModule t
+maximum {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(Arg_0, Arg_1)
+}
+
+triton_reduction_computation {
+  parameter_0 = f32[5,3] parameter(0)
+  constant_0 = f32[] constant(0)
+  ROOT reduce = f32[3] reduce(parameter_0, constant_0), dimensions={0}, to_apply=maximum
+}
+
+ENTRY main {
+  param_0 = f32[5,3] parameter(0)
+  ROOT triton_reduction = f32[3] fusion(param_0), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["3"],"num_warps":"1"}}}
+})";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
+                                          FromOutputTileSizes({3}),
+                                          "triton_reduction_computation", R"(
+; Make sure input reduction tile is padded with a neutral value.
+CHECK:  %[[LOAD:.*]] = tt.load
+CHECK:  %[[RANGE:.*]] = tt.make_range
+CHECK:  %[[EXPAND:.*]] = tt.expand_dims %[[RANGE]]
+CHECK:  %[[BROADCAST:.*]] = tt.broadcast %[[EXPAND]]
+CHECK:  %[[CMPI:.*]] = arith.cmpi slt, %[[BROADCAST]]
+CHECK:  %[[SELECT:.*]] = arith.select %[[CMPI]], %[[LOAD]]
+CHECK:  "tt.reduce"(%[[SELECT]]) <{axis = 0 : i32}>
+CHECK:  ^bb0(%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32):
+CHECK:    %[[MAXIMUM:.*]] = arith.maximumf %[[ARG2]], %[[ARG3]] : f32
+CHECK:    tt.reduce.return %[[MAXIMUM]] : f32
+CHECK:  })
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file.
+TEST_F(TritonEmitterTest, TestSoftmaxEmitterWithSingleParameter) {
   const std::string kHloText = R"(
 HloModule t
 add {
@@ -109,6 +240,8 @@ CHECK:        }
 )"));
 }
 
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file.
 TEST_F(TritonEmitterTest, TestGenericEmitterWithMultipleParameters) {
   const std::string kHloText = R"(
 HloModule t
@@ -432,6 +565,8 @@ ENTRY main {
       RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file.
 TEST_F(TritonEmitterTest, EmitterFailsIfComputeCapabilityIsBelowAmpere) {
   const std::string kHloText = R"(
 triton_computation {
@@ -472,6 +607,8 @@ ENTRY entry {
                                "(compute capability 8.0) and up, but got")));
 }
 
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file.
 TEST_F(TritonEmitterTest, TestGenericEmitterReductionFusion) {
   const std::string kHloText = R"(
 HloModule t
@@ -510,6 +647,8 @@ CHECK:            tt.store {{.*}} : !tt.ptr<tensor<1xf32>>
 )"));
 }
 
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file.
 TEST_F(TritonEmitterTest, TestGenericEmitterWithSoftMaxSingleParameter) {
   const std::string kHloText = R"(
 HloModule t

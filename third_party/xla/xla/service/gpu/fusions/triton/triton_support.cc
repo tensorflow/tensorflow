@@ -309,9 +309,7 @@ CodegenDecision CanTritonHandleReduce(
     return "Unsupported reduction computation by Triton.";
   }
 
-  if (reduce.dimensions().size() == 1 &&
-      reduce.dimensions().front() == reduce.operand(0)->shape().rank() - 1 &&
-      reduce.operand_count() == 2) {
+  if (reduce.dimensions().size() == 1 && reduce.operand_count() == 2) {
     return CodegenDecision{};
   }
   return "Reduction is not a row-reduction of a single operand.";

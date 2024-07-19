@@ -674,24 +674,20 @@ absl::StatusOr<Value> EmitReduce(
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values,
     absl::string_view libdevice_path,
     const se::DeviceDescription& device_info) {
+  // At the moment, we should only emit a full reduction over a single
+  // dimension using a scalar as a neutral element.
   const HloReduceInstruction& hlo_reduce =
       *::xla::Cast<HloReduceInstruction>(tiled_hlo_reduce.hlo());
-  // At the moment, we should only emit a full reduction over the last axis of
-  // a single input.
   TF_RET_CHECK(hlo_reduce.operand_count() == 2);
   TF_RET_CHECK(hlo_reduce.dimensions().size() == 1);
-  TF_RET_CHECK(hlo_reduce.dimensions().front() ==
-               hlo_reduce.operand(0)->shape().rank() - 1);
 
-  const int64_t row_len = hlo_reduce.operand(0)->shape().dimensions_minor(0);
-  const int64_t block_row = llvm::PowerOf2Ceil(row_len);
   Value input = values[tiled_hlo_reduce.operand(0)];
-  Value neutral = values[tiled_hlo_reduce.operand(1)];
-
   llvm::ArrayRef<int64_t> input_shape =
-      mlir::cast<ShapedType>(values[tiled_hlo_reduce.operand(0)].getType())
-          .getShape();
-  int64_t input_rank = input_shape.size();
+      mlir::cast<ShapedType>(input.getType()).getShape();
+  absl::Span<const int64_t> source_tensor_shape =
+      hlo_reduce.operand(0)->shape().dimensions();
+
+  int reduction_dimension = hlo_reduce.dimensions().front();
 
   // Since every shape is padded to a power of 2 in Triton, the input tile may
   // be padded with arbitrary values. These values could affect the result of
@@ -701,29 +697,42 @@ absl::StatusOr<Value> EmitReduce(
   // hlo_reduce.operand(1) is thus always the right choice to ensure that the
   // reduction is computed correctly, since it is the neutral value with regards
   // to the reducer.
-  if (block_row != row_len) {
-    Value mask = b.create<ma::CmpIOp>(
-        ma::CmpIPredicate::slt, Range(b, block_row),
-        Splat(b, CreateConst(b, b.getI32Type(), row_len), block_row));
+  int64_t source_tensor_reduction_dimension_size =
+      source_tensor_shape[reduction_dimension];
+  int64_t input_reduction_dimension_size = input_shape[reduction_dimension];
+  if (input_reduction_dimension_size !=
+      source_tensor_reduction_dimension_size) {
+    Value range = Range(b, input_reduction_dimension_size);
+    // Triton's broadcast requires that the rank of the source and broadcasted
+    // result are equal.
+    for (int i = 0; i < input_shape.size() - 1; i++) {
+      if (i < reduction_dimension) {
+        range = b.create<mt::ExpandDimsOp>(range, /*axis=*/0);
+      } else {
+        range = b.create<mt::ExpandDimsOp>(range, /*axis=*/i + 1);
+      }
+    }
+    Value mask = Broadcast(b, mlir::cast<TensorValue>(range), input_shape);
+    Value constant =
+        CreateConst(b, b.getI32Type(), source_tensor_reduction_dimension_size);
+    Value constant_tensor = Splat(b, constant, input_shape);
+    mask = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, mask, constant_tensor);
 
-    // Make the mask match the rank of the input---the mask starts out with
-    // rank 1.
-    mask = LeftExpandDimNTimes(b, mask, input_rank - 1);
-    mask = Broadcast(b, mlir::cast<TensorValue>(mask), input_shape);
-
-    Value broadcasted_neutral = Broadcast(
-        b, mlir::cast<TensorValue>(LeftExpandDimNTimes(b, neutral, input_rank)),
-        input_shape);
-
-    input = b.create<ma::SelectOp>(mask, input, broadcasted_neutral);
+    Value neutral = values[tiled_hlo_reduce.operand(1)];
+    // Triton's broadcast requires that the rank of the source and broadcasted
+    // result are equal.
+    for (int i = 0; i < input_shape.size(); i++) {
+      neutral = b.create<mt::ExpandDimsOp>(neutral, /*axis=*/0);
+    }
+    neutral = Broadcast(b, mlir::cast<TensorValue>(neutral), input_shape);
+    input = b.create<ma::SelectOp>(mask, input, neutral);
   }
 
   // Triton actually only performs reductions on float32 inputs, and we must
   // thus upcast/downcast our input if its data type is different.
-  Value casted_input = Cast(b, input, b.getF32Type());
+  input = Cast(b, input, b.getF32Type());
 
-  mt::ReduceOp reduction = b.create<mt::ReduceOp>(
-      SmallVector<Value>({casted_input}), (int)input_shape.size() - 1);
+  mt::ReduceOp reduction = b.create<mt::ReduceOp>(input, reduction_dimension);
   {
     mlir::Location loc = b.getLoc();
     mlir::Block* reducer =
