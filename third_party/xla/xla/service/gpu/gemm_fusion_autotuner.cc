@@ -887,7 +887,7 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
 
   const HloInstruction& root = *fusion_computation->root_instruction();
   BufferComparator comparator(root.shape(),
-                              fusion_computation->parent()->config());
+                              debug_options_.xla_gpu_autotune_gemm_rtol());
 
   TF_ASSIGN_OR_RETURN(auto rz_buffers,
                       RedzoneBuffers::FromInstruction(

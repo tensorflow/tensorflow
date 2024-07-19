@@ -279,6 +279,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_per_fusion_autotune_cache_dir("");
 
+  opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
+
   return opts;
 }
 
@@ -835,13 +837,24 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(&DebugOptions::set_xla_gpu_autotune_level),
       debug_options->xla_gpu_autotune_level(),
       "Set GEMM and Convolution auto-tuning level. 0 = off; 1 = on; 2 = "
-      "on+init; 3 = on+init+reinit; 4 = on+init+reinit+check."));
+      "on+init; 3 = on+init+reinit; 4 = on+init+reinit+check; "
+      "5 = on+init+reinit+check and skip WRONG_RESULT solutions. See also "
+      "the related flag xla_gpu_autotune_gemm_rtol. Remark that, setting the "
+      "level to 5 only makes sense if you are sure that the reference (first "
+      "in the list) solution is numerically CORRECT. Otherwise, the autotuner "
+      "might discard many other correct solutions based on the failed "
+      "BufferComparator test."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_autotune_max_solutions",
       int64_setter_for(&DebugOptions::set_xla_gpu_autotune_max_solutions),
       debug_options->xla_gpu_autotune_max_solutions(),
       "Maximal number of GEMM solutions to consider for autotuning: 0 means "
       "consider all solutions returned by the GEMM library."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_autotune_gemm_rtol",
+      float_setter_for(&DebugOptions::set_xla_gpu_autotune_gemm_rtol),
+      debug_options->xla_gpu_autotune_gemm_rtol(),
+      "Relative precision for comparing GEMM solutions vs the reference one"));
   flag_list->push_back(tsl::Flag(
       "xla_force_host_platform_device_count",
       int32_setter_for(&DebugOptions::set_xla_force_host_platform_device_count),

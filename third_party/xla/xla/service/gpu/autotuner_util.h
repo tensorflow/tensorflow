@@ -101,6 +101,7 @@ class AutotuneConfig {
   bool should_init_buffers() const { return autotune_level_ >= 2; }
   bool should_reinit_output_buffer() const { return autotune_level_ >= 3; }
   bool should_check_correctness() const { return autotune_level_ >= 4; }
+  bool should_skip_wrong_results() const { return autotune_level_ >= 5; }
   bool should_crash_on_check_failure() const {
     return should_crash_on_check_failure_;
   }
