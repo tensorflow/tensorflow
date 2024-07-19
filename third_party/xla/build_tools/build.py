@@ -247,7 +247,6 @@ _CPU_X86_BUILD = Build(
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS
     + (
-        "-//xla/service/gpu/model/fuzztest/...",
         "-//xla/service/gpu/fusions/triton:triton_support_test",
     ),
     build_tag_filters=cpu_x86_tag_filter,
@@ -269,7 +268,6 @@ _CPU_ARM64_BUILD = Build(
     configs=("warnings", "rbe_cross_compile_linux_arm64_xla", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS
     + (
-        "-//xla/service/gpu/model/fuzztest/...",
         "-//xla/service/gpu/fusions/triton:triton_support_test",
     ),
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
