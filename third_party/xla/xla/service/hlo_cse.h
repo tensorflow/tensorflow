@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_CSE_H_
 #define XLA_SERVICE_HLO_CSE_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
 
@@ -33,18 +31,17 @@ class HloCSE : public HloModulePass {
   // transformation. Otherwise, layout is ignored.
   // If ignore_control_dependencies is true, the pass will ignore control deps
   // when replacing instructions with their equivalents.
-  explicit HloCSE(
-      bool is_layout_sensitive, bool only_fusion_computations = false,
-      bool ignore_control_dependencies = false, bool only_scalars = false,
-      bool is_sharding_sensitive = true, bool allow_compatible_sharding = false,
-      absl::flat_hash_set<const HloInstruction*> instructions_to_skip = {})
+  explicit HloCSE(bool is_layout_sensitive,
+                  bool only_fusion_computations = false,
+                  bool ignore_control_dependencies = false,
+                  bool only_scalars = false, bool is_sharding_sensitive = true,
+                  bool allow_compatible_sharding = false)
       : is_layout_sensitive_(is_layout_sensitive),
         only_fusion_computations_(only_fusion_computations),
         ignore_control_dependencies_(ignore_control_dependencies),
         only_scalars_(only_scalars),
         is_sharding_sensitive_(is_sharding_sensitive),
-        allow_compatible_sharding_(allow_compatible_sharding),
-        instructions_to_skip_(instructions_to_skip) {}
+        allow_compatible_sharding_(allow_compatible_sharding) {}
   ~HloCSE() override = default;
   absl::string_view name() const override { return "cse"; }
 
@@ -62,7 +59,6 @@ class HloCSE : public HloModulePass {
   const bool only_scalars_;
   const bool is_sharding_sensitive_;
   const bool allow_compatible_sharding_;
-  absl::flat_hash_set<const HloInstruction*> instructions_to_skip_;
 };
 
 }  // namespace xla
