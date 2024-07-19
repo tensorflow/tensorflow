@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/overflow_util.h"
-#include "xla/primitive_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/flatten_call_graph.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -95,16 +95,28 @@ std::unique_ptr<HloComputation> MakeTrivialLoopCondition(
 
 // Handle DynamicGte and DynamicTuple custom-calls created during unstacking
 // pass.
-absl::Status HandleDynamicGteOrTuple(HloInstruction* instr, int64_t iter_num) {
+absl::Status HandleDynamicGteOrTuple(HloInstruction* instr) {
   if (instr->IsCustomCall("DynamicGte")) {
+    HloEvaluator evaluator(/*max_loop_iterations=*/0);
+    TF_ASSIGN_OR_RETURN(Literal index_lit,
+                        evaluator.Evaluate(instr->mutable_operand(1), true));
+    auto index = LiteralUtil::LiteralAsScalarInt64(std::move(index_lit));
+    // The index must have a compile-time integer value at this point.
+    TF_RET_CHECK(index.has_value());
     return instr->parent()->ReplaceInstruction(
         instr, instr->AddInstruction(HloInstruction::CreateGetTupleElement(
-                   instr->mutable_operand(0), iter_num)));
+                   instr->mutable_operand(0), index.value())));
   } else if (instr->IsCustomCall("DynamicTuple")) {
+    HloEvaluator evaluator(/*max_loop_iterations=*/0);
     std::vector<HloInstruction*> tuple_operands;
+    TF_ASSIGN_OR_RETURN(Literal index_lit,
+                        evaluator.Evaluate(instr->mutable_operand(2), true));
+    auto index = LiteralUtil::LiteralAsScalarInt64(std::move(index_lit));
+    // The index must have a compile-time integer value at this point.
+    TF_RET_CHECK(index.has_value());
     for (int64_t i = 0; i < instr->operand(0)->shape().tuple_shapes_size();
          i++) {
-      if (i == iter_num) {
+      if (i == index.value()) {
         tuple_operands.push_back(instr->mutable_operand(1));
       } else {
         HloInstruction* slice =
@@ -116,6 +128,51 @@ absl::Status HandleDynamicGteOrTuple(HloInstruction* instr, int64_t iter_num) {
     return instr->parent()->ReplaceInstruction(
         instr,
         instr->AddInstruction(HloInstruction::CreateTuple(tuple_operands)));
+  }
+  return absl::OkStatus();
+}
+
+// Replaces all uses of the gte induction variable hlo (except the increment
+// instruction) with a constant. We use induction_var_idx to find the gte
+// instruction.
+absl::Status ReplaceInductionVarUses(HloComputation* body,
+                                     HloInstruction* induction_value_constant,
+                                     int64_t induction_var_idx) {
+  for (HloInstruction* body_inst : body->instructions()) {
+    // We only consider induction variable instructions of the following form.
+    if (!Match(body_inst,
+               match::GetTupleElement(match::Parameter().WithParameterNum(0))
+                   .WithTupleIndex(induction_var_idx))) {
+      continue;
+    }
+
+    // Store users of the induction variable in a separate vector to go over.
+    std::vector<HloInstruction*> indvar_uses;
+    indvar_uses.reserve(body_inst->users().size());
+    for (HloInstruction* indvar_use : body_inst->users()) {
+      indvar_uses.push_back(indvar_use);
+    }
+
+    // Finds all the uses of induction var within the while body and replace it
+    // with the constant.
+    for (HloInstruction* indvar_use : indvar_uses) {
+      // Skip the induction variable increment instruction. We need this
+      // instruction to remain in the loop if we are doing wrapped unrolling. We
+      // rely on this instruction to later find and remove these trivial loops.
+      if (Match(indvar_use, match::Add(match::GetTupleElement().WithTupleIndex(
+                                           induction_var_idx),
+                                       match::Constant()))) {
+        continue;
+      }
+      for (int64_t i = 0; i < indvar_use->operand_count(); ++i) {
+        const HloInstruction* indvar_use_operand = indvar_use->operand(i);
+        // Found the induction var user.
+        if (indvar_use_operand == body_inst) {
+          TF_RETURN_IF_ERROR(
+              indvar_use->ReplaceOperandWith(i, induction_value_constant));
+        }
+      }
+    }
   }
   return absl::OkStatus();
 }
@@ -140,9 +197,12 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
   // iterations, we obtain it again.
   int64_t unique_channel_id = hlo_query::NextChannelId(*while_op->GetModule());
 
-  // Go through the instructions in while body to get the instruction that
-  // points to the induction var. Then replace it everywhere with the concrete
-  // value.
+  HloInstruction* induction_value_constant = while_body_clone->AddInstruction(
+      MakeScalarConstantWithShape(induction_var_hlo->shape(), induction_value));
+  TF_RETURN_IF_ERROR(ReplaceInductionVarUses(while_body_clone.get(),
+                                             induction_value_constant,
+                                             config.induction_var_idx));
+
   for (HloInstruction* body_inst : while_body_clone->instructions()) {
     // We need to assign a unique channel_id for the collective ops that are
     // unrolled within the while loop body or fusions containing collectives.
@@ -153,45 +213,10 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
       // channel_id across the module.
       collective->set_channel_id(unique_channel_id++);
     }
-
-    // We only consider induction variable instructions of the following form.
-    if (!Match(body_inst,
-               match::GetTupleElement(match::Parameter().WithParameterNum(0))
-                   .WithTupleIndex(config.induction_var_idx))) {
-      continue;
-    }
-
-    // Store users of the induction variable in a separate vector to go over.
-    std::vector<HloInstruction*> indvar_uses;
-    indvar_uses.reserve(body_inst->users().size());
-    for (HloInstruction* indvar_use : body_inst->users()) {
-      indvar_uses.push_back(indvar_use);
-    }
-
-    HloInstruction* induction_value_constant =
-        while_body_clone->AddInstruction(MakeScalarConstantWithShape(
-            induction_var_hlo->shape(), induction_value));
-
-    // Finds all the uses of induction var within the while body and replace it
-    // with the constant.
-    for (HloInstruction* indvar_use : indvar_uses) {
-      // Skip the induction variable increment instruction. We need this
-      // instruction to remain in the loop if we are doing wrapped unrolling. We
-      // rely on this instruction to later find and remove these trivial loops.
-      if (Match(indvar_use, match::Add(match::GetTupleElement().WithTupleIndex(
-                                           config.induction_var_idx),
-                                       match::Constant()))) {
-        continue;
-      }
-      CHECK_OK(HandleDynamicGteOrTuple(indvar_use, induction_value));
-      for (int64_t i = 0; i < indvar_use->operand_count(); ++i) {
-        const HloInstruction* indvar_use_operand = indvar_use->operand(i);
-        // Found the induction var user.
-        if (indvar_use_operand == body_inst) {
-          CHECK_OK(indvar_use->ReplaceOperandWith(i, induction_value_constant));
-        }
-      }
-    }
+    // Handle DynamicGte and DynamicTuple custom-calls created during unstacking
+    // pass. All custom-calls must be replaced for the loop to be unrolled
+    // successfully.
+    TF_RETURN_IF_ERROR(HandleDynamicGteOrTuple(body_inst));
   }
   return while_body_clone;
 }
@@ -375,6 +400,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
         VLOG(3) << "Constant index " << start_index << " is not zero.";
         return std::nullopt;
       }
+      continue;
     }
 
     // Check that the instruction's dynamic index points to the loop induction

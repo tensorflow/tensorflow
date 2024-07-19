@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -1029,6 +1030,76 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSNested) {
                   instr, inner_fusion_comp->parameter_instruction(0),
                   HloOpcode::kDynamicSlice, config.value())
                   .has_value());
+}
+
+// Unroller pass must remove all the DynamicGte custom-calls.
+TEST_F(WhileLoopUnrollerTest, UnrollLoopWithDynamicGte) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop, entry_computation_layout={(s8[6,128,128]{2,1,0}, bf16[8,128]{1,0})->bf16[8,128]{1,0}}
+    %fused_computation (param_0: s8[1,128,128]) -> s8[128,128] {
+      %param_0 = s8[1,128,128]{2,1,0} parameter(0)
+      ROOT %bitcast.1 = s8[128,128]{1,0} bitcast(s8[1,128,128]{2,1,0} %param_0)
+    }
+
+    %fused_computation.inner (param_0.34523: bf16[8,128], sliced: s8[1,128,128]) -> bf16[8,128] {
+      %sliced = s8[1,128,128]{2,1,0} parameter(1)
+      %param_0.34523 = bf16[8,128]{1,0} parameter(0)
+      %fusion = s8[128,128]{1,0} fusion(s8[1,128,128]{2,1,0} %sliced), kind=kLoop, calls=%fused_computation
+      ROOT %convolution.3447 = bf16[8,128]{1,0} convolution(bf16[8,128]{1,0} %param_0.34523, s8[128,128]{1,0} %fusion), dim_labels=bf_io->bf
+    }
+
+    %while.body (unstacked: (s32[], bf16[8,128], (s8[1,128,128], s8[1,128,128], s8[1,128,128], s8[1,128,128], s8[1,128,128], /*index=5*/s8[1,128,128]))) -> (s32[], bf16[8,128], (s8[1,128,128], s8[1,128,128], s8[1,128,128], s8[1,128,128], s8[1,128,128], /*index=5*/s8[1,128,128])) {
+      %unstacked = (s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) parameter(0)
+      %i = s32[] get-tuple-element((s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) %unstacked), index=0
+      %one = s32[] constant(1)
+      %inc = s32[] add(s32[] %i, s32[] %one)
+      %p0 = bf16[8,128]{1,0} get-tuple-element((s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) %unstacked), index=1
+      %p1.1 = (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0}) get-tuple-element((s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) %unstacked), index=2
+      %two = s32[] constant(2)
+      %mult = s32[] multiply(s32[] %i, s32[] %two)
+      %custom-call = s8[1,128,128]{2,1,0} custom-call((s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0}) %p1.1, s32[] %mult), custom_call_target="DynamicGte"
+      %fusion.conv = bf16[8,128]{1,0} fusion(bf16[8,128]{1,0} %p0, s8[1,128,128]{2,1,0} %custom-call), kind=kOutput, calls=%fused_computation.inner
+      ROOT %out = (s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) tuple(s32[] %inc, bf16[8,128]{1,0} %fusion.conv, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0}) %p1.1)
+    }
+
+    %while.cond (unstacked.1: (s32[], bf16[8,128], (s8[1,128,128], s8[1,128,128], s8[1,128,128], s8[1,128,128], s8[1,128,128], /*index=5*/s8[1,128,128]))) -> pred[] {
+      %unstacked.1 = (s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) parameter(0)
+      %i.1 = s32[] get-tuple-element((s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) %unstacked.1), index=0
+      %constant.12857 = s32[] constant(3)
+      ROOT %compare.1921 = pred[]{:T(512)} compare(s32[] %i.1, s32[] %constant.12857), direction=LT
+    }
+
+    ENTRY %main (p0.1: s8[6,128,128], p1.2: bf16[8,128]) -> bf16[8,128] {
+      %init = s32[] constant(0)
+      %p1.2 = bf16[8,128]{1,0} parameter(1)
+      %p0.1 = s8[6,128,128]{2,1,0} parameter(0)
+      %while.input = (s32[], bf16[8,128]{1,0}, s8[6,128,128]{2,1,0}) tuple(s32[] %init, bf16[8,128]{1,0} %p1.2, s8[6,128,128]{2,1,0} %p0.1)
+      %slice = s8[1,128,128]{2,1,0} slice(s8[6,128,128]{2,1,0} %p0.1), slice={[0:1], [0:128], [0:128]}
+      %slice.1 = s8[1,128,128]{2,1,0} slice(s8[6,128,128]{2,1,0} %p0.1), slice={[1:2], [0:128], [0:128]}
+      %slice.2 = s8[1,128,128]{2,1,0} slice(s8[6,128,128]{2,1,0} %p0.1), slice={[2:3], [0:128], [0:128]}
+      %slice.3 = s8[1,128,128]{2,1,0} slice(s8[6,128,128]{2,1,0} %p0.1), slice={[3:4], [0:128], [0:128]}
+      %slice.4 = s8[1,128,128]{2,1,0} slice(s8[6,128,128]{2,1,0} %p0.1), slice={[4:5], [0:128], [0:128]}
+      %slice.5 = s8[1,128,128]{2,1,0} slice(s8[6,128,128]{2,1,0} %p0.1), slice={[5:6], [0:128], [0:128]}
+      %tuple = (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0}) tuple(s8[1,128,128]{2,1,0} %slice, s8[1,128,128]{2,1,0} %slice.1, s8[1,128,128]{2,1,0} %slice.2, s8[1,128,128]{2,1,0} %slice.3, s8[1,128,128]{2,1,0} %slice.4, /*index=5*/s8[1,128,128]{2,1,0} %slice.5)
+      %tuple.1 = (s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) tuple(s32[] %init, bf16[8,128]{1,0} %p1.2, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0}) %tuple)
+      %while.out = (s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) while((s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) %tuple.1), condition=%while.cond, body=%while.body
+      %while_use = (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0}) get-tuple-element((s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) %while.out), index=2
+      ROOT %out.1 = bf16[8,128]{1,0} get-tuple-element((s32[], bf16[8,128]{1,0}, (s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, s8[1,128,128]{2,1,0}, /*index=5*/s8[1,128,128]{2,1,0})) %while.out), index=1
+  })";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  HloInstruction* loop =
+      module->entry_computation()->root_instruction()->mutable_operand(0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool unrolled, WhileLoopUnroller::Unroll(loop, -1, false, true, true));
+  EXPECT_TRUE(unrolled);
+  // Below method is successful only if all the DynamicGte and DynamicTuple
+  // custom-calls are removed.
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    EXPECT_FALSE(instr->IsCustomCall("DynamicGte"));
+    EXPECT_FALSE(instr->IsCustomCall("DynamicTuple"));
+  }
 }
 
 }  // namespace
