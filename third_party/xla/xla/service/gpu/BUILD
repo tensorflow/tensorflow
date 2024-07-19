@@ -587,6 +587,7 @@ xla_test(
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_utils",
@@ -5563,6 +5564,11 @@ xla_cc_test(
 xla_cc_test(
     name = "autotuner_util_test",
     srcs = if_cuda_is_configured(["autotuner_util_test.cc"]),
+    data = [
+        "//xla/tools/hlo_opt:gpu_specs/a100_sxm_40.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/a100_sxm_80.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
+    ],
     deps = if_cuda_is_configured([
         # keep sorted
         ":autotuner_util",
@@ -5571,6 +5577,8 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/host:host_platform",
@@ -5592,6 +5600,7 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ]) + [
         "//xla/tests:xla_internal_test_main",  # Keep outside GPU guard
     ],

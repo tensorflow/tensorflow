@@ -299,9 +299,8 @@ absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
     return AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
                           debug_options};
   }
-  return AutotuneConfig{
-      DevicelessConfig{gpu_target_config.device_description_str},
-      debug_options};
+  return AutotuneConfig{DevicelessConfig{gpu_target_config.device_description},
+                        debug_options};
 }
 
 se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {

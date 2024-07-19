@@ -274,7 +274,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo, module_cfg));
   changed = false;
 
-  DevicelessConfig deviceless_config{gpu_device_desc().model_str(), gpu_comp()};
+  DevicelessConfig deviceless_config{gpu_device_desc()};
   AutotuneConfig deviceless_cfg{deviceless_config, opts};
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmRewriter(gpu_comp(),

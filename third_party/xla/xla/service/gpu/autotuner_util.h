@@ -53,19 +53,17 @@ struct DeviceConfig {
 };
 
 struct DevicelessConfig {
-  // The human-readable description of the device.  It can be found by using
-  // stream_exec->GetDeviceDescription().model_str() when the stream executor
-  // is available.
-  std::string model_str;
-
-  // A field to determine the architecture of the device. We only pick an
-  // algorithm for non-Ampere architectures.
-  se::GpuComputeCapability gpu_compute_capability{
-      se::CudaComputeCapability{0, 0}};
+  // The device description of the target device.
+  se::DeviceDescription device_description;
 };
 
 class AutotuneCacheKey {
  public:
+  AutotuneCacheKey(const se::DeviceDescription& device_description,
+                   const HloInstruction& instruction)
+      : AutotuneCacheKey(DeviceDescriptionToCacheKey(device_description),
+                         instruction.ToString()) {}
+
   AutotuneCacheKey(absl::string_view model_str,
                    const HloInstruction& instruction);
 
@@ -90,6 +88,9 @@ class AutotuneCacheKey {
     return absl::StrFormat("<key model='%s', hlo='%s'>", model_str_,
                            hlo_canonical_);
   }
+
+  static std::string DeviceDescriptionToCacheKey(
+      const se::DeviceDescription& device_description);
 
  private:
   std::string model_str_;
@@ -133,13 +134,15 @@ class AutotuneConfig {
         autotune_cache_dir_(
             debug_options.xla_gpu_per_fusion_autotune_cache_dir()) {}
 
-  absl::string_view GetModelStr() const {
+  std::string GetModelStr() const {
     if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
-      return deviceless_config->model_str;
+      return AutotuneCacheKey::DeviceDescriptionToCacheKey(
+          deviceless_config->device_description);
     }
 
     const auto& device_config = std::get<DeviceConfig>(config_);
-    return device_config.stream_exec->GetDeviceDescription().model_str();
+    return AutotuneCacheKey::DeviceDescriptionToCacheKey(
+        device_config.stream_exec->GetDeviceDescription());
   }
 
   se::StreamExecutor* GetExecutor() const {
@@ -169,7 +172,8 @@ class AutotuneConfig {
     if (auto c = std::get_if<DeviceConfig>(&config_)) {
       return c->stream_exec->GetDeviceDescription().gpu_compute_capability();
     }
-    return std::get<DevicelessConfig>(config_).gpu_compute_capability;
+    return std::get<DevicelessConfig>(config_)
+        .device_description.gpu_compute_capability();
   }
 
   bool IsDeviceless() const {

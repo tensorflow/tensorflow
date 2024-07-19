@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
@@ -244,7 +245,11 @@ absl::StatusOr<std::vector<TritonGemmConfig>> GetPossibleMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability& compute_capability,
     const int32_t toolkit_version, const DebugOptions& debug_options) {
-  DevicelessConfig test_config{/*model_str=*/"", compute_capability};
+  se::GpuDeviceInfoProto deviceless_proto;
+  auto ccc = deviceless_proto.mutable_cuda_compute_capability();
+  ccc->set_major(compute_capability.major);
+  ccc->set_minor(compute_capability.minor);
+  DevicelessConfig test_config{se::DeviceDescription{deviceless_proto}};
   AutotuneConfig autotune_config{test_config, debug_options};
   GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
                                     debug_options, nullptr);
@@ -776,15 +781,10 @@ ENTRY e {
   DebugOptions opts;
   MultiProcessKeyValueStore key_value_store;
   pipeline.AddPass<GemmFusionAutotuner>(
-      AutotuneConfig{DevicelessConfig{backend()
-                                          .default_stream_executor()
-                                          ->GetDeviceDescription()
-                                          .model_str(),
-                                      backend()
-                                          .default_stream_executor()
-                                          ->GetDeviceDescription()
-                                          .cuda_compute_capability()},
-                     opts},
+      AutotuneConfig{
+          DevicelessConfig{
+              backend().default_stream_executor()->GetDeviceDescription()},
+          opts},
       GetToolkitVersion(), &thread_pool, key_value_store);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
