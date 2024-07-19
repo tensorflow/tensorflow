@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
 
 namespace tensorflow {
