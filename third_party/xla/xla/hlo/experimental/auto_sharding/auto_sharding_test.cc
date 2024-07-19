@@ -1343,9 +1343,9 @@ ENTRY %Scatter {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  // Memory budget lower than what would be required if the largest tensors are
-  // sharded only 2-ways
-  option.memory_budget_per_device = 4 * 2 * (4 * 128 / 2) - 1;
+  // Memory budget a tad higher than what would be required if the largest
+  // tensors are sharded 4-ways
+  option.memory_budget_per_device = 1185;  // bytes required to
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
@@ -1382,7 +1382,7 @@ ENTRY %Scatter {
   option.device_mesh_beta = {0.01, 1.0};
   // Memory budget lower than what would be required if the largest tensors are
   // sharded only 2-ways
-  option.memory_budget_per_device = 4 * 2 * (4 * 128 * 128 / 2) - 1;
+  option.memory_budget_per_device = 4 * 2 * (4 * 128 * 128 / 4) + 48 + 1024 + 1;
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();

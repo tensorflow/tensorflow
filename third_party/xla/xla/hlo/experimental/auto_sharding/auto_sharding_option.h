@@ -210,7 +210,7 @@ struct AutoShardingOption {
   bool enable_expression_constant_splitter = false;
 
   // Whether to post-process the solution by reshaping / resharding tensors.
-  bool post_process = false;
+  bool insert_resharding_reshapes = false;
 
   // Prints a debug string.
   std::string ToString() const;
