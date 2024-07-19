@@ -2451,15 +2451,16 @@ absl::Status IrEmitter::HandleCall(HloInstruction* call) {
   return absl::OkStatus();
 }
 
-absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+absl::Status IrEmitter::EmitSliceToDynamic(
+    const HloInstruction* hlo, absl::Span<const llvm_ir::IrArray> source_arrays,
+    const llvm_ir::IrArray& target_array) {
   std::vector<llvm::Value*> dynamic_dims;
   int32_t raw_data_size =
       ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(hlo->shape()));
-  llvm::Value* dest_buffer = GetEmittedValueFor(hlo);
+  llvm::Value* dest_buffer = target_array.GetBasePointer();
   for (int64_t i = 1; i < hlo->operand_count(); ++i) {
     const int64_t dim_index = i - 1;
-    llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(i));
+    llvm::Value* source_buffer = source_arrays[i].GetBasePointer();
     llvm::LoadInst* dyn_dim_size = Load(IrShapeType(hlo->operand(i)->shape()),
                                         source_buffer, "dyn_dim_size");
 
@@ -2472,7 +2473,6 @@ absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
                                               "i64_dyn_dim_size"));
   }
 
-  llvm_ir::IrArray data_array = GetIrArrayFor(hlo);
   // Pseudo code for sliceToDynamic:
   //
   //   for (index i in dynamic_dim)
@@ -2481,17 +2481,30 @@ absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   auto loop_body_emitter =
       [&](const llvm_ir::IrArray::Index& array_index) -> absl::Status {
     llvm::Value* source_element =
-        GetIrArrayFor(hlo->operand(0)).EmitReadArrayElement(array_index, b());
+        source_arrays[0].EmitReadArrayElement(array_index, b());
     llvm::Value* linear_index = array_index.Linearize(dynamic_dims, b());
     // Delinearize the index based on the static shape.
-    llvm_ir::IrArray::Index dest_index(linear_index, data_array.GetShape(),
+    llvm_ir::IrArray::Index dest_index(linear_index, target_array.GetShape(),
                                        b());
-    data_array.EmitWriteArrayElement(dest_index, source_element, b());
+    target_array.EmitWriteArrayElement(dest_index, source_element, b());
     return absl::OkStatus();
   };
-  return llvm_ir::LoopEmitter(loop_body_emitter, data_array.GetShape(),
+  return llvm_ir::LoopEmitter(loop_body_emitter, target_array.GetShape(),
                               dynamic_dims, b())
       .EmitLoop(IrName(hlo));
+}
+
+absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  llvm_ir::IrArray target_array = GetIrArrayFor(hlo);
+
+  std::vector<llvm_ir::IrArray> source_arrays;
+  source_arrays.reserve(hlo->operand_count());
+  for (auto operand : hlo->operands()) {
+    source_arrays.push_back(GetIrArrayFor(operand));
+  }
+
+  return EmitSliceToDynamic(hlo, source_arrays, target_array);
 }
 
 absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {

@@ -897,7 +897,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   // TODO(penporn): Support these existing targets.
   auto custom_call_target = custom_call->custom_call_target();
   if (custom_call_target == "PadToStatic" ||
-      custom_call_target == "SliceToDynamic" ||
       custom_call_target == "__onednn$matmul" ||
       custom_call_target == "__onednn$softmax" ||
       custom_call_target == "__onednn$layernorm" ||
@@ -907,6 +906,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   }
   if (custom_call_target == "TopK") {
     return EmitTopKThunk(custom_call);
+  } else if (custom_call_target == "SliceToDynamic") {
+    return EmitSliceToDynamicThunk(instruction);
   }
 
   // Check the API version.
@@ -925,6 +926,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   return ThunkSequence::Of<CustomCallThunk>(ThunkInfo(instruction),
                                             custom_call_target, op_buffers,
                                             backend_config, version);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
+    const HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(auto kernel,
+                      ir_emitter_.EmitSliceToDynamicHostKernel(instruction));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
+
+  return ThunkSequence::Of<KernelThunk>(
+      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
+      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSelectAndScatterThunk(

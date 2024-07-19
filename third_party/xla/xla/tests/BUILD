@@ -2937,7 +2937,7 @@ xla_test(
 xla_test(
     name = "set_dimension_size_test",
     srcs = ["set_dimension_size_test.cc"],
-    # TODO(abanas): add test_xla_cpu_thunks tag when 'SliceToDynamic' custom call is supported.
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",  # fixdeps: keep

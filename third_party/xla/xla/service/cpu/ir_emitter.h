@@ -511,6 +511,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                             const llvm_ir::IrArray& target_array,
                             const llvm_ir::IrArray& source_array);
 
+  // Emit slice-to-dynamic.
+  absl::Status EmitSliceToDynamic(
+      const HloInstruction* hlo,
+      absl::Span<const llvm_ir::IrArray> source_arrays,
+      const llvm_ir::IrArray& target_array);
+
   // Emits printing during the execution.
   llvm::Value* EmitPrintf(absl::string_view fmt,
                           absl::Span<llvm::Value* const> arguments);
