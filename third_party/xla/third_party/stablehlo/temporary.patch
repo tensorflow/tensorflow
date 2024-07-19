@@ -1,1 +1,13 @@
+diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
+--- stablehlo/stablehlo/reference/Tensor.cpp
++++ stablehlo/stablehlo/reference/Tensor.cpp
+@@ -423,7 +423,7 @@
+   getType().print(os);
+   os << " {";
+   Index idx{};
+-  printHelper(os, *this, getShape(), idx, /*index=*/1);
++  printHelper(os, *this, getShape(), idx, /*indent=*/1);
+   os << "}";
+ }
+ 
 

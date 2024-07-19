@@ -100,7 +100,9 @@ class DockerImage:
     """Pulls docker image with retries to avoid transient rate limit errors."""
     for _ in range(retries):
       pull_proc = sh(["docker", "pull", self.image_url], check=False)
-      if pull_proc.returncode != 0:
+      if pull_proc.returncode == 0:
+        break  # Don't keep pulling after successful pull.
+      else:
         time.sleep(15)
 
     # write SHA of image to the sponge config
