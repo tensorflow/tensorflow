@@ -99,4 +99,25 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloDecompositionPatternsMath.td b/s
  
  // Inverse hyperbolic cosine on complex input:
  //
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToInt.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToInt.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToInt.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToInt.cpp
+@@ -1270,12 +1270,13 @@
+     OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
+                          newResultTypes, op->getAttrs(), op->getSuccessors());
+     for (Region &region : op->getRegions()) {
+-      Region &newRegion = *state.addRegion();
+-      rewriter.inlineRegionBefore(region, newRegion, newRegion.begin());
+-      if (failed(
+-              rewriter.convertRegionTypes(&newRegion, *getTypeConverter()))) {
++      auto newRegion = std::make_unique<Region>(op);
++      rewriter.inlineRegionBefore(region, *newRegion, newRegion->begin());
++      if (failed(rewriter.convertRegionTypes(newRegion.get(),
++                                             *getTypeConverter()))) {
+         return failure();
+       }
++      state.addRegion(std::move(newRegion));
+     }
+     Operation *newOp = rewriter.create(state);
+     rewriter.replaceOp(op, newOp);
 
