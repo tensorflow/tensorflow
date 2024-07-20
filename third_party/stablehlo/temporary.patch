@@ -10,4 +10,93 @@ diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/refe
    os << "}";
  }
  
+diff --ruN a/stablehlo/stablehlo/tests/math/acos_limits.mlir b/stablehlo/stablehlo/tests/math/acos_limits.mlir
+--- stablehlo/stablehlo/tests/math/acos_limits.mlir
++++ stablehlo/stablehlo/tests/math/acos_limits.mlir
+@@ -0,0 +1,14 @@
++// RUN: stablehlo-opt --chlo-legalize-to-stablehlo %s | stablehlo-translate --interpret
++
++func.func @main() -> (tensor<f64>, tensor<complex<f64>>) {
++  %cst = stablehlo.constant dense<-1.000000e+00> : tensor<f64>
++  %cst_0 = stablehlo.constant dense<(-1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
++  %zero = stablehlo.constant dense<0.0> : tensor<f64>
++  %pi = stablehlo.constant dense<3.1415926535897931> : tensor<f64>
++  %complex_pi = stablehlo.complex %pi, %zero : tensor<complex<f64>>
++  %0 = chlo.acos %cst : tensor<f64> -> tensor<f64>
++  %1 = chlo.acos %cst_0 : tensor<complex<f64>> -> tensor<complex<f64>>
++  check.expect_close %0, %pi, max_ulp_difference = 1 : tensor<f64>, tensor<f64>
++  check.expect_close %1, %complex_pi, max_ulp_difference = 1 : tensor<complex<f64>>, tensor<complex<f64>>
++  return %0, %1 : tensor<f64>, tensor<complex<f64>>
++}
+diff --ruN a/stablehlo/stablehlo/transforms/ChloDecompositionPatterns.td b/stablehlo/stablehlo/transforms/ChloDecompositionPatterns.td
+--- stablehlo/stablehlo/transforms/ChloDecompositionPatterns.td
++++ stablehlo/stablehlo/transforms/ChloDecompositionPatterns.td
+@@ -45,6 +45,37 @@
+ //===----------------------------------------------------------------------===//
+ // Unary op patterns.
+ //===----------------------------------------------------------------------===//
++
++// Expand acos for non-complex arguments to MHLO dialect as follows:
++//   acos(x) = 2 * atan2(sqrt(1 - x^2), (1 + x))  if x != -1
++//           = pi                                 if x == -1
++//
++// Note: Complex decomposition is in ChloDecompositionPatternsMath.td
++def : Pat<(CHLO_AcosOp NonComplexElementType:$input),
++  (StableHLO_SelectOp
++    (StableHLO_CompareOp
++      $input,
++      (StableHLO_ConstantLike<"-1"> $input),
++      StableHLO_ComparisonDirectionValue<"NE">,
++      (STABLEHLO_DEFAULT_COMPARISON_TYPE)
++    ),
++    (StableHLO_MulOp
++      (StableHLO_ConstantLike<"2"> $input),
++      (StableHLO_Atan2Op
++        (StableHLO_SqrtOp
++          (StableHLO_SubtractOp
++            (StableHLO_ConstantLike<"1"> $input),
++            (StableHLO_MulOp $input, $input)
++          )
++        ),
++        (StableHLO_AddOp
++          (StableHLO_ConstantLike<"1"> $input),
++          $input
++        )
++      )
++    ),
++    (StableHLO_ConstantLike<"M_PI"> $input)
++  )>;
+ 
+ // Express `atan` as
+ //   atan(x) = atan2(x, 1)
+diff --ruN a/stablehlo/stablehlo/transforms/ChloDecompositionPatternsMath.td b/stablehlo/stablehlo/transforms/ChloDecompositionPatternsMath.td
+--- stablehlo/stablehlo/transforms/ChloDecompositionPatternsMath.td
++++ stablehlo/stablehlo/transforms/ChloDecompositionPatternsMath.td
+@@ -634,26 +634,6 @@
+           (StableHLO_Log1pOp
+             (StableHLO_AddOp $am1, $sq)))),
+       (StableHLO_NegOp $imag)))>;
+-
+-// Arcus cosine on real input:
+-//
+-//     arccos(x) = 2 * arctan2(sqrt(1 - x * x), 1 + x)
+-//
+-//     To avoid cancellation errors at abs(x) close to 1, we'll use
+-//
+-//       1 - x * x == (1 - x) * (1 + x)
+-//
+-def : Pat<(CHLO_AcosOp NonComplexElementType:$x),
+-  (StableHLO_MulOp
+-    (StableHLO_ConstantLike<"2"> $x),
+-    (StableHLO_Atan2Op
+-      (StableHLO_SqrtOp
+-        (StableHLO_MulOp
+-          (StableHLO_SubtractOp
+-            (StableHLO_ConstantLike<"1">:$one $x),
+-            $x),
+-          (StableHLO_AddOp:$add_one_x $one, $x))),
+-      $add_one_x))>;
+ 
+ // Inverse hyperbolic cosine on complex input:
+ //
 
