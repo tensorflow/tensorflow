@@ -214,7 +214,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   CHECK(args);
 
   // Invokes the trampoline.
-  PyObject* result = PyEval_CallObject(trampoline, args);
+  PyObject* result = PyObject_Call(trampoline, args, nullptr);
   Py_DECREF(args);
   Status s = OkStatus();
   if (result == nullptr) {
