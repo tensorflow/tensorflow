@@ -171,34 +171,43 @@ class ConvData {
   mlir::Type element_type_;
 };
 
-inline bool IsStandardFeatureGroup(const ConvData& data) {
-  const int64_t input_features =
-      data.InputLayout().SpecialDim2(data.InputShape());
-  const int64_t kernel_in_features =
-      data.KernelLayout().SpecialDim1(data.KernelShape());
-  const int64_t feature_groups = data.FeatureGroupCount();
-  const bool trivial_feature_groups = feature_groups == 1;
-  // Non-trivial feature_groups and feature_groups == input_features
-  // codes for depthwise conv.
-  const bool feature_groups_not_input_features =
-      feature_groups != input_features;
-  const bool features_divide =
-      (input_features / feature_groups) == kernel_in_features;
-  return trivial_feature_groups ||
-         (feature_groups_not_input_features && features_divide);
+inline bool ValidStandardConvOutFeatureDims(const ConvData& data) {
+  const int64_t kernel_out_features =
+      data.KernelLayout().SpecialDim2(data.KernelShape());
+  const int64_t out_features =
+      data.OutputLayout().SpecialDim2(data.OutputShape());
+  return kernel_out_features == out_features;
 }
 
-inline bool IsStandardFeatureGroup(mhlo::ConvolutionOp op) {
-  return IsStandardFeatureGroup(ConvData(op));
+inline bool ValidStandardConvInFeatureDims(const ConvData& data) {
+  const int64_t rank = data.InputLayout().Rank();
+  const int64_t kernel_in_features =
+      data.KernelLayout().SpecialDim1(data.KernelShape());
+  // mhlo requires in_features / feature_group_count == kernel_features.
+  // tfl.conv_2d permits "grouped" behavior, but tfl.conv_3d does not.
+  // input_channels == feature_group_count (equivalantly kernel_in_features ==
+  // 1) codes for depthwise.
+  return data.FeatureGroupCount() == 1 ||
+         (rank != 5 && kernel_in_features != 1);
+}
+
+inline bool HasStandardFeatureGroup(const ConvData& data) {
+  return ValidStandardConvInFeatureDims(data) &&
+         ValidStandardConvOutFeatureDims(data);
 }
 
 // Does this convolution map to a standard conv_2d or conv_3d
 // (not depthwise or tranpose conv).
-inline bool IsStandardConv(mhlo::ConvolutionOp op) {
-  const ConvData data(op);
+inline bool IsStandardConv(const ConvData& data) {
   const bool trivial_lhs_dilate =
       llvm::all_of(data.InputDilations(), [](auto d) { return d == 1; });
-  return trivial_lhs_dilate && IsStandardFeatureGroup(data);
+
+  return trivial_lhs_dilate && HasStandardFeatureGroup(data);
+}
+
+inline bool IsStandardConv(mhlo::ConvolutionOp op) {
+  const ConvData data(op);
+  return IsStandardConv(data);
 }
 
 inline int64_t DnumRank(mhlo::ConvDimensionNumbersAttr dnums) {
