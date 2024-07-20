@@ -477,6 +477,15 @@ AsyncTracker::GetReleasedNonextendableResourcesFromVector(
   return {};
 }
 
+bool AsyncTracker::ReleasesSelectiveResource(const HloGraphNode* node) const {
+  return absl::c_any_of(
+      node->GetResources(), [&](const ResourcePair& resource) {
+        return resource.second == ResourceUsageType::kResourceRelease &&
+               GetResourceHazardType(resource.first) ==
+                   ResourceHazardType::kSelective;
+      });
+}
+
 BufferInfoTracker::BufferInfoTracker(
     const HloModule* module, const HloAliasAnalysis* alias_analysis,
     const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
@@ -1403,6 +1412,33 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   sched_state->new_sequence_reversed.push_back(
       const_cast<HloInstruction*>(&n->GetInstr()));
   n->SetScheduled();
+
+  // Remove scheduled node from selective_resources_releasers if it
+  // was there.
+  if (sched_state->config.enable_selective_resources &&
+      n->ReleasesSelectiveResource()) {
+    auto it = std::find(sched_state->selective_resource_releasers.begin(),
+                        sched_state->selective_resource_releasers.end(), n);
+    // Perform sanity check node was in selective_resources_releasers.
+    if (it == sched_state->selective_resource_releasers.end()) {
+      LOG(WARNING) << "Selective resource releasers list does not contain node "
+                      "that releases a selective resource: "
+                   << n->ToString();
+    } else {
+      sched_state->selective_resource_releasers.erase(it);
+    }
+  }
+
+  // If scheduled node cannot overlap with nodes that hold selective resources,
+  // we increment the ready time of all nodes that release a selective resource
+  // with the cost of the scheduled node.
+  if (sched_state->config.enable_selective_resources &&
+      !n->GetValuableForSelectiveOverlap()) {
+    for (HloGraphNode* node : sched_state->selective_resource_releasers) {
+      node->SetReadyTime(node->GetReadyTime() + n->GetCost());
+    }
+  }
+
   // If this node is an async start/done handle the increase/decrease the number
   // of outstanding async ops.
   for (auto& resource : n->GetResources()) {
@@ -1541,6 +1577,13 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       std::push_heap(sched_state->next_ready_stack.begin(),
                      sched_state->next_ready_stack.end(), ready_time_cmp);
     }
+
+    // If the node we added to ready set releases a selective resource, add
+    // it to selective_resources_releasers.
+    if (sched_state->config.enable_selective_resources &&
+        edge.Target().ReleasesSelectiveResource()) {
+      sched_state->selective_resource_releasers.push_back(&edge.Target());
+    }
   }
   ++sched_state->scheduled_count;
   for (auto& resource : n->GetResources()) {
@@ -1619,6 +1662,8 @@ HloScheduleGraph::HloScheduleGraph(
     new_node_it->second->occupied_shareable_resources_ =
         async_tracker->GetOccupiedShareableResourcesFromVector(
             new_node_it->second->GetResources());
+    new_node_it->second->releases_selective_resource_ =
+        async_tracker->ReleasesSelectiveResource(new_node_it->second.get());
     // Gather while instructions for subsequent send-done dependency checks.
     if (instr->opcode() == HloOpcode::kWhile) {
       while_instrs.push_back(instr);

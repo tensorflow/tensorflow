@@ -94,7 +94,10 @@ enum class ResourceHazardType {
   // past. This hazard type is useful to prevent increasing such ops' overlaps
   // more than necessary.
   kNonextendable = 2,
-  kUnshareable = 3,
+  // Ops holding this resource can only have their latency/cost covered by
+  // ops that are valuable for selective overlap.
+  kSelective = 3,
+  kUnshareable = 4,
 };
 
 constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
@@ -133,6 +136,7 @@ struct SchedulerConfig {
   bool resource_sharing = false;
   bool resource_serializing = false;
   bool depth_based_memory_pressure_reduction = false;
+  bool enable_selective_resources = false;
   int64_t rerun = 0;
 };
 
@@ -277,6 +281,9 @@ class AsyncTracker {
   GetReleasedNonextendableResourcesFromVector(
       const ResourcesVector& resources) const;
 
+  // Returns whether the provided node releases a selective resource.
+  bool ReleasesSelectiveResource(const HloGraphNode* node) const;
+
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
     return get_canonical_async_op_(hlo);
   }
@@ -284,16 +291,16 @@ class AsyncTracker {
   explicit AsyncTracker(
       const SchedulerConfig& config,
       GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
-      : config_(config), get_canonical_async_op_(func) {}
+      : get_canonical_async_op_(std::move(func)), config_(config) {}
 
  private:
-  const SchedulerConfig config_;
   mutable absl::flat_hash_map<const HloComputation*,
                               absl::flat_hash_map<int64_t, int64_t>>
       async_in_computation_cache_;
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
 
  protected:
+  const SchedulerConfig config_;
   mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
       resources_cache_;
 };
@@ -370,6 +377,16 @@ class HloGraphNode {
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
   bool GetForceEarly() const { return force_early_; }
   void SetForceEarly(bool force_early) { force_early_ = force_early; }
+  bool GetValuableForSelectiveOverlap() const {
+    return valuable_for_selective_overlap_;
+  }
+  void SetValuableForSelectiveOverlap(bool valuable_for_selective_overlap) {
+    valuable_for_selective_overlap_ = valuable_for_selective_overlap;
+  }
+  bool ReleasesSelectiveResource() const {
+    return releases_selective_resource_;
+  }
+
   ResourcesVector GetResources() const { return resources_; }
   bool DoesOccupyAnyResource() const {
     return absl::c_any_of(resources_, [](const ResourcePair& resource) {
@@ -503,6 +520,11 @@ class HloGraphNode {
   absl::InlinedVector<int64_t, 1> released_shareable_resources_;
   // Shareable resources occupied by this node.
   absl::InlinedVector<int64_t, 1> occupied_shareable_resources_;
+  // Whether this node can be overlapped with (can cover the latency/cost of)
+  // edges occupying selective resources.
+  bool valuable_for_selective_overlap_ = true;
+  // Whether this node releases a selective resource.
+  bool releases_selective_resource_ = false;
 };
 
 // Schedule graph that can be used to drive scheduling
@@ -833,6 +855,9 @@ class DefaultSchedulerCore : public SchedulerCore {
     absl::flat_hash_map<
         int64_t, std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>>
         shareable_resource_occupiers;
+    // List of the graph nodes that release selective resources.
+    std::vector<HloGraphNode*> selective_resource_releasers;
+
     // Reference to this scheduler run configuration.
     const SchedulerConfig& config;
     SchedulingState(const HloInstructionSequence* instr_sequence,
@@ -895,6 +920,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   virtual absl::StatusOr<HloGraphNode*> FindAndExtractBestNodeAvailable(
       SchedulingState& sched_state,
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
+  bool DoesNodeReleaseSelectiveResource(const HloGraphNode* node) const;
   void DumpLatencyHidingSchedule(
       const HloComputation* computation, const HloScheduleGraph& schedule_graph,
       const std::vector<HloInstruction*>& instructions,

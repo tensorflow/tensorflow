@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -141,7 +142,8 @@ class TestLatencyEstimator : public LatencyEstimator {
 absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
     std::unique_ptr<LatencyEstimator> latency_estimator =
-        std::make_unique<ApproximateLatencyEstimator>()) {
+        std::make_unique<ApproximateLatencyEstimator>(),
+    std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
@@ -160,7 +162,9 @@ absl::StatusOr<bool> RunScheduler(
     }
     return ShapeUtil::ByteSizeOfElements(shape);
   };
-  auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
+  if (!async_tracker) {
+    async_tracker = std::make_unique<AsyncTracker>(sched_config);
+  }
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
       shape_size_bytes, async_tracker.get(), latency_estimator.get(),
       sched_config);
@@ -3108,6 +3112,131 @@ ENTRY %entry {
   // Check that 'send-done' is scheduled before 'while'.
   EXPECT_LT(GetIndex(new_instruction_sequence, "send-done"),
             GetIndex(new_instruction_sequence, "while"));
+}
+
+// This test simulates a sample target where all-gathers contain non-extendable
+// and selective resources.
+TEST_F(LatencyHidingSchedulerTest, AllGatherWithSelectiveOverlap) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  %constant.19 = u32[] constant(0)
+  %replica_id = u32[]{:T(128)} replica-id()
+  %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+  %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(
+    f32[]{:T(128)} %convert), dimensions={}
+  %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(
+    f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0},
+    metadata={op_type="AllGather" op_name="ag0"}
+  %ag-done = f32[16,256,256] all-gather-done(
+    (f32[8,256,256], f32[16,256,256]) %ag-start),
+    metadata={op_type="AllGather" op_name="ag0"}
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[16,256,256]{2,1,0} parameter(2)
+  p3 = f32[16,256,256]{2,1,0} parameter(3)
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  c2 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  ROOT a2 = f32[16,256,256]{2,1,0} add(%ag-done, c0)
+}
+)";
+
+  // Extend AsyncTracker for a fake target where all-gather contains
+  // non-extendable and selective resources.
+  class SelectiveOverlapAsyncTracker : public AsyncTracker {
+   public:
+    explicit SelectiveOverlapAsyncTracker(const SchedulerConfig& sched_config)
+        : AsyncTracker(sched_config) {}
+
+    ResourceHazardType GetResourceHazardType(
+        int64_t resource_type) const override {
+      if (resource_type == ResourceTypeToIndex(ResourceType::kAllGather)) {
+        return ResourceHazardType::kSelective;
+      }
+      // The first target defined resource is defined as non-extendable.
+      if (resource_type == AsyncTracker::GetFirstTargetDefinedResource()) {
+        return ResourceHazardType::kNonextendable;
+      }
+      return AsyncTracker::GetResourceHazardType(resource_type);
+    }
+
+    ResourcesVector GetResourcesFromInstruction(
+        const HloInstruction& hlo) const override {
+      ResourcesVector result = AsyncTracker::GetResourcesFromInstruction(hlo);
+      // There is only one target defined resource (which is non-extendable).
+      if (hlo.opcode() == HloOpcode::kAllGatherStart) {
+        result.push_back({AsyncTracker::GetFirstTargetDefinedResource(),
+                          ResourceUsageType::kResourceRelease});
+      }
+      return result;
+    }
+
+    absl::InlinedVector<int64_t, 1> GetReleasedNonextendableResourcesFromVector(
+        const ResourcesVector& resources) const override {
+      absl::InlinedVector<int64_t, 1> non_extendable_resources;
+      for (const ResourcePair& resource : resources) {
+        if (GetResourceHazardType(resource.first) ==
+            ResourceHazardType::kNonextendable) {
+          non_extendable_resources.push_back({resource.first});
+        }
+      }
+      return non_extendable_resources;
+    }
+
+    void PostProcessScheduleGraph(
+        HloScheduleGraph* schedule_graph,
+        const LatencyEstimator* latency_estimator) const override {
+      // Mark c2 as not valuable for selective overlap.
+      for (const HloInstruction* instr :
+           schedule_graph->GetOriginalInstrList()) {
+        if (instr->name() == "c2") {
+          schedule_graph->GetNode(instr).SetValuableForSelectiveOverlap(false);
+        }
+      }
+    }
+  };
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  sched_config.enable_selective_resources = true;
+  std::unique_ptr<AsyncTracker> async_tracker =
+      std::make_unique<SelectiveOverlapAsyncTracker>(sched_config);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<ApproximateLatencyEstimator>(),
+                           std::move(async_tracker))
+                  .ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  // Without selective async tracker, we would expect all-gather to only overlap
+  // with c2 as c2 has a cost of 5000 which fully covers the latency of
+  // all-gather. However, as c2 is not valuable for selective overlap, we expect
+  // all-gather overlap with c1 and c2 (c2 is effectively ignored from a latency
+  // hiding perspective).
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  int c0_index = GetIndex(new_instruction_sequence, "c0");
+  int c1_index = GetIndex(new_instruction_sequence, "c1");
+  int c2_index = GetIndex(new_instruction_sequence, "c2");
+  int ag_start_index = GetIndex(new_instruction_sequence, "ag-start");
+  int ag_done_index = GetIndex(new_instruction_sequence, "ag-done");
+  EXPECT_LT(c0_index, ag_start_index);
+  EXPECT_LT(ag_start_index, c1_index);
+  EXPECT_LT(c1_index, c2_index);
+  EXPECT_LT(c2_index, ag_done_index);
 }
 
 }  // namespace xla
