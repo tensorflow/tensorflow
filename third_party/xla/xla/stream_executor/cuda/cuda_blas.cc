@@ -18,7 +18,7 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -43,11 +43,11 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
@@ -63,11 +63,9 @@ limitations under the License.
 namespace stream_executor {
 namespace cuda {
 
-using gpu::AsGpuStream;
 using gpu::AsGpuStreamValue;
 using gpu::GpuMemory;
 using gpu::GpuMemoryMutable;
-using gpu::GpuTimer;
 
 // cuBLAS has interfaces that permit pointers to be passed from either the host
 // memory space or the device memory space; however, you must instruct it as to
@@ -694,7 +692,7 @@ static absl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
 }
 
 static absl::Status PopulateProfileFromTimer(
-    std::optional<GpuTimer> &timer, blas::AlgorithmType algorithm,
+    EventBasedTimer *timer, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
   if (output_profile_result) {
     TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
@@ -718,11 +716,11 @@ absl::Status CUDABlas::DoBlasGemmWithAlgorithm(
       cublasMath_t math_type,
       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, numeric_options));
 
-  std::optional<GpuTimer> timer = std::nullopt;
+  std::unique_ptr<EventBasedTimer> timer;
   if (output_profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(
-        timer,
-        GpuTimer::Create(stream, output_profile_result->warmup_run_executed()));
+    TF_ASSIGN_OR_RETURN(timer,
+                        stream->CreateEventBasedTimer(
+                            output_profile_result->warmup_run_executed()));
   }
 
   // Since we are converting 'algorithm' to cublasGemmAlgo_t by static_cast,
@@ -737,7 +735,7 @@ absl::Status CUDABlas::DoBlasGemmWithAlgorithm(
       ldc, AsCublasComputeType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(
-      PopulateProfileFromTimer(timer, algorithm, output_profile_result));
+      PopulateProfileFromTimer(timer.get(), algorithm, output_profile_result));
   return absl::OkStatus();
 }
 
@@ -753,11 +751,11 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
   TF_ASSIGN_OR_RETURN(
       cublasMath_t math_type,
       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, numeric_options));
-  std::optional<GpuTimer> timer = std::nullopt;
+  std::unique_ptr<EventBasedTimer> timer;
   if (output_profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(
-        timer,
-        GpuTimer::Create(stream, output_profile_result->warmup_run_executed()));
+    TF_ASSIGN_OR_RETURN(timer,
+                        stream->CreateEventBasedTimer(
+                            output_profile_result->warmup_run_executed()));
   }
   cudaDataType_t cuda_in_type = AsCudaDataType(type_a);
 
@@ -799,8 +797,8 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
             blas::DataTypeString(type_a), blas::DataTypeString(type_c)));
       }
     }
-    TF_RETURN_IF_ERROR(
-        PopulateProfileFromTimer(timer, algorithm, output_profile_result));
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
+                                                output_profile_result));
     return absl::OkStatus();
   }
 #endif
@@ -813,7 +811,7 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       batch_count, AsCublasComputeType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(
-      PopulateProfileFromTimer(timer, algorithm, output_profile_result));
+      PopulateProfileFromTimer(timer.get(), algorithm, output_profile_result));
   return absl::OkStatus();
 }
 
