@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/translate/hlo_to_mhlo/translate.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 using mlir::MLIRContext;
 using mlir::ModuleOp;

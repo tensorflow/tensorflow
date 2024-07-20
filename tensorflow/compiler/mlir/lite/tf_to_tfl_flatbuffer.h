@@ -22,8 +22,10 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -35,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tsl/platform/statusor.h"
 

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
@@ -66,7 +67,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/stablehlo/quantization.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
@@ -101,6 +101,7 @@ limitations under the License.
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
