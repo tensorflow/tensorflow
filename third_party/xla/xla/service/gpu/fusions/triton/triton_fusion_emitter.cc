@@ -2840,7 +2840,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
-    mlir::MLIRContext& mlir_context) {
+    mlir::MLIRContext& mlir_context, bool emit_kernel) {
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
     auto ccCuda = std::get<se::CudaComputeCapability>(cc);
     if (!ccCuda.IsAtLeastAmpere()) {
@@ -2935,27 +2935,30 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         shared_mem_bytes, device_info.shared_memory_per_block_optin()));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::Module> ll_triton_module,
-      TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module,
-                            GetLibdevicePath(hlo_config, device_info)));
-  VLogModule(5, *ll_triton_module);
-  if (should_verify) {
-    VerifyModule(*ll_triton_module);
-  }
+  if (emit_kernel) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<llvm::Module> ll_triton_module,
+        TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module,
+                              GetLibdevicePath(hlo_config, device_info)));
+    VLogModule(5, *ll_triton_module);
+    if (should_verify) {
+      VerifyModule(*ll_triton_module);
+    }
 
-  // Integrate LLVM matmul kernel into XLA's LLVM module.
-  ll_triton_module->eraseNamedMDNode(
-      ll_triton_module->getNamedMetadata("nvvm.annotations"));
-  ll_triton_module->setDataLayout(llvm_module->getDataLayout());
-  ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
-  // Use override flag because libdevice functions can be present in both.
-  TF_RET_CHECK(
-      !llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
-                                 llvm::Linker::Flags::OverrideFromSrc));
-  VLogModule(5, *llvm_module);
-  if (should_verify) {
-    VerifyModule(*llvm_module);
+    // Integrate LLVM matmul kernel into XLA's LLVM module.
+    ll_triton_module->eraseNamedMDNode(
+        ll_triton_module->getNamedMetadata("nvvm.annotations"));
+    ll_triton_module->setDataLayout(llvm_module->getDataLayout());
+    ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
+    // Use override flag because libdevice functions can be present in both.
+    TF_RET_CHECK(
+        !llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
+                                   llvm::Linker::Flags::OverrideFromSrc));
+
+    VLogModule(5, *llvm_module);
+    if (should_verify) {
+      VerifyModule(*llvm_module);
+    }
   }
 
   // `cluster_info` must be read after pm.run().
