@@ -266,3 +266,58 @@ def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
                              (KernelHasIotaSpatials $dnums),
                              (IsOutputNotTFLNativeLayout $dnums),
                              (IsStandardConv $conv)]>;
+
+
+//===------------------------------------------------------------------------===
+// mhlo.pad
+//===------------------------------------------------------------------------===
+
+
+// Pull negative pads into slice
+//===---------------------------
+
+def TrivialStrides : NativeCodeCall<
+  "DenseIntElementsAttr::get("
+    "RankedTensorType::get({$0.getType().cast<ShapedType>().getRank()},"
+      "$_builder.getI64Type()),"
+      "llvm::SmallVector<int64_t>($0.getType().cast<ShapedType>().getRank(),"
+        "1))">;
+
+def SliceStart : NativeCodeCall<
+  "DenseIntElementsAttr::get($0.getType(), SliceStartFromNegPadLows($0))">;
+
+def SliceEnd : NativeCodeCall<
+  "DenseIntElementsAttr::get($0.getType(), SliceEndFromNegPadHighs($0, $1))">;
+
+def GetShape : NativeCodeCall<"$0.getType().cast<ShapedType>().getShape()">;
+
+def AnyNegativePads : Constraint<CPred<"AnyNegativePads($0, $1)">>;
+
+def MakePadPositive : NativeCodeCall<
+  "DenseIntElementsAttr::get($0.getType(), ReplaceNegsWithZero($0))">;
+
+def TrivialInterior : Constraint<CPred<
+  "($0.isSplat() && $0.getSplatValue<int64_t>() == 0) ||"
+    "llvm::all_of($0.getValues<int64_t>(), "
+      "[](auto v) { return v == 0; })">>;
+
+def PullOutNegativePads : Pat<(MHLO_PadOp
+                                $input,
+                                $val,
+                                $low,
+                                $high,
+                                $interior
+                              ),
+                              (MHLO_PadOp
+                                (MHLO_SliceOp
+                                  $input,
+                                  (SliceStart $low),
+                                  (SliceEnd $high, (GetShape $input)),
+                                  (TrivialStrides $input)),
+                                $val,
+                                (MakePadPositive $low),
+                                (MakePadPositive $high),
+                                $interior
+                              ),
+                              [(AnyNegativePads $low, $high),
+                               (TrivialInterior $interior)]>;

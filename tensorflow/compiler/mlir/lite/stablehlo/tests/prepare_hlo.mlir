@@ -318,3 +318,67 @@ func.func @conv3d_ndhwc_dhwio_ncdhw(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tens
 // CHECK-SAME: permutation
 // CHECK-SAME: [0, 4, 1, 2, 3]
 
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.pad
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: pad_2d
+func.func @pad_2d(%arg0: tensor<3x3xf32>, %arg1: tensor<f32>) -> tensor<4x3xf32> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<[0, -1]> : tensor<2xi64>,
+    edge_padding_high = dense<[1, 1]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<3x3xf32>, tensor<f32>) -> tensor<4x3xf32>
+  func.return %0 : tensor<4x3xf32>
+}
+
+// CHECK: mhlo.slice
+// CHECK-SAME: limit_indices = dense<3>
+// CHECK-SAME: start_indices = dense<[0, 1]>
+// CHECK-SAME: (tensor<3x3xf32>) -> tensor<3x2xf32>
+// CHECK: mhlo.pad
+// CHECK-SAME: edge_padding_high = dense<1>
+// CHECK-SAME: edge_padding_low = dense<0>
+// CHECK-SAME: (tensor<3x2xf32>, tensor<f32>) -> tensor<4x3xf32>
+
+// -----
+
+// CHECK-LABEL: pad_2d_negative
+func.func @pad_2d_negative(%arg0: tensor<3x3xf32>, %arg1: tensor<f32>) -> tensor<1x2xf32> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<[-1, -1]> : tensor<2xi64>,
+    edge_padding_high = dense<[-1, 0]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<3x3xf32>, tensor<f32>) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+}
+
+// CHECK: mhlo.slice
+// CHECK-SAME: limit_indices = dense<[2, 3]>
+// CHECK-SAME: start_indices = dense<1>
+// CHECK-SAME: (tensor<3x3xf32>) -> tensor<1x2xf32>
+// CHECK-NOT: mhlo.pad
+
+// -----
+
+// CHECK-LABEL: pad_3d_mixed
+func.func @pad_3d_mixed(%arg0: tensor<3x3x3xf32>, %arg1: tensor<f32>) -> tensor<3x3x3xf32> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<[-1, 1, 0]> : tensor<3xi64>,
+    edge_padding_high = dense<[1, -1, 0]> : tensor<3xi64>,
+    interior_padding = dense<0> : tensor<3xi64>
+  } : (tensor<3x3x3xf32>, tensor<f32>) -> tensor<3x3x3xf32>
+  func.return %0 : tensor<3x3x3xf32>
+}
+
+// CHECK: mhlo.slice
+// CHECK-SAME: limit_indices = dense<[3, 2, 3]>
+// CHECK-SAME: start_indices = dense<[1, 0, 0]>
+// CHECK-SAME: (tensor<3x3x3xf32>) -> tensor<2x2x3xf32>
+// CHECK: mhlo.pad
+// CHECK-SAME: edge_padding_high = dense<[1, 0, 0]>
+// CHECK-SAME: edge_padding_low = dense<[0, 1, 0]>
+// CHECK-SAME: (tensor<2x2x3xf32>, tensor<f32>) -> tensor<3x3x3xf32>
+
