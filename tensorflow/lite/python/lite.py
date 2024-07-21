@@ -2955,7 +2955,7 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data is in serialized format. Either a TFLite Flatbuffer or
+      The converted data in serialized format, either a TFLite Flatbuffer or
       a Graphviz graph depending on value in `output_format`.
 
     Raises:
