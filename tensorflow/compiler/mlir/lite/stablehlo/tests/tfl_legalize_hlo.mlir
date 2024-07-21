@@ -900,3 +900,41 @@ func.func @group_conv2d_nhwc_ohwi_nhwc(%arg0: tensor<1x14x14x2240xf32>, %arg1: t
 }
 
 // CHECK-NOT: tfl
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.pad
+//===----------------------------------------------------------------------===//
+
+func.func @pad_cst_zero_vals(%arg0: tensor<8x128xf32>) -> tensor<11x131xf32> {
+  %pad_val = mhlo.constant dense<0.0> : tensor<f32>
+  %0 = "mhlo.pad"(%arg0, %pad_val) {
+    edge_padding_low = dense<[1, 0]> : tensor<2xi64>,
+    edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<8x128xf32>, tensor<f32>) -> tensor<11x131xf32>
+  func.return %0 : tensor<11x131xf32>
+}
+
+// CHECK:      %[[PADDINGS:.*]] = arith.constant
+// CHECK-SAME: [1, 2], [0, 3]
+// CHECK-SAME: tensor<2x2xi64>
+// CHECK:      "tfl.pad"(%arg0, %[[PADDINGS]]) : (tensor<8x128xf32>, tensor<2x2xi64>) -> tensor<11x131xf32>
+
+// -----
+
+func.func @pad(%arg0: tensor<8x128xf32>, %arg1: tensor<f32>) -> tensor<11x131xf32> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<[1, 0]> : tensor<2xi64>,
+    edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<8x128xf32>, tensor<f32>) -> tensor<11x131xf32>
+  func.return %0 : tensor<11x131xf32>
+}
+
+// CHECK:      %[[PADDINGS:.*]] = arith.constant
+// CHECK-SAME: [1, 2], [0, 3]
+// CHECK-SAME: tensor<2x2xi64>
+// CHECK:      "tfl.padv2"(%arg0, %[[PADDINGS]], %arg1) : (tensor<8x128xf32>, tensor<2x2xi64>, tensor<f32>) -> tensor<11x131xf32>
+

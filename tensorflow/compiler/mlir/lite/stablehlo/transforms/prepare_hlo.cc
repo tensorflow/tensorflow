@@ -13,12 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -30,51 +27,12 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv_util.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad_util.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
 
 namespace mlir {
 namespace odml {
 namespace {
-
-llvm::SmallVector<int64_t> UnrollSplat(DenseElementsAttr data) {
-  if (!data.isSplat()) {
-    return llvm::SmallVector<int64_t>(data.getValues<int64_t>());
-  }
-  return llvm::SmallVector<int64_t>(data.getType().getNumElements(),
-                                    data.getSplatValue<int64_t>());
-}
-
-llvm::SmallVector<int64_t> SliceStartFromNegPadLows(DenseElementsAttr lows) {
-  auto vals = UnrollSplat(lows);
-  auto starts = llvm::map_range(
-      vals, [](auto v) -> int64_t { return (v >= 0) ? 0 : -1 * v; });
-  return llvm::to_vector(starts);
-}
-
-llvm::SmallVector<int64_t> SliceEndFromNegPadHighs(DenseElementsAttr highs,
-                                                   ArrayRef<int64_t> shape) {
-  auto vals = UnrollSplat(highs);
-  auto zip = llvm::zip(vals, shape);
-  auto ends = llvm::map_range(zip, [](auto it) -> int64_t {
-    return (std::get<0>(it) >= 0) ? std::get<1>(it)
-                                  : std::get<1>(it) + std::get<0>(it);
-  });
-  return llvm::to_vector(ends);
-}
-
-llvm::SmallVector<int64_t> ReplaceNegsWithZero(DenseElementsAttr data) {
-  auto vals = UnrollSplat(data);
-  auto res =
-      llvm::map_range(vals, [](auto v) -> int64_t { return (v < 0) ? 0 : v; });
-  return llvm::to_vector(res);
-}
-
-bool AnyNegativePads(DenseElementsAttr lows, DenseElementsAttr highs) {
-  auto is_neg = [](int64_t v) { return v < 0; };
-  auto lows_data = UnrollSplat(lows);
-  auto highs_data = UnrollSplat(highs);
-  return llvm::any_of(lows_data, is_neg) || llvm::any_of(highs_data, is_neg);
-}
 
 #define GEN_PASS_DEF_PREPAREHLOPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
