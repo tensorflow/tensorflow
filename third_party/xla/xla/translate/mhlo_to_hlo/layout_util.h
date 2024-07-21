@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"

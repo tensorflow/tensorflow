@@ -18,9 +18,14 @@ limitations under the License.
 #include <iostream>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"

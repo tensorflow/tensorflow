@@ -21,6 +21,7 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 
+#include "mlir/IR/BuiltinLocationAttributes.h.inc"
 #include "mlir/IR/Location.h"
 #include "xla/service/hlo.pb.h"
 
