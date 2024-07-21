@@ -1889,7 +1889,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     """Converts the given concrete functions as a saved model format.
 
     Returns:
-      The converted data is in serialized format.
+      The converted data in serialized format.
     """
     temp_dir = tempfile.mkdtemp()
     try:
