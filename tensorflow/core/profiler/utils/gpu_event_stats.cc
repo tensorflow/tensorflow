@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 

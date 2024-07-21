@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/tf_op_utils.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_visitor.h"

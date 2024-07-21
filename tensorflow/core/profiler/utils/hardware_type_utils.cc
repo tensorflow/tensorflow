@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
