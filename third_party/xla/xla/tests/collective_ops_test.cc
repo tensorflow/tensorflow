@@ -733,37 +733,37 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
                                      results[3]));
 }
 
-// TODO: b/351064128 - add more complex test cases for circular pipelining
 XLA_TEST_F(CollectiveOpsTest,
            CollectivePermute_CircularPipelinePreOptimization) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
   while_cond {
-    param = (u32[], f32[]) parameter(0)
+    param = (u32[], f32[2,2], f32[2,2]) parameter(0)
     iter = u32[] get-tuple-element(param), index=0
     max_iter = u32[] constant(3)
     ROOT cmp = pred[] compare(iter, max_iter), direction=LT
   }
 
   while_body {
-    param = (u32[], f32[]) parameter(0)
+    param = (u32[], f32[2,2], f32[2,2]) parameter(0)
     iter = u32[] get-tuple-element(param), index=0
-    data = f32[] get-tuple-element(param), index=1
-    ten = f32[] constant(10)
-    sum = f32[] add(data, ten)
-    cp = f32[] collective-permute(sum), source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+    data = f32[2,2] get-tuple-element(param), index=1
+    weights = f32[2,2] get-tuple-element(param), index=2
+    matmul = f32[2,2] dot(weights, data), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    cp = f32[2,2] collective-permute(matmul), source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
     iter_increment = u32[] constant(1)
     next_iter = u32[] add(iter, iter_increment)
-    ROOT result = (u32[], f32[]) tuple(next_iter, cp)
+    ROOT result = (u32[], f32[2,2], f32[2,2]) tuple(next_iter, cp, weights)
   }
 
   ENTRY test_computation {
     iter = u32[] constant(0)
-    data = f32[] parameter(0)
-    input = (u32[], f32[]) tuple(iter, data)
-    while_res = (u32[], f32[]) while(input), condition=while_cond, body=while_body
-    ROOT data_out = f32[] get-tuple-element(while_res), index=1
+    data = f32[2,2] parameter(0)
+    weights = f32[2,2] parameter(1)
+    input = (u32[], f32[2,2], f32[2,2]) tuple(iter, data, weights)
+    while_res = (u32[], f32[2,2], f32[2,2]) while(input), condition=while_cond, body=while_body
+    ROOT data_out = f32[2,2] get-tuple-element(while_res), index=1
   }
   )";
   const int64_t kNumReplicas = 4;
@@ -775,10 +775,13 @@ XLA_TEST_F(CollectiveOpsTest,
   TF_ASSERT_OK_AND_ASSIGN(module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  constexpr std::array<float, 4> input_values = {3, 1, 0, 4};
+  // input for replica i is
+  // {{i, i},
+  //  {i, i}}
   std::vector<Literal> replica_inputs;
-  for (float value : input_values) {
-    replica_inputs.push_back(LiteralUtil::CreateR0<float>(value));
+  for (float i = 1; i < kNumReplicas + 1; ++i) {
+    replica_inputs.push_back({LiteralUtil::CreateR2<float>({{i, i}, {i, i}})});
+    replica_inputs.push_back(LiteralUtil::CreateR2<float>({{0, 0}, {0, 1}}));
   }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                           test_runner_.CreateExecutable(
@@ -788,17 +791,17 @@ XLA_TEST_F(CollectiveOpsTest,
       std::vector<Literal> results,
       ExecuteReplicated(
           /*executable_provider=*/[&](int64_t) { return executable.get(); },
-          /*argument_count_provider=*/[](int64_t) { return 1; },
+          /*argument_count_provider=*/[](int64_t) { return 2; },
           /*argument_provider=*/
-          [&](int64_t replica, int64_t) -> const Literal* {
-            return &replica_inputs[replica];
+          [&](int64_t replica, int64_t index) -> const Literal* {
+            return &replica_inputs[replica * 2 + index];
           },
           kNumReplicas, /*run_hlo_passes=*/true,
           /*device_assignment=*/nullptr));
-  LiteralTestUtil::ExpectR0Equal<float>(31, results[0]);
-  LiteralTestUtil::ExpectR0Equal<float>(30, results[1]);
-  LiteralTestUtil::ExpectR0Equal<float>(34, results[2]);
-  LiteralTestUtil::ExpectR0Equal<float>(33, results[3]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {2, 2}}, results[0]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {3, 3}}, results[1]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {4, 4}}, results[2]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {1, 1}}, results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degenerate) {
