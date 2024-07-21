@@ -1714,7 +1714,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     """Converts a Keras model as a saved model.
 
     Returns:
-      The converted data is in serialized format.
+      The converted data in serialized format.
     """
     temp_dir = tempfile.mkdtemp()
     try:
