@@ -145,7 +145,6 @@ class NcclCliqueId {
   explicit NcclCliqueId(char bytes[kSize]);
 
   absl::Span<const char> data() const;
-  std::string ToString() const;
 
   uint32_t fingerprint() const {
     return static_cast<uint32_t>(

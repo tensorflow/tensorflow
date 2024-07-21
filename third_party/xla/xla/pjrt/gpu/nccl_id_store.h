@@ -29,30 +29,6 @@ limitations under the License.
 
 namespace xla {
 
-// A table mapping NcclCliqueKeys to NcclCliqueIds. In a distributed setup the
-// table of NCCL IDs is kept on the master node (node 0). The node of the first
-// participating device will create the unique id.
-class NcclIdStore {
- public:
-  NcclIdStore(int node_id,
-              absl::flat_hash_map<GlobalDeviceId, int> device_to_node,
-              std::shared_ptr<KeyValueStoreInterface> kv_store)
-      : node_id_(node_id),
-        device_to_node_(std::move(device_to_node)),
-        kv_store_(std::move(kv_store)) {}
-
-  absl::StatusOr<gpu::NcclCliqueId> GetNcclUniqueId(
-      const gpu::NcclCliqueKey& key);
-
- private:
-  const int node_id_;
-  const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
-  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  absl::Mutex mu_;
-  absl::flat_hash_map<gpu::NcclCliqueKey, gpu::NcclCliqueId> cache_
-      ABSL_GUARDED_BY(mu_);
-};
 
 }  // namespace xla
 
