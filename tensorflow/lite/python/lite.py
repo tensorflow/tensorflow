@@ -1519,7 +1519,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data is in serialized format.
+      The converted data in serialized format.
 
     Raises:
       ValueError:
