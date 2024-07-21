@@ -1437,7 +1437,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       output_tensors: List of output tensors.
 
     Returns:
-      The converted data is in serialized format.
+      The converted data in serialized format.
 
     Raises:
       ValueError:
