@@ -1733,7 +1733,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     """Converts a keras model based on instance variables.
 
     Returns:
-      The converted data is in serialized format.
+      The converted data in serialized format.
 
     Raises:
       ValueError:
