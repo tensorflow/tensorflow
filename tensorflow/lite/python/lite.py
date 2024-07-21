@@ -1977,7 +1977,7 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
     """Converts a Jax serving func based on instance variables.
 
     Returns:
-      The converted data is in serialized format.
+      The converted data in serialized format.
 
     Raises:
       ImportError:
