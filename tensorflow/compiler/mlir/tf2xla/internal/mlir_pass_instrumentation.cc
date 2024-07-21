@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
