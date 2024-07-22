@@ -19,11 +19,11 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -125,129 +125,112 @@ SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
 namespace {
 
 // We use a lot of template metaprogramming below to be able to construct
-// iterators with statically known element sizes. We support a limited set of
-// template instantiations that we need in practice.
+// iterators with statically known number of compared elements. We support a
+// limited set of template instantiations that we need in practice.
+
+// The size of the largest element we support (std::complex<double>).
+static constexpr size_t kMaxElementSize = 16;
 
 // Forward declare reference type defined below.
-template <typename... Ts>
+template <size_t n>
 struct Ref;
 
 // Value type to store values loaded from the input buffers.
-template <typename... Ts>
+template <size_t n>
 struct Value {
-  Value(const Ref<Ts...>& ref);  // NOLINT
+  Value(const Ref<n>& ref);  // NOLINT
 
-  template <size_t n>
-  const void* compared_value() const {
-    return &std::get<n>(value);
-  }
+  const void* compared_value(size_t i) const { return value[i].data(); }
 
-  std::tuple<Ts...> value;
+  // Use properly aligned byte array to store primitive values.
+  using ValueStorage = std::array<std::byte, kMaxElementSize>;
+  alignas(alignof(std::max_align_t)) std::array<ValueStorage, n> value;
+  std::array<uint8_t, n> value_sizes;
 };
 
 // Reference to values stored in the input buffers.
-template <typename... Ts>
+template <size_t n>
 struct Ref {
-  explicit Ref(std::tuple<Ts*...> ptr) : ptr(ptr) {}
+  Ref(std::array<std::byte*, n> ptr, std::array<uint8_t, n> ptr_sizes)
+      : ptr(ptr), ptr_sizes(ptr_sizes) {}
 
-  Ref& operator=(const Value<Ts...>& value);
-  Ref& operator=(const Ref<Ts...>& other);
+  Ref& operator=(const Value<n>& value);
+  Ref& operator=(const Ref<n>& other);
 
-  template <size_t n>
-  const void* compared_value() const {
-    return std::get<n>(ptr);
-  }
+  const void* compared_value(size_t i) const { return ptr[i]; }
 
-  std::tuple<Ts*...> ptr;
+  std::array<std::byte*, n> ptr;
+  std::array<uint8_t, n> ptr_sizes;
 };
 
-// Value to reference assignment.
-template <typename... Ts, size_t... Is>
-static void Assign(Ref<Ts...>& ref, const Value<Ts...>& value,
-                   std::index_sequence<Is...>) {
-  ((*std::get<Is>(ref.ptr) = std::get<Is>(value.value)), ...);
+template <size_t n>
+Value<n>::Value(const Ref<n>& ref) : value_sizes(ref.ptr_sizes) {
+  for (size_t i = 0; i < n; ++i) {
+    std::memcpy(value[i].data(), ref.ptr[i], ref.ptr_sizes[i]);
+  }
 }
 
-// Reference to reference assignment.
-template <typename... Ts, size_t... Is>
-static void Assign(Ref<Ts...>& ref, const Ref<Ts...>& other,
-                   std::index_sequence<Is...>) {
-  ((*std::get<Is>(ref.ptr) = *std::get<Is>(other.ptr)), ...);
-}
-
-template <typename... Ts>
-Value<Ts...>::Value(const Ref<Ts...>& ref)
-    : value(std::apply([](auto*... p) { return std::make_tuple(*p...); },
-                       ref.ptr)) {}
-
-template <typename... Ts>
-Ref<Ts...>& Ref<Ts...>::operator=(const Value<Ts...>& value) {
-  Assign(*this, value, std::make_index_sequence<sizeof...(Ts)>{});
+template <size_t n>
+Ref<n>& Ref<n>::operator=(const Value<n>& value) {
+  DCHECK(ptr_sizes == value.value_sizes);
+  for (size_t i = 0; i < n; ++i) {
+    std::memcpy(ptr[i], value.value[i].data(), value.value_sizes[i]);
+  }
   return *this;
 }
 
-template <typename... Ts>
-Ref<Ts...>& Ref<Ts...>::operator=(const Ref<Ts...>& other) {
-  Assign(*this, other, std::make_index_sequence<sizeof...(Ts)>{});
+template <size_t n>
+Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
+  DCHECK(ptr_sizes == other.ptr_sizes);
+  for (size_t i = 0; i < n; ++i) {
+    std::memcpy(ptr[i], other.ptr[i], other.ptr_sizes[i]);
+  }
   return *this;
 }
 
 // Swap function required by `std::sort` and `std::stable_sort` implementations.
-template <typename T0>
-void swap(const Ref<T0>& lhs, const Ref<T0>& rhs) {
-  std::swap(*std::get<0>(lhs.ptr), *std::get<0>(rhs.ptr));
+template <size_t n>
+void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
+  for (size_t i = 0; i < n; ++i) {
+    std::array<std::byte, kMaxElementSize> tmp;
+    std::memcpy(tmp.data(), lhs.ptr[i], lhs.ptr_sizes[i]);
+    std::memcpy(lhs.ptr[i], rhs.ptr[i], rhs.ptr_sizes[i]);
+    std::memcpy(rhs.ptr[i], tmp.data(), lhs.ptr_sizes[i]);
+  }
 }
 
-template <typename T0, typename T1>
-void swap(const Ref<T0, T1>& lhs, const Ref<T0, T1>& rhs) {
-  std::swap(*std::get<0>(lhs.ptr), *std::get<0>(rhs.ptr));
-  std::swap(*std::get<1>(lhs.ptr), *std::get<1>(rhs.ptr));
-}
-
-// Extracts pointers to compared elements and packs them in the layout expected
-// by the comparator function.
-template <typename Lhs, typename Rhs>
-std::array<const void*, 2> ComparatorData1(const Lhs& lhs, const Rhs& rhs) {
-  return {lhs.template compared_value<0>(), rhs.template compared_value<0>()};
-}
-
-template <typename Lhs, typename Rhs>
-std::array<const void*, 4> ComparatorData2(const Lhs& lhs, const Rhs& rhs) {
-  return {lhs.template compared_value<0>(), rhs.template compared_value<0>(),
-          lhs.template compared_value<1>(), rhs.template compared_value<1>()};
-}
-
-// A pointer (tuple of pointers) to the input data.
-template <typename... Ts>
+// An array of pointers to the input data.
+template <size_t n>
 struct Ptr {
   using difference_type = std::ptrdiff_t;
 
   Ptr() = default;
-  explicit Ptr(Ts*... ptrs) : ptrs(ptrs...) {}
-  explicit Ptr(std::tuple<Ts*...> ptrs) : ptrs(ptrs) {}
 
-  Ref<Ts...> operator*() const { return Ref<Ts...>{ptrs}; }
+  Ptr(std::array<std::byte*, n> ptr, std::array<uint8_t, n> ptr_sizes)
+      : ptr(ptr), ptr_sizes(ptr_sizes) {}
 
-  Ptr& operator+=(difference_type n) {
-    ptrs = std::apply(
-        [&](auto*... p) { return std::make_tuple<Ts*...>(p + n...); }, ptrs);
+  Ref<n> operator*() const { return Ref<n>{ptr, ptr_sizes}; }
+
+  Ptr& operator+=(difference_type diff) {
+    for (size_t i = 0; i < n; ++i) ptr[i] += diff * ptr_sizes[i];
     return *this;
   }
 
-  Ptr& operator-=(difference_type n) {
-    ptrs = std::apply(
-        [&](auto*... p) { return std::make_tuple<Ts*...>(p - n...); }, ptrs);
+  Ptr& operator-=(difference_type diff) {
+    for (size_t i = 0; i < n; ++i) ptr[i] -= diff * ptr_sizes[i];
     return *this;
   }
 
-  Ptr operator+(difference_type n) const {
-    return Ptr{std::apply(
-        [&](auto*... p) { return std::make_tuple<Ts*...>(p + n...); }, ptrs)};
+  Ptr operator+(difference_type diff) const {
+    std::array<std::byte*, n> upd;
+    for (size_t i = 0; i < n; ++i) upd[i] = ptr[i] + diff * ptr_sizes[i];
+    return Ptr{upd, ptr_sizes};
   }
 
-  Ptr operator-(difference_type n) const {
-    return Ptr{std::apply(
-        [&](auto*... p) { return std::make_tuple<Ts*...>(p - n...); }, ptrs)};
+  Ptr operator-(difference_type diff) const {
+    std::array<std::byte*, n> upd;
+    for (size_t i = 0; i < n; ++i) upd[i] = ptr[i] - diff * ptr_sizes[i];
+    return Ptr{upd, ptr_sizes};
   }
 
   // In all comparison operators defined below we use only the ptr at index 0,
@@ -255,44 +238,34 @@ struct Ptr {
   // implementation detail of sort iterator.
 
   difference_type operator-(const Ptr& rhs) const {
-    return std::get<0>(ptrs) - std::get<0>(rhs.ptrs);
+    DCHECK(ptr_sizes == rhs.ptr_sizes);
+    return (ptr[0] - rhs.ptr[0]) / ptr_sizes[0];
   }
 
-  bool operator==(const Ptr& rhs) const {
-    return std::get<0>(ptrs) == std::get<0>(rhs.ptrs);
-  }
-  bool operator!=(const Ptr& rhs) const {
-    return std::get<0>(ptrs) != std::get<0>(rhs.ptrs);
-  }
-  bool operator>(const Ptr& rhs) const {
-    return std::get<0>(ptrs) > std::get<0>(rhs.ptrs);
-  }
-  bool operator<(const Ptr& rhs) const {
-    return std::get<0>(ptrs) < std::get<0>(rhs.ptrs);
-  }
-  bool operator>=(const Ptr& rhs) const {
-    return std::get<0>(ptrs) >= std::get<0>(rhs.ptrs);
-  }
-  bool operator<=(const Ptr& rhs) const {
-    return std::get<0>(ptrs) <= std::get<0>(rhs.ptrs);
-  }
+  bool operator==(const Ptr& rhs) const { return ptr[0] == rhs.ptr[0]; }
+  bool operator!=(const Ptr& rhs) const { return ptr[0] != rhs.ptr[0]; }
+  bool operator>(const Ptr& rhs) const { return ptr[0] > rhs.ptr[0]; }
+  bool operator<(const Ptr& rhs) const { return ptr[0] < rhs.ptr[0]; }
+  bool operator>=(const Ptr& rhs) const { return ptr[0] >= rhs.ptr[0]; }
+  bool operator<=(const Ptr& rhs) const { return ptr[0] <= rhs.ptr[0]; }
 
-  std::tuple<Ts*...> ptrs;
+  std::array<std::byte*, n> ptr;     // pointers into the input buffers
+  std::array<uint8_t, n> ptr_sizes;  // pointers sizes in bytes
 };
 
 // We rely on `std::sort` and `std::stable_sort` to sort the raw data. We sort
 // multiple input buffers together using the same comparator function, so we
 // need to provide a custom iterator that can access the data of all input
 // buffers at the same time and swap elements in them.
-template <typename... Ts>
+template <size_t n>
 class SortIterator {
  public:
   using iterator_category = std::random_access_iterator_tag;
   using difference_type = std::ptrdiff_t;
 
-  using value_type = Value<Ts...>;
-  using reference = Ref<Ts...>;
-  using pointer = Ptr<Ts...>;
+  using value_type = Value<n>;
+  using reference = Ref<n>;
+  using pointer = Ptr<n>;
 
   SortIterator() = default;
   SortIterator(pointer ptr, difference_type stride)
@@ -309,13 +282,13 @@ class SortIterator {
     return (ptr_ - rhs.ptr_) / stride_;
   }
 
-  SortIterator& operator+=(difference_type n) {
-    ptr_ += n * stride_;
+  SortIterator& operator+=(difference_type diff) {
+    ptr_ += diff * stride_;
     return *this;
   }
 
-  SortIterator& operator-=(difference_type n) {
-    ptr_ -= n * stride_;
+  SortIterator& operator-=(difference_type diff) {
+    ptr_ -= diff * stride_;
     return *this;
   }
 
@@ -329,12 +302,12 @@ class SortIterator {
     return *this;
   }
 
-  SortIterator operator+(difference_type n) const {
-    return SortIterator(ptr_ + n * stride_, stride_);
+  SortIterator operator+(difference_type diff) const {
+    return SortIterator(ptr_ + diff * stride_, stride_);
   }
 
-  SortIterator operator-(difference_type n) const {
-    return SortIterator(ptr_ - n * stride_, stride_);
+  SortIterator operator-(difference_type diff) const {
+    return SortIterator(ptr_ - diff * stride_, stride_);
   }
 
   bool operator==(const SortIterator& rhs) const { return ptr_ == rhs.ptr_; }
@@ -383,42 +356,32 @@ static SortDims GetSortDims(absl::Span<const int64_t> dimensions,
                   num_iterations};
 }
 
-// Sorts one input buffer of type `T0` inplace.
-template <typename T0>
+// Sorts `n` buffers in place.
+template <size_t n>
 static void SortInplace(const SortDims& sort_dims, int64_t offset,
-                        absl::Span<se::DeviceMemoryBase> data, bool is_stable,
+                        absl::Span<se::DeviceMemoryBase> data,
+                        absl::Span<const Shape> shapes, bool is_stable,
                         SortThunk::LessThan* less_than) {
-  T0* base0 = reinterpret_cast<T0*>(data[0].opaque());
+  std::array<std::byte*, n> ptr;
+  std::array<uint8_t, n> ptr_sizes;
 
-  auto compare = [&](const auto& a, const auto& b) {
-    auto data = ComparatorData1(a, b);
-    return (*less_than)(data.data());
-  };
-
-  SortIterator<T0> begin(Ptr<T0>(base0 + offset),
-                         /*stride=*/sort_dims.inner_dim_size);
-  if (is_stable) {
-    std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
-  } else {
-    std::sort(begin, begin + sort_dims.sort_dim_size, compare);
+  for (size_t i = 0; i < n; ++i) {
+    std::byte* base = reinterpret_cast<std::byte*>(data[i].opaque());
+    ptr_sizes[i] = primitive_util::ByteWidth(shapes[i].element_type());
+    ptr[i] = base + offset * ptr_sizes[i];
   }
-}
-
-// Sorts two input buffers of type `T0` and `T1` inplace.
-template <typename T0, typename T1>
-static void SortInplace(const SortDims& sort_dims, int64_t offset,
-                        absl::Span<se::DeviceMemoryBase> data, bool is_stable,
-                        SortThunk::LessThan* less_than) {
-  T0* base0 = reinterpret_cast<T0*>(data[0].opaque());
-  T1* base1 = reinterpret_cast<T1*>(data[1].opaque());
 
   auto compare = [&](const auto& a, const auto& b) {
-    auto data = ComparatorData2(a, b);
+    std::array<const void*, 2 * n> data;
+    for (size_t i = 0, j = 0; i < n; i += 1, j += 2) {
+      data[j] = a.compared_value(i);
+      data[j + 1] = b.compared_value(i);
+    }
     return (*less_than)(data.data());
   };
 
-  SortIterator<T0, T1> begin(Ptr<T0, T1>(base0 + offset, base1 + offset),
-                             /*stride=*/sort_dims.inner_dim_size);
+  SortIterator<n> begin(Ptr<n>(ptr, ptr_sizes),
+                        /*stride=*/sort_dims.inner_dim_size);
   if (is_stable) {
     std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
   } else {
@@ -435,37 +398,17 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
   // shape to get the sort dimensions.
   SortDims sort_dims = GetSortDims(shapes[0].dimensions(), dimension);
 
-  // Type tags for specializing the `sort` functor. Instead of specializing for
-  // each individual primitive type, we use a byte array of correct size to
-  // avoid the code bloat, as we use external comparator function anyway and
-  // don't compare the values directly.
-  using _4_bytes = std::array<std::byte, 4>;
-
-  // Collect byte sizes of element types of all inputs.
-  absl::InlinedVector<size_t, 2> byte_sizes;
-  byte_sizes.reserve(data.size());
-  for (const Shape& shape : shapes) {
-    byte_sizes.push_back(primitive_util::ByteWidth(shape.element_type()));
-  }
-
-  auto is_byte_sizes = [&](auto... sizes) {
-    return absl::c_equal(byte_sizes, absl::InlinedVector<size_t, 2>{
-                                         static_cast<size_t>(sizes)...});
-  };
-
   // Iterate over all the 1-dimensional slices of the buffers and sort them.
   for (int64_t i = 0; i < sort_dims.num_iterations; ++i) {
     int64_t inner_idx = i % sort_dims.inner_dim_size;
     int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
 
-    if (is_byte_sizes(4)) {
-      SortInplace<_4_bytes>(sort_dims, offset, data, is_stable, less_than);
-    } else if (is_byte_sizes(4, 4)) {
-      SortInplace<_4_bytes, _4_bytes>(sort_dims, offset, data, is_stable,
-                                      less_than);
+    if (data.size() == 1) {
+      SortInplace<1>(sort_dims, offset, data, shapes, is_stable, less_than);
+    } else if (data.size() == 2) {
+      SortInplace<2>(sort_dims, offset, data, shapes, is_stable, less_than);
     } else {
-      return Internal("Unsupported sort element byte widths [%s]",
-                      absl::StrJoin(byte_sizes, ","));
+      return Internal("Unsupported number of sorted inputs: %d", data.size());
     }
   }
 
