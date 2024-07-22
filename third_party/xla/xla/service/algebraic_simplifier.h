@@ -109,6 +109,14 @@ class AlgebraicSimplifierOptions {
     return associative_reordering_threshold_;
   }
 
+  void set_use_convert_constant_folding(bool use_convert_constant_folding) {
+    use_convert_constant_folding_ = use_convert_constant_folding;
+  }
+
+  bool use_convert_constant_folding() const {
+    return use_convert_constant_folding_;
+  }
+
   // Enable dot simplification on platforms where it is profitable.
   void set_enable_dot_strength_reduction(bool enable_dot_strength_reduction) {
     enable_dot_strength_reduction_ = enable_dot_strength_reduction;
@@ -293,6 +301,7 @@ class AlgebraicSimplifierOptions {
   bool minmax_propagate_nan_{true};
   bool enable_unconditional_reduce_of_concat_replacement_{true};
   bool use_associative_reordering_{false};
+  bool use_convert_constant_folding_{false};
   bool executing_on_cpu_{false};
   double associative_reordering_threshold_{2.0};
   Metadata metadata_;

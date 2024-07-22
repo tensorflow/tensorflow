@@ -115,7 +115,7 @@ const char* arb_sign_ops[] = {"constant(-0.0)",
                               "select(pred0, p0, a1)"};
 // clang-format on
 
-// Test that the result of particular oprations is always non-negative
+// Test that the result of particular operations is always non-negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op) {
   for (const auto* op : non_neg_ops) {
     const auto kModuleStr = absl::StrFormat(R"(
@@ -136,7 +136,7 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op) {
   }
 }
 
-// Test that the result of particular oprations might be negative
+// Test that the result of particular operations might be negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op_NegativeTestCase) {
   for (const auto op : arb_sign_ops) {
     const auto kModuleStr = absl::StrFormat(R"(
@@ -11685,6 +11685,46 @@ ENTRY main.1 {
   EXPECT_NE(root->operand(0)->operand(0)->opcode(), HloOpcode::kParameter);
   EXPECT_EQ(root->operand(0)->operand(1)->operand(0)->opcode(),
             HloOpcode::kParameter);
+}
+
+TEST_F(AlgebraicSimplifierTest, RemoveConvertConstant) {
+  const std::string hlo_string = R"(
+    HloModule module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+        a = f32[32,64] parameter(0)
+        b = s32[] constant(0)
+        c = f32[] convert(b)
+        ROOT reduce = f32[32] reduce(a, c),
+                      dimensions={1}, to_apply=add
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  default_options_.set_use_convert_constant_folding(true);
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reduce(m::Parameter(0),
+                                         m::Constant().WithShape(F32, {}))));
+}
+
+TEST_F(AlgebraicSimplifierTest, KeepInt4ConvertConstant) {
+  const std::string hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = s8[] constant(0)
+        ROOT b = s4[] convert(a)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  default_options_.set_use_convert_constant_folding(true);
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 }  // namespace
