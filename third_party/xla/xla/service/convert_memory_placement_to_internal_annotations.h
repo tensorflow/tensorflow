@@ -16,19 +16,26 @@
 #ifndef XLA_SERVICE_CONVERT_MEMORY_PLACEMENT_TO_INTERNAL_ANNOTATIONS_H_
 #define XLA_SERVICE_CONVERT_MEMORY_PLACEMENT_TO_INTERNAL_ANNOTATIONS_H_
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
 class ConvertMemoryPlacementToInternalAnnotations : public HloModulePass {
  public:
-  ConvertMemoryPlacementToInternalAnnotations() = default;
+  explicit ConvertMemoryPlacementToInternalAnnotations()
+      : ConvertMemoryPlacementToInternalAnnotations(
+            [](const HloInstruction& host_call) -> bool { return false; }) {}
+  explicit ConvertMemoryPlacementToInternalAnnotations(
+      std::function<bool(const HloInstruction&)> is_host_compute_call)
+      : is_host_compute_call_(is_host_compute_call) {}
 
   absl::string_view name() const override {
     return "convert-memory-placement-to-internal-annotations";
@@ -37,6 +44,10 @@ class ConvertMemoryPlacementToInternalAnnotations : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  // Returns true if the input instruction is a host compute instruction.
+  std::function<bool(const HloInstruction&)> is_host_compute_call_;
 };
 
 }  // namespace xla
