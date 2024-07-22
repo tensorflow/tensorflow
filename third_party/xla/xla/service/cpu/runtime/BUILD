@@ -108,6 +108,9 @@ xla_cc_test(
     srcs = ["thunk_test.cc"],
     deps = [
         ":thunk",
+        "//xla:executable_run_options",
+        "//xla/service/cpu:collectives_interface",
+        "//xla/service/cpu:cpu_executable_run_options",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
