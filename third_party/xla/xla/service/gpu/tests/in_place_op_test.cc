@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "xla/debug_options_flags.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {

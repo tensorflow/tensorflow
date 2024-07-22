@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <string_view>
 
+#include <gtest/gtest.h>
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 
