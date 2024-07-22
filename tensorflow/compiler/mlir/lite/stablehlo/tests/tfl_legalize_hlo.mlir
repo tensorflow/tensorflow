@@ -1187,3 +1187,207 @@ func.func @reduce_to_any_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1x2x
 // CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
 // CHECK: %0 = "tfl.reduce_any"(%arg1, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
 // CHECK: %1 = tfl.logical_or(%0, %arg0) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+
+// -----
+
+//===------------------------------------------------------------------------===
+// mhlo.gather
+//===------------------------------------------------------------------------===
+
+// CHECK-LABEL: gather_to_slice
+func.func @gather_to_slice(%arg0: tensor<3x2944xi32>, %arg1: tensor<3x2xi32>) -> tensor<3x1504xi32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [1],
+      collapsed_slice_dims = [0],
+      start_index_map = [0, 1],
+      index_vector_dim = 1,
+    >,
+    indices_are_sorted = true,
+    slice_sizes = dense<[1, 1504]> : tensor<2xi64>
+  } : (tensor<3x2944xi32>, tensor<3x2xi32>) -> tensor<3x1504xi32>
+  func.return %0 : tensor<3x1504xi32>
+}
+
+// CHECK-DAG: %[[CST:.*]] = arith.constant dense<[2, 1440]> : tensor<2xi32>
+// CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<0> : tensor<2xi32>
+// CHECK:     %[[VAL_0:.*]] = "tfl.maximum"(%arg1, %[[CST_0]]) : (tensor<3x2xi32>, tensor<2xi32>) -> tensor<3x2xi32>
+// CHECK:     %[[VAL_1:.*]] = "tfl.minimum"(%[[VAL_0]], %[[CST]]) : (tensor<3x2xi32>, tensor<2xi32>) -> tensor<3x2xi32>
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<[1, 1504]> : tensor<2xi32>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<0> : tensor<2xi32>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<[1, 2]> : tensor<2xi32>
+// CHECK:     %[[VAL_2:.*]] = "tfl.slice"(%[[VAL_1]], %[[CST_2]], %[[CST_3]]) : (tensor<3x2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x2xi32>
+// CHECK:     %[[VAL_3:.*]] = "tfl.squeeze"(%[[VAL_2]]) <{squeeze_dims = [0]}> : (tensor<1x2xi32>) -> tensor<2xi32>
+// CHECK:     %[[VAL_4:.*]] = "tfl.slice"(%arg0, %[[VAL_3]], %[[CST_1]]) : (tensor<3x2944xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x1504xi32>
+// CHECK-DAG: %[[CST_4:.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK-DAG: %[[CST_5:.*]] = arith.constant dense<[1, 2]> : tensor<2xi32>
+// CHECK:     %[[VAL_5:.*]] = "tfl.slice"(%[[VAL_1]], %[[CST_4]], %[[CST_5]]) : (tensor<3x2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x2xi32>
+// CHECK:     %[[VAL_6:.*]] = "tfl.squeeze"(%[[VAL_5]]) <{squeeze_dims = [0]}> : (tensor<1x2xi32>) -> tensor<2xi32>
+// CHECK:     %[[VAL_7:.*]] = "tfl.slice"(%arg0, %[[VAL_6]], %[[CST_1]]) : (tensor<3x2944xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x1504xi32>
+// CHECK-DAG: %[[CST_6:.*]] = arith.constant dense<[2, 0]> : tensor<2xi32>
+// CHECK-DAG: %[[CST_7:.*]] = arith.constant dense<[1, 2]> : tensor<2xi32>
+// CHECK:     %[[VAL_8:.*]] = "tfl.slice"(%[[VAL_1]], %[[CST_6]], %[[CST_7]]) : (tensor<3x2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x2xi32>
+// CHECK:     %[[VAL_9:.*]] = "tfl.squeeze"(%[[VAL_8]]) <{squeeze_dims = [0]}> : (tensor<1x2xi32>) -> tensor<2xi32>
+// CHECK:     %[[VAL_10:.*]] = "tfl.slice"(%arg0, %[[VAL_9]], %[[CST_1]]) : (tensor<3x2944xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x1504xi32>
+// CHECK:     %[[VAL_11:.*]] = "tfl.concatenation"(%[[VAL_4]], %[[VAL_7]], %[[VAL_10]]) <{axis = 0 : i32, fused_activation_function = "NONE"}> : (tensor<1x1504xi32>, tensor<1x1504xi32>, tensor<1x1504xi32>) -> tensor<3x1504xi32>
+
+// -----
+
+// CHECK-LABEL: gather
+func.func @gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32>) -> tensor<192x256xf16> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 2,
+			start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<1> : tensor<1xi64>
+  } : (tensor<147456xf16>, tensor<192x256x1xi32>) -> tensor<192x256xf16>
+  func.return %0 : tensor<192x256xf16>
+}
+
+// -----
+
+// CHECK-LABEL: gather_with_ui32indices
+func.func @gather_with_ui32indices(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xui32>) -> tensor<192x256xf16> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 2,
+			start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<1> : tensor<1xi64>
+  } : (tensor<147456xf16>, tensor<192x256x1xui32>) -> tensor<192x256xf16>
+  func.return %0 : tensor<192x256xf16>
+}
+
+// CHECK: %0 = "tfl.cast"(%arg1) : (tensor<192x256x1xui32>) -> tensor<192x256x1xi64>
+
+// -----
+
+// CHECK-LABEL: gather_nd
+func.func @gather_nd(%arg0: tensor<98x128xf32>, %arg1: tensor<4x64xi32>) -> tensor<4x64x128xf32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 2,
+			offset_dims = [2],
+			start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 128]> : tensor<2xi64>
+  } : (tensor<98x128xf32>, tensor<4x64xi32>) -> tensor<4x64x128xf32>
+  func.return %0 : tensor<4x64x128xf32>
+}
+
+// CHECK: %[[VAL_0:.*]] = mhlo.reshape %arg1 : (tensor<4x64xi32>) -> tensor<4x64x1xi32>
+// CHECK: %[[VAL_1:.*]] = "tfl.gather_nd"(%arg0, %[[VAL_0]]) : (tensor<98x128xf32>, tensor<4x64x1xi32>) -> tensor<4x64x128xf32>
+
+// -----
+
+// CHECK-LABEL: gather_transpose
+func.func @gather_transpose(%arg0: tensor<128x256xf32>, %arg1: tensor<4x1xi32>) -> tensor<4x128xf32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [1],
+      index_vector_dim = 1,
+			offset_dims = [1],
+			start_index_map = [1],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[128, 1]> : tensor<2xi64>
+  } : (tensor<128x256xf32>, tensor<4x1xi32>) -> tensor<4x128xf32>
+  func.return %0 : tensor<4x128xf32>
+}
+
+// CHECK: %[[VAL_0:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 0]> : tensor<2xi64>}> : () -> tensor<2xi64>
+// CHECK: %[[VAL_1:.*]] = "tfl.cast"(%[[VAL_0]]) : (tensor<2xi64>) -> tensor<2xi32>
+// CHECK: %[[VAL_2:.*]] = "tfl.transpose"(%arg0, %[[VAL_1]]) : (tensor<128x256xf32>, tensor<2xi32>) -> tensor<256x128xf32>
+// CHECK: %[[VAL_3:.*]] = "tfl.gather_nd"(%[[VAL_2]], %arg1) : (tensor<256x128xf32>, tensor<4x1xi32>) -> tensor<4x128xf32>
+
+// -----
+
+// CHECK-LABEL: gather_offset
+func.func @gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>) -> tensor<1x1xi32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [1],
+      index_vector_dim = 1,
+			offset_dims = [0],
+			start_index_map = [1],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<1> : tensor<2xi64>
+  } : (tensor<1x20xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
+  func.return %0 : tensor<1x1xi32>
+}
+
+// CHECK: %[[VAL_0:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 0]> : tensor<2xi64>}> : () -> tensor<2xi64>
+// CHECK: %[[VAL_1:.*]] = "tfl.cast"(%[[VAL_0]]) : (tensor<2xi64>) -> tensor<2xi32>
+// CHECK: %[[VAL_2:.*]] = "tfl.transpose"(%arg0, %[[VAL_1]]) : (tensor<1x20xi32>, tensor<2xi32>) -> tensor<20x1xi32>
+// CHECK: %[[VAL_3:.*]] = "tfl.gather_nd"(%[[VAL_2]], %arg1) : (tensor<20x1xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
+// CHECK: %[[VAL_4:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 0]> : tensor<2xi64>}> : () -> tensor<2xi64>
+// CHECK: %[[VAL_5:.*]] = "tfl.cast"(%[[VAL_4]]) : (tensor<2xi64>) -> tensor<2xi32>
+// CHECK: %[[VAL_6:.*]] = "tfl.transpose"(%[[VAL_3]], %[[VAL_5]]) : (tensor<1x1xi32>, tensor<2xi32>) -> tensor<1x1xi32>
+
+// -----
+
+// CHECK-LABEL: gather_to_slice_batch_size_1
+func.func @gather_to_slice_batch_size_1(%arg0: tensor<1x2944xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x1504xi32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [1],
+      collapsed_slice_dims = [0],
+      start_index_map = [0, 1],
+      index_vector_dim = 1,
+    >,
+    indices_are_sorted = true,
+    slice_sizes = dense<[1, 1504]> : tensor<2xi64>
+  } : (tensor<1x2944xi32>, tensor<1x2xi32>) -> tensor<1x1504xi32>
+  func.return %0 : tensor<1x1504xi32>
+}
+
+// CHECK-DAG: %[[CST:.*]] = arith.constant dense<[0, 1440]> : tensor<2xi32>
+// CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<0> : tensor<2xi32>
+// CHECK:     %[[VAL_0:.*]] = "tfl.maximum"(%arg1, %[[CST_0]]) : (tensor<1x2xi32>, tensor<2xi32>) -> tensor<1x2xi32>
+// CHECK:     %[[VAL_1:.*]] = "tfl.minimum"(%[[VAL_0]], %[[CST]]) : (tensor<1x2xi32>, tensor<2xi32>) -> tensor<1x2xi32>
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<[1, 1504]> : tensor<2xi32>
+// CHECK:     %[[VAL_2:.*]] = "tfl.squeeze"(%[[VAL_1]]) <{squeeze_dims = [0]}> : (tensor<1x2xi32>) -> tensor<2xi32>
+// CHECK:     %[[VAL_3:.*]] = "tfl.slice"(%arg0, %[[VAL_2]], %[[CST_1]]) : (tensor<1x2944xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x1504xi32>
+
+// -----
+
+// CHECK-LABEL: gather_slice_dynamic_indices
+func.func @gather_slice_dynamic_indices(%arg0: tensor<256000x1024xi8>, %arg1: tensor<?x?x1xi32>) -> tensor<?x?x1024xi8> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0],
+      start_index_map = [0],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1024]> : tensor<2xi64>
+  } : (tensor<256000x1024xi8>, tensor<?x?x1xi32>) -> tensor<?x?x1024xi8>
+  func.return %0 : tensor<?x?x1024xi8>
+}
+
+// CHECK: %0 = "tfl.gather_nd"(%arg0, %arg1) : (tensor<256000x1024xi8>, tensor<?x?x1xi32>) -> tensor<?x?x1024xi8>
+
+// -----
+
+// CHECK-LABEL: gather_scalar_dynamic_indices
+func.func @gather_scalar_dynamic_indices(%arg0: tensor<256000xf32>, %arg1: tensor<?x?x1xi32>) -> tensor<?x?xf32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      start_index_map = [0],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<1> : tensor<1xi64>
+  } : (tensor<256000xf32>, tensor<?x?x1xi32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+
+// CHECK: %0 = "tfl.gather_nd"(%arg0, %arg1) : (tensor<256000xf32>, tensor<?x?x1xi32>) -> tensor<?x?xf32>

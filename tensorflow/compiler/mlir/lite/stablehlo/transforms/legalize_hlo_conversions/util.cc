@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -74,24 +73,6 @@ Value BuildIntConstOp(ImplicitLocOpBuilder& builder,
                       Type type) {
   Value result_const =
       builder.create<TF::ConstOp>(rewriter.getIntegerAttr(type, const_value));
-  return result_const;
-}
-
-Value BuildIntArrayConstOp(ImplicitLocOpBuilder& builder,
-                           ConversionPatternRewriter& rewriter,
-                           ArrayRef<int64_t> const_value, Type type) {
-  DenseIntElementsAttr const_value_raw;
-  if (type == rewriter.getI64Type()) {
-    const_value_raw = rewriter.getI64TensorAttr(const_value);
-  } else {
-    // Convert I64 const array to I32.
-    llvm::SmallVector<int32_t> const_i32_vec;
-    for (auto element : const_value) {
-      const_i32_vec.push_back(static_cast<int32_t>(element));
-    }
-    const_value_raw = rewriter.getI32TensorAttr(const_i32_vec);
-  }
-  Value result_const = builder.create<TF::ConstOp>(const_value_raw);
   return result_const;
 }
 
