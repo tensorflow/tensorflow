@@ -3858,23 +3858,23 @@ tf_module {
   }
   member_method {
     name: "ResourceScatterNdAdd"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterNdMax"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterNdMin"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterNdSub"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterNdUpdate"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterSub"
@@ -4122,27 +4122,27 @@ tf_module {
   }
   member_method {
     name: "ScatterNdAdd"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdMax"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdMin"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdNonAliasingAdd"
-    argspec: "args=[\'input\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdSub"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdUpdate"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterSub"
@@ -5366,23 +5366,23 @@ tf_module {
   }
   member_method {
     name: "TensorScatterAdd"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorScatterMax"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorScatterMin"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorScatterSub"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorScatterUpdate"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorSliceDataset"

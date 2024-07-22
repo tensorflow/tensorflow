@@ -37,6 +37,9 @@
     * Add support for `stablehlo.composite`.
     * `EmbeddingLookup` op supports `TensorType_INT4` values.
 
+* `tf.tensor_scatter_update`, `tf.tensor_scatter_add` and of other reduce types.
+    * Support `bad_indices_policy`.
+
 ## Keras
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
