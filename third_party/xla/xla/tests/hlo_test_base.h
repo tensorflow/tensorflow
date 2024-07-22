@@ -206,7 +206,8 @@ class HloTestBase : public ManifestCheckingTest {
 
   // Executes the given module and return the result as a Literal.
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
-                                  absl::Span<Literal* const> arguments);
+                                  absl::Span<Literal* const> arguments,
+                                  bool run_hlo_passes = true);
 
   // Same as above, except the module will be executed without running any HLO
   // passes on it.

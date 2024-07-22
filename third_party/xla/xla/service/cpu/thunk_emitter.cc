@@ -231,6 +231,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTranspose:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
