@@ -1780,6 +1780,19 @@ xla_test(
 )
 
 xla_test(
+    name = "sort_test",
+    srcs = ["sort_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//xla:error_spec",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "topk_test",
     srcs = ["topk_test.cc"],
     tags = ["test_xla_cpu_thunks"],

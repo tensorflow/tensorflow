@@ -527,7 +527,8 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
                           /*is_top_level_computation=*/true, schedule,
                           /*allow_reassociation=*/false));
 
-  return ComparatorInfo{comparator_function->getName().str()};
+  return comparators_.emplace_back(
+      ComparatorInfo{comparator_function->getName().str()});
 }
 
 //===----------------------------------------------------------------------===//
