@@ -1611,12 +1611,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           &collective_params,
           &custom_call_execute_params};
 
-      auto execute_event = cpu_executable->thunks().Execute(execute_params);
+      auto thunks_execute_event =
+          cpu_executable->thunks().Execute(execute_params);
 
       tsl::profiler::TraceMe trace(
           "ThunkExecutor::Execute (wait for completion)");
-      tsl::BlockUntilReady(execute_event);
-      if (execute_event.IsError()) return execute_event.GetError();
+      tsl::BlockUntilReady(thunks_execute_event);
+      if (thunks_execute_event.IsError())
+        return thunks_execute_event.GetError();
 
     } else {
       return Internal("CpuExecutable has no compute function or thunks.");
@@ -1748,14 +1750,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                   &*collective_params,
                   &*custom_call_params};
 
-              auto execute_event =
+              auto thunks_execute_event =
                   cpu_executable->thunks().Execute(execute_params);
 
               tsl::profiler::TraceMe trace(
                   "ThunkExecutor::Execute (wait for completion)");
-              tsl::BlockUntilReady(execute_event);
-              status = execute_event.IsError() ? execute_event.GetError()
-                                               : absl::OkStatus();
+              tsl::BlockUntilReady(thunks_execute_event);
+              status = thunks_execute_event.IsError()
+                           ? thunks_execute_event.GetError()
+                           : absl::OkStatus();
             } else {
               status = collective_params.status();
             }

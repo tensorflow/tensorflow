@@ -6594,8 +6594,7 @@ TEST_F(AlgebraicSimplifierTest, ReduceDotReorder) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
-  options.set_use_associative_reordering(true);
-  options.set_associative_reordering_threshold(0);
+  options.set_raise_slice_and_reduce_through_dot(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   ASSERT_THAT(
@@ -6621,8 +6620,7 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
-  options.set_use_associative_reordering(true);
-  options.set_associative_reordering_threshold(0);
+  options.set_raise_slice_and_reduce_through_dot(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   ASSERT_THAT(module->entry_computation()->root_instruction(),
@@ -6646,7 +6644,7 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorderWithStrides) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
-  options.set_use_associative_reordering(true);
+  options.set_raise_slice_and_reduce_through_dot(true);
   EXPECT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
   ASSERT_THAT(
       module->entry_computation()->root_instruction(),
@@ -11341,7 +11339,7 @@ TEST_F(AlgebraicSimplifierTest, SparseDotMoveSliceToOperands) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   AlgebraicSimplifierOptions options;
-  options.set_use_associative_reordering(true);
+  options.set_raise_slice_and_reduce_through_dot(true);
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(SparseDotMatcher(m::Slice(m::Parameter(0)),
