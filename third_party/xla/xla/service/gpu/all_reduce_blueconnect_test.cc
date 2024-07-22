@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -44,12 +47,25 @@ namespace m = ::xla::match;
 
 using AllReduceBlueConnectTest = HloTestBase;
 
-void SetModuleConfig(HloModule& module, size_t replica_count) {
-  DeviceAssignment device_assignment(replica_count, /*computation_count=*/1);
+HloPredicate MatchChannelId(std::optional<int64_t> channel_id) {
+  return [channel_id](const HloInstruction* instruction) {
+    return instruction->channel_id() == channel_id;
+  };
+}
+
+void SetModuleConfig(HloModuleConfig* module_config, size_t replica_count,
+                     size_t partition_count = 1) {
+  DeviceAssignment device_assignment(replica_count,
+                                     /*computation_count=*/partition_count);
   device_assignment.FillIota(0);
-  auto& module_config = module.mutable_config();
-  module_config.set_replica_count(replica_count);
-  module_config.set_static_device_assignment(device_assignment);
+  module_config->set_replica_count(replica_count);
+  module_config->set_num_partitions(partition_count);
+  module_config->set_static_device_assignment(device_assignment);
+}
+
+void SetModuleConfig(HloModule& module, size_t replica_count,
+                     size_t partition_count = 1) {
+  SetModuleConfig(&module.mutable_config(), replica_count, partition_count);
 }
 
 TEST_F(AllReduceBlueConnectTest, OneStage) {
@@ -81,15 +97,18 @@ ENTRY %comp {
   // clang-format on
 
   auto bitcast = m::Bitcast(m::Parameter(0)).WithShape(F32, {16});
-  auto reduce_scatter =
-      m::ReduceScatter(bitcast).WithShape(F32, {4}).WithReplicaGroups(
-          scatter_gather_groups);
+  auto reduce_scatter = m::ReduceScatter(bitcast)
+                            .WithShape(F32, {4})
+                            .WithReplicaGroups(scatter_gather_groups)
+                            .WithPredicate(MatchChannelId(std::nullopt));
   auto all_reduce = m::AllReduce(reduce_scatter)
                         .WithShape(F32, {4})
-                        .WithReplicaGroups(new_all_reduce_groups);
+                        .WithReplicaGroups(new_all_reduce_groups)
+                        .WithPredicate(MatchChannelId(std::nullopt));
   auto all_gather = m::AllGather(all_reduce)
                         .WithShape(F32, {16})
-                        .WithReplicaGroups(scatter_gather_groups);
+                        .WithReplicaGroups(scatter_gather_groups)
+                        .WithPredicate(MatchChannelId(std::nullopt));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Bitcast(all_gather).WithShape(F32, {4, 4})));
 }
@@ -197,6 +216,41 @@ ENTRY %comp {
       m::Bitcast(m::GetTupleElement(all_gather, 1)).WithShape(F32, {4, 4, 2});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(bitcast2, bitcast3)));
+}
+
+TEST_F(AllReduceBlueConnectTest, MultiplePartitionsFilecheck) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+%add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %comp {
+  p0 = f32[8,8] parameter(0)
+  ROOT crs = f32[8,8] all-reduce(p0), channel_id=1,
+    replica_groups={{0,1,2,3,4,5,6,7}}, use_global_device_ids=true, to_apply=add
+})";
+  HloModuleConfig module_config;
+  SetModuleConfig(&module_config, /*replica_count=*/1, /*partition_count=*/8);
+
+  AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
+  // Note: When matching strings like "replica_groups={{0,1,2,3}}", FileCheck
+  // interprets the string inside the double braces as regex. So to match such
+  // strings, we use "replica_groups={{..0,1,2,3..}}", where the dots match the
+  // opening and closing braces.
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
+  CHECK:       %p0 = f32[8,8]{1,0} parameter(0)
+  CHECK-NEXT:  [[bitcast:%[^ ]+]] = f32[64]{0} bitcast(%p0)
+  CHECK-NEXT:  [[reduce_scatter:%[^ ]+]] = f32[16]{0} reduce-scatter([[bitcast]]), channel_id=2, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
+  CHECK-NEXT:  [[all_reduce:%[^ ]+]] = f32[16]{0} all-reduce([[reduce_scatter]]), channel_id=1, replica_groups={{..0,4.,.1,5.,.2,6.,.3,7..}}, use_global_device_ids=true, to_apply=%add
+  CHECK-NEXT:  [[all_gather:%[^ ]+]] = f32[64]{0} all-gather([[all_reduce]]), channel_id=3, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, dimensions={0}, use_global_device_ids=true
+  CHECK-NEXT:  ROOT [[output:%[^ ]+]] = f32[8,8]{1,0} bitcast([[all_gather]])
+}
+)",
+                            /*after_pass_checks=*/nullptr, &module_config);
 }
 
 TEST_F(AllReduceBlueConnectTest, DifferentNumLocalDevicesWithinReplicaGroup) {
@@ -329,6 +383,31 @@ ENTRY %comp {
                               absl::MakeSpan(expected_preds), {})));
   EXPECT_THAT(matched_bitcast, GmockMatch(m::Op().WithControlDeps(
                                    {}, absl::MakeSpan(expected_succs))));
+}
+
+TEST_F(AllReduceBlueConnectTest, ReduceScatterUnchanged) {
+  // Tests that this pass does not affect reduce-scatter. In principle, the
+  // BlueConnect algorithm could be applied to reduce-scatter, but for now it
+  // doesn't.
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+%add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %comp {
+  p0 = f32[8,4] parameter(0)
+  ROOT crs = f32[1,4] reduce-scatter(p0), dimensions={0}, to_apply=add
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetModuleConfig(*module, /*replica_count=*/8);
+
+  AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace

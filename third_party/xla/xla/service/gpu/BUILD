@@ -3762,7 +3762,9 @@ cc_library(
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
+        "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer_hdr",
+        "//xla/service:global_device_id",
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_pass",
         "@com_google_absl//absl/algorithm:container",
@@ -3783,6 +3785,7 @@ xla_cc_test(
     deps = [
         ":all_reduce_blueconnect",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:computation_placer_hdr",
         "//xla/service:pattern_matcher",
