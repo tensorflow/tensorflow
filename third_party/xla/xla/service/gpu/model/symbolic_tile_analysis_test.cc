@@ -795,6 +795,75 @@ ENTRY main {
   )"));
 }
 
+TEST_F(SymbolicTileAnalysisTest, CanComputeTiledHloInstructionsWithRTVars) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+max_computation {
+  param_0 = s32[] parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT maximum = s32[] maximum(param_0, param_1)
+}
+
+fused_computation {
+  src = s32[2,2,258] parameter(0)
+  of1 = s32[] parameter(1)
+  of2 = s32[] parameter(2)
+  of3 = s32[] parameter(3)
+  ds = s32[1,2,32] dynamic-slice(s32[2,2,258] src, s32[] of1, s32[] of2, s32[] of3),
+    dynamic_slice_sizes={1, 2, 32}
+  c0 = s32[] constant(0)
+  ROOT reduce = s32[1,2] reduce(ds, c0), dimensions={2}, to_apply=max_computation
+}
+
+ENTRY main {
+  param_0 = s32[2,2,258] parameter(0)
+  param_1 = s32[] parameter(1)
+  param_2 = s32[] parameter(2)
+  param_3 = s32[] parameter(3)
+  ROOT fusion = s32[1,2] fusion(param_0, param_1, param_2, param_3), kind=kLoop, calls=fused_computation
+}
+)"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 1}));
+
+  const TiledHloInstruction* dynamic_slice =
+      tiled_hlo_computation.GetRoot()->operand(0);
+  const TiledHloInstruction* param_0_tile = dynamic_slice->operand(0);
+
+  EXPECT_THAT(*dynamic_slice, MatchTiledHloInstruction(
+                                  /*tile_sizes=*/{1, 1, 32},
+                                  /*tile_strides=*/{0, 1, 1},
+                                  /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (0, d1, 0)
+    domain:
+    d0 in [0, 1)
+    d1 in [0, 2)
+  )"));
+
+  EXPECT_THAT(*param_0_tile, MatchTiledHloInstruction(
+                                 /*tile_sizes=*/{1, 1, 32},
+                                 /*tile_strides=*/{0, 1, 1},
+                                 /*tile_offsets_indexing=*/R"(
+    (d0, d1)[s0, s1] -> (s0, d1, s1)
+    domain:
+    d0 in [0, 1)
+    d1 in [0, 2)
+    s0 in [0, 2)
+      hlo: %of1 = s32[] parameter(1)
+      (d0, d1, d2) -> ()
+    s1 in [0, 227)
+      hlo: %of3 = s32[] parameter(3)
+      (d0, d1, d2) -> ()
+  )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

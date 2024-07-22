@@ -135,18 +135,23 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
   }
 
   std::vector<AffineExpr> symbol_lower_bounds(
-      tile_offset_indexing.GetSymbolCount(),
+      tile_offset_indexing.GetRangeVarsCount(),
       mlir::getAffineConstantExpr(0, mlir_context));
+  symbol_lower_bounds.reserve(tile_offset_indexing.GetSymbolCount());
+  for (int i = 0; i < tile_offset_indexing.GetRTVarsCount(); ++i) {
+    symbol_lower_bounds.push_back(mlir::getAffineSymbolExpr(i, mlir_context));
+  }
 
   mlir::AffineMap simplified_affine_map =
       tile_offset_indexing.GetAffineMap().replaceDimsAndSymbols(
-          /*dimReplacements=*/{}, symbol_lower_bounds,
-          tile_offset_indexing.GetDimVarsCount(),
-          /*numResultSyms=*/tile_offset_indexing.GetRangeVarsCount());
+          /*dimReplacements=*/{},
+          /*symReplacements=*/symbol_lower_bounds,
+          /*numResultDims=*/tile_offset_indexing.GetDimVarsCount(),
+          /*numResultSyms=*/tile_offset_indexing.GetRTVarsCount());
 
-  IndexingMap simplified_indexing_map = IndexingMap{
-      simplified_affine_map, tile_offset_indexing.GetDimVars(),
-      tile_offset_indexing.GetRangeVars(), tile_offset_indexing.GetRTVars()};
+  IndexingMap simplified_indexing_map =
+      IndexingMap{simplified_affine_map, tile_offset_indexing.GetDimVars(),
+                  /*range_vars=*/{}, tile_offset_indexing.GetRTVars()};
 
   simplified_indexing_map.Simplify();
   simplified_indexing_map.RescaleSymbols();
