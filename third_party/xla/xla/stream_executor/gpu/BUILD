@@ -409,7 +409,7 @@ gpu_only_cc_library(
     ],
     deps = [
         ":gpu_driver_header",
-        ":gpu_executor_header",
+        ":gpu_event",
         ":gpu_semaphore",
         ":gpu_stream",
         ":gpu_types_header",

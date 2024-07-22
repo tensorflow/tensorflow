@@ -34,7 +34,7 @@ class GpuEvent : public Event {
   ~GpuEvent() override;
 
   // Populates the CUDA-platform-specific elements of this object.
-  absl::Status Init();
+  absl::Status Init(bool allow_timing);
 
   // Deallocates any platform-specific elements of this object. This is broken
   // out (not part of the destructor) to allow for error reporting.

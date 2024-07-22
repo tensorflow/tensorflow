@@ -66,6 +66,7 @@ class StreamExecutor;
 
 namespace gpu {
 
+class GpuEvent;
 class GpuKernel;
 class GpuCommandBuffer;
 class GpuStream;
@@ -330,6 +331,9 @@ class GpuExecutor : public StreamExecutorCommon {
 
   bool UnloadGpuBinary(const void* gpu_binary)
       TF_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
+  // Creates a GpuEvent for the given stream.
+  absl::StatusOr<std::unique_ptr<GpuEvent>> CreateGpuEvent(bool allow_timing);
 
   // Guards the on-disk-module mapping.
   absl::Mutex disk_modules_mu_;

@@ -187,8 +187,11 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
   // TODO(b/301020144) Move this all to the appropriate Executor class.
-  return GpuTimer::CreateEventBasedTimer(stream, gpu_context(),
-                                         use_delay_kernel);
+  TF_ASSIGN_OR_RETURN(auto start_event, CreateGpuEvent(/*allow_timing=*/true));
+  TF_ASSIGN_OR_RETURN(auto stop_event, CreateGpuEvent(/*allow_timing=*/true));
+  return GpuTimer::CreateEventBasedTimer(
+      stream, gpu_context(), use_delay_kernel, std::move(start_event),
+      std::move(stop_event));
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -630,10 +633,15 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
+absl::StatusOr<std::unique_ptr<GpuEvent>> GpuExecutor::CreateGpuEvent(
+    bool allow_timing) {
   auto gpu_event = std::make_unique<RocmEvent>(this);
-  TF_RETURN_IF_ERROR(gpu_event->Init());
+  TF_RETURN_IF_ERROR(gpu_event->Init(allow_timing));
   return std::move(gpu_event);
+}
+
+absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
+  return CreateGpuEvent(/*allow_timing=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
@@ -49,14 +49,16 @@ class GpuStream;
 class GpuTimer : public EventBasedTimer {
  public:
   static absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
-      GpuStream* stream, GpuContext* context, bool use_delay_kernel);
+      GpuStream* stream, GpuContext* context, bool use_delay_kernel,
+      std::unique_ptr<GpuEvent> start_event,
+      std::unique_ptr<GpuEvent> stop_event);
 
-  explicit GpuTimer(GpuContext* context, GpuEventHandle start_event,
-                    GpuEventHandle stop_event, GpuStream* stream,
+  explicit GpuTimer(GpuContext* context, std::unique_ptr<GpuEvent> start_event,
+                    std::unique_ptr<GpuEvent> stop_event, GpuStream* stream,
                     GpuSemaphore semaphore = {})
       : context_(context),
-        start_event_(start_event),
-        stop_event_(stop_event),
+        start_event_(std::move(start_event)),
+        stop_event_(std::move(stop_event)),
         stream_(stream),
         semaphore_(std::move(semaphore)) {}
 
@@ -84,8 +86,8 @@ class GpuTimer : public EventBasedTimer {
 
  private:
   GpuContext* context_;
-  GpuEventHandle start_event_ = nullptr;
-  GpuEventHandle stop_event_ = nullptr;
+  std::unique_ptr<GpuEvent> start_event_;
+  std::unique_ptr<GpuEvent> stop_event_;
   GpuStream* stream_;
   GpuSemaphore semaphore_;
   bool is_stopped_ = false;
