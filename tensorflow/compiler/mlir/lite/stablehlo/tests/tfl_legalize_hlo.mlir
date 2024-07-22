@@ -938,3 +938,252 @@ func.func @pad(%arg0: tensor<8x128xf32>, %arg1: tensor<f32>) -> tensor<11x131xf3
 // CHECK-SAME: tensor<2x2xi64>
 // CHECK:      "tfl.padv2"(%arg0, %[[PADDINGS]], %arg1) : (tensor<8x128xf32>, tensor<2x2xi64>, tensor<f32>) -> tensor<11x131xf32>
 
+//===------------------------------------------------------------------------===
+// mhlo.reduce { mhlo.multiply }
+//===------------------------------------------------------------------------===
+
+// CHECK-LABEL: int_reduce_to_prod(
+func.func @int_reduce_to_prod(%arg0: tensor<1x256xi32>) -> tensor<1xi32> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
+    %2 = mhlo.multiply %arg1, %arg2 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xi32>, tensor<i32>) -> tensor<1xi32>
+  func.return %1 : tensor<1xi32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: "tfl.reduce_prod"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xi32>, tensor<1xi32>) -> tensor<1xi32>
+
+// -----
+
+// CHECK-LABEL: reduce_to_prod
+func.func @reduce_to_prod(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.multiply %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %1 = "tfl.reduce_prod"(%arg0, %[[CST:.*]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+
+// -----
+
+// CHECK-LABEL: reduce_to_prod_non_constant_init
+func.func @reduce_to_prod_non_constant_init(%arg0: tensor<1x256xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
+  %1 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = mhlo.multiply %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %0 = "tfl.reduce_prod"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+// CHECK: %1 = tfl.mul(%0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1xf32>, tensor<f32>) -> tensor<1xf32>
+
+// -----
+
+//===------------------------------------------------------------------------===
+// mhlo.reduce { mhlo.add }
+//===------------------------------------------------------------------------===
+
+// CHECK-LABEL: reduce_to_sum
+func.func @reduce_to_sum(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.add %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %1 = "tfl.sum"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+
+// -----
+
+// CHECK-LABEL: reduce_to_sum_non_constant_init
+func.func @reduce_to_sum_non_constant_init(%arg0: tensor<1x256xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
+  %1 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %0 = "tfl.sum"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+// CHECK: %1 = tfl.add(%0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1xf32>, tensor<f32>) -> tensor<1xf32>
+
+// -----
+
+// CHECK-LABEL: int_reduce_to_sum
+func.func @int_reduce_to_sum(%arg0: tensor<1x256xi32>) -> tensor<1xi32> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
+    %2 = mhlo.add %arg1, %arg2 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xi32>, tensor<i32>) -> tensor<1xi32>
+  func.return %1 : tensor<1xi32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %1 = "tfl.sum"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xi32>, tensor<1xi32>) -> tensor<1xi32>
+
+// -----
+
+//===------------------------------------------------------------------------===
+// mhlo.reduce { mhlo.max }
+//===------------------------------------------------------------------------===
+
+// CHECK-LABEL: reduce_to_max
+func.func @reduce_to_max(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
+  // "0xFF800000" represents -INF for f32.
+  %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.maximum %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %1 = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+
+// -----
+
+// CHECK-LABEL: reduce_to_max_int
+func.func @reduce_to_max_int(%arg0: tensor<1x4xi32>) -> tensor<1xi32> {
+  // -2147483648 is MIN for INT32
+  %0 = mhlo.constant dense<-2147483648> : tensor<i32>
+  %1 = mhlo.reduce(%arg0 init: %0) across dimensions = [1] : (tensor<1x4xi32>, tensor<i32>) -> tensor<1xi32>
+   reducer(%arg2: tensor<i32>, %arg3: tensor<i32>)  {
+    %892 = mhlo.maximum %arg2, %arg3 : tensor<i32>
+    "mhlo.return"(%892) : (tensor<i32>) -> ()
+  }
+  func.return %1 : tensor<1xi32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %1 = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x4xi32>, tensor<1xi32>) -> tensor<1xi32>
+
+// -----
+
+//===------------------------------------------------------------------------===
+// mhlo.reduce { mhlo.min }
+//===------------------------------------------------------------------------===
+
+// CHECK-LABEL: reduce_to_min
+func.func @reduce_to_min(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
+  // "0x7F800000" represents INF for f32.
+  %0 = mhlo.constant dense<0x7F800000> : tensor<f32>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.minimum %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %1 = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+
+// -----
+
+// CHECK-LABEL: reduce_to_min_int
+func.func @reduce_to_min_int(%arg0: tensor<1x4xi32>) -> tensor<1xi32> {
+  // 2147483647 is MAX for INT32
+  %0 = mhlo.constant dense<2147483647> : tensor<i32>
+  %1 = mhlo.reduce(%arg0 init: %0) across dimensions = [1] : (tensor<1x4xi32>, tensor<i32>) -> tensor<1xi32>
+   reducer(%arg2: tensor<i32>, %arg3: tensor<i32>)  {
+    %892 = mhlo.minimum %arg2, %arg3 : tensor<i32>
+    "mhlo.return"(%892) : (tensor<i32>) -> ()
+  }
+  func.return %1 : tensor<1xi32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %1 = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x4xi32>, tensor<1xi32>) -> tensor<1xi32>
+
+// -----
+
+//===------------------------------------------------------------------------===
+// mhlo.reduce { mhlo.and }
+//===------------------------------------------------------------------------===
+
+// CHECK-LABEL: reduce_to_all
+func.func @reduce_to_all(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -> tensor<2x4x5xi1> {
+  %0 = mhlo.constant dense<true> : tensor<i1>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+    ^bb0(%arg2: tensor<i1>, %arg3: tensor<i1>):
+        %2 = mhlo.and %arg2, %arg3 : tensor<i1>
+        "mhlo.return"(%2) : (tensor<i1>) -> ()
+    }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+  func.return %1: tensor<2x4x5xi1>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
+// CHECK: %1 = "tfl.reduce_all"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
+
+// -----
+
+// CHECK-LABEL: reduce_to_all_non_constant_init
+func.func @reduce_to_all_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1x2x3x4x5xi1>, %arg2: tensor<2xi64>) -> tensor<2x4x5xi1> {
+  %0 = "mhlo.reduce"(%arg1, %arg0) ({
+    ^bb0(%arg3: tensor<i1>, %arg4: tensor<i1>):
+        %1 = mhlo.and %arg3, %arg4 : tensor<i1>
+        "mhlo.return"(%1) : (tensor<i1>) -> ()
+    }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+  func.return %0: tensor<2x4x5xi1>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
+// CHECK: %0 = "tfl.reduce_all"(%arg1, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
+// CHECK: %1 = tfl.logical_and(%0, %arg0) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+
+// -----
+
+//===------------------------------------------------------------------------===
+// mhlo.reduce { mhlo.or }
+//===------------------------------------------------------------------------===
+
+// CHECK-LABEL: reduce_to_any
+func.func @reduce_to_any(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -> tensor<2x4x5xi1> {
+  %0 = mhlo.constant dense<false> : tensor<i1>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+    ^bb0(%arg2: tensor<i1>, %arg3: tensor<i1>):
+        %2 = mhlo.or %arg2, %arg3 : tensor<i1>
+        "mhlo.return"(%2) : (tensor<i1>) -> ()
+    }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+  func.return %1: tensor<2x4x5xi1>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
+// CHECK: %1 = "tfl.reduce_any"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
+
+// -----
+
+// CHECK-LABEL: reduce_to_any_non_constant_init
+func.func @reduce_to_any_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1x2x3x4x5xi1>, %arg2: tensor<2xi64>) -> tensor<2x4x5xi1> {
+  %0 = "mhlo.reduce"(%arg1, %arg0) ({
+    ^bb0(%arg3: tensor<i1>, %arg4: tensor<i1>):
+        %1 = mhlo.or %arg3, %arg4 : tensor<i1>
+        "mhlo.return"(%1) : (tensor<i1>) -> ()
+    }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+  func.return %0: tensor<2x4x5xi1>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
+// CHECK: %0 = "tfl.reduce_any"(%arg1, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
+// CHECK: %1 = tfl.logical_or(%0, %arg0) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
