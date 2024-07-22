@@ -3627,6 +3627,7 @@ xla_cc_test(
         "//xla/service:executable",
         "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
+        "//xla/service/gpu/fusions/triton:triton_support",
         "//xla/stream_executor",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -3634,6 +3635,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

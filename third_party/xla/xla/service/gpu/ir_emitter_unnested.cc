@@ -1603,8 +1603,15 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     auto triton_fn =
         triton_module->lookupSymbol<mlir::triton::FuncOp>(call.name);
     triton_fn.setName(kernel_name);
+    size_t arg_size = triton_fn.getNumArguments();
 
     HloModule* hlo_module = instr->GetModule();
+    // If emit_kernels if false (i.e., when deserializing an already compiled
+    // executable), we do not emit code, but we still need to run part of the
+    // compiler to figure out the size of the shared memory and the cluster
+    // dimensions for the thunk. We also must call the name uniqifier as if
+    // emitting code so that the future generated names remain in sync.
+    bool emit_kernels = ir_emitter_context_->emit_kernels();
 
     BlockLevelParameters block_level_parameters;
     block_level_parameters.num_stages = call.num_stages;
@@ -1617,13 +1624,8 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
                             ir_emitter_context_->gpu_compute_capability(),
                             ir_emitter_context_->gpu_device_info(),
                             block_level_parameters, triton_module.get(),
-                            ir_emitter_context_->llvm_module(), mlir_context));
-
-    llvm::Function* impl_fn =
-        ir_emitter_context_->llvm_module()->getFunction(kernel_name);
-    TF_RET_CHECK(impl_fn);
-    impl_fn->setName(ir_emitter_context_->name_uniquer()->GetUniqueName(
-        kernel_name + "_impl"));
+                            ir_emitter_context_->llvm_module(), mlir_context,
+                            emit_kernels));
 
     TF_ASSIGN_OR_RETURN(
         auto kernel_arguments,
@@ -1634,33 +1636,44 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
         LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
                          se::ThreadDim(call.num_warps * 32));
 
-    llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
+    std::string sanitized_kernel_name =
+        GetSanitizedUniqueName(*ir_emitter_context_, kernel_name);
 
-    llvm::Function* kernel;
-    std::vector<llvm_ir::IrArray> inputs;
-    std::vector<llvm_ir::IrArray> outputs;
-    TF_ASSIGN_OR_RETURN(
-        std::tie(kernel, inputs, outputs),
-        BuildKernelPrototype(*ir_emitter_context_, kernel_name,
-                             kernel_arguments.args(), impl_fn->arg_size(),
-                             launch_dimensions, &builder));
+    if (emit_kernels) {
+      llvm::Function* impl_fn =
+          ir_emitter_context_->llvm_module()->getFunction(kernel_name);
+      TF_RET_CHECK(impl_fn);
+      impl_fn->setName(ir_emitter_context_->name_uniquer()->GetUniqueName(
+          kernel_name + "_impl"));
 
-    // Move function body into kernel prototype.
-    llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
-    prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
-      arg.replaceAllUsesWith(input.GetBasePointer());
+      llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
+
+      llvm::Function* kernel;
+      std::vector<llvm_ir::IrArray> inputs;
+      std::vector<llvm_ir::IrArray> outputs;
+      TF_ASSIGN_OR_RETURN(
+          std::tie(kernel, inputs, outputs),
+          BuildKernelPrototypeFromUniqueName(
+              *ir_emitter_context_, sanitized_kernel_name,
+              kernel_arguments.args(), arg_size, launch_dimensions, &builder));
+
+      // Move function body into kernel prototype.
+      llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
+      prototype_func->splice(prototype_func->begin(), impl_fn);
+      for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
+        arg.replaceAllUsesWith(input.GetBasePointer());
+      }
+      impl_fn->eraseFromParent();
+
+      for (auto& arg : prototype_func->args()) {
+        // Remove the alignment and aliasing attributes to avoid recompiling the
+        // kernel for each alignment/aliasing combination.
+        arg.removeAttr(llvm::Attribute::Alignment);
+        arg.removeAttr(llvm::Attribute::NoAlias);
+      }
     }
-    impl_fn->eraseFromParent();
 
-    for (auto& arg : prototype_func->args()) {
-      // Remove the alignment and aliasing attributes to avoid recompiling the
-      // kernel for each alignment/aliasing combination.
-      arg.removeAttr(llvm::Attribute::Alignment);
-      arg.removeAttr(llvm::Attribute::NoAlias);
-    }
-
-    return {{kernel->getName().str(), launch_dimensions, result.cluster_dim,
+    return {{sanitized_kernel_name, launch_dimensions, result.cluster_dim,
              result.shmem_bytes}};
   };
 
