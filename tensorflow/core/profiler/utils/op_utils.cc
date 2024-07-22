@@ -46,7 +46,8 @@ void HostOpMetricsDbBuilder::EnterOp(absl::string_view name,
                                      uint64 time_ps, uint64 children_time_ps) {
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
-  OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(/*hlo_module_id=*/0, name);
+  OpMetrics* op_metrics =
+      LookupOrInsertNewOpMetrics(/*hlo_module_id=*/0, name, /*fingerprint=*/0);
   if (op_metrics->category().empty())
     op_metrics->set_category(category.data(), category.size());
   op_metrics->set_num_cores(1);
@@ -80,7 +81,8 @@ void DeviceOpMetricsDbBuilder::EnterOpMetadata(
     absl::string_view deduplicated_name, bool is_eager) {
   // We only need to add xla metadata once to each new op, as they are the
   // same across occurrences.
-  OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, program_name);
+  OpMetrics* op_metrics =
+      LookupOrInsertNewOpMetrics(program_id, program_name, /*fingerprint=*/0);
   if (op_metrics->occurrences() > 0) return;
   op_metrics->set_category(category == tsl::profiler::kUnknownOp
                                ? "unknown"
@@ -104,7 +106,8 @@ void DeviceOpMetricsDbBuilder::EnterOp(
                   is_eager);
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
-  OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
+  OpMetrics* op_metrics =
+      LookupOrInsertNewOpMetrics(program_id, name, /*fingerprint=*/0);
   op_metrics->set_num_cores(1);
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
