@@ -417,42 +417,6 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
 }
 }  // end namespace
 
-absl::Status IsProfileApplicable(
-    const HloModule* module,
-    const tensorflow::profiler::ProfiledInstructionsProto& profile) {
-  absl::flat_hash_set<absl::string_view> all_instruction_names;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (HloInstruction* instr : comp->instructions()) {
-      all_instruction_names.insert(instr->name());
-    }
-  }
-
-  std::vector<std::string> missing_costs_names;
-  for (const auto& cost : profile.costs()) {
-    if (!all_instruction_names.contains(cost.name())) {
-      missing_costs_names.push_back(cost.name());
-    }
-  }
-  std::vector<std::string> missing_latency_names;
-  for (const auto& latency : profile.latencies()) {
-    if (!all_instruction_names.contains(latency.source())) {
-      missing_latency_names.push_back(latency.source());
-    }
-
-    if (!all_instruction_names.contains(latency.target())) {
-      missing_latency_names.push_back(latency.target());
-    }
-  }
-  if (!(missing_costs_names.empty() && missing_latency_names.empty())) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("\nMissing costs: %s;\nMissing latencies: %s",
-                        absl::StrJoin(missing_costs_names, ", "),
-                        absl::StrJoin(missing_latency_names, ", ")));
-  }
-
-  return absl::OkStatus();
-}
-
 static int64_t GetSchedulerMemoryLimit(
     const HloModule* module, const se::DeviceDescription& gpu_device_info,
     int pointer_size);
@@ -514,12 +478,6 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     LOG(INFO)
         << "Found profile, using profile guided latency estimator. Profile:\n"
         << profile->DebugString();
-    absl::Status s = IsProfileApplicable(module, profile.value());
-    if (!s.ok()) {
-      LOG(INFO) << "PGLE profile may not applicable to the module, but will "
-                   "still be used : "
-                << s.message();
-    }
     TF_RETURN_IF_ERROR(pg_latency_estimator->CheckAccuracy(*module));
     latency_estimator = std::move(pg_latency_estimator);
   } else if (enable_analytical_latency_estimator) {
