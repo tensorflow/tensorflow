@@ -25,14 +25,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "Eigen/ThreadPool"  // from @eigen_archive
+#include "Eigen/src/Core/util/MaxSizeVector.h"  // from @eigen_archive
+#include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 namespace Eigen {
 struct ThreadPoolDevice;
 }
