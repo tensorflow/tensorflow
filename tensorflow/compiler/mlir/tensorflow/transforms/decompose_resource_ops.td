@@ -38,14 +38,6 @@ def CheckHasResourceSubtype : Constraint<CPred<"HasResourceSubtype($0)">>;
 
 def CreateConstBoolAttrFalse : NativeCodeCall<"$_builder.getBoolAttr(false)">;
 
-def CreateTensorScatterAddOp : NativeCodeCall<
-    "$_builder.create<TF::TensorScatterAddOp>("
-    "$0.getLoc(), $0.getType(), $0, $1, $2, $_builder.getStringAttr(\"\"))">;
-
-def CreateTensorScatterUpdateOp : NativeCodeCall<
-    "$_builder.create<TF::TensorScatterUpdateOp>("
-    "$0.getLoc(), $0.getType(), $0, $1, $2, $_builder.getStringAttr(\"\"))">;
-
 def CreateTFReadVariableOpFromResourceHandle : NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "$0.getLoc(), GetResourceSubtype($1), $1)">;
@@ -362,7 +354,7 @@ def DecomposeResourceScatterAdd : Pat<
   (TF_ResourceScatterAddOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
-    (CreateTensorScatterAddOp
+    (TF_TensorScatterAddOp
       (CreateTFReadVariableOp $src_op, $updates, $resource),
       (TF_ExpandDimsOp $indices,
        (TF_ConstOp (GetScalarOfType<-1> $indices))),
@@ -377,7 +369,7 @@ def DecomposeResourceScatterUpdate : Pat<
   (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
-    (CreateTensorScatterUpdateOp
+    (TF_TensorScatterUpdateOp
       (CreateTFReadVariableOp $src_op, $updates, $resource),
       (TF_ExpandDimsOp $indices,
        (TF_ConstOp (GetScalarOfType<-1> $indices))),

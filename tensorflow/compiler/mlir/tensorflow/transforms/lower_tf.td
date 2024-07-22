@@ -49,12 +49,7 @@ def CreateTFCastOpI32 : NativeCodeCall<
     "CreateTFCastOpI32(&$_builder, $0.getLoc(), $1, $2)">;
 
 def CreateTensorScatterNdOp : NativeCodeCall<
-    "$_builder.create<TF::ScatterNdOp>("
-    "$0.getLoc(), $0.getType(), $1, $2, $3, $4)">;
-
-def CreateTensorScatterUpdateOp : NativeCodeCall<
-    "$_builder.create<TF::TensorScatterUpdateOp>("
-    "$0.getLoc(), $0.getType(), $0, $1, $2, $3)">;
+    "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
 
 //===----------------------------------------------------------------------===//
 // Add op patterns.
@@ -467,13 +462,25 @@ def LowerOnesLikeOp : LowerInitializationOp<TF_OnesLikeOp, 1>;
 
 def LowerScatterNdOp :
   Pat<(TF_ScatterNdOp $indices,
-       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:
-       $updates,
-       $shape,
-       $bad_indices_policy),
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape, ConstantStrAttr<StrAttr, "">),
       (TF_TensorScatterAddOp
        (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
-       $indices, $updates, $bad_indices_policy)>;
+       $indices, $updates)>;
+
+def LowerScatterNdOpDefaultBadIndicesPolicy :
+  Pat<(TF_ScatterNdOp $indices,
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape, ConstantStrAttr<StrAttr, "DEFAULT">),
+      (TF_TensorScatterAddOp
+       (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
+       $indices, $updates)>;
+
+
+def LowerScatterNdOpIgnoreBadIndices :
+  Pat<(TF_ScatterNdOp $indices,
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape, ConstantStrAttr<StrAttr, "IGNORE">),
+      (TF_TensorScatterAddOp
+       (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
+       $indices, $updates)>;
 
 //===----------------------------------------------------------------------===//
 // Xdivy, Xlog1p and Xlogy op patterns.
@@ -519,9 +526,9 @@ def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
 // TensorScatterUpdate op patterns.
 //===----------------------------------------------------------------------===//
 
-def LowerTensorScatterUpdate_1 : Pat<(TF_TensorScatterUpdateOp$input, $indices, $updates, $bad_indices_policy),
+def LowerTensorScatterUpdate_1 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
           (TF_CastOp
-            (CreateTensorScatterUpdateOp
+            (TF_TensorScatterUpdateOp
               (CreateTFCastOpI32
                 $input,
                 $input,
@@ -530,29 +537,20 @@ def LowerTensorScatterUpdate_1 : Pat<(TF_TensorScatterUpdateOp$input, $indices, 
               (CreateTFCastOpI32
                 $updates,
                 $updates,
-                /*truncate=*/ConstBoolAttrFalse),
-              $bad_indices_policy),
+                /*truncate=*/ConstBoolAttrFalse)),
              /*truncate=*/ConstBoolAttrFalse),
           [(TensorOf<[TF_Bool]> $input), (TensorOf<[TF_Bool]> $updates)] >;
 
-def LowerTensorScatterUpdate_2 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates, $bad_indices_policy),
+def LowerTensorScatterUpdate_2 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
           (TF_AddV2Op
              (TF_MulOp
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
                    (CreateTensorScatterNdOp $input, $indices,
                       (TF_OnesLikeOp $updates),
-                   (CreateTFShapeOp
-                     $input,
-                     $input,
-                     ConstBoolAttrTrue),
-                     $bad_indices_policy)),
+                   (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
              $input),
            (CreateTensorScatterNdOp $input, $indices, $updates,
-              (CreateTFShapeOp
-              $input,
-              $input,
-              ConstBoolAttrTrue),
-              $bad_indices_policy)),
+              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
           [(TensorOf<[TF_Int, TF_Float, TF_Complex]> $updates)]>;
 
 //===----------------------------------------------------------------------===//

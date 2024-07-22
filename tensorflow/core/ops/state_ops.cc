@@ -227,7 +227,6 @@ REGISTER_OP("ScatterNdUpdate")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdUpdate")
@@ -237,7 +236,6 @@ REGISTER_OP("ResourceScatterNdUpdate")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdAdd")
@@ -247,7 +245,6 @@ REGISTER_OP("ResourceScatterNdAdd")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdSub")
@@ -257,7 +254,6 @@ REGISTER_OP("ResourceScatterNdSub")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdMin")
@@ -267,7 +263,6 @@ REGISTER_OP("ResourceScatterNdMin")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdMax")
@@ -277,7 +272,6 @@ REGISTER_OP("ResourceScatterNdMax")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdAdd")
@@ -288,7 +282,6 @@ REGISTER_OP("ScatterNdAdd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdSub")
@@ -299,7 +292,6 @@ REGISTER_OP("ScatterNdSub")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdMax")
@@ -310,7 +302,6 @@ REGISTER_OP("ScatterNdMax")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdMin")
@@ -321,7 +312,6 @@ REGISTER_OP("ScatterNdMin")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("CountUpTo")
