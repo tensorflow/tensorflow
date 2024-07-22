@@ -91,13 +91,6 @@ class FakeCostAnalysis : public CostAnalysis {
       std::function<float(const HloInstruction&)> function) {
     get_instruction_elapsed_override_ = function;
   }
-  void SetOverrideForGetInstructionElapsedInAlternateMemory(
-      std::function<float(const HloInstruction&,
-                          absl::Span<const std::pair<int64_t, ShapeIndex>>,
-                          absl::Span<const ShapeIndex>)>
-          function) {
-    get_instruction_elapsed_in_alternate_memory_override_ = function;
-  }
   void SetOverrideForGetAsyncCopyElapsed(
       std::function<float(const Shape&)> function) {
     get_async_copy_elapsed_override_ = function;
