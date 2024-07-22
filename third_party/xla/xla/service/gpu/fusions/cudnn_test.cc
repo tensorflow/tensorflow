@@ -202,6 +202,43 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionExecutionTest,
+       CuDnnFusionCompilerDoesNotFailOnDependentFusions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+c1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+c2 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[32,64] parameter(1)
+  ROOT r = f32[96,64] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  f0 = f32[32,64] fusion(p0, p1), kind=kCustom, calls=c1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
+  f1 = f32[96,64] fusion(p0, f0), kind=kCustom, calls=c2,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
+  ROOT r = tuple(f0, f1)
+})"));
+  BinaryMap dnn_compiled_graphs;
+  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+                                     dnn_compiled_graphs);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion()),
+                                  m::GetTupleElement(m::Fusion()))));
+}
+
+TEST_F(CuDnnFusionExecutionTest,
        NoTritonConfigIsAssignedAtZeroAutotuningLevel) {
   EXPECT_EQ(GetDebugOptionsForTest().xla_gpu_autotune_level(), 0);
   MatchOptimizedHlo(R"(
