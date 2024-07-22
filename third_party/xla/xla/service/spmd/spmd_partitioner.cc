@@ -395,8 +395,15 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
   // Replace existing reshard cache for target if we are sharding with new
   // padding value.
   const bool replace_cache = pad_value.has_value();
-  const bool is_to_replicate =
-      hlo_->shape().IsArray() && target.NumTiles() < sharding().NumTiles();
+
+  bool is_to_replicate;
+  if (sharding().IsManual() || target.IsManual()) {
+    is_to_replicate = false;
+  } else {
+    bool target_has_less_tiles = target.NumTiles() < sharding().NumTiles();
+    is_to_replicate = hlo_->shape().IsArray() && target_has_less_tiles;
+  }
+
   const bool use_cache =
       !is_to_replicate || state_.partitioner->options().cache_all_gather;
   if (!replace_cache && use_cache) {
@@ -520,7 +527,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   // If not replicated yet, first replicate and then reshard to use one of the
   // two implementations below.
   if (!sharding().IsReplicated()) {
-    if (!target.IsReplicated()) {
+    if (!sharding().IsManual() && !target.IsReplicated()) {
       if (sharding().IsTiled() && target.IsTiled()) {
         auto reshard = TryComplexReshardHandling(target);
         if (reshard.has_value()) {
@@ -1065,7 +1072,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
 
   auto sharding_with_windowed_dims_replicated =
       GetShardingReplicatedOnWindowedDimension(target, window);
-  // If the currrent HLO is replicated or all windows dimensions are replicated,
+  // If the current HLO is replicated or all windows dimensions are replicated,
   // pad then slice. If the target sharding and current sharding are not the
   // same then give the halo exchange system a chance to run as it can skip
   // generating a dynamic slice.
@@ -1207,6 +1214,12 @@ PartitionedHlo PartitionedHlo::Replicate() const {
   const HloSharding sharding = hlo_->sharding();
   const Shape& shape = hlo_->shape();
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
+
+  // Replicate using manual sharding
+  if (sharding.IsManual()) {
+    hlo_->set_sharding(HloSharding::Replicate());
+    return PartitionedHlo(hlo_, base_shape_, state_);
+  }
 
   if (sharding.IsReplicated()) {
     return *this;
