@@ -269,7 +269,8 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
   // TODO(b/301020144) Move this all to the appropriate Executor class.
-  return GpuTimer::CreateEventBasedTimer(stream, use_delay_kernel);
+  return GpuTimer::CreateEventBasedTimer(stream, gpu_context(),
+                                         use_delay_kernel);
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {

@@ -66,14 +66,11 @@ bool ShouldLaunchDelayKernel() {
   return value;
 }
 
-absl::Status CreateGpuTimerParts(Stream* real_stream, bool use_delay_kernel,
-                                 GpuExecutor*& parent,
+absl::Status CreateGpuTimerParts(GpuStream* stream, bool use_delay_kernel,
+                                 GpuContext* context,
                                  GpuEventHandle& start_event,
                                  GpuEventHandle& stop_event,
                                  GpuSemaphore& semaphore) {
-  GpuStream* stream = AsGpuStream(real_stream);
-  parent = stream->parent();
-  GpuContext* context = parent->gpu_context();
   TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &start_event,
                                           GpuDriver::EventFlags::kDefault));
   TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &stop_event,
@@ -88,27 +85,27 @@ absl::Status CreateGpuTimerParts(Stream* real_stream, bool use_delay_kernel,
     TF_ASSIGN_OR_RETURN(bool is_supported, DelayKernelIsSupported(stream));
 
     if (is_supported) {
-      TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(real_stream));
+      TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(stream));
     }
   }
 
   // The start event goes after the delay kernel in the stream
-  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
-                                            stream->gpu_stream()));
+  TF_RETURN_IF_ERROR(
+      GpuDriver::RecordEvent(context, start_event, stream->gpu_stream()));
   return absl::OkStatus();
 }
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
-GpuTimer::CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
-  GpuExecutor* parent = nullptr;
+GpuTimer::CreateEventBasedTimer(GpuStream* stream, GpuContext* context,
+                                bool use_delay_kernel) {
   GpuEventHandle start_event = nullptr;
   GpuEventHandle stop_event = nullptr;
   GpuSemaphore semaphore{};
-  TF_RETURN_IF_ERROR(CreateGpuTimerParts(stream, use_delay_kernel, parent,
+  TF_RETURN_IF_ERROR(CreateGpuTimerParts(stream, use_delay_kernel, context,
                                          start_event, stop_event, semaphore));
-  return std::make_unique<GpuTimer>(parent, start_event, stop_event,
-                                    AsGpuStream(stream), std::move(semaphore));
+  return std::make_unique<GpuTimer>(context, start_event, stop_event, stream,
+                                    std::move(semaphore));
 }
 
 /*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
@@ -116,26 +113,25 @@ GpuTimer::CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
 }
 
 GpuTimer::~GpuTimer() {
-  GpuContext* context = parent_->gpu_context();
   if (semaphore_ && !is_stopped_) {
     // Signal the delay kernel that it can exit
     *semaphore_ = GpuSemaphoreState::kRelease;
     // Wait for the delay kernel to exit before destroying the value that it is
     // watching.
     absl::Status status =
-        GpuDriver::SynchronizeStream(context, stream_->gpu_stream());
+        GpuDriver::SynchronizeStream(context_, stream_->gpu_stream());
     if (!status.ok()) {
       LOG(ERROR) << status;
     }
   }
   if (start_event_ != nullptr) {
-    absl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
+    absl::Status status = GpuDriver::DestroyEvent(context_, &start_event_);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }
   }
   if (stop_event_ != nullptr) {
-    absl::Status status = GpuDriver::DestroyEvent(context, &stop_event_);
+    absl::Status status = GpuDriver::DestroyEvent(context_, &stop_event_);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }
@@ -146,8 +142,8 @@ absl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
   if (is_stopped_) {
     return absl::InternalError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(), stop_event_,
-                                            stream_->gpu_stream()));
+  TF_RETURN_IF_ERROR(
+      GpuDriver::RecordEvent(context_, stop_event_, stream_->gpu_stream()));
   // If we launched the delay kernel then check if it already timed out.
   if (semaphore_) {
     if (*semaphore_ == GpuSemaphoreState::kTimedOut) {
@@ -161,9 +157,8 @@ absl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
     }
   }
   float elapsed_milliseconds = NAN;
-  if (!GpuDriver::GetEventElapsedTime(parent_->gpu_context(),
-                                      &elapsed_milliseconds, start_event_,
-                                      stop_event_)) {
+  if (!GpuDriver::GetEventElapsedTime(context_, &elapsed_milliseconds,
+                                      start_event_, stop_event_)) {
     return absl::InternalError("Error stopping the timer");
   }
   is_stopped_ = true;
