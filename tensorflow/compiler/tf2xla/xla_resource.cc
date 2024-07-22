@@ -18,11 +18,22 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "absl/memory/memory.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/sharding_util.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/xla_builder.h"
+#include "xla/status_macros.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
