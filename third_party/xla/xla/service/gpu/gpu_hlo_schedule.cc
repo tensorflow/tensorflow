@@ -507,8 +507,10 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
           .debug_options()
           .xla_gpu_enable_analytical_latency_estimator();
   if (profile.has_value()) {
-    latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
-        config, std::move(gpu_latency_estimator), profile.value());
+    auto aggregator = std::make_unique<GPUProfileStatisticsAggregator>();
+    auto pg_latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+        config, std::move(gpu_latency_estimator), profile.value(),
+        std::move(aggregator));
     LOG(INFO)
         << "Found profile, using profile guided latency estimator. Profile:\n"
         << profile->DebugString();
@@ -518,6 +520,8 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
                    "still be used : "
                 << s.message();
     }
+    TF_RETURN_IF_ERROR(pg_latency_estimator->CheckAccuracy(*module));
+    latency_estimator = std::move(pg_latency_estimator);
   } else if (enable_analytical_latency_estimator) {
     latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
         config, std::move(gpu_latency_estimator), gpu_device_info,

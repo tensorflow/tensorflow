@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/latency_hiding_scheduler.h"
+#include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/shape.h"
 
 namespace xla {
@@ -116,6 +117,24 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
 
  private:
   int64_t pointer_size_;
+};
+
+// GPU PGLE statistics tracker.
+class GPUProfileStatisticsAggregator : public ProfileStatisticsAggregator {
+ public:
+  // Counts `instruction` as missing if is not a NOP.
+  void HandleMissingInstructionCost(const HloInstruction& instruction) override;
+
+  // Counts `instruction` as found.
+  void HandleFoundInstructionCost(const HloInstruction& instruction) override;
+
+  // Counts `from` -> `to` pair as missing if it is an async pair.
+  void HandleMissingInstructionLatency(const HloInstruction& from,
+                                       const HloInstruction& to) override;
+
+  // Counts `from` -> `to` pair as found.
+  void HandleFoundInstructionLatency(const HloInstruction& from,
+                                     const HloInstruction& to) override;
 };
 
 }  // namespace gpu
