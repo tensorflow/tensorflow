@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OpDefinition.h"
@@ -46,6 +47,10 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
 #include "xla/service/gpu/model/indexing_map.h"
+
+#define GET_ATTRDEF_CLASSES
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.cc.inc"
+#undef GET_ATTRDEF_CLASSES
 
 namespace xla {
 namespace gpu {
@@ -151,6 +156,11 @@ void XlaGpuDialect::initialize() {
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.cc.inc"
 #undef GET_OP_LIST
       >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.cc.inc"
+      >();
+#undef GET_ATTRDEF_LIST
   addInterfaces<XlaGpuInlinerInterface>();
 }
 

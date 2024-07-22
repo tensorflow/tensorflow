@@ -14,7 +14,7 @@ package_group(
 )
 
 td_library(
-    name = "xla_gpu_ops_td_files",
+    name = "xla_gpu_td_files",
     srcs = glob(["*.td"]),
     includes = ["."],
     deps = [
@@ -40,7 +40,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_gpu_dialect.td",
-    deps = [":xla_gpu_ops_td_files"],
+    deps = [":xla_gpu_td_files"],
 )
 
 gentbl_cc_library(
@@ -58,14 +58,39 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_gpu_ops.td",
-    deps = [":xla_gpu_ops_td_files"],
+    deps = [":xla_gpu_td_files"],
+)
+
+gentbl_cc_library(
+    name = "xla_gpu_attrs_inc_gen",
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            ["-gen-attrdef-decls"],
+            "xla_gpu_attrs.h.inc",
+        ),
+        (
+            ["-gen-attrdef-defs"],
+            "xla_gpu_attrs.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "xla_gpu_attrs.td",
+    deps = [":xla_gpu_td_files"],
 )
 
 cc_library(
     name = "xla_gpu",
-    srcs = ["xla_gpu_ops.cc"],
-    hdrs = ["xla_gpu_ops.h"],
+    srcs = [
+        "xla_gpu_attrs.cc",
+        "xla_gpu_ops.cc",
+    ],
+    hdrs = [
+        "xla_gpu_attrs.h",
+        "xla_gpu_ops.h",
+    ],
     deps = [
+        ":xla_gpu_attrs_inc_gen",
         ":xla_gpu_dialect_inc_gen",
         ":xla_gpu_ops_inc_gen",
         "//xla/service/gpu/model:indexing_analysis",
