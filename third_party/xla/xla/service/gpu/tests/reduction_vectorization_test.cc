@@ -107,6 +107,9 @@ CHECK: st.global.v2.f32
 }
 
 TEST_F(ReductionVectorizationTest, NoVectorizationForBlockSmallerThanWarpSize) {
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() >= 4) {
+    GTEST_SKIP() << "MLIR emitters can vectorize this";
+  }
   const char* hlo_text = R"(
 HloModule SlowModule
 
