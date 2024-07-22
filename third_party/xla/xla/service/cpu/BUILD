@@ -954,6 +954,7 @@ cc_library(
         "//xla/backends/cpu:xnn_fusion",
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",

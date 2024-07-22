@@ -2666,4 +2666,13 @@ absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
                                                     /*owned=*/true));
 }
 
+absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
+    absl::string_view device_type) {
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
+  if (c_api == nullptr) {
+    return Internal("PJRT C API is nullptr for %s", device_type);
+  }
+  return std::make_unique<PjRtCApiCompiler>(c_api);
+}
+
 }  // namespace xla

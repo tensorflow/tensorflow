@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
@@ -594,8 +595,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
   auto [kernel_spec, kernel_source] =
       std::move(kernel_definition).ReleaseStorage();
 
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      instruction->backend_config<BackendConfig>());
+
   kernels_.push_back(
       {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
+
+  if (backend_config.has_llvm_kernel_options()) {
+    SetXlaCpuBackendOptions(*kernels_.back().module.getModuleUnlocked(),
+                            backend_config.llvm_kernel_options());
+  }
 
   return MakeKernelThunkSequence(
       instruction, std::move(kernel_spec),
