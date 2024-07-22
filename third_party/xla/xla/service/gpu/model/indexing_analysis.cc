@@ -80,12 +80,23 @@ HloInstructionIndexing CreateUnknownIndexing(int64_t count = 1) {
 HloInstructionIndexing ComputeOutputToInputCwiseOpIndexing(
     const HloInstruction* instr, MLIRContext* mlir_context) {
   IndexingMap identity_map = CreateIdentityMap(instr->shape(), mlir_context);
+  IndexingMap unit_map(
+      mlir::AffineMap::get(identity_map.GetAffineMap().getNumDims(),
+                           /*symbolCount=*/0, mlir_context),
+      identity_map.GetDimVars(), /*range_vars=*/{}, /*rt_vars=*/{});
 
   HloInstructionIndexing instr_indexing;
   instr_indexing.indexing_maps.resize(instr->operand_count());
   int64_t operand_count = instr->operand_count();
   for (int64_t operand_id = 0; operand_id < operand_count; ++operand_id) {
-    instr_indexing.indexing_maps[operand_id].insert(identity_map);
+    // Select allows implicit broadcasting in the predicate. We just handle it
+    // generically here.
+    auto* operand = instr->operand(operand_id);
+    if (operand->shape().rank() == 0 && instr->shape().rank() > 0) {
+      instr_indexing.indexing_maps[operand_id].insert(unit_map);
+    } else {
+      instr_indexing.indexing_maps[operand_id].insert(identity_map);
+    }
   }
   return instr_indexing;
 }
