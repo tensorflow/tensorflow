@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/literal_comparison.h"
 #include "xla/literal_util.h"
 #include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
