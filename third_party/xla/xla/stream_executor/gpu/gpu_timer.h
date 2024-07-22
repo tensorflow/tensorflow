@@ -48,11 +48,8 @@ class GpuStream;
 // to be measured more accurately.
 class GpuTimer : public EventBasedTimer {
  public:
-  static absl::StatusOr<GpuTimer> Create(Stream* stream, bool use_delay_kernel);
   static absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
       Stream* stream, bool use_delay_kernel);
-  [[deprecated("Pass Stream* not GpuStream*")]] static absl::StatusOr<GpuTimer>
-  Create(GpuStream* stream);
 
   explicit GpuTimer(GpuExecutor* parent, GpuEventHandle start_event,
                     GpuEventHandle stop_event, GpuStream* stream,

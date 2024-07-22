@@ -99,41 +99,6 @@ absl::Status CreateGpuTimerParts(Stream* real_stream, bool use_delay_kernel,
 }
 }  // namespace
 
-/*deprecated*/ /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(
-    GpuStream* stream) {
-  // This deprecated factory does not launch the delay kernel and may lead to
-  // reduced measurement accuracy.
-  GpuExecutor* parent = stream->parent();
-  GpuContext* context = parent->gpu_context();
-  GpuEventHandle start_event;
-  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &start_event,
-                                          GpuDriver::EventFlags::kDefault));
-  GpuEventHandle stop_event;
-  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &stop_event,
-                                          GpuDriver::EventFlags::kDefault));
-  CHECK(start_event != nullptr && stop_event != nullptr);
-  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
-                                            stream->gpu_stream()));
-  return absl::StatusOr<GpuTimer>{absl::in_place, parent, start_event,
-                                  stop_event, stream};
-}
-
-/*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(Stream* real_stream,
-                                                     bool use_delay_kernel) {
-  GpuExecutor* parent = nullptr;
-  GpuEventHandle start_event = nullptr;
-  GpuEventHandle stop_event = nullptr;
-  GpuSemaphore semaphore{};
-  TF_RETURN_IF_ERROR(CreateGpuTimerParts(real_stream, use_delay_kernel, parent,
-                                         start_event, stop_event, semaphore));
-  return absl::StatusOr<GpuTimer>{absl::in_place,
-                                  parent,
-                                  start_event,
-                                  stop_event,
-                                  AsGpuStream(real_stream),
-                                  std::move(semaphore)};
-}
-
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 GpuTimer::CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
   GpuExecutor* parent = nullptr;
