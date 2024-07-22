@@ -2860,6 +2860,9 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
 
   ExecutableRunOptions run_options;
   run_options.set_stream(device_state->compute_stream());
+  run_options.set_device_ordinal(device_state->local_device_id().value());
+  run_options.set_physical_device_ordinal(
+      device_state->local_hardware_id().value());
   run_options.set_host_to_device_stream(device_state->host_to_device_stream());
   run_options.set_device_to_host_stream(device_state->GetDeviceToHostStream());
   run_options.set_allocator(client_->allocator());
