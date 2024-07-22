@@ -186,6 +186,7 @@ class _Optimizer(metaclass=abc.ABCMeta):
     return hash(tuple(self.__dict__.items()))
 
 
+@tf_export("tpu.experimental.embedding.CustomOptimizer")
 class CustomOptimizer(_Optimizer):
   """Optimization parameters for custom optimizer for TPU embeddings.
 
