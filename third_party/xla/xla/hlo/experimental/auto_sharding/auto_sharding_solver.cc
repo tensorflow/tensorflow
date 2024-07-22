@@ -368,11 +368,7 @@ void AddMemoryTerms(
 //     d. For all (i, j) in E, e[i, j] in {0, 1} ^ dim(e[i, j])
 //     e. For all (i, j) in E, e[i, j]^T * 1 == 1
 //       Make sure s[i] and s[j] align with e[i, j]:
-//     f. For all (i, j) in E, 0 <= p < dim(s[i]),
-//        sum_{0 <= q < dim(s[j])} e[i, j](p * dim(s[j]) + q) <= s[i](p)
-//     g. For all (i, j) in E, 0 <= q < dim(s[j]),
-//        sum_{0 <= p < dim(s[i])} e[i, j](p * dim(s[j]) + q) <= s[j](q)
-//     h. For all (i, j) in A and all (p, q),
+//     f. For all (i, j) in A and all (p, q),
 //        s[i][p] + s[j][q] <= 1 if v[p, q] == 1.0
 // Serialize parameters of the ILP problem as numpy arrays and call the python
 // solver.
@@ -640,44 +636,19 @@ AutoShardingSolverResult CallORToolsSolver(
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
     if (e_follow[edge_idx] >= 0) continue;
     const auto& edge = request.edges(edge_idx);
-    MPConstraint* constraint = solver->MakeRowConstraint(
-        1.0, 1.0,
-        absl::StrCat("sum(e[", edge.first(), "][", edge.second(), "][*]) = 1"));
-    for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
-      constraint->SetCoefficient(e[edge_idx][j], 1.0);
+    for (NodeStrategyIdx p = 0; p < s[edge.first()].size(); ++p) {
+      for (NodeStrategyIdx q = 0; q < s[edge.second()].size(); ++q) {
+        const EdgeStrategyIdx j = p * s[edge.second()].size() + q;
+        MPConstraint* constraint = solver->MakeRowConstraint(
+            -1.0, MPSolver::infinity(),
+            absl::StrCat("edge[", edge_idx, "][", j, "]"));
+        constraint->SetCoefficient(s[edge.first()][p], -1.0);
+        constraint->SetCoefficient(s[edge.second()][q], -1.0);
+        constraint->SetCoefficient(e[edge_idx][j], 1.0);
+      }
     }
   }
   // f.
-  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
-    if (e_follow[edge_idx] >= 0) continue;
-    const auto& edge = request.edges(edge_idx);
-    for (NodeStrategyIdx p = 0; p < s[edge.first()].size(); ++p) {
-      MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), 0,
-          absl::StrCat("f for i = ", edge_idx, ", p = ", p));
-      constraint->SetCoefficient(s[edge.first()][p], -1.0);
-      for (NodeStrategyIdx q = 0; q < s[edge.second()].size(); ++q) {
-        const EdgeStrategyIdx j = p * s[edge.second()].size() + q;
-        constraint->SetCoefficient(e[edge_idx][j], 1.0);
-      }
-    }
-  }
-  // g.
-  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
-    if (e_follow[edge_idx] >= 0) continue;
-    const auto& edge = request.edges(edge_idx);
-    for (NodeStrategyIdx q = 0; q < s[edge.second()].size(); ++q) {
-      MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), 0,
-          absl::StrCat("g for i = ", edge_idx, ", q = ", q));
-      constraint->SetCoefficient(s[edge.second()][q], -1.0);
-      for (NodeStrategyIdx p = 0; p < s[edge.first()].size(); ++p) {
-        const EdgeStrategyIdx j = p * s[edge.second()].size() + q;
-        constraint->SetCoefficient(e[edge_idx][j], 1.0);
-      }
-    }
-  }
-  // h.
   absl::flat_hash_set<std::pair<NodeIdx, NodeIdx>> alias_set;
   for (auto alias_idx = 0; alias_idx < request.aliases_size(); ++alias_idx) {
     const auto& raw_alias = request.aliases(alias_idx);
