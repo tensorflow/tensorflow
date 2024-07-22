@@ -120,7 +120,7 @@ class CommandBufferScheduling : public HloModulePass {
   // parameters. Results of instructions in the sequence are returned in a tuple
   // (if command buffer has a single result we don't wrap it into tuple).
   static absl::StatusOr<CommandBuffer> PrepareCommandBuffer(
-      const HloInstructionSequence& seq);
+      const HloInstructionSequence& seq, HloModule* module);
 
   // Rewrites prepared command buffer computation into Hlo operations in the
   // parent computation (calls command buffer and replaced all users).
