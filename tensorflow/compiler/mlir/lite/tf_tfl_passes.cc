@@ -239,6 +239,10 @@ void AddPostQuantizationStableHloToTfPasses(
   if (!pass_config.disable_hlo_to_tfl_conversion) {
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::odml::CreatePrepareHloPass());
+    // This pass must be added right before the legalization because pattern
+    // rewriter driver applies folding by default.
+    // TODO: b/354280588 - Rewrite this pass into a pattern in PrepareHloPass.
+    pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
     pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
   }
   // TF dialect passes
