@@ -148,7 +148,6 @@ cc_library(
         ":rocm_driver",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_event_header",
-        "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
     ]),
 )

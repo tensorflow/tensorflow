@@ -18,14 +18,15 @@ limitations under the License.
 
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 
 namespace stream_executor::gpu {
+
+class GpuContext;
 
 // This class implements Event::PollForStatus for CUDA devices.
 class CudaEvent : public GpuEvent {
  public:
-  explicit CudaEvent(GpuExecutor *executor) : GpuEvent(executor) {}
+  explicit CudaEvent(GpuContext *context) : GpuEvent(context) {}
 
   Event::Status PollForStatus() override;
 };

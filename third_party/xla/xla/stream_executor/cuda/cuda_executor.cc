@@ -722,7 +722,7 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
 
 absl::StatusOr<std::unique_ptr<GpuEvent>> GpuExecutor::CreateGpuEvent(
     bool allow_timing) {
-  auto gpu_event = std::make_unique<CudaEvent>(this);
+  auto gpu_event = std::make_unique<CudaEvent>(gpu_context());
   TF_RETURN_IF_ERROR(gpu_event->Init(allow_timing));
   return std::move(gpu_event);
 }
