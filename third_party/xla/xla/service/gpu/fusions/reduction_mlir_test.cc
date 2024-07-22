@@ -161,6 +161,24 @@ constexpr auto kMultiRowReductionX2VectorX4 = R"(
       ROOT fusion = (pred[76800]{0}, pred[76800]{0}) fusion(p0, p1), kind=kInput, calls=fusion
     })";
 
+constexpr auto kMultiRowReductionX16VectorX2 = R"(
+    or {
+      tmp_0 = pred[] parameter(0)
+      tmp_1 = pred[] parameter(1)
+      ROOT tmp_2 = pred[] or(tmp_0, tmp_1)
+    }
+
+    fusion {
+      p0 = pred[76800,2] parameter(0)
+      c0 = pred[] constant(false)
+      ROOT reduce = pred[76800] reduce(p0, c0), dimensions={1}, to_apply=or
+    }
+
+    ENTRY main {
+      p0 = pred[76800,2] parameter(0)
+      ROOT fusion = pred[76800] fusion(p0), kind=kInput, calls=fusion
+    })";
+
 constexpr std::string_view kRowReductionSideOutput = R"(
     Add {
       lhs = f32[] parameter(0)
@@ -853,6 +871,11 @@ TEST_F(MlirMultiRowReductionTest, VectorizedX4Indexing) {
   EXPECT_THAT(GetLoopTripCounts(*fusion->ComputeThreadIdToInputIndexing(
                   0, 0, &mlir_context_)),
               ElementsAre(1 /* major reduced */, 4 /* vector size */));
+}
+
+TEST_F(MlirMultiRowReductionTest, LimitedVectorizationCorrectness) {
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kMultiRowReductionX16VectorX2, ErrorSpec{1e-3}));
 }
 
 TEST_F(MlirMultiRowReductionTest, VectorizedX4Correctness) {

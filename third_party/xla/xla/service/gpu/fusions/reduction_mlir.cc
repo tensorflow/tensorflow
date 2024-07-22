@@ -742,7 +742,12 @@ MlirMultiRowReductionFusion::MlirMultiRowReductionFusion(
   // This vector size is always valid: we know that the reduced dimension is a
   // power of 2, since otherwise RowReductionGetRowsPerWarp would have
   // returned 1.
-  int vector_size = 32 / smallest_input_or_output_bits;
+  // Our codegen can't currently deal with vectorization across rows, so we
+  // limit the vector size to the size of the row. Note that this emitter
+  // essentially reverts to the loop emitter in this case, except for side
+  // outputs.
+  int vector_size = std::min(static_cast<int>(input_shape_[kRowMinorReduced]),
+                             32 / smallest_input_or_output_bits);
 
   // We target 8 warps per block, which means there could be up to 8 blocks per
   // SM, but we have no good way of knowing. In practice, enabling vectorization
