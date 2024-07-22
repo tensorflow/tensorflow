@@ -1752,4 +1752,133 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
+TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSConstantOffset) {
+  const char* hlo = R"(
+  HloModule test, replica_count=2
+
+  add {
+    param_0 = f16[] parameter(0)
+    param_1 = f16[] parameter(1)
+    ROOT add.1 = f16[] add(param_0, param_1)
+  }
+
+  ENTRY main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    constant_20 = u32[] constant(20)
+    constant_0 = u32[] constant(0)
+    reduce-scatter = f16[64,128]{1,0} reduce-scatter(param_0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+    ROOT loop_dynamic_update_slice_fusion = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, constant_20, constant_0)
+  }
+  )";
+
+  const char* expected = R"(
+  // CHECK: %address-computation{{.+}} {
+  // CHECK:   %[[RS:.+]] = f16[64,128]{1,0} reduce-scatter({{.+}})
+  // CHECK:   ROOT %{{.+}} = f16[128,128]{1,0} dynamic-update-slice(%{{.+}}, %[[RS]], %{{.+}}, %{{.+}})
+  // CHECK: }
+  // CHECK: ENTRY {{.+}} {
+  // CHECK-NOT: reduce-scatter
+  // CHECK:   ROOT %{{.+}} = {{.+}} fusion(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}), kind=kCustom, calls=%address-computation, {{.+}}"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}
+  // CHECK: }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+}
+
+// This is not required to pass, but in current implementation this works by
+// forcing a D2H copy. Adding this here to ensure that the change in this
+// behaviour is intentional.
+TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSParameterOffset) {
+  const char* hlo = R"(
+  HloModule test, replica_count=2
+
+  add.clone {
+    x.1 = f16[] parameter(0)
+    y.1 = f16[] parameter(1)
+    ROOT add.462 = f16[] add(x.1, y.1)
+  }
+
+  ENTRY %main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    param_2 = u32[] parameter(2)
+    constant_0 = u32[] constant(0)
+    reduce-scatter = f16[64,128]{1,0} reduce-scatter(param_0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
+    ROOT dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, param_2, constant_0), metadata={}
+  })";
+
+  const char* expected = R"(
+  // CHECK: %address-computation{{.+}} {
+  // CHECK:   %[[RS:.+]] = f16[64,128]{1,0} reduce-scatter({{.+}})
+  // CHECK:   ROOT %{{.+}} = f16[128,128]{1,0} dynamic-update-slice(%{{.+}}, %[[RS]], %{{.+}}, %{{.+}})
+  // CHECK: }
+  // CHECK: ENTRY {{.+}} {
+  // CHECK-NOT: reduce-scatter
+  // CHECK:   ROOT %{{.+}} = {{.+}} fusion(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}), kind=kCustom, calls=%address-computation, {{.+}}"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}
+  // CHECK: }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+}
+
+TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSLoopIterationOffset) {
+  const char* hlo = R"(
+  HloModule jit_scan, replica_count=2
+
+  add {
+    param_0 = f32[] parameter(0)
+    param_1 = f32[] parameter(1)
+    ROOT add.6 = f32[] add(param_0, param_1)
+  }
+
+  Body {
+    arg_tuple.1 = (s32[], f32[128,128]{1,0}, f32[128,128,128]{2,1,0}, f32[128,128]{1,0}) parameter(0)
+    get-tuple-element.5 = s32[] get-tuple-element(arg_tuple.1), index=0
+    constant.1 = s32[] constant(1)
+    add.7 = s32[] add(get-tuple-element.5, constant.1), metadata={op_name="jit(scan)/jit(main)/while/body/add" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+    get-tuple-element.6 = f32[128,128]{1,0} get-tuple-element(arg_tuple.1), index=3
+    get-tuple-element.7 = f32[128,128,128]{2,1,0} get-tuple-element(arg_tuple.1), index=2
+    reduce-scatter.0 = f32[64,128]{1,0} reduce-scatter(get-tuple-element.6), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+    bitcast.63 = f32[1,64,128]{2,1,0} bitcast(reduce-scatter.0)
+    constant.2 = s32[] constant(0)
+    compare.4 = pred[] compare(get-tuple-element.5, constant.2), direction=LT, metadata={op_name="jit(scan)/jit(main)/while/body/lt" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+    constant.3 = s32[] constant(128)
+    add.8 = s32[] add(get-tuple-element.5, constant.3), metadata={op_name="jit(scan)/jit(main)/while/body/add" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+    select.2 = s32[] select(compare.4, add.8, get-tuple-element.5), metadata={op_name="jit(scan)/jit(main)/while/body/select_n" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+    dynamic-update-slice.2 = f32[128,128,128]{2,1,0} dynamic-update-slice(get-tuple-element.7, bitcast.63, select.2, constant.2, constant.2), metadata={op_name="jit(scan)/jit(main)/while/body/dynamic_update_slice" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+    ROOT tuple.1 = (s32[], f32[128,128]{1,0}, f32[128,128,128]{2,1,0}, f32[128,128]{1,0}) tuple(add.7, get-tuple-element.6, dynamic-update-slice.2, get-tuple-element.6)
+  } // Body
+
+  Cond {
+    arg_tuple.0 = (s32[], f32[128,128]{1,0}, f32[128,128,128]{2,1,0}, f32[128,128]{1,0}) parameter(0)
+    get-tuple-element.4 = s32[] get-tuple-element(arg_tuple.0), index=0
+    constant.0 = s32[] constant(128)
+    ROOT compare.5 = pred[] compare(get-tuple-element.4, constant.0), direction=LT, metadata={op_name="jit(scan)/jit(main)/while/cond/lt" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+  }
+
+  ENTRY main.55 {
+    Arg_2.3 = f32[128,128,128]{2,1,0} parameter(2), metadata={op_name="args[2]"}
+    constant.4 = s32[] constant(0)
+    Arg_1.2 = f32[128,128]{1,0} parameter(1), metadata={op_name="args[1]"}
+    constant.5 = f32[] constant(0)
+    broadcast.1 = f32[128,128,128]{2,1,0} broadcast(constant.5), dimensions={}, metadata={op_name="jit(scan)/jit(main)/broadcast_in_dim[shape=(128, 128, 128) broadcast_dimensions=()]" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+    Arg_0.1 = f32[128,128]{1,0} parameter(0), metadata={op_name="args[0]"}
+    tuple = (s32[], f32[128,128]{1,0}, f32[128,128,128]{2,1,0}, f32[128,128]{1,0}) tuple(constant.4, Arg_1.2, broadcast.1, Arg_0.1)
+    while = (s32[], f32[128,128]{1,0}, f32[128,128,128]{2,1,0}, f32[128,128]{1,0}) while(tuple), condition=Cond, body=Body, metadata={op_name="jit(scan)/jit(main)/while[cond_nconsts=0 body_nconsts=2]" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}, backend_config={"known_trip_count":{"n":"128"}}
+    get-tuple-element.50 = f32[128,128]{1,0} get-tuple-element(while), index=1, metadata={op_name="jit(scan)/jit(main)/while[cond_nconsts=0 body_nconsts=2]" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+    get-tuple-element.51 = f32[128,128,128]{2,1,0} get-tuple-element(while), index=2, metadata={op_name="jit(scan)/jit(main)/while[cond_nconsts=0 body_nconsts=2]" source_file="/home/scratch.svaishay_gpu_1/docker-xla/xla/../sample.py" source_line=12}
+    ROOT tuple.54 = (f32[128,128]{1,0}, f32[128,128,128]{2,1,0}) tuple(get-tuple-element.50, get-tuple-element.51)
+  })";
+  const char* expected = R"(
+  // CHECK: %address-computation{{.*}}{
+  // CHECK:   {{.+}} = {{.*}}reduce-scatter({{.+}})
+  // CHECK:   {{.+}} = {{.*}}dynamic-update-slice({{.+}})
+  // CHECK: }
+  // CHECK: Body{{.+}}{
+  // CHECK-NOT: {{.+}} = {{.*}}reduce-scatter({{.+}})
+  // CHECK:   {{.+}} = {{.+}}fusion({{.+}}), kind=kCustom, calls=%address-computation{{.*}}"name":"dynamic_address_computation"
+  // CHECK: }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+}
+
 }  // namespace xla::gpu
