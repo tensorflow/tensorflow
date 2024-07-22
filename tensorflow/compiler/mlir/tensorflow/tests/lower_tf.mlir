@@ -9,10 +9,10 @@ func.func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {
   // CHECK-DAG: %[[cst_3:.*]] = "tf.Const"() <{value = dense<0> : tensor<5xi32>}> : () -> tensor<5xi32>
 
   // CHECK-DAG: %[[INDICES:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<5xi32>, tensor<2xi32>) -> tensor<5x1xi32>
-  // CHECK-DAG: %[[INDICES_1:.*]] = "tf.TensorScatterAdd"(%[[cst_3]], %[[INDICES]], %[[cst_2]]) : (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
+  // CHECK-DAG: %[[INDICES_1:.*]] = "tf.TensorScatterAdd"(%[[cst_3]], %[[INDICES]], %[[cst_2]]) <{bad_indices_policy = ""}> : (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
   // CHECK-DAG: %[[INDICES_2:.*]] = "tf.Sub"(%[[cst_1]], %[[INDICES_1]]) : (tensor<i32>, tensor<5xi32>) -> tensor<5xi32>
   // CHECK-DAG: %[[INDICES_3:.*]] = "tf.Mul"(%[[INDICES_2]], %arg0) : (tensor<5xi32>, tensor<5xi32>) -> tensor<5xi32>
-  // CHECK-DAG: %[[INDICES_4:.*]] = "tf.TensorScatterAdd"(%[[cst_3]], %0, %[[UPDATES]]) : (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
+  // CHECK-DAG: %[[INDICES_4:.*]] = "tf.TensorScatterAdd"(%[[cst_3]], %0, %[[UPDATES]]) <{bad_indices_policy = ""}> : (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
   // CHECK-DAG: %[[INDICES_5:.*]] = "tf.AddV2"(%[[INDICES_3]], %[[INDICES_4]]) : (tensor<5xi32>, tensor<5xi32>) -> tensor<5xi32>
   %0 = "tf.InvertPermutation"(%arg0) : (tensor<5xi32>) -> tensor<5xi32>
   func.return %0 : tensor<5xi32>
@@ -825,7 +825,7 @@ func.func @Inv_i32(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 // CHECK-LABEL: @ScatterNd
 func.func @ScatterNd(%arg0: tensor<4x1xi32>, %arg1: tensor<4xf32>) -> tensor<8xf32> {
   // CHECK: %[[ZERO:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<8xf32>}> : () -> tensor<8xf32>
-  // CHECK: "tf.TensorScatterAdd"(%[[ZERO]], %arg0, %arg1) : (tensor<8xf32>, tensor<4x1xi32>, tensor<4xf32>) -> tensor<8xf32>
+  // CHECK: "tf.TensorScatterAdd"(%[[ZERO]], %arg0, %arg1) <{bad_indices_policy = ""}> : (tensor<8xf32>, tensor<4x1xi32>, tensor<4xf32>) -> tensor<8xf32>
 
   %shape = "tf.Const"() {value = dense<[8]> : tensor<1xi32>} : () -> tensor<1xi32>
   %0 = "tf.ScatterNd"(%arg0, %arg1, %shape) : (tensor<4x1xi32>, tensor<4xf32>, tensor<1xi32>) -> tensor<8xf32>
@@ -1216,10 +1216,10 @@ func.func @scatter_nd_updates(%arg0: tensor<14xf32>, %arg1: tensor<1x1xi32>, %ar
   // CHECK-DAG: %[[CST:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}> : () -> tensor<f32>
   // CHECK-DAG: %[[CST0:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
   // CHECK-DAG: %[[CST1:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<14xf32>}> : () -> tensor<14xf32>
-  // CHECK: %[[SCATTER:.*]] = "tf.TensorScatterAdd"(%cst_1, %arg1, %[[CST0]]) : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
+  // CHECK: %[[SCATTER:.*]] = "tf.TensorScatterAdd"(%cst_1, %arg1, %[[CST0]]) <{bad_indices_policy = ""}> : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
   // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[CST]], %[[SCATTER]]) : (tensor<f32>, tensor<14xf32>) -> tensor<14xf32>
   // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[SUB]], %arg0) : (tensor<14xf32>, tensor<14xf32>) -> tensor<14xf32>
-  // CHECK: %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %arg2) : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
+  // CHECK: %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %arg2) <{bad_indices_policy = ""}> : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
   // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[MUL]], %[[SCATTER1]]) : (tensor<14xf32>, tensor<14xf32>) -> tensor<14xf32>
   // CHECK: return %[[ADD]] : tensor<14xf32>
 }
@@ -1234,10 +1234,10 @@ func.func @scatter_nd_updates_bool(%arg0: tensor<1x24xi1>, %arg1: tensor<1x2x2xi
 // CHECK-DAG:       %[[CST1:.*]] = "tf.Const"() <{value = dense<0> : tensor<1x24xi32>}> : () -> tensor<1x24xi32>
 // CHECK:           %[[CAST0:.*]] = "tf.Cast"(%arg0) <{Truncate = false}> : (tensor<1x24xi1>) -> tensor<1x24xi32>
 // CHECK:           %[[CAST1:.*]] = "tf.Cast"(%arg2) <{Truncate = false}> : (tensor<1x2xi1>) -> tensor<1x2xi32>
-// CHECK:           %[[SCATTER:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %[[CST0]]) : (tensor<1x24xi32>, tensor<1x2x2xi32>, tensor<1x2xi32>) -> tensor<1x24xi32>
+// CHECK:           %[[SCATTER:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %[[CST0]]) <{bad_indices_policy = ""}> : (tensor<1x24xi32>, tensor<1x2x2xi32>, tensor<1x2xi32>) -> tensor<1x24xi32>
 // CHECK:           %[[SUB:.*]] = "tf.Sub"(%[[CST]], %[[SCATTER]]) : (tensor<i32>, tensor<1x24xi32>) -> tensor<1x24xi32>
 // CHECK:           %[[MUL:.*]] = "tf.Mul"(%[[SUB]], %[[CAST0]]) : (tensor<1x24xi32>, tensor<1x24xi32>) -> tensor<1x24xi32>
-// CHECK:           %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %[[CAST1]]) : (tensor<1x24xi32>, tensor<1x2x2xi32>, tensor<1x2xi32>) -> tensor<1x24xi32>
+// CHECK:           %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %[[CAST1]]) <{bad_indices_policy = ""}> : (tensor<1x24xi32>, tensor<1x2x2xi32>, tensor<1x2xi32>) -> tensor<1x24xi32>
 // CHECK:           %[[ADD:.*]] = "tf.AddV2"(%[[MUL]], %[[SCATTER1]]) : (tensor<1x24xi32>, tensor<1x24xi32>) -> tensor<1x24xi32>
 // CHECK:           %[[CAST2:.*]] = "tf.Cast"(%[[ADD]]) <{Truncate = false}> : (tensor<1x24xi32>) -> tensor<1x24xi1>
 // CHECK:           return %[[CAST2]] : tensor<1x24xi1>
