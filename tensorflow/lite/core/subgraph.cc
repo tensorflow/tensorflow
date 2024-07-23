@@ -2517,4 +2517,22 @@ void Subgraph::MaybeReleaseDynamicTensors(const TfLiteNode& node,
   }
 }
 
+TfLiteStatus Subgraph::SetBufferHandleImpl(
+    TfLiteContext* context, TfLiteTensor* tensor,
+    TfLiteBufferHandle buffer_handle, TfLiteDelegate* delegate,
+    bool release_existing_buffer_handle) {
+  TF_LITE_ENSURE(context, tensor != nullptr);
+  TF_LITE_ENSURE(context,
+                 tensor->delegate == nullptr || tensor->delegate == delegate);
+  tensor->delegate = delegate;
+  if (release_existing_buffer_handle &&
+      tensor->buffer_handle != kTfLiteNullBufferHandle) {
+    TF_LITE_ENSURE_STATUS(TfLiteDelegateFreeBufferHandleInternal(
+        context, tensor->delegate, &(tensor->buffer_handle)));
+  }
+  tensor->buffer_handle = buffer_handle;
+
+  return kTfLiteOk;
+}
+
 }  // namespace tflite

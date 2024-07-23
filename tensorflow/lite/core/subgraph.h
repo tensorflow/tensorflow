@@ -947,6 +947,25 @@ class Subgraph {
   // tensors if configured.
   void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
 
+  // Set the buffer handle to a tensor.
+  // The method is used to implement Interpreter::SetBufferHandle and
+  // SignatureRunner::SetInputBufferHandle/SetOutputBufferHandle APIs.
+  // `release_existing_buffer_handle`: If true, the existing buffer handle
+  // will be released by TfLiteDelegate::FreeBufferHandle.
+  static TfLiteStatus SetBufferHandleImpl(
+      TfLiteContext* context, TfLiteTensor* tensor,
+      TfLiteBufferHandle buffer_handle, TfLiteDelegate* delegate,
+      bool release_existing_buffer_handle = true);
+
+  // SetBufferHandleImpl with tensor index.
+  TfLiteStatus SetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle buffer_handle,
+                               TfLiteDelegate* delegate,
+                               bool release_existing_buffer_handle = true) {
+    return SetBufferHandleImpl(&context_, tensor(tensor_index), buffer_handle,
+                               delegate, release_existing_buffer_handle);
+  }
+
   // The state of the Subgraph.
   enum State {
     // The Subgraph isn't ready to be invoked.
