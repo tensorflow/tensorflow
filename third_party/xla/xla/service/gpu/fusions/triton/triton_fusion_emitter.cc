@@ -906,9 +906,10 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
   const HloInstruction* hlo = tiled_hlo.hlo();
 
   if (fusion->IsUserOf(tiled_hlo.hlo())) {
-    auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-        b, tile_multi_index, tiled_hlo,
-        fn.getArgument(fusion->operand_index(hlo)));
+    TF_ASSIGN_OR_RETURN(auto make_tensor,
+                        ir_emitter_triton_internal::CreateMakeTensorPtrOp(
+                            b, tile_multi_index, tiled_hlo,
+                            fn.getArgument(fusion->operand_index(hlo))));
 
     return EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
   }
@@ -2498,8 +2499,9 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
 
 // Computes the base pointer offset for the given tile multi-index and hlo shape
 // taking into account the physical layout of the hlo buffer.
-Value ComputeBasePtrOffset(ImplicitLocOpBuilder b, ValueRange tile_multi_index,
-                           const TiledHloInstruction& tiled_hlo) {
+absl::StatusOr<Value> ComputeBasePtrOffset(
+    ImplicitLocOpBuilder b, ValueRange tile_multi_index,
+    const TiledHloInstruction& tiled_hlo) {
   const Shape& shape = tiled_hlo.hlo()->shape();
   Shape linear_shape = ShapeUtil::MakeShape(shape.element_type(),
                                             {ShapeUtil::ElementsIn(shape)});
@@ -2507,8 +2509,12 @@ Value ComputeBasePtrOffset(ImplicitLocOpBuilder b, ValueRange tile_multi_index,
   // Bitcast map gives an indexing map from linear index to the parameter shape
   // index respecting physical layout of the memory.
   auto bitcast_map = GetBitcastMap(shape, linear_shape, b.getContext());
+
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_hlo.tile_offsets_indexing());
+
   auto compose_indexing_maps =
-      ComposeIndexingMaps(tiled_hlo.tile_offsets_indexing(), bitcast_map);
+      ComposeIndexingMaps(tile_offsets_indexing, bitcast_map);
   compose_indexing_maps.Simplify();
 
   return b.create<ma::IndexCastUIOp>(
@@ -2541,7 +2547,7 @@ SmallVector<Value, 3> ComputeDelinearizedTileIndex(
                                        /*symbols=*/{}, b);
 }
 
-MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
+absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     ImplicitLocOpBuilder& b, ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, Value argument_block) {
   llvm::SmallVector<Value> sizes;
@@ -2601,7 +2607,8 @@ MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
 
   // Manually compute pointer offset to avoid materialized fully parallel
   // dimensions in the tile. Current codegen tried to avoid size-1 dims.
-  Value ptr_offset = ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo);
+  TF_ASSIGN_OR_RETURN(Value ptr_offset,
+                      ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo));
   auto tile_ptr = AddPtr(b, argument_block, ptr_offset);
 
   return MakeTensorPtrOpAndBoundaryChecks{b.create<mt::MakeTensorPtrOp>(
@@ -2640,7 +2647,9 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       symbolic_tile_analysis.ComputeTiledHloInstructions(
-                          block_level_parameters.output_tile_sizes));
+                          block_level_parameters.output_tile_sizes,
+                          /*constraints_are_known_satisfied=*/false,
+                          /*compute_all_tile_offset_indexing_maps=*/true));
 
   SmallVector<Value, 3> tile_multi_index =
       ir_emitter_triton_internal::ComputeDelinearizedTileIndex(
@@ -2652,9 +2661,10 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
                      tiled_hlo_computation, fn, tile_multi_index));
 
   const auto& tiled_hlo = *tiled_hlo_computation.GetRoot();
-  auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-      b, tile_multi_index, tiled_hlo,
-      fn.getArgument(computation->num_parameters()));
+  TF_ASSIGN_OR_RETURN(auto make_tensor,
+                      ir_emitter_triton_internal::CreateMakeTensorPtrOp(
+                          b, tile_multi_index, tiled_hlo,
+                          fn.getArgument(computation->num_parameters())));
   b.create<mt::StoreOp>(make_tensor.op, result, make_tensor.boundary_checks,
                         mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
 

@@ -166,7 +166,7 @@ struct MakeTensorPtrOpAndBoundaryChecks {
   llvm::SmallVector<int32_t> boundary_checks;
 };
 
-MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
+absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value argument_block);
 }  // namespace ir_emitter_triton_internal

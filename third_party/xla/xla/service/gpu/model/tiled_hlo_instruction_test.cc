@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -43,7 +42,7 @@ TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
       /*parameter_number=*/0,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
-  IndexingMap block_id_to_tile_offsets_indexing = IndexingMap::FromTensorSizes(
+  IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
                      &mlir_context_),
       /*dim_upper_bounds=*/{8},
@@ -51,14 +50,14 @@ TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
 
   EXPECT_THAT(TiledHloInstruction::Create(
                   hlo.get(), /*operands=*/{}, /*tile_sizes=*/{16},
-                  /*tile_strides=*/{1, 1}, block_id_to_tile_offsets_indexing)
+                  /*tile_strides=*/{1, 1}, tile_offsets_indexing)
                   .status()
                   .message(),
               HasSubstr("Number of tile sizes must be equal to the rank"));
 
   EXPECT_THAT(TiledHloInstruction::Create(
                   hlo.get(), /*operands=*/{}, /*tile_sizes=*/{16, 16},
-                  /*tile_strides=*/{1, 1, 1}, block_id_to_tile_offsets_indexing)
+                  /*tile_strides=*/{1, 1, 1}, tile_offsets_indexing)
                   .status()
                   .message(),
               HasSubstr("Number of tile strides must be equal to the rank"));
@@ -70,7 +69,7 @@ TEST_F(TiledHloInstructionTest,
       /*parameter_number=*/0,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
-  IndexingMap tile_offsets_indexing1 = IndexingMap::FromTensorSizes(
+  IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0, d1) -> (2 * d0)", &mlir_context_),
       /*dim_upper_bounds=*/{2, 4},
       /*symbol_upper_bounds=*/{});
@@ -78,7 +77,7 @@ TEST_F(TiledHloInstructionTest,
   EXPECT_THAT(
       TiledHloInstruction::Create(
           hlo.get(), /*operands=*/{}, /*tile_sizes=*/{16, 16},
-          /*tile_strides=*/{1, 1}, tile_offsets_indexing1)
+          /*tile_strides=*/{1, 1}, tile_offsets_indexing)
           .status()
           .message(),
       HasSubstr(

@@ -121,7 +121,7 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 
 namespace ir_emitter_triton_internal {
 
-MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
+absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value argument_block) {
   return MakeTensorPtrOpAndBoundaryChecks();

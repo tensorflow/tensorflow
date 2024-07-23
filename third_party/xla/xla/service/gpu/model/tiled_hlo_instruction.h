@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -52,8 +55,7 @@ class TiledHloInstruction {
       llvm::SmallVector<const TiledHloInstruction*> operands,
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
-
-      IndexingMap tile_offsets_indexing);
+      std::optional<IndexingMap> tile_offsets_indexing);
 
   // Returns the original HLO instruction.
   const HloInstruction* hlo() const { return hlo_; }
@@ -81,8 +83,16 @@ class TiledHloInstruction {
   // a form of `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`. The number
   // of input dimensions is equal to the rank of output tile of the computation.
   // The number of tile offsets is equal to the rank of the tiled hlo.
-  const IndexingMap& tile_offsets_indexing() const {
-    return tile_offsets_indexing_;
+  //
+  // The indexing map is not computed by default.
+  absl::StatusOr<const IndexingMap> tile_offsets_indexing() const {
+    if (!tile_offsets_indexing_.has_value()) {
+      return absl::FailedPreconditionError(
+          "tile_offsets_indexing was not computed. It is likely that "
+          "`compute_all_tile_offset_indexing_maps` should be set to true in "
+          "`SymbolicTileAnalysis::ComputeTiledHloInstructions`.");
+    }
+    return *tile_offsets_indexing_;
   }
 
   std::string ToString() const;
@@ -98,7 +108,7 @@ class TiledHloInstruction {
                       llvm::SmallVector<const TiledHloInstruction*> operands,
                       llvm::SmallVector<int64_t> tile_sizes,
                       llvm::SmallVector<int64_t> tile_strides,
-                      IndexingMap tile_offsets_indexing)
+                      std::optional<IndexingMap> tile_offsets_indexing)
       : hlo_(hlo),
         operands_(std::move(operands)),
         tile_sizes_(std::move(tile_sizes)),
@@ -115,16 +125,24 @@ class TiledHloInstruction {
   llvm::SmallVector<int64_t> tile_sizes_;
   llvm::SmallVector<int64_t> tile_strides_;
 
-  // Indexing map for tile offsets.
-  IndexingMap tile_offsets_indexing_;
+  // See comment for `tile_offsets_indexing()`.
+  std::optional<IndexingMap> tile_offsets_indexing_;
 };
 
 inline bool operator==(const TiledHloInstruction& lhs,
                        const TiledHloInstruction& rhs) {
-  return lhs.hlo() == rhs.hlo() && lhs.tile_sizes() == rhs.tile_sizes() &&
-         lhs.tile_strides() == rhs.tile_strides() &&
-         lhs.operands() == rhs.operands() &&
-         lhs.tile_offsets_indexing() == rhs.tile_offsets_indexing();
+  if (lhs.hlo() != rhs.hlo() || lhs.tile_sizes() != rhs.tile_sizes() ||
+      lhs.tile_strides() != rhs.tile_strides()) {
+    return false;
+  }
+
+  if (lhs.operands().empty() && rhs.operands().empty()) {
+    // Tile offsets indexing is guaranteed to be computed only if tile sizes are
+    // different and the instruction has no operands.
+    return lhs.tile_offsets_indexing() == rhs.tile_offsets_indexing();
+  }
+
+  return lhs.operands() == rhs.operands();
 }
 
 inline bool operator!=(const TiledHloInstruction& lhs,
@@ -142,8 +160,7 @@ H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
       absl::Span<int64_t const>(tiled_hlo_instruction.tile_sizes()),
       absl::Span<int64_t const>(tiled_hlo_instruction.tile_strides()),
       absl::Span<const TiledHloInstruction* const>(
-          tiled_hlo_instruction.operands()),
-      tiled_hlo_instruction.tile_offsets_indexing());
+          tiled_hlo_instruction.operands()));
 }
 
 }  // namespace gpu
