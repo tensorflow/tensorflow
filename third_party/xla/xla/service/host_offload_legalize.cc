@@ -248,9 +248,8 @@ absl::StatusOr<std::vector<InstructionAndIndex>> WalkDownMemoryOffload(
     const InstructionAndIndex& current_value, const CallGraph& call_graph) {
   // TODO(maggioni): Verify that set of instructions supported in chain by
   // legalization is in sync with host_offloader.
-  VLOG(5) << "Current value in progress: "
-          << current_value.instruction->ToString()
-          << " idx: " << current_value.index;
+  VLOG(6) << "Getting users of: \"" << current_value.instruction->ToString()
+          << "\" at index " << current_value.index;
   std::vector<InstructionAndIndex> results;
   auto add_gte_for_idx = [&results](HloInstruction* instr,
                                     int idx) -> absl::Status {
@@ -397,18 +396,20 @@ absl::Status MoveCopy(
   while (!stack.empty()) {
     InstructionAndIndex current_instruction_and_index = stack.back();
     stack.pop_back();
-    VLOG(5) << "Current value before down: "
+    VLOG(5) << "Current top of stack: "
             << current_instruction_and_index.instruction->ToString() << " "
             << current_instruction_and_index.index;
     absl::StatusOr<std::vector<InstructionAndIndex>> current_value_down =
         WalkDownMemoryOffload(current_instruction_and_index, *call_graph);
     if (!current_value_down.ok()) {
-      VLOG(5) << "Current value down failed: " << current_value_down.status();
+      VLOG(5) << "WalkDownMemoryOffload failed: "
+              << current_value_down.status();
       break;
     }
     for (InstructionAndIndex& instruction_and_index :
          current_value_down.value()) {
       HloInstruction* instruction = instruction_and_index.instruction;
+      VLOG(5) << "Evaluating successor: " << instruction->ToString();
       const int index = instruction_and_index.index;
       UpdateInstructionLayout(instruction_and_index,
                               copy_to_move->operand(0)->shape().layout());
@@ -423,11 +424,7 @@ absl::Status MoveCopy(
         UpdateInstructionLayout(InstructionAndIndex(caller, index),
                                 copy_to_move->operand(0)->shape().layout());
       }
-    }
-    for (InstructionAndIndex& instruction_and_index :
-         current_value_down.value()) {
-      HloInstruction* instruction = instruction_and_index.instruction;
-      VLOG(5) << "Current value last down: " << instruction->ToString();
+
       CHECK_NE(instruction->opcode(), HloOpcode::kCopy)
           << "Copies should be processed in order";
       if (absl::c_linear_search(kUsersOpcodes, instruction->opcode()) ||
@@ -453,6 +450,8 @@ absl::Status MoveCopy(
         HloInstruction* new_copy =
             instruction->AddInstruction(copy_to_move->CloneWithNewOperands(
                 new_copy_shape, {new_annotation}));
+        VLOG(2) << absl::StreamFormat("Inserting copy \"%s\" after \"%s\"",
+                                      new_copy->name(), instruction->name());
         std::vector<HloInstruction*> users = instruction->users();
         for (HloInstruction* use : users) {
           if (use == new_copy || use == new_annotation) {
@@ -508,7 +507,8 @@ absl::Status MoveCopy(
       stack.push_back(instruction_and_index);
     }
   }
-  VLOG(5) << "MOVED: " << copy_to_move->ToString();
+  VLOG(2) << absl::StreamFormat("Removing copy \"%s\"",
+                                copy_to_move->ToString());
   TF_RETURN_IF_ERROR(copy_to_move->ReplaceAllUsesWithDifferentShape(
       copy_to_move->mutable_operand(0)));
   TF_RETURN_IF_ERROR(copy_to_move->parent()->RemoveInstruction(copy_to_move));
