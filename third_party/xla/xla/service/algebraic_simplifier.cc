@@ -6475,7 +6475,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
 
   // Try to reorder slice of dot to the operand it comes from
   if (!options_.is_layout_sensitive() &&
-      options_.use_associative_reordering() &&
+      options_.raise_slice_and_reduce_through_dot() &&
       slice->operand(0)->opcode() == HloOpcode::kDot) {
     // Unpack the dot operands
     HloDotInstruction* dot = Cast<HloDotInstruction>(slice->mutable_operand(0));
@@ -7436,7 +7436,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   }
 
   // Try to reorder reduce(dot(A, B)) to dot(A, reduce(B))
-  if (options_.use_associative_reordering()) {
+  if (options_.raise_slice_and_reduce_through_dot()) {
     HloInstruction *a, *b;
     // Reordering does not seem possible if the dot has batch dimensions. We
     // also need the reduction operation to be add, and the reduce to have an
@@ -7530,7 +7530,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
 
       // Only reorder if it would result in sufficiently fewer flops
       if (old_flops / static_cast<double>(new_flops) >
-          options_.associative_reordering_threshold()) {
+          options_.raise_slice_and_reduce_through_dot_threshold()) {
         VLOG(10) << "Reordering reduce into dot operands";
         return ReplaceInstruction(reduce, new_dot);
       }

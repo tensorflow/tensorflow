@@ -117,6 +117,25 @@ class AlgebraicSimplifierOptions {
     return use_convert_constant_folding_;
   }
 
+  void set_raise_slice_and_reduce_through_dot(
+      bool raise_slice_and_reduce_through_dot) {
+    raise_slice_and_reduce_through_dot_ = raise_slice_and_reduce_through_dot;
+  }
+
+  bool raise_slice_and_reduce_through_dot() const {
+    return raise_slice_and_reduce_through_dot_;
+  }
+
+  void set_raise_slice_and_reduce_through_dot_threshold(
+      double raise_slice_and_reduce_through_dot_threshold) {
+    raise_slice_and_reduce_through_dot_threshold_ =
+        raise_slice_and_reduce_through_dot_threshold;
+  }
+
+  double raise_slice_and_reduce_through_dot_threshold() const {
+    return raise_slice_and_reduce_through_dot_threshold_;
+  }
+
   // Enable dot simplification on platforms where it is profitable.
   void set_enable_dot_strength_reduction(bool enable_dot_strength_reduction) {
     enable_dot_strength_reduction_ = enable_dot_strength_reduction;
@@ -300,10 +319,12 @@ class AlgebraicSimplifierOptions {
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
   bool enable_unconditional_reduce_of_concat_replacement_{true};
-  bool use_associative_reordering_{false};
-  bool use_convert_constant_folding_{false};
   bool executing_on_cpu_{false};
+  bool use_associative_reordering_{false};
   double associative_reordering_threshold_{2.0};
+  bool raise_slice_and_reduce_through_dot_{false};
+  double raise_slice_and_reduce_through_dot_threshold_{2.0};
+  bool use_convert_constant_folding_{false};
   Metadata metadata_;
 };
 
