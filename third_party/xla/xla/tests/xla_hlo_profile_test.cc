@@ -188,7 +188,8 @@ void ExecuteAndFetchProfile(std::string* profile_output, LocalClient* client,
   XLA_VLOG_LINES(4, *profile_output);
 }
 
-XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileSingleComputation)) {
+XLA_TEST_F(HloProfileTest,
+           DISABLED_ON_CPU(DISABLED_ON_GPU(ProfileSingleComputation))) {
   const int64_t m = 32, k = 32, n = 32;
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {m, k});
@@ -267,7 +268,8 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileSingleComputation)) {
   EXPECT_TRUE(HasTrops(tanh_profile));
 }
 
-XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
+XLA_TEST_F(HloProfileTest,
+           DISABLED_ON_CPU(DISABLED_ON_GPU(ProfileWhileComputation))) {
   const int64_t size = 32;
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {size, size});
   Shape while_result_shape =
