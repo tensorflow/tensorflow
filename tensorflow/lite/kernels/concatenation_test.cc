@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include <stdint.h>
 
+#include <Eigen/Core>
 #include <initializer_list>
 #include <limits>
 #include <type_traits>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include <Eigen/Core>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -113,20 +113,26 @@ TEST(ConcatenationOpTest, ThreeDimensionalOneInputBFloat16) {
   ConcatenationOpModel<Eigen::bfloat16> m0({TensorType_BFLOAT16, {2, 1, 2}},
                                            /*axis=*/1,
                                            /*num_inputs=*/1);
-  m0.SetInput(0, {Eigen::bfloat16{1.0f}, Eigen::bfloat16{3.0f},
-                  Eigen::bfloat16{4.0f}, Eigen::bfloat16{7.0f}});
+  m0.SetInput(0, {Eigen::bfloat16{1.2f}, Eigen::bfloat16{3.2f},
+                  Eigen::bfloat16{4.2f}, Eigen::bfloat16{7.2f}});
   ASSERT_EQ(m0.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 4, 7}));
+  EXPECT_THAT(m0.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {Eigen::bfloat16{1.2f}, Eigen::bfloat16{3.2f},
+                   Eigen::bfloat16{4.2f}, Eigen::bfloat16{7.2f}})));
 }
 
 TEST(ConcatenationOpTest, ThreeDimensionalOneInputFloat16) {
   ConcatenationOpModel<Eigen::half> m0({TensorType_FLOAT16, {2, 1, 2}},
                                        /*axis=*/1,
                                        /*num_inputs=*/1);
-  m0.SetInput(0, {Eigen::half{1.0f}, Eigen::half{3.0f}, Eigen::half{4.0f},
-                  Eigen::half{7.0f}});
+  m0.SetInput(0, {Eigen::half{1.5f}, Eigen::half{3.5f}, Eigen::half{4.5f},
+                  Eigen::half{7.5f}});
   ASSERT_EQ(m0.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 4, 7}));
+  EXPECT_THAT(
+      m0.GetOutput(),
+      ElementsAreArray(ArrayFloatNear({Eigen::half{1.5f}, Eigen::half{3.5f},
+                                       Eigen::half{4.5f}, Eigen::half{7.5f}})));
 }
 
 TEST(ConcatenationOpTest, ThreeDimensionalOneInputUInt32) {
@@ -205,15 +211,23 @@ TEST(ConcatenationOpTest, FiveDimensionalTwoInputFloat16) {
                   Eigen::half{4.0f}, Eigen::half{5.0f}, Eigen::half{6.0f},
                   Eigen::half{7.0f}, Eigen::half{8.0f}, Eigen::half{9.0f},
                   Eigen::half{10.0f}, Eigen::half{11.0f}, Eigen::half{12.0f}});
-  m0.SetInput(1, {Eigen::half{13.0f}, Eigen::half{14.0f}, Eigen::half{15.0f},
-                  Eigen::half{16.0f}, Eigen::half{17.0f}, Eigen::half{18.0f},
-                  Eigen::half{19.0f}, Eigen::half{20.0f}, Eigen::half{21.0f},
-                  Eigen::half{22.0f}, Eigen::half{23.0f}, Eigen::half{24.0f}});
+
+  m0.SetInput(1, {Eigen::half{13.5f}, Eigen::half{14.5f}, Eigen::half{15.5f},
+                  Eigen::half{16.5f}, Eigen::half{17.5f}, Eigen::half{18.5f},
+                  Eigen::half{19.5f}, Eigen::half{20.5f}, Eigen::half{21.5f},
+                  Eigen::half{22.5f}, Eigen::half{23.5f}, Eigen::half{24.5f}});
   ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m0.GetOutput(),
-      ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-                        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
+      ElementsAreArray(ArrayFloatNear(
+          {Eigen::half{1.0f},  Eigen::half{2.0f},  Eigen::half{3.0f},
+           Eigen::half{4.0f},  Eigen::half{5.0f},  Eigen::half{6.0f},
+           Eigen::half{7.0f},  Eigen::half{8.0f},  Eigen::half{9.0f},
+           Eigen::half{10.0f}, Eigen::half{11.0f}, Eigen::half{12.0f},
+           Eigen::half{13.5f}, Eigen::half{14.5f}, Eigen::half{15.5f},
+           Eigen::half{16.5f}, Eigen::half{17.5f}, Eigen::half{18.5f},
+           Eigen::half{19.5f}, Eigen::half{20.5f}, Eigen::half{21.5f},
+           Eigen::half{22.5f}, Eigen::half{23.5f}, Eigen::half{24.5f}})));
 }
 
 TEST(ConcatenationOpTest, FiveDimensionalTwoInputUInt32) {
