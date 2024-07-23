@@ -67,21 +67,20 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext* context = &getContext();
 
   RewritePatternSet patterns(context);
-  patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp,
-               LegalizeConv>(context);
+  patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp>(context);
   populateWithGenerated(patterns);
 
   ConversionTarget target(*context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
-  target.addDynamicallyLegalOp<mhlo::ConvolutionOp>(IsConvLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
 
   PopulatePadPatterns(context, patterns, target);
   PopulateReducePatterns(context, patterns, target);
   PopulateGatherPatterns(context, patterns, target);
+  PopulateConvPatterns(context, patterns, target);
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
