@@ -15,6 +15,7 @@ cc_library(
     deps = [
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_tf_unfreeze_global_tensors",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_stablehlo",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",

@@ -113,7 +113,7 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(context), std::move(module),
       pass_config,
-      /*saved_model_tags=*/{}, result, /*saved_model_bundle=*/nullptr,
+      /*saved_model_tags=*/{}, result,
       /*quantization_py_function_lib=*/nullptr);
 }
 

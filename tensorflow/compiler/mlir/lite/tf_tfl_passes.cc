@@ -99,6 +99,24 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
       mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
+void AddVariableFreezingFromGlobalTensorsPasses(
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager* pass_manager) {
+  // This pass does resource analysis of saved model global tensors and marks
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+
+  if (!pass_config.disable_variable_freezing) {
+    // This pass 'freezes' immutable global tensors and inlines them as tf
+    // constant ops.
+    pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+        /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
+  }
+
+  pass_manager->addPass(mlir::TFL::CreateUnfreezeMutableGlobalTensorsPass());
+}
+
 void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
                                        mlir::OpPassManager& pass_manager) {
   const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;

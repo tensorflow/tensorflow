@@ -41,7 +41,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
@@ -116,8 +115,6 @@ int main(int argc, char **argv) {
     return kTrFailure;
   }
 
-  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
-
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
   if ((import_saved_model_object_graph || import_saved_model_signature_defs) &&
@@ -148,7 +145,7 @@ int main(int argc, char **argv) {
     module = tensorflow::ImportSavedModel(
         input_file_name, saved_model_version, tags, extra_opdefs,
         exported_names, specs, /*enable_variable_lifting=*/true, context.get(),
-        &bundle);
+        /*saved_model_bundle=*/nullptr);
   } else if (import_hlo) {
     // HLO import path.
     std::string error;
@@ -257,8 +254,8 @@ int main(int argc, char **argv) {
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       std::move(context), std::move(module.value()), toco_flags, pass_config,
       tags,
-      /*saved_model_dir=*/"", std::move(bundle), &result,
-      serialize_stablehlo_ops, /*output_mlir*/ output_mlir);
+      /*saved_model_dir=*/"", &result, serialize_stablehlo_ops,
+      /*export_to_mlir=*/output_mlir);
   if (!status.ok()) {
     llvm::errs() << status.message() << '\n';
     return kTrFailure;

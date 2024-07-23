@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -192,8 +193,29 @@ absl::Status PreprocessAndFreezeGraph(
     return pre_variable_freezing_status;
   }
 
-  if (session.has_value() && failed(mlir::tf_saved_model::FreezeVariables(
-                                 module_op, session.value()))) {
+  if (!session.has_value() || !*session) {
+    mlir::PassManager pm_freezing_variables(context);
+    // This pass does resource analysis of saved model global tensors and marks
+    // those deemed read-only as immutable.
+    pm_freezing_variables.addPass(
+        mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+
+    pm_freezing_variables.addPass(
+        mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+            /*allow_mutable_tensors=*/true));
+
+    pm_freezing_variables.addPass(
+        mlir::TFL::CreateUnfreezeMutableGlobalTensorsPass());
+
+    if (const auto variable_freezing_status = RunPassesOnModuleOp(
+            /*mlir_dump_file_name=*/absl::StrCat(
+                mlir_dump_file_prefix, "_preprocess_variable_freezing"),
+            pm_freezing_variables, module_op);
+        !variable_freezing_status.ok()) {
+      return variable_freezing_status;
+    }
+  } else if (failed(
+                 mlir::tf_saved_model::FreezeVariables(module_op, *session))) {
     return statusHandler.ConsumeStatus();
   }
 

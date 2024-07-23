@@ -28,7 +28,6 @@ cc_library(
     srcs = ["tf_tfl_flatbuffer_helpers.cc"],
     hdrs = ["tf_tfl_flatbuffer_helpers.h"],
     deps = [
-        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
@@ -46,7 +45,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -83,7 +81,6 @@ cc_library(
     ],
     deps = [
         ":tf_tfl_flatbuffer_helpers",
-        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",

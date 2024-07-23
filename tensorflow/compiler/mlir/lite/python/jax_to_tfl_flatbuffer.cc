@@ -55,7 +55,7 @@ namespace tensorflow {
 namespace {
 
 // Error collector that simply ignores errors reported.
-class NoOpErrorCollector : public protobuf::io::ErrorCollector {
+class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
   void AddError(int line, int column, const std::string& message) override {}
 };
@@ -193,7 +193,7 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(context), std::move(module),
       pass_config,
-      /*saved_model_tags=*/{}, result, /*saved_model_bundle=*/nullptr,
+      /*saved_model_tags=*/{}, result,
       /*quantization_py_function_lib=*/nullptr);
   return status;
 }
