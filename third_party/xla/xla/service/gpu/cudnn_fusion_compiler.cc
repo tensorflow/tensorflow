@@ -600,10 +600,7 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
   if (!graph.has_value()) {
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
-  TF_ASSIGN_OR_RETURN(bool supported, graph->Prepare(dnn_support));
-  if (!supported) {
-    return absl::InternalError("cuDNN graph is not supported.");
-  }
+  TF_RETURN_IF_ERROR(graph->Prepare(dnn_support));
   return *graph;
 }
 

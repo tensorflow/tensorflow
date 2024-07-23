@@ -5201,10 +5201,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
         .set_uid(CudnnfMHAUid::P_ID);
   }
   CudnnGraph cudnnGraph(std::move(graph));
-  TF_ASSIGN_OR_RETURN(bool supported, cudnnGraph.Prepare(dnn_support));
-  if (!supported) {
-    return absl::InternalError("cuDNN graph is not supported.");
-  }
+  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(dnn_support));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
 
   if (VLOG_IS_ON(4)) {
@@ -5420,10 +5417,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
       .set_data_type(ioDataType);
 
   CudnnGraph cudnnGraph(std::move(graph));
-  TF_ASSIGN_OR_RETURN(bool supported, cudnnGraph.Prepare(dnn_support));
-  if (!supported) {
-    return absl::InternalError("cuDNN graph is not supported.");
-  }
+  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(dnn_support));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
 
   if (VLOG_IS_ON(4)) {
@@ -8374,18 +8368,15 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
-absl::StatusOr<bool> CudnnGraph::Prepare(dnn::DnnSupport& dnn_support) {
+absl::Status CudnnGraph::Prepare(dnn::DnnSupport& dnn_support) {
   const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
   TF_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetLocalHandle());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn->handle()));
   RETURN_IF_CUDNN_FRONTEND_ERROR(
       graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}));
-  if (auto result = graph_.check_support(cudnn->handle()); result.is_bad()) {
-    VLOG(3) << result.get_message();
-    return false;
-  }
-  return true;
+  RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.check_support(cudnn->handle()));
+  return absl::OkStatus();
 }
 
 absl::Status CudnnGraph::Build(dnn::DnnSupport& dnn_support,
