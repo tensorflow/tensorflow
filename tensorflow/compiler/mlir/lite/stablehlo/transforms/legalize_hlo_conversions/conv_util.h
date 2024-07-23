@@ -199,6 +199,10 @@ inline bool HasStandardFeatureGroup(const ConvData& data) {
 // Does this convolution map to a standard conv_2d or conv_3d
 // (not depthwise or tranpose conv).
 inline bool IsStandardConv(const ConvData& data) {
+  const int64_t rank = data.InputLayout().Rank();
+  if (rank != 4 && rank != 5) {
+    return false;
+  }
   const bool trivial_lhs_dilate =
       llvm::all_of(data.InputDilations(), [](auto d) { return d == 1; });
 
@@ -276,6 +280,10 @@ inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithOutputLayout(
       dnums.getKernelSpatialDimensions(), layout.SpecialDim1(),
       layout.SpecialDim2(), layout.Spatials());
 }
+
+// Wraps the lhs of given conv op in an explicit pad op matching the same
+// behavior implicit in the paddings attribute. Gets result of new pad op.
+Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op);
 
 }  // namespace mlir::odml
 
