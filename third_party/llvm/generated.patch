@@ -1343,3 +1343,14 @@ diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/utils/MPFR
          "//libc:__support_macros_properties_types",
          "//libc:hdr_math_macros",
          "//libc/test/UnitTest:LibcUnitTest",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -2900,6 +2900,7 @@
+         ":IR",
+         ":LoopLikeInterface",
+         ":SCFDialect",
++        ":SCFToControlFlow",
+         ":SCFTransformOpsIncGen",
+         ":SCFTransforms",
+         ":SCFUtils",
