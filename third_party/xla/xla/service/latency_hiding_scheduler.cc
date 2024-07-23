@@ -1292,10 +1292,10 @@ void DefaultSchedulerCore::LogInstruction(const HloInstruction* instr) const {
 
 void PrintOccupierList(
     std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers) {
-  VLOG(2) << "Occupier list:";
   for (int64_t i = 0; i < occupiers.size(); i++) {
-    VLOG(2) << "\tOccupier at index: " << i
-            << " with projected finish time: " << occupiers[i].second
+    VLOG(2) << "\tOccupier " << i << ": "
+            << occupiers[i].first->Target().GetInstr().name()
+            << ", projected finish time: " << occupiers[i].second
             << " original latency: " << occupiers[i].first->OriginalLatency()
             << " latency: " << occupiers[i].first->Latency();
   }
@@ -1345,9 +1345,6 @@ bool DefaultSchedulerCore::DeleteOccupierFromResource(
   it = occupiers.erase(it);
   for (; it != occupiers.end(); it++) {
     it->second -= accumulated_saved_time;
-  }
-  if (VLOG_IS_ON(2)) {
-    PrintOccupierList(occupiers);
   }
   return true;
 }
@@ -1399,9 +1396,6 @@ bool DefaultSchedulerCore::AddOccupierToResource(
         accumulated_delay < new_edge.OriginalLatency() + 0.0001);
   for (; it != occupiers.end(); it++) {
     it->second += accumulated_delay;
-  }
-  if (VLOG_IS_ON(2)) {
-    PrintOccupierList(occupiers);
   }
   return true;
 }
@@ -1465,13 +1459,13 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
         auto occupiers = sched_state->shareable_resource_occupiers[resource];
         for (auto [occupier_edge, edge_pft] : occupiers) {
           if (occupier_edge == &pred) {
-            VLOG(10) << "Ready time of scheduled node " << n->GetInstr().name()
-                     << " before update with pft: " << edge_pft
-                     << ", ready_time: " << schedule_time;
+            VLOG(2) << "Ready time of scheduled node " << n->GetInstr().name()
+                    << " before update with pft: " << edge_pft
+                    << ", ready_time: " << schedule_time;
             schedule_time = std::max(schedule_time, edge_pft);
-            VLOG(10) << "Ready time of scheduled node " << n->GetInstr().name()
-                     << " after update with pft: " << edge_pft
-                     << ", ready_time: " << schedule_time;
+            VLOG(2) << "Ready time of scheduled node " << n->GetInstr().name()
+                    << " after update with pft: " << edge_pft
+                    << ", ready_time: " << schedule_time;
           }
         }
       }
@@ -1489,6 +1483,13 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
         CHECK(DeleteOccupierFromResource(
             schedule_time, edge,
             sched_state->shareable_resource_occupiers[resource]));
+        if (VLOG_IS_ON(2)) {
+          VLOG(2) << "Occupier list for "
+                  << sched_state->async_tracker->GetResourceName(resource)
+                  << ": ";
+          PrintOccupierList(
+              sched_state->shareable_resource_occupiers[resource]);
+        }
       }
     }
     // If a shareable resource is occupied by scheduling this node, insert the
@@ -1502,6 +1503,13 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
             CHECK(AddOccupierToResource(
                 current_time, inverse_edge,
                 sched_state->shareable_resource_occupiers[resource]));
+            if (VLOG_IS_ON(2)) {
+              VLOG(2) << "Occupier list for "
+                      << sched_state->async_tracker->GetResourceName(resource)
+                      << ": ";
+              PrintOccupierList(
+                  sched_state->shareable_resource_occupiers[resource]);
+            }
           }
           break;
         }
@@ -1551,15 +1559,15 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
           auto occupiers = sched_state->shareable_resource_occupiers[resource];
           for (auto [occupier_edge, edge_pft] : occupiers) {
             if (occupier_edge == &pred) {
-              VLOG(10) << "Ready time of predecessor "
-                       << edge.Target().GetInstr().name()
-                       << " before update with pft: " << edge_pft
-                       << ", ready_time: " << ready_time;
+              VLOG(2) << "Ready time of predecessor "
+                      << edge.Target().GetInstr().name()
+                      << " before update with pft: " << edge_pft
+                      << ", ready_time: " << ready_time;
               ready_time = std::max(ready_time, edge_pft);
-              VLOG(10) << "Ready time of predecessor "
-                       << edge.Target().GetInstr().name()
-                       << " after update with pft: " << edge_pft
-                       << ", ready_time: " << ready_time;
+              VLOG(2) << "Ready time of predecessor "
+                      << edge.Target().GetInstr().name()
+                      << " after update with pft: " << edge_pft
+                      << ", ready_time: " << ready_time;
             }
           }
         }
