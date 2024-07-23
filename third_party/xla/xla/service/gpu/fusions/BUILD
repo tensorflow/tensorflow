@@ -958,6 +958,7 @@ cc_library(
     hdrs = ["concatenate_mlir.h"],
     deps = [
         ":concatenate",
+        ":loop",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:launch_dimensions",

@@ -238,6 +238,34 @@ TEST_F(MlirConcatenateFusionTest, EpilogueBitcast) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirConcatenateFusionTest, Vectorization) {
+  auto kHloString = R"(
+    HloModule module
+
+    fused_computation {
+      param0 = f32[640002] parameter(0)
+      param1 = f32[640000] parameter(1)
+      ROOT concat = f32[1280002] concatenate(param0, param1), dimensions={0}
+    }
+    ENTRY main {
+      param0 = f32[640002] parameter(0)
+      param1 = f32[640000] parameter(1)
+      ROOT fusion = f32[1280002] fusion(param0, param1), calls=fused_computation, kind=kLoop
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-DAG: affine_map<(d0, d1) -> (d1 * 128 + d0)>
+    // CHECK-DAG: affine_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0)>
+    // CHECK-DAG: affine_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0 + 640002)>
+
+    // CHECK-LABEL: fused_computation
+    // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+    // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+    // CHECK-COUNT-2: scf.for %{{.*}} = %[[C0]] to %[[C2]]
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
