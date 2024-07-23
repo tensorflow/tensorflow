@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "third_party/tensorflow/compiler/xla/stream_executor/platform/initialize.h"
+// IWYU pragma: private, include "xla/stream_executor/platform/initialize.h"
 
 #ifndef XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_
 #define XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_
