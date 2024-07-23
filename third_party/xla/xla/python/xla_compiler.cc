@@ -1199,7 +1199,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_gpu_dump_autotune_logs_to,
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_gpu_dump_autotune_logs_to(value);
-                   });
+                   })
+      // TODO(b/352486192): Move this to `ExecutableBuildOptions`.
+      .def_prop_rw("xla_use_shardy", &DebugOptions::xla_use_shardy,
+                   &DebugOptions::set_xla_use_shardy);
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(nb::init<>())
