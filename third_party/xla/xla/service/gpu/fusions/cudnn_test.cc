@@ -203,6 +203,9 @@ ENTRY e {
 
 TEST_F(CuDnnFusionExecutionTest,
        CuDnnFusionCompilerDoesNotFailOnDependentFusions) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "This test case requests a workspace only with cuDNN 9.1+.";
+  }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 c1 {
