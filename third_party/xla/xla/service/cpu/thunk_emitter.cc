@@ -152,6 +152,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     // No-op operations that are used to provide more metadata about the HLO
     // dataflow graph.
     case HloOpcode::kAfterAll:             // Defines an execution order.
+    case HloOpcode::kAddDependency:        // Defines an execution order.
     case HloOpcode::kDomain:               // Defines an HLO domain.
     case HloOpcode::kOptimizationBarrier:  // Prevents moving ops past barrier.
       return ThunkSequence::Empty();
