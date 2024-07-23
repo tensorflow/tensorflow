@@ -1298,5 +1298,100 @@ ENTRY entry {
                                       ErrorSpec{0.1, 0.1}));
 }
 
+TEST_F(CollectivePipelinerExecutionTest, MergeTwoCollectivesEachWithTwoDUS) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add.1 {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.396 = bf16[3,8,128] get-tuple-element(param), index=2
+  get-tuple-element.397 = bf16[3,8,128] get-tuple-element(param), index=3
+  get-tuple-element.398 = bf16[3,8,128] get-tuple-element(param), index=4
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=5
+  get-tuple-element.36 = bf16[3,8,128] get-tuple-element(param), index=6
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+
+  // ar.1 is used by dynamic-update-slice.35 and dynamic-update-slice.36
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] negate(mul)
+  b.1 = bf16[1,8,128,32] broadcast(ar.1), dimensions={0,1,2}
+  constant = bf16[] constant(0)
+  reduce = bf16[1,8,128] reduce(b.1, constant), dimensions={3}, to_apply=add.1
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, reduce, select.1348, constant.2561, constant.2561)
+  c2 = bf16[] constant(2.0)
+  bc = bf16[1,8,128] broadcast(c2)
+  mul2 = bf16[1,8,128] multiply(ar.1, bc)
+  mul3 = bf16[1,8,128] multiply(mul2, ar.1)
+  mul4 = bf16[1,8,128] multiply(mul3, mul)
+  dynamic-update-slice.36 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.396, mul4, select.1348, constant.2561, constant.2561)
+
+  // ar.1 is used by dynamic-update-slice.37 and dynamic-update-slice.38
+  // dynamic-update-slice.37 actually uses both ar.1 and ar.2
+  dynamic-slice.100 = bf16[1,8,128] dynamic-slice(get-tuple-element.36, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul.1 = bf16[1,8,128] multiply(dynamic-slice.100, dynamic-slice.99)
+  ar.2 = bf16[1,8,128] exponential(mul.1)
+  divide = bf16[1,8,128] divide(ar.1, ar.2)
+  dynamic-update-slice.37 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.397, divide, select.1348, constant.2561, constant.2561)
+  mul.2 = bf16[1,8,128] multiply(ar.2, ar.2)
+  abs = bf16[1,8,128] abs(mul.2)
+  dynamic-update-slice.38 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.398, abs, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, dynamic-update-slice.36, dynamic-update-slice.37, dynamic-update-slice.38, get-tuple-element.35, get-tuple-element.36)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  p1 = bf16[3,8,128] parameter(1)
+  p2 = bf16[3,8,128] parameter(2)
+  p3 = bf16[3,8,128] parameter(3)
+  p4 = bf16[3,8,128] parameter(4)
+  p5 = bf16[3,8,128] parameter(5)
+
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p1, p2, p3, p4, p5)
+  ROOT while = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
+  auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
+
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/
+                   HloPredicateIsOp<HloOpcode::kNegate, HloOpcode::kExp>,
+                   CollectivePipeliner::PipeliningDirection::kForwardSink,
+                   /*pipeline_use_tree=*/true)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module2->ToString());
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
+                                      ErrorSpec{0.1, 0.1}));
+}
+
 }  // namespace
 }  // namespace xla
