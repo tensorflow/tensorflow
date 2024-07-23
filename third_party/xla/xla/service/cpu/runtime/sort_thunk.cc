@@ -24,6 +24,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -403,12 +405,65 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
     int64_t inner_idx = i % sort_dims.inner_dim_size;
     int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
 
-    if (data.size() == 1) {
-      SortInplace<1>(sort_dims, offset, data, shapes, is_stable, less_than);
-    } else if (data.size() == 2) {
-      SortInplace<2>(sort_dims, offset, data, shapes, is_stable, less_than);
-    } else {
-      return Internal("Unsupported number of sorted inputs: %d", data.size());
+    auto sort = [&](auto num_inputs) {
+      SortInplace<decltype(num_inputs)::value>(sort_dims, offset, data, shapes,
+                                               is_stable, less_than);
+    };
+
+    // TODO(ezhulenev): We can replace statically known number of sorted inputs
+    // with a dynamic value, however statically known number of inputs allows
+    // compiler to generate better code. Benchmark if it really matters.
+    switch (data.size()) {
+      case 1:
+        sort(std::integral_constant<size_t, 1>{});
+        break;
+      case 2:
+        sort(std::integral_constant<size_t, 2>{});
+        break;
+      case 3:
+        sort(std::integral_constant<size_t, 3>{});
+        break;
+      case 4:
+        sort(std::integral_constant<size_t, 4>{});
+        break;
+      case 5:
+        sort(std::integral_constant<size_t, 5>{});
+        break;
+      case 6:
+        sort(std::integral_constant<size_t, 6>{});
+        break;
+      case 7:
+        sort(std::integral_constant<size_t, 7>{});
+        break;
+      case 8:
+        sort(std::integral_constant<size_t, 8>{});
+        break;
+      case 9:
+        sort(std::integral_constant<size_t, 9>{});
+        break;
+      case 10:
+        sort(std::integral_constant<size_t, 10>{});
+        break;
+      case 11:
+        sort(std::integral_constant<size_t, 11>{});
+        break;
+      case 12:
+        sort(std::integral_constant<size_t, 12>{});
+        break;
+      case 13:
+        sort(std::integral_constant<size_t, 13>{});
+        break;
+      case 14:
+        sort(std::integral_constant<size_t, 14>{});
+        break;
+      case 15:
+        sort(std::integral_constant<size_t, 15>{});
+        break;
+      case 16:
+        sort(std::integral_constant<size_t, 16>{});
+        break;
+      default:
+        return Internal("Unsupported number of sorted inputs: %d", data.size());
     }
   }
 
@@ -417,6 +472,8 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
 
 tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
     const ExecuteParams& params) {
+  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
+
   VLOG(3) << absl::StreamFormat(
       "Sort %d inputs along dimension %d (is_stable=%v)", inputs_.size(),
       dimension_, is_stable_);
