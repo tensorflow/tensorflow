@@ -19,12 +19,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/types.h"
+#include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/rpc/client/profiler_client_test_util.h"
