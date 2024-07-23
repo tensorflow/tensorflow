@@ -757,7 +757,6 @@ cc_library(
         ":make_batch_pointers",
     ]) + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cublas_plugin",
-        "//xla/stream_executor/cuda:cuda_stream",
         "//xla/stream_executor/cuda:cudnn_plugin",
         "//xla/stream_executor/cuda:cufft_plugin",
         "//xla/stream_executor/cuda:stream_executor_cuda",

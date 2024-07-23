@@ -283,7 +283,6 @@ cuda_only_cc_library(
         ":cuda_executor",
         ":cuda_helpers",
         ":cuda_platform_id",
-        ":cuda_stream",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
@@ -404,7 +403,6 @@ cuda_only_cc_library(
         ":cuda_driver",
         ":cuda_executor",
         ":cuda_platform_id",
-        ":cuda_stream",
         ":cudnn_frontend_helpers",
         "//xla/stream_executor",
         "//xla/stream_executor:data_type",
@@ -495,17 +493,6 @@ cuda_only_cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@local_config_cuda//cuda:cuda_headers",
-    ],
-)
-
-cuda_only_cc_library(
-    name = "cuda_stream",
-    srcs = [],
-    hdrs = ["cuda_stream.h"],
-    deps = [
-        "//xla/stream_executor",
-        "//xla/stream_executor:blas",
-        "//xla/stream_executor/gpu:gpu_stream",
     ],
 )
 

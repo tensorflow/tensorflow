@@ -4321,7 +4321,6 @@ tf_kernel_library(
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/cuda:cuda_stream",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),

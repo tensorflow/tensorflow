@@ -94,11 +94,8 @@ class GpuStream : public StreamCommon {
   // into the NVIDIA library causes difficult-to-understand faults).
   GpuStreamHandle gpu_stream() const {
     DCHECK(gpu_stream_ != nullptr);
-    return const_cast<GpuStreamHandle>(gpu_stream_);
+    return gpu_stream_;
   }
-
-  // TODO(timshen): Migrate away and remove this function.
-  GpuStreamHandle cuda_stream() const { return gpu_stream(); }
 
   GpuExecutor* parent() const { return parent_; }
   absl::Status WaitFor(Stream* other) override;

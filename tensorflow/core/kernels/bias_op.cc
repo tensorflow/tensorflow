@@ -35,9 +35,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_stream.h"
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 

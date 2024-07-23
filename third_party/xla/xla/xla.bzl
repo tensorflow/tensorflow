@@ -57,7 +57,6 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     "@local_tsl//tsl/protobuf:protos_all_cc_impl",
 ]) + if_cuda_is_configured([
     Label("//xla/stream_executor/cuda:all_runtime"),
-    Label("//xla/stream_executor/cuda:cuda_stream"),
     Label("//xla/stream_executor/cuda:stream_executor_cuda"),
 ]) + if_rocm_is_configured([
     Label("//xla/stream_executor/gpu:gpu_stream"),
