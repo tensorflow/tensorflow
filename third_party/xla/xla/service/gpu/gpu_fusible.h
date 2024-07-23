@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -50,19 +51,26 @@ bool IsExpensiveToRepeat(const HloInstruction& instr);
 // those properties n^2 times.
 //
 // Invariant: After modifying or removing a fusion node, call Invalidate(node).
-struct FusionInfoCache {
+class FusionInfoCache {
  public:
   // Must be called after modifying or removing a fusion node (or other node
   // that's part of this cache).
   void Invalidate(const HloInstruction* instr) {
-    shared_memory_usage.erase(instr);
-    num_unnested_reductions.erase(instr);
+    shared_memory_usage_.erase(instr);
+    num_unnested_reductions_.erase(instr);
   }
 
-  // The rest of the members of this class are for internal use within
-  // gpu_fusible. You shouldn't need to use them yourself.
-  absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage;
-  absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
+  // Returns expected shared memory usage of a given instruction in bytes.
+  int64_t GetSharedMemoryUsage(const HloInstruction& instr);
+
+  // Returns the number of unnested reductions in the instruction output.
+  int64_t GetNumUnnestedReductions(const HloInstruction& instr);
+
+ private:
+  absl::Mutex mutex_;
+
+  absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions_;
 };
 
 // Returns the computations within `module` whose instructions can still be
@@ -71,10 +79,6 @@ struct FusionInfoCache {
 std::vector<HloComputation*> GetFusibleComputations(
     const HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads);
-
-// Returns projected shared memory usage of a given instruction in bytes.
-int64_t SharedMemoryUsage(const HloInstruction& instr,
-                          FusionInfoCache* cache = nullptr);
 
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 96; }
 

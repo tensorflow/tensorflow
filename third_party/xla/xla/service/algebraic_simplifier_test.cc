@@ -9435,6 +9435,35 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
               GmockMatch(m::Dot(m::Parameter(0), m::Parameter(1))));
 }
 
+// Same test as above, but with the option supports_non_canonical_dots set to
+// false.
+TEST_F(AlgebraicSimplifierTest,
+       ReduceOfBatchDotToContractingDimensionDisabled) {
+  const char* kModuleStr = R"(
+    HloModule m
+    a {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+    test {
+      p0 = f32[32,8,5,6] parameter(0)
+      p1 = f32[8,32,6,7] parameter(1)
+      d = f32[32,8,5,7] dot(p0, p1),
+        lhs_batch_dims={0,1},
+        rhs_batch_dims={1,0},
+        rhs_contracting_dims={2},
+        lhs_contracting_dims={3}
+     c = f32[] constant(0)
+     ROOT r = f32[8,5,7] reduce(d,c), dimensions={0}, to_apply=a
+    }
+  )";
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_supports_non_canonical_dots(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, ReduceAddIsCommutative) {
   const char* kModuleStr = R"(
     HloModule m

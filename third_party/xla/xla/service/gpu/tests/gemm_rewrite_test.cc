@@ -8177,6 +8177,35 @@ ENTRY main.10 {
   )");
 }
 
+TEST_F(GemmRewriteTest, ReduceOfBatchDot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule test
+
+region_5.50 {
+  Arg_0.51 = f32[] parameter(0)
+  Arg_1.52 = f32[] parameter(1)
+  ROOT add.53 = f32[] add(Arg_0.51, Arg_1.52)
+}
+
+ENTRY main {
+  p0 = bf16[3,32,3,13]{3,2,1,0} parameter(0)
+  p1 = bf16[3,32,3,64]{3,2,1,0} parameter(1)
+  dot.95 = bf16[3,3,13,64]{3,2,1,0} dot(p0, p1), lhs_batch_dims={0,2}, lhs_contracting_dims={1}, rhs_batch_dims={0,2}, rhs_contracting_dims={1}, operand_precision={highest,highest}
+  transpose.96 = bf16[3,64,3,13]{1,3,2,0} transpose(dot.95), dimensions={0,3,1,2}
+  convert.101 = f32[3,64,3,13]{1,3,2,0} convert(transpose.96)
+  constant.66 = f32[] constant(0.0)
+  ROOT reduce.102 = f32[3,64,13]{2,1,0} reduce(convert.101, constant.66), dimensions={2}, to_apply=region_5.50
+}
+)";
+  // Make sure the dot is lowered to a custom call. There is an algebraic
+  // simplifier simplification which could turn the dot into a non-canonical dot
+  // late in the pipeline, which will make it unsupported by the GemmRewriter.
+  MatchOptimizedHlo(hlo_string, R"(
+  // CHECK: custom_call_target="__cublas$gemm"
+  )");
+}
+
 class GemmRewriteAllocationTest : public GpuCodegenTest {
  public:
   void CheckNumberOfAllocations(const std::string& hlo,
