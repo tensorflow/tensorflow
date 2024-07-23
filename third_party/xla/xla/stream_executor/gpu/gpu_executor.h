@@ -335,6 +335,9 @@ class GpuExecutor : public StreamExecutorCommon {
   // Creates a GpuEvent for the given stream.
   absl::StatusOr<std::unique_ptr<GpuEvent>> CreateGpuEvent(bool allow_timing);
 
+  // Returns true if a delay kernel is supported for the given stream.
+  absl::StatusOr<bool> DelayKernelIsSupported(GpuStream* stream);
+
   // Guards the on-disk-module mapping.
   absl::Mutex disk_modules_mu_;
 

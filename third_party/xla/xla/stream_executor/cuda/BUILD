@@ -16,6 +16,10 @@ load(
     "xla_cc_test",
 )
 load(
+    "//xla/service/gpu:build_defs.bzl",
+    "gpu_kernel_library",
+)
+load(
     "//xla/stream_executor:build_defs.bzl",
     "cuda_only_cc_library",
     "stream_executor_friends",
@@ -391,6 +395,27 @@ cc_library(
     ],
 )
 
+gpu_kernel_library(
+    name = "delay_kernel_cuda",
+    srcs = [
+        "delay_kernel.h",
+        "delay_kernel_cuda.cu.cc",
+    ],
+    tags = ["manual"],
+    visibility = internal_visibility([
+        "//xla/stream_executor:__subpackages__",
+    ]),
+    deps = [
+        "//xla/stream_executor",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "//xla/stream_executor/gpu:gpu_semaphore",
+        "//xla/stream_executor/gpu:gpu_stream",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
 cuda_only_cc_library(
     name = "cudnn_plugin",
     srcs = ["cuda_dnn.cc"],
@@ -731,7 +756,10 @@ cuda_only_cc_library(
 
 cuda_only_cc_library(
     name = "cuda_executor",
-    srcs = ["cuda_executor.cc"],
+    srcs = [
+        "cuda_executor.cc",
+        "delay_kernel.h",
+    ],
     deps = [
         ":cuda_collectives",  # buildcleaner: keep
         ":cuda_diagnostics",
@@ -758,6 +786,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_event_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
         "//xla/stream_executor/gpu:gpu_runtime_header",
+        "//xla/stream_executor/gpu:gpu_semaphore",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/gpu:gpu_types_header",
@@ -778,7 +807,7 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-    ],
+    ] + if_cuda_is_configured([":delay_kernel_cuda"]),
     alwayslink = True,
 )
 

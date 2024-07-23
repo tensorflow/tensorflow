@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/status/status.h"
+#ifndef XLA_STREAM_EXECUTOR_CUDA_DELAY_KERNEL_H_
+#define XLA_STREAM_EXECUTOR_CUDA_DELAY_KERNEL_H_
+
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -21,10 +23,10 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-absl::StatusOr<bool> DelayKernelIsSupported(GpuStream*) { return false; }
-
-absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
-  return absl::UnimplementedError("Not implemented");
-}
-
+// Launches the delay kernel on the given stream. The caller is responsible for
+// keeping the returned semaphore alive until the kernel finished executing.
+// Setting the semaphore to `kRelease` makes the kernel quit.
+absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream);
 }  // namespace stream_executor::gpu
+
+#endif  // XLA_STREAM_EXECUTOR_CUDA_DELAY_KERNEL_H_

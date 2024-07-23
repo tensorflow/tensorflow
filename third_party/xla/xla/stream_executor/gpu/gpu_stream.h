@@ -97,7 +97,6 @@ class GpuStream : public StreamCommon {
     return gpu_stream_;
   }
 
-  GpuExecutor* parent() const { return parent_; }
   absl::Status WaitFor(Stream* other) override;
   absl::Status WaitFor(Event* event) override;
   absl::Status RecordEvent(Event* event) override;

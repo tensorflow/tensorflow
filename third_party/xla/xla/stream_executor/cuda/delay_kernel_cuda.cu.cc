@@ -15,10 +15,10 @@ limitations under the License.
 
 #include <cstddef>
 
+#include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
-#include "xla/stream_executor/gpu/gpu_timer_kernel.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 
 namespace stream_executor::gpu {
@@ -73,20 +73,6 @@ absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
                                         GpuSemaphoreState::kRelease));
 
   return semaphore;
-}
-
-absl::StatusOr<bool> DelayKernelIsSupported(GpuStream* stream) {
-  // Check the assumption that this device supports unified addressing,
-  // otherwise skip the delay kernel
-  TF_ASSIGN_OR_RETURN(int status, GpuDriver::GetDeviceAttribute(
-                                      CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING,
-                                      stream->parent()->device()));
-  if (!status) {
-    LOG(WARNING) << "Skipping the delay kernel because the device does not "
-                    "support unified addressing";
-  }
-
-  return static_cast<bool>(status);
 }
 
 namespace delay_kernel {

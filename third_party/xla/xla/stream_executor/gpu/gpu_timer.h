@@ -48,14 +48,9 @@ class GpuStream;
 // to be measured more accurately.
 class GpuTimer : public EventBasedTimer {
  public:
-  static absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
-      GpuStream* stream, GpuContext* context, bool use_delay_kernel,
-      std::unique_ptr<GpuEvent> start_event,
-      std::unique_ptr<GpuEvent> stop_event);
-
-  explicit GpuTimer(GpuContext* context, std::unique_ptr<GpuEvent> start_event,
-                    std::unique_ptr<GpuEvent> stop_event, GpuStream* stream,
-                    GpuSemaphore semaphore = {})
+  GpuTimer(GpuContext* context, std::unique_ptr<GpuEvent> start_event,
+           std::unique_ptr<GpuEvent> stop_event, GpuStream* stream,
+           GpuSemaphore semaphore = {})
       : context_(context),
         start_event_(std::move(start_event)),
         stop_event_(std::move(stop_event)),

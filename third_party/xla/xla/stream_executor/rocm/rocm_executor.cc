@@ -186,12 +186,12 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
-  // TODO(b/301020144) Move this all to the appropriate Executor class.
   TF_ASSIGN_OR_RETURN(auto start_event, CreateGpuEvent(/*allow_timing=*/true));
   TF_ASSIGN_OR_RETURN(auto stop_event, CreateGpuEvent(/*allow_timing=*/true));
-  return GpuTimer::CreateEventBasedTimer(
-      stream, gpu_context(), use_delay_kernel, std::move(start_event),
-      std::move(stop_event));
+  TF_RETURN_IF_ERROR(start_event->Record(stream->gpu_stream()));
+  return std::make_unique<GpuTimer>(gpu_context(), std::move(start_event),
+                                    std::move(stop_event), stream,
+                                    std::move(semaphore));
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -249,6 +249,11 @@ absl::Status GpuExecutor::Init() {
   }
 
   return GpuDriver::GetGpuISAVersion(&version_, device_);
+}
+
+absl::StatusOr<bool> GpuExecutor::DelayKernelIsSupported(GpuStream* stream) {
+  // Delay kernel is not supported on ROCm.
+  return false;
 }
 
 absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,

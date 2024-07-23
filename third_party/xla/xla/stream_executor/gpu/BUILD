@@ -361,48 +361,10 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_kernel_library(
-    name = "gpu_timer_kernel_cuda",
-    srcs = [
-        "gpu_timer_kernel.h",
-        "gpu_timer_kernel_cuda.cu.cc",
-    ],
-    tags = ["manual"],
-    visibility = internal_visibility([
-        "//xla/stream_executor:__subpackages__",
-    ]),
-    deps = [
-        ":gpu_driver_header",
-        ":gpu_executor_header",
-        ":gpu_semaphore",
-        ":gpu_stream",
-        "//xla/stream_executor",
-        "//xla/stream_executor:typed_kernel_factory",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "gpu_timer_kernel_rocm",
-    srcs = [
-        "gpu_timer_kernel.h",
-        "gpu_timer_kernel_rocm.cc",
-    ],
-    tags = ["manual"],
-    deps = [
-        ":gpu_semaphore",
-        ":gpu_stream",
-        "//xla/stream_executor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
 gpu_only_cc_library(
     name = "gpu_timer",
     srcs = [
         "gpu_timer.cc",
-        "gpu_timer_kernel.h",
     ],
     hdrs = [
         "gpu_timer.h",
@@ -426,11 +388,7 @@ gpu_only_cc_library(
         "@com_google_absl//absl/utility",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        ":gpu_timer_kernel_cuda",
-    ]) + if_rocm_is_configured([
-        ":gpu_timer_kernel_rocm",
-    ]),
+    ],
 )
 
 gpu_only_cc_library(

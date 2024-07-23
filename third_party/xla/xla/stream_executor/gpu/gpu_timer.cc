@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer_kernel.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
@@ -56,45 +55,9 @@ absl::Duration RandomDuration() {
   return absl::Microseconds(distribution(rng));
 }
 
-bool ShouldLaunchDelayKernel() {
-  // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
-  static bool value = [] {
-    const char* blocking = std::getenv("CUDA_LAUNCH_BLOCKING");
-    return !blocking || std::string_view{blocking} != "1";
-  }();
-  return value;
-}
-
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<EventBasedTimer>>
-GpuTimer::CreateEventBasedTimer(GpuStream* stream, GpuContext* context,
-                                bool use_delay_kernel,
-                                std::unique_ptr<GpuEvent> start_event,
-                                std::unique_ptr<GpuEvent> stop_event) {
-  GpuSemaphore semaphore{};
-  if (!use_delay_kernel) {
-    LOG(WARNING)
-        << "Skipping the delay kernel, measurement accuracy will be reduced";
-  }
-
-  if (use_delay_kernel && ShouldLaunchDelayKernel()) {
-    TF_ASSIGN_OR_RETURN(bool is_supported, DelayKernelIsSupported(stream));
-
-    if (is_supported) {
-      TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(stream));
-    }
-  }
-
-  // The start event goes after the delay kernel in the stream
-  TF_RETURN_IF_ERROR(start_event->Record(stream->gpu_stream()));
-
-  return std::make_unique<GpuTimer>(context, std::move(start_event),
-                                    std::move(stop_event), stream,
-                                    std::move(semaphore));
-}
-
-/*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
+void GpuTimer::ReturnRandomDurationsForTesting() {
   return_random_durations = true;
 }
 
