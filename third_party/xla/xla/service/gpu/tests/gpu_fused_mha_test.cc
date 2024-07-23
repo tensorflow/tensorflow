@@ -155,7 +155,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cudnn_fmha(true);
     if (force_deterministic) {
-      debug_options.set_xla_gpu_deterministic_ops(true);
+      debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
     }
     reference_module->mutable_config().set_debug_options(debug_options);
     const Literal first_run_result =

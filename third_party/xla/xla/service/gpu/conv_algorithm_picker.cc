@@ -819,9 +819,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   const bool cudnn_frontend_enabled =
       debug_options.xla_gpu_enable_cudnn_frontend();
-  const bool deterministic_ops =
-      debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops();
   bool allow_tf32 = true;
   // TODO(b/284371623): Properly set allow_tf32 even if instr==nullptr, which is
   // the case when running an AOT compiled executable with runtime autotuning.
@@ -830,7 +827,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         instr->precision_config().operand_precision(),
         [](int precision) { return precision <= PrecisionConfig::HIGH; });
   }
-  const se::NumericOptions numeric_options{deterministic_ops, allow_tf32};
+  const se::NumericOptions numeric_options{
+      RequireDeterminism(instr->GetModule()->config()), allow_tf32};
 
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm suffices. It doesn't make
@@ -929,15 +927,11 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr->ToString()));
 
-  const DebugOptions& debug_options =
-      instr->GetModule()->config().debug_options();
-  const bool deterministic_ops =
-      debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops();
   const bool allow_tf32 = absl::c_all_of(
       instr->precision_config().operand_precision(),
       [](int precision) { return precision <= PrecisionConfig::HIGH; });
-  const se::NumericOptions numeric_options{deterministic_ops, allow_tf32};
+  const se::NumericOptions numeric_options{
+      RequireDeterminism(instr->GetModule()->config()), allow_tf32};
 
   se::StreamExecutor* stream_exec = config_.GetExecutor();
   const auto device_ordinal = stream_exec->device_ordinal();

@@ -354,7 +354,8 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
 
   if (options_.cost_analysis) {
-    RuntimeSimulator runtime_simulator(options_.cost_analysis);
+    RuntimeSimulator runtime_simulator(options_.cost_analysis,
+                                       options_.alternate_memory_space);
     float estimated_time = runtime_simulator.ComputeEstimatedElapsedTime(
         hlo_live_range, allocations_);
     VLOG(1) << "Estimated elapsed time (sec): " << estimated_time;

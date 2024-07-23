@@ -174,11 +174,8 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
     TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                         AsCudnnFmhaMaskKind(config.mask_type()));
 
-    const DebugOptions& debug_options =
-        custom_call->GetModule()->config().debug_options();
-    bool force_deterministic =
-        debug_options.xla_gpu_deterministic_ops() ||
-        debug_options.xla_gpu_exclude_nondeterministic_ops();
+    const bool force_deterministic =
+        RequireDeterminism(custom_call->GetModule()->config());
     // set the correct force_deterministic attribute here
     config.set_force_deterministic(force_deterministic);
     TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));

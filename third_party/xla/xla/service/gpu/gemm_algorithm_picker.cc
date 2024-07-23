@@ -112,8 +112,7 @@ class GemmAutotuner {
     TF_ASSIGN_OR_RETURN(stream_, autotune_config_.GetStream());
     const DebugOptions& debug_options =
         gemm->GetModule()->config().debug_options();
-    deterministic_ops_ = debug_options.xla_gpu_deterministic_ops() ||
-                         debug_options.xla_gpu_exclude_nondeterministic_ops();
+    deterministic_ops_ = RequireDeterminism(gemm->GetModule()->config());
     solutions_limit_ = debug_options.xla_gpu_autotune_max_solutions();
 
     TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm));
