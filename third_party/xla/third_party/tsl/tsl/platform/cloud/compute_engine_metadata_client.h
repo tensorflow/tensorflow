@@ -19,6 +19,7 @@ limitations under the License.
 #include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

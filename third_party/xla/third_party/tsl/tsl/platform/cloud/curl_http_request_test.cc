@@ -18,11 +18,21 @@ limitations under the License.
 #include <fstream>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "third_party/curl/curl.h"
+#include "third_party/curl/src/include/curl/system.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/cloud/http_request.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

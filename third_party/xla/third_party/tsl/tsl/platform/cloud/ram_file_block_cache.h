@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tsl/platform/cloud/file_block_cache.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"

@@ -14,6 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tsl/platform/cloud/google_auth_provider.h"
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tsl/platform/cloud/compute_engine_metadata_client.h"
+#include "tsl/platform/cloud/oauth_client.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <unistd.h>
@@ -25,11 +35,9 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "json/json.h"
-#include "tsl/platform/base64.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/retrying_utils.h"
 
 namespace tsl {
 

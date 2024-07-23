@@ -20,6 +20,9 @@ limitations under the License.
 
 #include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 const int64_t kDefaultRefreshRateSecs = 60;

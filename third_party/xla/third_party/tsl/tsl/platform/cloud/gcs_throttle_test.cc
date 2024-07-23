@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tsl/platform/cloud/gcs_throttle.h"
 
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/env_time.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

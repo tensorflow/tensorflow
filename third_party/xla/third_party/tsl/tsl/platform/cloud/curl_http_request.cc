@@ -17,12 +17,19 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/ascii.h"
+#include "third_party/curl/curl.h"
+#include "third_party/curl/src/include/curl/easy.h"
+#include "third_party/curl/src/include/curl/system.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/lib/gtl/map_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)

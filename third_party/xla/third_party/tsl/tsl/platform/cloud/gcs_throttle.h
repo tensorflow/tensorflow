@@ -17,6 +17,10 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_CLOUD_GCS_THROTTLE_H_
 
 #include "tsl/platform/env.h"
+#include "tsl/platform/env_time.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

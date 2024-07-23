@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tsl/platform/cloud/compute_engine_zone_provider.h"
 
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/cloud/compute_engine_metadata_client.h"
+#include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/cloud/http_request_fake.h"
+#include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

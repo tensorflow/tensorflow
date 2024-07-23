@@ -19,7 +19,9 @@ limitations under the License.
 
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cloud/now_seconds_env.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

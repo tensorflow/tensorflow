@@ -17,11 +17,16 @@ limitations under the License.
 
 #include <cstring>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/cloud/http_request.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/mutex.h"
 #include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <netdb.h>

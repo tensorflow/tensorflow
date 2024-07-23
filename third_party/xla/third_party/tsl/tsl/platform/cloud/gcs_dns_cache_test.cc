@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tsl/platform/cloud/gcs_dns_cache.h"
 
-#include "tsl/platform/str_util.h"
+#include "absl/strings/str_join.h"
+#include "tsl/platform/cloud/http_request.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
