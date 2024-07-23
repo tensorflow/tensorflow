@@ -1198,6 +1198,46 @@ ENTRY main {
   )"));
 }
 
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       WhileLoopWithTripCount1ShouldBeSkipped) {
+  const char* const kModuleString = R"(
+HloModule loop_unrolling_skipped
+condition_nested {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(0)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+body_nested {
+ input_tuple = (s32[]) parameter(0)
+ cond = s32[] get-tuple-element(input_tuple), index=0
+ one = s32[] constant(1)
+ cond_plus_1 = s32[] add(cond, one)
+ ROOT output = (s32[]) tuple(cond_plus_1)
+}
+condition {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(0)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+body {
+  input_tuple = (s32[]) parameter(0)
+  ROOT output = (s32[]) while(input_tuple), condition=condition_nested, body=body_nested, backend_config={"known_trip_count":{"n":"1"}}
+}
+ENTRY main {
+ param_0 = (s32[]) parameter(0)
+ ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"1"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
+  // The processing of the loop should be completely skipped.
+  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
