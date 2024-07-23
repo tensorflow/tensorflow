@@ -16,12 +16,21 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "third_party/protobuf/util/message_differencer.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/ir/importexport/savedmodel_export.h"
 #include "tensorflow/core/ir/importexport/savedmodel_import.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
