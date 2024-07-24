@@ -22,6 +22,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <ostream>
+#include <stack>
 #include <string>
 #include <utility>
 #include <vector>
@@ -101,7 +102,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                 computation_transitively_contains_custom_call,
             const TargetMachineFeatures* target_machine,
             bool emit_code_for_msan);
-  ~IrEmitter() override = default;
+  ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
   // function.
@@ -135,6 +136,33 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // builder() is for IrBuilderMixin.
   llvm::IRBuilder<>* builder() { return current_builder_; }
   const llvm::IRBuilder<>* builder() const { return current_builder_; }
+
+  IrFunction* compute_function() { return &compute_function_.top(); }
+
+  // Used by IrEmitter
+  void PushComputeFunction(const std::string& function_name,
+                           llvm::Function::LinkageTypes linkage,
+                           const HloModuleConfig& module_config,
+                           llvm::Module* llvm_module,
+                           int64_t num_dynamic_loop_bounds) {
+    compute_function_.emplace(function_name, linkage, module_config,
+                              llvm_module, b(), num_dynamic_loop_bounds);
+  }
+
+  // Used by IrEmitter2
+  void PushComputeFunction(std::shared_ptr<llvm::IRBuilder<>> b,
+                           llvm::Module* llvm_module,
+                           int64_t num_dynamic_loop_bounds,
+                           llvm::Function* function,
+                           llvm::Value* dynamic_loop_bounds_arg,
+                           llvm::BasicBlock* return_block) {
+    b->SetInsertPoint(llvm::BasicBlock::Create(llvm_module->getContext(),
+                                               "insertion_point", function));
+    compute_function_.emplace(b.get(), llvm_module, num_dynamic_loop_bounds,
+                              function, dynamic_loop_bounds_arg, return_block);
+  }
+
+  void PopComputeFunction() { compute_function_.pop(); }
 
   // Emit an LLVM global variable for every constant buffer allocation.
   absl::Status EmitConstantGlobals();
@@ -591,7 +619,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // The current builder to use for IR emission. This is either `main_builder_`
   // or a temporary builder that replaces it.
   llvm::IRBuilder<>* current_builder_;
-  std::unique_ptr<IrFunction> compute_function_;
+  std::stack<IrFunction> compute_function_;
   mlir::MLIRContext* mlir_context_;
   bool allow_reassociation_;
 
