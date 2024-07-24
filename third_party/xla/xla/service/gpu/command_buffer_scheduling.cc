@@ -180,7 +180,7 @@ static bool IsCommand(const HloInstruction* hlo,
       auto fusion_analysis =
           HloFusionAnalysis::Create(fusion, &config.device_description);
       const HloFusionAdaptor& adaptor = fusion_analysis.fusion();
-      auto custom_call_adaptor = HloFindIf(
+      auto custom_call_adaptor = HloBfsFindIf(
           adaptor.GetRoots(), adaptor,
           [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
       const auto* custom_call = static_cast<const HloCustomCallInstruction*>(

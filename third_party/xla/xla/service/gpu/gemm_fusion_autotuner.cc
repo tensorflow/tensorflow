@@ -633,7 +633,7 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   // to avoid autotuning configurations that are not supported by Triton. This
   // is used to restrict the values for tile_k.
   std::vector<const HloInstruction*> converts =
-      HloFindAll({&dot}, [&](const HloInstruction* node) {
+      HloBfsFindAll({&dot}, [&](const HloInstruction* node) {
         return node->opcode() == HloOpcode::kConvert;
       });
   int minBitWidth = primitive_util::BitWidth(dot.shape().element_type());

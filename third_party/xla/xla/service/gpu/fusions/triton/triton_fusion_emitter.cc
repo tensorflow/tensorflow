@@ -1842,7 +1842,7 @@ class MatMulEmitterHelper {
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
     const TritonGemmConfig& config) {
-  auto dot = HloFindIf(fusion.GetRoots(), fusion, [](auto node) {
+  auto dot = HloBfsFindIf(fusion.GetRoots(), fusion, [](auto node) {
     return node.opcode() == HloOpcode::kDot;
   });
   TF_RET_CHECK(dot != std::nullopt);
@@ -2177,7 +2177,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
 
   // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
   bool is_unsupported_bitwidth =
-      HloAnyOf({dot_instr}, [&](const HloInstruction* node) {
+      HloBfsAnyOf({dot_instr}, [&](const HloInstruction* node) {
         if (node->opcode() != HloOpcode::kConvert) {
           return false;
         }

@@ -477,7 +477,7 @@ class GpuPriorityFusionQueue {
     // TODO(b/312200883): Remove this.
     auto contains_significant_reduce = [&](const HloInstruction* instr) {
       auto fusion = HloFusionAdaptor::ForInstruction(instr);
-      return HloAnyOf(fusion->GetRoots(), *fusion, [](auto node) {
+      return HloAnyOf(*fusion, [](auto node) {
         if (!(node.opcode() == HloOpcode::kReduce && node.shape().IsArray())) {
           return false;
         }

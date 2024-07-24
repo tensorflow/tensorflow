@@ -193,25 +193,24 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   int num_big_inputs;
   std::tie(row_vectorized, num_big_inputs) =
       RowVectorizationEnabled(analysis.fusion(), element_shape.rank());
-  bool few_waves = !HloAnyOf(
-      analysis.fusion().GetRoots(), analysis.fusion(), [&](auto instr) {
-        if (instr.opcode() == HloOpcode::kParameter ||
-            instr.opcode() == HloOpcode::kConstant ||
-            HloInstruction::IsOpElementwise(instr.opcode())) {
-          return false;
-        }
-        if (auto broadcast =
-                DynCast<HloBroadcastInstruction>(&instr.instruction())) {
-          if (broadcast->dimensions().empty() ||
-              // More than 3 big inputs cause a speed regression.
-              (row_vectorized && num_big_inputs <= 3)) {
-            return false;
-          }
-        }
-        VLOG(2) << "few_waves not enabled due to: "
-                << instr.instruction().ToString();
-        return true;
-      });
+  bool few_waves = !HloAnyOf(analysis.fusion(), [&](auto instr) {
+    if (instr.opcode() == HloOpcode::kParameter ||
+        instr.opcode() == HloOpcode::kConstant ||
+        HloInstruction::IsOpElementwise(instr.opcode())) {
+      return false;
+    }
+    if (auto broadcast =
+            DynCast<HloBroadcastInstruction>(&instr.instruction())) {
+      if (broadcast->dimensions().empty() ||
+          // More than 3 big inputs cause a speed regression.
+          (row_vectorized && num_big_inputs <= 3)) {
+        return false;
+      }
+    }
+    VLOG(2) << "few_waves not enabled due to: "
+            << instr.instruction().ToString();
+    return true;
+  });
 
   LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
                                        row_vectorized};

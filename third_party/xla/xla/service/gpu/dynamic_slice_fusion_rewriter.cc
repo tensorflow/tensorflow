@@ -176,7 +176,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
     // empty: if the operand is a tuple, it might have different data flows
     // (i.e. 1 for each element).
     auto maybe_slice_instr =
-        HloFindIf({operand}, [&](const HloInstruction* cur) {
+        HloBfsFindIf({operand}, [&](const HloInstruction* cur) {
           // If the node is a match that has been processed, stop the traversal.
           if (processed_instrs.contains(cur)) return true;
 
@@ -223,7 +223,7 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr) {
   auto traverse_hlo_and_collect = [&](HloInstruction* start) {
     DefUseDataflowPath maybe_sliced_user_path;
     bool dus_found = false;
-    auto maybe_dus_instr = HloFindIf(
+    auto maybe_dus_instr = HloBfsFindIf(
         {start},
         [&](const HloInstruction* cur) {
           // If the node is a match that has been processed, stop the

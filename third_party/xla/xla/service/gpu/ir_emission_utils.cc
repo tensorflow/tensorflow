@@ -692,8 +692,8 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
                            /*allowed_operand_count=*/3);
   };
   bool visit_operands = false;
-  if (HloAnyOf(hero->GetUsers(), hero->parent(), is_nontrivial,
-               visit_operands)) {
+  if (HloBfsAnyOf(hero->GetUsers(), hero->parent(), is_nontrivial,
+                  visit_operands)) {
     return std::nullopt;
   }
 
