@@ -217,6 +217,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   AlgebraicSimplifierOptions algsimp_options =
       GetAlgebraicSimplifierOptions(hlo_module->config());
+  algsimp_options.set_supports_non_canonical_dots(false);
   algsimp_options.set_enable_conv_operand_swap(false);
   algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,

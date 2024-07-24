@@ -7742,7 +7742,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // Convert Reduce(Dot(X,Y)) to Dot(X,Y) if any of the dimensions reduced were
   // batch dimensions of the dot. The transformation supports reducing other
   // dimensions as well.
-  if (options_.enable_dot_strength_reduction() &&
+  if (options_.supports_non_canonical_dots() &&
+      options_.enable_dot_strength_reduction() &&
       Match(arg, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs)).WithOneUser()) &&
       Match(reduce->to_apply()->root_instruction(),
             m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
