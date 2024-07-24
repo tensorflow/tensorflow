@@ -142,7 +142,7 @@ BuildStrategyAndCost(
   // is useful when the operand is forced to use a user sharding, and the op
   // doesn't need to strictly follow it. We restore the trimmed strategies in
   // this situation.
-  StableHashMap<int64_t, std::vector<ShardingStrategy>> pretrimmed_strategy_map;
+  StableMap<int64_t, std::vector<ShardingStrategy>> pretrimmed_strategy_map;
   StrategyGroups strategy_groups;
   AssociativeDotPairs associative_dot_pairs;
 

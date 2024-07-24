@@ -104,23 +104,22 @@ class CostGraph {
   // The number of strategies of each node.
   std::vector<int> node_lens_;
   // The adjacency list of each node.
-  std::vector<StableHashSet<int>> adjacency_;
+  std::vector<StableSet<int>> adjacency_;
   // The cost matrix between two nodes.
 
-  StableHashMap<std::pair<NodeIdx, NodeIdx>, EdgeReshardingCostMatrix>
-      edge_costs_;
+  StableMap<std::pair<NodeIdx, NodeIdx>, EdgeReshardingCostMatrix> edge_costs_;
   // The extra node costs introduced by merging nodes.
   std::vector<std::vector<double>> extra_node_costs_;
   // The reindexing vector of the node.
   // A reindexing vector maps a strategy index from the node being followed
   // to a strategy index of the current node.
-  StableHashMap<int, std::vector<NodeStrategyIdx>> reindexing_vector_;
+  StableMap<int, std::vector<NodeStrategyIdx>> reindexing_vector_;
   // Maps a node id to the node id that is being followed by this node.
   // The value is -1 if the current node does not follow any node.
   std::vector<NodeIdx> follow_idx_;
 
   // Save the destination of merged nodes.
-  StableHashMap<NodeIdx, NodeIdx> merged_to_;
+  StableMap<NodeIdx, NodeIdx> merged_to_;
   // Save pairs that need to be merged.
   std::vector<std::pair<NodeIdx, NodeIdx>> to_merge_pairs_;
 };

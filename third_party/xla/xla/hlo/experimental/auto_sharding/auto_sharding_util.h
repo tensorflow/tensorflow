@@ -133,7 +133,7 @@ std::string ToString(const std::vector<T>& vector) {
 }
 
 template <typename K, typename V>
-std::string ToString(const StableHashMap<K, V>& map) {
+std::string ToString(const StableMap<K, V>& map) {
   std::string result;
   for (const auto& [k, v] : map) {
     result = absl::StrCat(result, " [", k, "->", v, "]");
@@ -284,23 +284,31 @@ inline HloInstruction* PassThroughCustomCallMarkerUser(
 
 // Return the users of an instruction and its alias,
 // excluding the final output tuple.
-inline StableHashSet<HloInstruction*> UsersWithAlias(
-    const HloInstruction* inst, const AliasMap& alias_map,
-    const HloInstruction* output) {
-  StableHashSet<HloInstruction*> users;
-
+inline InstructionSet UsersWithAlias(const HloInstruction* inst,
+                                     const AliasMap& alias_map,
+                                     const HloInstruction* output) {
+  InstructionSet users;
   for (HloInstruction* user : inst->users()) {
-    users.insert(PassThroughCustomCallMarkerUser(user, inst));
+    HloInstruction* pass_through_user =
+        PassThroughCustomCallMarkerUser(user, inst);
+    if (pass_through_user == output) {
+      continue;
+    }
+    users.insert(pass_through_user);
   }
 
   auto iter = alias_map.find(inst);
   if (iter != alias_map.end()) {
     for (HloInstruction* user : iter->second->users()) {
-      users.insert(PassThroughCustomCallMarkerUser(user, iter->second));
+      HloInstruction* pass_through_user =
+          PassThroughCustomCallMarkerUser(user, iter->second);
+      if (pass_through_user == output) {
+        continue;
+      }
+      users.insert(pass_through_user);
     }
   }
 
-  users.erase(output);
   return users;
 }
 
@@ -312,21 +320,21 @@ bool IsParameterConvert(const HloInstruction* inst);
 bool IsAlwaysReplicated(const HloInstruction* inst);
 
 // Try to reduce the boundary set to its common ancestor
-void TryReduceWithCommonAncestor(StableHashSet<HloInstruction*>& replicated_set,
-                                 StableHashSet<HloInstruction*>& boundary_set,
-                                 StableHashSet<HloInstruction*>& consumer_set,
+void TryReduceWithCommonAncestor(InstructionSet& replicated_set,
+                                 InstructionSet& boundary_set,
+                                 InstructionSet& consumer_set,
                                  const AliasMap& alias_map);
 
 // Return whether all users of an instruction is reduce.
 bool AllUsersAreReduce(const HloInstruction* inst);
 
-void UseAllReduceForGradAcc(StableHashSet<HloInstruction*>& replicated_set,
+void UseAllReduceForGradAcc(InstructionSet& replicated_set,
                             const HloInstruction* inst);
 
 void SetSharding(HloInstruction* to_split, const HloSharding& output_spec,
                  const HloInstruction* ref_inst,
                  const HloInstruction* shape_inst,
-                 StableHashSet<const HloInstruction*>& modified);
+                 ConstInstructionSet& modified);
 
 template <typename T>
 inline std::vector<int> Argsort(const std::vector<T>& scores) {

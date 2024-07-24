@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/container/btree_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -31,8 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "absl/container/btree_map.h"
-#include "absl/container/flat_hash_set.h"
 
 namespace xla {
 namespace spmd {
@@ -42,20 +42,36 @@ constexpr double kInfinityCost = 1e20;
 
 // Type alias
 template <typename Key, typename Value>
-using StableHashMap = ::absl::btree_map<Key, Value>;
+using StableMap = absl::btree_map<Key, Value>;
 template <typename Key>
-using StableHashSet = ::absl::flat_hash_set<Key>;
+using StableSet = absl::btree_set<Key>;
+
+struct CompareHloInstruction {
+  bool operator()(const HloInstruction* a, const HloInstruction* b) const {
+    return a->name() < b->name();
+  }
+};
+
+template <typename Value>
+using ConstInstructionMap =
+    absl::btree_map<const HloInstruction*, Value, CompareHloInstruction>;
+template <typename Value>
+using InstructionMap =
+    absl::btree_map<HloInstruction*, Value, CompareHloInstruction>;
+
+using ConstInstructionSet =
+    absl::btree_set<const HloInstruction*, CompareHloInstruction>;
+using InstructionSet = absl::btree_set<HloInstruction*, CompareHloInstruction>;
 
 // Map an instruction to its depth.
-using InstructionDepthMap = StableHashMap<const HloInstruction*, int64_t>;
+using InstructionDepthMap = ConstInstructionMap<int64_t>;
 // Map an instruction to its batch dimension.
-using InstructionBatchDimMap = StableHashMap<std::string, int>;
+using InstructionBatchDimMap = StableMap<std::string, int>;
 // Map an instruction to its alias source parameter.
-using AliasMap = StableHashMap<const HloInstruction*, HloInstruction*>;
+using AliasMap = ConstInstructionMap<HloInstruction*>;
 // Map an instruction to its resharding cache.
 using ReshardingCache =
-    StableHashMap<const HloInstruction*,
-                  std::vector<std::pair<HloSharding, HloInstruction*>>>;
+    ConstInstructionMap<std::vector<std::pair<HloSharding, HloInstruction*>>>;
 // Resharding costs for each operand
 using ReshardingCosts = std::vector<std::vector<double>>;
 
@@ -149,7 +165,7 @@ using AliasIdx = int64_t;         // An index into the alias vector.
 
 // Various classes needed to support strategy shaving.
 using NodeStrategy = std::pair<NodeIdx, NodeStrategyIdx>;
-using NodeStrategies = StableHashSet<NodeStrategy>;
+using NodeStrategies = StableSet<NodeStrategy>;
 
 // A group of strategy choices (along with details like index values)
 // for each instruction.
@@ -226,8 +242,7 @@ using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
 // A liveness set using edge indices instead of HLO values.
 using LivenessEdgeSet = std::vector<std::vector<EdgeIdx>>;
 // Map an instruction to its strategy group.
-using StrategyMap =
-    StableHashMap<const HloInstruction*, std::unique_ptr<StrategyGroup>>;
+using StrategyMap = ConstInstructionMap<std::unique_ptr<StrategyGroup>>;
 // The list of all strategy groups.
 using StrategyGroups = std::vector<StrategyGroup*>;
 // The list of all dot instruction pairs that can be optimized by
@@ -235,7 +250,7 @@ using StrategyGroups = std::vector<StrategyGroup*>;
 using AssociativeDotPairs =
     std::vector<std::pair<const StrategyGroup*, const StrategyGroup*>>;
 // The set of all alias pairs
-using AliasSet = StableHashSet<std::pair<NodeIdx, NodeIdx>>;
+using AliasSet = StableSet<std::pair<NodeIdx, NodeIdx>>;
 
 }  // namespace spmd
 }  // namespace xla

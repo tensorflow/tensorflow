@@ -305,7 +305,7 @@ GenerateReshardingCostsAndShardingsForAllOperands(
 void FollowArrayOrTokenStrategyGroup(
     const StrategyGroup& src_strategy_group, const Shape& shape,
     const size_t instruction_id, const ClusterEnvironment& cluster_env,
-    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     StrategyGroup& strategy_group) {
   CHECK(shape.IsArray() || shape.IsToken());
@@ -427,7 +427,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     const size_t instruction_id, StrategyGroups& strategy_groups,
     const ClusterEnvironment& cluster_env,
-    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map) {
   std::unique_ptr<StrategyGroup> strategy_group;
   if (src_strategy_group->is_tuple) {
@@ -1477,8 +1477,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
     const StrategyMap& strategy_map,
     const std::vector<HloInstruction*>& instructions,
     const HloSharding& existing_sharding, const ClusterEnvironment& cluster_env,
-    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
-        pretrimmed_strategy_map,
+    StableMap<int64_t, std::vector<ShardingStrategy>>& pretrimmed_strategy_map,
     const CallGraph& call_graph, const bool strict) {
   if (strategy_group->is_tuple) {
     for (size_t i = 0; i < strategy_group->childs.size(); ++i) {
@@ -1760,7 +1759,7 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     const size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
-    const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
+    const StableMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     const int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs) {
@@ -2975,14 +2974,12 @@ void FindReplicateSet(
     absl::Span<const NodeStrategyIdx> s_val, const StrategyMap& strategy_map,
     const ShardingStrategy& strategy, const HloInstruction* output,
     const bool do_all_gather_after_backward, HloInstruction*& transpose_inst,
-    StableHashSet<HloInstruction*>& replicated_set,
-    StableHashSet<HloInstruction*>& boundary_set,
-    StableHashSet<HloInstruction*>& consumer_set,
-    StableHashSet<const HloInstruction*>& visited) {
+    InstructionSet& replicated_set, InstructionSet& boundary_set,
+    InstructionSet& consumer_set, ConstInstructionSet& visited) {
   visited.insert(cur);
 
   // Check whether the node is a boundary node.
-  StableHashSet<HloInstruction*> users = UsersWithAlias(cur, alias_map, output);
+  InstructionSet users = UsersWithAlias(cur, alias_map, output);
   for (HloInstruction* consumer : users) {
     const HloInstruction* shape_inst = cur;
 
@@ -3066,7 +3063,7 @@ absl::Status GenerateReduceScatter(
   bool use_all_reduce_for_grad_acc = option.reduce_scatter_grad_acc_friendly;
 
   std::vector<HloInstruction*> insert_all_gather;
-  StableHashSet<const HloInstruction*> modified;
+  ConstInstructionSet modified;
 
   for (HloInstruction* inst : instructions) {
     if (!HasReduceScatterOpportunity(inst, strategy_map, cost_graph, s_val,
@@ -3079,10 +3076,10 @@ absl::Status GenerateReduceScatter(
       continue;
     }
 
-    StableHashSet<HloInstruction*> replicated_set;
-    StableHashSet<HloInstruction*> boundary_set;
-    StableHashSet<HloInstruction*> consumer_set;
-    StableHashSet<const HloInstruction*> visited;
+    InstructionSet replicated_set;
+    InstructionSet boundary_set;
+    InstructionSet consumer_set;
+    ConstInstructionSet visited;
 
     // We allow at most one transpose in the path of replication analysis.
     HloInstruction* transpose_inst = nullptr;
@@ -3591,10 +3588,11 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
 }
 
 // Return whether an instruction has the opportunity to generate reduce-scatter.
-bool HasReduceScatterOpportunity(
-    const HloInstruction* inst, const StrategyMap& strategy_map,
-    const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val,
-    const StableHashSet<const HloInstruction*>& modified) {
+bool HasReduceScatterOpportunity(const HloInstruction* inst,
+                                 const StrategyMap& strategy_map,
+                                 const CostGraph& cost_graph,
+                                 absl::Span<const NodeStrategyIdx> s_val,
+                                 const ConstInstructionSet& modified) {
   // If the operand is already modified by other ops, skip this instruction to
   // avoid conflicts.
   for (const HloInstruction* operand : inst->operands()) {

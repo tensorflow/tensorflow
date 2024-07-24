@@ -790,8 +790,8 @@ TEST(ScaleRequest, SkipsScaling) {
   EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
 }
 
-TEST(StableHashMap, IterationOrderDeterminism){
-  StableHashMap<int, int> map;
+TEST(StableMap, IterationOrderDeterminism){
+  StableMap<int, int> map;
   std::vector<int> insertion_order = {6, 3, 1, 2, 4, 5, 10, 0, 7, 9, 8};
   for (int key : insertion_order) {
     map[key] = key;
@@ -801,12 +801,8 @@ TEST(StableHashMap, IterationOrderDeterminism){
   for (const auto& [key, value] : map) {
     iteration_order.push_back(key);
   }
-  if (tsl::kIsOpenSource) {
-    EXPECT_THAT(iteration_order,
-                ::testing::ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
-  } else {
-    EXPECT_EQ(iteration_order, insertion_order);
-  }
+  EXPECT_THAT(iteration_order,
+              ::testing::ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
 }
 
 TEST(ValidateRequest, AcceptsAutoShardingSolverRequest) {

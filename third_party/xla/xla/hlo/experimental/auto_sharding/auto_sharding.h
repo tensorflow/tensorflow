@@ -221,10 +221,11 @@ absl::Status GenerateReduceScatter(
     const CostGraph& cost_graph, absl::Span<const int64_t> s_val,
     const ClusterEnvironment& cluster_env, const AutoShardingOption& option);
 
-bool HasReduceScatterOpportunity(
-    const HloInstruction* inst, const StrategyMap& strategy_map,
-    const CostGraph& cost_graph, absl::Span<const int64_t> s_val,
-    const StableHashSet<const HloInstruction*>& modified);
+bool HasReduceScatterOpportunity(const HloInstruction* inst,
+                                 const StrategyMap& strategy_map,
+                                 const CostGraph& cost_graph,
+                                 absl::Span<const int64_t> s_val,
+                                 const ConstInstructionSet& modified);
 
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
@@ -285,7 +286,7 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
-    const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
+    const StableMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs);
@@ -362,7 +363,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     size_t instruction_id, StrategyGroups& strategy_groups,
     const ClusterEnvironment& cluster_env,
-    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map);
 
 void RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
@@ -379,8 +380,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
     const StrategyMap& strategy_map,
     const std::vector<HloInstruction*>& instructions,
     const HloSharding& existing_sharding, const ClusterEnvironment& cluster_env,
-    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
-        pretrimmed_strategy_map,
+    StableMap<int64_t, std::vector<ShardingStrategy>>& pretrimmed_strategy_map,
     const CallGraph& call_graph, bool strict);
 
 // Build possible sharding strategies and their costs for all instructions.
