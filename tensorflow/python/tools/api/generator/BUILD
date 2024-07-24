@@ -90,9 +90,6 @@ py_strict_test(
     deps = [
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/dtensor/python:dtensor",
-        "//tensorflow/lite/python:analyzer",
-        "//tensorflow/lite/python:lite",
-        "//tensorflow/lite/python/authoring",
         "//tensorflow/python:modules_with_exports",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",

@@ -299,9 +299,6 @@ def generate_apis(
         deps = [
             "//tensorflow/python:no_contrib",
             "//tensorflow/python:modules_with_exports",
-            "//tensorflow/lite/python:analyzer",
-            "//tensorflow/lite/python:lite",
-            "//tensorflow/lite/python/authoring",
         ],
         output_files = TENSORFLOW_API_INIT_FILES,
         root_init_template = None,
