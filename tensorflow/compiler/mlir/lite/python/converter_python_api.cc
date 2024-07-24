@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <optional>
@@ -27,12 +28,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "google/protobuf/text_format.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/flatbuffer_to_mlir.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
@@ -45,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
-#include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 #include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
 #include "tensorflow/lite/toco/model.h"
@@ -112,7 +114,7 @@ PyObject* Convert(PyObject* model_flags_proto_txt_raw,
   auto ConvertArg = [&](PyObject* obj, bool* error) {
     char* buf;
     Py_ssize_t len;
-    if (::tflite::python_utils::ConvertFromPyString(obj, &buf, &len) == -1) {
+    if (mlirlite::python_utils::ConvertFromPyString(obj, &buf, &len) == -1) {
       *error = true;
       return std::string();
     } else {
@@ -237,14 +239,14 @@ PyObject* Convert(PyObject* model_flags_proto_txt_raw,
     PyObject* dict = PyDict_New();
     PyDict_SetItemString(
         dict, "flatbuffer",
-        ::tflite::python_utils::ConvertToPyString(
+        mlirlite::python_utils::ConvertToPyString(
             output_file_contents_txt.data(), output_file_contents_txt.size()));
     PyDict_SetItemString(dict, "arithmetic_ops",
                          PyLong_FromLong(arithmetic_ops_count));
     return dict;
   }
   // Convert arguments back to byte (py3) or str (py2)
-  return ::tflite::python_utils::ConvertToPyString(
+  return mlirlite::python_utils::ConvertToPyString(
       output_file_contents_txt.data(), output_file_contents_txt.size());
 }
 
@@ -267,7 +269,7 @@ tflite::TensorType FromTocoDataTypeToTflitToTensorType(int inference_type) {
 
 int ToStringSet(PyObject* py_denylist,
                 absl::flat_hash_set<std::string>* string_set) {
-  using tflite::python_utils::ConvertFromPyString;
+  using mlirlite::python_utils::ConvertFromPyString;
   // Ensure op_denylist is non null
   if (!py_denylist) {
     return 0;
@@ -312,7 +314,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
 
-  if (tflite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
+  if (mlirlite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");
     return nullptr;
   }
@@ -323,7 +325,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     auto ConvertArg = [&](PyObject* obj, bool* error) {
       char* buf;
       Py_ssize_t len;
-      if (::tflite::python_utils::ConvertFromPyString(obj, &buf, &len) == -1) {
+      if (mlirlite::python_utils::ConvertFromPyString(obj, &buf, &len) == -1) {
         *error = true;
         return std::string();
       } else {
@@ -392,8 +394,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     return nullptr;
   }
 
-  return tflite::python_utils::ConvertToPyString(output_model.data(),
-                                                 output_model.size());
+  return mlirlite::python_utils::ConvertToPyString(output_model.data(),
+                                                   output_model.size());
 }
 
 PyObject* MlirSparsifyModel(PyObject* data) {
@@ -402,7 +404,7 @@ PyObject* MlirSparsifyModel(PyObject* data) {
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
 
-  if (tflite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
+  if (mlirlite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");
     return nullptr;
   }
@@ -423,7 +425,7 @@ PyObject* MlirSparsifyModel(PyObject* data) {
     error_reporter->exception();
     return nullptr;
   }
-  return tflite::python_utils::ConvertToPyString(
+  return mlirlite::python_utils::ConvertToPyString(
       reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
       builder.GetSize());
 }
@@ -439,8 +441,8 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
     // Get character array from Python object.
     char* tf_opdefs;
     Py_ssize_t len;
-    if (tflite::python_utils::ConvertFromPyString(PyList_GetItem(list, i),
-                                                  &tf_opdefs, &len) == -1) {
+    if (mlirlite::python_utils::ConvertFromPyString(PyList_GetItem(list, i),
+                                                    &tf_opdefs, &len) == -1) {
       PyErr_Format(PyExc_ValueError,
                    "Failed to convert Python string at index %d of custom op "
                    "defs argument",
