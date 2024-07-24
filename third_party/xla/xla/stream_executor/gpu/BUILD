@@ -576,8 +576,8 @@ xla_test(
 
 cc_library(
     name = "gpu_cudamallocasync_allocator",
-    srcs = ["gpu_cudamallocasync_allocator.cc"],
-    hdrs = ["gpu_cudamallocasync_allocator.h"],
+    srcs = if_cuda_is_configured(["gpu_cudamallocasync_allocator.cc"]),
+    hdrs = if_cuda_is_configured(["gpu_cudamallocasync_allocator.h"]),
     tags = ["gpu"],
     deps = [
         ":gpu_init_impl",

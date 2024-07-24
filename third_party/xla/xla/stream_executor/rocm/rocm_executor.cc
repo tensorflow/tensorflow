@@ -190,8 +190,7 @@ GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
   TF_ASSIGN_OR_RETURN(auto stop_event, CreateGpuEvent(/*allow_timing=*/true));
   TF_RETURN_IF_ERROR(start_event->Record(stream->gpu_stream()));
   return std::make_unique<GpuTimer>(gpu_context(), std::move(start_event),
-                                    std::move(stop_event), stream,
-                                    std::move(semaphore));
+                                    std::move(stop_event), stream);
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
