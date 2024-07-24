@@ -140,6 +140,7 @@ cc_library(
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:kernel_arguments",
         "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:custom_kernel_fusion",
         "//xla/service/gpu/runtime:custom_call_thunk",

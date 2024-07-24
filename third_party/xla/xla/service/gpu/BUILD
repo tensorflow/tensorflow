@@ -323,6 +323,7 @@ cc_library(
         ":launch_dimensions",
         ":matmul_utils",
         ":parallel_loop_emitter",
+        ":stream_executor_util",
         ":triton_call",
         "//xla:autotuning_proto_cc",
         "//xla:literal",
