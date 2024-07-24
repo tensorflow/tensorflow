@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/base/config.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/int128.h"
-#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"

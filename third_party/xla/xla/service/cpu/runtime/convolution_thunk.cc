@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/cpu/runtime/convolution_thunk.h"
 
+#include "xla/xla_data.pb.h"
+
 #define EIGEN_USE_THREADS
 
 #include <cstdint>

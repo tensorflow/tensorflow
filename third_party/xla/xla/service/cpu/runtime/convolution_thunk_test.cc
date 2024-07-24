@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "Eigen/Core"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 

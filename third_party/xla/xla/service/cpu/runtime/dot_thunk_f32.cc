@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/runtime/dot_thunk.h"
-
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"  // IWYU pragma: keep
 #endif

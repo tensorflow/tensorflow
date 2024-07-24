@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/custom_call_status.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
