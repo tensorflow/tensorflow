@@ -3250,6 +3250,22 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "batch_norm_training_test",
+    srcs = ["batch_norm_training_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:test",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 bzl_library(
     name = "plugin_bzl",
     srcs = ["plugin.bzl"],

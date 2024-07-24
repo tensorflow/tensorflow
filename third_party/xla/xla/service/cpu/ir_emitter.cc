@@ -3680,6 +3680,11 @@ absl::Status IrEmitter::HandleBatchNormGrad(HloInstruction* batch_norm_grad) {
   return Unimplemented("BatchNormGrad should be rewritten for CPU.");
 }
 
+absl::Status IrEmitter::HandleBatchNormTraining(
+    HloInstruction* batch_norm_training) {
+  return Unimplemented("BatchNormTraining should be rewritten for CPU.");
+}
+
 absl::Status IrEmitter::HandleGetDimensionSize(HloInstruction* get_size) {
   return Unimplemented("GetDimensionSize should be rewritten for CPU.");
 }

@@ -254,6 +254,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleRngBitGenerator(HloInstruction* rng) override;
   absl::Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   absl::Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
+  absl::Status HandleBatchNormTraining(
+      HloInstruction* batch_norm_training) override;
   absl::Status HandleStochasticConvert(HloInstruction* instruction) override;
   absl::Status FinishVisit(HloInstruction* root) override;
 

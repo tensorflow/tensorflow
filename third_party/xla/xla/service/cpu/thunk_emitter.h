@@ -90,6 +90,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitBatchNormGradThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitBatchNormTrainingThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
       const HloInstruction* instruction);
 
