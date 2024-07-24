@@ -7881,6 +7881,29 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
+  // Replace Reduce(Broadcast(Scalar)) with Broadcast(Multiply(Scalar)) when the
+  // reduction operation is addition
+  if (arg->opcode() == HloOpcode::kBroadcast &&
+      ShapeUtil::IsScalar(arg->operand(0)->shape())) {
+    if (Match(reduce->to_apply()->root_instruction(),
+              m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
+        IsScalarConstantZero(init_value)) {
+      int64_t reduction_dims_prod = 1;
+      for (auto i : reduce->dimensions()) {
+        reduction_dims_prod *= arg->shape().dimensions(i);
+      }
+
+      HloInstruction* multiplier =
+          MakeScalarLike(arg->mutable_operand(0), reduction_dims_prod);
+      TF_ASSIGN_OR_RETURN(HloInstruction * multiplied_scalar,
+                          MakeBinaryHlo(HloOpcode::kMultiply,
+                                        arg->mutable_operand(0), multiplier));
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateBroadcast(reduce->shape(),
+                                                  multiplied_scalar, {}));
+    }
+  }
+
   return absl::OkStatus();
 }
 

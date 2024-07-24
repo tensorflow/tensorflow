@@ -289,7 +289,7 @@ class AlgebraicSimplifierOptions {
 
  private:
   // Metadata struct can be used to store any metadata information encapsulated
-  // with the AlgebraicSimplierOptions that can be later used in an
+  // with the AlgebraicSimplifierOptions that can be later used in an
   // AlgebraicSimplifier pass. For example,
   // cudnn_batchnorm_forward_training_metadata can be used to store the name of
   // a custom call. If the custom call is
