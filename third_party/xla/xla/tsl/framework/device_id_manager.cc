@@ -71,6 +71,12 @@ class TfToPlatformDeviceIdMap {
     tf_shared_lock lock(mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
     if (type_id_map_iter == id_map_.end()) return false;
+
+    LOG(INFO) << "[clin] #entries = " << type_id_map_iter->second.size();
+    for (const auto& [device_id, platform_id] : type_id_map_iter->second) {
+      LOG(INFO) << "[clin] device_id = " << device_id
+                << "; platform_id = " << platform_id;
+    }
     auto id_map_iter = type_id_map_iter->second.find(tf_device_id.value());
     if (id_map_iter == type_id_map_iter->second.end()) return false;
     *platform_device_id = id_map_iter->second;

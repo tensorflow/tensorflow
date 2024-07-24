@@ -150,10 +150,16 @@ GetUniqueDeviceStates(PjRtGpuClientCreationInfo* info) {
 
   auto input_states = std::move(info->local_device_states);
 
+#if 1
+  return input_states;
+#else
+
   absl::flat_hash_map<int, int> hardware_id_to_local_id;
   for (const auto& id_state : input_states) {
     int local_id = id_state.second->local_device_id().value();
     int hardware_id = id_state.second->local_hardware_id().value();
+    LOG(INFO) << "[clin-unique] local_id = " << local_id
+              << "; hardware_id = " << hardware_id;
     if (hardware_id_to_local_id.contains(hardware_id)) {
       if (hardware_id_to_local_id[hardware_id] > local_id) {
         // Use the device with the smallest local_id, ignore others.
@@ -168,7 +174,7 @@ GetUniqueDeviceStates(PjRtGpuClientCreationInfo* info) {
     int local_id = id_state.second->local_device_id().value();
     int hardware_id = id_state.second->local_hardware_id().value();
     if (hardware_id_to_local_id[hardware_id] != local_id) {
-      VLOG(1) << "For hardware_id=" << hardware_id
+      VLOG(0) << "[clin-unique] For hardware_id=" << hardware_id
               << ", ignoring redundant local_id=" << local_id
               << ". local_id=" << hardware_id_to_local_id[hardware_id]
               << " will be used instead.";
@@ -177,6 +183,7 @@ GetUniqueDeviceStates(PjRtGpuClientCreationInfo* info) {
     local_device_states.emplace(id_state.first, std::move(id_state.second));
   }
   return local_device_states;
+#endif
 }
 
 // Coordinate creation of a PjRt GPU client with distributed devices when there
@@ -324,6 +331,14 @@ absl::Status CreateClientOnce(
   if (use_creation_info) {
     unique_local_device_states = GetUniqueDeviceStates(info);
   }
+  LOG(INFO) << "[clin-unique] #unique_local_device_states = "
+            << unique_local_device_states.size();
+  for (const auto& [idx, local_device_state] : unique_local_device_states) {
+    LOG(INFO) << "[clin-unique] device_idx = " << idx << "; local_device_id = "
+              << local_device_state->local_device_id().value()
+              << "; local_hardware_id = "
+              << local_device_state->local_hardware_id().value();
+  }
   if (use_creation_info) {
     // Tell any other threads are waiting to call BuildDistributedDevices to
     // proceed.
@@ -340,14 +355,17 @@ absl::Status CreateClientOnce(
   }
 
   pjrt_devices = std::move(device_topology_pair->first);
-  VLOG(2) << "Distributed devices built with size=" << pjrt_devices.size();
+  VLOG(0) << "[clin] Distributed devices built with size="
+          << pjrt_devices.size();
   int i = 0;
   for (const auto& pjrt_device : pjrt_devices) {
     if (pjrt_device != nullptr) {
-      VLOG(2) << "  pjrt_device " << i++ << ":"
-              << pjrt_device->description().DebugString();
+      VLOG(0) << "[clin-device-1]  pjrt_device " << i++ << ":"
+              << pjrt_device->description().DebugString()
+              << "; id = " << pjrt_device->id()
+              << "; local_device_id = " << pjrt_device->local_device_id();
     } else {
-      VLOG(2) << "  pjrt_device " << i++ << ":" << "nullptr";
+      VLOG(0) << "[clin-device-1]  pjrt_device " << i++ << ":" << "nullptr";
     }
   }
 

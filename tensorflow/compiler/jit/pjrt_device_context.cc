@@ -58,6 +58,9 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
       const int pjrt_device_id,
       tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name(),
                                            DeviceType(device->device_type())));
+  LOG(INFO) << "[clin] device->parsed_name().id = " << device->parsed_name().id
+            << "; device->parsed_name().type = " << device->parsed_name().type;
+  LOG(INFO) << "[clin] pjrt_device_id = " << pjrt_device_id;
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                       pjrt_client->LookupAddressableDevice(
                           xla::PjRtLocalDeviceId(pjrt_device_id)));

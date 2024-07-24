@@ -259,11 +259,14 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
 
   for (const std::unique_ptr<PjRtStreamExecutorDevice>& device :
        owned_devices_) {
+    LOG(INFO) << "[clin-device] device id = " << device->id()
+              << "; local_device_id = " << device->local_device_id();
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
         << "Duplicate device id: " << device->id();
 
     if (device->IsAddressable()) {
+      LOG(INFO) << "[clin-device] is addressable";
       addressable_devices_.push_back(device.get());
     }
     device->SetClient(this);
@@ -1401,6 +1404,8 @@ PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
 
 absl::StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
     xla::PjRtLocalDeviceId local_device_id) const {
+  LOG(INFO) << "[clin] addressable_devices_.size() = "
+            << addressable_devices_.size();
   for (auto* device : addressable_devices_) {
     if (local_device_id == device->local_device_id()) {
       return device;

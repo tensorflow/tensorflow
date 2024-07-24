@@ -29,6 +29,7 @@ using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 constexpr std::string_view kTestDeviceType = "CPU";
+constexpr std::string_view kGpuDeviceType = "GPU";
 
 PlatformDeviceId TfToPlatformDeviceId(TfDeviceId tf_device_id) {
   PlatformDeviceId platform_device_id;
@@ -199,6 +200,22 @@ TEST(DeviceIdUtilsTest, GetDeviceIdWithoutPlatformDeviceId) {
                               device_name, DeviceType(kTestDeviceType)));
 
   EXPECT_EQ(device_id, 0);
+}
+
+TEST(DeviceIdUtilsTest, GetDeviceIdForGpu) {
+  TfDeviceId tf_device_id(0);
+  PlatformDeviceId platform_device_id(1);
+  TF_EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+      DeviceType(kGpuDeviceType), tf_device_id, platform_device_id));
+  DeviceNameUtils::ParsedName device_name;
+  device_name.id = 0;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      int device_id,
+      GetDeviceIdFromDeviceParsedName(device_name, DeviceType(kGpuDeviceType)));
+
+  EXPECT_EQ(device_id, 0);
+  DeviceIdManager::TestOnlyReset();
 }
 
 }  // namespace

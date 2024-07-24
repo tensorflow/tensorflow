@@ -269,6 +269,7 @@ cc_library(
     deps = [
         ":device_id_impl",
         ":device_type",
+        "//base:examine_stack",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",

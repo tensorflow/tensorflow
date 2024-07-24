@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "base/examine_stack.h"
 #include "absl/base/casts.h"
 #include "absl/base/const_init.h"
 #include "absl/base/optimization.h"
@@ -274,8 +275,16 @@ absl::Status GpuDriver::Init() {
 }
 
 absl::Status GpuDriver::GetDevice(int device_ordinal, CUdevice* device) {
-  return cuda::ToStatus(cuDeviceGet(device, device_ordinal),
-                        "Failed call to cuDeviceGet");
+  LOG(INFO) << "[clin-cuda] GpuDriver::GetDevice - device_ordinal = "
+            << device_ordinal;
+  auto status = cuda::ToStatus(cuDeviceGet(device, device_ordinal),
+                               "Failed call to cuDeviceGet");
+  if (!status.ok()) {
+    std::string trace;
+    DumpStackTrace(1, DebugWriteToString, &trace);
+    LOG(INFO) << "[clin-cuda] GetDevice TRACE:\n" << trace;
+  }
+  return status;
 }
 
 absl::Status GpuDriver::GetDeviceName(CUdevice device,

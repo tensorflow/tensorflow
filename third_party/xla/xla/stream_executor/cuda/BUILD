@@ -144,6 +144,7 @@ cuda_only_cc_library(
     deps = [
         ":cuda_diagnostics",  # buildcleaner: keep
         ":cuda_status",
+        "//base:examine_stack",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",

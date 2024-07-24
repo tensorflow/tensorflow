@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "base/examine_stack.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
@@ -62,7 +63,7 @@ absl::Status ParseVisibleDeviceList(
     std::iota(visible_device_order->begin(), visible_device_order->end(), 0);
   } else {
     const std::vector<std::string> order_str =
-        tsl::str_util::Split(visible_device_list, ',');
+        tsl::str_util::Split(visible_device_list, ',');  // non-absl ok
     for (const std::string& platform_device_id_str : order_str) {
       int32_t platform_device_id;
       if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
@@ -139,6 +140,21 @@ absl::StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
 absl::StatusOr<int> GetDeviceIdFromDeviceParsedName(
     const DeviceNameUtils::ParsedName& device_name,
     const DeviceType& device_type) {
+  // TODO(b/355243365): Should rename the method name to
+  // GetPjRtDeviceIdFromDeviceParsedName and support virtual devices in
+  // NextPluggableDevice.
+#if 0
+  auto platform_id =
+      GetPlatformDeviceIdFromDeviceParsedName(device_name, device_type);
+  LOG(INFO) << "[clin-platform] platform_id = " << *platform_id;
+#endif
+  if (device_type == DeviceType("GPU")) {
+    std::string trace;
+    DumpStackTrace(1, DebugWriteToString, &trace);
+    LOG_FIRST_N(INFO, 2) << "[clin] GetDeviceId TRACE:\n" << trace;
+
+    return GetTfDeviceIdFromDeviceParsedName(device_name);
+  }
   auto platform_id =
       GetPlatformDeviceIdFromDeviceParsedName(device_name, device_type);
   if (platform_id.ok()) {
