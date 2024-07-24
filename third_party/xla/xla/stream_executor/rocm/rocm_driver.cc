@@ -75,7 +75,6 @@ namespace stream_executor {
 namespace gpu {
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
-/* static */ int64_t CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 // Formats hipError_t to output prettified values into a log stream.
 // Error summaries taken from:

@@ -77,15 +77,10 @@ limitations under the License.
     }                                                       \
   } while (0)
 
-// Debugging: on each push and pop of a cuda context, verify the current context
-// matches the expected one.
-constexpr bool kVerifyGpuContext = false;
-
 namespace stream_executor {
 namespace gpu {
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
-/* static */ int64_t CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 namespace {
 
@@ -119,15 +114,9 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
 
 namespace {
 
-// Call cuCtxtSynchronize and crash if it doesn't succeed.
-void SynchronizeOrDie() {
-  FAIL_IF_CUDA_RES_ERROR(cuCtxSynchronize(),
-                         "Synchronize fail: ", tsl::CurrentStackTrace());
-}
-
 thread_local struct ThreadLocalData {
-  int64_t id;
-  GpuContext* context;  // Only valid if id == a known good context.
+  GpuContext* context;
+  int device_ordinal;
   int depth;
 } tls_data = {};
 
@@ -140,57 +129,48 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
   // been left in the same state we left it. Other code may have run on this
   // thread and altered the context.
   if (tls->depth == 0) {
-    VLOG(3) << "ScopedActivateContext switching to " << cuda_context->id();
+    VLOG(3) << "ScopedActivateContext switching to "
+            << cuda_context->device_ordinal();
     FAIL_IF_CUDA_RES_ERROR(cuCtxSetCurrent(cuda_context->context()),
                            "Failed setting context");
     tls->depth = 1;
-    tls->id = cuda_context->id();
+    tls->device_ordinal = cuda_context->device_ordinal();
     tls->context = cuda_context;
     to_restore_ = nullptr;
     return;
   }
 
   tls->depth++;
-  if (tls->id == cuda_context->id()) {
-    if (kVerifyGpuContext) {
-      CHECK_EQ(CurrentContext(), cuda_context->context());
-    }
+  if (tls->device_ordinal == cuda_context->device_ordinal()) {
     DCHECK_EQ(CurrentContext(), cuda_context->context());
     return;
   }
 
-  VLOG(3) << "ScopedActivateContext switching context from " << tls->id
-          << " to " << cuda_context->id();
+  VLOG(3) << "ScopedActivateContext switching context from "
+          << tls->device_ordinal << " to " << cuda_context->device_ordinal();
 
   to_restore_ = tls->context;
   // Set the context and update thread local.
   FAIL_IF_CUDA_RES_ERROR(cuCtxSetCurrent(cuda_context->context()),
                          "Failed setting context");
-  tls->id = cuda_context->id();
+  tls->device_ordinal = cuda_context->device_ordinal();
   tls->context = cuda_context;
 }
 
 ScopedActivateContext::~ScopedActivateContext() {
   auto* tls = &tls_data;
 
-  if (kVerifyGpuContext) {
-    // Note that if kVerifyGpuContext is used, and contexts are deleted, it's
-    // possible this could fail in the CurrentContext() call.
-    CHECK_EQ(CurrentContext(),
-             tls->context == nullptr ? nullptr : tls->context->context());
-  }
-
   tls->depth--;
   DCHECK_GE(tls->depth, 0);
   if (to_restore_ == nullptr) {
-    // Leave context, tls->id, and tls->context set.
+    // Leave context, tls->device_ordinal, and tls->context set.
     return;
   }
 
   // Set context and update thread local.
   FAIL_IF_CUDA_RES_ERROR(cuCtxSetCurrent(to_restore_->context()),
                          "Failed setting context");
-  tls->id = to_restore_->id();
+  tls->device_ordinal = to_restore_->device_ordinal();
   tls->context = to_restore_;
 }
 
