@@ -719,6 +719,13 @@ class AsyncValuePtr {
   template <typename F, typename R = std::invoke_result_t<F, T&>,
             std::enable_if_t<is_async_value_ref_v<R>>* = nullptr>
   AsyncValueRef<typename R::value_type> FlatMap(F&& f) {
+    // If async value is in concrete state, we can immediately call the functor.
+    // We don't handle errors here and prefer a generic code path below because
+    // error handling is never on a performance critical path.
+    if (ABSL_PREDICT_TRUE(IsConcrete())) {
+      return f(get());
+    }
+
     auto promise = MakePromise<R>();
     AndThen([f = std::forward<F>(f), promise, ptr = *this]() mutable {
       if (ABSL_PREDICT_FALSE(ptr.IsError())) {
@@ -735,6 +742,9 @@ class AsyncValuePtr {
             std::enable_if_t<is_async_value_ref_v<R>>* = nullptr>
   AsyncValueRef<typename R::value_type> FlatMap(AsyncValue::Executor& executor,
                                                 F&& f) {
+    // We don't have a special handling for concrete values here because
+    // we must execute user functor on a separate executor and can't call it in
+    // the caller thread.
     auto promise = MakePromise<R>();
     // We don't know when the executor will run the callback, so we need to
     // copy the AsyncValueRef to keep the underlying value alive.
