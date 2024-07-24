@@ -9864,6 +9864,34 @@ ENTRY %main {
                          op::Fusion()));
 }
 
+TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPermissiveMode) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+fused_computation {
+  param_0 = f32[2] parameter(0)
+  param_1 = f32[4,2] parameter(1)
+  broadcast = f32[4,2] broadcast(param_0), dimensions={1}
+  ROOT multiply = f32[4,2] multiply(broadcast, param_1)
+}
+
+ENTRY entry {
+  p0 = f32[2] parameter(0)
+  p1 = f32[4,2] parameter(1)
+  fusion = f32[4,2] fusion(p0, p1), kind=kLoop, calls=fused_computation
+  ROOT negate = f32[4,2] negate(fusion)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.cross_program_prefetch_permissive_mode = true;
+  AssignMemorySpace(module.get(), options);
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
 // Test description:
 // - Setup: Make sure p1 can not be prefetched to alternate memory until after
 //   instruction c. We do this by causing p0 to be prefetched to alternate

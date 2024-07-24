@@ -110,7 +110,7 @@ std::string VectorToString(const std::vector<T>& v,
   return absl::StrCat("[ ", absl::StrJoin(elements, ", "), " ]");
 }
 
-bool LooksLikeAnActivation(const HloInstruction* inst) {
+bool LooksLikeAnActivation(const HloInstruction* inst, bool permissive_mode) {
   for (HloInstruction* user : inst->users()) {
     switch (user->opcode()) {
       case HloOpcode::kConvolution:
@@ -127,7 +127,8 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
       case HloOpcode::kFusion:
         for (int i = 0; i < user->operand_count(); ++i) {
           if (user->operand(i) == inst &&
-              LooksLikeAnActivation(user->fused_parameter(i))) {
+              LooksLikeAnActivation(user->fused_parameter(i),
+                                    permissive_mode)) {
             return true;
           }
         }
@@ -135,14 +136,14 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
       case HloOpcode::kBitcast:
       case HloOpcode::kBroadcast:
       case HloOpcode::kTranspose:
-        if (LooksLikeAnActivation(user)) {
+        if (LooksLikeAnActivation(user, permissive_mode)) {
           return true;
         }
         break;
       case HloOpcode::kCopy:
         if (user->IsFused() && (user == user->parent()->root_instruction())) {
           user = user->parent()->FusionInstruction();
-          if (LooksLikeAnActivation(user)) {
+          if (LooksLikeAnActivation(user, permissive_mode)) {
             return true;
           } else {
             break;
@@ -155,7 +156,7 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
                       inst) != user->operands().end()) {
           return true;
         }
-        if (LooksLikeAnActivation(user)) {
+        if (LooksLikeAnActivation(user, permissive_mode)) {
           return true;
         }
         break;
@@ -165,12 +166,14 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
                       user->operands().end(), inst) != user->operands().end()) {
           return true;
         }
-        if (LooksLikeAnActivation(user)) {
+        if (LooksLikeAnActivation(user, permissive_mode)) {
           return true;
         }
         break;
       default:
-        return true;
+        // Permissive mode assumes the tensor is not an activation when we
+        // couldn't explicitly determine that it is not an activation.
+        return !permissive_mode;
     }
   }
   return false;
@@ -262,7 +265,8 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
 
            return (inst->opcode() == HloOpcode::kGetTupleElement ||
                    inst->opcode() == HloOpcode::kParameter) &&
-                  !LooksLikeAnActivation(inst);
+                  !LooksLikeAnActivation(
+                      inst, options.cross_program_prefetch_permissive_mode);
          });
 }
 

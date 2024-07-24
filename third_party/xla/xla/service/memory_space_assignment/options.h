@@ -172,6 +172,11 @@ struct Options {
   // TODO(tjablin): Use a heuristic to determine this automatically.
   int max_cross_program_prefetches = 1;
 
+  // If false, we assume tensors that we couldn't explicitly determine to be
+  // activations are activations. If true, we assume these aren't activations,
+  // so they may be cross-program-prefetch candidates.
+  bool cross_program_prefetch_permissive_mode = false;
+
   // Enable redundant eviction optimization in/around while loops. If enabled,
   // this optimization would keep a copy of the buffer in the default memory in
   // addition to alternate memory to eliminate redundant evictions.
