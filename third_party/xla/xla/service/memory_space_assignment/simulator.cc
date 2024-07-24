@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -209,6 +210,64 @@ float RuntimeSimulator::SimulateAsyncCopyDone(
            copy_start_instruction);
   return elapsed_time;
 };
+
+float RuntimeSimulator::SimulateComputeInstruction(
+    const HloInstruction* instruction,
+    absl::Span<const std::pair<int64_t, ShapeIndex>>
+        operands_in_alternate_memory,
+    absl::Span<const ShapeIndex> outputs_in_alternate_memory) {
+  // Calculate the time in which the instruction does not access the default
+  // memory.
+  float default_memory_idle_time =
+      cost_analysis_->GetDefaultMemoryBandwidthIdleTime(
+          *instruction, operands_in_alternate_memory,
+          outputs_in_alternate_memory);
+
+  // Execute the outstanding async copy in the idle time.
+  ProcessAsyncCopiesInIdleTime(default_memory_idle_time);
+
+  float inst_elapsed = cost_analysis_->GetInstructionElapsedInAlternateMemory(
+      *instruction, operands_in_alternate_memory, outputs_in_alternate_memory);
+  return inst_elapsed;
+}
+
+void RuntimeSimulator::ProcessAsyncCopiesInIdleTime(float time) {
+  if (time <= 0.0) {
+    return;
+  }
+  float remaining_simulation_time = time;
+  // This loop simulates the execution of the front memory requests in the
+  // read and/or write queues. The loop terminates when the remaining time is
+  // exhausted or there are no more outstanding async copies.
+  while ((!outstanding_read_default_queue_.empty() ||
+          !outstanding_write_default_queue_.empty()) &&
+         remaining_simulation_time > 0.0) {
+    float available_bandwidth = cost_analysis_->base_costs().BytesPerSecond();
+    if (!outstanding_read_default_queue_.empty() &&
+        !outstanding_write_default_queue_.empty()) {
+      // Need to share the bandwidth
+      available_bandwidth *= 0.5;
+    }
+    float bytes_to_process = available_bandwidth * remaining_simulation_time;
+    if (!outstanding_read_default_queue_.empty()) {
+      bytes_to_process = std::min(
+          bytes_to_process,
+          outstanding_read_default_queue_.front().remaining_bytes_to_transfer);
+    }
+    if (!outstanding_write_default_queue_.empty()) {
+      bytes_to_process = std::min(
+          bytes_to_process,
+          outstanding_write_default_queue_.front().remaining_bytes_to_transfer);
+    }
+
+    float real_elapsed_time = bytes_to_process / available_bandwidth;
+    remaining_simulation_time -= real_elapsed_time;
+    RemoveBytesFromQueueIfNotEmpty(outstanding_read_default_queue_,
+                                   bytes_to_process);
+    RemoveBytesFromQueueIfNotEmpty(outstanding_write_default_queue_,
+                                   bytes_to_process);
+  }
+}
 
 }  // namespace memory_space_assignment
 }  // namespace xla

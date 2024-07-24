@@ -18,11 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <list>
+#include <utility>
 
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -97,20 +100,41 @@ class RuntimeSimulator {
   const std::list<OutstandingAsyncCopy>& GetOutstandingWriteDefaultQueue()
       const;
 
+  // This is an auxiliary function for simulating the execution
+  // time for a compute instruction. It returns the elapsed time (in seconds)
+  // for executing the compute instruction.
+  //
+  // Aside from returning the elapsed time, this function also updates the
+  // outstanding memory request queues, by draining them when the compute
+  // instruction is not occupying bandwidth.
+  float SimulateComputeInstruction(
+      const HloInstruction* compute_instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_memory,
+      absl::Span<const ShapeIndex> outputs_in_alternate_memory);
+
  private:
   const CostAnalysis* cost_analysis_;
   CostAnalysis::Cache cost_analysis_cache_;
-  // Members used for memory model simulation
-  int64_t alternate_memory_space_;
-  std::list<OutstandingAsyncCopy> outstanding_read_default_queue_;
-  std::list<OutstandingAsyncCopy> outstanding_write_default_queue_;
+
   // This function updates the queue by updating the front request with the
   // processed bytes. If the request is completed (no remaining bytes to
   // process), the function returns the instruction and pop it from the queue.
   // Otherwise, it returns nullptr.
   const HloInstruction* RemoveBytesFromQueueIfNotEmpty(
       std::list<OutstandingAsyncCopy>& async_copy_queue, float processed_bytes);
+
+  // This is an auxiliary function which simulates the process of draining
+  // the memory access queues in a given amount of time (seconds). If both
+  // outstanding_*_default_queues are non-empty, they share bandwidth. If one of
+  // the queues is empty and the other is not, it gets the full bandwdith.
+  void ProcessAsyncCopiesInIdleTime(float time);
+  // Members used for memory model simulation
+  int64_t alternate_memory_space_;
+  std::list<OutstandingAsyncCopy> outstanding_read_default_queue_;
+  std::list<OutstandingAsyncCopy> outstanding_write_default_queue_;
 };
+
 }  // namespace memory_space_assignment
 }  // namespace xla
 #endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_SIMULATOR_H_

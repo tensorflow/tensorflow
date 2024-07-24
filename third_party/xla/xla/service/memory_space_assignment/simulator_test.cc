@@ -74,6 +74,8 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
         std::make_unique<memory_space_assignment::HloCostAnalysisCosts>(
             *hlo_cost_analysis_);
     CostAnalysisOptions _options;
+    // Assume 2 byte per second for testing.
+    _options.alternate_mem_bandwidth_bytes_per_second = 2;
     TF_ASSIGN_OR_RETURN(
         cost_analysis_,
         CostAnalysis::Create(*hlo_cost_analysis_costs_, _options, *module_));
@@ -126,12 +128,15 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerNestedLoop) {
   // Since the HLO does not contain memory access, pass an empty allocation
   // sequence for test.
   memory_space_assignment::AllocationSequence allocations;
-  // The while loop has 42 iterations, and each iteration has 2 FLOP (for
-  // %increment and %greater). Thus, the total FLOPs are 84 FLOPs.
-  float expected_elapsed_time = 84;
+  // The total elapsed time is the summation of the elapsed time of each
+  // instruction. Here are the overhead of each instruction (secs):
+  // %increment: 12 * 42
+  // tuple(%constant.0): 8 * 1
+  // %greater: 9 * 42
+  // %loop_result: 8 * 42
   EXPECT_EQ(runtime_simulator_->ComputeEstimatedElapsedTime(*hlo_live_range,
                                                             allocations),
-            expected_elapsed_time);
+            1226);
 }
 
 class SimulateAsyncCopyDoneTest : public MemorySpaceAssignmentSimulatorTest {
@@ -289,6 +294,129 @@ TEST_F(SimulateAsyncCopyDoneTest, AsyncCopyTransferPartialProcess) {
   // elapsed time is 384 / 1 = 384.
   EXPECT_EQ(copy_done_1_elapsed_time, 384);
   // No request should be in the queue.
+  EXPECT_THAT(runtime_simulator_->GetOutstandingReadDefaultQueue(), IsEmpty());
+  EXPECT_THAT(runtime_simulator_->GetOutstandingWriteDefaultQueue(), IsEmpty());
+}
+
+TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesWithComputeInstruction) {
+  absl::string_view hlo_string =
+      R"(HloModule module, is_scheduled=true
+      ENTRY Entry {
+        param_0 = f32[128] parameter(0)
+        param_1 = f32[32] parameter(1)
+        copy-start.1 = (f32[128]{0:S(1)}, f32[128], u32[]) copy-start(param_0)
+        neg = f32[32] negate(param_1)
+        ROOT copy-done.1 = f32[128]{0:S(1)} copy-done(copy-start.1)
+      }
+    )";
+
+  TF_ASSERT_OK(Initialize(hlo_string));
+  const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
+  const HloInstruction* neg_inst = instruction_map_["neg"];
+
+  float compute_elapsed_time = runtime_simulator_->SimulateComputeInstruction(
+      neg_inst, /*operands_in_alternate_memory=*/{},
+      /*outputs_in_alternate_memory=*/{});
+
+  // The compute operand requires 32 FLOPs and 32 * 4 * 2 bytes access, which
+  // requires 32 and 256 secs respectively. Thus, it is default memory access
+  // dominated, which does not have idle time to process the async copy.
+  EXPECT_EQ(compute_elapsed_time, 256);
+  EXPECT_THAT(runtime_simulator_->GetOutstandingReadDefaultQueue(),
+              ElementsAreArray({memory_space_assignment::OutstandingAsyncCopy{
+                  copy_start_1_inst, 512}}));
+
+  EXPECT_THAT(runtime_simulator_->GetOutstandingWriteDefaultQueue(), IsEmpty());
+}
+
+TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesInTimeWithSharedBandwidth) {
+  absl::string_view hlo_string =
+      R"(HloModule module, is_scheduled=true
+      ENTRY Entry {
+        param_0 = f32[128] parameter(0)
+        param_1 = f32[32]{0:S(1)} parameter(1)
+        copy-start.1 = (f32[128]{0:S(1)}, f32[128], u32[]) copy-start(param_0)
+        copy-start.2 = (f32[32], f32[32]{0:S(1)}, u32[]) copy-start(param_1)
+        neg = f32[32] negate(param_1)
+        copy-done.2 = f32[32] copy-done(copy-start.2)
+        ROOT copy-done.1 = f32[128]{0:S(1)} copy-done(copy-start.1)
+      }
+    )";
+
+  TF_ASSERT_OK(Initialize(hlo_string));
+
+  const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
+  const HloInstruction* copy_start_2_inst = instruction_map_["copy-start.2"];
+
+  // The instruction reads 32 * 4 bytes from alternate memory, which takes 64
+  // secs. In this 64 secs, it does not access default memory. Thus, we can
+  // process the async copies in this time. Both queues are not empty, so the
+  // bandwidth is shared. Each of the request at the front of the queue process
+  // 64 sec * 0.5 bytes/sec = 32 bytes.
+  float compute_elapsed_time = runtime_simulator_->SimulateComputeInstruction(
+      instruction_map_["neg"], /*operands_in_alternate_memory=*/{{0, {}}},
+      /*outputs_in_alternate_memory=*/{});
+  // 64 secs for alternate memory access + 128 secs for default memory access
+  EXPECT_EQ(compute_elapsed_time, 192);
+
+  EXPECT_THAT(runtime_simulator_->GetOutstandingReadDefaultQueue(),
+              ElementsAreArray({memory_space_assignment::OutstandingAsyncCopy{
+                  copy_start_1_inst, 480}}));
+
+  EXPECT_THAT(runtime_simulator_->GetOutstandingWriteDefaultQueue(),
+              ElementsAreArray({memory_space_assignment::OutstandingAsyncCopy{
+                  copy_start_2_inst, 96}}));
+}
+
+TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesInTimeWithFullBandwidth) {
+  absl::string_view hlo_string =
+      R"(HloModule module, is_scheduled=true
+      ENTRY Entry {
+        param_0 = f32[128] parameter(0)
+        param_1 = f32[32]{0:S(1)} parameter(1)
+        copy-start.1 = (f32[128]{0:S(1)}, f32[128], u32[]) copy-start(param_0)
+        neg = f32[32] negate(param_1)
+        ROOT copy-done.1 = f32[128]{0:S(1)} copy-done(copy-start.1)
+      }
+    )";
+
+  TF_ASSERT_OK(Initialize(hlo_string));
+
+  const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
+
+  // Same as the 'ProcessAsyncCopiesInTimeWithSharedBandwidth' test, there are
+  // 64 secs idle time to process async copies. Since only the read queue is not
+  // empty, we can use the full bandwidth and process 64 sec * 1 bytes/sec = 64
+  // bytes.
+  float compute_elapsed_time = runtime_simulator_->SimulateComputeInstruction(
+      instruction_map_["neg"], /*operands_in_alternate_memory=*/{{0, {}}},
+      /*outputs_in_alternate_memory=*/{});
+  // 64 secs for alternate memory access + 128 secs for default memory access
+  EXPECT_EQ(compute_elapsed_time, 192);
+
+  EXPECT_THAT(runtime_simulator_->GetOutstandingReadDefaultQueue(),
+              ElementsAreArray({memory_space_assignment::OutstandingAsyncCopy{
+                  copy_start_1_inst, 448}}));
+  EXPECT_THAT(runtime_simulator_->GetOutstandingWriteDefaultQueue(), IsEmpty());
+}
+
+TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopyInTimeWithEmptyQueues) {
+  absl::string_view hlo_string =
+      R"(HloModule module, is_scheduled=true
+      ENTRY Entry {
+        param_0 = f32[128] parameter(0)
+        ROOT neg = f32[128] negate(param_0)
+      }
+    )";
+
+  TF_ASSERT_OK(Initialize(hlo_string));
+
+  float compute_elapsed_time = runtime_simulator_->SimulateComputeInstruction(
+      instruction_map_["neg"], /*operands_in_alternate_memory=*/{},
+      /*outputs_in_alternate_memory=*/{});
+  // Execution time: 128 * 4 * 2 / 1 for default access
+  EXPECT_EQ(compute_elapsed_time, 1024);
+  // The queues should remain empty.
   EXPECT_THAT(runtime_simulator_->GetOutstandingReadDefaultQueue(), IsEmpty());
   EXPECT_THAT(runtime_simulator_->GetOutstandingWriteDefaultQueue(), IsEmpty());
 }
