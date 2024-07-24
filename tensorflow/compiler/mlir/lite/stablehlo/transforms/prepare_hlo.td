@@ -64,7 +64,7 @@ def IsStandardConv : Constraint<CPred<
   "IsStandardConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
 
 // Re-layout input (lhs) to [b, spatials..., f]
-//===---------------------------------------------------------------------------
+//===------------------------------------------
 
 def IsInputNotTFLNativeLayout : Constraint<CPred<
     "Layout("
@@ -127,13 +127,11 @@ def ReLayoutConvInput : Pat<(MHLO_ConvolutionOp:$conv
                             [(AreDnumsFullyDefined $conv),
                              (InputHasIotaSpatials $dnums),
                              (IsInputNotTFLNativeLayout $dnums),
-                             (IsStandardConv $conv)],
-                             [],
-                             (addBenefit 1)>;
+                             (IsStandardConv $conv)]>;
 
 
 // Re-layout kernel to [o, spatials..., i] (2d) or [spatials..., i, o] (3d)
-//===---------------------------------------------------------------------------
+//===----------------------------------------------------------------------
 
 def IsKernelNotTFLNativeLayout : Constraint<CPred<
     "Layout("
@@ -196,12 +194,10 @@ def ReLayoutConvKernel : Pat<(MHLO_ConvolutionOp:$conv
                             [(AreDnumsFullyDefined $conv),
                              (KernelHasIotaSpatials $dnums),
                              (IsKernelNotTFLNativeLayout $dnums),
-                             (IsStandardConv $conv)],
-                             [],
-                             (addBenefit 1)>;
+                             (IsStandardConv $conv)]>;
 
 // Re-layout output to [b, spatials..., f]
-//===---------------------------------------------------------------------------
+//===-------------------------------------
 
 def IsOutputNotTFLNativeLayout : Constraint<CPred<
     "Layout("
@@ -270,80 +266,6 @@ def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
                              (KernelHasIotaSpatials $dnums),
                              (IsOutputNotTFLNativeLayout $dnums),
                              (IsStandardConv $conv)]>;
-
-
-// Pull out non-trivial padding into separate explicit pad_op.
-//
-// This has the benifit of allowing for a single point of control
-// for turning negative padding into slices. TFL convs can fuse
-// "SAME" padding back in post-legalization. Note when lhs dilations
-// are non-trivial, the mhlo.convolution has the semantics of a deconvolution.
-// In this case padding is interpreted differently and so we leave it in the op.
-//===---------------------------------------------------------------------------
-
-// Given DenseElements (i64), check if they are all equal to "val".
-class AreI64ElementsAll<int val> : Constraint<CPred<
-  "!$0 || llvm::all_of($0.getValues<int64_t>(),"
-    "[](auto v) { return v == "# val #"; })">>;
-
-class AreI64ElementsNotAll<int val> :
-  Constraint<Neg<AreI64ElementsAll<val>.predicate>>;
-
-// Gets a tuple of DenseElements (i64) given result from mhlo.convolution.
-def GetExplicitPaddingArgs : NativeCodeCall<
-  "GetExplicitPaddingArgs($_builder,"
-    "$0.getDefiningOp<mhlo::ConvolutionOp>())">;
-
-// Gets element type from Value.
-def GetElementType : NativeCodeCall<
-  "$0.getType().cast<RankedTensorType>().getElementType()">;
-
-// Given element type, get a DenseElements with scalar shape and 0 value.
-def GetZeroScalarAttrFromType : NativeCodeCall<
-  "$_builder.getZeroAttr("
-    "RankedTensorType::get({}, $0))">;
-
-// Given padding attr, get new padding attr for trivial (no) padding.
-def GetTrivialPaddingAttr : NativeCodeCall<
-  "$_builder.getZeroAttr($0.getType())">;
-
-// Given mhlo.convolution result, build an explicit mhlo.pad op
-// which is semantically equivalant.
-def ExplicitlyPadInput : NativeCodeCall<
-  "CreatePadOpFromConvPadding($_builder,"
-     "$0.getDefiningOp<mhlo::ConvolutionOp>())">;
-
-def UnfuseConvWithExplicitPadding : Pat<(MHLO_ConvolutionOp:$conv
-                                $input,
-                                $kernel,
-                                $strides,
-                                $padding,
-                                $lhs_dilation,
-                                $rhs_dilation,
-                                $window_reversal,
-                                $dnums,
-                                $feature_groups,
-                                $batch_groups,
-                                $precision_config
-                            ),
-                            (MHLO_ConvolutionOp
-                                (ExplicitlyPadInput $conv),
-                                $kernel,
-                                $strides,
-                                (GetTrivialPaddingAttr $padding),
-                                $lhs_dilation,
-                                $rhs_dilation,
-                                $window_reversal,
-                                $dnums,
-                                $feature_groups,
-                                $batch_groups,
-                                $precision_config
-                            ),
-                            [(AreDnumsFullyDefined $conv),
-                             (KernelHasIotaSpatials $dnums),
-                             (IsStandardConv $conv),
-                             (AreI64ElementsNotAll<0> $padding)]>;
-
 
 
 //===------------------------------------------------------------------------===

@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <climits>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -122,73 +121,6 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
     if (i != elems[i]) return false;
   }
   return true;
-}
-
-// Is rankx2xi32 padding array "balanced"
-// i.e. 0 <= [d][1] - [d][0] <= 1 for all spatial dims d (and 0 elsewhere).
-template <typename T>
-bool IsBalancedPaddingArray(int spatials_start, int spatials_end,
-                            llvm::ArrayRef<T> data) {
-  for (int i = 0; i < data.size() / 2; ++i) {
-    const T pad_low = data[2 * i];
-    const T pad_hi = data[2 * i + 1];
-    if ((i < spatials_start || i >= spatials_end) &&
-        (pad_low != 0 || pad_hi != 0)) {
-      return false;
-    }
-    const T pad_diff = pad_hi - pad_low;
-    if (pad_diff > 1 || pad_diff < 0) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool IsBalancedPaddingArray(int spatials_start, int spatials_end,
-                            DenseElementsAttr data) {
-  if (data.isSplat()) {
-    return false;
-  }
-  if (data.getElementType().isInteger(64)) {
-    return IsBalancedPaddingArray<int64_t>(
-        spatials_start, spatials_end,
-        llvm::SmallVector<int64_t>(data.value_begin<int64_t>(),
-                                   data.value_end<int64_t>()));
-  }
-  if (data.getElementType().isInteger(32)) {
-    return IsBalancedPaddingArray<int32_t>(
-        spatials_start, spatials_end,
-        llvm::SmallVector<int32_t>(data.value_begin<int32_t>(),
-                                   data.value_end<int32_t>()));
-  }
-  return false;
-}
-
-bool HasSameStridedDim(int out, int stride, int in) {
-  return std::ceil(in / (float)stride) == out;
-}
-
-// Is the pre pad shape amenable to given conv with SAME padding.
-bool HasSameStridedShape(TFL::Conv2DOp op, ArrayRef<int64_t> pre_pad_shape) {
-  auto conv_out_shape =
-      llvm::dyn_cast<ShapedType>(op.getResult().getType()).getShape();
-  const bool h_strided =
-      HasSameStridedDim(conv_out_shape[1], op.getStrideH(), pre_pad_shape[1]);
-  const bool w_strided =
-      HasSameStridedDim(conv_out_shape[2], op.getStrideW(), pre_pad_shape[2]);
-  return h_strided && w_strided;
-}
-
-bool HasSameStridedShape(TFL::Conv3DOp op, ArrayRef<int64_t> pre_pad_shape) {
-  auto conv_out_shape =
-      llvm::dyn_cast<ShapedType>(op.getResult().getType()).getShape();
-  const bool d_strided =
-      HasSameStridedDim(conv_out_shape[1], op.getStrideD(), pre_pad_shape[1]);
-  const bool h_strided =
-      HasSameStridedDim(conv_out_shape[2], op.getStrideH(), pre_pad_shape[2]);
-  const bool w_strided =
-      HasSameStridedDim(conv_out_shape[3], op.getStrideW(), pre_pad_shape[3]);
-  return h_strided && w_strided && d_strided;
 }
 
 using ::llvm::cast;

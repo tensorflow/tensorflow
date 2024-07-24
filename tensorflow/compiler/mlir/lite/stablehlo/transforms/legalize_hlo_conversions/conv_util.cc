@@ -14,15 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv_util.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -153,42 +150,6 @@ ConvData::ConvData(mhlo::ConvolutionOp op)
 
   window_reversal_ =
       ResolveWindowReversal(num_spatials, op.getWindowReversal());
-}
-
-Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op) {
-  const ConvData data(op);
-  const auto rank = data.InputLayout().Rank();
-  auto input_spatials = data.InputLayout().Spatials();
-
-  llvm::SmallVector<int64_t, 4> hi_padding(rank, 0);
-  llvm::SmallVector<int64_t, 4> lo_padding(rank, 0);
-
-  for (const auto& [ind, dim_padding] : llvm::enumerate(data.Padding())) {
-    const size_t cur_input_spatial = input_spatials[ind];
-    hi_padding[cur_input_spatial] = dim_padding.Hi();
-    lo_padding[cur_input_spatial] = dim_padding.Lo();
-  }
-
-  const llvm::SmallVector<int64_t, 4> interior_padding(rank, 0);
-
-  auto padding_attr_type = RankedTensorType::get({rank}, b.getI64Type());
-  auto hi_padding_attr =
-      DenseIntElementsAttr::get(padding_attr_type, hi_padding);
-  auto lo_padding_attr =
-      DenseIntElementsAttr::get(padding_attr_type, lo_padding);
-  auto interior_padding_attr =
-      DenseIntElementsAttr::get(padding_attr_type, interior_padding);
-
-  auto padding_value_type = RankedTensorType::get({}, data.ElementType());
-  auto padding_value_attr = b.getZeroAttr(padding_value_type);
-  auto padding_value_op =
-      b.create<arith::ConstantOp>(op->getLoc(), padding_value_attr);
-
-  auto pad_op = b.create<mhlo::PadOp>(padding_value_op->getLoc(), op.getLhs(),
-                                      padding_value_op, hi_padding_attr,
-                                      lo_padding_attr, interior_padding_attr);
-
-  return pad_op;
 }
 
 }  // namespace mlir::odml

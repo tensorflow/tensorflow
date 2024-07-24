@@ -774,7 +774,6 @@ cc_library(
         ":constant_utils",
         ":convert_type",
         ":tensorflow_lite",
-        ":tensorflow_lite_optimize_inc_gen",
         ":tensorflow_lite_passes_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
