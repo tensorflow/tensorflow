@@ -3684,7 +3684,7 @@ absl::Status IrEmitter::HandleGetDimensionSize(HloInstruction* get_size) {
   return Unimplemented("GetDimensionSize should be rewritten for CPU.");
 }
 
-absl::Status IrEmitter::HandleSetDimensionSize(HloInstruction* get_size) {
+absl::Status IrEmitter::HandleSetDimensionSize(HloInstruction* set_size) {
   return Unimplemented("SetDimensionSize should be rewritten for CPU.");
 }
 
@@ -3719,6 +3719,10 @@ absl::Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
       rng_state->shape().element_type())));
 
   return absl::OkStatus();
+}
+
+absl::Status IrEmitter::HandleStochasticConvert(HloInstruction* instruction) {
+  return Unimplemented("StochasticConvert should be decomposed for CPU.");
 }
 
 absl::Status IrEmitter::FinishVisit(HloInstruction* root) {

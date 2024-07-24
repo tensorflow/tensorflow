@@ -246,7 +246,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleScatter(HloInstruction* scatter) override;
   absl::Status HandleAfterAll(HloInstruction* after_all) override;
   absl::Status HandleGetDimensionSize(HloInstruction* get_size) override;
-  absl::Status HandleSetDimensionSize(HloInstruction* get_size) override;
+  absl::Status HandleSetDimensionSize(HloInstruction* set_size) override;
   absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
   absl::Status HandlePartitionId(HloInstruction* hlo) override;
   absl::Status HandleReplicaId(HloInstruction* hlo) override;
@@ -254,6 +254,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleRngBitGenerator(HloInstruction* rng) override;
   absl::Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   absl::Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
+  absl::Status HandleStochasticConvert(HloInstruction* instruction) override;
   absl::Status FinishVisit(HloInstruction* root) override;
 
   absl::Status Preprocess(HloInstruction* hlo) override;

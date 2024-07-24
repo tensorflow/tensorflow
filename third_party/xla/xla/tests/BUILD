@@ -2111,6 +2111,25 @@ xla_test(
 )
 
 xla_test(
+    name = "stochastic_convert_test",
+    srcs = ["stochastic_convert_test.cc"],
+    backends = ["cpu"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_test_base",
+        ":test_utils",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:shape_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
     name = "vector_ops_simple_test",
     srcs = ["vector_ops_simple_test.cc"],
     tags = ["test_xla_cpu_thunks"],

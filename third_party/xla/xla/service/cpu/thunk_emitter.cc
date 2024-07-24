@@ -292,6 +292,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateStateThunk(instruction);
 
+    case HloOpcode::kStochasticConvert:
+      return EmitStochasticConvertThunk(instruction);
+
     case HloOpcode::kInfeed:
       return EmitInfeedThunk(instruction);
 
@@ -642,6 +645,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(
   auto* rng_state = Cast<HloRngGetAndUpdateStateInstruction>(instruction);
   return ThunkSequence::Of<RngGetAndUpdateStateThunk>(
       ThunkInfo(instruction), state_buffer, rng_state->delta());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitStochasticConvertThunk(
+    const HloInstruction* instruction) {
+  return Unimplemented("StochasticConvert should be decomposed for CPU.");
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitInfeedThunk(
