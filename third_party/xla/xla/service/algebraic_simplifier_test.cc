@@ -11754,5 +11754,30 @@ TEST_F(AlgebraicSimplifierTest, KeepInt4ConvertConstant) {
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceBroadcastScalarToBroadcastMultiply) {
+  const std::string hlo_string = R"(
+    HloModule module
+    add_bf16 {
+      x = bf16[] parameter(0)
+      y = bf16[] parameter(1)
+      ROOT sum = bf16[] add(x, y)
+    }
+
+    ENTRY test {
+        a = bf16[] parameter(0)
+        negate = bf16[] negate(a)
+        broadcast = bf16[2,5,11,17,19] broadcast(negate), dimensions={}
+        zero = bf16[] constant(0)
+        ROOT reduce = bf16[2] reduce(broadcast, zero),
+                      dimensions={1,2,3,4}, to_apply=add_bf16
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kMultiply);
+}
+
 }  // namespace
 }  // namespace xla
