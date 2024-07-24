@@ -854,9 +854,9 @@ tf_kernel_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
