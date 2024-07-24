@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/tsl/framework/device_type.h"
-#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
