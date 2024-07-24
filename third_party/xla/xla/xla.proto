@@ -911,7 +911,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-// Next id: 24.
+// Next id: 25.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -1018,12 +1018,17 @@ message ExecutionOptions {
 
   // Amount of device memory available for the executable to use.
   int64 device_memory_size = 22;
+
+  // Use Shardy, a new partitioner, to replace the existing
+  // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
+  // details.
+  bool use_shardy_partitioner = 24;
 }
 
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 34.
+// Next id: 35.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1077,6 +1082,7 @@ message HloModuleConfigProto {
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
   bytes fdo_profile = 31;
   int64 device_memory_size = 32;
+  bool use_shardy_partitioner = 34;
 }
 
 message HloModuleProtoWithConfig {

@@ -995,6 +995,29 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateDeviceMemorySize) {
   EXPECT_EQ(proto.config().device_memory_size(), kDeviceMemorySize);
 }
 
+XLA_TEST_F(LocalClientExecuteTest, ValidateUseShardyPartitioner) {
+  XlaBuilder builder(TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
+  Shape argument_layout =
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
+
+  ExecutableBuildOptions build_options;
+  build_options.set_use_shardy_partitioner(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
+                             build_options));
+  EXPECT_EQ(1, executables.size());
+  const HloModule& compiled_module =
+      executables.front()->executable()->module();
+  EXPECT_EQ(compiled_module.config().use_shardy_partitioner(), true);
+  auto proto = compiled_module.ToProtoWithConfig();
+  EXPECT_EQ(proto.config().use_shardy_partitioner(), true);
+}
+
 BENCHMARK(BM_LocalClientOverhead);
 
 }  // namespace
