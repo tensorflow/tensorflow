@@ -181,6 +181,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kSetDimensionSize:
       return EmitSetDimensionSizeThunk(instruction);
 
+    case HloOpcode::kBatchNormGrad:
+      return EmitBatchNormGradThunk(instruction);
+
     // Simple HLO instructions lowered to elemental host kernels (plain loops
     // behind the HostKernel API).
     case HloOpcode::kAbs:
@@ -521,6 +524,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGetDimensionSizeThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSetDimensionSizeThunk(
     const HloInstruction* instruction) {
   return Unimplemented("SetDimensionSize should be rewritten for CPU.");
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitBatchNormGradThunk(
+    const HloInstruction* instruction) {
+  return Unimplemented("BatchNormGrad should be rewritten for CPU.");
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
