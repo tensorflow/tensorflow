@@ -2,637 +2,1609 @@ Auto generated patch. Do not edit or delete it, even if empty.
 diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
 --- a/clang/docs/ReleaseNotes.rst
 +++ b/clang/docs/ReleaseNotes.rst
-@@ -750,9 +750,6 @@
- - Clang now specifies that using ``auto`` in a lambda parameter is a C++14 extension when
-   appropriate. (`#46059: <https://github.com/llvm/llvm-project/issues/46059>`_).
+@@ -285,8 +285,6 @@
  
--- Clang now adds source file infomation for template instantiations as ``event["args"]["filename"]``. This
--  added behind an option ``-ftime-trace-verbose``. This is expected to increase the size of trace by 2-3 times.
+ - Implemented `P2963R3 Ordering of constraints involving fold expressions <https://wg21.link/P2963R3>`_.
+ 
+-- Implemented `P3034R1 Module Declarations Shouldn’t be Macros <https://wg21.link/P3034R1>`_.
 -
- Improvements to Coverage Mapping
- --------------------------------
  
-diff -ruN --strip-trailing-cr a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
---- a/clang/include/clang/Driver/Options.td
-+++ b/clang/include/clang/Driver/Options.td
-@@ -3998,10 +3998,6 @@
-   HelpText<"Minimum time granularity (in microseconds) traced by time profiler">,
-   Visibility<[ClangOption, CC1Option, CLOption, DXCOption]>,
-   MarshallingInfoInt<FrontendOpts<"TimeTraceGranularity">, "500u">;
--def ftime_trace_verbose : Joined<["-"], "ftime-trace-verbose">, Group<f_Group>,
--  HelpText<"Make time trace capture verbose event details (e.g. source filenames). This can increase the size of the output by 2-3 times">,
--  Visibility<[ClangOption, CC1Option, CLOption, DXCOption]>,
--  MarshallingInfoFlag<FrontendOpts<"TimeTraceVerbose">>;
- def ftime_trace_EQ : Joined<["-"], "ftime-trace=">, Group<f_Group>,
-   HelpText<"Similar to -ftime-trace. Specify the JSON file or a directory which will contain the JSON file">,
-   Visibility<[ClangOption, CC1Option, CLOption, DXCOption]>,
-diff -ruN --strip-trailing-cr a/clang/include/clang/Frontend/FrontendOptions.h b/clang/include/clang/Frontend/FrontendOptions.h
---- a/clang/include/clang/Frontend/FrontendOptions.h
-+++ b/clang/include/clang/Frontend/FrontendOptions.h
-@@ -580,11 +580,6 @@
-   /// Minimum time granularity (in microseconds) traced by time profiler.
-   unsigned TimeTraceGranularity;
+ Resolutions to C++ Defect Reports
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/DiagnosticLexKinds.td b/clang/include/clang/Basic/DiagnosticLexKinds.td
+--- a/clang/include/clang/Basic/DiagnosticLexKinds.td
++++ b/clang/include/clang/Basic/DiagnosticLexKinds.td
+@@ -952,11 +952,6 @@
+   InGroup<ModuleConflict>;
  
--  /// Make time trace capture verbose event details (e.g. source filenames).
--  /// This can increase the size of the output by 2-3 times.
+ // C++20 modules
+-def err_module_decl_cannot_be_macros : Error<
+-  "the module name in a module%select{| partition}0 declaration cannot contain "
+-  "an object-like macro %1">;
+-def err_unxepected_paren_in_module_decl : Error<
+-  "unexpected '(' after the module name in a module%select{| partition}0 declaration">;
+ def err_header_import_semi_in_macro : Error<
+   "semicolon terminating header import declaration cannot be produced "
+   "by a macro">;
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/IdentifierTable.h b/clang/include/clang/Basic/IdentifierTable.h
+--- a/clang/include/clang/Basic/IdentifierTable.h
++++ b/clang/include/clang/Basic/IdentifierTable.h
+@@ -180,10 +180,6 @@
+   LLVM_PREFERRED_TYPE(bool)
+   unsigned IsModulesImport : 1;
+ 
+-  // True if this is the 'module' contextual keyword.
 -  LLVM_PREFERRED_TYPE(bool)
--  unsigned TimeTraceVerbose : 1;
+-  unsigned IsModulesDecl : 1;
 -
-   /// Path which stores the output files for -ftime-trace
-   std::string TimeTracePath;
+   // True if this is a mangled OpenMP variant name.
+   LLVM_PREFERRED_TYPE(bool)
+   unsigned IsMangledOpenMPVariantName : 1;
+@@ -200,7 +196,7 @@
+   LLVM_PREFERRED_TYPE(bool)
+   unsigned IsFinal : 1;
  
-@@ -606,8 +601,7 @@
-         EmitSymbolGraph(false), EmitExtensionSymbolGraphs(false),
-         EmitSymbolGraphSymbolLabelsForTesting(false),
-         EmitPrettySymbolGraphs(false), GenReducedBMI(false),
--        UseClangIRPipeline(false), TimeTraceGranularity(500),
--        TimeTraceVerbose(false) {}
-+        UseClangIRPipeline(false), TimeTraceGranularity(500) {}
+-  // 21 bits left in a 64-bit word.
++  // 22 bits left in a 64-bit word.
  
-   /// getInputKindForExtension - Return the appropriate input kind for a file
-   /// extension. For example, "c" would return Language::C.
-diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
---- a/clang/lib/Driver/ToolChains/Clang.cpp
-+++ b/clang/lib/Driver/ToolChains/Clang.cpp
-@@ -6757,7 +6757,6 @@
-   if (const char *Name = C.getTimeTraceFile(&JA)) {
-     CmdArgs.push_back(Args.MakeArgString("-ftime-trace=" + Twine(Name)));
-     Args.AddLastArg(CmdArgs, options::OPT_ftime_trace_granularity_EQ);
--    Args.AddLastArg(CmdArgs, options::OPT_ftime_trace_verbose);
+   // Managed by the language front-end.
+   void *FETokenInfo = nullptr;
+@@ -216,8 +212,8 @@
+         IsCPPOperatorKeyword(false), NeedsHandleIdentifier(false),
+         IsFromAST(false), ChangedAfterLoad(false), FEChangedAfterLoad(false),
+         RevertedTokenID(false), OutOfDate(false), IsModulesImport(false),
+-        IsModulesDecl(false), IsMangledOpenMPVariantName(false),
+-        IsDeprecatedMacro(false), IsRestrictExpansion(false), IsFinal(false) {}
++        IsMangledOpenMPVariantName(false), IsDeprecatedMacro(false),
++        IsRestrictExpansion(false), IsFinal(false) {}
+ 
+ public:
+   IdentifierInfo(const IdentifierInfo &) = delete;
+@@ -524,18 +520,6 @@
+       RecomputeNeedsHandleIdentifier();
    }
  
-   if (Arg *A = Args.getLastArg(options::OPT_ftrapv_handler_EQ)) {
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiate.cpp b/clang/lib/Sema/SemaTemplateInstantiate.cpp
---- a/clang/lib/Sema/SemaTemplateInstantiate.cpp
-+++ b/clang/lib/Sema/SemaTemplateInstantiate.cpp
-@@ -3426,16 +3426,11 @@
-     return true;
- 
-   llvm::TimeTraceScope TimeScope("InstantiateClass", [&]() {
--    llvm::TimeTraceMetadata M;
--    llvm::raw_string_ostream OS(M.Detail);
-+    std::string Name;
-+    llvm::raw_string_ostream OS(Name);
-     Instantiation->getNameForDiagnostic(OS, getPrintingPolicy(),
-                                         /*Qualified=*/true);
--    if (llvm::isTimeTraceVerbose()) {
--      auto Loc = SourceMgr.getExpansionLoc(Instantiation->getLocation());
--      M.File = SourceMgr.getFilename(Loc);
--      M.Line = SourceMgr.getExpansionLineNumber(Loc);
--    }
--    return M;
-+    return Name;
-   });
- 
-   Pattern = PatternDef;
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
---- a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
-+++ b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
-@@ -4966,16 +4966,11 @@
-   }
- 
-   llvm::TimeTraceScope TimeScope("InstantiateFunction", [&]() {
--    llvm::TimeTraceMetadata M;
--    llvm::raw_string_ostream OS(M.Detail);
-+    std::string Name;
-+    llvm::raw_string_ostream OS(Name);
-     Function->getNameForDiagnostic(OS, getPrintingPolicy(),
-                                    /*Qualified=*/true);
--    if (llvm::isTimeTraceVerbose()) {
--      auto Loc = SourceMgr.getExpansionLoc(Function->getLocation());
--      M.File = SourceMgr.getFilename(Loc);
--      M.Line = SourceMgr.getExpansionLineNumber(Loc);
--    }
--    return M;
-+    return Name;
-   });
- 
-   // If we're performing recursive template instantiation, create our own
-diff -ruN --strip-trailing-cr a/clang/test/Driver/ftime-trace-sections.cpp b/clang/test/Driver/ftime-trace-sections.cpp
---- a/clang/test/Driver/ftime-trace-sections.cpp
-+++ b/clang/test/Driver/ftime-trace-sections.cpp
-@@ -1,5 +1,5 @@
- // RUN: rm -rf %t && mkdir %t && cd %t
--// RUN: %clangxx -S -ftime-trace -ftime-trace-granularity=0 -ftime-trace-verbose -o out %s
-+// RUN: %clangxx -S -ftime-trace -ftime-trace-granularity=0 -o out %s
- // RUN: %python %S/ftime-trace-sections.py < out.json
- 
- template <typename T>
-diff -ruN --strip-trailing-cr a/clang/test/Driver/ftime-trace.cpp b/clang/test/Driver/ftime-trace.cpp
---- a/clang/test/Driver/ftime-trace.cpp
-+++ b/clang/test/Driver/ftime-trace.cpp
-@@ -1,18 +1,18 @@
- // RUN: rm -rf %t && mkdir -p %t && cd %t
--// RUN: %clangxx -S -no-canonical-prefixes -ftime-trace -ftime-trace-granularity=0 -ftime-trace-verbose -o out %s
-+// RUN: %clangxx -S -no-canonical-prefixes -ftime-trace -ftime-trace-granularity=0 -o out %s
- // RUN: cat out.json \
- // RUN:   | %python -c 'import json, sys; json.dump(json.loads(sys.stdin.read()), sys.stdout, sort_keys=True, indent=2)' \
- // RUN:   | FileCheck %s
--// RUN: %clangxx -S -no-canonical-prefixes -ftime-trace=new-name.json -ftime-trace-granularity=0 -ftime-trace-verbose -o out %s
-+// RUN: %clangxx -S -no-canonical-prefixes -ftime-trace=new-name.json -ftime-trace-granularity=0 -o out %s
- // RUN: cat new-name.json \
- // RUN:   | %python -c 'import json, sys; json.dump(json.loads(sys.stdin.read()), sys.stdout, sort_keys=True, indent=2)' \
- // RUN:   | FileCheck %s
- // RUN: mkdir dir1 dir2
--// RUN: %clangxx -S -no-canonical-prefixes -ftime-trace=dir1 -ftime-trace-granularity=0 -ftime-trace-verbose -o out %s
-+// RUN: %clangxx -S -no-canonical-prefixes -ftime-trace=dir1 -ftime-trace-granularity=0 -o out %s
- // RUN: cat dir1/out.json \
- // RUN:   | %python -c 'import json, sys; json.dump(json.loads(sys.stdin.read()), sys.stdout, sort_keys=True, indent=2)' \
- // RUN:   | FileCheck %s
--// RUN: %clangxx -S -no-canonical-prefixes -ftime-trace=dir2/ -ftime-trace-granularity=0 -ftime-trace-verbose -o out %s
-+// RUN: %clangxx -S -no-canonical-prefixes -ftime-trace=dir2/ -ftime-trace-granularity=0 -o out %s
- // RUN: cat dir2/out.json \
- // RUN:   | %python -c 'import json, sys; json.dump(json.loads(sys.stdin.read()), sys.stdout, sort_keys=True, indent=2)' \
- // RUN:   | FileCheck %s
-@@ -34,33 +34,32 @@
- // RUN: mkdir d e f && cp %s d/a.cpp && touch d/b.c
- 
- /// TODO: Support -fno-integrated-as.
--// RUN: %clang -### -c -ftime-trace -ftime-trace-granularity=0 -ftime-trace-verbose -fintegrated-as d/a.cpp -o e/a.o 2>&1 | FileCheck %s --check-prefix=COMPILE1
--// COMPILE1: -cc1{{.*}} "-ftime-trace=e/a.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
-+// RUN: %clang -### -c -ftime-trace -ftime-trace-granularity=0 -fintegrated-as d/a.cpp -o e/a.o 2>&1 | FileCheck %s --check-prefix=COMPILE1
-+// COMPILE1: -cc1{{.*}} "-ftime-trace=e/a.json" "-ftime-trace-granularity=0"
- 
--// RUN: %clang -### -c -ftime-trace -ftime-trace-granularity=0 -ftime-trace-verbose d/a.cpp d/b.c -dumpdir f/ 2>&1 | FileCheck %s --check-prefix=COMPILE2
--// COMPILE2: -cc1{{.*}} "-ftime-trace=f/a.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
--// COMPILE2: -cc1{{.*}} "-ftime-trace=f/b.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
-+// RUN: %clang -### -c -ftime-trace -ftime-trace-granularity=0 d/a.cpp d/b.c -dumpdir f/ 2>&1 | FileCheck %s --check-prefix=COMPILE2
-+// COMPILE2: -cc1{{.*}} "-ftime-trace=f/a.json" "-ftime-trace-granularity=0"
-+// COMPILE2: -cc1{{.*}} "-ftime-trace=f/b.json" "-ftime-trace-granularity=0"
- 
- /// -o specifies the link output. Create ${output}-${basename}.json.
--// RUN: %clang -### -ftime-trace -ftime-trace-granularity=0 -ftime-trace-verbose d/a.cpp d/b.c -o e/x 2>&1 | FileCheck %s --check-prefix=LINK1
--// LINK1: -cc1{{.*}} "-ftime-trace=e/x-a.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
--// LINK1: -cc1{{.*}} "-ftime-trace=e/x-b.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
-+// RUN: %clang -### -ftime-trace -ftime-trace-granularity=0 d/a.cpp d/b.c -o e/x 2>&1 | FileCheck %s --check-prefix=LINK1
-+// LINK1: -cc1{{.*}} "-ftime-trace=e/x-a.json" "-ftime-trace-granularity=0"
-+// LINK1: -cc1{{.*}} "-ftime-trace=e/x-b.json" "-ftime-trace-granularity=0"
- 
- /// -dumpdir is f/g, not ending with a path separator. We create f/g${basename}.json.
--// RUN: %clang -### -ftime-trace -ftime-trace-granularity=0 -ftime-trace-verbose d/a.cpp d/b.c -o e/x -dumpdir f/g 2>&1 | FileCheck %s --check-prefix=LINK2
--// LINK2: -cc1{{.*}} "-ftime-trace=f/ga.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
--// LINK2: -cc1{{.*}} "-ftime-trace=f/gb.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
+-  /// Determine whether this is the contextual keyword \c module.
+-  bool isModulesDeclaration() const { return IsModulesDecl; }
 -
--// RUN: %clang -### -ftime-trace=e -ftime-trace-granularity=0 -ftime-trace-verbose d/a.cpp d/b.c -o f/x -dumpdir f/ 2>&1 | FileCheck %s --check-prefix=LINK3
--// LINK3: -cc1{{.*}} "-ftime-trace=e{{/|\\\\}}a-{{[^.]*}}.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
--// LINK3: -cc1{{.*}} "-ftime-trace=e{{/|\\\\}}b-{{[^.]*}}.json" "-ftime-trace-granularity=0" "-ftime-trace-verbose"
-+// RUN: %clang -### -ftime-trace -ftime-trace-granularity=0 d/a.cpp d/b.c -o e/x -dumpdir f/g 2>&1 | FileCheck %s --check-prefix=LINK2
-+// LINK2: -cc1{{.*}} "-ftime-trace=f/ga.json" "-ftime-trace-granularity=0"
-+// LINK2: -cc1{{.*}} "-ftime-trace=f/gb.json" "-ftime-trace-granularity=0"
-+
-+// RUN: %clang -### -ftime-trace=e -ftime-trace-granularity=0 d/a.cpp d/b.c -o f/x -dumpdir f/ 2>&1 | FileCheck %s --check-prefix=LINK3
-+// LINK3: -cc1{{.*}} "-ftime-trace=e{{/|\\\\}}a-{{[^.]*}}.json" "-ftime-trace-granularity=0"
-+// LINK3: -cc1{{.*}} "-ftime-trace=e{{/|\\\\}}b-{{[^.]*}}.json" "-ftime-trace-granularity=0"
- 
--// RUN: %clang -### -ftime-trace -ftime-trace=e -ftime-trace-granularity=1 -ftime-trace-verbose -xassembler d/a.cpp 2>&1 | \
-+// RUN: %clang -### -ftime-trace -ftime-trace=e -ftime-trace-granularity=1 -xassembler d/a.cpp 2>&1 | \
- // RUN:   FileCheck %s --check-prefix=UNUSED
- // UNUSED:      warning: argument unused during compilation: '-ftime-trace'
- // UNUSED-NEXT: warning: argument unused during compilation: '-ftime-trace=e'
- // UNUSED-NEXT: warning: argument unused during compilation: '-ftime-trace-granularity=1'
--// UNUSED-NEXT: warning: argument unused during compilation: '-ftime-trace-verbose'
- // UNUSED-NOT:  warning:
- 
- template <typename T>
-diff -ruN --strip-trailing-cr a/clang/tools/driver/cc1_main.cpp b/clang/tools/driver/cc1_main.cpp
---- a/clang/tools/driver/cc1_main.cpp
-+++ b/clang/tools/driver/cc1_main.cpp
-@@ -241,8 +241,7 @@
- 
-   if (!Clang->getFrontendOpts().TimeTracePath.empty()) {
-     llvm::timeTraceProfilerInitialize(
--        Clang->getFrontendOpts().TimeTraceGranularity, Argv0,
--        Clang->getFrontendOpts().TimeTraceVerbose);
-+        Clang->getFrontendOpts().TimeTraceGranularity, Argv0);
-   }
-   // --print-supported-cpus takes priority over the actual compilation.
-   if (Clang->getFrontendOpts().PrintSupportedCPUs)
-diff -ruN --strip-trailing-cr a/clang/unittests/Support/TimeProfilerTest.cpp b/clang/unittests/Support/TimeProfilerTest.cpp
---- a/clang/unittests/Support/TimeProfilerTest.cpp
-+++ b/clang/unittests/Support/TimeProfilerTest.cpp
-@@ -10,15 +10,11 @@
- #include "clang/Frontend/FrontendActions.h"
- #include "clang/Lex/PreprocessorOptions.h"
- 
--#include "llvm/ADT/StringMap.h"
- #include "llvm/Support/JSON.h"
--#include "llvm/Support/Path.h"
- #include "llvm/Support/TimeProfiler.h"
--#include "llvm/Support/VirtualFileSystem.h"
- #include <stack>
- 
- #include "gtest/gtest.h"
--#include <tuple>
- 
- using namespace clang;
- using namespace llvm;
-@@ -27,8 +23,7 @@
- 
- // Should be called before testing.
- void setupProfiler() {
--  timeTraceProfilerInitialize(/*TimeTraceGranularity=*/0, "test",
--                              /*TimeTraceVerbose=*/true);
-+  timeTraceProfilerInitialize(/*TimeTraceGranularity=*/0, "test");
- }
- 
- // Should be called after `compileFromString()`.
-@@ -43,24 +38,14 @@
- 
- // Returns true if code compiles successfully.
- // We only parse AST here. This is enough for constexpr evaluation.
--bool compileFromString(StringRef Code, StringRef Standard, StringRef File,
--                       llvm::StringMap<std::string> Headers = {}) {
-+bool compileFromString(StringRef Code, StringRef Standard, StringRef FileName) {
-   CompilerInstance Compiler;
-   Compiler.createDiagnostics();
- 
--  llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> FS(
--      new llvm::vfs::InMemoryFileSystem());
--  FS->addFile(File, 0, MemoryBuffer::getMemBuffer(Code));
--  for (const auto &Header : Headers) {
--    FS->addFile(Header.getKey(), 0,
--                MemoryBuffer::getMemBuffer(Header.getValue()));
+-  /// Set whether this identifier is the contextual keyword \c module.
+-  void setModulesDeclaration(bool I) {
+-    IsModulesDecl = I;
+-    if (I)
+-      NeedsHandleIdentifier = true;
+-    else
+-      RecomputeNeedsHandleIdentifier();
 -  }
--  llvm::IntrusiveRefCntPtr<FileManager> Files(
--      new FileManager(FileSystemOptions(), FS));
--  Compiler.setFileManager(Files.get());
 -
-   auto Invocation = std::make_shared<CompilerInvocation>();
--  std::vector<const char *> Args = {Standard.data(), File.data()};
-+  Invocation->getPreprocessorOpts().addRemappedFile(
-+      FileName, MemoryBuffer::getMemBuffer(Code).release());
-+  const char *Args[] = {Standard.data(), FileName.data()};
-   CompilerInvocation::CreateFromArgs(*Invocation, Args,
-                                      Compiler.getDiagnostics());
-   Compiler.setInvocation(std::move(Invocation));
-@@ -75,28 +60,13 @@
-   return Compiler.ExecuteAction(Action);
- }
+   /// Determine whether this is the mangled name of an OpenMP variant.
+   bool isMangledOpenMPVariantName() const { return IsMangledOpenMPVariantName; }
  
--std::string GetMetadata(json::Object *Event) {
--  std::string Metadata;
--  llvm::raw_string_ostream OS(Metadata);
--  if (json::Object *Args = Event->getObject("args")) {
--    if (auto Detail = Args->getString("detail"))
--      OS << Detail;
--    // Use only filename to not include os-specific path separators.
--    if (auto File = Args->getString("file"))
--      OS << ", " << llvm::sys::path::filename(*File);
--    if (auto Line = Args->getInteger("line"))
--      OS << ":" << *Line;
--  }
--  return Metadata;
--}
--
- // Returns pretty-printed trace graph.
- std::string buildTraceGraph(StringRef Json) {
-   struct EventRecord {
-     int64_t TimestampBegin;
-     int64_t TimestampEnd;
--    std::string Name;
--    std::string Metadata;
-+    StringRef Name;
-+    StringRef Detail;
-   };
-   std::vector<EventRecord> Events;
+@@ -756,8 +740,6 @@
+     // If this is the 'import' contextual keyword, mark it as such.
+     if (Name == "import")
+       II->setModulesImport(true);
+-    else if (Name == "module")
+-      II->setModulesDeclaration(true);
  
-@@ -111,13 +81,10 @@
-     int64_t TimestampBegin = TraceEventObj->getInteger("ts").value_or(0);
-     int64_t TimestampEnd =
-         TimestampBegin + TraceEventObj->getInteger("dur").value_or(0);
--    std::string Name = TraceEventObj->getString("name").value_or("").str();
--    std::string Metadata = GetMetadata(TraceEventObj);
--
--    // Source events are asynchronous events and may not perfectly nest the
--    // synchronous events. Skip testing them.
--    if (Name == "Source")
--      continue;
-+    StringRef Name = TraceEventObj->getString("name").value_or("");
-+    StringRef Detail = "";
-+    if (json::Object *Args = TraceEventObj->getObject("args"))
-+      Detail = Args->getString("detail").value_or("");
- 
-     // This is a "summary" event, like "Total PerformPendingInstantiations",
-     // skip it
-@@ -125,7 +92,7 @@
-       continue;
- 
-     Events.emplace_back(
--        EventRecord{TimestampBegin, TimestampEnd, Name, Metadata});
-+        EventRecord{TimestampBegin, TimestampEnd, Name, Detail});
+     return *II;
    }
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/TokenKinds.def b/clang/include/clang/Basic/TokenKinds.def
+--- a/clang/include/clang/Basic/TokenKinds.def
++++ b/clang/include/clang/Basic/TokenKinds.def
+@@ -1003,9 +1003,6 @@
+ ANNOTATION(module_begin)
+ ANNOTATION(module_end)
  
-   // There can be nested events that are very fast, for example:
-@@ -165,9 +132,9 @@
-       Stream << "| ";
-     }
-     Stream.write(Event.Name.data(), Event.Name.size());
--    if (!Event.Metadata.empty()) {
-+    if (!Event.Detail.empty()) {
-       Stream << " (";
--      Stream.write(Event.Metadata.data(), Event.Metadata.size());
-+      Stream.write(Event.Detail.data(), Event.Detail.size());
-       Stream << ")";
-     }
-     Stream << "\n";
-@@ -178,7 +145,7 @@
- } // namespace
+-// Annotations for C++, Clang and Objective-C named modules.
+-ANNOTATION(module_name)
+-
+ // Annotation for a header_name token that has been looked up and transformed
+ // into the name of a header unit.
+ ANNOTATION(header_unit)
+diff -ruN --strip-trailing-cr a/clang/include/clang/Lex/Preprocessor.h b/clang/include/clang/Lex/Preprocessor.h
+--- a/clang/include/clang/Lex/Preprocessor.h
++++ b/clang/include/clang/Lex/Preprocessor.h
+@@ -615,6 +615,10 @@
  
- TEST(TimeProfilerTest, ConstantEvaluationCxx20) {
--  std::string Code = R"(
-+  constexpr StringRef Code = R"(
- void print(double value);
+   ModuleDeclSeq ModuleDeclState;
  
- namespace slow_namespace {
-@@ -208,7 +175,8 @@
-   setupProfiler();
-   ASSERT_TRUE(compileFromString(Code, "-std=c++20", "test.cc"));
-   std::string Json = teardownProfiler();
--  ASSERT_EQ(R"(
-+  std::string TraceGraph = buildTraceGraph(Json);
-+  ASSERT_TRUE(TraceGraph == R"(
- Frontend
- | ParseDeclarationOrFunctionDefinition (test.cc:2:1)
- | ParseDeclarationOrFunctionDefinition (test.cc:6:1)
-@@ -234,54 +202,14 @@
- | ParseDeclarationOrFunctionDefinition (test.cc:25:1)
- | | EvaluateAsInitializer (slow_init_list)
- | PerformPendingInstantiations
--)",
--            buildTraceGraph(Json));
--}
--
--TEST(TimeProfilerTest, TemplateInstantiations) {
--  std::string B_H = R"(
--    template <typename T>
--    T fooB(T t) {
--      return T();
--    }
-+)");
- 
--    #define MacroTemp(x) template <typename T> void foo##x(T) { T(); }
--  )";
--
--  std::string A_H = R"(
--    #include "b.h"
--
--    MacroTemp(MTA)
--
--    template <typename T>
--    void fooA(T t) { fooB(t); fooMTA(t); }
--  )";
--  std::string Code = R"(
--    #include "a.h"
--    void user() { fooA(0); }
--  )";
--
--  setupProfiler();
--  ASSERT_TRUE(compileFromString(Code, "-std=c++20", "test.cc",
--                                /*Headers=*/{{"a.h", A_H}, {"b.h", B_H}}));
--  std::string Json = teardownProfiler();
--  ASSERT_EQ(R"(
--Frontend
--| ParseFunctionDefinition (fooB)
--| ParseFunctionDefinition (fooMTA)
--| ParseFunctionDefinition (fooA)
--| ParseDeclarationOrFunctionDefinition (test.cc:3:5)
--| | ParseFunctionDefinition (user)
--| PerformPendingInstantiations
--| | InstantiateFunction (fooA<int>, a.h:7)
--| | | InstantiateFunction (fooB<int>, b.h:3)
--| | | InstantiateFunction (fooMTA<int>, a.h:4)
--)",
--            buildTraceGraph(Json));
-+  // NOTE: If this test is failing, run this test with
-+  // `llvm::errs() << TraceGraph;` and change the assert above.
- }
- 
- TEST(TimeProfilerTest, ConstantEvaluationC99) {
--  std::string Code = R"(
-+  constexpr StringRef Code = R"(
- struct {
-   short quantval[4]; // 3rd line
- } value;
-@@ -290,12 +218,15 @@
-   setupProfiler();
-   ASSERT_TRUE(compileFromString(Code, "-std=c99", "test.c"));
-   std::string Json = teardownProfiler();
--  ASSERT_EQ(R"(
-+  std::string TraceGraph = buildTraceGraph(Json);
-+  ASSERT_TRUE(TraceGraph == R"(
- Frontend
- | ParseDeclarationOrFunctionDefinition (test.c:2:1)
- | | isIntegerConstantExpr (<test.c:3:18>)
- | | EvaluateKnownConstIntCheckOverflow (<test.c:3:18>)
- | PerformPendingInstantiations
--)",
--            buildTraceGraph(Json));
-+)");
++  /// Whether the module import expects an identifier next. Otherwise,
++  /// it expects a '.' or ';'.
++  bool ModuleImportExpectsIdentifier = false;
 +
-+  // NOTE: If this test is failing, run this test with
-+  // `llvm::errs() << TraceGraph;` and change the assert above.
- }
-diff -ruN --strip-trailing-cr a/lld/test/MachO/reproduce-thin-archive-objc.s b/lld/test/MachO/reproduce-thin-archive-objc.s
---- a/lld/test/MachO/reproduce-thin-archive-objc.s
-+++ b/lld/test/MachO/reproduce-thin-archive-objc.s
-@@ -4,20 +4,19 @@
- ## during linking. However, we need to iterate over all members for -ObjC, check that we don't
- ## crash when we encounter a missing member.
+   /// The identifier and source location of the currently-active
+   /// \#pragma clang arc_cf_code_audited begin.
+   std::pair<IdentifierInfo *, SourceLocation> PragmaARCCFCodeAuditedInfo;
+@@ -1740,14 +1744,11 @@
+   /// Lex a token, forming a header-name token if possible.
+   bool LexHeaderName(Token &Result, bool AllowMacroExpansion = true);
  
--# RUN: rm -rf %t; mkdir %t
--# RUN: sed s/SYM/_main/   %s | llvm-mc -filetype=obj -triple=x86_64-apple-macos -o %t/main.o
--# RUN: sed s/SYM/_unused/ %s | llvm-mc -filetype=obj -triple=x86_64-apple-macos -o %t/unused.o
-+# RUN: rm -rf %t && mkdir %t && cd %t
-+# RUN: sed s/SYM/_main/   %s | llvm-mc -filetype=obj -triple=x86_64-apple-macos -o main.o
-+# RUN: sed s/SYM/_unused/ %s | llvm-mc -filetype=obj -triple=x86_64-apple-macos -o unused.o
- 
--# RUN: cd %t; llvm-ar rcsT unused.a unused.o; rm unused.o
-+# RUN: llvm-ar rcsT unused.a unused.o; rm unused.o
- ## FIXME: Absolute paths don't end up relativized in the repro file.
- 
- # RUN: %no-fatal-warnings-lld %t/main.o %t/unused.a -ObjC -o /dev/null 2>&1 \
- # RUN:                      | FileCheck %s --check-prefix=WARN
- 
--# RUN: %lld %t/main.o %t/unused.a -ObjC --no-warn-thin-archive-missing-members -o /dev/null \
--# RUN:    | FileCheck %s --implicit-check-not 'warning' --allow-empty
-+# RUN: %lld main.o unused.a -ObjC --no-warn-thin-archive-missing-members 2>&1 | count 0
- 
--# WARN: ld64.lld: warning: {{.*}}unused.a: -ObjC failed to open archive member: 'unused.o'
-+# WARN: warning: {{.*}}unused.a: -ObjC failed to open archive member: 'unused.o'
- 
- .text
- .globl SYM
-diff -ruN --strip-trailing-cr a/llvm/include/llvm/Support/TimeProfiler.h b/llvm/include/llvm/Support/TimeProfiler.h
---- a/llvm/include/llvm/Support/TimeProfiler.h
-+++ b/llvm/include/llvm/Support/TimeProfiler.h
-@@ -83,28 +83,16 @@
- 
- class raw_pwrite_stream;
- 
--struct TimeTraceMetadata {
--  std::string Detail;
--  // Source file and line number information for the event.
--  std::string File;
--  int Line;
+-  /// Lex a module name or a partition name.
+-  bool LexModuleName(Token &Result, bool IsImport);
 -
--  bool isEmpty() const { return Detail.empty() && File.empty(); }
+   /// Lex the parameters for an #embed directive, returns nullopt on error.
+   std::optional<LexEmbedParametersResult> LexEmbedParameters(Token &Current,
+                                                              bool ForHasEmbed);
++
+   bool LexAfterModuleImport(Token &Result);
+-  bool LexAfterModuleDecl(Token &Result);
+   void CollectPpImportSuffix(SmallVectorImpl<Token> &Toks);
+ 
+   void makeModuleVisible(Module *M, SourceLocation Loc);
+@@ -3038,9 +3039,6 @@
+   static bool CLK_LexAfterModuleImport(Preprocessor &P, Token &Result) {
+     return P.LexAfterModuleImport(Result);
+   }
+-  static bool CLK_LexAfterModuleDecl(Preprocessor &P, Token &Result) {
+-    return P.LexAfterModuleDecl(Result);
+-  }
+ };
+ 
+ /// Abstract base class that describes a handler that will receive
+@@ -3073,77 +3071,6 @@
+ /// Registry of pragma handlers added by plugins
+ using PragmaHandlerRegistry = llvm::Registry<PragmaHandler>;
+ 
+-/// Represents module or partition name token sequance.
+-///
+-///     module-name:
+-///           module-name-qualifier[opt] identifier
+-///
+-///     partition-name: [C++20]
+-///           : module-name-qualifier[opt] identifier
+-///
+-///     module-name-qualifier
+-///           module-name-qualifier[opt] identifier .
+-///
+-/// This class can only be created by the preprocessor and guarantees that the
+-/// two source array being contiguous in memory and only contains 3 kind of
+-/// tokens (identifier, '.' and ':'). And only available when the preprocessor
+-/// returns annot_module_name token.
+-///
+-/// For exmaple:
+-///
+-/// export module m.n:c.d
+-///
+-/// The module name array has 3 tokens ['m', '.', 'n'].
+-/// The partition name array has 4 tokens [':', 'c', '.', 'd'].
+-///
+-/// When import a partition in a named module fragment (Eg. import :part1;),
+-/// the module name array will be empty, and the partition name array has 2
+-/// tokens.
+-///
+-/// When we meet a private-module-fragment (Eg. module :private;), preprocessor
+-/// will not return a annot_module_name token, but will return 2 separate tokens
+-/// [':', 'kw_private'].
+-
+-class ModuleNameInfo {
+-  friend class Preprocessor;
+-  ArrayRef<Token> ModuleName;
+-  ArrayRef<Token> PartitionName;
+-
+-  ModuleNameInfo(ArrayRef<Token> AnnotToks, std::optional<unsigned> ColonIndex);
+-
+-public:
+-  /// Return the contiguous token array.
+-  ArrayRef<Token> getTokens() const {
+-    if (ModuleName.empty())
+-      return PartitionName;
+-    if (PartitionName.empty())
+-      return ModuleName;
+-    return ArrayRef(ModuleName.begin(), PartitionName.end());
+-  }
+-  bool hasModuleName() const { return !ModuleName.empty(); }
+-  bool hasPartitionName() const { return !PartitionName.empty(); }
+-  ArrayRef<Token> getModuleName() const { return ModuleName; }
+-  ArrayRef<Token> getPartitionName() const { return PartitionName; }
+-  Token getColonToken() const {
+-    assert(hasPartitionName() && "Do not have a partition name");
+-    return getPartitionName().front();
+-  }
+-
+-  /// Under the standard C++ Modules, the dot is just part of the module name,
+-  /// and not a real hierarchy separator. Flatten such module names now.
+-  std::string getFlatName() const;
+-
+-  /// Build a module id path from the contiguous token array, both include
+-  /// module name and partition name.
+-  void getModuleIdPath(
+-      SmallVectorImpl<std::pair<IdentifierInfo *, SourceLocation>> &Path) const;
+-
+-  /// Build a module id path from \param ModuleName.
+-  static void getModuleIdPath(
+-      ArrayRef<Token> ModuleName,
+-      SmallVectorImpl<std::pair<IdentifierInfo *, SourceLocation>> &Path);
 -};
 -
- struct TimeTraceProfiler;
- TimeTraceProfiler *getTimeTraceProfilerInstance();
+ } // namespace clang
  
--bool isTimeTraceVerbose();
--
- struct TimeTraceProfilerEntry;
- 
- /// Initialize the time trace profiler.
- /// This sets up the global \p TimeTraceProfilerInstance
- /// variable to be the profiler instance.
- void timeTraceProfilerInitialize(unsigned TimeTraceGranularity,
--                                 StringRef ProcName,
--                                 bool TimeTraceVerbose = false);
-+                                 StringRef ProcName);
- 
- /// Cleanup the time trace profiler, if it was initialized.
- void timeTraceProfilerCleanup();
-@@ -140,10 +128,6 @@
- timeTraceProfilerBegin(StringRef Name,
-                        llvm::function_ref<std::string()> Detail);
- 
--TimeTraceProfilerEntry *
--timeTraceProfilerBegin(StringRef Name,
--                       llvm::function_ref<TimeTraceMetadata()> MetaData);
--
- /// Manually begin a time section, with the given \p Name and \p Detail.
- /// This starts Async Events having \p Name as a category which is shown
- /// separately from other traces. See
-@@ -180,11 +164,6 @@
-     if (getTimeTraceProfilerInstance() != nullptr)
-       Entry = timeTraceProfilerBegin(Name, Detail);
+ #endif // LLVM_CLANG_LEX_PREPROCESSOR_H
+diff -ruN --strip-trailing-cr a/clang/include/clang/Lex/Token.h b/clang/include/clang/Lex/Token.h
+--- a/clang/include/clang/Lex/Token.h
++++ b/clang/include/clang/Lex/Token.h
+@@ -235,9 +235,6 @@
+     assert(isAnnotation() && "Used AnnotVal on non-annotation token");
+     return PtrData;
    }
--  TimeTraceScope(StringRef Name,
--                 llvm::function_ref<TimeTraceMetadata()> Metadata) {
--    if (getTimeTraceProfilerInstance() != nullptr)
--      Entry = timeTraceProfilerBegin(Name, Metadata);
+-  template <class T> T getAnnotationValueAs() const {
+-    return static_cast<T>(getAnnotationValue());
 -  }
-   ~TimeTraceScope() {
-     if (getTimeTraceProfilerInstance() != nullptr)
-       timeTraceProfilerEnd(Entry);
-diff -ruN --strip-trailing-cr a/llvm/lib/Support/TimeProfiler.cpp b/llvm/lib/Support/TimeProfiler.cpp
---- a/llvm/lib/Support/TimeProfiler.cpp
-+++ b/llvm/lib/Support/TimeProfiler.cpp
-@@ -73,20 +73,12 @@
-   const TimePointType Start;
-   TimePointType End;
-   const std::string Name;
--  TimeTraceMetadata Metadata;
--
-+  const std::string Detail;
-   const bool AsyncEvent = false;
-   TimeTraceProfilerEntry(TimePointType &&S, TimePointType &&E, std::string &&N,
-                          std::string &&Dt, bool Ae)
--      : Start(std::move(S)), End(std::move(E)), Name(std::move(N)), Metadata(),
--        AsyncEvent(Ae) {
--    Metadata.Detail = std::move(Dt);
--  }
--
--  TimeTraceProfilerEntry(TimePointType &&S, TimePointType &&E, std::string &&N,
--                         TimeTraceMetadata &&Mt, bool Ae)
-       : Start(std::move(S)), End(std::move(E)), Name(std::move(N)),
--        Metadata(std::move(Mt)), AsyncEvent(Ae) {}
-+        Detail(std::move(Dt)), AsyncEvent(Ae) {}
- 
-   // Calculate timings for FlameGraph. Cast time points to microsecond precision
-   // rather than casting duration. This avoids truncation issues causing inner
-@@ -105,12 +97,10 @@
- };
- 
- struct llvm::TimeTraceProfiler {
--  TimeTraceProfiler(unsigned TimeTraceGranularity = 0, StringRef ProcName = "",
--                    bool TimeTraceVerbose = false)
-+  TimeTraceProfiler(unsigned TimeTraceGranularity = 0, StringRef ProcName = "")
-       : BeginningOfTime(system_clock::now()), StartTime(ClockType::now()),
-         ProcName(ProcName), Pid(sys::Process::getProcessId()),
--        Tid(llvm::get_threadid()), TimeTraceGranularity(TimeTraceGranularity),
--        TimeTraceVerbose(TimeTraceVerbose) {
-+        Tid(llvm::get_threadid()), TimeTraceGranularity(TimeTraceGranularity) {
-     llvm::get_thread_name(ThreadName);
+   void setAnnotationValue(void *val) {
+     assert(isAnnotation() && "Used AnnotVal on non-annotation token");
+     PtrData = val;
+diff -ruN --strip-trailing-cr a/clang/include/clang/Parse/Parser.h b/clang/include/clang/Parse/Parser.h
+--- a/clang/include/clang/Parse/Parser.h
++++ b/clang/include/clang/Parse/Parser.h
+@@ -3876,7 +3876,7 @@
    }
  
-@@ -123,15 +113,6 @@
-     return Stack.back().get();
-   }
+   bool ParseModuleName(
+-      SourceLocation UseLoc, ArrayRef<Token> ModuleName,
++      SourceLocation UseLoc,
+       SmallVectorImpl<std::pair<IdentifierInfo *, SourceLocation>> &Path,
+       bool IsImport);
  
--  TimeTraceProfilerEntry *
--  begin(std::string Name, llvm::function_ref<TimeTraceMetadata()> Metadata,
--        bool AsyncEvent = false) {
--    Stack.emplace_back(std::make_unique<TimeTraceProfilerEntry>(
--        ClockType::now(), TimePointType(), std::move(Name), Metadata(),
--        AsyncEvent));
--    return Stack.back().get();
--  }
--
-   void end() {
-     assert(!Stack.empty() && "Must call begin() first");
-     end(*Stack.back());
-@@ -203,15 +184,8 @@
-           J.attribute("dur", DurUs);
-         }
-         J.attribute("name", E.Name);
--        if (!E.Metadata.isEmpty()) {
--          J.attributeObject("args", [&] {
--            if (!E.Metadata.Detail.empty())
--              J.attribute("detail", E.Metadata.Detail);
--            if (!E.Metadata.File.empty())
--              J.attribute("file", E.Metadata.File);
--            if (E.Metadata.Line > 0)
--              J.attribute("line", E.Metadata.Line);
--          });
-+        if (!E.Detail.empty()) {
-+          J.attributeObject("args", [&] { J.attribute("detail", E.Detail); });
-         }
-       });
+diff -ruN --strip-trailing-cr a/clang/lib/Basic/IdentifierTable.cpp b/clang/lib/Basic/IdentifierTable.cpp
+--- a/clang/lib/Basic/IdentifierTable.cpp
++++ b/clang/lib/Basic/IdentifierTable.cpp
+@@ -322,9 +322,8 @@
+   if (LangOpts.IEEE128)
+     AddKeyword("__ieee128", tok::kw___float128, KEYALL, LangOpts, *this);
  
-@@ -333,25 +307,14 @@
- 
-   // Minimum time granularity (in microseconds)
-   const unsigned TimeTraceGranularity;
--
--  // Make time trace capture verbose event details (e.g. source filenames). This
--  // can increase the size of the output by 2-3 times.
--  const bool TimeTraceVerbose;
- };
- 
--bool llvm::isTimeTraceVerbose() {
--  return getTimeTraceProfilerInstance() &&
--         getTimeTraceProfilerInstance()->TimeTraceVerbose;
--}
--
- void llvm::timeTraceProfilerInitialize(unsigned TimeTraceGranularity,
--                                       StringRef ProcName,
--                                       bool TimeTraceVerbose) {
-+                                       StringRef ProcName) {
-   assert(TimeTraceProfilerInstance == nullptr &&
-          "Profiler should not be initialized");
-   TimeTraceProfilerInstance = new TimeTraceProfiler(
--      TimeTraceGranularity, llvm::sys::path::filename(ProcName),
--      TimeTraceVerbose);
-+      TimeTraceGranularity, llvm::sys::path::filename(ProcName));
+-  // Add the 'import' and 'module' contextual keyword.
++  // Add the 'import' contextual keyword.
+   get("import").setModulesImport(true);
+-  get("module").setModulesDeclaration(true);
  }
  
- // Removes all TimeTraceProfilerInstances.
-@@ -418,14 +381,6 @@
-   return nullptr;
+ /// Checks if the specified token kind represents a keyword in the
+diff -ruN --strip-trailing-cr a/clang/lib/Frontend/PrintPreprocessedOutput.cpp b/clang/lib/Frontend/PrintPreprocessedOutput.cpp
+--- a/clang/lib/Frontend/PrintPreprocessedOutput.cpp
++++ b/clang/lib/Frontend/PrintPreprocessedOutput.cpp
+@@ -758,10 +758,9 @@
+   // These tokens are not expanded to anything and don't need whitespace before
+   // them.
+   if (Tok.is(tok::eof) ||
+-      (Tok.isAnnotation() && Tok.isNot(tok::annot_header_unit) &&
+-       Tok.isNot(tok::annot_module_begin) && Tok.isNot(tok::annot_module_end) &&
+-       Tok.isNot(tok::annot_module_name) &&
+-       Tok.isNot(tok::annot_repl_input_end) && Tok.isNot(tok::annot_embed)))
++      (Tok.isAnnotation() && !Tok.is(tok::annot_header_unit) &&
++       !Tok.is(tok::annot_module_begin) && !Tok.is(tok::annot_module_end) &&
++       !Tok.is(tok::annot_repl_input_end) && !Tok.is(tok::annot_embed)))
+     return;
+ 
+   // EmittedDirectiveOnThisLine takes priority over RequireSameLine.
+@@ -952,11 +951,6 @@
+       PP.Lex(Tok);
+       IsStartOfLine = true;
+       continue;
+-    } else if (Tok.is(tok::annot_module_name)) {
+-      auto *Info = static_cast<ModuleNameInfo *>(Tok.getAnnotationValue());
+-      *Callbacks->OS << Info->getFlatName();
+-      PP.Lex(Tok);
+-      continue;
+     } else if (Tok.is(tok::annot_header_unit)) {
+       // This is a header-name that has been (effectively) converted into a
+       // module-name.
+diff -ruN --strip-trailing-cr a/clang/lib/Lex/PPLexerChange.cpp b/clang/lib/Lex/PPLexerChange.cpp
+--- a/clang/lib/Lex/PPLexerChange.cpp
++++ b/clang/lib/Lex/PPLexerChange.cpp
+@@ -122,8 +122,7 @@
+   CurPPLexer = TheLexer;
+   CurDirLookup = CurDir;
+   CurLexerSubmodule = nullptr;
+-  if (CurLexerCallback != CLK_LexAfterModuleImport &&
+-      CurLexerCallback != CLK_LexAfterModuleDecl)
++  if (CurLexerCallback != CLK_LexAfterModuleImport)
+     CurLexerCallback = TheLexer->isDependencyDirectivesLexer()
+                            ? CLK_DependencyDirectivesLexer
+                            : CLK_Lexer;
+@@ -162,7 +161,8 @@
+   PushIncludeMacroStack();
+   CurDirLookup = nullptr;
+   CurTokenLexer = std::move(TokLexer);
+-  CurLexerCallback = CLK_TokenLexer;
++  if (CurLexerCallback != CLK_LexAfterModuleImport)
++    CurLexerCallback = CLK_TokenLexer;
  }
  
--TimeTraceProfilerEntry *
--llvm::timeTraceProfilerBegin(StringRef Name,
--                             llvm::function_ref<TimeTraceMetadata()> Metadata) {
--  if (TimeTraceProfilerInstance != nullptr)
--    return TimeTraceProfilerInstance->begin(std::string(Name), Metadata, false);
--  return nullptr;
+ /// EnterTokenStream - Add a "macro" context to the top of the include stack,
+@@ -216,8 +216,7 @@
+   PushIncludeMacroStack();
+   CurDirLookup = nullptr;
+   CurTokenLexer = std::move(TokLexer);
+-  if (CurLexerCallback != CLK_LexAfterModuleImport &&
+-      CurLexerCallback != CLK_LexAfterModuleDecl)
++  if (CurLexerCallback != CLK_LexAfterModuleImport)
+     CurLexerCallback = CLK_TokenLexer;
+ }
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/Lex/Preprocessor.cpp b/clang/lib/Lex/Preprocessor.cpp
+--- a/clang/lib/Lex/Preprocessor.cpp
++++ b/clang/lib/Lex/Preprocessor.cpp
+@@ -860,15 +860,9 @@
+     ModuleImportLoc = Identifier.getLocation();
+     NamedModuleImportPath.clear();
+     IsAtImport = true;
++    ModuleImportExpectsIdentifier = true;
+     CurLexerCallback = CLK_LexAfterModuleImport;
+   }
+-
+-  if ((II.isModulesDeclaration() || Identifier.is(tok::kw_module)) &&
+-      !InMacroArgs && !DisableMacroExpansion &&
+-      (getLangOpts().CPlusPlusModules || getLangOpts().DebuggerSupport) &&
+-      CurLexerCallback != CLK_CachingLexer) {
+-    CurLexerCallback = CLK_LexAfterModuleDecl;
+-  }
+   return true;
+ }
+ 
+@@ -911,7 +905,6 @@
+     // This token is injected to represent the translation of '#include "a.h"'
+     // into "import a.h;". Mimic the notional ';'.
+     case tok::annot_module_include:
+-    case tok::annot_repl_input_end:
+     case tok::semi:
+       TrackGMFState.handleSemi();
+       StdCXXImportSeqState.handleSemi();
+@@ -926,30 +919,12 @@
+       StdCXXImportSeqState.handleExport();
+       ModuleDeclState.handleExport();
+       break;
+-    case tok::annot_module_name: {
+-      auto *Info = static_cast<ModuleNameInfo *>(Result.getAnnotationValue());
+-      for (const auto &Tok : Info->getTokens()) {
+-        switch (Tok.getKind()) {
+-        case tok::identifier:
+-          ModuleDeclState.handleIdentifier(Tok.getIdentifierInfo());
+-          break;
+-        case tok::period:
+-          ModuleDeclState.handlePeriod();
+-          break;
+-        case tok::colon:
+-          ModuleDeclState.handleColon();
+-          break;
+-        default:
+-          llvm_unreachable("Unexpected token in module name");
+-        }
+-      }
+-      if (ModuleDeclState.isModuleCandidate())
+-        break;
+-      TrackGMFState.handleMisc();
+-      StdCXXImportSeqState.handleMisc();
+-      ModuleDeclState.handleMisc();
++    case tok::colon:
++      ModuleDeclState.handleColon();
++      break;
++    case tok::period:
++      ModuleDeclState.handlePeriod();
+       break;
+-    }
+     case tok::identifier:
+       // Check "import" and "module" when there is no open bracket. The two
+       // identifiers are not meaningful with open brackets.
+@@ -961,17 +936,17 @@
+             ModuleImportLoc = Result.getLocation();
+             NamedModuleImportPath.clear();
+             IsAtImport = false;
++            ModuleImportExpectsIdentifier = true;
+             CurLexerCallback = CLK_LexAfterModuleImport;
+           }
+           break;
+-        }
+-        if (Result.getIdentifierInfo()->isModulesDeclaration()) {
++        } else if (Result.getIdentifierInfo() == getIdentifierInfo("module")) {
+           TrackGMFState.handleModule(StdCXXImportSeqState.afterTopLevelSeq());
+           ModuleDeclState.handleModule();
+-          CurLexerCallback = CLK_LexAfterModuleDecl;
+           break;
+         }
+       }
++      ModuleDeclState.handleIdentifier(Result.getIdentifierInfo());
+       if (ModuleDeclState.isModuleCandidate())
+         break;
+       [[fallthrough]];
+@@ -1146,151 +1121,6 @@
+   }
+ }
+ 
+-ModuleNameInfo::ModuleNameInfo(ArrayRef<Token> AnnotToks,
+-                               std::optional<unsigned> ColonIndex) {
+-  assert(!AnnotToks.empty() && "Named module token cannot be empty.");
+-  if (!ColonIndex.has_value())
+-    ColonIndex = AnnotToks.size();
+-  ModuleName = ArrayRef(AnnotToks.begin(), AnnotToks.begin() + *ColonIndex);
+-  PartitionName = ArrayRef(AnnotToks.begin() + *ColonIndex, AnnotToks.end());
+-  assert(ModuleName.end() == PartitionName.begin());
 -}
 -
- TimeTraceProfilerEntry *llvm::timeTraceAsyncProfilerBegin(StringRef Name,
-                                                           StringRef Detail) {
-   if (TimeTraceProfilerInstance != nullptr)
+-std::string ModuleNameInfo::getFlatName() const {
+-  std::string FlatModuleName;
+-  for (auto &Tok : getTokens()) {
+-    switch (Tok.getKind()) {
+-    case tok::identifier:
+-      FlatModuleName += Tok.getIdentifierInfo()->getName();
+-      break;
+-    case tok::period:
+-      FlatModuleName += '.';
+-      break;
+-    case tok::colon:
+-      FlatModuleName += ':';
+-      break;
+-    default:
+-      llvm_unreachable("Unexpected token in module name");
+-    }
+-  }
+-  return FlatModuleName;
+-}
+-
+-void ModuleNameInfo::getModuleIdPath(
+-    SmallVectorImpl<std::pair<IdentifierInfo *, SourceLocation>> &Path) const {
+-  return getModuleIdPath(getTokens(), Path);
+-}
+-
+-void ModuleNameInfo::getModuleIdPath(
+-    ArrayRef<Token> ModuleName,
+-    SmallVectorImpl<std::pair<IdentifierInfo *, SourceLocation>> &Path) {
+-  for (const auto &Tok : ModuleName) {
+-    if (Tok.is(tok::identifier))
+-      Path.push_back(
+-          std::make_pair(Tok.getIdentifierInfo(), Tok.getLocation()));
+-  }
+-}
+-
+-/// Lex a module name or a partition name.
+-///
+-///     module-name:
+-///           module-name-qualifier[opt] identifier
+-///
+-///     partition-name: [C++20]
+-///           : module-name-qualifier[opt] identifier
+-///
+-///     module-name-qualifier
+-///           module-name-qualifier[opt] identifier .
+-bool Preprocessor::LexModuleName(Token &Result, bool IsImport) {
+-  bool ExpectsIdentifier = true, IsLexingPartition = false;
+-  SmallVector<Token, 8> ModuleName;
+-  std::optional<unsigned> ColonTokIndex;
+-  auto LexNextToken = [&](Token &Tok) {
+-    if (IsImport)
+-      Lex(Tok);
+-    else
+-      LexUnexpandedToken(Tok);
+-  };
+-
+-  while (true) {
+-    LexNextToken(Result);
+-    if (ExpectsIdentifier && Result.is(tok::identifier)) {
+-      auto *MI = getMacroInfo(Result.getIdentifierInfo());
+-      if (getLangOpts().CPlusPlusModules && !IsImport && MI &&
+-          MI->isObjectLike()) {
+-        Diag(Result, diag::err_module_decl_cannot_be_macros)
+-            << Result.getLocation() << IsLexingPartition
+-            << Result.getIdentifierInfo();
+-      }
+-      ModuleName.push_back(Result);
+-      ExpectsIdentifier = false;
+-      continue;
+-    }
+-
+-    if (!ExpectsIdentifier && Result.is(tok::period)) {
+-      ModuleName.push_back(Result);
+-      ExpectsIdentifier = true;
+-      continue;
+-    }
+-
+-    // Module partition only allowed in C++20 Modules.
+-    if (getLangOpts().CPlusPlusModules && Result.is(tok::colon)) {
+-      // Handle the form like: import :P;
+-      // If the token after ':' is not an identifier, this is a invalid module
+-      // name.
+-      if (ModuleName.empty()) {
+-        Token Tmp;
+-        LexNextToken(Tmp);
+-        EnterToken(Tmp, /*IsReiject=*/false);
+-        // A private-module-fragment:
+-        // export module :private;
+-        if (!IsImport && Tmp.is(tok::kw_private))
+-          return true;
+-        // import :N;
+-        if (IsImport && Tmp.isNot(tok::identifier))
+-          return false;
+-      } else if (!ExpectsIdentifier) {
+-        ExpectsIdentifier = true;
+-      }
+-      IsLexingPartition = true;
+-      ColonTokIndex = ModuleName.size();
+-      ModuleName.push_back(Result);
+-      continue;
+-    }
+-
+-    // [cpp.module]/p2: where the pp-tokens (if any) shall not begin with a (
+-    // preprocessing token [...]
+-    //
+-    // We only emit diagnostic in the preprocessor, and in the parser we skip
+-    // invalid tokens and recover from errors.
+-    if (getLangOpts().CPlusPlusModules && !ExpectsIdentifier &&
+-        Result.is(tok::l_paren))
+-      Diag(Result, diag::err_unxepected_paren_in_module_decl)
+-          << IsLexingPartition;
+-    break;
+-  }
+-
+-  // Put the last token back to stream, it's not a valid part of module name.
+-  // We lexed it unexpanded but it might be a valid macro expansion
+-  Result.clearFlag(Token::DisableExpand);
+-  auto ToksCopy = std::make_unique<Token[]>(1);
+-  *ToksCopy.get() = Result;
+-  EnterTokenStream(std::move(ToksCopy), 1,
+-                   /*DisableMacroExpansion=*/false,
+-                   /*IsReinject=*/false);
+-
+-  if (ModuleName.empty())
+-    return false;
+-  Result.startToken();
+-  Result.setKind(tok::annot_module_name);
+-  Result.setLocation(ModuleName.front().getLocation());
+-  Result.setAnnotationEndLoc(ModuleName.back().getLocation());
+-  auto AnnotToks = ArrayRef(ModuleName).copy(getPreprocessorAllocator());
+-  ModuleNameInfo *Info =
+-      new (getPreprocessorAllocator()) ModuleNameInfo(AnnotToks, ColonTokIndex);
+-  Result.setAnnotationValue(static_cast<void *>(Info));
+-  return true;
+-}
+ 
+ /// Lex a token following the 'import' contextual keyword.
+ ///
+@@ -1315,17 +1145,6 @@
+   // Figure out what kind of lexer we actually have.
+   recomputeCurLexerKind();
+ 
+-  // Allocate a holding buffer for a sequence of tokens and introduce it into
+-  // the token stream.
+-  auto EnterTokens = [this](ArrayRef<Token> Toks) {
+-    auto ToksCopy = std::make_unique<Token[]>(Toks.size());
+-    std::copy(Toks.begin(), Toks.end(), ToksCopy.get());
+-    EnterTokenStream(std::move(ToksCopy), Toks.size(),
+-                     /*DisableMacroExpansion*/ true, /*IsReinject*/ false);
+-  };
+-
+-  SmallVector<Token, 32> Suffix;
+-
+   // Lex the next token. The header-name lexing rules are used at the start of
+   // a pp-import.
+   //
+@@ -1336,108 +1155,122 @@
+     if (LexHeaderName(Result))
+       return true;
+ 
+-    // Check for a header-name.
+-    if (Result.is(tok::header_name)) {
+-      // Enter the header-name token into the token stream; a Lex action cannot
+-      // both return a token and cache tokens (doing so would corrupt the token
+-      // cache if the call to Lex comes from CachingLex / PeekAhead).
+-      Suffix.push_back(Result);
+-
+-      // Consume the pp-import-suffix and expand any macros in it now. We'll add
+-      // it back into the token stream later.
+-      CollectPpImportSuffix(Suffix);
+-      if (Suffix.back().isNot(tok::semi)) {
+-        // This is not a pp-import after all.
+-        EnterTokens(Suffix);
+-        return false;
+-      }
++    if (Result.is(tok::colon) && ModuleDeclState.isNamedModule()) {
++      std::string Name = ModuleDeclState.getPrimaryName().str();
++      Name += ":";
++      NamedModuleImportPath.push_back(
++          {getIdentifierInfo(Name), Result.getLocation()});
++      CurLexerCallback = CLK_LexAfterModuleImport;
++      return true;
++    }
++  } else {
++    Lex(Result);
++  }
+ 
+-      // C++2a [cpp.module]p1:
+-      //   The ';' preprocessing-token terminating a pp-import shall not have
+-      //   been produced by macro replacement.
+-      SourceLocation SemiLoc = Suffix.back().getLocation();
+-      if (SemiLoc.isMacroID())
+-        Diag(SemiLoc, diag::err_header_import_semi_in_macro);
+-
+-      // Reconstitute the import token.
+-      Token ImportTok;
+-      ImportTok.startToken();
+-      ImportTok.setKind(tok::kw_import);
+-      ImportTok.setLocation(ModuleImportLoc);
+-      ImportTok.setIdentifierInfo(getIdentifierInfo("import"));
+-      ImportTok.setLength(6);
+-
+-      auto Action = HandleHeaderIncludeOrImport(
+-          /*HashLoc*/ SourceLocation(), ImportTok, Suffix.front(), SemiLoc);
+-      switch (Action.Kind) {
+-      case ImportAction::None:
+-        break;
++  // Allocate a holding buffer for a sequence of tokens and introduce it into
++  // the token stream.
++  auto EnterTokens = [this](ArrayRef<Token> Toks) {
++    auto ToksCopy = std::make_unique<Token[]>(Toks.size());
++    std::copy(Toks.begin(), Toks.end(), ToksCopy.get());
++    EnterTokenStream(std::move(ToksCopy), Toks.size(),
++                     /*DisableMacroExpansion*/ true, /*IsReinject*/ false);
++  };
+ 
+-      case ImportAction::ModuleBegin:
+-        // Let the parser know we're textually entering the module.
+-        Suffix.emplace_back();
+-        Suffix.back().startToken();
+-        Suffix.back().setKind(tok::annot_module_begin);
+-        Suffix.back().setLocation(SemiLoc);
+-        Suffix.back().setAnnotationEndLoc(SemiLoc);
+-        Suffix.back().setAnnotationValue(Action.ModuleForHeader);
+-        [[fallthrough]];
+-
+-      case ImportAction::ModuleImport:
+-      case ImportAction::HeaderUnitImport:
+-      case ImportAction::SkippedModuleImport:
+-        // We chose to import (or textually enter) the file. Convert the
+-        // header-name token into a header unit annotation token.
+-        Suffix[0].setKind(tok::annot_header_unit);
+-        Suffix[0].setAnnotationEndLoc(Suffix[0].getLocation());
+-        Suffix[0].setAnnotationValue(Action.ModuleForHeader);
+-        // FIXME: Call the moduleImport callback?
+-        break;
+-      case ImportAction::Failure:
+-        assert(TheModuleLoader.HadFatalFailure &&
+-               "This should be an early exit only to a fatal error");
+-        Result.setKind(tok::eof);
+-        CurLexer->cutOffLexing();
+-        EnterTokens(Suffix);
+-        return true;
+-      }
++  bool ImportingHeader = Result.is(tok::header_name);
++  // Check for a header-name.
++  SmallVector<Token, 32> Suffix;
++  if (ImportingHeader) {
++    // Enter the header-name token into the token stream; a Lex action cannot
++    // both return a token and cache tokens (doing so would corrupt the token
++    // cache if the call to Lex comes from CachingLex / PeekAhead).
++    Suffix.push_back(Result);
+ 
++    // Consume the pp-import-suffix and expand any macros in it now. We'll add
++    // it back into the token stream later.
++    CollectPpImportSuffix(Suffix);
++    if (Suffix.back().isNot(tok::semi)) {
++      // This is not a pp-import after all.
+       EnterTokens(Suffix);
+       return false;
+     }
+-  } else {
+-    Lex(Result);
+-  }
+ 
+-  if (Result.isOneOf(tok::identifier, tok::colon)) {
+-    EnterToken(Result, /*IsReinject=*/false);
+-    if (!LexModuleName(Result, /*IsImport=*/true))
++    // C++2a [cpp.module]p1:
++    //   The ';' preprocessing-token terminating a pp-import shall not have
++    //   been produced by macro replacement.
++    SourceLocation SemiLoc = Suffix.back().getLocation();
++    if (SemiLoc.isMacroID())
++      Diag(SemiLoc, diag::err_header_import_semi_in_macro);
++
++    // Reconstitute the import token.
++    Token ImportTok;
++    ImportTok.startToken();
++    ImportTok.setKind(tok::kw_import);
++    ImportTok.setLocation(ModuleImportLoc);
++    ImportTok.setIdentifierInfo(getIdentifierInfo("import"));
++    ImportTok.setLength(6);
++
++    auto Action = HandleHeaderIncludeOrImport(
++        /*HashLoc*/ SourceLocation(), ImportTok, Suffix.front(), SemiLoc);
++    switch (Action.Kind) {
++    case ImportAction::None:
++      break;
++
++    case ImportAction::ModuleBegin:
++      // Let the parser know we're textually entering the module.
++      Suffix.emplace_back();
++      Suffix.back().startToken();
++      Suffix.back().setKind(tok::annot_module_begin);
++      Suffix.back().setLocation(SemiLoc);
++      Suffix.back().setAnnotationEndLoc(SemiLoc);
++      Suffix.back().setAnnotationValue(Action.ModuleForHeader);
++      [[fallthrough]];
++
++    case ImportAction::ModuleImport:
++    case ImportAction::HeaderUnitImport:
++    case ImportAction::SkippedModuleImport:
++      // We chose to import (or textually enter) the file. Convert the
++      // header-name token into a header unit annotation token.
++      Suffix[0].setKind(tok::annot_header_unit);
++      Suffix[0].setAnnotationEndLoc(Suffix[0].getLocation());
++      Suffix[0].setAnnotationValue(Action.ModuleForHeader);
++      // FIXME: Call the moduleImport callback?
++      break;
++    case ImportAction::Failure:
++      assert(TheModuleLoader.HadFatalFailure &&
++             "This should be an early exit only to a fatal error");
++      Result.setKind(tok::eof);
++      CurLexer->cutOffLexing();
++      EnterTokens(Suffix);
+       return true;
+-    auto *Info = Result.getAnnotationValueAs<ModuleNameInfo *>();
+-    if (getLangOpts().CPlusPlusModules) {
+-      // Under the standard C++ Modules, the dot is just part of the module
+-      // name, and not a real hierarchy separator. Flatten such module names
+-      // now.
+-      //
+-      // FIXME: Is this the right level to be performing this transformation?
+-      std::string FlatModuleName;
+-      if (Info->getTokens().front().is(tok::colon)) {
+-        // Import a module partition allowed in C++20 Modules.
+-        // We can import a partition in named module TU.
+-        if (NamedModuleImportPath.empty() && ModuleDeclState.isNamedModule())
+-          FlatModuleName = llvm::Twine(ModuleDeclState.getPrimaryName())
+-                               .concat(Info->getFlatName())
+-                               .str();
+-        else
+-          return true;
+-      } else {
+-        FlatModuleName = Info->getFlatName();
+-      }
+-      NamedModuleImportPath.emplace_back(getIdentifierInfo(FlatModuleName),
+-                                         Result.getLocation());
+-    } else {
+-      Info->getModuleIdPath(NamedModuleImportPath);
+     }
++
++    EnterTokens(Suffix);
++    return false;
++  }
++
++  // The token sequence
++  //
++  //   import identifier (. identifier)*
++  //
++  // indicates a module import directive. We already saw the 'import'
++  // contextual keyword, so now we're looking for the identifiers.
++  if (ModuleImportExpectsIdentifier && Result.getKind() == tok::identifier) {
++    // We expected to see an identifier here, and we did; continue handling
++    // identifiers.
++    NamedModuleImportPath.push_back(
++        std::make_pair(Result.getIdentifierInfo(), Result.getLocation()));
++    ModuleImportExpectsIdentifier = false;
++    CurLexerCallback = CLK_LexAfterModuleImport;
++    return true;
++  }
++
++  // If we're expecting a '.' or a ';', and we got a '.', then wait until we
++  // see the next identifier. (We can also see a '[[' that begins an
++  // attribute-specifier-seq here under the Standard C++ Modules.)
++  if (!ModuleImportExpectsIdentifier && Result.getKind() == tok::period) {
++    ModuleImportExpectsIdentifier = true;
++    CurLexerCallback = CLK_LexAfterModuleImport;
++    return true;
+   }
+ 
+   // If we didn't recognize a module name at all, this is not a (valid) import.
+@@ -1458,6 +1291,24 @@
+     SemiLoc = Suffix.back().getLocation();
+   }
+ 
++  // Under the standard C++ Modules, the dot is just part of the module name,
++  // and not a real hierarchy separator. Flatten such module names now.
++  //
++  // FIXME: Is this the right level to be performing this transformation?
++  std::string FlatModuleName;
++  if (getLangOpts().CPlusPlusModules) {
++    for (auto &Piece : NamedModuleImportPath) {
++      // If the FlatModuleName ends with colon, it implies it is a partition.
++      if (!FlatModuleName.empty() && FlatModuleName.back() != ':')
++        FlatModuleName += ".";
++      FlatModuleName += Piece.first->getName();
++    }
++    SourceLocation FirstPathLoc = NamedModuleImportPath[0].second;
++    NamedModuleImportPath.clear();
++    NamedModuleImportPath.push_back(
++        std::make_pair(getIdentifierInfo(FlatModuleName), FirstPathLoc));
++  }
++
+   Module *Imported = nullptr;
+   // We don't/shouldn't load the standard c++20 modules when preprocessing.
+   if (getLangOpts().Modules && !isInImportingCXXNamedModules()) {
+@@ -1479,33 +1330,6 @@
+   return true;
+ }
+ 
+-/// Lex a token following the 'module' contextual keyword.
+-///
+-/// [cpp.module]/p2:
+-/// The pp-tokens, if any, of a pp-module shall be of the form:
+-///       pp-module-name pp-module-partition[opt] pp-tokens[opt]
+-///
+-/// where the pp-tokens (if any) shall not begin with a ( preprocessing token
+-/// and the grammar non-terminals are defined as:
+-///       pp-module-name:
+-///             pp-module-name-qualifierp[opt] identifier
+-///       pp-module-partition:
+-///             : pp-module-name-qualifier[opt] identifier
+-///       pp-module-name-qualifier:
+-///             identifier .
+-///             pp-module-name-qualifier identifier .
+-/// No identifier in the pp-module-name or pp-module-partition shall currently
+-/// be defined as an object-like macro.
+-///
+-/// [cpp.module]/p3:
+-/// Any preprocessing tokens after the module preprocessing token in the module
+-/// directive are processed just as in normal text.
+-bool Preprocessor::LexAfterModuleDecl(Token &Result) {
+-  // Figure out what kind of lexer we actually have.
+-  recomputeCurLexerKind();
+-  return LexModuleName(Result, /*IsImport=*/false);
+-}
+-
+ void Preprocessor::makeModuleVisible(Module *M, SourceLocation Loc) {
+   CurSubmoduleState->VisibleModules.setVisible(
+       M, Loc, [](Module *) {},
+diff -ruN --strip-trailing-cr a/clang/lib/Lex/TokenConcatenation.cpp b/clang/lib/Lex/TokenConcatenation.cpp
+--- a/clang/lib/Lex/TokenConcatenation.cpp
++++ b/clang/lib/Lex/TokenConcatenation.cpp
+@@ -160,13 +160,6 @@
+ bool TokenConcatenation::AvoidConcat(const Token &PrevPrevTok,
+                                      const Token &PrevTok,
+                                      const Token &Tok) const {
+-  // If previous token is a module name, we need avoid concat it with current
+-  // token, otherwise, there will has an extra space between 'M' and ';' for the
+-  // following code:
+-  //
+-  // import M;
+-  if (PrevTok.is(tok::annot_module_name))
+-    return false;
+   // Conservatively assume that every annotation token that has a printable
+   // form requires whitespace.
+   if (PrevTok.isAnnotation())
+@@ -197,9 +190,6 @@
+       return true;
+     ConcatInfo &= ~aci_avoid_equal;
+   }
+-
+-  if (Tok.is(tok::annot_module_name))
+-    return true;
+   if (Tok.isAnnotation()) {
+     // Modules annotation can show up when generated automatically for includes.
+     assert(Tok.isOneOf(tok::annot_module_include, tok::annot_module_begin,
+diff -ruN --strip-trailing-cr a/clang/lib/Parse/ParseDecl.cpp b/clang/lib/Parse/ParseDecl.cpp
+--- a/clang/lib/Parse/ParseDecl.cpp
++++ b/clang/lib/Parse/ParseDecl.cpp
+@@ -3958,13 +3958,7 @@
+ 
+       // We're done with the declaration-specifiers.
+       goto DoneWithDeclSpec;
+-    case tok::annot_module_name: {
+-      PP.EnterTokenStream(
+-          Tok.getAnnotationValueAs<ModuleNameInfo *>()->getTokens(),
+-          /*DisableMacroExpansion=*/true, /*IsReinject=*/false);
+-      ConsumeAnyToken();
+-      [[fallthrough]];
+-    }
++
+       // typedef-name
+     case tok::kw___super:
+     case tok::kw_decltype:
+diff -ruN --strip-trailing-cr a/clang/lib/Parse/Parser.cpp b/clang/lib/Parse/Parser.cpp
+--- a/clang/lib/Parse/Parser.cpp
++++ b/clang/lib/Parse/Parser.cpp
+@@ -2511,28 +2511,18 @@
+   }
+ 
+   SmallVector<std::pair<IdentifierInfo *, SourceLocation>, 2> Path;
+-  if (Tok.isNot(tok::annot_module_name)) {
+-    Diag(Tok, diag::err_module_expected_ident) << /*IsImport=*/false;
+-    SkipUntil(tok::semi, StopBeforeMatch);
+-    return nullptr;
+-  }
+-
+-  auto *Info = Tok.getAnnotationValueAs<ModuleNameInfo *>();
+-  ConsumeAnnotationToken();
+-  if (ParseModuleName(ModuleLoc, Info->getModuleName(), Path,
+-                      /*IsImport=*/false))
++  if (ParseModuleName(ModuleLoc, Path, /*IsImport*/ false))
+     return nullptr;
+ 
+   // Parse the optional module-partition.
+   SmallVector<std::pair<IdentifierInfo *, SourceLocation>, 2> Partition;
+-  if (Info->hasPartitionName()) {
+-    SourceLocation ColonLoc = Info->getColonToken().getLocation();
++  if (Tok.is(tok::colon)) {
++    SourceLocation ColonLoc = ConsumeToken();
+     if (!getLangOpts().CPlusPlusModules)
+       Diag(ColonLoc, diag::err_unsupported_module_partition)
+           << SourceRange(ColonLoc, Partition.back().second);
+     // Recover by ignoring the partition name.
+-    else if (ParseModuleName(ModuleLoc, Info->getPartitionName(), Partition,
+-                             /*IsImport=*/false))
++    else if (ParseModuleName(ModuleLoc, Partition, /*IsImport*/ false))
+       return nullptr;
+   }
+ 
+@@ -2591,32 +2581,18 @@
+     // This is a header import that the preprocessor mapped to a module import.
+     HeaderUnit = reinterpret_cast<Module *>(Tok.getAnnotationValue());
+     ConsumeAnnotationToken();
+-  } else {
+-    if (Tok.isNot(tok::annot_module_name)) {
+-      if (Tok.is(tok::code_completion)) {
+-        cutOffParsing();
+-        Actions.CodeCompletion().CodeCompleteModuleImport(ImportLoc, Path);
+-        return nullptr;
+-      }
+-      Diag(Tok, diag::err_module_expected_ident) << /*IsImport=*/true;
+-      SkipUntil(tok::semi, StopBeforeMatch);
++  } else if (Tok.is(tok::colon)) {
++    SourceLocation ColonLoc = ConsumeToken();
++    if (!getLangOpts().CPlusPlusModules)
++      Diag(ColonLoc, diag::err_unsupported_module_partition)
++          << SourceRange(ColonLoc, Path.back().second);
++    // Recover by leaving partition empty.
++    else if (ParseModuleName(ColonLoc, Path, /*IsImport*/ true))
+       return nullptr;
+-    }
+-    auto *Info = Tok.getAnnotationValueAs<ModuleNameInfo *>();
+-    ConsumeAnnotationToken();
+-    if (Info->hasPartitionName()) {
+-      SourceLocation ColonLoc = Info->getColonToken().getLocation();
+-      if (!getLangOpts().CPlusPlusModules)
+-        Diag(ColonLoc, diag::err_unsupported_module_partition)
+-            << SourceRange(ColonLoc, Path.back().second);
+-      // Recover by leaving partition empty.
+-      else if (ParseModuleName(ColonLoc, Info->getPartitionName(), Path,
+-                               /*IsImport=*/true))
+-        return nullptr;
+-      else
+-        IsPartition = true;
+-    } else if (ParseModuleName(ImportLoc, Info->getModuleName(), Path,
+-                               /*IsImport=*/true))
++    else
++      IsPartition = true;
++  } else {
++    if (ParseModuleName(ImportLoc, Path, /*IsImport*/ true))
+       return nullptr;
+   }
+ 
+@@ -2713,31 +2689,32 @@
+ ///         module-name-qualifier:
+ ///           module-name-qualifier[opt] identifier '.'
+ bool Parser::ParseModuleName(
+-    SourceLocation UseLoc, ArrayRef<Token> ModuleName,
++    SourceLocation UseLoc,
+     SmallVectorImpl<std::pair<IdentifierInfo *, SourceLocation>> &Path,
+     bool IsImport) {
+-  ModuleNameInfo::getModuleIdPath(ModuleName, Path);
+-  // Eg. import A.B.
+-  if (ModuleName.back().isNot(tok::identifier)) {
+-    if (Tok.is(tok::code_completion)) {
+-      cutOffParsing();
+-      Actions.CodeCompletion().CodeCompleteModuleImport(UseLoc, Path);
++  // Parse the module path.
++  while (true) {
++    if (!Tok.is(tok::identifier)) {
++      if (Tok.is(tok::code_completion)) {
++        cutOffParsing();
++        Actions.CodeCompletion().CodeCompleteModuleImport(UseLoc, Path);
++        return true;
++      }
++
++      Diag(Tok, diag::err_module_expected_ident) << IsImport;
++      SkipUntil(tok::semi);
+       return true;
+     }
+-    Diag(ModuleName.back(), diag::err_module_expected_ident) << IsImport;
+-    SkipUntil(tok::semi, StopBeforeMatch);
+-    return true;
+-  }
+ 
+-  // [cpp.module]/p2: where the pp-tokens (if any) shall not begin with a (
+-  // preprocessing token [...]
+-  //
+-  // Skip unitl ';' to recovery.
+-  if (getLangOpts().CPlusPlusModules && Tok.is(tok::l_paren)) {
+-    SkipUntil(tok::semi, StopBeforeMatch);
+-    return true;
++    // Record this part of the module path.
++    Path.push_back(std::make_pair(Tok.getIdentifierInfo(), Tok.getLocation()));
++    ConsumeToken();
++
++    if (Tok.isNot(tok::period))
++      return false;
++
++    ConsumeToken();
+   }
+-  return false;
+ }
+ 
+ /// Try recover parser when module annotation appears where it must not
+diff -ruN --strip-trailing-cr a/clang/test/CXX/cpp/cpp.module/p2.cppm b/clang/test/CXX/cpp/cpp.module/p2.cppm
+--- a/clang/test/CXX/cpp/cpp.module/p2.cppm
++++ b/clang/test/CXX/cpp/cpp.module/p2.cppm
+@@ -1,88 +0,0 @@
+-// RUN: rm -rf %t
+-// RUN: mkdir -p %t
+-// RUN: split-file %s %t
+-
+-// RUN: %clang_cc1 -std=c++20 %t/A.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/B.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/C.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/D.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/E.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/F.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/G.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/H.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/I.cppm -triple x86_64-linux-gnu -verify
+-// RUN: %clang_cc1 -std=c++20 %t/J.cppm -triple x86_64-linux-gnu -verify
+-
+-//--- version.h
+-#ifndef VERSION_H
+-#define VERSION_H
+-
+-#define VERSION libv5
+-#define A a
+-#define B b
+-#define C c
+-#define FUNC_LIKE(X) function_like_##X
+-#define ATTRS [[]]
+-#define SEMICOLON ;
+-
+-#endif // VERSION_H
+-
+-//--- A.cppm
+-module;
+-#include "version.h"
+-export module VERSION;  // expected-error {{the module name in a module declaration cannot contain an object-like macro 'VERSION'}}
+-
+-//--- B.cppm
+-module;
+-#include "version.h"
+-export module A.B;      // expected-error {{the module name in a module declaration cannot contain an object-like macro 'A'}} \
+-                        // expected-error {{the module name in a module declaration cannot contain an object-like macro 'B'}}
+-
+-//--- C.cppm
+-module;                             // expected-error {{missing 'module' declaration at end of global module fragment introduced here}}
+-#include "version.h"
+-export module A.FUNC_LIKE(foo):C;   // expected-error {{the module name in a module declaration cannot contain an object-like macro 'A'}} \
+-                                    // expected-error {{unexpected '(' after the module name in a module declaration}}
+-
+-//--- D.cppm
+-module;                               // expected-error {{missing 'module' declaration at end of global module fragment introduced here}}
+-#include "version.h"
+-export module B.A.FUNC_LIKE(bar):C;   // expected-error {{the module name in a module declaration cannot contain an object-like macro 'B'}} \
+-                                      // expected-error {{the module name in a module declaration cannot contain an object-like macro 'A'}} \
+-                                      // expected-error {{unexpected '(' after the module name in a module declaration}}
+-
+-//--- E.cppm
+-module;
+-#include "version.h"
+-export module a.FUNC_LIKE:c; // OK, FUNC_LIKE would not be treated as a macro name.
+-// expected-no-diagnostics
+-
+-//--- F.cppm
+-module;
+-#include "version.h"
+-export module a.FUNC_LIKE:c ATTRS; // OK, FUNC_LIKE would not be treated as a macro name.
+-// expected-no-diagnostics
+-
+-//--- G.cppm
+-module;                               // expected-error {{missing 'module' declaration at end of global module fragment introduced here}}
+-#include "version.h"
+-export module A.FUNC_LIKE(B c:C ATTRS // expected-error {{the module name in a module declaration cannot contain an object-like macro 'A'}} \
+-                                      // expected-error {{unexpected '(' after the module name in a module declaration}}
+-
+-//--- H.cppm
+-module;                                   // expected-error {{missing 'module' declaration at end of global module fragment introduced here}}
+-#include "version.h"
+-export module A.FUNC_LIKE(B,). c:C ATTRS  // expected-error {{the module name in a module declaration cannot contain an object-like macro 'A'}} \
+-                                          // expected-error {{unexpected '(' after the module name in a module declaration}}
+-
+-//--- I.cppm
+-module;                                   // expected-error {{missing 'module' declaration at end of global module fragment introduced here}}
+-#include "version.h"
+-export module A.FUNC_LIKE(B,) c:C ATTRS   // expected-error {{the module name in a module declaration cannot contain an object-like macro 'A'}} \
+-                                          // expected-error {{unexpected '(' after the module name in a module declaration}}
+-
+-//--- J.cppm
+-module;
+-#include "version.h"
+-export module unexpanded : unexpanded ATTRS SEMICOLON // OK, ATTRS and SEMICOLON can be expanded.
+-// expected-no-diagnostics
+diff -ruN --strip-trailing-cr a/clang/test/CXX/module/basic/basic.link/module-declaration.cpp b/clang/test/CXX/module/basic/basic.link/module-declaration.cpp
+--- a/clang/test/CXX/module/basic/basic.link/module-declaration.cpp
++++ b/clang/test/CXX/module/basic/basic.link/module-declaration.cpp
+@@ -8,19 +8,27 @@
+ // RUN: %clang_cc1 -std=c++20 -emit-module-interface -fmodule-file=x=%t/x.pcm %t/x.y.cppm -o %t/x.y.pcm
+ //
+ // Module implementation for unknown and known module. (The former is ill-formed.)
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify -x c++ %t/M1.cpp
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x=%t/x.pcm -fmodule-file=x.y=%t/x.y.pcm -verify -x c++ %t/M2.cpp
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify -x c++ %t/M.cpp \
++// RUN:            -DTEST=1 -DEXPORT= -DMODULE_NAME=z
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x=%t/x.pcm -fmodule-file=x.y=%t/x.y.pcm -verify -x c++ %t/M.cpp \
++// RUN:            -DTEST=2 -DEXPORT= -DMODULE_NAME=x
+ //
+ // Module interface for unknown and known module. (The latter is ill-formed due to
+ // redefinition.)
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M3.cpp
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M4.cpp
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M.cpp \
++// RUN:            -DTEST=3 -DEXPORT=export -DMODULE_NAME=z
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M.cpp \
++// RUN:            -DTEST=4 -DEXPORT=export -DMODULE_NAME=x
+ //
+ // Miscellaneous syntax.
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M5.cpp
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M6.cpp
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M7.cpp
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M8.cpp
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M.cpp \
++// RUN:            -DTEST=7 -DEXPORT=export -DMODULE_NAME='z elderberry'
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M.cpp \
++// RUN:            -DTEST=8 -DEXPORT=export -DMODULE_NAME='z [[]]'
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M.cpp \
++// RUN:            -DTEST=9 -DEXPORT=export -DMODULE_NAME='z [[fancy]]'
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -verify %t/M.cpp \
++// RUN:            -DTEST=10 -DEXPORT=export -DMODULE_NAME='z [[maybe_unused]]'
+ 
+ //--- x.cppm
+ export module x;
+@@ -30,26 +38,17 @@
+ export module x.y;
+ int c;
+ 
+-//--- M1.cpp
+-module z; // expected-error {{module 'z' not found}}
++//--- M.cpp
+ 
+-//--- M2.cpp
+-module x; // expected-no-diagnostics
+-
+-//--- M3.cpp
+-export module z; // expected-no-diagnostics
+-
+-//--- M4.cpp
+-export module x; // expected-no-diagnostics
+-
+-//--- M5.cpp
+-export module z elderberry; // expected-error {{expected ';'}} expected-error {{a type specifier is required}}
+-
+-//--- M6.cpp
+-export module z [[]]; // expected-no-diagnostics
+-
+-//--- M7.cpp
+-export module z [[fancy]]; // expected-warning {{unknown attribute 'fancy' ignored}}
+-
+-//--- M8.cpp
+-export module z [[maybe_unused]]; // expected-error-re {{'maybe_unused' attribute cannot be applied to a module{{$}}}}
++EXPORT module MODULE_NAME;
++#if TEST == 7
++// expected-error@-2 {{expected ';'}} expected-error@-2 {{a type specifier is required}}
++#elif TEST == 9
++// expected-warning@-4 {{unknown attribute 'fancy' ignored}}
++#elif TEST == 10
++// expected-error-re@-6 {{'maybe_unused' attribute cannot be applied to a module{{$}}}}
++#elif TEST == 1
++// expected-error@-8 {{module 'z' not found}}
++#else
++// expected-no-diagnostics
++#endif
+diff -ruN --strip-trailing-cr a/clang/test/CXX/module/dcl.dcl/dcl.module/dcl.module.import/p1.cppm b/clang/test/CXX/module/dcl.dcl/dcl.module/dcl.module.import/p1.cppm
+--- a/clang/test/CXX/module/dcl.dcl/dcl.module/dcl.module.import/p1.cppm
++++ b/clang/test/CXX/module/dcl.dcl/dcl.module/dcl.module.import/p1.cppm
+@@ -6,12 +6,10 @@
+ // RUN: %clang_cc1 -std=c++20 -emit-module-interface -fmodule-file=x=%t/x.pcm %t/x.y.cppm -o %t/x.y.pcm
+ // RUN: %clang_cc1 -std=c++20 -emit-module-interface %t/a.b.cppm -o %t/a.b.pcm
+ //
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -fmodule-file=x=%t/x.pcm -verify %t/test-interface.cpp \
+-// RUN:            -DINTERFACE
++// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -fmodule-file=x=%t/x.pcm -verify %t/test.cpp \
++// RUN:            -DMODULE_NAME=z -DINTERFACE
+ // RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -fmodule-file=x=%t/x.pcm \
+-// RUN:            -fmodule-file=a.b=%t/a.b.pcm -verify %t/test.cpp
+-// RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -fmodule-file=x=%t/x.pcm \
+-// RUN:            -verify %t/test-module-not-found.cpp
++// RUN:            -fmodule-file=a.b=%t/a.b.pcm -verify %t/test.cpp -DMODULE_NAME=a.b
+ // RUN: %clang_cc1 -std=c++20 -I%t -fmodule-file=x.y=%t/x.y.pcm -fmodule-file=x=%t/x.pcm -verify %t/test.x.cpp
+ 
+ //--- x.cppm
+@@ -36,26 +34,11 @@
+ int use_3 = c; // expected-error {{use of undeclared identifier 'c'}}
+ 
+ //--- test.cpp
+-module;
+-module a.b;
+-
+-import x;
+-
+-import x [[]];
+-import x [[foo]]; // expected-warning {{unknown attribute 'foo' ignored}}
+-import x [[noreturn]]; // expected-error {{'noreturn' attribute cannot be applied to a module import}}
+-import x [[blarg::noreturn]]; // expected-warning {{unknown attribute 'noreturn' ignored}}
+-
+-import x.y;
+-import x.; // expected-error {{expected a module name after 'import'}}
+-import .x; // expected-error {{expected a module name after 'import'}}
+-
+-int use_4 = c; // ok
+-
+-
+-//--- test-interface.cpp
+-module;
+-export module z;
++#ifdef INTERFACE
++export module MODULE_NAME;
++#else
++module MODULE_NAME;
++#endif
+ 
+ import x;
+ 
+@@ -68,10 +51,6 @@
+ import x.; // expected-error {{expected a module name after 'import'}}
+ import .x; // expected-error {{expected a module name after 'import'}}
+ 
+-int use_4 = c; // ok
+-
+-//--- test-module-not-found.cpp
+-module;
+-
+ import blarg; // expected-error {{module 'blarg' not found}}
+ 
++int use_4 = c; // ok
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/modules.cppm b/clang/test/SemaCXX/modules.cppm
+--- a/clang/test/SemaCXX/modules.cppm
++++ b/clang/test/SemaCXX/modules.cppm
+@@ -1,17 +1,19 @@
+-// RUN: rm -rf %t
+-// RUN: mkdir -p %t
+-// RUN: split-file %s %t
+-
+-// RUN: %clang_cc1 -std=c++20 -emit-module-interface %t/A.cppm -o %t.0.pcm -verify
+-// RUN: %clang_cc1 -std=c++20 -emit-module-interface %t/B.cppm -o %t.1.pcm -verify
+-// RUN: %clang_cc1 -std=c++20 -emit-module-interface %t/C.cppm -fmodule-file=foo=%t.0.pcm -o %t.2.pcm -verify
+-// RUN: %clang_cc1 -std=c++20 -emit-module-interface %t/D.cppm -fmodule-file=foo=%t.0.pcm -o %t.3.pcm -verify
+-// RUN: %clang_cc1 -std=c++20 -emit-module-interface %t/E.cppm -fmodule-file=foo=%t.0.pcm -o %t.3.pcm -verify -Dfoo=bar
++// RUN:     %clang_cc1 -std=c++20 -emit-module-interface %s -o %t.0.pcm -verify -DTEST=0
++// RUN:     %clang_cc1 -std=c++20 -emit-module-interface %s -o %t.1.pcm -verify -DTEST=1
++// RUN:     %clang_cc1 -std=c++20 -emit-module-interface %s -fmodule-file=foo=%t.0.pcm -o %t.2.pcm -verify -DTEST=2
++// RUN:     %clang_cc1 -std=c++20 -emit-module-interface %s -fmodule-file=foo=%t.0.pcm -o %t.3.pcm -verify -Dfoo=bar -DTEST=3
++
++#if TEST == 0 || TEST == 2
++// expected-no-diagnostics
++#endif
+ 
+-//--- A.cppm
+ export module foo;
++
+ static int m;
++
+ int n;
++
++#if TEST == 0
+ export {
+   int a;
+   int b;
+@@ -25,43 +27,7 @@
+ 
+ export struct T {
+ } t;
+-// expected-no-diagnostics
+-
+-//--- B.cppm
+-export module foo;
+-static int m;
+-int n;
+-struct S {
+-  export int n;        // expected-error {{expected member name or ';'}}
+-  export static int n; // expected-error {{expected member name or ';'}}
+-};
+-
+-// FIXME: Exports of declarations without external linkage are disallowed.
+-// Exports of declarations with non-external-linkage types are disallowed.
+-
+-// Cannot export within another export. This isn't precisely covered by the
+-// language rules right now, but (per personal correspondence between zygoloid
+-// and gdr) is the intent.
+-export { // expected-note {{export block begins here}}
+-  extern "C++" {
+-    namespace NestedExport {
+-      export { // expected-error {{export declaration appears within another export declaration}}
+-        int q;
+-      }
+-    } // namespace NestedExport
+-  }
+-}
+-
+-//--- C.cppm
+-export module foo;
+-static int m;
+-int n;
+-// expected-no-diagnostics
+-
+-//--- D.cppm
+-export module foo;
+-static int m;
+-int n;
++#elif TEST == 3
+ int use_a = a; // expected-error {{use of undeclared identifier 'a'}}
+ 
+ #undef foo
+@@ -80,12 +46,29 @@
+ 
+ extern int n;
+ static_assert(&n != p); // expected-error{{use of undeclared identifier 'p'}}
++#endif
+ 
+-//--- E.cppm
+-export module foo; // expected-error {{the module name in a module declaration cannot contain an object-like macro 'foo'}}
+-static int m;
+-int n;
+-int use_a = a; // expected-error {{use of undeclared identifier 'a'}}
++#if TEST == 1
++struct S {
++  export int n;        // expected-error {{expected member name or ';'}}
++  export static int n; // expected-error {{expected member name or ';'}}
++};
++#endif
+ 
+-#undef foo
+-import foo; // expected-error {{imports must immediately follow the module declaration}}
++// FIXME: Exports of declarations without external linkage are disallowed.
++// Exports of declarations with non-external-linkage types are disallowed.
++
++// Cannot export within another export. This isn't precisely covered by the
++// language rules right now, but (per personal correspondence between zygoloid
++// and gdr) is the intent.
++#if TEST == 1
++export { // expected-note {{export block begins here}}
++  extern "C++" {
++  namespace NestedExport {
++  export { // expected-error {{export declaration appears within another export declaration}}
++    int q;
++  }
++  } // namespace NestedExport
++  }
++}
++#endif
+diff -ruN --strip-trailing-cr a/clang/www/cxx_status.html b/clang/www/cxx_status.html
+--- a/clang/www/cxx_status.html
++++ b/clang/www/cxx_status.html
+@@ -182,7 +182,7 @@
+  <tr>
+   <td>Module Declarations Shouldn’t be Macros</td>
+   <td><a href="https://wg21.link/P3034R1">P3034R1</a> (<a href="#dr">DR</a>)</td>
+-  <td class="unreleased" align="center">Clang 19</td>
++  <td class="none" align="center">No</td>
+  </tr>
+  <tr>
+   <td>Trivial infinite loops are not Undefined Behavior</td>
+diff -ruN --strip-trailing-cr a/libcxx/include/__configuration/abi.h b/libcxx/include/__configuration/abi.h
+--- a/libcxx/include/__configuration/abi.h
++++ b/libcxx/include/__configuration/abi.h
+@@ -98,10 +98,6 @@
+ // and WCHAR_MAX. This ABI setting determines whether we should instead track whether the fill
+ // value has been initialized using a separate boolean, which changes the ABI.
+ #  define _LIBCPP_ABI_IOS_ALLOW_ARBITRARY_FILL_VALUE
+-// Make a std::pair of trivially copyable types trivially copyable.
+-// While this technically doesn't change the layout of pair itself, other types may decide to programatically change
+-// their representation based on whether something is trivially copyable.
+-#  define _LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR
+ #elif _LIBCPP_ABI_VERSION == 1
+ #  if !(defined(_LIBCPP_OBJECT_FORMAT_COFF) || defined(_LIBCPP_OBJECT_FORMAT_XCOFF))
+ // Enable compiling copies of now inline methods into the dylib to support
+diff -ruN --strip-trailing-cr a/libcxx/include/__type_traits/datasizeof.h b/libcxx/include/__type_traits/datasizeof.h
+--- a/libcxx/include/__type_traits/datasizeof.h
++++ b/libcxx/include/__type_traits/datasizeof.h
+@@ -54,7 +54,6 @@
+ // the use as an extension.
+ _LIBCPP_DIAGNOSTIC_PUSH
+ _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Winvalid-offsetof")
+-_LIBCPP_GCC_DIAGNOSTIC_IGNORED("-Winvalid-offsetof")
+ template <class _Tp>
+ inline const size_t __datasizeof_v = offsetof(_FirstPaddingByte<_Tp>, __first_padding_byte_);
+ _LIBCPP_DIAGNOSTIC_POP
+diff -ruN --strip-trailing-cr a/libcxx/include/__utility/pair.h b/libcxx/include/__utility/pair.h
+--- a/libcxx/include/__utility/pair.h
++++ b/libcxx/include/__utility/pair.h
+@@ -32,7 +32,6 @@
+ #include <__type_traits/is_implicitly_default_constructible.h>
+ #include <__type_traits/is_nothrow_assignable.h>
+ #include <__type_traits/is_nothrow_constructible.h>
+-#include <__type_traits/is_reference.h>
+ #include <__type_traits/is_same.h>
+ #include <__type_traits/is_swappable.h>
+ #include <__type_traits/is_trivially_relocatable.h>
+@@ -81,38 +80,6 @@
+   _LIBCPP_HIDE_FROM_ABI pair(pair const&) = default;
+   _LIBCPP_HIDE_FROM_ABI pair(pair&&)      = default;
+ 
+-  // When we are requested for pair to be trivially copyable by the ABI macro, we use defaulted members
+-  // if it is both legal to do it (i.e. no references) and we have a way to actually implement it, which requires
+-  // the __enable_if__ attribute before C++20.
+-#ifdef _LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR
+-  // FIXME: This should really just be a static constexpr variable. It's in a struct to avoid gdb printing the value
+-  // when printing a pair
+-  struct __has_defaulted_members {
+-    static const bool value = !is_reference<first_type>::value && !is_reference<second_type>::value;
+-  };
+-#  if _LIBCPP_STD_VER >= 20
+-  _LIBCPP_HIDE_FROM_ABI constexpr pair& operator=(const pair&)
+-    requires __has_defaulted_members::value
+-  = default;
+-
+-  _LIBCPP_HIDE_FROM_ABI constexpr pair& operator=(pair&&)
+-    requires __has_defaulted_members::value
+-  = default;
+-#  elif __has_attribute(__enable_if__)
+-  _LIBCPP_HIDE_FROM_ABI pair& operator=(const pair&)
+-      __attribute__((__enable_if__(__has_defaulted_members::value, ""))) = default;
+-
+-  _LIBCPP_HIDE_FROM_ABI pair& operator=(pair&&)
+-      __attribute__((__enable_if__(__has_defaulted_members::value, ""))) = default;
+-#  else
+-#    error "_LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR isn't supported with this compiler"
+-#  endif
+-#else
+-  struct __has_defaulted_members {
+-    static const bool value = false;
+-  };
+-#endif // defined(_LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR) && __has_attribute(__enable_if__)
+-
+ #ifdef _LIBCPP_CXX03_LANG
+   _LIBCPP_HIDE_FROM_ABI pair() : first(), second() {}
+ 
+@@ -258,8 +225,7 @@
+              typename __make_tuple_indices<sizeof...(_Args2) >::type()) {}
+ 
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 pair&
+-  operator=(__conditional_t<!__has_defaulted_members::value && is_copy_assignable<first_type>::value &&
+-                                is_copy_assignable<second_type>::value,
++  operator=(__conditional_t<is_copy_assignable<first_type>::value && is_copy_assignable<second_type>::value,
+                             pair,
+                             __nat> const& __p) noexcept(is_nothrow_copy_assignable<first_type>::value &&
+                                                         is_nothrow_copy_assignable<second_type>::value) {
+@@ -268,12 +234,10 @@
+     return *this;
+   }
+ 
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 pair&
+-  operator=(__conditional_t<!__has_defaulted_members::value && is_move_assignable<first_type>::value &&
+-                                is_move_assignable<second_type>::value,
+-                            pair,
+-                            __nat>&& __p) noexcept(is_nothrow_move_assignable<first_type>::value &&
+-                                                   is_nothrow_move_assignable<second_type>::value) {
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 pair& operator=(
++      __conditional_t<is_move_assignable<first_type>::value && is_move_assignable<second_type>::value, pair, __nat>&&
++          __p) noexcept(is_nothrow_move_assignable<first_type>::value &&
++                        is_nothrow_move_assignable<second_type>::value) {
+     first  = std::forward<first_type>(__p.first);
+     second = std::forward<second_type>(__p.second);
+     return *this;
+diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/utilities/utility/pairs/pairs.pair/abi.trivial_copy_move.pass.cpp b/libcxx/test/libcxx/utilities/utility/pairs/pairs.pair/abi.trivial_copy_move.pass.cpp
+--- a/libcxx/test/libcxx/utilities/utility/pairs/pairs.pair/abi.trivial_copy_move.pass.cpp
++++ b/libcxx/test/libcxx/utilities/utility/pairs/pairs.pair/abi.trivial_copy_move.pass.cpp
+@@ -162,13 +162,8 @@
+         static_assert(!std::is_trivially_copy_constructible<P>::value, "");
+         static_assert(!std::is_trivially_move_constructible<P>::value, "");
+ #endif // TEST_STD_VER >= 11
+-#ifndef _LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR
+         static_assert(!std::is_trivially_copy_assignable<P>::value, "");
+         static_assert(!std::is_trivially_move_assignable<P>::value, "");
+-#else
+-        static_assert(std::is_trivially_copy_assignable<P>::value, "");
+-        static_assert(std::is_trivially_move_assignable<P>::value, "");
+-#endif
+         static_assert(std::is_trivially_destructible<P>::value, "");
+     }
+ }
+diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/utilities/utility/pairs/pairs.pair/abi.trivially_copyable.compile.pass.cpp b/libcxx/test/libcxx/utilities/utility/pairs/pairs.pair/abi.trivially_copyable.compile.pass.cpp
+--- a/libcxx/test/libcxx/utilities/utility/pairs/pairs.pair/abi.trivially_copyable.compile.pass.cpp
++++ b/libcxx/test/libcxx/utilities/utility/pairs/pairs.pair/abi.trivially_copyable.compile.pass.cpp
+@@ -47,20 +47,11 @@
+ static_assert(!std::is_trivially_copyable<std::pair<int, int&> >::value, "");
+ static_assert(!std::is_trivially_copyable<std::pair<int&, int&> >::value, "");
+ 
+-#ifdef _LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR
+-static_assert(std::is_trivially_copyable<std::pair<int, int> >::value, "");
+-static_assert(std::is_trivially_copyable<std::pair<int, char> >::value, "");
+-static_assert(std::is_trivially_copyable<std::pair<char, int> >::value, "");
+-static_assert(std::is_trivially_copyable<std::pair<std::pair<char, char>, int> >::value, "");
+-static_assert(std::is_trivially_copyable<std::pair<trivially_copyable, int> >::value, "");
+-#else
+ static_assert(!std::is_trivially_copyable<std::pair<int, int> >::value, "");
+ static_assert(!std::is_trivially_copyable<std::pair<int, char> >::value, "");
+ static_assert(!std::is_trivially_copyable<std::pair<char, int> >::value, "");
+ static_assert(!std::is_trivially_copyable<std::pair<std::pair<char, char>, int> >::value, "");
+ static_assert(!std::is_trivially_copyable<std::pair<trivially_copyable, int> >::value, "");
+-#endif // _LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR
+-
+ #if TEST_STD_VER == 03 // Known ABI difference
+ static_assert(!std::is_trivially_copyable<std::pair<trivially_copyable_no_copy_assignment, int> >::value, "");
+ static_assert(!std::is_trivially_copyable<std::pair<trivially_copyable_no_move_assignment, int> >::value, "");
+@@ -68,21 +59,10 @@
+ static_assert(std::is_trivially_copyable<std::pair<trivially_copyable_no_copy_assignment, int> >::value, "");
+ static_assert(std::is_trivially_copyable<std::pair<trivially_copyable_no_move_assignment, int> >::value, "");
+ #endif
+-
+-#ifdef _LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR
+-static_assert(std::is_trivially_copyable<std::pair<trivially_copyable_no_construction, int> >::value, "");
+-#else
+ static_assert(!std::is_trivially_copyable<std::pair<trivially_copyable_no_construction, int> >::value, "");
+-#endif
+ 
+ static_assert(std::is_trivially_copy_constructible<std::pair<int, int> >::value, "");
+ static_assert(std::is_trivially_move_constructible<std::pair<int, int> >::value, "");
+-static_assert(std::is_trivially_destructible<std::pair<int, int> >::value, "");
+-
+-#ifdef _LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR
+-static_assert(std::is_trivially_copy_assignable<std::pair<int, int> >::value, "");
+-static_assert(std::is_trivially_move_assignable<std::pair<int, int> >::value, "");
+-#else
+ static_assert(!std::is_trivially_copy_assignable<std::pair<int, int> >::value, "");
+ static_assert(!std::is_trivially_move_assignable<std::pair<int, int> >::value, "");
+-#endif // _LIBCPP_ABI_TRIVIALLY_COPYABLE_PAIR
++static_assert(std::is_trivially_destructible<std::pair<int, int> >::value, "");
+diff -ruN --strip-trailing-cr a/lld/test/MachO/objc-category-merging-erase-objc-name-test.s b/lld/test/MachO/objc-category-merging-erase-objc-name-test.s
+--- a/lld/test/MachO/objc-category-merging-erase-objc-name-test.s
++++ b/lld/test/MachO/objc-category-merging-erase-objc-name-test.s
+@@ -4,9 +4,9 @@
+ ; then when merging the category into the base class (and deleting the category), we don't
+ ; delete the 'MyTestProtocol' name
+ 
+-; RUN: llvm-mc -filetype=obj -triple=arm64-apple-macos -o erase-objc-name.o %s
+-; RUN: %lld -arch arm64 -dylib -o erase-objc-name.dylib erase-objc-name.o -objc_category_merging
+-; RUN: llvm-objdump --objc-meta-data --macho erase-objc-name.dylib | FileCheck %s --check-prefixes=MERGE_CATS
++; RUN: llvm-mc -filetype=obj -triple=arm64-apple-macos -o %T/erase-objc-name.o %s
++; RUN: %lld -arch arm64 -dylib -o %T/erase-objc-name.dylib %T/erase-objc-name.o -objc_category_merging
++; RUN: llvm-objdump --objc-meta-data --macho %T/erase-objc-name.dylib | FileCheck %s --check-prefixes=MERGE_CATS
+ 
+ ; === Check merge categories enabled ===
+ ; Check that the original categories are not there
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1077,6 +1077,22 @@
+ )
+ 
+ libc_support_library(
++    name = "__support_osutil_pid",
++    srcs = ["src/__support/OSUtil/linux/pid.cpp"],
++    hdrs = ["src/__support/OSUtil/pid.h"],
++    target_compatible_with = select({
++        "@platforms//os:linux": [],
++        "//conditions:default": ["@platforms//:incompatible"],
++    }),
++    deps = [
++        ":__support_macros_attributes",
++        ":__support_macros_optimization",
++        ":__support_osutil_syscall",
++        ":types_pid_t",
++    ]
++)
++
++libc_support_library(
+     name = "__support_stringutil",
+     srcs = glob(["src/__support/StringUtil/tables/**/*.h"]) + [
+         "src/__support/StringUtil/error_to_string.cpp",
+@@ -3032,8 +3048,11 @@
+     hdrs = ["src/unistd/getpid.h"],
+     deps = [
+         ":__support_common",
++        ":__support_macros_config",
++        ":__support_osutil_pid",
+         ":__support_osutil_syscall",
+         ":errno",
++        ":types_pid_t",
+     ],
+ )
+ 
