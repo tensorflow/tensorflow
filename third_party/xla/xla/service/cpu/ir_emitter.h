@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <stack>
 #include <string>
@@ -33,8 +35,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/TargetParser/Triple.h"
@@ -432,14 +436,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // desc is an optional human-readable string that's added to the loop name in
   // IR.  Regardless of whether desc is provided, target_op->name() is included
   // in the loop name.
-  //
-  // TODO(jingyue): target_op should be a `const HloInstruction*`.
   absl::Status EmitTargetElementLoop(
-      HloInstruction* target_op,
-      const llvm_ir::ElementGenerator& element_generator);
-  absl::Status EmitTargetElementLoop(
-      HloInstruction* target_op, absl::string_view desc,
-      const llvm_ir::ElementGenerator& element_generator);
+      const HloInstruction* target_op, absl::string_view desc,
+      const llvm_ir::ElementGenerator& element_generator,
+      std::optional<llvm_ir::IrArray> result_array_opt);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the

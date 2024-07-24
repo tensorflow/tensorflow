@@ -24,8 +24,9 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
-#include <numeric>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -808,7 +809,8 @@ absl::Status IrEmitter::HandleSelectAndScatter(
       [this, init_value](const llvm_ir::IrArray::Index& target_index) {
         llvm::Value* init_value_addr = GetEmittedValueFor(init_value);
         return Load(IrShapeType(init_value->shape()), init_value_addr);
-      }));
+      },
+      std::optional<llvm_ir::IrArray>(output_array)));
 
   // Create a loop to iterate over the source array to scatter to the output.
   llvm_ir::ForLoopNest source_loops(IrName(select_and_scatter), b());
@@ -1566,8 +1568,7 @@ absl::Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
        /*input_buffer=*/input_buffer,
        /*output_buffer=*/output_buffer,
        /*source_target_pairs=*/source_target_pairs_v,
-       /*source_target_pairs_size=*/
-       b()->getInt32(source_target_pairs.size())},
+       /*source_target_pairs_size=*/b()->getInt32(source_target_pairs.size())},
       b()->getVoidTy());
 
   return absl::OkStatus();
@@ -2318,7 +2319,8 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
         const HloInstruction* padding_value = pad->operand(1);
         llvm::Value* padding_value_addr = GetEmittedValueFor(padding_value);
         return Load(IrShapeType(padding_value->shape()), padding_value_addr);
-      }));
+      },
+      std::nullopt));
 
   // Create a loop to iterate over the operand elements and update the output
   // locations where the operand elements should be stored.
@@ -2376,7 +2378,8 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     BindFusionArguments(fusion, &fused_emitter);
     TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
                                             *fusion->fused_expression_root()));
-    return EmitTargetElementLoop(fusion, generator);
+    return EmitTargetElementLoop(fusion, "kLoop_fusion", generator,
+                                 std::nullopt);
   } else if (fusion->IsOutputFusion()) {
     VLOG(3) << "HandleFusion kOutput";
     int64_t dot_op_index =
@@ -4099,19 +4102,20 @@ absl::Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
 }
 
 absl::Status IrEmitter::EmitTargetElementLoop(
-    HloInstruction* target_op,
-    const llvm_ir::ElementGenerator& element_generator) {
-  return EmitTargetElementLoop(target_op, /*desc=*/"", element_generator);
-}
-
-absl::Status IrEmitter::EmitTargetElementLoop(
-    HloInstruction* target_op, absl::string_view desc,
-    const llvm_ir::ElementGenerator& element_generator) {
+    const HloInstruction* target_op, absl::string_view desc,
+    const llvm_ir::ElementGenerator& element_generator,
+    std::optional<llvm_ir::IrArray> result_array_opt) {
   VLOG(2) << "EmitTargetElementLoop: " << target_op->ToString();
 
+  llvm_ir::IrArray target_array;
+  if (result_array_opt.has_value()) {
+    target_array = result_array_opt.value();
+  } else {
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
+    target_array = GetIrArrayFor(target_op);
+  }
+
   const Shape& target_shape = target_op->shape();
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
-  llvm_ir::IrArray target_array = GetIrArrayFor(target_op);
 
   if (target_shape.IsTuple() &&
       (target_op->opcode() == HloOpcode::kFusion ||
@@ -4131,7 +4135,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
     }
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, output_arrays, b())
-            .EmitLoop(IrName(target_op)));
+            .EmitLoop(IrName(target_op, desc)));
 
     std::vector<llvm::Value*> tuple_operand_ptrs;
     for (int64_t i = 0; i < output_arrays.size(); ++i) {
@@ -4147,11 +4151,11 @@ absl::Status IrEmitter::EmitTargetElementLoop(
       // Emit parallel loop with dynamic loop bounds for most-major dimensions.
       TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, target_array,
                                              &dynamic_loop_bounds, b())
-                             .EmitLoop(IrName(target_op)));
+                             .EmitLoop(IrName(target_op, desc)));
     } else {
       TF_RETURN_IF_ERROR(
           llvm_ir::LoopEmitter(element_generator, target_array, b())
-              .EmitLoop(IrName(target_op)));
+              .EmitLoop(IrName(target_op, desc)));
     }
   }
   return absl::OkStatus();
@@ -4196,7 +4200,9 @@ absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   }
   CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
   return EmitTargetElementLoop(
-      hlo, elemental_emitter.MakeElementGenerator(hlo, operand_to_generator));
+      hlo, "elemental_loop",
+      elemental_emitter.MakeElementGenerator(hlo, operand_to_generator),
+      std::nullopt);
 }
 
 llvm::Value* IrEmitter::EmitScalarReturningThreadLocalCall(
