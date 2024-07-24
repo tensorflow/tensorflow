@@ -1631,3 +1631,23 @@ def ReorderNCHWTransposeAdd : Pat <
   (IsDefinedByConv2DOp $input),
   (HasOneUse $add_op),
   (HasOneUse $transpose_op)]>;
+
+
+// TODO(weiyiw): Also support variant length arguments
+def FuseSliceAndPack : Pat<(
+  TFL_PackOp
+    (variadic
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input0,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"0">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_),
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input1,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_),
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input2,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"2">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_)
+    ), $_, $_), (replaceWithValue $input0),
+    [(IsSame $input0, $input1), (IsSame $input0, $input2)]>;
