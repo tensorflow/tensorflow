@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -765,7 +764,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
                       fusion.backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
-  const auto& config = backend_config.custom_fusion_config();
+  const CustomFusionConfig& config = backend_config.custom_fusion_config();
 
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
 
@@ -794,14 +793,10 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
                      " returned empty custom kernels for a fused computation"));
   }
 
-  // TODO(ezhulenev): Add support for auto tuning to select the best kernel.
-  if (kernels.size() != 1) {
-    return absl::InternalError("Expected exactly one custom kernel");
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      auto thunk, BuildCustomKernelThunkForFusion(ir_emitter_context, fusion,
-                                                  std::move(kernels[0])));
+  TF_ASSIGN_OR_RETURN(auto thunk,
+                      BuildCustomKernelThunkForFusion(
+                          ir_emitter_context, fusion,
+                          std::move(kernels[config.kernel_index()])));
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));

@@ -148,6 +148,11 @@ message ReificationCost {
 // fusion computation).
 message CustomFusionConfig {
   string name = 1;
+
+  // When a custom fusion has multiple kernels, this field specifies which
+  // kernel to use. Default value is to select the first kernel, i.e.
+  // kernel_index = 0.
+  int32 kernel_index = 2;
 }
 
 message CuDnnFusionConfig {

@@ -92,7 +92,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -156,7 +156,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -221,7 +221,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
@@ -283,7 +283,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
@@ -347,7 +347,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
     ; CHECK-DAG:     kind=kCustom, calls=%address-computation,
     ; CHECK-DAG:     backend_config={
     ; CHECK-DAG:       "kind":"__custom_fusion",
-    ; CHECK-DAG:       "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK-DAG:       "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK-DAG:     }
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
@@ -496,7 +496,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
@@ -657,7 +657,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmDuplicateOperand) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -719,7 +719,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -781,7 +781,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -844,7 +844,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -901,7 +901,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -963,7 +963,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -1016,7 +1016,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -1077,7 +1077,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -1157,7 +1157,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK-DAG:   [[GTE6:%[^ ]+]] = f32[1024]{0} get-tuple-element([[FUSION]]), index=2
     ; CHECK-DAG:   [[GTE7:%[^ ]+]] = (f32[128]{0}, f32[256]{0}) get-tuple-element([[FUSION]]), index=1
@@ -1254,7 +1254,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -1323,7 +1323,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -1392,7 +1392,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
@@ -1458,7 +1458,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
@@ -1522,7 +1522,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
@@ -1593,7 +1593,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT {{.*}} = f16[4,8,8]{2,1,0} log([[FUSION]])
     ; CHECK:     }
@@ -1672,7 +1672,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       [[DUS_MAIN:%[^ ]+]] = f16[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:       [[WORKSPACE_MAIN:%[^ ]+]] = s8[256]{0} get-tuple-element([[FUSION]]), index=1
@@ -1742,7 +1742,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }

@@ -79,7 +79,7 @@ TEST_F(CustomKernelFusionRewriterTest, SimpleGemm) {
     ; CHECK:     kind=kCustom, calls=%simple_gemm,
     ; CHECK:     backend_config={
     ; CHECK:       "kind":"__custom_fusion",
-    ; CHECK:       "custom_fusion_config":{"name":"simple_gemm"}
+    ; CHECK:       "custom_fusion_config":{"name":"simple_gemm","kernel_index":0}
     ; CHECK:     }
     ; CHECK: }
   )";
@@ -121,7 +121,7 @@ TEST_F(CustomKernelFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK:     kind=kCustom, calls=%simple_gemm,
     ; CHECK:     backend_config={
     ; CHECK:       "kind":"__custom_fusion",
-    ; CHECK:       "custom_fusion_config":{"name":"simple_gemm"}
+    ; CHECK:       "custom_fusion_config":{"name":"simple_gemm","kernel_index":0}
     ; CHECK:     }
     ; CHECK:   ROOT {{.*}} get-tuple-element([[FUSION]]), index=0
     ; CHECK: }
