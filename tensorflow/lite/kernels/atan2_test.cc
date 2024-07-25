@@ -87,6 +87,7 @@ TYPED_TEST(Atan2Test, TestScalar) {
   ASSERT_FLOAT_EQ(m.GetOutput<Float>({-1.0}, {0.0})[0], -M_PI/2);
 }
 
+
 TYPED_TEST(Atan2Test, TestBatch) {
   using Float = typename TestFixture::FloatType;
   tflite::TensorData y = {GetTTEnum<Float>(), {4, 2, 1}};
