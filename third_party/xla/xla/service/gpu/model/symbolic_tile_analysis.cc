@@ -191,6 +191,11 @@ class OrderedUniquePtrValueHashSet {
     return {*it, inserted};
   }
 
+  void Reserve(int64_t n) {
+    hash_set_.reserve(n);
+    data_.reserve(n);
+  }
+
   // Moves data out of the set.
   std::vector<std::unique_ptr<T>> ExtractData() { return std::move(data_); }
 
@@ -492,6 +497,11 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
   absl::flat_hash_map<const SymbolicTiledHloInstruction*, TiledHloInstruction*>
       symbolic_to_tiled_hlo_map;
+  // The actual number of TiledHloInstructions can be smaller than the number of
+  // SymbolicTiledHloInstructions, because some instruction will be
+  // deduplicated, but we reserve to the upper bound to avoid reallocations and
+  // additional hash calculations.
+  tiled_hlo_instructions_set.Reserve(symbolic_tiled_hlo_instructions_.size());
 
   std::function<absl::StatusOr<TiledHloInstruction*>(
       const SymbolicTiledHloInstruction*)>
