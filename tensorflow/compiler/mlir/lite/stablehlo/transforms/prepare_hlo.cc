@@ -53,7 +53,6 @@ void PrepareHloPass::runOnOperation() {
   populateWithGenerated(patterns);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
-    func->dump();
     signalPassFailure();
   }
 }

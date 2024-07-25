@@ -180,15 +180,16 @@ inline bool ValidStandardConvOutFeatureDims(const ConvData& data) {
 }
 
 inline bool ValidStandardConvInFeatureDims(const ConvData& data) {
+  // kernel_in_features * feature_groups = input_features by definition.
+  const int64_t input_features =
+      data.InputLayout().SpecialDim2(data.InputShape());
+
+  const bool trivial_kernel_in_features =
+      data.FeatureGroupCount() == input_features;
+  const bool is_grouped_conv = data.FeatureGroupCount() != 1;
+
   const int64_t rank = data.InputLayout().Rank();
-  const int64_t kernel_in_features =
-      data.KernelLayout().SpecialDim1(data.KernelShape());
-  // mhlo requires in_features / feature_group_count == kernel_features.
-  // tfl.conv_2d permits "grouped" behavior, but tfl.conv_3d does not.
-  // input_channels == feature_group_count (equivalantly kernel_in_features ==
-  // 1) codes for depthwise.
-  return data.FeatureGroupCount() == 1 ||
-         (rank != 5 && kernel_in_features != 1);
+  return !trivial_kernel_in_features && (!is_grouped_conv || rank == 4);
 }
 
 inline bool HasStandardFeatureGroup(const ConvData& data) {

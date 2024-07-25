@@ -907,6 +907,27 @@ func.func @group_conv2d_nhwc_ohwi_nhwc(%arg0: tensor<1x14x14x2240xf32>, %arg1: t
 
 // -----
 
+// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_trivial_in_channels
+func.func @conv2d_nhwc_ohwi_nhwc_trivial_in_channels(%input: tensor<1x256x256x1xf32>, %filter: tensor<2x1x1x1xf32>) -> tensor<1x256x256x2xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {stride = [1, 1], pad = [[0, 0], [0, 0]]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    window_strides = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
+    lhs_dilation = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<1x256x256x1xf32>, tensor<2x1x1x1xf32>) -> tensor<1x256x256x2xf32>
+  func.return %0 : tensor<1x256x256x2xf32>
+}
+
+// NOTE: This case is depthwise.
+
+// CHECK-NOT: tfl
+
+// -----
+
 //
 // 3D
 //=---
