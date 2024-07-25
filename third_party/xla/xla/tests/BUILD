@@ -2122,6 +2122,21 @@ xla_test(
 )
 
 xla_test(
+    name = "dynamic_reshape_test",
+    srcs = ["dynamic_reshape_test.cc"],
+    disabled_backends = ["interpreter"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:test",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
     name = "reverse_test",
     srcs = ["reverse_test.cc"],
     tags = ["test_xla_cpu_thunks"],

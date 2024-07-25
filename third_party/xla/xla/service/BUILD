@@ -4204,6 +4204,7 @@ cc_library(
 xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":algebraic_simplifier",
         ":dynamic_dimension_inference",
