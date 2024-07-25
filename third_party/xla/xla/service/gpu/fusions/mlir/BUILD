@@ -284,6 +284,7 @@ cc_library(
         "convert_xla_gpu_pure_call_ops.cc",
         "erase_dead_functions.cc",
         "expand_float_ops.cc",
+        "flatten_tensors.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
         "lower_xla_gpu_to_scf.cc",

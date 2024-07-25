@@ -613,10 +613,9 @@ struct FoldApplyIndexingResults
     new_exprs.reserve(num_results);
     SmallVector<Value, 4> new_values;
     new_values.reserve(num_results);
-    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     for (mlir::OpResult opresult : indexing_op->getOpResults()) {
       if (opresult.use_empty()) {
-        new_values.push_back(zero);
+        new_values.push_back(rewriter.create<arith::ConstantIndexOp>(loc, 0));
         continue;
       }
 
