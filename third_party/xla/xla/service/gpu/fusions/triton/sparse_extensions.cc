@@ -362,19 +362,17 @@ class SparseLocalLoadToLLVM
   LogicalResult matchAndRewrite(
       triton::gpu::LocalLoadOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    MemDescType srcTy = op.getSrc().getType();
-    RankedTensorType dstTy = op.getType();
-    Attribute srcLayout = srcTy.getEncoding();
-    Attribute dstLayout = dstTy.getEncoding();
-    if (isa<triton::gpu::SharedEncodingAttr>(srcLayout) &&
-        isa<triton::gpu::SparseDotMetaEncodingAttr>(dstLayout)) {
-      return lowerSharedToSparseMeta(op, adaptor, rewriter);
-    }
-    return failure();
+    MemDescType src_ty = op.getSrc().getType();
+    if (!isa<triton::gpu::SharedEncodingAttr>(src_ty.getEncoding()))
+      return failure();
+    RankedTensorType dst_ty = op.getType();
+    if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(dst_ty.getEncoding()))
+      return failure();
+    return lowerSharedToSparseMeta(op, adaptor, rewriter);
   }
 
  private:
-  // shared -> sparse dot meta
+  // lowering metadata (local_load: shared -> sparse dot meta) to LLVM
   LogicalResult lowerSharedToSparseMeta(
       triton::gpu::LocalLoadOp op, triton::gpu::LocalLoadOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const {
@@ -384,75 +382,86 @@ class SparseLocalLoadToLLVM
     // such values in a register (32-bit).
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#sparse-matrix-storage
     constexpr int kTileSize = 16;
-    constexpr int kThreadsInGroup = 4;
-    constexpr int kMetadataElementsPerPackedValue = 8;  // 8 x 2-bit = 16-bit
-    constexpr int kMetadataLineOffset = kThreadsPerWarp / kThreadsInGroup;
+    constexpr int kMetaElementsBitSize = 2;
+    // Metadata elements are packed into 16-bits values.
+    constexpr int kMetaElementsPerPackedValue = 16 / kMetaElementsBitSize;
+    constexpr int kColumnsPerCtaTile = kTileSize / kMetaElementsPerPackedValue;
 
     auto loc = op.getLoc();
-    Value tensor = op.getSrc();
-    auto sparseEncoding = cast<triton::gpu::SparseDotMetaEncodingAttr>(
+    auto load_sparse_encoding = cast<triton::gpu::SparseDotMetaEncodingAttr>(
         cast<RankedTensorType>(op.getResult().getType()).getEncoding());
-    auto llvmElemTy = getTypeConverter()->convertType(
-        cast<MemDescType>(op.getSrc().getType()).getElementType());
-    auto smemObj = LLVM::getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(),
-                                                         llvmElemTy, rewriter);
 
     // Calculate tile size as number of mask elements (4xi4).
-    NvidiaMmaEncodingAttr mmaLayout =
-        cast<NvidiaMmaEncodingAttr>(sparseEncoding.getParent());
-    SmallVector<unsigned> warpsPerCTA = mmaLayout.getWarpsPerCTA();
-    SmallVector<unsigned> shapePerCTATile = {
-        kTileSize * warpsPerCTA[0],
-        kTileSize / kMetadataElementsPerPackedValue};
-    Value strideM = smemObj.strides[0];
-    Value strideK = smemObj.strides[1];
+    NvidiaMmaEncodingAttr mma_layout =
+        cast<NvidiaMmaEncodingAttr>(load_sparse_encoding.getParent());
+    SmallVector<unsigned> warps_per_cta = mma_layout.getWarpsPerCTA();
 
     // Calculate offset in the tile for the current thread.
-    Value threadsPerWarp = i32_val(kThreadsPerWarp);
-    Value thread = getThreadId(rewriter, loc);
-    Value warpId = udiv(thread, threadsPerWarp);
-    Value warpGroupId;
-    if (mmaLayout.isHopper()) {
-      warpGroupId = urem(warpId, i32_val(warpsPerCTA[0]));
+    Value threads_per_warp = i32_val(kThreadsPerWarp);
+    Value thread_id = getThreadId(rewriter, loc);
+    Value warp_id = udiv(thread_id, threads_per_warp);
+    Value warp_group_id;
+    if (mma_layout.isHopper()) {
+      // Hopper MMA instructions force a warp order of [0, 1]. See docs:
+      // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-wgmma-mma-async-m64nnk8
+      warp_group_id = urem(warp_id, i32_val(warps_per_cta[0]));
     } else {
-      assert(mmaLayout.isAmpere());
-      warpGroupId = udiv(warpId, i32_val(warpsPerCTA[1]));
+      assert(mma_layout.isAmpere() &&
+             "SparseDot is only supported on Ampere and Hopper");
+      warp_group_id = udiv(warp_id, i32_val(warps_per_cta[1]));
     }
-    Value laneId = urem(thread, threadsPerWarp);
-    Value laneGroupId = udiv(laneId, i32_val(kThreadsInGroup));
-    Value columnId = urem(laneId, i32_val(shapePerCTATile[1]));
-    Value rowId = add(mul(warpGroupId, i32_val(kTileSize)), laneGroupId);
+    // Calculate row and column id, based on mma.sp.sync.aligned.m16n8k32:
+    // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#sparse-mma-metadata-16832-f16bf16.
+    // column-id takes into consideration that we pack elements for metadata.
+    constexpr int kThreadsInGroup = 4;
+    constexpr int kMetadataLineOffset = kThreadsPerWarp / kThreadsInGroup;
+    Value lane_id = urem(thread_id, threads_per_warp);
+    Value lane_group_id = udiv(lane_id, i32_val(kThreadsInGroup));
+    Value row_id = add(mul(warp_group_id, i32_val(kTileSize)), lane_group_id);
+    SmallVector<unsigned> shape_per_cta_tile = {kTileSize * warps_per_cta[0],
+                                                kColumnsPerCtaTile};
+    Value column_id = urem(lane_id, i32_val(shape_per_cta_tile[1]));
 
     // Calculate number of tile repetitions.
+    Value tensor = op.getSrc();
     auto shape = cast<MemDescType>(tensor.getType()).getShape();
-    int repM = shape[0] / shapePerCTATile[0];
-    int repK = shape[1] / shapePerCTATile[1];
-    assert(repM > 0 && repK > 0);
+    int rep_m = shape[0] / shape_per_cta_tile[0];
+    int rep_k = shape[1] / shape_per_cta_tile[1];
+    assert(rep_m > 0 && rep_k > 0);
 
     // Load sparse metadata from shared memory.
+    auto elem_ty = getTypeConverter()->convertType(
+        cast<MemDescType>(tensor.getType()).getElementType());
+    auto s_mem_obj = LLVM::getSharedMemoryObjectFromStruct(
+        loc, adaptor.getSrc(), elem_ty, rewriter);
+    Value stride_m = s_mem_obj.strides[0];
+    Value stride_k = s_mem_obj.strides[1];
     MLIRContext *ctx = tensor.getContext();
-    Type ptrTy = ptr_ty(ctx, 3);
-    Value base = gep(ptrTy, i16_ty, smemObj.base, i32_val(0));
+    Type ptr_ty = ptr_ty(ctx, 3);
+    Value base = gep(ptr_ty, i16_ty, s_mem_obj.base, i32_val(0));
     SmallVector<Value> values;
 
-    for (int k = 0; k < repK; ++k) {
-      for (int m = 0; m < repM; ++m) {
-        Value row = add(rowId, i32_val(m * shapePerCTATile[0]));
-        Value column = add(columnId, i32_val(k * shapePerCTATile[1]));
-        Value offset1 = add(mul(row, strideM), mul(column, strideK));
-        Value offset2 =
-            add(offset1, mul(i32_val(kMetadataLineOffset), strideM));
-        Value lower = load(i16_ty, gep(ptrTy, i16_ty, base, offset1));
-        Value upper = load(i16_ty, gep(ptrTy, i16_ty, base, offset2));
+    for (int k = 0; k < rep_k; ++k) {
+      for (int m = 0; m < rep_m; ++m) {
+        // Each thread processes two different rows.
+        Value row_lower = add(row_id, i32_val(m * shape_per_cta_tile[0]));
+        Value row_upper = add(row_lower, i32_val(kMetadataLineOffset));
+        Value column = add(column_id, i32_val(k * shape_per_cta_tile[1]));
+        Value offset_lower =
+            add(mul(row_lower, stride_m), mul(column, stride_k));
+        Value offset_upper =
+            add(mul(row_upper, stride_m), mul(column, stride_k));
+        Value lower = load(i16_ty, gep(ptr_ty, i16_ty, base, offset_lower));
+        Value upper = load(i16_ty, gep(ptr_ty, i16_ty, base, offset_upper));
         values.push_back(lower);
         values.push_back(upper);
       }
     }
 
     // Pack resulting values as LLVM struct.
-    Type structTy = struct_ty(SmallVector<Type>(values.size(), i16_ty));
+    Type struct_ty = struct_ty(SmallVector<Type>(values.size(), i16_ty));
     Value res =
-        packLLElements(loc, getTypeConverter(), values, rewriter, structTy);
+        packLLElements(loc, getTypeConverter(), values, rewriter, struct_ty);
 
     rewriter.replaceOp(op, res);
     return success();
@@ -489,8 +498,8 @@ class SparseLocalLoadToLLVMPass
     // we write the local load op to LLVM to have barriers in the right place.
     // See b/351986109.
     ModuleAllocation allocation(getOperation());
-    ModuleMembarAnalysis membarPass(&allocation);
-    membarPass.run();
+    ModuleMembarAnalysis membar_pass(&allocation);
+    membar_pass.run();
 
     MLIRContext *context = &getContext();
     ConversionTarget target(*context);
