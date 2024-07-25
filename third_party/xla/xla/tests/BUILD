@@ -424,7 +424,6 @@ xla_test(
         "conv_depthwise_test.cc",
     ],
     shard_count = 50,
-    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":conv_depthwise_common",
