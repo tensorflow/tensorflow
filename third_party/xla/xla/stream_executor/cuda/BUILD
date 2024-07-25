@@ -143,6 +143,7 @@ cuda_only_cc_library(
     hdrs = ["cuda_driver.h"],
     deps = [
         ":cuda_diagnostics",  # buildcleaner: keep
+        ":cuda_status",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
@@ -164,10 +165,24 @@ cuda_only_cc_library(
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+cuda_only_cc_library(
+    name = "cuda_status",
+    srcs = ["cuda_status.cc"],
+    hdrs = ["cuda_status.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -217,9 +232,11 @@ xla_test(
     ],
     deps = [
         ":cuda_driver",
+        ":cuda_status",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "@com_google_absl//absl/log",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -721,6 +738,7 @@ cuda_only_cc_library(
     ]),
     deps = [
         ":cuda_driver",
+        ":cuda_status",
         ":ptx_compiler",
         ":ptx_compiler_support",
         "//xla:status_macros",

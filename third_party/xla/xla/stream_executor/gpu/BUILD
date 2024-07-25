@@ -584,6 +584,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_activation",
         "//xla/stream_executor/cuda:cuda_executor",
+        "//xla/stream_executor/cuda:cuda_status",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/util:env_var",
