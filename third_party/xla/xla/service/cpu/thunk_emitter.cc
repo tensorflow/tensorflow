@@ -265,9 +265,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kCollectivePermute:
       return EmitCollectivePermuteThunk(instruction);
 
-    // TODO(ezhulenev): Port pad optimizations from IrEmitter.
     case HloOpcode::kPad:
-      return EmitElementalKernelThunk(instruction);
+      return EmitPadKernelThunk(instruction);
 
     case HloOpcode::kSlice:
     case HloOpcode::kDynamicSlice:
@@ -612,6 +611,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
 
   return ThunkSequence::Of<KernelThunk>(
       ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
+      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
+    const HloInstruction* instruction) {
+  const HloPadInstruction* padInstr = Cast<HloPadInstruction>(instruction);
+  TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitPadHostKernel(padInstr));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(padInstr));
+
+  return ThunkSequence::Of<KernelThunk>(
+      ThunkInfo(padInstr), buffers.arguments, buffers.results, kernel.name,
       kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 

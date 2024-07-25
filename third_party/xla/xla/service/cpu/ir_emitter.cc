@@ -2300,6 +2300,22 @@ absl::Status IrEmitter::HandleRecvDone(HloInstruction* recv_done) {
 }
 
 absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
+  CHECK_EQ(pad->operand_count(), 2);
+  const auto operand = pad->operand(0);
+  const auto padding_value = pad->operand(1);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(pad));
+
+  return HandlePad(pad, GetIrArrayFor(operand), GetIrArrayFor(padding_value),
+                   GetIrArrayFor(pad));
+}
+
+absl::Status IrEmitter::HandlePad(HloInstruction* pad,
+                                  const llvm_ir::IrArray& operand_array,
+                                  const llvm_ir::IrArray& padding_value_array,
+                                  const llvm_ir::IrArray& output_array) {
+  CHECK_EQ(pad->operand_count(), 2);
+
   // CPU backend does not properly handle negative padding but this is ok
   // because negative padding should be removed by the algebraic simplifier.
   for (auto& padding_dimension : pad->padding_config().dimensions()) {
@@ -2312,15 +2328,22 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
     }
   }
 
+  const HloInstruction* padding_value = pad->operand(1);
+  const auto index_type = b()->getInt64Ty();
+  const auto index = llvm_ir::IrArray::Index(index_type);
+  llvm::Value* padding_value_addr = padding_value_array.EmitArrayElementAddress(
+      index, b(), "padding_value_addr", true, nullptr);
+  const llvm_ir::ElementGenerator element_generator =
+      [this, padding_value,
+       padding_value_addr](const llvm_ir::IrArray::Index& target_index) {
+        return b()->CreateLoad(IrShapeType(padding_value->shape()),
+                               padding_value_addr);
+      };
+
   // First, fill in the padding value to all output elements.
   TF_RETURN_IF_ERROR(EmitTargetElementLoop(
-      pad, "initialize",
-      [this, pad](const llvm_ir::IrArray::Index& target_index) {
-        const HloInstruction* padding_value = pad->operand(1);
-        llvm::Value* padding_value_addr = GetEmittedValueFor(padding_value);
-        return Load(IrShapeType(padding_value->shape()), padding_value_addr);
-      },
-      std::nullopt));
+      pad, "initialize", element_generator,
+      std::optional<const llvm_ir::IrArray>(output_array)));
 
   // Create a loop to iterate over the operand elements and update the output
   // locations where the operand elements should be stored.
@@ -2332,7 +2355,6 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
   SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b());
 
   // Load an element from the operand.
-  llvm_ir::IrArray operand_array(GetIrArrayFor(operand));
   llvm::Value* operand_data =
       operand_array.EmitReadArrayElement(operand_index, b());
 
@@ -2350,7 +2372,6 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
   }
 
   // Store the operand element to the computed output location.
-  llvm_ir::IrArray output_array(GetIrArrayFor(pad));
   llvm_ir::IrArray::Index output_index(
       output_multi_index, output_array.GetShape(), operand_index.GetType());
   output_array.EmitWriteArrayElement(output_index, operand_data, b());

@@ -154,19 +154,22 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
   // Used by IrEmitter2
-  void PushComputeFunction(std::shared_ptr<llvm::IRBuilder<>> b,
-                           llvm::Module* llvm_module,
+  void PushComputeFunction(llvm::IRBuilder<>* b, llvm::Module* llvm_module,
                            int64_t num_dynamic_loop_bounds,
                            llvm::Function* function,
                            llvm::Value* dynamic_loop_bounds_arg,
                            llvm::BasicBlock* return_block) {
-    b->SetInsertPoint(llvm::BasicBlock::Create(llvm_module->getContext(),
-                                               "insertion_point", function));
-    compute_function_.emplace(b.get(), llvm_module, num_dynamic_loop_bounds,
-                              function, dynamic_loop_bounds_arg, return_block);
+    function->getEntryBlock().getTerminator()->eraseFromParent();
+    b->SetInsertPoint(&function->getEntryBlock());
+    compute_function_.emplace(b, llvm_module, num_dynamic_loop_bounds, function,
+                              dynamic_loop_bounds_arg, return_block);
   }
 
-  void PopComputeFunction() { compute_function_.pop(); }
+  void PopComputeFunction() {
+    // At this point, the compute function destructor adds a branch to the
+    // return block.
+    compute_function_.pop();
+  }
 
   // Emit an LLVM global variable for every constant buffer allocation.
   absl::Status EmitConstantGlobals();
@@ -293,6 +296,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   absl::Status Preprocess(HloInstruction* hlo) override;
   absl::Status Postprocess(HloInstruction* hlo) override;
+
+  absl::Status HandlePad(HloInstruction* pad,
+                         const llvm_ir::IrArray& operand_array,
+                         const llvm_ir::IrArray& padding_value_array,
+                         const llvm_ir::IrArray& output_array);
 
   absl::Status HandleSelectAndScatter(HloInstruction* select_and_scatter,
                                       const llvm_ir::IrArray& operand_array,
