@@ -4742,8 +4742,7 @@ CHECK-NOT:  inputPrecision = tf32
 }
 
 TEST_F(TritonTest, Fp8LoweringIsSupportedPostHopper) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
   const std::string hlo_text = R"(
@@ -4772,6 +4771,36 @@ ENTRY main {
       CreateTritonIrAndFileCheckForDot(this, hlo_text, "triton_dot", R"(
 CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FNUZ> * tensor<64x32xf8E4M3FNUZ> -> tensor<128x32xf32>
   )"));
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, BF16ToFP8EndToEnd) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
+  }
+
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_dot {
+  parameter_0 = bf16[32,32]{1,0} parameter(0)
+  parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
+  convert = f8e4m3fn[32,32]{1,0} convert(parameter_0)
+  ROOT dot = f32[32,32]{1,0} dot(convert, parameter_1),
+                lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  parameter_0 = bf16[32,32]{1,0} parameter(0)
+  parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
+  ROOT gemm_fusion_dot = f32[32,32]{1,0} fusion(parameter_0, parameter_1),
+       kind=kCustom, calls=triton_dot,
+       backend_config={
+       "fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }
