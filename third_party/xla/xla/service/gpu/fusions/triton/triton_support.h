@@ -122,6 +122,12 @@ absl::Status EnsureTritonSupportsComputeCapability(
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
+// Returns `true` if the parameter computation is a Triton fused computation,
+// i.e. the calling fusion instruction has `FusionKind::kCustom` and
+// `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
+// `kTritonGemmFusionKind`.
+bool IsTritonFusedComputation(const HloComputation& computation);
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -399,6 +399,8 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:instruction_fusion",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:variant_visitor",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",

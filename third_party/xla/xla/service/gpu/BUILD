@@ -2795,8 +2795,8 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:float_support",
+        "//xla/service/gpu/fusions/triton:triton_support",
         "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
     ],
 )
@@ -4903,7 +4903,9 @@ xla_cc_test(
     name = "gpu_float_support_test",
     srcs = ["gpu_float_support_test.cc"],
     deps = [
+        ":backend_configs_cc",
         ":gpu_float_support",
+        ":ir_emission_utils",
         "//xla:shape_util",
         "//xla:test_helpers",
         "//xla:xla_data_proto_cc",
@@ -4912,6 +4914,7 @@ xla_cc_test(
         "//xla/service:hlo_verifier",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
