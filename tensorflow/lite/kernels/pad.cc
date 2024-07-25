@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <Eigen/Core>
 #include <limits>
 #include <type_traits>
 
@@ -174,10 +175,9 @@ tflite::PadParams GetPadParams(TfLiteContext* context,
                                const PadContext& op_context) {
   tflite::PadParams op_params;
   if (!(op_context.paddings->type == kTfLiteInt64 &&
-        std::is_same_v<PaddingIntegerType,
-                       int64_t>)&&!(op_context.paddings->type == kTfLiteInt32 &&
-                                    std::is_same_v<PaddingIntegerType,
-                                                   int32_t>)) {
+        std::is_same_v<PaddingIntegerType, int64_t>) &&
+      !(op_context.paddings->type == kTfLiteInt32 &&
+        std::is_same_v<PaddingIntegerType, int32_t>)) {
     TF_LITE_KERNEL_LOG(context, "Padding type %s doesn't match typename.",
                        TfLiteTypeGetName(op_context.paddings->type));
     return op_params;
@@ -281,6 +281,36 @@ TfLiteStatus EvalInt(TfLiteContext* context, const PadContext& op_context,
   return kTfLiteOk;
 }
 
+template <KernelType kernel_type, typename T>
+void EvalFloat(TfLiteContext* context, PadContext& op_context,
+               const tflite::PadParams& op_params) {
+  T pad_value = op_context.constant_values == nullptr
+                    ? T(0.f)
+                    : *GetTensorData<T>(op_context.constant_values);
+#define TF_LITE_PAD(type, op_name)                                   \
+  const T pad_value_copy = pad_value;                                \
+                                                                     \
+  type::op_name(op_params, GetTensorShape(op_context.input),         \
+                GetTensorData<T>(op_context.input), &pad_value_copy, \
+                GetTensorShape(op_context.output),                   \
+                GetTensorData<T>(op_context.output))
+
+  if (kernel_type == kReference) {
+    if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+      TF_LITE_PAD(reference_ops, PadImageStyle);
+    } else {
+      TF_LITE_PAD(reference_ops, Pad);
+    }
+  } else if (kernel_type == kGenericOptimized) {
+    if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+      TF_LITE_PAD(optimized_ops, PadImageStyle);
+    } else {
+      TF_LITE_PAD(optimized_ops, Pad);
+    }
+  }
+#undef TF_LITE_PAD
+}
+
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   PadContext op_context(context, node);
@@ -313,22 +343,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                 GetTensorData<scalar>(op_context.output))
   switch (op_context.input->type) {
     case kTfLiteFloat32: {
-      float pad_value = op_context.constant_values == nullptr
-                            ? 0.f
-                            : *GetTensorData<float>(op_context.constant_values);
-      if (kernel_type == kReference) {
-        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
-          TF_LITE_PAD(reference_ops, PadImageStyle, float, pad_value);
-        } else {
-          TF_LITE_PAD(reference_ops, Pad, float, pad_value);
-        }
-      } else if (kernel_type == kGenericOptimized) {
-        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
-          TF_LITE_PAD(optimized_ops, PadImageStyle, float, pad_value);
-        } else {
-          TF_LITE_PAD(optimized_ops, Pad, float, pad_value);
-        }
-      }
+      EvalFloat<kernel_type, float>(context, op_context, op_params);
+    } break;
+    case kTfLiteFloat16: {
+      EvalFloat<kernel_type, Eigen::half>(context, op_context, op_params);
+    } break;
+    case kTfLiteBFloat16: {
+      EvalFloat<kernel_type, Eigen::bfloat16>(context, op_context, op_params);
     } break;
     case kTfLiteUInt8: {
       EvalInt<uint8_t>(context, op_context, op_params);

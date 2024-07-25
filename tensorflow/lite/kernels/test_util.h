@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -37,8 +39,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -106,6 +106,11 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 template <>
 constexpr TfLiteType typeToTfLiteType<Eigen::half>() {
   return kTfLiteFloat16;
+}
+
+template <>
+constexpr TfLiteType typeToTfLiteType<Eigen::bfloat16>() {
+  return kTfLiteBFloat16;
 }
 
 // A test model that contains a single operator. All operator inputs and
@@ -1163,6 +1168,7 @@ TFLITE_TENSOR_TYPE_ASSOC(uint32_t, TensorType_UINT32);
 TFLITE_TENSOR_TYPE_ASSOC(uint64_t, TensorType_UINT64);
 TFLITE_TENSOR_TYPE_ASSOC(TfLiteFloat16, TensorType_FLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(Eigen::half, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(Eigen::bfloat16, TensorType_BFLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(float, TensorType_FLOAT32);
 TFLITE_TENSOR_TYPE_ASSOC(double, TensorType_FLOAT64);
 TFLITE_TENSOR_TYPE_ASSOC(std::string, TensorType_STRING);
