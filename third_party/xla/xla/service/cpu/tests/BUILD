@@ -356,3 +356,86 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test_main",
     ],
 )
+
+xla_cc_test(
+    name = "onednn_matmul_test",
+    srcs = ["onednn_matmul_test.cc"],
+    copts = tsl_copts(),
+    tags = [
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:test",
+        "//xla:test_helpers",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_matmul_rewriter",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:test_macros_header",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_cc_test(
+    name = "onednn_convolution_test",
+    srcs = ["onednn_convolution_test.cc"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:test",
+        "//xla:test_helpers",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_matmul_rewriter",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:test_macros_header",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_cc_test(
+    name = "onednn_layer_norm_test",
+    srcs = ["onednn_layer_norm_test.cc"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:test",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+    ],
+)
+
+xla_cc_test(
+    name = "onednn_softmax_test",
+    srcs = ["onednn_softmax_test.cc"],
+    copts = tsl_copts(),
+    shard_count = 4,
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:test",
+        "//xla:test_helpers",
+        "//xla/service:cpu_plugin",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:onednn_config_proto_cc",
+        "//xla/service/cpu:onednn_ops_rewriter",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:test_macros_header",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)

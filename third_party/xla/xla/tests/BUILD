@@ -14,7 +14,7 @@ load(
 load("//xla:package_groups.bzl", "xla_tests_package_groups")
 load("//xla:xla.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -424,6 +424,7 @@ xla_test(
         "conv_depthwise_test.cc",
     ],
     shard_count = 50,
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":conv_depthwise_common",
@@ -3156,92 +3157,6 @@ xla_cc_test(
         "//xla:test",
         "//xla/hlo/ir:tile_assignment",
         "@com_google_absl//absl/hash",
-    ],
-)
-
-xla_test(
-    name = "onednn_matmul_test",
-    srcs = ["onednn_matmul_test.cc"],
-    backends = [
-        "cpu",
-    ],
-    copts = tsl_copts(),
-    tags = ["no_oss"],
-    deps = [
-        ":hlo_test_base",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/service/cpu:onednn_util",
-        "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-xla_test(
-    name = "onednn_convolution_test",
-    srcs = ["onednn_convolution_test.cc"],
-    backends = [
-        "cpu",
-    ],
-    copts = tsl_copts(),
-    deps = [
-        ":hlo_test_base",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
-        "//xla/hlo/utils:hlo_matchers",
-        "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-xla_test(
-    name = "onednn_layer_norm_test",
-    srcs = ["onednn_layer_norm_test.cc"],
-    backends = [
-        "cpu",
-    ],
-    copts = tsl_copts(),
-    deps = [
-        ":hlo_test_base",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
-    ],
-)
-
-xla_test(
-    name = "onednn_softmax_test",
-    srcs = ["onednn_softmax_test.cc"],
-    backends = [
-        "cpu",
-    ],
-    copts = tsl_copts(),
-    shard_count = 4,
-    deps = [
-        ":hlo_test_base",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
-        "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/cpu:onednn_ops_rewriter",
-        "//xla/service/cpu:onednn_util",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 

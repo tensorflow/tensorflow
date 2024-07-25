@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/pattern_matcher.h"
