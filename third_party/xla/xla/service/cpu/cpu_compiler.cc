@@ -1250,6 +1250,11 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
+    std::string ir_module_string;
+    if (embed_ir_in_executable) {
+      ir_module_string = llvm_ir::DumpToString(llvm_module.get());
+    }
+
     // JIT compile the LLVM IR module to in-memory machine code.
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
     cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
@@ -1288,6 +1293,10 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
     // Save object files to be able to export them to AOT compilation result.
     cpu_executable->set_obj_files(std::move(obj_files));
+
+    if (embed_ir_in_executable) {
+      cpu_executable->set_ir_module_string(ir_module_string);
+    }
 
     return with_hlo_proto(std::move(cpu_executable));
   }
