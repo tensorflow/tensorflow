@@ -376,6 +376,7 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla/client:client_library",
         "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_id_registry",
