@@ -237,3 +237,56 @@ module {
 // CHECK-NEXT: extui
 // CHECK-NEXT: ori
 // CHECK-NEXT: return
+
+// -----
+
+func.func @refine_constraints(%tensor: tensor<100xf32>) -> tensor<100xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c3 = arith.constant 3 : index
+  %c42_f32 = arith.constant 42.0 : f32
+  %loop = scf.for %i = %c0 to %c3 step %c1
+      iter_args(%in_ = %tensor) -> (tensor<100xf32>) {
+    %0 = xla_gpu.apply_indexing affine_map<(d0) -> (d0 mod 4)> (%i in [0, 9])
+    %updated = tensor.insert %c42_f32 into %in_[%0] : tensor<100xf32>
+    scf.yield %updated :tensor<100xf32>
+  }
+  func.return %loop : tensor<100xf32>
+}
+// CHECK-LABEL: func.func @refine_constraints
+// CHECK: %[[CST:.*]] = arith.constant 4.2
+// CHECK: scf.for
+// CHECK: tensor.insert %[[CST]]
+
+
+// -----
+
+#map = affine_map<(d0, d1)[s0, s1] -> (((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768) mod 2400000)>
+#map1 = affine_map<(d0, d1)[s0] -> ((d0 * 4 + d1 * 512 + s0) mod 9)>
+func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
+    %arg1: tensor<2400000x9xf32>) -> tensor<2400000x9xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %c73 = arith.constant 73 : index
+  %c42_f32 = arith.constant 42.0 : f32
+  %th_x = gpu.thread_id  x {xla.range = [0 : index, 127 : index]}
+  %bl_x = gpu.block_id  x {xla.range = [0 : index, 575 : index]}
+  %0 = scf.for %i = %c0 to %c73 step %c1 iter_args(%arg3 = %arg1)
+      -> (tensor<2400000x9xf32>) {
+    %2 = scf.for %j = %c0 to %c4 step %c1 iter_args(%arg5 = %arg3)
+        -> (tensor<2400000x9xf32>) {
+      %3 = xla_gpu.apply_indexing #map(%th_x in [0, 127], %bl_x in [0, 575])
+        [%i in [0, 73], %j in [0, 3]]
+      %4 = xla_gpu.apply_indexing #map1(%th_x in [0, 127], %bl_x in [0, 575])
+        [%j in [0, 3]]
+      %inserted = tensor.insert %c42_f32 into %arg5[%3, %4]
+        : tensor<2400000x9xf32>
+      scf.yield %inserted : tensor<2400000x9xf32>
+    }
+    scf.yield %2 : tensor<2400000x9xf32>
+  }
+  return %0 : tensor<2400000x9xf32>
+}
+// CHECK: #[[$MAP:.*]] = affine_map<(d0, d1)[s0, s1] -> ((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768)>
+// CHECK-LABEL: func.func @refine_constraints_for_symbol

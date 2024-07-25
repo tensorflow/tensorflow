@@ -341,7 +341,15 @@ std::optional<Interval> GetRange(mlir::Value value) {
   if (auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(parent)) {
     return attr_to_range(func_op.getArgAttr(bbarg.getArgNumber(), "xla.range"));
   }
+  return GetIVRange(value);
+}
 
+std::optional<Interval> GetIVRange(mlir::Value iv) {
+  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(iv);
+  if (!bbarg) {
+    return std::nullopt;
+  }
+  auto parent = bbarg.getParentBlock()->getParentOp();
   if (auto for_op = mlir::dyn_cast<mlir::scf::ForOp>(parent)) {
     llvm::APInt lb, ub;
     if (mlir::matchPattern(for_op.getLowerBound(), mlir::m_ConstantInt(&lb)) &&

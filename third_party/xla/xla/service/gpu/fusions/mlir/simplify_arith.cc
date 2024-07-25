@@ -12,14 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <algorithm>
+
 #include <cstdint>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -31,44 +29,50 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/passes.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
+namespace {
 
 #define GEN_PASS_DEF_SIMPLIFYARITHPASS
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"
 
-namespace {
+using mlir::LogicalResult;
+using mlir::OpRewritePattern;
+using mlir::PatternRewriter;
+using mlir::arith::CmpIOp;
+using mlir::arith::CmpIPredicate;
 
-Interval::ComparisonResult EvaluateCmpI(mlir::arith::CmpIPredicate pred,
-                                        Interval lhs, Interval rhs) {
+Interval::ComparisonResult EvaluateCmpI(CmpIPredicate pred, Interval lhs,
+                                        Interval rhs) {
   switch (pred) {
-    case mlir::arith::CmpIPredicate::eq:
+    case CmpIPredicate::eq:
       return lhs.Eq(rhs);
-    case mlir::arith::CmpIPredicate::ne:
+    case CmpIPredicate::ne:
       return lhs.Ne(rhs);
-    case mlir::arith::CmpIPredicate::slt:
-    case mlir::arith::CmpIPredicate::ult:
+    case CmpIPredicate::slt:
+    case CmpIPredicate::ult:
       return lhs.Lt(rhs);
-    case mlir::arith::CmpIPredicate::sle:
-    case mlir::arith::CmpIPredicate::ule:
+    case CmpIPredicate::sle:
+    case CmpIPredicate::ule:
       return lhs.Le(rhs);
-    case mlir::arith::CmpIPredicate::sgt:
-    case mlir::arith::CmpIPredicate::ugt:
+    case CmpIPredicate::sgt:
+    case CmpIPredicate::ugt:
       return lhs.Gt(rhs);
-    case mlir::arith::CmpIPredicate::sge:
-    case mlir::arith::CmpIPredicate::uge:
+    case CmpIPredicate::sge:
+    case CmpIPredicate::uge:
       return lhs.Ge(rhs);
   }
 }
 
-struct RewriteCmpI : mlir::OpRewritePattern<mlir::arith::CmpIOp> {
+struct RewriteCmpI : OpRewritePattern<CmpIOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  mlir::LogicalResult matchAndRewrite(
-      mlir::arith::CmpIOp op, mlir::PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(CmpIOp op,
+                                PatternRewriter& rewriter) const override {
     auto rhs = GetRange(op.getRhs());
     auto lhs = GetRange(op.getLhs());
     if (!lhs || !rhs) {
@@ -85,11 +89,11 @@ struct RewriteCmpI : mlir::OpRewritePattern<mlir::arith::CmpIOp> {
   }
 };
 
-struct RewriteMaxSi : mlir::OpRewritePattern<mlir::arith::MaxSIOp> {
+struct RewriteMaxSi : OpRewritePattern<mlir::arith::MaxSIOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  mlir::LogicalResult matchAndRewrite(
-      mlir::arith::MaxSIOp op, mlir::PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(mlir::arith::MaxSIOp op,
+                                PatternRewriter& rewriter) const override {
     auto lhs = GetRange(op.getLhs());
     auto rhs = GetRange(op.getRhs());
     if (!lhs || !rhs) {
@@ -106,11 +110,11 @@ struct RewriteMaxSi : mlir::OpRewritePattern<mlir::arith::MaxSIOp> {
   }
 };
 
-struct RewriteMinSi : mlir::OpRewritePattern<mlir::arith::MinSIOp> {
+struct RewriteMinSi : OpRewritePattern<mlir::arith::MinSIOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  mlir::LogicalResult matchAndRewrite(
-      mlir::arith::MinSIOp op, mlir::PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(mlir::arith::MinSIOp op,
+                                PatternRewriter& rewriter) const override {
     auto lhs = GetRange(op.getLhs());
     auto rhs = GetRange(op.getRhs());
     if (!lhs || !rhs) {
@@ -157,11 +161,11 @@ mlir::Value FindNarrowestValueInChain(mlir::Value value) {
 // can be rewritten to shuffle-trunc-ext. If there is another copy of the
 // pattern afterwards, we can push the truncs/exts further down.
 template <typename Op>
-struct RewriteTruncBitExt : mlir::OpRewritePattern<Op> {
-  using mlir::OpRewritePattern<Op>::OpRewritePattern;
+struct RewriteTruncBitExt : OpRewritePattern<Op> {
+  using OpRewritePattern<Op>::OpRewritePattern;
 
-  mlir::LogicalResult matchAndRewrite(
-      Op op, mlir::PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(Op op,
+                                PatternRewriter& rewriter) const override {
     mlir::Value lhs = FindNarrowestValueInChain(op.getLhs());
     mlir::Value rhs = FindNarrowestValueInChain(op.getRhs());
 
@@ -198,12 +202,11 @@ struct RewriteTruncBitExt : mlir::OpRewritePattern<Op> {
 
 // Rewrites trunc-ext-shuffle to shuffle-trunc-ext. This pattern is designed to
 // work together with RewriteTruncBitExt to optimize pred reductions.
-struct RewriteTruncExtShuffle
-    : public mlir::OpRewritePattern<mlir::gpu::ShuffleOp> {
+struct RewriteTruncExtShuffle : public OpRewritePattern<mlir::gpu::ShuffleOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  mlir::LogicalResult matchAndRewrite(
-      mlir::gpu::ShuffleOp op, mlir::PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(mlir::gpu::ShuffleOp op,
+                                PatternRewriter& rewriter) const override {
     auto ext = op.getOperand(0).getDefiningOp<mlir::arith::ExtUIOp>();
     if (!ext) {
       return rewriter.notifyMatchFailure(op, "no ext");
@@ -268,19 +271,64 @@ void AnnotateRanges(mlir::func::FuncOp func) {
   });
 }
 
+// Pattern to refine the bounds of an indexing map if some of its operands are
+// bound, e.g. loop induction variables.
+struct RefineConstraints : public OpRewritePattern<ApplyIndexingOp> {
+  using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter& rewriter) const override {
+    // Right now, we only handle loop induction variables, but other rules might
+    // be added.
+    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    int64_t dim_count = indexing_map.GetDimensionCount();
+    bool updated_bounds = false;
+    for (mlir::OpOperand& operand : indexing_op->getOpOperands()) {
+      auto range = GetIVRange(operand.get());
+      if (!range) {
+        continue;
+      }
+      auto operand_id = operand.getOperandNumber();
+      Interval& current_interval =
+          operand_id < dim_count
+              ? indexing_map.GetMutableDimensionBound(operand_id)
+              : indexing_map.GetMutableSymbolBound(operand_id - dim_count);
+      if (!range->Contains(current_interval)) {
+        current_interval = current_interval.Intersect(*range);
+        updated_bounds = true;
+      }
+    }
+    if (!updated_bounds) {
+      return rewriter.notifyMatchFailure(indexing_op, "No bounds to refine");
+    }
+    indexing_map.Simplify();
+    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
+        indexing_op, indexing_op.getOperands(), indexing_map);
+    return mlir::success();
+  }
+};
+
 class SimplifyArithPass
     : public impl::SimplifyArithPassBase<SimplifyArithPass> {
  public:
   void runOnOperation() override {
-    mlir::RewritePatternSet patterns(&getContext());
-    AnnotateRanges(getOperation());
-    patterns.add<RewriteCmpI, RewriteMaxSi, RewriteMinSi>(&getContext());
-    patterns
-        .add<RewriteTruncBitExt<mlir::arith::OrIOp>,
-             RewriteTruncBitExt<mlir::arith::AndIOp>, RewriteTruncExtShuffle>(
-            &getContext());
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                        std::move(patterns)))) {
+    auto ctx = &getContext();
+    auto func = getOperation();
+    mlir::RewritePatternSet patterns(ctx);
+    AnnotateRanges(func);
+    // clang-format off
+    patterns.add<
+      RefineConstraints,
+      RewriteCmpI,
+      RewriteMaxSi,
+      RewriteMinSi,
+      RewriteTruncBitExt<mlir::arith::AndIOp>,
+      RewriteTruncBitExt<mlir::arith::OrIOp>,
+      RewriteTruncExtShuffle
+    >(ctx);
+    // clang-format on
+    if (mlir::failed(
+            mlir::applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       signalPassFailure();
     }
   }
