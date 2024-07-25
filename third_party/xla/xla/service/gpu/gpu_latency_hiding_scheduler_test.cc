@@ -83,7 +83,9 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
       parameter1 = f32[32] parameter(1)
       const0 = f32[] constant(42)
       bitcast0 = f32[2,16] bitcast(parameter1)
-      tuple0 = (f32[], f32[2,16]) tuple(parameter0, bitcast0)
+      partition-id0 = u32[] partition-id()
+      replica-id0 = u32[] replica-id()
+      tuple0 = (f32[], f32[2,16], u32[], u32[]) tuple(parameter0, bitcast0, partition-id0, replica-id0)
       ROOT _ = get-tuple-element(tuple0), index=0
     }
   )";
