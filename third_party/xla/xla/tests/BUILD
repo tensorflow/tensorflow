@@ -2647,6 +2647,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
         "//xla:literal_util",
