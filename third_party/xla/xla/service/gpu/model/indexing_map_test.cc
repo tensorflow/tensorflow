@@ -724,6 +724,21 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SumOrderRegression2) {
   EXPECT_FALSE(indexing_map.Simplify());
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivRegression) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(
+          "(d0, d1) -> (((d0 floordiv 3) * 3 + d1 floordiv 2) floordiv 6)",
+          &mlir_context_),
+      {12, 6}, {});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                                                 (d0, d1) -> (d0 floordiv 6)
+                                                 domain:
+                                                 d0 in [0, 11]
+                                                 d1 in [0, 5]
+                                               )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_ModIsSub) {
   IndexingMap indexing_map(
       ParseAffineMap("(d0) -> (d0 mod 42)", &mlir_context_), {{53, 71}}, {},

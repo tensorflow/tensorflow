@@ -293,15 +293,6 @@ AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
     return expr;
   });
 
-  std::optional<int64_t> inner_divisor = std::nullopt;
-  int num_inner_divisors = 0;
-  VisitSummands(new_dividend, [&](AffineExpr summand) {
-    if (auto divisor = GetConstantRhs(summand, AffineExprKind::FloorDiv)) {
-      inner_divisor = divisor;
-      ++num_inner_divisors;
-    }
-  });
-
   // Split `new_dividend` into `multiplied * multiplier_gcd + not_multiplied`.
   auto [multiplied, multiplier_gcd, not_multiplied] =
       SplitSumByGcd(new_dividend);
@@ -338,6 +329,14 @@ AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
   // If a0 is 16 and a1 is 2, the result is `(5 + 0) / 6 = 0`, whereas the
   // rewritten form `(a0 + a1) / 18` evaluates to 1. This can only happen when
   // there is more than one division.
+  std::optional<int64_t> inner_divisor = std::nullopt;
+  int num_inner_divisors = 0;
+  VisitSummands(new_dividend, [&](AffineExpr summand) {
+    if (auto divisor = GetConstantRhs(summand, AffineExprKind::FloorDiv)) {
+      inner_divisor = divisor;
+      ++num_inner_divisors;
+    }
+  });
   if (num_inner_divisors == 1) {
     new_dividend = MapSummands(new_dividend, [&](AffineExpr summand) {
       if (auto inner_divisor =
