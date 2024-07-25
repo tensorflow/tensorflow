@@ -29,21 +29,15 @@ def XLAGPU_AffineMapParameter :
 
 def XLAGPU_DimVarsParameter : ArrayRefParameter<"::xla::gpu::DimVar",
                                                 "DimVarArray"> {
-  let parser = "ParseDimVars($_parser)";
-  let printer = "PrintDimVars($_printer, $_self)";
 }
 
 def XLAGPU_RangeVarsParameter : ArrayRefParameter<"::xla::gpu::RangeVar",
                                                   "RangeVarArray"> {
-  let parser = "ParseRangeVars($_parser)";
-  let printer = "PrintRangeVars($_printer, $_self)";
 }
 
 def XLAGPU_ConstraintsParameter :
     ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::gpu::Interval>",
                       "ContraintsArray"> {
-  let parser = "ParseConstraints($_parser)";
-  let printer = "PrintConstraints($_printer, $_self)";
 }
 
 def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
@@ -56,13 +50,7 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
                         XLAGPU_DimVarsParameter:$dim_vars,
                         XLAGPU_RangeVarsParameter:$range_vars,
                         XLAGPU_ConstraintsParameter:$constraints);
-
-  let assemblyFormat = [{
-    `<` `map` `=` $map `,`
-        `dim_vars` `=` $dim_vars`,`
-        `range_vars` `=` $range_vars `,`
-        `constraints` `=` $constraints `>`
-  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_ATTRS

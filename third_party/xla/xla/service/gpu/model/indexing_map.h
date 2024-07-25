@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
@@ -144,6 +145,11 @@ struct Interval {
 };
 
 std::ostream& operator<<(std::ostream& out, const Interval& range);
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                     const Interval& interval) {
+  os << absl::StrFormat("[%d, %d]", interval.lower, interval.upper);
+  return os;
+}
 
 template <typename H>
 H AbslHashValue(H h, const Interval& range) {

@@ -94,6 +94,7 @@ cc_library(
         ":xla_gpu_dialect_inc_gen",
         ":xla_gpu_ops_inc_gen",
         "//xla/service/gpu/model:indexing_analysis",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",
