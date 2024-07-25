@@ -331,6 +331,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_value",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <list>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -73,12 +75,23 @@ class RuntimeSimulator {
 
   ~RuntimeSimulator() = default;
 
-  // This function is used to predict the effectiveness of the memory space
-  // assignment solution. Specifically, it returns the estimated execution time
-  // (in seconds) of the HLO module for the given memory space assignment (i.e.,
-  // ```allocations```).
-  float ComputeEstimatedElapsedTime(const HloLiveRange& hlo_live_range,
-                                    const AllocationSequence& allocations);
+  // This function provides a basic estimate without considering the overhead of
+  // async copies.
+  float SimulateElapsedTimeWithoutAsyncCopies(
+      const HloLiveRange& hlo_live_range,
+      const AllocationSequence& allocations);
+
+  // Returns the time to simulate the hlo_live_range, when we account for the
+  // waiting time for async copies to finish.
+  //
+  // To simulate the overhead of async copies, we need to maintain two queues to
+  // track the outstanding memory access requests that read/write the default
+  // memory. When we simulate compute, we use any time there is spare bandwidth
+  // to simulate async memory accesses to default memory. If we get to an async
+  // copy done, we must wait until it finishes (potentially waiting for copies
+  // issued before it to finish.
+  float SimulateElapsedTime(const HloModule* hlo_module,
+                            const AllocationSequence& allocations);
 
   // This is an auxiliary function for simulating the execution
   // time for executing a copy-done instruction. It returns the
@@ -114,9 +127,14 @@ class RuntimeSimulator {
       absl::Span<const ShapeIndex> outputs_in_alternate_memory);
 
  private:
+  // This function parses the memory space assignment solution and initializes
+  // the maps that record, for each instruction, which outputs and operands are
+  // stored in alternate memory. These maps are used to estimate the runtime of
+  // the HLO module.
+  void InitializeAlternateMemoryMap(const AllocationSequence& allocations);
   const CostAnalysis* cost_analysis_;
   CostAnalysis::Cache cost_analysis_cache_;
-
+  // Members used for memory model simulation
   // This function updates the queue by updating the front request with the
   // processed bytes. If the request is completed (no remaining bytes to
   // process), the function returns the instruction and pop it from the queue.
@@ -129,10 +147,15 @@ class RuntimeSimulator {
   // outstanding_*_default_queues are non-empty, they share bandwidth. If one of
   // the queues is empty and the other is not, it gets the full bandwdith.
   void ProcessAsyncCopiesInIdleTime(float time);
-  // Members used for memory model simulation
+
   int64_t alternate_memory_space_;
   std::list<OutstandingAsyncCopy> outstanding_read_default_queue_;
   std::list<OutstandingAsyncCopy> outstanding_write_default_queue_;
+  absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
+      outputs_in_alternate_memory_map_;
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<std::pair<int64_t, ShapeIndex>>>
+      operands_in_alternate_memory_map_;
 };
 
 }  // namespace memory_space_assignment

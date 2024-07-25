@@ -79,6 +79,11 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(
         cost_analysis_,
         CostAnalysis::Create(*hlo_cost_analysis_costs_, _options, *module_));
+
+    TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module_.get()));
+    TF_ASSIGN_OR_RETURN(hlo_live_range_,
+                        HloLiveRange::Run(module_->schedule(), *alias_analysis_,
+                                          module_->entry_computation()));
     runtime_simulator_ = std::make_unique<RuntimeSimulator>(
         cost_analysis_.get(), kAlternateMemorySpace);
     return absl::OkStatus();
@@ -87,11 +92,14 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
   std::unique_ptr<memory_space_assignment::HloCostAnalysisCosts>
       hlo_cost_analysis_costs_;
   std::unique_ptr<CostAnalysis> cost_analysis_;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis_;
+  std::unique_ptr<HloLiveRange> hlo_live_range_;
+  memory_space_assignment::AllocationSequence allocations_;
   std::unique_ptr<RuntimeSimulator> runtime_simulator_;
   std::unique_ptr<HloModule> module_;
 };
 
-TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerNestedLoop) {
+TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerLoop) {
   absl::string_view hlo_string =
       R"(HloModule module, is_scheduled=true
 
@@ -118,25 +126,125 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerNestedLoop) {
 
     )";
   TF_ASSERT_OK(Initialize(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module_.get()));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto hlo_live_range,
-      HloLiveRange::Run(module_->schedule(), *alias_analysis,
-                        module_->entry_computation()));
-
-  // Since the HLO does not contain memory access, pass an empty allocation
-  // sequence for test.
-  memory_space_assignment::AllocationSequence allocations;
   // The total elapsed time is the summation of the elapsed time of each
   // instruction. Here are the overhead of each instruction (secs):
   // %increment: 12 * 42
   // tuple(%constant.0): 8 * 1
   // %greater: 9 * 42
   // %loop_result: 8 * 42
-  EXPECT_EQ(runtime_simulator_->ComputeEstimatedElapsedTime(*hlo_live_range,
-                                                            allocations),
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTimeWithoutAsyncCopies(
+                *hlo_live_range_, allocations_),
             1226);
+  EXPECT_EQ(
+      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_),
+      1226);
+}
+
+TEST_F(MemorySpaceAssignmentSimulatorTest, NestedLayerLoop) {
+  absl::string_view hlo_string =
+      R"(HloModule module, is_scheduled=true
+      %inner.body {
+        %constant.1 = s32[] constant(1)
+        %param = (s32[]) parameter(0)
+        %count = s32[] get-tuple-element(%param), index=0
+        %increment = s32[] add(s32[] %count, s32[] %constant.1)
+        ROOT %loop_result = (s32[]) tuple(%increment)
+      }
+      %inner.condition {
+        %param = (s32[]) parameter(0)
+        %constant.42 = s32[] constant(42)
+        %condition_input = s32[] get-tuple-element(%param), index=0
+        ROOT %greater = pred[] compare(s32[] %constant.42, s32[] %condition_input), direction=GT
+      }
+      %outer.body {
+        %constant.0 = s32[] constant(0)
+        %constant.1 = s32[] constant(1)
+        %param = (s32[]) parameter(0)
+        %inner_while = (s32[]) while(tuple(%constant.0)), condition=%inner.condition, body=%inner.body
+        %count = s32[] get-tuple-element(%param), index=0
+        %increment = s32[] add(s32[] %count, s32[] %constant.1)
+        ROOT %loop_result = (s32[]) tuple(%increment)
+      }
+      %outer.condition {
+        %param = (s32[]) parameter(0)
+        %constant.27 = s32[] constant(27)
+        %condition_input = s32[] get-tuple-element(%param), index=0
+        ROOT %greater = pred[] compare(s32[] %constant.27, s32[] %condition_input), direction=GT
+      }
+      ENTRY Entry {
+        %constant.0 = s32[] constant(0)
+        ROOT %while_outer = (s32[]) while(tuple(%constant.0)), condition=%outer.condition, body=%outer.body
+      }
+    )";
+  TF_ASSERT_OK(Initialize(hlo_string));
+  // The inner loop is derived from the SingleLayerLoop test, whose overhead is
+  // 1226 seconds.
+
+  // For the outer loop, the overhead of each instruction is:
+  // %increment: 12 * 27
+  // tuple(%constant.0): 8 * 1
+  // %greater: 9 * 27
+  // %loop_result: 8 * 27
+  // Thus, the total overhead of the while_outer is 1226 * 27 + 12 * 27 + 8 * 1
+  // + 9 * 27 + 8 * 27 = 33893
+
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTimeWithoutAsyncCopies(
+                *hlo_live_range_, allocations_),
+            33893);
+  EXPECT_EQ(
+      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_),
+      33893);
+}
+
+TEST_F(MemorySpaceAssignmentSimulatorTest, SingleAsyncCopyOverhead) {
+  absl::string_view hlo_string =
+      R"(HloModule module, is_scheduled=true
+      ENTRY Entry {
+        param_0 = f32[1,1,1024,2048] parameter(0)
+        copy-start.1 = (f32[1,1,1024,2048]{0,1,2,3:S(1)}, f32[1,1,1024,2048], u32[]) copy-start(param_0)
+        ROOT copy-done.1 = f32[1,1,1024,2048]{0,1,2,3:S(1)} copy-done(copy-start.1)
+      }
+
+    )";
+  TF_ASSERT_OK(Initialize(hlo_string));
+
+  // Since the HLO does not contain memory access, pass an empty allocation
+  // sequence for test.
+  memory_space_assignment::AllocationSequence allocations;
+  // The SimulateElapsedTimeWithoutAsyncCopies should not include the overhead
+  // of async copies.
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTimeWithoutAsyncCopies(
+                *hlo_live_range_, allocations_),
+            0);
+  // The expected elapsed time is 1024 * 2048 * 4 / 1 = 8388608.
+  EXPECT_EQ(
+      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_),
+      8388608);
+}
+
+TEST_F(MemorySpaceAssignmentSimulatorTest, AsyncCopyWithComputationOverhead) {
+  absl::string_view hlo_string =
+      R"(HloModule module, is_scheduled=true
+      ENTRY Entry {
+        param_0 = f32[8] parameter(0)
+        param_1 = f32[2] parameter(1)
+        copy-start.1 = (f32[8]{0:S(1)}, f32[8], u32[]) copy-start(param_0)
+        neg_compute = f32[2] negate(param_1)
+        ROOT copy-done.1 = f32[8]{0:S(1)} copy-done(copy-start.1)
+      }
+
+    )";
+  TF_ASSERT_OK(Initialize(hlo_string));
+  // The neg_compute read/write 16 bytes in total, thus, it requires 16 seconds
+  // for default memory access. Since it only requires 2 FLOPs computation which
+  // requires 2 seconds, it is a  memory-bound instruction which does not have
+  // idle time to process async copies.
+  // Workflow:
+  // neg_compute: | 16 sec (memory-bound)  |
+  // copy-done.1: |                        | read 32 bytes  |
+  // time:        |     16 sec             |      32 sec    |
+  EXPECT_EQ(
+      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_), 48);
 }
 
 class SimulateAsyncCopyDoneTest : public MemorySpaceAssignmentSimulatorTest {
@@ -298,7 +406,8 @@ TEST_F(SimulateAsyncCopyDoneTest, AsyncCopyTransferPartialProcess) {
   EXPECT_THAT(runtime_simulator_->GetOutstandingWriteDefaultQueue(), IsEmpty());
 }
 
-TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesWithComputeInstruction) {
+TEST_F(SimulateAsyncCopyDoneTest,
+       SimulateComputeInstructionWithSingleAsyncCopy) {
   absl::string_view hlo_string =
       R"(HloModule module, is_scheduled=true
       ENTRY Entry {
@@ -329,7 +438,8 @@ TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesWithComputeInstruction) {
   EXPECT_THAT(runtime_simulator_->GetOutstandingWriteDefaultQueue(), IsEmpty());
 }
 
-TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesInTimeWithSharedBandwidth) {
+TEST_F(SimulateAsyncCopyDoneTest,
+       SimulateComputeInstructionWithSharedBandwidth) {
   absl::string_view hlo_string =
       R"(HloModule module, is_scheduled=true
       ENTRY Entry {
@@ -368,7 +478,7 @@ TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesInTimeWithSharedBandwidth) {
                   copy_start_2_inst, 96}}));
 }
 
-TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesInTimeWithFullBandwidth) {
+TEST_F(SimulateAsyncCopyDoneTest, SimulateComputeInstructionWithFullBandwidth) {
   absl::string_view hlo_string =
       R"(HloModule module, is_scheduled=true
       ENTRY Entry {
@@ -384,7 +494,7 @@ TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesInTimeWithFullBandwidth) {
 
   const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
 
-  // Same as the 'ProcessAsyncCopiesInTimeWithSharedBandwidth' test, there are
+  // Same as the 'SimulateComputeInstructionWithSharedBandwidth' test, there are
   // 64 secs idle time to process async copies. Since only the read queue is not
   // empty, we can use the full bandwidth and process 64 sec * 1 bytes/sec = 64
   // bytes.
@@ -400,7 +510,7 @@ TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopiesInTimeWithFullBandwidth) {
   EXPECT_THAT(runtime_simulator_->GetOutstandingWriteDefaultQueue(), IsEmpty());
 }
 
-TEST_F(SimulateAsyncCopyDoneTest, ProcessAsyncCopyInTimeWithEmptyQueues) {
+TEST_F(SimulateAsyncCopyDoneTest, SimulateComputeInstructionWithEmptyQueues) {
   absl::string_view hlo_string =
       R"(HloModule module, is_scheduled=true
       ENTRY Entry {

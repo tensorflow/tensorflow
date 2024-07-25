@@ -9925,7 +9925,9 @@ ENTRY main {
   options.max_size_in_bytes = 300;
 
   // Setup cost analysis so it takes 2 instructions to prefetch anything.
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  HloCostAnalysis::Properties properties;
+  properties[HloCostAnalysis::kBytesAccessedKey] = kBytesPerSecond;
+  HloCostAnalysis hlo_cost_analysis(ShapeSize, properties);
   CostAnalysisOptions cost_analysis_options;
   HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
