@@ -188,7 +188,7 @@ absl::Status ProfileGuidedLatencyEstimator::CheckAccuracy(
   ProfileStatisticsAggregator::Statistics stats = aggregator_->GetStats();
   size_t missing_instructions_count = stats.missing_instructions.size();
   if (missing_instructions_count > 0) {
-    LOG(ERROR) << "Found " << missing_instructions_count
+    LOG(ERROR) << "Found " << stats.found_instructions_count
                << " instructions from the profile.";
     LOG(ERROR) << "Missing " << missing_instructions_count
                << " instructions from the profile.";
