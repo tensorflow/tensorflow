@@ -22,13 +22,17 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/statusor.h"
 
 // Tests cross-GPU operations.
 //
@@ -71,8 +75,10 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
     iter = u32[] get-tuple-element(param), index=0
     data = f32[2,2] get-tuple-element(param), index=1
     weights = f32[2,2] get-tuple-element(param), index=2
-    matmul = f32[2,2] dot(weights, data), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    cp = f32[2,2] collective-permute(matmul), source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+    matmul = f32[2,2] dot(weights, data), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    cp = f32[2,2] collective-permute(matmul),
+        source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
     iter_increment = u32[] constant(1)
     next_iter = u32[] add(iter, iter_increment)
     ROOT result = (u32[], f32[2,2], f32[2,2]) tuple(next_iter, cp, weights)
@@ -83,7 +89,8 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
     data = f32[2,2] parameter(0)
     weights = f32[2,2] parameter(1)
     input = (u32[], f32[2,2], f32[2,2]) tuple(iter, data, weights)
-    while_res = (u32[], f32[2,2], f32[2,2]) while(input), condition=while_cond, body=while_body
+    while_res = (u32[], f32[2,2], f32[2,2]) while(input), condition=while_cond,
+        body=while_body
     ROOT data_out = f32[2,2] get-tuple-element(while_res), index=1
   }
   )";
@@ -119,6 +126,165 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {3, 3}}, results[1]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {4, 4}}, results[2]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {1, 1}}, results[3]);
+}
+
+// Naive implementation of pipeline parallelism:
+//   - 4 devices
+//   - 4 microbatches
+//   - no circular repeat
+//   - no disabled collectives
+//   - no collective pipelining
+//
+// Every stage of the pipeline is a single linear layer.
+XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch4Replica4) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  get_circ_buffer_index {
+    offset = u32[] parameter(0)
+    index = u32[] parameter(1)
+    size = u32[] parameter(2)
+    t0 = u32[] add(offset, index)
+    t1 = u32[] divide(t0, size)
+    t2 = u32[] multiply(t1, size)
+    ROOT t4 = u32[] subtract(t0, t2)
+  }
+
+  is_input_replica {
+    replica_id = u32[] replica-id()
+    c0 = u32[] constant(0)
+    ROOT predicate = pred[] compare(replica_id, c0), direction=EQ
+  }
+
+  is_output_replica {
+    replica_id = u32[] replica-id()
+    c1 = u32[] constant(1)
+    ROOT predicate = pred[] compare(replica_id, c1), direction=EQ
+  }
+
+  while_condition {
+    tuple = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) parameter(0)
+    i = u32[] get-tuple-element(tuple), index=4
+    n = u32[] constant(7)
+    ROOT predicate = pred[] compare(i, n), direction=LT
+  }
+
+  while_body {
+    tuple = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) parameter(0)
+    weights = f32[16,16] get-tuple-element(tuple), index=0
+    input = f32[4,16] get-tuple-element(tuple), index=1
+    output = f32[4,16] get-tuple-element(tuple), index=2
+    tmp = f32[16] get-tuple-element(tuple), index=3
+    i = u32[] get-tuple-element(tuple), index=4
+
+    c1 = u32[] constant(1)
+    c0 = u32[] constant(0)
+    c4 = u32[] constant(4)
+
+    input_idx = u32[] call(c0, i, c4), to_apply=get_circ_buffer_index
+    input_slice = f32[1,16] dynamic-slice(input, input_idx, c0),
+        dynamic_slice_sizes={1,16}
+    input_slice_ = f32[16] reshape(input_slice)
+
+    prev_stage_slice = f32[16] collective-permute(tmp),
+        source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+
+    read_input = pred[] call(), to_apply=is_input_replica
+    compute_in = f32[16] select(read_input, input_slice_, prev_stage_slice)
+
+    compute_out = f32[16] dot(weights, compute_in), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+
+    output_index = u32[] call(c1, i, c4), to_apply=get_circ_buffer_index
+    output_slice = f32[1,16] reshape(compute_out)
+    output_ = f32[4,16] dynamic-update-slice(output, output_slice, output_index,
+        c0)
+
+    i_ = add(i, c1)
+
+    ROOT tuple1 = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) tuple(
+        weights, input, output_, compute_out, i_)
+  }
+
+  ENTRY main {
+    weights = f32[16,16] parameter(0)
+    input = f32[4,16] parameter(1)
+
+    cf0 = f32[] constant(0)
+    output = f32[4,16] broadcast(cf0), dimensions={}
+    tmp = f32[16] broadcast(cf0), dimensions={}
+    c0 = u32[] constant(0)
+
+    tuple = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) tuple(weights,
+        input, output, tmp, c0)
+    tuple_ = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) while(tuple),
+        condition=while_condition, body=while_body
+
+    ROOT output_ = f32[4,16] get-tuple-element(tuple_), index=2
+  }
+  )";
+
+  const int64_t kNumReplicas = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  // This pipeline consists of 4 layers, each of which is a single linear layer.
+  // We assign the weights to the replicas such that the layers scale the input
+  // data by 1.0, 2.0, 3.0 and 4.0. The combined effect is to scale the input
+  // data by 24.0.
+  auto generate_scale_weights = [&](float factor) -> absl::StatusOr<Literal> {
+    return LiteralUtil::CreateLiteralWithGenerator<F32, float>(
+        ShapeUtil::MakeShape(F32, {16, 16}),
+        [&](absl::Span<const int64_t> idx) -> float {
+          return idx[0] == idx[1] ? factor : 0.0;
+        });
+  };
+  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r0, generate_scale_weights(1.0));
+  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r1, generate_scale_weights(2.0));
+  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r2, generate_scale_weights(3.0));
+  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r3, generate_scale_weights(4.0));
+
+  // Only the first replica holds the input to the pipeline in this naive
+  // implementation. The remaining replicas get zero/dummy input.
+  auto generate_zero_input = [&]() -> absl::StatusOr<Literal> {
+    return LiteralUtil::CreateLiteralWithGenerator<F32, float>(
+        ShapeUtil::MakeShape(F32, {4, 16}),
+        [&](absl::Span<const int64_t> idx) -> float { return 0.0; });
+  };
+  auto generate_fingerprint_input = [&]() -> absl::StatusOr<Literal> {
+    return LiteralUtil::CreateLiteralWithGenerator<F32, float>(
+        ShapeUtil::MakeShape(F32, {4, 16}),
+        [&](absl::Span<const int64_t> idx) -> float {
+          return 1.0 * idx[0] + 0.0001 * idx[1];
+        });
+  };
+  TF_ASSERT_OK_AND_ASSIGN(Literal real_input, generate_fingerprint_input());
+  TF_ASSERT_OK_AND_ASSIGN(Literal fake_input, generate_zero_input());
+
+  std::vector<std::vector<Literal*>> args = {{&weights_r0, &real_input},
+                                             {&weights_r1, &fake_input},
+                                             {&weights_r2, &fake_input},
+                                             {&weights_r3, &fake_input}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), args, kNumReplicas,
+                        /*run_hlo_passes=*/true));
+
+  // Check pipeline output for last replica.
+  // The combined effect of the pipeline is to scale the input data by 24.0.
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal expected_output,
+      (LiteralUtil::CreateLiteralWithGenerator<F32, float>(
+          ShapeUtil::MakeShape(F32, {4, 16}),
+          [&](absl::Span<const int64_t> multi_index) -> float {
+            return real_input.Get<float>(multi_index) * 1.0 * 2.0 * 3.0 * 4.0;
+          })));
+  EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
+                                           ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace
