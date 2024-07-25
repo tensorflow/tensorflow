@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -140,6 +141,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
 
  private:
   absl::Status ShutdownInternal();
+  // Starts sending heartbeats to the coordination service.
+  void StartSendingHeartbeats();
 
   Env* env_ = nullptr;  // Not owned.
   const uint64_t incarnation_id_ = random::New64();
@@ -308,66 +311,70 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
   }
 
   LOG(INFO) << "Coordination agent has successfully connected.";
-  heartbeat_thread_.reset(
-      env_->StartThread(ThreadOptions(), kHeartbeatThread, [this]() -> void {
-        HeartbeatRequest request;
-        *request.mutable_source_task() = task_;
-        request.set_incarnation(incarnation_id_);
-        HeartbeatResponse response;
-        const int64_t heartbeat_interval_ms =
-            configs_.heartbeat_timeout_in_ms() > 0
-                ? configs_.heartbeat_timeout_in_ms() / 2
-                : absl::ToInt64Milliseconds(kDefaultHeartbeatTimeout) / 2;
-        CallOptions call_opts;
-        call_opts.SetTimeout(heartbeat_interval_ms);
-
-        while (true) {
-          absl::Status status;
-          absl::Notification n;
-          // Heartbeat RPC implementation automatically retries to tolerate
-          // transient network failures.
-          VLOG(10) << "HeartbeatRequest: " << request.DebugString();
-          leader_client_->HeartbeatAsync(&call_opts, &request, &response,
-                                         [&](absl::Status s) {
-                                           status = s;
-                                           n.Notify();
-                                         });
-          n.WaitForNotification();
-          VLOG(10) << "HeartbeatResponse: " << status;
-          if (!status.ok()) {
-            // Ignore heartbeat errors and exit thread if shutting down. For
-            // example, the agent may send a heartbeat right after Shutdown()
-            // started, but before StopHeartbeat() and end of Shutdown(). This
-            // results in an unexpected heartbeat error.
-            // Waiting for a second allows us to identify if errors are due to
-            // inflight heartbeats sent during shutdown and can be ignored.
-            absl::SleepFor(absl::Seconds(1));
-            {
-              absl::MutexLock l(&heartbeat_thread_shutdown_mu_);
-
-              if (shutting_down_) {
-                return;
-              }
-            }
-            SetError(status);
-          } else if (response.leader_incarnation() != leader_incarnation_) {
-            SetError(MakeCoordinationError(
-                absl::AbortedError("Leader incarnation ID mismatch: the "
-                                   "coordination leader has restarted.")));
-          }
-          // Send next heartbeat after an interval.
-          {
-            absl::MutexLock l(&heartbeat_thread_shutdown_mu_);
-            heartbeat_thread_cv_.WaitWithTimeout(
-                &heartbeat_thread_shutdown_mu_,
-                absl::Milliseconds(heartbeat_interval_ms));
-            if (shutting_down_) {
-              return;
-            }
-          }
-        }
-      }));
+  heartbeat_thread_.reset(env_->StartThread(
+      ThreadOptions(), kHeartbeatThread,
+      absl::bind_front(&CoordinationServiceAgentImpl::StartSendingHeartbeats,
+                       this)));
   return absl::OkStatus();
+}
+
+void CoordinationServiceAgentImpl::StartSendingHeartbeats() {
+  HeartbeatRequest request;
+  *request.mutable_source_task() = task_;
+  request.set_incarnation(incarnation_id_);
+  HeartbeatResponse response;
+  const int64_t heartbeat_interval_ms =
+      configs_.heartbeat_timeout_in_ms() > 0
+          ? configs_.heartbeat_timeout_in_ms() / 2
+          : absl::ToInt64Milliseconds(kDefaultHeartbeatTimeout) / 2;
+  CallOptions call_opts;
+  call_opts.SetTimeout(heartbeat_interval_ms);
+
+  while (true) {
+    absl::Status status;
+    absl::Notification n;
+    // Heartbeat RPC implementation automatically retries to tolerate
+    // transient network failures.
+    VLOG(10) << "HeartbeatRequest: " << request.DebugString();
+    leader_client_->HeartbeatAsync(&call_opts, &request, &response,
+                                   [&](absl::Status s) {
+                                     status = s;
+                                     n.Notify();
+                                   });
+    n.WaitForNotification();
+    VLOG(10) << "HeartbeatResponse: " << status;
+    if (!status.ok()) {
+      // Ignore heartbeat errors and exit thread if shutting down. For
+      // example, the agent may send a heartbeat right after Shutdown()
+      // started, but before StopHeartbeat() and end of Shutdown(). This
+      // results in an unexpected heartbeat error.
+      // Waiting for a second allows us to identify if errors are due to
+      // inflight heartbeats sent during shutdown and can be ignored.
+      absl::SleepFor(absl::Seconds(1));
+      {
+        absl::MutexLock l(&heartbeat_thread_shutdown_mu_);
+
+        if (shutting_down_) {
+          return;
+        }
+      }
+      SetError(status);
+    } else if (response.leader_incarnation() != leader_incarnation_) {
+      SetError(MakeCoordinationError(
+          absl::AbortedError("Leader incarnation ID mismatch: the "
+                             "coordination leader has restarted.")));
+    }
+    // Send next heartbeat after an interval.
+    {
+      absl::MutexLock l(&heartbeat_thread_shutdown_mu_);
+      heartbeat_thread_cv_.WaitWithTimeout(
+          &heartbeat_thread_shutdown_mu_,
+          absl::Milliseconds(heartbeat_interval_ms));
+      if (shutting_down_) {
+        return;
+      }
+    }
+  }
 }
 
 absl::Status CoordinationServiceAgentImpl::WaitForAllTasks(
