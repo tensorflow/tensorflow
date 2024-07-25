@@ -12,10 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_
-#define TENSORFLOW_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_
 
-// This file is copied to MLIR to avoid a dependency on TFLite.
+// This file is the MLIR copy of runtime_shape as part of the effort to
+// decouple TFLite from MLIR.
 // LINT.IfChange
 
 #include <cstdint>
@@ -24,9 +25,9 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 
-#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
 
-namespace tflite {
+namespace mlir {
 
 template <int N>
 struct Dims {
@@ -173,7 +174,7 @@ class RuntimeShape {
       : size_(0) {
     // If the following check fails, it is likely because a 4D-only kernel is
     // being used with an array of larger dimension count.
-    TFLITE_CHECK_GE(new_shape_size, shape.DimensionsCount());
+    TFLITE_DCHECK_GE(new_shape_size, shape.DimensionsCount());
     Resize(new_shape_size);
     const int size_increase = new_shape_size - shape.DimensionsCount();
     for (int i = 0; i < size_increase; ++i) {
@@ -191,10 +192,10 @@ class RuntimeShape {
 };
 
 // Converts inference-style shape to legacy tflite::Dims<4>.
-inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
-  tflite::Dims<4> result;
+inline mlir::Dims<4> ToRuntimeDims(const mlir::RuntimeShape& array_shape) {
+  mlir::Dims<4> result;
   const int dimensions_count = array_shape.DimensionsCount();
-  TFLITE_CHECK_LE(dimensions_count, 4);
+  TFLITE_DCHECK_LE(dimensions_count, 4);
   int cum_prod = 1;
   for (int i = 0; i < 4; i++) {
     const int new_dim =
@@ -207,7 +208,7 @@ inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
 }
 
 // TODO(b/80418076): Move to legacy ops file, update invocations.
-inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
+inline RuntimeShape DimsToShape(const mlir::Dims<4>& dims) {
   return RuntimeShape(
       {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
 }
@@ -254,8 +255,8 @@ inline int Offset(const RuntimeShape& shape, int* index) {
   return Offset(shape, index[0], index[1], index[2], index[3]);
 }
 
-}  // namespace tflite
+}  // namespace mlir
 
-// LINT.ThenChange(//tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h)
+// LINT.ThenChange(//tensorflow/lite/kernels/internal/runtime_shape.h)
 
-#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_

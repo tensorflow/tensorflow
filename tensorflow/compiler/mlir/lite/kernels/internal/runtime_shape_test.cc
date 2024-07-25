@@ -12,10 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// This file is copied to MLIR to avoid a dependency on TFLite.
+// This file is the MLIR copy of runtime_shape as part of the effort to
+// decouple TFLite from MLIR.
 // LINT.IfChange
 
-#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -32,7 +33,7 @@ limitations under the License.
 using testing::Each;
 using testing::ElementsAreArray;
 
-namespace tflite {
+namespace mlir {
 namespace {
 
 constexpr int kSmallSize = RuntimeShape::kMaxSmallSize;
@@ -250,6 +251,6 @@ INSTANTIATE_TEST_SUITE_P(BigSmall, RuntimeShapeTest,
                          });
 
 }  // namespace
-}  // namespace tflite
+}  // namespace mlir
 
-// LINT.ThenChange(//tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape_test.cc)
+// LINT.ThenChange(//tensorflow/lite/kernels/internal/runtime_shape_test.cc)

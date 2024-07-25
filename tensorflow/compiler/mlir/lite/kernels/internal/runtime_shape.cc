@@ -12,14 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// This file is copied in MLIR to avoid a dependency on TFLite.
+
+// This file is the MLIR copy of runtime_shape as part of the effort to
+// decouple TFLite from MLIR.
 // LINT.IfChange
 
-#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h"
 
+#include <cstdint>
 #include <cstring>
 
-namespace tflite {
+#include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
+
+namespace mlir {
 
 RuntimeShape::~RuntimeShape() {
   if (size_ > kMaxSmallSize) {
@@ -48,6 +53,6 @@ int RuntimeShape::FlatSize() const {
   return buffer_size;
 }
 
-}  // namespace tflite
+}  // namespace mlir
 
-// LINT.ThenChange(//tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.cc)
+// LINT.ThenChange(//tensorflow/lite/kernels/internal/runtime_shape.cc)
