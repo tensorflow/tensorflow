@@ -420,8 +420,8 @@ TfrtCpuClient::TfrtCpuClient(
                                       "XLATfrtCpuClient", num_threads)),
       async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
           pjrt_client_thread_pool_.get())),
-      eigen_intraop_pool_(new tsl::thread::ThreadPool(
-          tsl::Env::Default(), "XLAEigen", DefaultThreadPoolSize())),
+      eigen_intraop_pool_(new tsl::thread::ThreadPool(tsl::Env::Default(),
+                                                      "XLAEigen", num_threads)),
       eigen_intraop_device_(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),

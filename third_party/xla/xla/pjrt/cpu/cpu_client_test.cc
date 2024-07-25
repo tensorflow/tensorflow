@@ -99,7 +99,7 @@ TEST(TfrtCpuClientTest, MemorySpace) {
 }
 
 TEST(TfrtCpuClientTest, DonationWithExecutionError) {
-  constexpr char kProgram[] =
+  static constexpr char kProgram[] =
       R"(
 HloModule DonationWithExecutionError,
           input_output_alias={ {}: (0, {}, must-alias) }
@@ -144,7 +144,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
 }
 
 TEST(TfrtCpuClientTest, HloSnapshot) {
-  constexpr char kProgram[] = R"(
+  static constexpr char kProgram[] = R"(
     HloModule add
     ENTRY add {
       x = f32[3,2] parameter(0)
