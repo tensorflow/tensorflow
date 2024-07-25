@@ -300,11 +300,8 @@ class CutlassGemmFusion : public CustomKernelFusion {
     size_t k = lhs_shape.dimensions(1);
     size_t n = rhs_shape.dimensions(1);
 
-    TF_ASSIGN_OR_RETURN(
-        auto kernel,
-        kernel::gemm_universal::GetCutlassGemmKernel(
-            "cutlass_gemm", dtype, m, n, k, indices, /*slices=*/{}, device));
-    return std::vector<CustomKernel>{std::move(kernel)};
+    return kernel::gemm_universal::GetCutlassGemmKernels(
+        "cutlass_gemm", dtype, m, n, k, indices, /*slices=*/{}, device);
   }
 };
 
@@ -380,11 +377,9 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomKernelFusion {
     size_t k = lhs_shape.dimensions(1);
     size_t n = rhs_shape.dimensions(1);
 
-    TF_ASSIGN_OR_RETURN(
-        auto kernel, kernel::gemm_universal::GetCutlassGemmKernel(
-                         "cutlass_gemm_with_dynamic_update_slice", dtype, m, n,
-                         k, args_indices, slices, device));
-    return std::vector<CustomKernel>{std::move(kernel)};
+    return kernel::gemm_universal::GetCutlassGemmKernels(
+        "cutlass_gemm_with_dynamic_update_slice", dtype, m, n, k, args_indices,
+        slices, device);
   }
 };
 

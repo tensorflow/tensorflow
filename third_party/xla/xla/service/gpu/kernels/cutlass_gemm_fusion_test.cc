@@ -43,11 +43,12 @@ class CutlassFusionTest : public HloTestBase {
   }
   int CutlassGemmKernelSharedMemorySize(PrimitiveType dtype, int m, int n,
                                         int k) {
-    return kernel::gemm_universal::GetCutlassGemmKernel(
+    return kernel::gemm_universal::GetCutlassGemmKernels(
                "cutlass_gemm", dtype, m, n, k,
                /*indices=*/{0, 1, 2}, /*slices=*/{},
                backend().default_stream_executor()->GetDeviceDescription())
-        ->shared_memory_bytes();
+        ->at(0)
+        .shared_memory_bytes();
   };
 };
 
