@@ -151,23 +151,6 @@ class HandlerBase {
   std::optional<HloSharding> GetShardingFromUser(const HloSharding& lhs_spec,
                                                  const HloSharding& rhs_spec);
 
-  // Enumerates combinations of the given mesh + tensor dimensions.
-  void Enumerate(std::function<void(const Enumeration&)> split_func,
-                 size_t num_outer_dims = 2, size_t num_inner_dims = 2,
-                 bool half = false) {
-    absl::Span<const int64_t> mesh_shape = device_mesh_.dimensions();
-    for (int64_t dim0 = 0; dim0 < mesh_shape.size(); ++dim0) {
-      for (int64_t dim1 = 0; dim1 < mesh_shape.size(); ++dim1) {
-        if (dim0 == dim1) continue;
-        for (int64_t i = 0; i < num_outer_dims; ++i) {
-          for (int64_t j = half ? i + 1 : 0; j < num_inner_dims; ++j) {
-            split_func({{dim0, dim1}, i, j});
-          }
-        }
-      }
-    }
-  }
-
   // Given a set of tensor dims, and a set of mesh dims, enumerates all mappings
   // where a subset of all tensor dims is mapped to a subset of mesh dims, such
   // that each tensor dim is mapped to at most mesh dim, and no two tensor dims
@@ -196,12 +179,6 @@ class HandlerBase {
       EnumerateGeneral(split_func, tensor_rank, current_tensor_dim + 1,
                        updated_unassigned_mesh_dims, updated_dim_map);
     }
-  }
-
-  // Enumerates *half* of the combinations (if inner & outer dims are the same).
-  void EnumerateHalf(std::function<void(const Enumeration&)> split_func,
-                     size_t num_outer_dims = 2, size_t num_inner_dims = 2) {
-    Enumerate(split_func, num_outer_dims, num_inner_dims, true);
   }
 
   // Sorts strategies in the increasing order of their memory costs. Anecdotal
@@ -743,50 +720,43 @@ void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
     const Array<int64_t>& device_mesh, double compute_cost) {
   const HloInstruction* operand = ins_->operand(operand_num);
   const DimMap& operand_dim_map = operand_num == 0 ? lhs_dim_map : rhs_dim_map;
-  absl::flat_hash_set<int64_t> sharded_tensor_dims;
   absl::flat_hash_set<int64_t> used_mesh_dims;
   for (const auto [tensor_dim, mesh_dim] : operand_dim_map) {
-    if (device_mesh.dim(mesh_dim) == 1) {
-      continue;
-    }
-    sharded_tensor_dims.insert(tensor_dim);
     used_mesh_dims.insert(mesh_dim);
   }
   if (used_mesh_dims.size() == device_mesh_.num_dimensions() ||
-      sharded_tensor_dims.size() == operand->shape().rank()) {
+      used_mesh_dims.size() == operand->shape().rank()) {
     return;
   }
 
   for (int64_t tensor_dim = 0; tensor_dim < operand->shape().rank();
        ++tensor_dim) {
-    if (sharded_tensor_dims.contains(tensor_dim)) {
+    if (auto it = operand_dim_map.find(tensor_dim);
+        it != operand_dim_map.end() && device_mesh.dim(it->second) > 1) {
       continue;
     }
     for (int64_t mesh_dim = 0; mesh_dim < device_mesh_.num_dimensions();
          ++mesh_dim) {
-      if (used_mesh_dims.contains(mesh_dim) ||
-          (device_mesh.dim(mesh_dim) == 1)) {
+      if (used_mesh_dims.contains(mesh_dim)) {
         continue;
       }
       DimMap further_sharded_dim_map = operand_dim_map;
       further_sharded_dim_map[tensor_dim] = mesh_dim;
 
-      auto updated_communication_cost_fn =
+      auto communication_cost_fn =
           [](const HloSharding& output_sharding) -> double {
         // TODO(331684721): Model costs for windowed einsum
         return 100.0;
       };
 
-      std::string updated_name =
-          absl::StrCat(absl::StrFormat("WindowedEinsum @ {%d,%d,%d}",
-                                       operand_num, tensor_dim, mesh_dim),
-                       name);
+      std::string updated_name = absl::StrCat(
+          name, absl::StrFormat("|ag_windowed_einsum_o%dt%dm%d", operand_num,
+                                tensor_dim, mesh_dim));
       MaybeAppendInternal(
           updated_name,
           operand_num == 0 ? further_sharded_dim_map : lhs_dim_map,
           operand_num == 1 ? further_sharded_dim_map : rhs_dim_map,
-          output_dim_map, device_mesh, compute_cost,
-          updated_communication_cost_fn);
+          output_dim_map, device_mesh, compute_cost, communication_cost_fn);
     }
   }
 }
@@ -795,46 +765,42 @@ void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
     const std::string& name, const DimMap& lhs_dim_map,
     const DimMap& rhs_dim_map, const DimMap& output_dim_map,
     const Array<int64_t>& device_mesh, double compute_cost) {
-  absl::flat_hash_set<int64_t> sharded_tensor_dims;
   absl::flat_hash_set<int64_t> used_mesh_dims;
   for (const auto [tensor_dim, mesh_dim] : output_dim_map) {
-    if (device_mesh.dim(mesh_dim) == 1) {
-      continue;
-    }
-    sharded_tensor_dims.insert(tensor_dim);
     used_mesh_dims.insert(mesh_dim);
   }
+
   if (used_mesh_dims.size() == device_mesh_.num_dimensions() ||
-      sharded_tensor_dims.size() == ins_->shape().rank()) {
+      used_mesh_dims.size() == ins_->shape().rank()) {
     return;
   }
 
   for (int64_t tensor_dim = 0; tensor_dim < ins_->shape().rank();
        ++tensor_dim) {
-    if (sharded_tensor_dims.contains(tensor_dim)) {
+    if (auto it = output_dim_map.find(tensor_dim);
+        it != output_dim_map.end() && device_mesh.dim(it->second) > 1) {
       continue;
     }
     for (int64_t mesh_dim = 0; mesh_dim < device_mesh_.num_dimensions();
          ++mesh_dim) {
-      if (used_mesh_dims.contains(mesh_dim) ||
-          (device_mesh.dim(mesh_dim) == 1)) {
+      if (used_mesh_dims.contains(mesh_dim)) {
         continue;
       }
       DimMap further_sharded_dim_map = output_dim_map;
       further_sharded_dim_map[tensor_dim] = mesh_dim;
 
-      auto updated_communication_cost_fn =
+      auto communication_cost_fn =
           [](const HloSharding& output_sharding) -> double {
         // TODO(331684721): Model costs for windowed einsum
         return 100.0;
       };
 
       std::string updated_name = absl::StrCat(
-          absl::StrFormat("WindowedEinsum @ {%d,%d}", tensor_dim, mesh_dim),
-          name);
+          name,
+          absl::StrFormat("|rs_windowed_einsum_t%dm%d", tensor_dim, mesh_dim));
       MaybeAppendInternal(updated_name, lhs_dim_map, rhs_dim_map,
                           further_sharded_dim_map, device_mesh, compute_cost,
-                          updated_communication_cost_fn);
+                          communication_cost_fn);
     }
   }
 }
@@ -1014,7 +980,7 @@ void ConvHandler::SplitDepthwise(bool forward) {
         rhs_dim_map[rhs_out_channel_dim_] = out_out_channel_mesh_dim;
 
         MaybeAppend(absl::StrCat("b", out_batch_mesh_dim, "oc",
-                                 out_out_channel_mesh_dim, "@depthwise"),
+                                 out_out_channel_mesh_dim, "|depthwise"),
                     lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
       };
   absl::flat_hash_set<int> all_mesh_dims;
@@ -1062,7 +1028,7 @@ absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
   strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                            strategy_groups);
 
-  auto conv_as_dot_dims =
+  const dot_as_convolution_util::DotConvolutionDimsInfo& conv_as_dot_dims =
       dot_as_convolution_util::ParseConvolutionDimsInfo(ins);
   if (conv_as_dot_dims.conv_spatial_dims.empty()) {
     DotHandler handler(

@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/ptrvec.h"
@@ -1223,6 +1224,20 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   if (proto.has_statistics_viz()) {
     instruction->set_statistics_viz(proto.statistics_viz());
+  }
+
+  if (proto.has_original_value()) {
+    const xla::OriginalValueProto& original_value_proto =
+        proto.original_value();
+    auto original_value = std::make_shared<OriginalValue>(shape);
+    std::cerr << __func__ << ", shape: " << shape.ToString() << "\n";
+
+    for (const auto& leaf : original_value_proto.leaves()) {
+      *original_value->mutable_element(ShapeIndex(leaf.leaf_shape_index())) = {
+          leaf.instruction_name(), ShapeIndex(leaf.shape_index())};
+    }
+
+    instruction->set_original_value(original_value);
   }
 
   return std::move(instruction);
@@ -3603,6 +3618,12 @@ void HloInstruction::PrintWithCanonicalNameMap(
   });
   PrintExtraAttributes(attr_printer, options);
 
+  if (original_value_) {
+    printer->Append(", original_value={");
+    printer->Append(OriginalValueToString(*original_value()));
+    printer->Append("}");
+  }
+
   if (options.print_metadata() &&
       (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
        !metadata_->source_file().empty() ||
@@ -3971,6 +3992,23 @@ HloInstructionProto HloInstruction::ToProto() const {
   *proto.mutable_frontend_attributes() = frontend_attributes();
 
   *proto.mutable_statistics_viz() = statistics_viz();
+
+  if (original_value_) {
+    xla::OriginalValueProto* original_value_proto =
+        proto.mutable_original_value();
+    for (const auto& leaf : original_value_->leaves()) {
+      OriginalArrayProto* original_array_proto =
+          original_value_proto->add_leaves();
+      for (const auto& index : leaf.first) {
+        original_array_proto->add_leaf_shape_index(index);
+      }
+      *original_array_proto->mutable_instruction_name() =
+          leaf.second->instruction_name;
+      for (const auto& index : leaf.second->shape_index) {
+        original_array_proto->add_shape_index(index);
+      }
+    }
+  }
 
   return proto;
 }
@@ -5477,6 +5515,15 @@ void HloInstruction::set_output_to_operand_aliasing(
         aliasing) {
   Cast<HloCallableInstruction>(this)->set_output_to_operand_aliasing(
       std::move(aliasing));
+}
+
+std::shared_ptr<OriginalValue> HloInstruction::original_value() const {
+  return original_value_;
+}
+
+void HloInstruction::set_original_value(
+    std::shared_ptr<OriginalValue> original_value) {
+  original_value_ = original_value;
 }
 
 }  // namespace xla

@@ -251,9 +251,11 @@ cc_library(
         ":auto_sharding_strategy",
         ":auto_sharding_util",
         ":profiling_result",
+        "//xla:array",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )

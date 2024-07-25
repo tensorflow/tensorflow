@@ -149,8 +149,7 @@ BuildStrategyAndCost(
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   // Add penalty for replicated tensors
-  double replicated_penalty = std::round(cluster_env.AllReduceCost(1, 0) +
-                                         cluster_env.AllReduceCost(1, 1));
+  double replicated_penalty = cluster_env.GetDefaultReplicatedPenalty();
 
   int64_t max_depth = -1;
   for (auto iter : depth_map) {
