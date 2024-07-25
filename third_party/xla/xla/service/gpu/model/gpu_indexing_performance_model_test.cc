@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -50,6 +51,7 @@ using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 class GpuIndexingPerformanceModelTest : public HloTestBase {
+ public:
   GpuHloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
     return [&](const Shape& shape) {
       constexpr int64_t kPointerSize = 8;
@@ -57,7 +59,6 @@ class GpuIndexingPerformanceModelTest : public HloTestBase {
     };
   }
 
- public:
   mlir::MLIRContext mlir_context_;
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
@@ -412,6 +413,124 @@ ENTRY main {
   // blocks is not supported (b/351342921).
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kFailedPrecondition,
                                HasSubstr("SymbolicTileAnalysis failed")));
+}
+
+class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
+ public:
+  void CompareFlopsModels(absl::string_view hlo_module_string) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_module_string));
+
+    GpuHloCostAnalysis cost_analysis(
+        GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
+                                    /*per_second_rates=*/{},
+                                    /*count_multiple_input_accesses=*/true},
+        device_info_);
+
+    ASSERT_IS_OK(module->entry_computation()->Accept(&cost_analysis));
+    auto instr = module->entry_computation()->root_instruction();
+
+    int64_t flops_per_element = indexing_cost_model_.FlopsPerElement(instr);
+    const Shape& output_shape = instr->shape().IsArray()
+                                    ? instr->shape()
+                                    : instr->shape().tuple_shapes(0);
+    int64_t total_flops =
+        ShapeUtil::ElementsIn(output_shape) * flops_per_element;
+
+    EXPECT_EQ(total_flops, cost_analysis.flop_count(*instr));
+  }
+};
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Reduce) {
+  CompareFlopsModels(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,40] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[32] reduce(param_0.3, constant), dimensions={1}, to_apply=add
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_VariadicReduce) {
+  CompareFlopsModels(R"(
+HloModule m
+
+add_multiply {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  param_2 = f32[] parameter(2)
+  param_3 = f32[] parameter(3)
+  add = f32[] add(param_0, param_2)
+  multiply = f32[] multiply(param_1, param_3)
+  ROOT t = (f32[], f32[]) tuple(add, multiply)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[32,40] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = (f32[32], f32[32]) reduce(param_0, param_0, c0, c0), dimensions={1}, to_apply=add_multiply
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {
+  CompareFlopsModels(R"(
+HloModule m
+
+ENTRY entry_computation {
+  param_0 = f32[32] parameter(0)
+  ROOT cosine = f32[32] cosine(param_0)
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Clamp) {
+  CompareFlopsModels(R"(
+HloModule m
+
+ENTRY entry_computation {
+  param_0 = f32[32] parameter(0)
+  param_1 = f32[32] parameter(1)
+  param_2 = f32[32] parameter(2)
+  ROOT clamp = clamp(param_0, param_1, param_2)
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Gather) {
+  CompareFlopsModels(R"(
+HloModule module
+entry {
+  operand = f32[33, 76, 70] parameter(0)
+  indices = s32[1806, 2] parameter(1)
+  ROOT gather = f32[1806, 7, 8, 4] gather(operand, indices),
+    offset_dims={1,2,3}, collapsed_slice_dims={}, start_index_map={0,1},
+    index_vector_dim=1, slice_sizes={7,8,4}
+})");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_ReduceWindow) {
+  CompareFlopsModels(R"(
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  param_0 = f32[13,12,8,15] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce-window = f32[13,3,8,15] reduce-window(param_0, c0), window={size=1x1x7x1 stride=1x4x1x1 pad=0_0x0_0x3_3x0_0}, to_apply=add
+})");
 }
 
 }  // namespace

@@ -55,25 +55,63 @@ namespace xla {
 namespace gpu {
 
 int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
-    const HloInstruction* instr) const {
-  // TODO(shyshkov): Replace dependency on GpuHloCostAnalysis with independent
-  // flops calculation.
-  GpuHloCostAnalysis::Options cost_analysis_options{
-      shape_size_,
-      /*per_second_rates=*/{},
-      /*count_multiple_input_accesses=*/true};
-  GpuHloCostAnalysis cost_analysis(cost_analysis_options, *device_info_);
-  TF_CHECK_OK(
-      cost_analysis.RevisitInstruction(const_cast<HloInstruction*>(instr)));
+    const HloInstruction* instr) {
+  // Instruction that are only used for indexing are not counted for FLOPs.
+  switch (instr->opcode()) {
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kConstant:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kGather:
+    case HloOpcode::kIota:
+    case HloOpcode::kPad:
+    case HloOpcode::kParameter:
+    case HloOpcode::kSlice:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kTuple:
+      return 0;
+    default:
+      break;
+  };
 
-  int64_t num_elements = [&] {
-    if (instr->opcode() == HloOpcode::kReduce && instr->shape().IsTuple()) {
-      return ShapeUtil::ElementsInRecursive(instr->shape().tuple_shapes(0));
+  // Get the FLOPs per element for elementwise operations that only depend on
+  // the element type.
+  if (instr->IsElementwise()) {
+    return cost_analysis_.GetFlopsPerElementwiseOpElement(
+        instr->shape().element_type(), instr->opcode());
+  }
+
+  if (instr->opcode() == HloOpcode::kReduce) {
+    int64_t flops_per_reduce_computation = 0;
+    for (const HloInstruction* reducer_instr :
+         instr->called_computations()[0]->instructions()) {
+      flops_per_reduce_computation += FlopsPerElement(reducer_instr);
     }
-    return ShapeUtil::ElementsInRecursive(instr->shape());
-  }();
 
-  return cost_analysis.flop_count(*instr) / num_elements;
+    auto operand_shape = instr->operand(0)->shape();
+    auto output_shape = instr->shape().IsArray()
+                            ? instr->shape()
+                            : instr->shape().tuple_shapes(0);
+
+    // Size of reduction dimensions.
+    int64_t reduction_factor = ShapeUtil::ElementsIn(operand_shape) /
+                               ShapeUtil::ElementsIn(output_shape);
+
+    // The Cost Model assumes that the reduction computation is applied N-1
+    // times to reduce N elements. This is not true, because emitters will
+    // generate a loop with N iterations. We don't fix it here to keep this
+    // estimate consistent with GpuHloCostAnalysis. This is like doesn't matter
+    // much for the application of the Cost Model.
+    return (reduction_factor - 1) * flops_per_reduce_computation;
+  }
+
+  // Encountered unexpected instruction, call to GpuHloCostAnalysis.
+  TF_CHECK_OK(
+      cost_analysis_.RevisitInstruction(const_cast<HloInstruction*>(instr)));
+
+  return cost_analysis_.flop_count(*instr) /
+         ShapeUtil::ElementsInRecursive(instr->shape());
 }
 
 int64_t GpuPerformanceModelWithIndexingAnalysis::GetShapeSizeRecursive(

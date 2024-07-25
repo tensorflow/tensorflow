@@ -385,6 +385,7 @@ xla_cc_test(
         ":gpu_indexing_performance_model",
         ":gpu_performance_model_base",
         "//xla:shape_util",
+        "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
