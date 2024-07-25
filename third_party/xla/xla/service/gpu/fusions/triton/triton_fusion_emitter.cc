@@ -340,12 +340,46 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   }
   // float => int
   if (src_fp_element_ty && mlir::isa<mlir::IntegerType>(dst_element_ty)) {
-    // TODO(b/266862493): Support unsigned integer types.
     if (dst_element_ty.isInteger(1)) {
       return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNE, value,
                                   ZerosLike(b, value));
     }
-    return b.create<ma::FPToSIOp>(dst_ty, value);
+    // TODO(b/266862493): Support unsigned integer types.
+    // The current logic handles signed integer types only. Additional handling
+    // is needed for unsigned integer types.
+    auto cst_int = [&](int64_t x) {
+      if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
+        return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
+      } else {
+        return CreateConst(b, dst_element_ty, x);
+      }
+    };
+    auto cst_float = [&](int64_t x) {
+      if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
+        return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
+      } else {
+        return CreateConst(b, src_fp_element_ty, x);
+      }
+    };
+    auto fptosi = b.create<ma::FPToSIOp>(dst_ty, value);
+    int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
+    int64_t max = llvm::maxIntN(dst_element_ty.getIntOrFloatBitWidth());
+
+    // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
+    auto clamped = b.create<mlir::arith::SelectOp>(
+        b.create<mlir::arith::CmpFOp>(mlir::arith::CmpFPredicate::OLE, value,
+                                      cst_float(min)),
+        cst_int(min), fptosi);
+    // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
+    clamped = b.create<mlir::arith::SelectOp>(
+        b.create<mlir::arith::CmpFOp>(mlir::arith::CmpFPredicate::OGE, value,
+                                      cst_float(max)),
+        cst_int(max), clamped);
+    // isnan(value) ? 0 : ...
+    return b.create<mlir::arith::SelectOp>(
+        b.create<mlir::arith::CmpFOp>(mlir::arith::CmpFPredicate::UNO, value,
+                                      value),
+        cst_int(0), clamped);
   }
 
   LOG(FATAL) << "Type conversion not supported: "

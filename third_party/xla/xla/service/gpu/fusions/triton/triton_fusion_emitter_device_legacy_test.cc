@@ -1183,6 +1183,46 @@ ENTRY e {
 )");
 }
 
+TEST_F(TritonTest, FloatToSignedIntConversion) {
+  const std::string kHloText = R"(
+HloModule t, is_scheduled=true
+
+triton_gemm_r {
+  p_0 = s8[32,32]{1,0} parameter(0)
+  p_1 = f16[32,32]{1,0} parameter(1)
+  cvt_1 = s8[32,32]{1,0} convert(p_1)
+  ROOT r.1 = f32[32,32]{1,0} dot(p_0, cvt_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p_0 = s8[32,32]{1,0} parameter(0)
+  p_1 = f16[32,32]{1,0} parameter(1)
+  ROOT triton_gemm_r = f32[32,32]{1,0} fusion(p_0, p_1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
+                         "split_k":1,"num_stages":1,"num_warps":4,
+                         "num_ctas":1}}}
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm_r", R"(
+CHECK:    tt.func @triton_fn
+CHECK-DAG:      %[[ZERO:.*]] = arith.constant dense<0>
+CHECK-DAG:      %[[FMIN:.*]] = arith.constant dense<-1.280000e+02>
+CHECK-DAG:      %[[IMIN:.*]] = arith.constant dense<-128>
+CHECK-DAG:      %[[FMAX:.*]] = arith.constant dense<1.270000e+02>
+CHECK-DAG:      %[[IMAX:.*]] = arith.constant dense<127>
+CHECK:          %[[FPTOSI:.*]] = arith.fptosi %[[IN:.*]] :
+CHECK:          %[[CMP1:.*]] = arith.cmpf ole, %[[IN]], %[[FMIN]]
+CHECK:          %[[RES1:.*]] = arith.select %[[CMP1]], %[[IMIN]], %[[FPTOSI]]
+CHECK:          %[[CMP2:.*]] = arith.cmpf oge, %[[IN]], %[[FMAX]]
+CHECK:          %[[RES2:.*]] = arith.select %[[CMP2]], %[[IMAX]], %[[RES1]]
+CHECK:          %[[CMP3:.*]] = arith.cmpf uno, %[[IN]], %[[IN]]
+CHECK:          %[[RES3:.*]] = arith.select %[[CMP3]], %[[ZERO]], %[[RES2]]
+})"));
+}
+
 TEST_F(TritonGemmTestWithoutTritonGemmAny, SkipF32F32) {
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "GEMM padding requirements for ROCM not included yet.";
