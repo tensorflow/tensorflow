@@ -59,15 +59,15 @@ TEST_F(MlirInputSlicesFusionTest, ThreadIndexing) {
       th_x mod 5
     )
     domain:
-    th_x in [5, 20)
-    th_y in [0, 1)
-    th_z in [0, 1)
-    bl_x in [0, 1)
-    bl_y in [0, 1)
-    bl_z in [0, 1)
-    s0 in [0, 1)
-    s1 in [0, 1)
-    th_x mod 5 in [0, 3)
+    th_x in [5, 19]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 0]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+    s0 in [0, 0]
+    s1 in [0, 0]
+    th_x mod 5 in [0, 2]
   )"));
   auto thread_id_to_output_indexing_1 =
       emitter->ComputeThreadIdToOutputIndexing(1, &mlir_context_);
@@ -79,15 +79,15 @@ TEST_F(MlirInputSlicesFusionTest, ThreadIndexing) {
       th_x mod 5
     )
     domain:
-    th_x in [0, 10)
-    th_y in [0, 1)
-    th_z in [0, 1)
-    bl_x in [0, 1)
-    bl_y in [0, 1)
-    bl_z in [0, 1)
-    s0 in [0, 1)
-    s1 in [0, 1)
-    th_x mod 5 in [0, 3)
+    th_x in [0, 9]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 0]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+    s0 in [0, 0]
+    s1 in [0, 0]
+    th_x mod 5 in [0, 2]
   )"));
 }
 

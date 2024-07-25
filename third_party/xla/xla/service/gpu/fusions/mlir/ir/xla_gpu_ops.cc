@@ -255,12 +255,12 @@ mlir::ParseResult parseOperandsWithBoundsList(
         if (parser.parseOperand(operand) || parser.parseKeyword("in") ||
             parser.parseLSquare() || parser.parseInteger(lower_bound) ||
             parser.parseComma() || parser.parseInteger(upper_bound) ||
-            parser.parseRParen()) {
+            parser.parseRSquare()) {
           return failure();
         }
         operands->push_back(operand);
         lower_bounds->push_back(lower_bound);
-        upper_bounds->push_back(upper_bound - 1);
+        upper_bounds->push_back(upper_bound);
         return success();
       })) {
     return failure();
@@ -321,7 +321,7 @@ void ApplyIndexingOp::print(mlir::OpAsmPrinter& p) {
     p << '(';
     for (int dim_id = 0; dim_id < num_dimensions; ++dim_id) {
       p << operands[dim_id] << " in " << '[' << lower_bounds[dim_id] << ", "
-        << upper_bounds[dim_id] + 1 << ')';
+        << upper_bounds[dim_id] << ']';
       if (dim_id != num_dimensions - 1) {
         p << ", ";
       }
@@ -334,7 +334,7 @@ void ApplyIndexingOp::print(mlir::OpAsmPrinter& p) {
     for (int symbol_id = 0; symbol_id < num_symbols; ++symbol_id) {
       unsigned operand_id = num_dimensions + symbol_id;
       p << operands[operand_id] << " in " << '[' << lower_bounds[operand_id]
-        << ", " << upper_bounds[operand_id] + 1 << ')';
+        << ", " << upper_bounds[operand_id] << ']';
       if (symbol_id != num_symbols - 1) {
         p << ", ";
       }

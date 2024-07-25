@@ -793,8 +793,7 @@ std::string Interval::ToString() const {
 }
 
 void Interval::Print(std::ostream& out) const {
-  // The interval is printed as a semi-open one because it is easier to read.
-  out << '[' << lower << ", " << upper + 1 << ")";
+  out << '[' << lower << ", " << upper << "]";
 }
 
 int64_t Interval::GetLoopTripCount() const {

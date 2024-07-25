@@ -408,10 +408,10 @@ TEST_F(MlirRowReductionTest, NonPowerOfTwoRowReduction) {
     // CHECK: %[[FULL_TILES:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
     // CHECK-NEXT: scf.for %[[J:.*]] = %[[C0]] to %[[C2]] step %[[C1]]
     // CHECK-NOT: scf.if
-    // CHECK: xla_gpu.apply_indexing #[[MAP1]](%[[J]] in [0, 2), %thread_id_x in [0, 256))[%[[I]] in [0, 5)]
+    // CHECK: xla_gpu.apply_indexing #[[MAP1]](%[[J]] in [0, 1], %thread_id_x in [0, 255])[%[[I]] in [0, 4]]
     // CHECK: scf.for %[[J:.*]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%{{.*}} = %[[FULL_TILES]])
     // CHECK: scf.if
-    // CHECK: xla_gpu.apply_indexing #[[MAP2]](%[[J]] in [0, 2), %thread_id_x in [0, 256))
+    // CHECK: xla_gpu.apply_indexing #[[MAP2]](%[[J]] in [0, 1], %thread_id_x in [0, 255])
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -691,16 +691,16 @@ TEST_F(MlirColumnReductionTest, ColumnReduction) {
           (d3 mod 11) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 1024)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 143)
-        d4 in [0, 1)
-        d5 in [0, 1)
-        s0 in [0, 33)
-        s1 in [0, 1)
-        (d3 mod 11) * 32 + d0 mod 32 in [0, 321)
-        d0 floordiv 32 + s0 * 32 in [0, 1051)
+        d0 in [0, 1023]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 142]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 32]
+        s1 in [0, 0]
+        (d3 mod 11) * 32 + d0 mod 32 in [0, 320]
+        d0 floordiv 32 + s0 * 32 in [0, 1050]
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -709,15 +709,15 @@ TEST_F(MlirColumnReductionTest, ColumnReduction) {
           d3 floordiv 11, (d3 mod 11) * 32 + d0 floordiv 32
         )
         domain:
-        d0 in [0, 993)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 143)
-        d4 in [0, 1)
-        d5 in [0, 1)
-        s0 in [0, 1)
-        (d3 mod 11) * 32 + d0 floordiv 32 in [0, 321)
-        d0 mod 32 in [0, 1)
+        d0 in [0, 992]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 142]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 0]
+        (d3 mod 11) * 32 + d0 floordiv 32 in [0, 320]
+        d0 mod 32 in [0, 0]
       )"));
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: xla_gpu.pure_call @Add_add
