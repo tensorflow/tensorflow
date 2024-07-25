@@ -57,6 +57,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/lite/array.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 
 #ifdef __cplusplus
@@ -101,87 +102,6 @@ typedef struct TfLiteExternalContext {
 } TfLiteExternalContext;
 
 #define kTfLiteOptionalTensor (-1)
-
-/// Fixed size list of integers. Used for dimensions and inputs/outputs tensor
-/// indices
-typedef struct TfLiteIntArray {
-  int size;
-
-#if defined(_MSC_VER)
-  // Context for why this is needed is in http://b/189926408#comment21
-  int data[1];
-#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
-       __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) ||                                             \
-    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
-  // gcc 6.1+ have a bug where flexible members aren't properly handled
-  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
-  int data[0];
-#else
-  int data[];
-#endif
-} TfLiteIntArray;
-
-/// Given the size (number of elements) in a TfLiteIntArray, calculate its size
-/// in bytes.
-size_t TfLiteIntArrayGetSizeInBytes(int size);
-
-#ifndef TF_LITE_STATIC_MEMORY
-/// Create a array of a given `size` (uninitialized entries).
-/// This returns a pointer, that you must free using TfLiteIntArrayFree().
-TfLiteIntArray* TfLiteIntArrayCreate(int size);
-#endif
-
-/// Check if two intarrays are equal. Returns 1 if they are equal, 0 otherwise.
-int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b);
-
-/// Check if an intarray equals an array. Returns 1 if equals, 0 otherwise.
-int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
-                              const int b_data[]);
-
-#ifndef TF_LITE_STATIC_MEMORY
-/// Create a copy of an array passed as `src`.
-/// You are expected to free memory with TfLiteIntArrayFree
-TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src);
-
-/// Free memory of array `a`.
-void TfLiteIntArrayFree(TfLiteIntArray* a);
-#endif  // TF_LITE_STATIC_MEMORY
-
-/// Fixed size list of floats. Used for per-channel quantization.
-typedef struct TfLiteFloatArray {
-  int size;
-#if defined(_MSC_VER)
-  // Context for why this is needed is in http://b/189926408#comment21
-  float data[1];
-#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
-       __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) ||                                             \
-    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
-  // gcc 6.1+ have a bug where flexible members aren't properly handled
-  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
-  float data[0];
-#else
-  float data[];
-#endif
-} TfLiteFloatArray;
-
-/// Given the size (number of elements) in a TfLiteFloatArray, calculate its
-/// size in bytes.
-int TfLiteFloatArrayGetSizeInBytes(int size);
-
-#ifndef TF_LITE_STATIC_MEMORY
-/// Create a array of a given `size` (uninitialized entries).
-/// This returns a pointer, that you must free using TfLiteFloatArrayFree().
-TfLiteFloatArray* TfLiteFloatArrayCreate(int size);
-
-/// Create a copy of an array passed as `src`.
-/// You are expected to free memory with TfLiteFloatArrayFree.
-TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src);
-
-/// Free memory of array `a`.
-void TfLiteFloatArrayFree(TfLiteFloatArray* a);
-#endif  // TF_LITE_STATIC_MEMORY
 
 // Since we must not depend on any libraries, define a minimal subset of
 // error macros while avoiding names that have pre-conceived meanings like

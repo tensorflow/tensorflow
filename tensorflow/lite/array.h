@@ -15,17 +15,107 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ARRAY_H_
 #define TENSORFLOW_LITE_ARRAY_H_
 
+#include <stdlib.h>
+
+#ifdef __cplusplus
 #include <cstring>
 #include <initializer_list>
 #include <memory>
 #include <type_traits>
-#include <vector>
 
-#include "tensorflow/lite/core/c/common.h"
+extern "C" {
+#endif  // __cplusplus
+
+// C interface
+
+// Fixed size list of integers. Used for dimensions and inputs/outputs tensor
+// indices
+typedef struct TfLiteIntArray {
+  int size;
+
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  int data[1];
+#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
+       __GNUC_MINOR__ >= 1) ||                                      \
+    defined(HEXAGON) ||                                             \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
+  // gcc 6.1+ have a bug where flexible members aren't properly handled
+  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
+  int data[0];
+#else
+  int data[];
+#endif
+} TfLiteIntArray;
+
+// Fixed size list of floats. Used for per-channel quantization.
+typedef struct TfLiteFloatArray {
+  int size;
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  float data[1];
+#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
+       __GNUC_MINOR__ >= 1) ||                                      \
+    defined(HEXAGON) ||                                             \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
+  // gcc 6.1+ have a bug where flexible members aren't properly handled
+  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
+  float data[0];
+#else
+  float data[];
+#endif
+} TfLiteFloatArray;
+
+// Given the size (number of elements) in a TfLiteIntArray, calculate its size
+// in bytes.
+size_t TfLiteIntArrayGetSizeInBytes(int size);
+
+// Given the size (number of elements) in a TfLiteFloatArray, calculate its size
+// in bytes.
+int TfLiteFloatArrayGetSizeInBytes(int size);
+
+// Check if two intarrays are equal. Returns 1 if they are equal, 0 otherwise.
+int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b);
+
+// Check if an intarray equals an array. Returns 1 if equals, 0 otherwise.
+int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
+                              const int b_data[]);
+
+#ifndef TF_LITE_STATIC_MEMORY
+// Create a array of a given `size` (uninitialized entries).
+// This returns a pointer, that you must free using TfLiteIntArrayFree().
+TfLiteIntArray* TfLiteIntArrayCreate(int size);
+
+// Create a copy of an array passed as `src`.
+// You are expected to free memory with TfLiteIntArrayFree
+TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src);
+
+// Free memory of array `a`.
+void TfLiteIntArrayFree(TfLiteIntArray* a);
+
+// Create a array of a given `size` (uninitialized entries).
+// This returns a pointer, that you must free using TfLiteFloatArrayFree().
+TfLiteFloatArray* TfLiteFloatArrayCreate(int size);
+
+// Create a copy of an array passed as `src`.
+// You are expected to free memory with TfLiteFloatArrayFree.
+TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src);
+
+// Free memory of array `a`.
+void TfLiteFloatArrayFree(TfLiteFloatArray* a);
+#endif  // TF_LITE_STATIC_MEMORY
+
+#ifdef __cplusplus
+}
+#endif  // __cplusplus
+
+// C++ interface
+
+#ifdef __cplusplus
 
 namespace tflite {
 
-/// TfLite*Array helpers
+/// TfLite array helpers
 
 namespace array_internal {
 
@@ -52,6 +142,7 @@ struct TfLiteArrayInfo<float> {
 
 }  // namespace array_internal
 
+// `unique_ptr` wrapper for TfLite arrays.
 template <class T>
 using TfLiteArrayUniquePtr =
     std::unique_ptr<typename array_internal::TfLiteArrayInfo<T>::Type,
@@ -142,15 +233,34 @@ TfLiteArrayUniquePtr<T> BuildTfLiteArray(
 }
 
 // Allocates a TFLiteArray and initializes it with the given array.
-inline IntArrayUniquePtr BuildTfLiteArray(const TfLiteIntArray& other) {
-  return BuildTfLiteArray(other.size, other.data);
-}
+IntArrayUniquePtr BuildTfLiteArray(const TfLiteIntArray& other);
 
 // Allocates a TFLiteArray and initializes it with the given array.
-inline FloatArrayUniquePtr BuildTfLiteArray(const TfLiteFloatArray& other) {
-  return BuildTfLiteArray(other.size, other.data);
-}
+FloatArrayUniquePtr BuildTfLiteArray(const TfLiteFloatArray& other);
+
+// Compare two TfLite array contents.
+bool TfLiteArrayEqual(const TfLiteIntArray& a, const TfLiteIntArray& b);
+
+// Compare two TfLite array contents.
+bool TfLiteArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b);
+
+// Compare two TfLite array contents.
+bool TfLiteArrayEqual(const TfLiteIntArray* a, const int* b, int b_size);
+
+// Compare two TfLite array contents.
+bool TfLiteArrayEqual(const TfLiteFloatArray& a, const TfLiteFloatArray& b,
+                      float tolerance);
+
+// Compare two TfLite array contents.
+bool TfLiteArrayEqual(const TfLiteFloatArray* a, const TfLiteFloatArray* b,
+                      float tolerance);
+
+// Compare two TfLite array contents.
+bool TfLiteArrayEqual(const TfLiteFloatArray* a, const float* b, int b_size,
+                      float tolerance);
 
 }  // namespace tflite
+
+#endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_ARRAY_H_

@@ -1238,10 +1238,9 @@ cc_library(
     hdrs = ["array.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings() + tflite_copts(),
-    deps = [
-        "//tensorflow/lite/core/c:common",
-    ],
 )
+
+exports_files(["array.h"])
 
 cc_test(
     name = "array_test",

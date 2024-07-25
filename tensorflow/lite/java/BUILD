@@ -133,6 +133,7 @@ filegroup(
 # LINT.IfChange(TFLITE_HEADERS)
 TFLITE_HEADERS = [
     # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
+    "//tensorflow/lite:array.h",
     "//tensorflow/lite:builtin_ops.h",
     "//tensorflow/lite/c:c_api.h",
     "//tensorflow/lite/c:c_api_experimental.h",
