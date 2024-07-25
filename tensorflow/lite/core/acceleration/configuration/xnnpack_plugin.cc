@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
-#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
@@ -34,23 +34,11 @@ class XNNPackPlugin : public DelegatePluginInterface {
   }
   explicit XNNPackPlugin(const TFLiteSettings& tflite_settings)
       : options_(TfLiteXNNPackDelegateOptionsDefault()) {
-    // LINT.IfChange(tflite_settings_to_xnnpack_delegate_options)
     const auto* xnnpack_settings = tflite_settings.xnnpack_settings();
     if (xnnpack_settings) {
       options_.num_threads = xnnpack_settings->num_threads();
-      // If xnnpack_settings->flags is zero, then leave options.flags
-      // unmodified, i.e. use the default flags (not zero).
-      // If xnnpack_settings->flags is nonzero, then use exactly
-      // those flags (i.e. discard the default flags).
-      if (xnnpack_settings->flags()) {
-        options_.flags = xnnpack_settings->flags();
-      }
-      if (xnnpack_settings->weight_cache_file_path()) {
-        options_.weight_cache_file_path =
-            xnnpack_settings->weight_cache_file_path()->c_str();
-      }
+      options_.flags = xnnpack_settings->flags();
     }
-    // LINT.ThenChange(c/xnnpack_plugin.cc:tflite_settings_to_xnnpack_delegate_options)
   }
 
  private:
