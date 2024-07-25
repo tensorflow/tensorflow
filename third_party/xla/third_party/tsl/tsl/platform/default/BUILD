@@ -303,7 +303,6 @@ cc_library(
         "//tsl/platform",
         "//tsl/platform:macros",
         "//tsl/platform:thread_annotations",
-        "//tsl/platform:types",
         "@nsync//:nsync_cpp",
     ],
 )
