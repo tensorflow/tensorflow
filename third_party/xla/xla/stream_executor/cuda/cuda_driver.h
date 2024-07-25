@@ -31,22 +31,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 
 namespace stream_executor {
 namespace gpu {
-// Formats CUresult to output prettified values into a log stream.
-static std::string ToString(CUresult result) {
-  const char* error_name;
-  if (cuGetErrorName(result, &error_name)) {
-    return absl::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
-  }
-  const char* error_string;
-  if (cuGetErrorString(result, &error_string)) {
-    return error_name;
-  }
-  return absl::StrCat(error_name, ": ", error_string);
-}
 
 // Polls (without blocking) to determine the status of an event - pending or
 // complete (or an error status).
@@ -127,12 +116,13 @@ class CreatedContexts {
   // Find device id from cuda pointer value.
   static int GetDeviceOrdinal(void* ptr) {
     int device_ordinal;
-    CUresult result = cuPointerGetAttribute(static_cast<void*>(&device_ordinal),
-                                            CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL,
-                                            reinterpret_cast<CUdeviceptr>(ptr));
-    if (result != CUDA_SUCCESS) {
+    absl::Status status = cuda::ToStatus(
+        cuPointerGetAttribute(static_cast<void*>(&device_ordinal),
+                              CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL,
+                              reinterpret_cast<CUdeviceptr>(ptr)));
+    if (!status.ok()) {
       LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr
-                 << ". Error: " << ToString(result);
+                 << ". Error: " << status;
     }
     return device_ordinal;
   }
