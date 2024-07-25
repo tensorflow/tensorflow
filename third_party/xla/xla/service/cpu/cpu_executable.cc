@@ -387,7 +387,8 @@ absl::Status CpuExecutable::ExecuteThunks(
   Thunk::ExecuteParams execute_params = {
       &*function_registry_,
       &allocations,
-      runtime::GetXfeedManager(run_options->device_ordinal()),
+      runtime::GetXfeedManager(
+          run_options->stream()->parent()->device_ordinal()),
       run_options->intra_op_thread_pool(),
       &task_runner,
       &collective_execute_params,

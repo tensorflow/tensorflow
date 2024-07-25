@@ -1377,6 +1377,7 @@ xla_cc_test(
     deps = [
         ":cpu_instruction_fusion",
         "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:transpose_folding",
         "//xla/tests:hlo_test_base",
