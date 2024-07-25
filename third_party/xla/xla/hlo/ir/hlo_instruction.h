@@ -2198,6 +2198,9 @@ class HloInstruction {
   void set_metadata_preserve_layout(bool preserve_layout) {
     metadata_->set_preserve_layout(preserve_layout);
   }
+  void set_metadata_scheduling_name(const std::string& name) {
+    metadata_->set_scheduling_name(name);
+  }
   const OpMetadata& metadata() const { return *metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only

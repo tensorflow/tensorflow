@@ -439,6 +439,9 @@ message OpMetadata {
   // Ids are 1-based to keep 0 value as representation of non-set property.
   int32 stack_frame_id = 15;
 
+  // Instruction name available upon scheduling.
+  string scheduling_name = 16;
+
   reserved 14;
 }
 

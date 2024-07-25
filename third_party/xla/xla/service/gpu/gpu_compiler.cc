@@ -2479,6 +2479,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<GpuSanitizeConstantNames>();
   }
 
+  AddHloVerifier(&main_pipeline,
+                 HloVerifierOpts{}.VerifyInstructionNameUnchanged());
   return main_pipeline.Run(module).status();
 }
 
