@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/thunk.h"
 
 #include <cstdint>
+#include <utility>
 
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/collectives_interface.h"

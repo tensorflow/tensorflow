@@ -304,7 +304,8 @@ class Thunk {
   // multiple tasks and need to signal completion when all tasks are done (see
   // ConvolutionThunk and DotThunk for examples).
   struct ExecuteState {
-    explicit ExecuteState(int64_t parallel_tasks);
+    explicit ExecuteState(int64_t num_tasks);
+    ~ExecuteState();
 
     void Notify();
 

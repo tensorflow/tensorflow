@@ -80,6 +80,7 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor/host:host_kernel_c_api",
         "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
