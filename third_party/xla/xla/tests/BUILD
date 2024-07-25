@@ -2318,7 +2318,7 @@ xla_test(
     args = ["--xla_force_host_platform_device_count=4"],
     backend_tags = {
         # This test is tagged "manual" because it requires multiple GPUs, and Forge only supports
-        # single-GPU tests. Guitar skips "manual" tests unless they're also tagged "guitar".
+        # single-GPU tests.  Guitar skips "manual" tests unless they're also tagged "guitar".
         "gpu": [
             "guitar",
             "manual",
@@ -2349,9 +2349,9 @@ xla_test(
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

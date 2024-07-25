@@ -20,17 +20,15 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "tsl/platform/statusor.h"
 
 // Tests cross-GPU operations.
 //
@@ -98,29 +96,25 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
   TF_ASSERT_OK_AND_ASSIGN(module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  // Input for replica i is
-  // {{i, i},
-  //  {i, i}}.
-  std::vector<Literal> replica_inputs;
-  for (float i = 1; i < kNumReplicas + 1; ++i) {
-    replica_inputs.push_back({LiteralUtil::CreateR2<float>({{i, i}, {i, i}})});
-    replica_inputs.push_back(LiteralUtil::CreateR2<float>({{0, 0}, {0, 1}}));
+  // Inputs for replica i are
+  // A = {{i+1, i+1},
+  //      {i+1, i+1}}, and
+  // B = {{0, 0},
+  //      {0, 1}}.
+  std::vector<Literal> inputs_a;
+  for (int64_t i = 0; i < kNumReplicas; ++i) {
+    float val = i + 1;
+    inputs_a.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          test_runner_.CreateExecutable(
-                              std::unique_ptr<HloModule>(std::move(module)),
-                              /*run_hlo_passes=*/true));
+  Literal input_b_replicated = LiteralUtil::CreateR2<float>({{0, 0}, {0, 1}});
+  std::vector<std::vector<Literal*>> inputs;
+  for (int64_t i = 0; i < kNumReplicas; ++i) {
+    inputs.push_back({&inputs_a[i], &input_b_replicated});
+  }
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      ExecuteReplicated(
-          /*executable_provider=*/[&](int64_t) { return executable.get(); },
-          /*argument_count_provider=*/[](int64_t) { return 2; },
-          /*argument_provider=*/
-          [&](int64_t replica, int64_t index) -> const Literal* {
-            return &replica_inputs[replica * 2 + index];
-          },
-          kNumReplicas, /*run_hlo_passes=*/true,
-          /*device_assignment=*/nullptr));
+      ExecuteReplicated(std::move(module), inputs, kNumReplicas,
+                        /*run_hlo_passes=*/true));
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {2, 2}}, results[0]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {3, 3}}, results[1]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {4, 4}}, results[2]);
