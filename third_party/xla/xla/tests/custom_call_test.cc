@@ -925,11 +925,6 @@ XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  // NOTE: In the current CPU implementation, the 'kInternal' status code is
-  // returned when the target is not found. This behavior differs from that of
-  // the GPU, which returns 'kUnimplemented' in such case. When the CPU adopts
-  // the thunks runtime, the status code will be unified across both backends.
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), HasSubstr("No registered implementation"));
 }
 

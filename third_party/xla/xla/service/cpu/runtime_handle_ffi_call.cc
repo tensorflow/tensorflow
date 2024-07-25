@@ -108,7 +108,7 @@ static absl::Status BuildAndCallFfi(
       ffi::FindHandler(target_name, "Host");
 
   if (!registration.ok()) {
-    return absl::UnimplementedError(
+    return absl::NotFoundError(
         absl::StrCat("No registered implementation for custom call to ",
                      target_name, " for Host."));
   }

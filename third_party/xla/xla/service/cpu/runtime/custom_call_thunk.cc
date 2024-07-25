@@ -157,11 +157,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   // Find the registered FFI handler for this target.
   auto handler = ffi::FindHandler(target_name_, "Host");
   if (!handler.ok()) {
-    // Overwrite the returned error code (kNotFound) to kInternal to match the
-    // original CPU implementation.
-    // TODO(penporn): Change this to kUnimplemented to match the GPU backend
-    // when thunks is the only runtime for CPU.
-    return Internal(
+    return NotFound(
         "No registered implementation for FFI custom call to %s for Host",
         target_name_);
   }
@@ -225,10 +221,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
   void* call_target =
       CustomCallTargetRegistry::Global()->Lookup(target_name_, "Host");
   if (!call_target) {
-    // Use kInternal to match the original CPU implementation.
-    // TODO(penporn): Change this to kUnimplemented to match the GPU backend
-    // when thunks is the only runtime for CPU.
-    return Internal(
+    return NotFound(
         "No registered implementation for untyped custom call to %s for Host",
         target_name_);
   }

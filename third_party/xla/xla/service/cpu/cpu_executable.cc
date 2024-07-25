@@ -147,7 +147,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
   if (!sym) {
-    return absl::InvalidArgumentError(
+    return absl::NotFoundError(
         absl::StrCat("Symbol ", entry_function_name, " not found."));
   }
   // getAddress can do work under the hood in the jit, so it needs to be
