@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
