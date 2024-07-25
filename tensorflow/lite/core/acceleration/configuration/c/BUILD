@@ -181,6 +181,7 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
         "@pthreadpool",
     ],
 )

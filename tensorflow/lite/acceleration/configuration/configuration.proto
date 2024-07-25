@@ -330,7 +330,9 @@ enum XNNPackFlags {
 
 message XNNPackSettings {
   optional int32 num_threads = 1;
-  optional XNNPackFlags flags = 2 [default = TFLITE_XNNPACK_DELEGATE_NO_FLAGS];
+  // If flags is unset or zero, it means use the default XNNPack delegate flags.
+  // Any other value means use exactly (and only) the flags specified.
+  optional XNNPackFlags flags = 2;
   // Path to the XNNPack cache file. XNNPack packed buffers are saved to and
   // reloaded from this cache which can reduce initialization time and the
   // packing memory footprint.
@@ -1129,4 +1131,4 @@ message BenchmarkEventStorage {
   optional BenchmarkEvent benchmark_event = 2;
 }
 
-// LINT.ThenChange(//tensorflow/lite/acceleration/configuration/testdata/configuration.proto_prev)
+// LINT.ThenChange(//tensorflow/lite/acceleration/configuration/testdata/configuration.proto_prev:all)
