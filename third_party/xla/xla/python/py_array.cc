@@ -1063,14 +1063,12 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
     const ifrt::DeviceList& src_devices = ifrt_array_ptr->sharding().devices();
     const ifrt::DeviceList& dst_devices = dst_device_lists[i];
 
-    ifrt::MemoryKind src_memory_kind = ifrt_array_ptr->sharding().memory_kind();
-    ifrt::MemoryKind dst_memory_kind =
-        CreateIfRtMemoryKindFromSharding(dst_sharding);
+    ifrt::MemoryKind src_memory_kind = ifrt::CanonicalizeMemoryKind(
+        ifrt_array_ptr->sharding().memory_kind(), src_devices.front());
+    ifrt::MemoryKind dst_memory_kind = ifrt::CanonicalizeMemoryKind(
+        CreateIfRtMemoryKindFromSharding(dst_sharding), dst_devices.front());
 
-    if (src_devices == dst_devices &&
-        (!dst_memory_kind.memory_kind().has_value() ||
-         !src_memory_kind.memory_kind().has_value() ||
-         src_memory_kind == dst_memory_kind)) {
+    if (src_devices == dst_devices && src_memory_kind == dst_memory_kind) {
       results[i] = py_arrays[i];
       continue;
     }
