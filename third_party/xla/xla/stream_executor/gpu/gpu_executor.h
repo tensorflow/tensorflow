@@ -1,3 +1,4 @@
+#include "xla/stream_executor/event_based_timer.h"
 /* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -65,8 +66,10 @@ class StreamExecutor;
 
 namespace gpu {
 
+class GpuEvent;
 class GpuKernel;
 class GpuCommandBuffer;
+class GpuStream;
 
 // CUDA-platform implementation of the platform-agnostic
 // StreamExecutor.
@@ -204,9 +207,6 @@ class GpuExecutor : public StreamExecutorCommon {
   absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
                       uint8_t pattern, uint64_t size) override;
 
-  bool HostCallback(Stream* stream,
-                    absl::AnyInvocable<absl::Status() &&> callback) override;
-
   void DeallocateStream(Stream* stream) override;
 
   absl::Status BlockHostUntilDone(Stream* stream) override;
@@ -302,13 +302,11 @@ class GpuExecutor : public StreamExecutorCommon {
 
   uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
 
- private:
-  // Host callback landing routine invoked by CUDA.
-  // data: User-provided callback provided to HostCallback() above, captured
-  //       as a std::function<void()>. Allocated/initialized inside
-  //       HostCallback() and owned and deleted by this call.
-  static void InternalHostCallback(void* data);
+  // Creates an EventBasedTimer for the given stream.
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      GpuStream* stream, bool use_delay_kernel);
 
+ private:
   // Collects metadata for the specified kernel.
   absl::Status GetKernelMetadata(GpuKernel* cuda_kernel,
                                  KernelMetadata* kernel_metadata);
@@ -333,6 +331,12 @@ class GpuExecutor : public StreamExecutorCommon {
 
   bool UnloadGpuBinary(const void* gpu_binary)
       TF_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
+  // Creates a GpuEvent for the given stream.
+  absl::StatusOr<std::unique_ptr<GpuEvent>> CreateGpuEvent(bool allow_timing);
+
+  // Returns true if a delay kernel is supported for the given stream.
+  absl::StatusOr<bool> DelayKernelIsSupported(GpuStream* stream);
 
   // Guards the on-disk-module mapping.
   absl::Mutex disk_modules_mu_;

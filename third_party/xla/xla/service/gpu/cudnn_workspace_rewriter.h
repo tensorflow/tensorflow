@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_CUDNN_WORKSPACE_REWRITER_H_
 #define XLA_SERVICE_GPU_CUDNN_WORKSPACE_REWRITER_H_
 
-#include <string>
-
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -34,9 +31,6 @@ namespace gpu {
 // and serialize so we can use it later
 class CuDnnWorkspaceRewriter : public HloModulePass {
  public:
-  // <HLO computation fingerprint, serialized compiled cuDNN graph>.
-  using BinaryMap = absl::flat_hash_map<std::string, std::string>;
-
   explicit CuDnnWorkspaceRewriter(se::StreamExecutor& stream_exec)
       : dnn_support_(*stream_exec.AsDnn()) {}
 

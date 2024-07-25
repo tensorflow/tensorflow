@@ -2225,16 +2225,19 @@ func.func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHLO-LABEL: @acos
 func.func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  chlo.acos %arg0 : tensor<2xf32>
-// CHLO: %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
-// CHLO:   %[[VAL_1:.*]] = mhlo.constant dense<2.000000e+00> : tensor<2xf32>
-// CHLO:   %[[VAL_2:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
-// CHLO:   %[[VAL_3:.*]] = mhlo.subtract %[[VAL_2]], %[[VAL_0]] : tensor<2xf32>
-// CHLO:   %[[VAL_4:.*]] = mhlo.add %[[VAL_2]], %[[VAL_0]] : tensor<2xf32>
-// CHLO:   %[[VAL_5:.*]] = mhlo.multiply %[[VAL_3]], %[[VAL_4]] : tensor<2xf32>
-// CHLO:   %[[VAL_6:.*]] = mhlo.sqrt %[[VAL_5]] : tensor<2xf32>
-// CHLO:   %[[VAL_7:.*]] = mhlo.atan2 %[[VAL_6]], %[[VAL_4]] : tensor<2xf32>
-// CHLO:   %[[VAL_8:.*]] = mhlo.multiply %[[VAL_1]], %[[VAL_7]] : tensor<2xf32>
-// CHLO:   return %[[VAL_8]] : tensor<2xf32>
+// CHLO:   %[[VAL_1:.*]] = mhlo.compare NE, {{.*}}
+// CHLO:   %[[VAL_3:.*]] = mhlo.constant dense<2.000000e+00>
+// CHLO:   %[[VAL_4:.*]] = mhlo.constant dense<1.000000e+00>
+// CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
+// CHLO:   %[[VAL_6:.*]] = mhlo.subtract %[[VAL_4]], %[[VAL_5]]
+// CHLO:   %[[VAL_7:.*]] = mhlo.sqrt %[[VAL_6]]
+// CHLO:   %[[VAL_8:.*]] = mhlo.constant dense<1.000000e+00>
+// CHLO:   %[[VAL_9:.*]] = mhlo.add %[[VAL_8]], %arg0
+// CHLO:   %[[VAL_10:.*]] = mhlo.atan2 %[[VAL_7]], %[[VAL_9]]
+// CHLO:   %[[VAL_11:.*]] = mhlo.multiply %[[VAL_3]], %[[VAL_10]]
+// CHLO:   %[[VAL_12:.*]] = mhlo.constant dense<3.14159274>
+// CHLO:   %[[VAL_13:.*]] = mhlo.select %[[VAL_1]], %[[VAL_11]], %[[VAL_12]]
+// CHLO:       return %[[VAL_13]] : tensor<2xf32>
   %0 = "tf.Acos"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
 }

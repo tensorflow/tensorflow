@@ -20,11 +20,15 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 
 #include <cstdint>
+#include <memory>
 #include <variant>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
@@ -90,13 +94,9 @@ class GpuStream : public StreamCommon {
   // into the NVIDIA library causes difficult-to-understand faults).
   GpuStreamHandle gpu_stream() const {
     DCHECK(gpu_stream_ != nullptr);
-    return const_cast<GpuStreamHandle>(gpu_stream_);
+    return gpu_stream_;
   }
 
-  // TODO(timshen): Migrate away and remove this function.
-  GpuStreamHandle cuda_stream() const { return gpu_stream(); }
-
-  GpuExecutor* parent() const { return parent_; }
   absl::Status WaitFor(Stream* other) override;
   absl::Status WaitFor(Event* event) override;
   absl::Status RecordEvent(Event* event) override;
@@ -109,8 +109,12 @@ class GpuStream : public StreamCommon {
                       uint64_t size) override;
   absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback) override;
 
   void set_name(absl::string_view name) override;
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      bool use_delay_kernel) override;
 
  private:
   GpuExecutor* parent_;         // Executor that spawned this stream.

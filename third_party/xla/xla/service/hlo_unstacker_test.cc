@@ -1016,5 +1016,63 @@ TEST_F(UnstackerTest, UnstackLoopFeedingLoopWithDUSFusionWithPad) {
   EXPECT_TRUE(unstacked);
 }
 
+TEST_F(UnstackerTest, UnstackSingleLoopWithDSFusionWithAdd) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  
+  add.2771.reduce_sub_computation {
+    lhs.44 = bf16[] parameter(0)
+    rhs.44 = bf16[] parameter(1)
+    ROOT add.3079 = bf16[] add(lhs.44, rhs.44)
+  }
+  
+  fused_computation.75.clone {
+    param_0.31658 = bf16[2,4096]{1,0:T(8,128)(2,1)} parameter(0)
+    param_1.26202 = s32[]{:T(128)} parameter(1)
+    constant.47557 = s32[]{:T(128)} constant(0)
+    dynamic-slice.12289 = bf16[1,4096]{1,0:T(2,128)(2,1)} dynamic-slice(param_0.31658, param_1.26202, constant.47557), dynamic_slice_sizes={1,4096}
+    constant.47559 = bf16[]{:T(256)} constant(1)
+    broadcast.39214 = bf16[1,4096]{1,0:T(2,128)(2,1)} broadcast(constant.47559), dimensions={}
+    add.13176 = bf16[1,4096]{1,0:T(2,128)(2,1)} add(dynamic-slice.12289, broadcast.39214)
+    constant.47558 = bf16[] constant(-0)
+    ROOT reduce.8210 = bf16[4096]{0:T(1024)(128)(2,1)} reduce(add.13176, constant.47558), dimensions={0}, to_apply=add.2771.reduce_sub_computation
+  } // fused_computation.75.clone
+
+  first.body {
+    wide.param.29 = (s32[]{:T(128)}, bf16[2,4096]{1,0:T(8,128)(2,1)}) parameter(0)
+    get-tuple-element.12177 = s32[]{:T(128)} get-tuple-element(wide.param.29), index=0
+    constant.12144..sunk.2 = s32[]{:T(128)} constant(1)
+    add.4517 = s32[]{:T(128)} add(get-tuple-element.12177, constant.12144..sunk.2)
+    get-tuple-element.12178 = bf16[2,4096]{1,0:T(8,128)(2,1)} get-tuple-element(wide.param.29), index=1
+    fusion.2381 = bf16[4096]{0:T(1024)(128)(2,1)} fusion(get-tuple-element.12178, get-tuple-element.12177), kind=kLoop, calls=fused_computation.75.clone
+    tmp = bf16[4096]{0:T(1024)(128)(2,1)} add(fusion.2381, fusion.2381)
+    ROOT tuple.949 = (s32[]{:T(128)}, bf16[2,4096]{1,0:T(8,128)(2,1)}) tuple(add.4517, get-tuple-element.12178)
+  } // wide.region_54.2652.clone_spmd
+
+  first.cond {
+    wide.param.28 = (s32[]{:T(128)}, bf16[2,4096]{1,0:T(8,128)(2,1)}) parameter(0)
+    get-tuple-element.12167 = s32[]{:T(128)} get-tuple-element(wide.param.28), index=0
+    constant.12162 = s32[]{:T(128)} constant(2)
+    ROOT compare.1815 = pred[]{:T(512)} compare(get-tuple-element.12167, constant.12162), direction=LT
+  }
+
+  ENTRY main {
+    p0 = bf16[2,4096]{1,0:T(8,128)(2,1)} parameter(0)
+    init = s32[]{:T(128)} constant(0)
+    first.input = tuple(init, p0)
+    first.out = while(first.input), condition=first.cond , body=first.body
+    ROOT o1 = s32[]{:T(128)} get-tuple-element(first.out), index=0
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto original = module->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
+  EXPECT_TRUE(unstacked);
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
+                                      std::nullopt, false));
+}
+
 }  // namespace
 }  // namespace xla

@@ -118,56 +118,56 @@ namespace scf = ::mlir::scf;
 
 // HLO opcodes that we never support.
 static auto& kUnsupportedOps =
-    *new absl::flat_hash_set<HloOpcode>{HloOpcode::kAddDependency,
-                                        HloOpcode::kAfterAll,
-                                        HloOpcode::kAllGather,
-                                        HloOpcode::kAllGatherDone,
-                                        HloOpcode::kAllGatherStart,
-                                        HloOpcode::kAllReduce,
-                                        HloOpcode::kAllReduceDone,
-                                        HloOpcode::kAllReduceStart,
-                                        HloOpcode::kAllToAll,
-                                        HloOpcode::kAsyncDone,
-                                        HloOpcode::kAsyncStart,
-                                        HloOpcode::kAsyncUpdate,
-                                        HloOpcode::kBatchNormGrad,
-                                        HloOpcode::kBatchNormInference,
-                                        HloOpcode::kBatchNormTraining,
-                                        HloOpcode::kCholesky,
-                                        HloOpcode::kCollectivePermute,
-                                        HloOpcode::kCollectivePermuteDone,
-                                        HloOpcode::kCollectivePermuteStart,
-                                        HloOpcode::kCopyDone,
-                                        HloOpcode::kCopyStart,
-                                        HloOpcode::kCustomCall,
-                                        HloOpcode::kDomain,
-                                        HloOpcode::kDynamicReshape,
-                                        HloOpcode::kFft,
-                                        HloOpcode::kFusion,
-                                        HloOpcode::kGetDimensionSize,
-                                        HloOpcode::kOptimizationBarrier,
-                                        HloOpcode::kInfeed,
-                                        HloOpcode::kOutfeed,
-                                        HloOpcode::kPartitionId,
-                                        HloOpcode::kRecv,
-                                        HloOpcode::kRecvDone,
-                                        HloOpcode::kReduceScatter,
-                                        HloOpcode::kReplicaId,
-                                        HloOpcode::kRng,
-                                        HloOpcode::kRngBitGenerator,
-                                        HloOpcode::kRngGetAndUpdateState,
-                                        HloOpcode::kScatter,
-                                        HloOpcode::kSelectAndScatter,
-                                        HloOpcode::kSend,
-                                        HloOpcode::kSendDone,
-                                        HloOpcode::kSetDimensionSize,
-                                        HloOpcode::kSort,
-                                        HloOpcode::kTopK,
-                                        HloOpcode::kTriangularSolve,
-                                        HloOpcode::kWhile,
-                                        HloOpcode::kConditional,
-                                        HloOpcode::kStochasticConvert,
-                                        HloOpcode::kCall};
+    *new llvm::DenseSet<HloOpcode>{HloOpcode::kAddDependency,
+                                   HloOpcode::kAfterAll,
+                                   HloOpcode::kAllGather,
+                                   HloOpcode::kAllGatherDone,
+                                   HloOpcode::kAllGatherStart,
+                                   HloOpcode::kAllReduce,
+                                   HloOpcode::kAllReduceDone,
+                                   HloOpcode::kAllReduceStart,
+                                   HloOpcode::kAllToAll,
+                                   HloOpcode::kAsyncDone,
+                                   HloOpcode::kAsyncStart,
+                                   HloOpcode::kAsyncUpdate,
+                                   HloOpcode::kBatchNormGrad,
+                                   HloOpcode::kBatchNormInference,
+                                   HloOpcode::kBatchNormTraining,
+                                   HloOpcode::kCholesky,
+                                   HloOpcode::kCollectivePermute,
+                                   HloOpcode::kCollectivePermuteDone,
+                                   HloOpcode::kCollectivePermuteStart,
+                                   HloOpcode::kCopyDone,
+                                   HloOpcode::kCopyStart,
+                                   HloOpcode::kCustomCall,
+                                   HloOpcode::kDomain,
+                                   HloOpcode::kDynamicReshape,
+                                   HloOpcode::kFft,
+                                   HloOpcode::kFusion,
+                                   HloOpcode::kGetDimensionSize,
+                                   HloOpcode::kOptimizationBarrier,
+                                   HloOpcode::kInfeed,
+                                   HloOpcode::kOutfeed,
+                                   HloOpcode::kPartitionId,
+                                   HloOpcode::kRecv,
+                                   HloOpcode::kRecvDone,
+                                   HloOpcode::kReduceScatter,
+                                   HloOpcode::kReplicaId,
+                                   HloOpcode::kRng,
+                                   HloOpcode::kRngBitGenerator,
+                                   HloOpcode::kRngGetAndUpdateState,
+                                   HloOpcode::kScatter,
+                                   HloOpcode::kSelectAndScatter,
+                                   HloOpcode::kSend,
+                                   HloOpcode::kSendDone,
+                                   HloOpcode::kSetDimensionSize,
+                                   HloOpcode::kSort,
+                                   HloOpcode::kTopK,
+                                   HloOpcode::kTriangularSolve,
+                                   HloOpcode::kWhile,
+                                   HloOpcode::kConditional,
+                                   HloOpcode::kStochasticConvert,
+                                   HloOpcode::kCall};
 
 bool IsUnsupportedGather(const HloInstruction* instr) {
   // We assume gather simplifier ran, so we don't need to support all gather
@@ -788,8 +788,19 @@ absl::StatusOr<SmallVector<Value, 2>> GetOperands(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& builder) {
   SmallVector<Value, 2> operands;
-  if (HloInstruction::IsOpElementwise(instr->opcode()) ||
-      instr->opcode() == HloOpcode::kMap) {
+  bool is_elementwise = HloInstruction::IsOpElementwise(instr->opcode()) ||
+                        instr->opcode() == HloOpcode::kMap;
+  if (is_elementwise && instr->shape().IsArray()) {
+    // Check if the instruction is really elementwise. There may be some
+    // broadcasting.
+    int64_t rank = instr->shape().rank();
+    is_elementwise &=
+        absl::c_all_of(instr->operands(), [&](const HloInstruction* operand) {
+          return operand->shape().rank() == rank;
+        });
+  }
+
+  if (is_elementwise) {
     // Avoid materializing the input indices for elementwise ops.
     for (int64_t operand_number = 0; operand_number < instr->operand_count();
          ++operand_number) {
@@ -1206,15 +1217,14 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(compute_capability);
 
-  return !HloFindIf(
-      fusion.GetRoots(), fusion, [=](HloInstructionAdaptor instr) {
-        return !absl::c_all_of(instr.instruction().called_computations(),
-                               [&](const HloComputation* called) {
-                                 return IsHloConversionSupported(
-                                     called, compute_capability);
-                               }) ||
-               !IsHloOpSupported(&instr.instruction(), cuda_compute_capability);
-      });
+  return !HloAnyOf(fusion, [=](HloInstructionAdaptor instr) {
+    return !absl::c_all_of(instr.instruction().called_computations(),
+                           [&](const HloComputation* called) {
+                             return IsHloConversionSupported(
+                                 called, compute_capability);
+                           }) ||
+           !IsHloOpSupported(&instr.instruction(), cuda_compute_capability);
+  });
 }
 
 ValueRange ProvideParameter(const PartitionedComputation& computation,

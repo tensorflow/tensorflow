@@ -1747,6 +1747,10 @@ void HloComputation::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
 }
 
+void HloComputation::UniquifyName(HloModule* module) {
+  UniquifyName(&module->computation_name_uniquer());
+}
+
 HloInstruction* HloComputation::GetInstructionWithName(absl::string_view name) {
   auto instructions_in_computation = instructions();
   auto it = absl::c_find_if(

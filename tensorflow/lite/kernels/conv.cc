@@ -411,9 +411,11 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   const bool is_hybrid =
       (input->type == kTfLiteFloat32 &&
-       (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8));
+       (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
+        filter->type == kTfLiteInt4));
 
-  if (is_hybrid && filter->type == kTfLiteInt8 &&
+  if (is_hybrid &&
+      (filter->type == kTfLiteInt8 || filter->type == kTfLiteInt4) &&
       filter->quantization.type == kTfLiteAffineQuantization &&
       filter->quantization.params &&
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params)
@@ -1220,7 +1222,8 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK_EQ(input_type, input->type);
   switch (input_type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
-      if (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8) {
+      if (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
+          filter->type == kTfLiteInt4) {
         if (data->is_hybrid_per_channel ||
             // TODO(b/162870360): Fallback to PerChannel implementation
             // before we have grouped hybrid convolution.

@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
 #include "xla/permutation_util.h"
-#include "xla/service/gpu/triton_support.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

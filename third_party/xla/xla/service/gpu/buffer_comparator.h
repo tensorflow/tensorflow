@@ -34,8 +34,8 @@ class BufferComparator {
   BufferComparator(const BufferComparator&) = delete;
   BufferComparator(BufferComparator&&) = default;
 
-  BufferComparator(const Shape& shape, const HloModuleConfig& config,
-                   double tolerance = 0.1);
+  explicit BufferComparator(const Shape& shape, double tolerance = 0.1,
+                            bool verbose = true);
 
   // Returns true if the two buffers compare equal. The definition of "equal"
   // is:
@@ -51,8 +51,8 @@ class BufferComparator {
                                     se::DeviceMemoryBase expected) const;
  private:
   Shape shape_;
-  HloModuleConfig config_;
-  double relative_tol_;
+  double relative_tol_;  // relative tolerance for comparison
+  bool verbose_;         // whether to print out error message on mismatch
 };
 
 namespace buffer_comparator {

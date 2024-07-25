@@ -518,7 +518,6 @@ bzl_library(
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@local_tsl//third_party/mkl_dnn:build_defs_bzl",
         "@local_tsl//tsl/platform:rules_cc_bzl",
     ],
 )

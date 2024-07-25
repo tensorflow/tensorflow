@@ -29,9 +29,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/triton_support.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -509,7 +509,7 @@ ENTRY main {
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
-       CanNotFuseSoftmaxDiamondWithNonConstantReducerIdentity) {
+       CanNotFuseSoftmaxDiamondWithParameterReducerIdentity) {
   const std::string hlo_string = R"(
 HloModule softmax
 max_computation {
@@ -1298,7 +1298,8 @@ max_computation {
 }
 ENTRY main {
   param_0 = f32[127,125]{1,0} parameter(0)
-  identity = f32[] parameter(1)
+  identity_f8 = f8e5m2[] parameter(1)
+  identity = f32[] convert(identity_f8)
   reduce = f32[127]{0} reduce(param_0, identity), dimensions={1}, to_apply=max_computation
   broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
   ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
@@ -1319,15 +1320,15 @@ ENTRY main {
           std::get<FusionDecision>(decision).Explain();
       EXPECT_THAT(
           actual_decision,
-          AnyOf(HasSubstr("Root is not elementwise binary"),
-                HasSubstr("Reduction init value should be a constant or a "
-                          "convert of a constant.")));
+          AnyOf(
+              HasSubstr("Root is not elementwise binary"),
+              HasSubstr("identity is not a constant or a supported convert")));
       unmatched++;
     } else {
       matched++;
     }
   }
-  EXPECT_EQ(unmatched, 5);
+  EXPECT_EQ(unmatched, 6);
   EXPECT_EQ(matched, 0);
 }
 

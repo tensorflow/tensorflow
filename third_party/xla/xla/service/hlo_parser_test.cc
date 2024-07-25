@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1853,6 +1854,25 @@ ENTRY AllReduceWithSubgroups {
 )",
 /*replica_count=*/4,
 },
+// all-reduce with subgroups in iota group list format
+{
+"AllReduceWithSubgroupsIotaList",
+R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=20
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY AllReduceWithSubgroupsIotaList {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups=[2,10]<=[20], to_apply=add
+}
+
+)",
+/*replica_count=*/20,
+},
 // all-reduce with constrained layout
 {
 "AllReduceWithLayout",
@@ -1964,6 +1984,19 @@ ENTRY AllGatherWithSubgroups {
 )",
 /*replica_count=*/4,
 },
+// all-gather with subgroups in iota list format.
+{
+"AllGatherWithSubgroupsIotaList",
+R"(HloModule AllGatherWithSubgroupsIotaList, entry_computation_layout={(f32[128,32]{0,1})->f32[128,320]{0,1}}, replica_count=30
+
+ENTRY AllGatherWithSubgroupsIotaList {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,320]{0,1} all-gather(input), replica_groups=[3,10]<=[6,5]T(1,0), dimensions={1}
+}
+
+)",
+/*replica_count=*/30,
+},
 // all-to-all
 {
 "AllToAll",
@@ -1989,6 +2022,19 @@ ENTRY AllToAllWithSubgroups {
 
 )",
 /*replica_count=*/4,
+},
+// all-to-all with subgroups in iota list format.
+{
+"AllToAllWithSubgroupsIotaList",
+R"(HloModule AllToAllWithSubgroupsIotaList, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=32
+
+ENTRY AllToAllWithSubgroupsIotaList {
+  p0 = f32[128,32]{0,1} parameter(0)
+  ROOT a2a = f32[128,32]{0,1} all-to-all(p0), replica_groups=[4,8]<=[4,8]T(1,0), dimensions={0}
+}
+
+)",
+/*replica_count=*/40
 },
 // collective-broadcast
 {

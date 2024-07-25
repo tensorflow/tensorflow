@@ -56,12 +56,12 @@ limitations under the License.
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -948,21 +948,6 @@ bool BatchnormSpatialPersistentEnabled() {
   return is_enabled;
 }
 
-bool RequireCudnnDeterminism(const NumericOptions& numeric_options) {
-  static bool cudnn_deterministic_env_var = [] {
-    // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
-    bool cudnn_deterministic = false;
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
-                                        /*default_val=*/false,
-                                        &cudnn_deterministic));
-    return cudnn_deterministic;
-  }();
-  bool require_determinism =
-      cudnn_deterministic_env_var || numeric_options.require_determinism;
-  VLOG(5) << "RequireCudnnDeterminism: " << require_determinism;
-  return require_determinism;
-}
-
 // A helper function to decide whether to force the default conv algorithm.
 bool ConvUseDefaultAlgorithm() {
   static bool use_default = [] {
@@ -1100,7 +1085,7 @@ class CudnnPoolingDescriptor {
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64_t, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
-    const auto cudnn_max_pooling_mode = RequireCudnnDeterminism(numeric_options)
+    const auto cudnn_max_pooling_mode = numeric_options.require_determinism
                                             ? CUDNN_POOLING_MAX_DETERMINISTIC
                                             : CUDNN_POOLING_MAX;
     CHECK_CUDNN_OK(cudnnSetPoolingNdDescriptor(
@@ -2255,7 +2240,7 @@ absl::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormBackwardWorkspace(
 
 // Populates the profile result if not empty.
 static absl::Status PopulateProfileFromTimer(
-    std::optional<GpuTimer>& timer, const dnn::AlgorithmDesc& algorithm,
+    EventBasedTimer* timer, const dnn::AlgorithmDesc& algorithm,
     dnn::ProfileResult* profile_result,
     std::optional<uint64_t> scratch_size = std::nullopt) {
   if (profile_result) {
@@ -2306,13 +2291,12 @@ absl::Status CudnnSupport::DoRnnForwardImpl(
       stream, cudnn, rnn_desc, model_dims, input_desc, workspace_allocator,
       reserve_space_allocator, is_training, &workspace, &reserve_space));
 
-  const bool is_profiling = output_profile_result != nullptr;
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(
-          stream,
-          output_profile_result && output_profile_result->warmup_run_executed(),
-          is_profiling));
+  std::unique_ptr<EventBasedTimer> timer;
+  if (output_profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(timer,
+                        stream->CreateEventBasedTimer(
+                            output_profile_result->warmup_run_executed()));
+  }
 
   if (input_desc.is_var_seq_lengths()) {
     // In CUDNN v8, the cudnnRNNForward*** and cudnnRNNForward***Ex have been
@@ -2409,9 +2393,9 @@ absl::Status CudnnSupport::DoRnnForwardImpl(
 #endif  // CUDNN_VERSION >= 90000
   }
 
-  if (is_profiling) {
+  if (timer != nullptr) {
     TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
-        timer, *rnn_desc.algorithm_config().algorithm(),
+        timer.get(), *rnn_desc.algorithm_config().algorithm(),
         output_profile_result));
   }
 
@@ -2460,13 +2444,12 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
                                         input_desc, workspace_allocator,
                                         nullptr, true, &workspace, nullptr));
 
-  const bool is_profiling = output_profile_result != nullptr;
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(
-          stream,
-          output_profile_result && output_profile_result->warmup_run_executed(),
-          is_profiling));
+  std::unique_ptr<EventBasedTimer> timer;
+  if (output_profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(timer,
+                        stream->CreateEventBasedTimer(
+                            output_profile_result->warmup_run_executed()));
+  }
 
   if (input_desc.is_var_seq_lengths()) {
     // In CUDNN v8, the cudnnRNNBackward*** and cudnnRNNBackward***Ex have
@@ -2604,9 +2587,9 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
 #endif  // CUDNN_VERSION >= 90000
   }
 
-  if (is_profiling) {
+  if (timer != nullptr) {
     TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
-        timer, *rnn_desc.algorithm_config().algorithm(),
+        timer.get(), *rnn_desc.algorithm_config().algorithm(),
         output_profile_result));
   }
 
@@ -5203,10 +5186,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
         .set_uid(CudnnfMHAUid::P_ID);
   }
   CudnnGraph cudnnGraph(std::move(graph));
-  TF_ASSIGN_OR_RETURN(bool supported, cudnnGraph.Prepare(dnn_support));
-  if (!supported) {
-    return absl::InternalError("cuDNN graph is not supported.");
-  }
+  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(dnn_support));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
 
   if (VLOG_IS_ON(4)) {
@@ -5422,10 +5402,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
       .set_data_type(ioDataType);
 
   CudnnGraph cudnnGraph(std::move(graph));
-  TF_ASSIGN_OR_RETURN(bool supported, cudnnGraph.Prepare(dnn_support));
-  if (!supported) {
-    return absl::InternalError("cuDNN graph is not supported.");
-  }
+  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(dnn_support));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
 
   if (VLOG_IS_ON(4)) {
@@ -5589,12 +5566,11 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                      ? static_cast<void*>(&dbeta)
                      : static_cast<void*>(&fbeta);
 
-    const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(
-            stream, profile_result && profile_result->warmup_run_executed(),
-            is_profiling));
+    std::unique_ptr<EventBasedTimer> timer;
+    if (profile_result != nullptr) {
+      TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                     profile_result->warmup_run_executed()));
+    }
 
     const auto get_fwd_bugs = [&]() -> absl::Status {
 #if CUDNN_VERSION < 8000
@@ -5671,9 +5647,9 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                                      static_cast<int>(kind_));
     }
 
-    if (is_profiling) {
-      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, algo, profile_result,
-                                                  scratch_memory.size()));
+    if (timer != nullptr) {
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+          timer.get(), algo, profile_result, scratch_memory.size()));
     }
 
     return absl::OkStatus();
@@ -6035,21 +6011,20 @@ class CudnnExecutionPlanRunner<void(Args...)>
             << "\nWorkspace size in bytes: " << workspace_size
             << "\nVariantPack: " << variantPack.describe();
 
-    const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(
-            stream, profile_result && profile_result->warmup_run_executed(),
-            is_profiling));
+    std::unique_ptr<EventBasedTimer> timer;
+    if (profile_result != nullptr) {
+      TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                     profile_result->warmup_run_executed()));
+    }
 
     cudnnStatus_t status = cudnnBackendExecute(
         cudnn.handle(), plan_.get_raw_desc(), variantPack.get_raw_desc());
     RETURN_IF_CUDNN_ERROR(status);
 
-    if (is_profiling) {
+    if (timer != nullptr) {
       TF_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
-      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, desc, profile_result,
-                                                  scratch_memory.size()));
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+          timer.get(), desc, profile_result, scratch_memory.size()));
 
       VLOG(4) << "cudnn op with plan " << plan_.getTag()
               << ", workspace_size=" << workspace_size << " -> "
@@ -6221,16 +6196,16 @@ absl::Status CreateOpRunners(
     bool need_side_input, const NumericOptions& numeric_options) {
   cudnn_frontend::EngineConfigList filtered_configs;
   const bool disable_winograd = !CudnnEnvVar<WinogradNonfused>::IsEnabled();
-  const bool disable_nondeterminism = RequireCudnnDeterminism(numeric_options);
   const bool disable_tensor_core =
       !IsTensorMathEnabled(stream, input_type, numeric_options.allow_tf32);
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
     return GenericEngineFilter(engine_config, disable_winograd,
-                               disable_nondeterminism, disable_tensor_core);
+                               numeric_options.require_determinism,
+                               disable_tensor_core);
   };
   VLOG(4) << "Filtering engine configs with disable_winograd="
           << disable_winograd
-          << ", disable_nondeterminism=" << disable_nondeterminism
+          << ", disable_nondeterminism=" << numeric_options.require_determinism
           << ", disable_tensor_core=" << disable_tensor_core;
 
   std::array<std::string, 1> heur_mode = {use_fallback ? "heuristics_fallback"
@@ -6309,7 +6284,7 @@ absl::Status CreateOpRunners(
         std::move(runner_or).value()));
 
     // We will use the first working plan when determinism is required.
-    if (RequireCudnnDeterminism(numeric_options)) {
+    if (numeric_options.require_determinism) {
       break;
     }
   }
@@ -6616,12 +6591,12 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
     }
 
     auto algo = MakeAlgorithmDesc();
+    std::unique_ptr<EventBasedTimer> timer;
 
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(
-            stream, profile_result && profile_result->warmup_run_executed(),
-            profile_result != nullptr));
+    if (profile_result != nullptr) {
+      TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                     profile_result->warmup_run_executed()));
+    }
     auto side_input_data_ptr = (side_input_scale_ == 0)
                                    ? output_data.opaque()
                                    : side_input_data.opaque();
@@ -6675,9 +6650,9 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
     }
     RETURN_IF_CUDNN_ERROR(status);
 
-    if (profile_result) {
-      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, algo, profile_result,
-                                                  scratch_memory.size()));
+    if (timer != nullptr) {
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+          timer.get(), algo, profile_result, scratch_memory.size()));
       VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo)
               << ", tensor_ops_enabled=" << tensor_ops_enabled_
               << ", workspace_size=" << scratch_memory.size() << " -> "
@@ -7369,7 +7344,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
-  if (!RequireCudnnDeterminism(numeric_options)) {
+  if (numeric_options.require_determinism) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_0);
   }
 
@@ -7409,7 +7384,7 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
-  if (!RequireCudnnDeterminism(numeric_options)) {
+  if (!numeric_options.require_determinism) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0);
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3);
   }
@@ -7947,7 +7922,7 @@ absl::Status CudnnSupport::DoPrepareForCtcLoss(
   // Try running with `algo`, if successful then pick it. The
   // non-deterministic algorithm is first and thus preferentially picked
   // when determinism is not required.
-  auto algo = RequireCudnnDeterminism(numeric_options)
+  auto algo = numeric_options.require_determinism
                   ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
                   : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC;
   cudnnStatus_t status = cudnnGetCTCLossWorkspaceSize(
@@ -7959,7 +7934,7 @@ absl::Status CudnnSupport::DoPrepareForCtcLoss(
       /*algo=*/algo,
       /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
       /*sizeInBytes=*/&workspace_size_in_bytes);
-  if (RequireCudnnDeterminism(numeric_options)) {
+  if (numeric_options.require_determinism) {
     RETURN_IF_CUDNN_ERROR(status);
   }
 
@@ -8378,18 +8353,15 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
-absl::StatusOr<bool> CudnnGraph::Prepare(dnn::DnnSupport& dnn_support) {
+absl::Status CudnnGraph::Prepare(dnn::DnnSupport& dnn_support) {
   const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
   TF_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetLocalHandle());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn->handle()));
   RETURN_IF_CUDNN_FRONTEND_ERROR(
       graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}));
-  if (auto result = graph_.check_support(cudnn->handle()); result.is_bad()) {
-    VLOG(3) << result.get_message();
-    return false;
-  }
-  return true;
+  RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.check_support(cudnn->handle()));
+  return absl::OkStatus();
 }
 
 absl::Status CudnnGraph::Build(dnn::DnnSupport& dnn_support,

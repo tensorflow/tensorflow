@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <ios>
 #include <memory>
 #include <optional>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -62,12 +64,14 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_runtime.h"
+#include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -104,6 +108,18 @@ bool FLAGS_prefer_cubin_to_ptx = true;
 namespace stream_executor {
 namespace gpu {
 
+namespace {
+
+bool ShouldLaunchDelayKernel() {
+  // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
+  static bool value = [] {
+    const char* blocking = std::getenv("CUDA_LAUNCH_BLOCKING");
+    return !blocking || std::string_view{blocking} != "1";
+  }();
+  return value;
+}
+
+}  // namespace
 static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<GpuEvent*>(event);
@@ -145,6 +161,16 @@ absl::Status GpuExecutor::Init() {
   TF_RETURN_IF_ERROR(
       GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_));
   return absl::OkStatus();
+}
+
+absl::StatusOr<bool> GpuExecutor::DelayKernelIsSupported(GpuStream* stream) {
+  // Check the assumption that this device supports unified addressing,
+  // otherwise skip the delay kernel
+  TF_ASSIGN_OR_RETURN(int status,
+                      GpuDriver::GetDeviceAttribute(
+                          CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING, device_));
+
+  return static_cast<bool>(status);
 }
 
 absl::Status GpuExecutor::LoadModuleFromCuBin(const char* cubin,
@@ -263,6 +289,32 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   kernel->set_name(*kernel_name);
   kernel->set_args_packing(spec.kernel_args_packing());
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
+  GpuSemaphore semaphore{};
+  if (!use_delay_kernel) {
+    LOG(WARNING)
+        << "Skipping the delay kernel, measurement accuracy will be reduced";
+  }
+
+  if (use_delay_kernel && ShouldLaunchDelayKernel()) {
+    TF_ASSIGN_OR_RETURN(bool is_supported, DelayKernelIsSupported(stream));
+
+    if (is_supported) {
+      TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(stream));
+    } else {
+      LOG(WARNING) << "Skipping the delay kernel as it's not supported, "
+                      "measurement accuracy will be reduced.";
+    }
+  }
+  TF_ASSIGN_OR_RETURN(auto start_event, CreateGpuEvent(/*allow_timing=*/true));
+  TF_ASSIGN_OR_RETURN(auto stop_event, CreateGpuEvent(/*allow_timing=*/true));
+  TF_RETURN_IF_ERROR(start_event->Record(stream->gpu_stream()));
+  return std::make_unique<GpuTimer>(gpu_context(), std::move(start_event),
+                                    std::move(stop_event), stream,
+                                    std::move(semaphore));
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -575,25 +627,6 @@ absl::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
                                             AsGpuStreamValue(stream));
 }
 
-bool GpuExecutor::HostCallback(Stream* stream,
-                               absl::AnyInvocable<absl::Status() &&> callback) {
-  auto callback_ptr =
-      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
-        absl::Status s = std::move(cb)();
-        if (!s.ok()) {
-          LOG(WARNING) << "Host callback failed: " << s;
-        }
-      });
-  return GpuDriver::AddStreamCallback(context_, AsGpuStreamValue(stream),
-                                      InternalHostCallback, callback_ptr);
-}
-
-/* static */ void GpuExecutor::InternalHostCallback(void* data) {
-  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
-  std::move (*callback)();
-  delete callback;
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
@@ -728,10 +761,15 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
-  auto gpu_event = std::make_unique<CudaEvent>(this);
-  TF_RETURN_IF_ERROR(gpu_event->Init());
+absl::StatusOr<std::unique_ptr<GpuEvent>> GpuExecutor::CreateGpuEvent(
+    bool allow_timing) {
+  auto gpu_event = std::make_unique<CudaEvent>(gpu_context());
+  TF_RETURN_IF_ERROR(gpu_event->Init(allow_timing));
   return std::move(gpu_event);
+}
+
+absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
+  return CreateGpuEvent(/*allow_timing=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(

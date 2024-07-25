@@ -50,8 +50,6 @@ class GpuSpmdPartitioningTest : public HloTestBase,
     config.set_num_partitions(num_devices);
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
-    EXPECT_FALSE(config.debug_options().xla_use_shardy())
-        << "Shardy not supported yet";
 
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     se::CudaComputeCapability ampere(8, 0);
@@ -75,10 +73,6 @@ class GpuSpmdPartitioningTest : public HloTestBase,
 };
 
 TEST_P(GpuSpmdPartitioningTest, DotWithEntryComputationLayout) {
-  if (UseShardy()) {
-    GTEST_SKIP() << "Shardy not supported yet";
-  }
-
   const char* const kHloModule = R"(
   HloModule module,
    entry_computation_layout={(f32[8,16]{0,1}, f32[16,24]{1,0})

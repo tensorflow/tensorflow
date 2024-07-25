@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/layout_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
@@ -31,21 +32,25 @@ limitations under the License.
 
 namespace xla {
 
-ShapedBuffer::ShapedBuffer(Shape on_device_shape, int device_ordinal)
+ShapedBuffer::ShapedBuffer(Shape on_device_shape, int device_ordinal,
+                           int physical_device_ordinal)
     : on_device_shape_(std::move(on_device_shape)),
       device_ordinal_(device_ordinal),
       buffers_(&on_device_shape_) {
+  physical_device_ordinal_ =
+      physical_device_ordinal == -1 ? device_ordinal_ : physical_device_ordinal;
   on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape_);
 }
 
 ShapedBuffer::ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
-                           int device_ordinal)
-    : ShapedBuffer(on_device_shape, device_ordinal) {}
+                           int device_ordinal, int physical_device_ordinal)
+    : ShapedBuffer(on_device_shape, device_ordinal, physical_device_ordinal) {}
 
 ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
     : on_host_shape_(std::move(s.on_host_shape_)),
       on_device_shape_(std::move(s.on_device_shape_)),
       device_ordinal_(s.device_ordinal_),
+      physical_device_ordinal_(s.physical_device_ordinal_),
       buffers_(std::move(s.buffers_)) {
   // s.buffers_ has a pointer to s.on_device_shape_. When we move s.buffers_
   // into buffers_, we also need to update this pointer so that buffers_ doesn't
@@ -57,6 +62,7 @@ ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
   on_device_shape_ = std::move(s.on_device_shape_);
   on_host_shape_ = std::move(s.on_host_shape_);
   device_ordinal_ = s.device_ordinal_;
+  physical_device_ordinal_ = s.physical_device_ordinal_;
   buffers_ = std::move(s.buffers_);
   // buffers_ has a pointer to its on_device_shape_. When we move s.buffers_
   // into buffers_, we also need to update this pointer so that buffers_ doesn't
@@ -71,7 +77,8 @@ absl::StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
     const ShapeIndex& index) const {
   TF_ASSIGN_OR_RETURN(const Shape* device_sub_shape,
                       ShapeUtil::TryGetSubshape(on_device_shape(), index));
-  ShapedBuffer sub_shaped_buffer(*device_sub_shape, device_ordinal_);
+  ShapedBuffer sub_shaped_buffer(*device_sub_shape, device_ordinal_,
+                                 physical_device_ordinal_);
   TF_ASSIGN_OR_RETURN(ShapeTree<se::DeviceMemoryBase> sub_buffers,
                       buffers_.SubShapeTree(index));
   sub_shaped_buffer.set_buffers(std::move(sub_buffers));
@@ -115,16 +122,19 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
 
 ScopedShapedBuffer::ScopedShapedBuffer(Shape on_device_shape,
                                        se::DeviceMemoryAllocator* allocator,
-                                       int device_ordinal)
-    : ShapedBuffer(std::move(on_device_shape), device_ordinal),
+                                       int device_ordinal,
+                                       int physical_device_ordinal)
+    : ShapedBuffer(std::move(on_device_shape), device_ordinal,
+                   physical_device_ordinal),
       allocator_(allocator) {}
 
 ScopedShapedBuffer::ScopedShapedBuffer(Shape on_host_shape,
                                        Shape on_device_shape,
                                        se::DeviceMemoryAllocator* allocator,
-                                       int device_ordinal)
-    : ScopedShapedBuffer(std::move(on_device_shape), allocator,
-                         device_ordinal) {}
+                                       int device_ordinal,
+                                       int physical_device_ordinal)
+    : ScopedShapedBuffer(std::move(on_device_shape), allocator, device_ordinal,
+                         physical_device_ordinal) {}
 
 ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
                                        se::DeviceMemoryAllocator* allocator)
@@ -177,7 +187,7 @@ ScopedShapedBuffer ScopedShapedBuffer::TakeSubTree(ShapeIndexView index) {
       xla::ShapeUtil::GetSubshape(on_device_shape(), {index});
 
   ScopedShapedBuffer output(sub_on_device_shape, memory_allocator(),
-                            device_ordinal());
+                            device_ordinal(), physical_device_ordinal());
   auto src_it = buffers().find(index);
   auto dst_it = output.buffers().begin();
   while (dst_it != output.buffers().end()) {

@@ -42,9 +42,7 @@
 #     rocm:         Build with AMD GPU support (rocm)
 #     mkl:          Enable full mkl support.
 #     tensorrt:     Enable Tensorrt support.
-#     noaws:        Disable AWS S3 storage support
 #     nogcp:        Disable GCS support.
-#     nohdfs:       Disable hadoop hdfs support.
 #     nonccl:       Disable nccl support.
 #
 #
@@ -116,10 +114,6 @@ build --config=short_logs
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=v2
-
-# Disable AWS/HDFS support by default
-build --define=no_aws_support=true
-build --define=no_hdfs_support=true
 
 # TF now has `cc_shared_library` targets, so it needs the experimental flag
 # TODO(rostam): Remove when `cc_shared_library` is enabled by default
@@ -296,9 +290,7 @@ build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 build:sycl --repo_env TF_NEED_SYCL=1
 
 # Options to disable default on features
-build:noaws --define=no_aws_support=true
 build:nogcp --define=no_gcp_support=true
-build:nohdfs --define=no_hdfs_support=true
 build:nonccl --define=no_nccl_support=true
 
 # Modular TF build options

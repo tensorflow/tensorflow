@@ -125,9 +125,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
                                  const DeviceMemoryBase &dev_src,
                                  uint64_t size) override;
 
-  bool HostCallback(Stream *stream,
-                    absl::AnyInvocable<absl::Status() &&> callback) override;
-
   void DeallocateStream(Stream *stream) override {}
 
   absl::Status BlockHostUntilDone(Stream *stream) override;

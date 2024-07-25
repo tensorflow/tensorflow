@@ -171,19 +171,44 @@ class ConvData {
   mlir::Type element_type_;
 };
 
-// TFL Native Standard Conv Layouts:
-// 2D : [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// 3D : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+inline bool ValidStandardConvOutFeatureDims(const ConvData& data) {
+  const int64_t kernel_out_features =
+      data.KernelLayout().SpecialDim2(data.KernelShape());
+  const int64_t out_features =
+      data.OutputLayout().SpecialDim2(data.OutputShape());
+  return kernel_out_features == out_features;
+}
+
+inline bool ValidStandardConvInFeatureDims(const ConvData& data) {
+  // kernel_in_features * feature_groups = input_features by definition.
+  const int64_t input_features =
+      data.InputLayout().SpecialDim2(data.InputShape());
+
+  const bool trivial_kernel_in_features =
+      data.FeatureGroupCount() == input_features;
+  const bool is_grouped_conv = data.FeatureGroupCount() != 1;
+
+  const int64_t rank = data.InputLayout().Rank();
+  return !trivial_kernel_in_features && (!is_grouped_conv || rank == 4);
+}
+
+inline bool HasStandardFeatureGroup(const ConvData& data) {
+  return ValidStandardConvInFeatureDims(data) &&
+         ValidStandardConvOutFeatureDims(data);
+}
 
 // Does this convolution map to a standard conv_2d or conv_3d
 // (not depthwise or tranpose conv).
-inline bool IsStandardConv(mhlo::ConvolutionOp op) {
-  const ConvData data(op);
+inline bool IsStandardConv(const ConvData& data) {
   const bool trivial_lhs_dilate =
       llvm::all_of(data.InputDilations(), [](auto d) { return d == 1; });
-  return trivial_lhs_dilate &&
-         data.InputLayout().SpecialDim2(data.InputShape()) !=
-             data.FeatureGroupCount();
+
+  return trivial_lhs_dilate && HasStandardFeatureGroup(data);
+}
+
+inline bool IsStandardConv(mhlo::ConvolutionOp op) {
+  const ConvData data(op);
+  return IsStandardConv(data);
 }
 
 inline int64_t DnumRank(mhlo::ConvDimensionNumbersAttr dnums) {

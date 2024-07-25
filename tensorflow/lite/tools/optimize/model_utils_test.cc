@@ -52,6 +52,7 @@ TEST(ModelUtilsTest, HasBuffer) {
   EXPECT_TRUE(HasBuffer(&model, model.subgraphs[0].get(), 0));
 }
 
+// LINT.IfChange(HasMinMaxTest)
 TEST(ModelUtilsTest, HasMinMax) {
   TensorT tensor;
   tensor.quantization = std::make_unique<QuantizationParametersT>();
@@ -60,6 +61,7 @@ TEST(ModelUtilsTest, HasMinMax) {
   tensor.quantization->max.push_back(1.5);
   EXPECT_TRUE(HasMinMax(&tensor));
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils_test.cc:HasMinMaxTest)
 
 }  // namespace
 }  // namespace utils

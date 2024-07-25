@@ -85,6 +85,9 @@ TEST(BasicFlatBufferModel, TestNonExistentFiles) {
   ASSERT_TRUE(!FlatBufferModel::BuildFromFile("/tmp/tflite_model_1234"));
 }
 
+// Test the buffer alignment only for ARM since the test may crash on x86_64
+// with certain compiler option `-fsanitize=alignment`.
+#ifdef __arm__
 TEST(BasicFlatBufferModel, TestBufferAlignment) {
   // On 32-bit ARM buffers are required to be 4-bytes aligned, on other
   // platforms there is no alignment requirement.
@@ -114,14 +117,10 @@ TEST(BasicFlatBufferModel, TestBufferAlignment) {
   char* unaligned =
       reinterpret_cast<char*>(reinterpret_cast<uintptr_t>(buffer.get()) | 0x1);
   memcpy(unaligned, empty_model_data.c_str(), empty_model_data.size());
-#ifdef __arm__
   EXPECT_FALSE(
       FlatBufferModel::BuildFromBuffer(unaligned, empty_model_data.size()));
-#else   // !__arm__
-  EXPECT_TRUE(
-      FlatBufferModel::BuildFromBuffer(unaligned, empty_model_data.size()));
-#endif  // __arm__
 }
+#endif  // __arm__
 
 // Make sure a model with nothing in it loads properly.
 TEST(BasicFlatBufferModel, TestEmptyModels) {

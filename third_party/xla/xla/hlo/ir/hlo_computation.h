@@ -317,6 +317,10 @@ class HloComputation {
   // SetAndSanitizeName().
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Use the given `module` to select a unique name for this computation based
+  // on computation's existing name.
+  void UniquifyName(HloModule* module);
+
   // Prints a string representation of the computation.
   //
   // (We express the default options using an overload rather than a default

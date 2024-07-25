@@ -600,18 +600,12 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
   if (!graph.has_value()) {
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
-  TF_ASSIGN_OR_RETURN(bool supported, graph->Prepare(dnn_support));
-  if (!supported) {
-    return absl::InternalError("cuDNN graph is not supported.");
-  }
+  TF_RETURN_IF_ERROR(graph->Prepare(dnn_support));
   return *graph;
 }
 
 absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
                                              const int64_t workspace_size) {
-  if (workspace_size == 0 || fusion.shape().IsTuple()) {
-    return &fusion;
-  }
   HloComputation* computation = fusion.fused_instructions_computation();
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
@@ -631,9 +625,8 @@ absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
 
 class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit CuDnnFusionVisitor(
-      se::dnn::DnnSupport& dnn_support,
-      CuDnnFusionCompiler::BinaryMap& compilation_results)
+  explicit CuDnnFusionVisitor(se::dnn::DnnSupport& dnn_support,
+                              BinaryMap& compilation_results)
       : dnn_support_(dnn_support), compilation_results_(compilation_results) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
@@ -651,6 +644,13 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     VLOG(4) << "Processing " << hlo->ToString();
     VLOG(4) << "Plan ID: " << plan_id;
 
+    auto add_workspace = [&](const int64_t workspace_size) {
+      if (workspace_size > 0) {
+        TF_ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
+        SetVisited(*hlo);
+      }
+      return absl::OkStatus();
+    };
     const std::string fingerprint_without_workspace =
         GetComputationFingerprint(hlo->fused_instructions_computation(), {});
     auto workspace_size_it =
@@ -684,7 +684,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
       const int64_t workspace_size = graph.Graph().get_workspace_size();
       workspace_sizes_.insert(workspace_size_it,
                               {fingerprint_without_workspace, workspace_size});
-      TF_ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
+      TF_RETURN_IF_ERROR(add_workspace(workspace_size));
 
       std::vector<uint8_t> serialized_graph;
       RETURN_IF_CUDNN_FRONTEND_ERROR(graph.Graph().serialize(serialized_graph));
@@ -696,7 +696,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
                       serialized_graph.size());
     } else {
       VLOG(4) << "Cache hit.";
-      TF_ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size_it->second));
+      TF_RETURN_IF_ERROR(add_workspace(workspace_size_it->second));
     }
     auto cudnn_config = gpu_config.mutable_fusion_backend_config()
                             ->mutable_cudnn_fusion_config();
@@ -710,7 +710,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
  private:
   se::dnn::DnnSupport& dnn_support_;
   // <HLO computation fingerprint, serialized compiled cuDNN graph>.
-  CuDnnFusionCompiler::BinaryMap& compilation_results_;
+  BinaryMap& compilation_results_;
   absl::flat_hash_map<std::string, int64_t> workspace_sizes_;
 };
 

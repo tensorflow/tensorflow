@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
+#include <stack>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,8 +35,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/TargetParser/Triple.h"
@@ -101,7 +106,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                 computation_transitively_contains_custom_call,
             const TargetMachineFeatures* target_machine,
             bool emit_code_for_msan);
-  ~IrEmitter() override = default;
+  ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
   // function.
@@ -130,10 +135,38 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       bool allow_reassociation,
       absl::Span<const llvm::Attribute::AttrKind> function_attributes = {});
 
-  llvm::IRBuilder<>* b() { return &b_; }
-
+  llvm::IRBuilder<>* b() { return current_builder_; }
+  const llvm::IRBuilder<>* b() const { return current_builder_; }
   // builder() is for IrBuilderMixin.
-  llvm::IRBuilder<>* builder() { return &b_; }
+  llvm::IRBuilder<>* builder() { return current_builder_; }
+  const llvm::IRBuilder<>* builder() const { return current_builder_; }
+
+  IrFunction* compute_function() { return &compute_function_.top(); }
+
+  // Used by IrEmitter
+  void PushComputeFunction(const std::string& function_name,
+                           llvm::Function::LinkageTypes linkage,
+                           const HloModuleConfig& module_config,
+                           llvm::Module* llvm_module,
+                           int64_t num_dynamic_loop_bounds) {
+    compute_function_.emplace(function_name, linkage, module_config,
+                              llvm_module, b(), num_dynamic_loop_bounds);
+  }
+
+  // Used by IrEmitter2
+  void PushComputeFunction(std::shared_ptr<llvm::IRBuilder<>> b,
+                           llvm::Module* llvm_module,
+                           int64_t num_dynamic_loop_bounds,
+                           llvm::Function* function,
+                           llvm::Value* dynamic_loop_bounds_arg,
+                           llvm::BasicBlock* return_block) {
+    b->SetInsertPoint(llvm::BasicBlock::Create(llvm_module->getContext(),
+                                               "insertion_point", function));
+    compute_function_.emplace(b.get(), llvm_module, num_dynamic_loop_bounds,
+                              function, dynamic_loop_bounds_arg, return_block);
+  }
+
+  void PopComputeFunction() { compute_function_.pop(); }
 
   // Emit an LLVM global variable for every constant buffer allocation.
   absl::Status EmitConstantGlobals();
@@ -167,6 +200,32 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
   const BufferAssignment& assignment() const { return assignment_; }
+
+  // IRBuilderGuard is a RAII class that temporarily replaces the IRBuilder.
+  // This is convenient for reusing the same logic with a different builder.
+  class IRBuilderGuard {
+   public:
+    explicit IRBuilderGuard(IrEmitter* ir_emitter, llvm::IRBuilder<>* builder)
+        : ir_emitter_(ir_emitter),
+          original_builder_(ir_emitter->current_builder_) {
+      ir_emitter_->current_builder_ = builder;
+    }
+
+    IRBuilderGuard(IRBuilderGuard&& other) = delete;
+    IRBuilderGuard& operator=(IRBuilderGuard&& other) = delete;
+
+    ~IRBuilderGuard() { ir_emitter_->current_builder_ = original_builder_; }
+
+   private:
+    IrEmitter* ir_emitter_;
+    llvm::IRBuilder<>* original_builder_;
+  };
+
+  // WithBuilder is a convenience function that creates and returns a
+  // IRBuilderGuard for the current IrEmitter.
+  [[nodiscard]] IRBuilderGuard WithBuilder(llvm::IRBuilder<>& builder) {
+    return IRBuilderGuard(this, &builder);
+  }
 
  protected:
   friend class IrEmitter2;
@@ -219,13 +278,17 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleScatter(HloInstruction* scatter) override;
   absl::Status HandleAfterAll(HloInstruction* after_all) override;
   absl::Status HandleGetDimensionSize(HloInstruction* get_size) override;
-  absl::Status HandleSetDimensionSize(HloInstruction* get_size) override;
+  absl::Status HandleSetDimensionSize(HloInstruction* set_size) override;
   absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
   absl::Status HandlePartitionId(HloInstruction* hlo) override;
   absl::Status HandleReplicaId(HloInstruction* hlo) override;
   absl::Status HandleRng(HloInstruction* rng) override;
   absl::Status HandleRngBitGenerator(HloInstruction* rng) override;
   absl::Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
+  absl::Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
+  absl::Status HandleBatchNormTraining(
+      HloInstruction* batch_norm_training) override;
+  absl::Status HandleStochasticConvert(HloInstruction* instruction) override;
   absl::Status FinishVisit(HloInstruction* root) override;
 
   absl::Status Preprocess(HloInstruction* hlo) override;
@@ -245,7 +308,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
  private:
   absl::Status HandleSliceToDynamic(HloInstruction* hlo);
   absl::Status HandlePadToStatic(HloInstruction* hlo);
-  absl::Status HandleTopK(HloInstruction* hlo);
+  absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);
   absl::Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
@@ -373,14 +436,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // desc is an optional human-readable string that's added to the loop name in
   // IR.  Regardless of whether desc is provided, target_op->name() is included
   // in the loop name.
-  //
-  // TODO(jingyue): target_op should be a `const HloInstruction*`.
   absl::Status EmitTargetElementLoop(
-      HloInstruction* target_op,
-      const llvm_ir::ElementGenerator& element_generator);
-  absl::Status EmitTargetElementLoop(
-      HloInstruction* target_op, absl::string_view desc,
-      const llvm_ir::ElementGenerator& element_generator);
+      const HloInstruction* target_op, absl::string_view desc,
+      const llvm_ir::ElementGenerator& element_generator,
+      std::optional<llvm_ir::IrArray> result_array_opt);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the
@@ -484,6 +543,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                             const llvm_ir::IrArray& target_array,
                             const llvm_ir::IrArray& source_array);
 
+  // Emit slice-to-dynamic.
+  absl::Status EmitSliceToDynamic(
+      const HloInstruction* hlo,
+      absl::Span<const llvm_ir::IrArray> source_arrays,
+      const llvm_ir::IrArray& target_array);
+
   // Emits printing during the execution.
   llvm::Value* EmitPrintf(absl::string_view fmt,
                           absl::Span<llvm::Value* const> arguments);
@@ -546,11 +611,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // management rules, their memory is owned by the module (Note that IrFunction
   // creates the encapsulated llvm::Function s.t. it is added to the llvm
   // module's function list).
-  // N.B. `b_` must be ordered before `compute_function_` as
-  // `IrFunction::~IrFunction` references `b_`. This will ensure that the
-  // destructor for `compute_function_` will run before the destructor for `b_`.
-  llvm::IRBuilder<> b_;
-  std::unique_ptr<IrFunction> compute_function_;
+  // N.B. `main_builder_` must be ordered before `compute_function_` as
+  // `IrFunction::~IrFunction` references `main_builder_`. This will ensure that
+  // the destructor for `compute_function_` will run before the destructor for
+  // `main_builder_`.
+  llvm::IRBuilder<> main_builder_;
+  // The current builder to use for IR emission. This is either `main_builder_`
+  // or a temporary builder that replaces it.
+  llvm::IRBuilder<>* current_builder_;
+  std::stack<IrFunction> compute_function_;
   mlir::MLIRContext* mlir_context_;
   bool allow_reassociation_;
 

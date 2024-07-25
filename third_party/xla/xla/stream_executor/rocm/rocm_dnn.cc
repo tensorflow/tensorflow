@@ -30,11 +30,11 @@ limitations under the License.
 #include "rocm/include/miopen/miopen.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -79,7 +79,7 @@ namespace gpu {
 
 // Populates the profile result if not empty.
 static absl::Status PopulateProfileFromTimer(
-    std::optional<GpuTimer>& timer, const dnn::AlgorithmDesc& algorithm,
+    EventBasedTimer* timer, const dnn::AlgorithmDesc& algorithm,
     dnn::ProfileResult* profile_result,
     std::optional<uint64_t> scratch_size = std::nullopt) {
   if (profile_result) {
@@ -2494,13 +2494,13 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
   }
 
   const bool is_profiling = output_profile_result != nullptr;
+  std::unique_ptr<EventBasedTimer> timer;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(
-          stream,
-          output_profile_result && output_profile_result->warmup_run_executed(),
-          is_profiling));
+  if (is_profiling) {
+    TF_ASSIGN_OR_RETURN(timer,
+                        stream->CreateEventBasedTimer(
+                            output_profile_result->warmup_run_executed()));
+  }
 
   // make the forward call
   if (!is_training) {
@@ -2544,7 +2544,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
 
   if (is_profiling) {
     TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
-        timer, *rnn_desc.algorithm_config().algorithm(),
+        timer.get(), *rnn_desc.algorithm_config().algorithm(),
         output_profile_result));
   }
 
@@ -2626,13 +2626,13 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
         stream->MemZero(input_c_backprop_data, size_data * type_size));
 
   const bool is_profiling = output_profile_result != nullptr;
+  std::unique_ptr<EventBasedTimer> timer;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(
-          stream,
-          output_profile_result && output_profile_result->warmup_run_executed(),
-          is_profiling));
+  if (is_profiling) {
+    TF_ASSIGN_OR_RETURN(timer,
+                        stream->CreateEventBasedTimer(
+                            output_profile_result->warmup_run_executed()));
+  }
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -2683,7 +2683,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   if (is_profiling) {
     TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
-        timer, *rnn_desc.algorithm_config().algorithm(),
+        timer.get(), *rnn_desc.algorithm_config().algorithm(),
         output_profile_result));
   }
 
@@ -3326,12 +3326,12 @@ class RocmConvRunner : public dnn::ConvRunner {
     float beta = 0.0;
 
     const bool is_profiling = output_profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(
-                            stream,
-                            output_profile_result &&
-                                output_profile_result->warmup_run_executed(),
-                            is_profiling));
+    std::unique_ptr<EventBasedTimer> timer;
+    if (is_profiling) {
+      TF_ASSIGN_OR_RETURN(timer,
+                          stream->CreateEventBasedTimer(
+                              output_profile_result->warmup_run_executed()));
+    }
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
@@ -4850,14 +4850,10 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
     if (activation_desc_.miopen_activation_mode_ != miopenActivationPASTHRU)
       fusion_plan_.SetActivationForwardArgs(activation_desc_);
 
-    std::optional<GpuTimer> timer;
+    std::unique_ptr<EventBasedTimer> timer;
     if (profile_result) {
-      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
-      if (!timer_or_status.ok()) {
-        LOG(ERROR) << "Failed to create timer";
-        return absl::InternalError("Failed to start timer");
-      }
-      timer.emplace(std::move(*timer_or_status));
+      TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                     /* use_delay_kernel=*/false));
     }
 
     miopenStatus_t status;

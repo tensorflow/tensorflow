@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -25,6 +26,11 @@ namespace {
 class ConcatenateEmitterTest : public gpu::GpuCodegenTest {
  protected:
   ConcatenateEmitterTest() = default;
+  DebugOptions GetDebugOptionsForTest() override {
+    auto opts = HloTestBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_mlir_emitter_level(0);
+    return opts;
+  }
 };
 
 TEST_F(ConcatenateEmitterTest, Simple) {

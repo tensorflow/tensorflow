@@ -19,8 +19,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/triton_support.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {

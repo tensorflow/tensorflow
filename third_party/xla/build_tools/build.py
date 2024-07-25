@@ -100,7 +100,9 @@ class DockerImage:
     """Pulls docker image with retries to avoid transient rate limit errors."""
     for _ in range(retries):
       pull_proc = sh(["docker", "pull", self.image_url], check=False)
-      if pull_proc.returncode != 0:
+      if pull_proc.returncode == 0:
+        break  # Don't keep pulling after successful pull.
+      else:
         time.sleep(15)
 
     # write SHA of image to the sponge config
@@ -247,8 +249,7 @@ _CPU_X86_BUILD = Build(
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS
     + (
-        "-//xla/service/gpu/model/fuzztest/...",
-        "-//xla/service/gpu:triton_support_test",
+        "-//xla/service/gpu/fusions/triton:triton_support_test",
     ),
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
@@ -269,8 +270,7 @@ _CPU_ARM64_BUILD = Build(
     configs=("warnings", "rbe_cross_compile_linux_arm64_xla", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS
     + (
-        "-//xla/service/gpu/model/fuzztest/...",
-        "-//xla/service/gpu:triton_support_test",
+        "-//xla/service/gpu/fusions/triton:triton_support_test",
     ),
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
     build_tag_filters=cpu_arm_tag_filter,

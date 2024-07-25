@@ -156,7 +156,6 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     const Shape& src_shape = *slice.orig_shape;
     const Shape& dst_shape = *slice.sliced_shape;
-    TF_RET_CHECK(IsContiguousSlice(*slice.orig_shape, *slice.sliced_shape));
 
     absl::InlinedVector<int64_t, 4> slice_starts;
     slice_starts.reserve(dst_shape.rank());

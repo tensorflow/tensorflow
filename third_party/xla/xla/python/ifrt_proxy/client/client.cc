@@ -232,26 +232,6 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     }
   }
 
-  if (rpc_helper_->version().protocol_version() <= 2) {
-    std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
-    new_arrays.reserve(arrays.size());
-    for (const auto& array : arrays) {
-      TF_ASSIGN_OR_RETURN(
-          auto new_sharding,
-          array->sharding().WithDeviceAssignment(devices, memory_kind));
-      if (auto* const proxy_array =
-              llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
-        TF_ASSIGN_OR_RETURN(
-            new_arrays.emplace_back(),
-            proxy_array->Reshard(std::move(new_sharding), semantics));
-      } else {
-        return absl::InvalidArgumentError(
-            "Unsupported array type for xla::ifrt::proxy::Client::CopyArrays");
-      }
-    }
-    return new_arrays;
-  }
-
   auto req = std::make_unique<CopyArraysRequest>();
   for (const auto& array : arrays) {
     if (auto* proxy_array =
@@ -298,17 +278,6 @@ Client::RemapArrays(const RemapPlan& plan,
 
 xla::ifrt::Future<> Client::GetReadyFuture(
     absl::Span<const tsl::RCReference<xla::ifrt::Value>> values) {
-  if (rpc_helper_->version().protocol_version() <= 1) {
-    // Legacy implementation for servers that do not support
-    // `Client::GetReadyFuture`.
-    std::vector<xla::ifrt::Future<>> futures;
-    futures.reserve(values.size());
-    for (const auto& value : values) {
-      futures.push_back(value->GetReadyFuture());
-    }
-    return xla::ifrt::JoinFutures(futures);
-  }
-
   absl::InlinedVector<Future<>, 1> futures;
 
   auto req = std::make_unique<CheckValueReadyRequest>();

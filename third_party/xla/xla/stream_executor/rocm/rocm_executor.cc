@@ -184,6 +184,15 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
   return shared_constant;
 }
 
+absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
+  TF_ASSIGN_OR_RETURN(auto start_event, CreateGpuEvent(/*allow_timing=*/true));
+  TF_ASSIGN_OR_RETURN(auto stop_event, CreateGpuEvent(/*allow_timing=*/true));
+  TF_RETURN_IF_ERROR(start_event->Record(stream->gpu_stream()));
+  return std::make_unique<GpuTimer>(gpu_context(), std::move(start_event),
+                                    std::move(stop_event), stream);
+}
+
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
   auto module_it = gpu_binary_to_module_.find(gpu_binary);
   if (gpu_binary_to_module_.end() == module_it) {
@@ -239,6 +248,11 @@ absl::Status GpuExecutor::Init() {
   }
 
   return GpuDriver::GetGpuISAVersion(&version_, device_);
+}
+
+absl::StatusOr<bool> GpuExecutor::DelayKernelIsSupported(GpuStream* stream) {
+  // Delay kernel is not supported on ROCm.
+  return false;
 }
 
 absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
@@ -484,25 +498,6 @@ absl::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
                                             AsGpuStreamValue(stream));
 }
 
-bool GpuExecutor::HostCallback(Stream* stream,
-                               absl::AnyInvocable<absl::Status() &&> callback) {
-  auto callback_ptr =
-      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
-        absl::Status s = std::move(cb)();
-        if (!s.ok()) {
-          LOG(WARNING) << "Host callback failed: " << s;
-        }
-      });
-  return GpuDriver::AddStreamCallback(context_, AsGpuStreamValue(stream),
-                                      InternalHostCallback, callback_ptr);
-}
-
-/* static */ void GpuExecutor::InternalHostCallback(void* data) {
-  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
-  std::move (*callback)();
-  delete callback;
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
@@ -642,10 +637,15 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
-  auto gpu_event = std::make_unique<RocmEvent>(this);
-  TF_RETURN_IF_ERROR(gpu_event->Init());
+absl::StatusOr<std::unique_ptr<GpuEvent>> GpuExecutor::CreateGpuEvent(
+    bool allow_timing) {
+  auto gpu_event = std::make_unique<RocmEvent>(gpu_context());
+  TF_RETURN_IF_ERROR(gpu_event->Init(allow_timing));
   return std::move(gpu_event);
+}
+
+absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
+  return CreateGpuEvent(/*allow_timing=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(

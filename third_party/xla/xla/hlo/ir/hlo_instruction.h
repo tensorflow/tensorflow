@@ -2052,6 +2052,14 @@ class HloInstruction {
   // SetAndSanitizeName().
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Use the `module`'s name uniquer to select a unique name for this
+  // instruction based on the instruction's existing name.
+  void UniquifyName(HloModule* module);
+
+  // Use the `module`s `NewUniqueInstructionId` to set the id of this
+  // instruction.
+  void UniquifyId(HloModule* module);
+
   // Clear the unique ID of the instruction so that it can be re-assigned, such
   // as for the purpose of compacting the instruction unique IDs.
   void ClearUniqueIdInternal() { unique_id_ = -1; }
@@ -2816,8 +2824,6 @@ std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
-std::string ReplicaGroupsToString(
-    absl::Span<const ReplicaGroup> replica_groups);
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);

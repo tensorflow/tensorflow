@@ -27,14 +27,14 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_TopKCustomCall(benchmark::State& state) {
+static void BM_TopKCustomCall_F32(benchmark::State& state) {
   int64_t k = state.range(0);
   int64_t batch = state.range(1);
   int64_t length = state.range(2);
   CHECK_LE(k, length);
 
   std::string_view hlo = R"(
-    HloModule runtime_topk
+    HloModule topk_custom_call
 
     ENTRY test {
       x = f32[$batch,$length] parameter(0)
@@ -44,8 +44,7 @@ static void BM_TopKCustomCall(benchmark::State& state) {
   )";
 
   // Fixed seed to avoid too inconsistent runs
-  constexpr static std::uint_fast32_t seed = 0xCAFEFEED;
-  static auto engine = std::minstd_rand0(seed);
+  std::minstd_rand0 engine(/*seed=*/0xCAFEFEED);
   auto x = LiteralUtil::CreateRandomLiteral<F32>(
                ShapeUtil::MakeShape(F32, {batch, length}), &engine, 1.0f, 0.1f)
                .value();
@@ -56,20 +55,48 @@ static void BM_TopKCustomCall(benchmark::State& state) {
                             {"$k", absl::StrCat(k)}}));
 }
 
-BENCHMARK(BM_TopKCustomCall)
-    ->MeasureProcessCPUTime()
-    ->ArgNames({"k", "batch", "length"})
-    // k=4
-    ->Args({4, 4, 64})
-    ->Args({4, 16, 16})
-    ->Args({4, 64, 4})
-    // k=16
-    ->Args({16, 4, 64})
-    ->Args({16, 16, 16})
-    ->Args({16, 64, 16})
-    // k=64
-    ->Args({64, 4, 64})
-    ->Args({64, 16, 64})
-    ->Args({64, 64, 64});
+static void BM_TopK_BF16(benchmark::State& state) {
+  int64_t k = state.range(0);
+  int64_t batch = state.range(1);
+  int64_t length = state.range(2);
+  CHECK_LE(k, length);
+
+  std::string_view hlo = R"(
+    HloModule topk
+
+    ENTRY test {
+      x = bf16[$batch,$length] parameter(0)
+      ROOT topk = (bf16[$batch,$k], s32[$batch,$k]) topk(x), k=$k, largest=true
+    }
+  )";
+
+  // Fixed seed to avoid too inconsistent runs
+  std::minstd_rand0 engine(/*seed=*/0xCAFEFEED);
+  auto x = LiteralUtil::CreateRandomLiteral<BF16>(
+               ShapeUtil::MakeShape(BF16, {batch, length}), &engine, 1.0f, 0.1f)
+               .value();
+
+  CHECK_OK(RunHloBenchmark(state, hlo, {&x},
+                           {{"$batch", absl::StrCat(batch)},
+                            {"$length", absl::StrCat(length)},
+                            {"$k", absl::StrCat(k)}}));
+}
+
+#define BENCHMARK_TOPK(name)               \
+  BENCHMARK(name)                          \
+      ->MeasureProcessCPUTime()            \
+      ->ArgNames({"k", "batch", "length"}) \
+      ->Args({4, 4, 64})                   \
+      ->Args({4, 16, 16})                  \
+      ->Args({4, 64, 4})                   \
+      ->Args({16, 4, 64})                  \
+      ->Args({16, 16, 16})                 \
+      ->Args({16, 64, 16})                 \
+      ->Args({64, 4, 64})                  \
+      ->Args({64, 16, 64})                 \
+      ->Args({64, 64, 64})
+
+BENCHMARK_TOPK(BM_TopKCustomCall_F32);
+BENCHMARK_TOPK(BM_TopK_BF16);
 
 }  // namespace xla::cpu

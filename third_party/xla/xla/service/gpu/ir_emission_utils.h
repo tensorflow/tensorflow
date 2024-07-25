@@ -42,6 +42,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// <HLO computation fingerprint, serialized compiled object>.
+using BinaryMap = absl::flat_hash_map<std::string, std::string>;
+
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
@@ -96,12 +99,9 @@ extern const char* const kCusolverCholeskyCallTarget;
 // Returns true if `instr` is a non-strided slice.
 bool IsSliceWithUnitStrides(const HloInstruction* instr);
 
-// Returns true if `instr` is a slice instruction and produces a contiguous
-// slice.
+// Returns true if `instr` is a slice (or dynamic slice) instruction and
+// operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
-
-// Returns true if `sliced` is a contiguous slice of `orig`.
-bool IsContiguousSlice(const Shape& orig, const Shape& sliced);
 
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that

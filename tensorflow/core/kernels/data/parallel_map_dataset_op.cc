@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 namespace data {

@@ -94,6 +94,20 @@ absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
   return reinterpret_cast<Kernel>(sym->getAddress().getValue());
 }
 
+absl::StatusOr<FunctionRegistry::Comparator> FunctionRegistry::FindComparator(
+    std::string_view name) {
+  VLOG(2) << "Find comparator with a name " << name;
+
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
+      jit_->FindCompiledSymbol(std::string(name));
+  if (!sym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't resolve comparator with a name ", name,
+                     " in the jit compiled module."));
+  }
+  return reinterpret_cast<Comparator>(sym->getAddress().getValue());
+}
+
 se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
   if (auto* empty = std::get_if<std::monostate>(&data)) {
     return se::DeviceMemoryBase();

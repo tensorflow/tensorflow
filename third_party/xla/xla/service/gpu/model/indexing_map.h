@@ -197,6 +197,10 @@ H AbslHashValue(H h, const DimVar& dimension) {
   return H::combine(std::move(h), dimension.bounds);
 }
 
+inline size_t hash_value(const DimVar& dim_var) {
+  return llvm::hash_combine(dim_var.bounds);
+}
+
 // RangeSymbol variable represents a range of values, e.g. to compute a single
 // element of the reduction's result we need a range of values from the input
 // tensor. RangeSymbol variables correspond to the front portion of the
@@ -212,6 +216,10 @@ inline bool operator!=(const RangeVar& lhs, const RangeVar& rhs) {
 template <typename H>
 H AbslHashValue(H h, const RangeVar& range_var) {
   return H::combine(std::move(h), range_var.range);
+}
+
+inline size_t hash_value(const RangeVar& range_var) {
+  return llvm::hash_combine(range_var.range);
 }
 
 // RTSymbol variable represents a runtime symbol, e.g. a dynamic offset in

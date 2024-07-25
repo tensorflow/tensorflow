@@ -37,8 +37,8 @@ absl::StatusOr<hipError_t> QueryEvent(GpuContext* context, hipEvent_t event);
 // GpuContext wraps the device_ordinal and hipCtx_t handle.
 class GpuContext {
  public:
-  GpuContext(hipCtx_t context, const int v)
-      : context_(context), device_ordinal_(v) {}
+  GpuContext(hipCtx_t context, const int ordinal)
+      : context_(context), device_ordinal_(ordinal) {}
 
   hipCtx_t context() const { return context_; }
   int device_ordinal() const { return device_ordinal_; }
@@ -79,7 +79,7 @@ class CreatedContexts {
     auto it = insert_result.first;
     if (insert_result.second) {
       // context was not present in the map.  Add it.
-      it->second = std::make_unique<GpuContext>(context, next_id_++);
+      it->second = std::make_unique<GpuContext>(context, device_ordinal);
       (*LiveOrdinal())[device_ordinal].push_back(context);
     }
     return it->second.get();
@@ -136,7 +136,6 @@ class CreatedContexts {
 
   // Lock that guards access-to/mutation-of the live set.
   static absl::Mutex mu_;
-  static int64_t next_id_;
 };
 }  // namespace gpu
 

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/algebraic_simplifier.h"
 
+#include <cstdint>
+#include <cstring>
+#include <initializer_list>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -23,10 +27,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,20 +44,21 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_fix.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
+#include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -104,7 +115,7 @@ const char* arb_sign_ops[] = {"constant(-0.0)",
                               "select(pred0, p0, a1)"};
 // clang-format on
 
-// Test that the result of particular oprations is always non-negative
+// Test that the result of particular operations is always non-negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op) {
   for (const auto* op : non_neg_ops) {
     const auto kModuleStr = absl::StrFormat(R"(
@@ -125,7 +136,7 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op) {
   }
 }
 
-// Test that the result of particular oprations might be negative
+// Test that the result of particular operations might be negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op_NegativeTestCase) {
   for (const auto op : arb_sign_ops) {
     const auto kModuleStr = absl::StrFormat(R"(
@@ -6583,8 +6594,7 @@ TEST_F(AlgebraicSimplifierTest, ReduceDotReorder) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
-  options.set_use_associative_reordering(true);
-  options.set_associative_reordering_threshold(0);
+  options.set_raise_slice_and_reduce_through_dot(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   ASSERT_THAT(
@@ -6610,8 +6620,7 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
-  options.set_use_associative_reordering(true);
-  options.set_associative_reordering_threshold(0);
+  options.set_raise_slice_and_reduce_through_dot(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   ASSERT_THAT(module->entry_computation()->root_instruction(),
@@ -6635,7 +6644,7 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorderWithStrides) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
-  options.set_use_associative_reordering(true);
+  options.set_raise_slice_and_reduce_through_dot(true);
   EXPECT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
   ASSERT_THAT(
       module->entry_computation()->root_instruction(),
@@ -9426,6 +9435,35 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
               GmockMatch(m::Dot(m::Parameter(0), m::Parameter(1))));
 }
 
+// Same test as above, but with the option supports_non_canonical_dots set to
+// false.
+TEST_F(AlgebraicSimplifierTest,
+       ReduceOfBatchDotToContractingDimensionDisabled) {
+  const char* kModuleStr = R"(
+    HloModule m
+    a {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+    test {
+      p0 = f32[32,8,5,6] parameter(0)
+      p1 = f32[8,32,6,7] parameter(1)
+      d = f32[32,8,5,7] dot(p0, p1),
+        lhs_batch_dims={0,1},
+        rhs_batch_dims={1,0},
+        rhs_contracting_dims={2},
+        lhs_contracting_dims={3}
+     c = f32[] constant(0)
+     ROOT r = f32[8,5,7] reduce(d,c), dimensions={0}, to_apply=a
+    }
+  )";
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_supports_non_canonical_dots(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, ReduceAddIsCommutative) {
   const char* kModuleStr = R"(
     HloModule m
@@ -11330,7 +11368,7 @@ TEST_F(AlgebraicSimplifierTest, SparseDotMoveSliceToOperands) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   AlgebraicSimplifierOptions options;
-  options.set_use_associative_reordering(true);
+  options.set_raise_slice_and_reduce_through_dot(true);
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(SparseDotMatcher(m::Slice(m::Parameter(0)),
@@ -11674,6 +11712,71 @@ ENTRY main.1 {
   EXPECT_NE(root->operand(0)->operand(0)->opcode(), HloOpcode::kParameter);
   EXPECT_EQ(root->operand(0)->operand(1)->operand(0)->opcode(),
             HloOpcode::kParameter);
+}
+
+TEST_F(AlgebraicSimplifierTest, RemoveConvertConstant) {
+  const std::string hlo_string = R"(
+    HloModule module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+        a = f32[32,64] parameter(0)
+        b = s32[] constant(0)
+        c = f32[] convert(b)
+        ROOT reduce = f32[32] reduce(a, c),
+                      dimensions={1}, to_apply=add
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  default_options_.set_use_convert_constant_folding(true);
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reduce(m::Parameter(0),
+                                         m::Constant().WithShape(F32, {}))));
+}
+
+TEST_F(AlgebraicSimplifierTest, KeepInt4ConvertConstant) {
+  const std::string hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = s8[] constant(0)
+        ROOT b = s4[] convert(a)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  default_options_.set_use_convert_constant_folding(true);
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceBroadcastScalarToBroadcastMultiply) {
+  const std::string hlo_string = R"(
+    HloModule module
+    add_bf16 {
+      x = bf16[] parameter(0)
+      y = bf16[] parameter(1)
+      ROOT sum = bf16[] add(x, y)
+    }
+
+    ENTRY test {
+        a = bf16[] parameter(0)
+        negate = bf16[] negate(a)
+        broadcast = bf16[2,5,11,17,19] broadcast(negate), dimensions={}
+        zero = bf16[] constant(0)
+        ROOT reduce = bf16[2] reduce(broadcast, zero),
+                      dimensions={1,2,3,4}, to_apply=add_bf16
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kMultiply);
 }
 
 }  // namespace

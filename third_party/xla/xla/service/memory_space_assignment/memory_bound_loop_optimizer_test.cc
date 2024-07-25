@@ -361,7 +361,6 @@ ENTRY Entry {
     options_.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     options_.max_outstanding_prefetches = -1;
     options_.max_outstanding_evictions = -1;
-    options_.allocate_across_sequential_calls = true;
     options_.cost_analysis = cost_analysis_.get();
 
     std::unique_ptr<PresetAssignments> preset_assignments =

@@ -24,12 +24,12 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 
@@ -90,6 +90,28 @@ struct GraphDumperConfig {
 GraphDumperConfig& GetGraphDumperConfig() {
   static GraphDumperConfig config;
   return config;
+}
+
+string GetDumpGraphFormatLowerCase() {
+  string fmt;
+  Status status = tsl::ReadStringFromEnvVar("TF_DUMP_GRAPH_FMT", "TXT", &fmt);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to read TF_DUMP_GRAPH_FMT: " << status;
+    return "txt";
+  }
+  fmt = absl::AsciiStrToLower(fmt);
+  return fmt;
+}
+
+string GetDumpGraphSuffix() {
+  string fmt = GetDumpGraphFormatLowerCase();
+  if (fmt == "txt") {
+    return ".pbtxt";
+  } else if (fmt == "bin") {
+    return ".pb";
+  } else {
+    return ".pbtxt";
+  }
 }
 
 // WritableFile that simply prints to stderr.
@@ -160,11 +182,19 @@ Status CreateWritableFile(Env* env, const string& dirname, const string& name,
   return env->NewWritableFile(*filepath, file);
 }
 
-Status WriteTextProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
-                                  WritableFile* file) {
+Status WriteProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
+                              WritableFile* file) {
   string s;
-  if (!::tensorflow::protobuf::TextFormat::PrintToString(proto, &s)) {
-    return errors::FailedPrecondition("Unable to convert proto to text.");
+  string format = GetDumpGraphFormatLowerCase();
+  if (format == "txt" &&
+      !::tensorflow::protobuf::TextFormat::PrintToString(proto, &s)) {
+    return absl::FailedPreconditionError("Unable to convert proto to text.");
+  } else if (format == "bin" && !SerializeToStringDeterministic(proto, &s)) {
+    return absl::FailedPreconditionError(
+        "Failed to serialize proto to string.");
+  } else if (format != "txt" && format != "bin") {
+    return absl::FailedPreconditionError(
+        absl ::StrCat("Unknown format: ", format));
   }
   TF_RETURN_IF_ERROR(file->Append(s));
   StringPiece name;
@@ -174,8 +204,8 @@ Status WriteTextProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
   return file->Close();
 }
 
-Status WriteTextProtoToUniqueFile(
-    const tensorflow::protobuf::MessageLite& proto, WritableFile* file) {
+Status WriteProtoToUniqueFile(const tensorflow::protobuf::MessageLite& proto,
+                              WritableFile* file) {
   string s;
   if (!SerializeToStringDeterministic(proto, &s)) {
     return errors::Internal("Failed to serialize proto to string.");
@@ -224,16 +254,18 @@ void SetGraphDumper(
 
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
                           const string& dirname) {
-  return DumpToFile(name, dirname, ".pbtxt", "Graph", [&](WritableFile* file) {
-    return WriteTextProtoToUniqueFile(graph_def, file);
-  });
+  return DumpToFile(name, dirname, GetDumpGraphSuffix(), "Graph",
+                    [&](WritableFile* file) {
+                      return WriteProtoToUniqueFile(graph_def, file);
+                    });
 }
 
 string DumpCostGraphDefToFile(const string& name, CostGraphDef const& graph_def,
                               const string& dirname) {
-  return DumpToFile(name, dirname, ".pbtxt", "Graph", [&](WritableFile* file) {
-    return WriteTextProtoToUniqueFile(graph_def, file);
-  });
+  return DumpToFile(name, dirname, GetDumpGraphSuffix(), "Graph",
+                    [&](WritableFile* file) {
+                      return WriteProtoToUniqueFile(graph_def, file);
+                    });
 }
 
 string DumpGraphToFile(const string& name, Graph const& graph,
@@ -264,19 +296,17 @@ string DumpGraphToFile(const string& name, Graph const& graph,
 
 string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
                              const string& dirname) {
-  return DumpToFile(name, dirname, ".pbtxt", "FunctionDef",
-                    [&](WritableFile* file) {
-                      return WriteTextProtoToUniqueFile(fdef, file);
-                    });
+  return DumpToFile(
+      name, dirname, GetDumpGraphSuffix(), "FunctionDef",
+      [&](WritableFile* file) { return WriteProtoToUniqueFile(fdef, file); });
 }
 
 string DumpProtoToFile(const string& name,
                        tensorflow::protobuf::Message const& proto,
                        const string& dirname) {
-  return DumpToFile(name, dirname, ".pbtxt", proto.GetTypeName(),
-                    [&](WritableFile* file) {
-                      return WriteTextProtoToUniqueFile(proto, file);
-                    });
+  return DumpToFile(
+      name, dirname, GetDumpGraphSuffix(), proto.GetTypeName(),
+      [&](WritableFile* file) { return WriteProtoToUniqueFile(proto, file); });
 }
 
 }  // namespace tensorflow

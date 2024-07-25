@@ -337,7 +337,7 @@ std::optional<IotaTileAssignment> IotaTileAssignment::Transpose(
 }
 
 void IotaTileAssignment::Print(Printer* printer) const {
-  printer->Append("devices=[");
+  printer->Append("[");
   AppendJoin(printer, dims(), ",");
   printer->Append("]<=[");
   AppendJoin(printer, reshape_dims(), ",");
@@ -454,6 +454,7 @@ absl::Status TileAssignment::EachStatus(
 
 void TileAssignment::Print(Printer* printer) const {
   if (iota_) {
+    printer->Append("devices=");
     iota_->Print(printer);
   } else {
     printer->Append("devices=[");

@@ -248,25 +248,42 @@ TEST_F(HloTraversalTest, FindArgumentsAfterFusion) {
   EXPECT_THAT(producers, ElementsAre("p0", "log"));
 }
 
-TEST_F(HloTraversalTest, FindIf) {
+TEST_F(HloTraversalTest, HloBfsFindIf_Found) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
-  auto result =
-      HloFindIf(fusion->GetRoots(), *fusion, [&](HloInstructionAdaptor node) {
-        return node.opcode() == HloOpcode::kMultiply;
-      });
+  auto result = HloBfsFindIf(fusion->GetRoots(), *fusion,
+                             [&](HloInstructionAdaptor node) {
+                               return node.opcode() == HloOpcode::kMultiply;
+                             });
   ASSERT_NE(result, std::nullopt);
   ASSERT_EQ(result->name(), "mul");
 }
 
-TEST_F(HloTraversalTest, NotFound) {
+TEST_F(HloTraversalTest, HloBfsFindIf_NotFound) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
-  auto result = HloFindIf(fusion->GetRoots(), *fusion,
-                          [&](HloInstructionAdaptor node) { return false; });
+  auto result = HloBfsFindIf(fusion->GetRoots(), *fusion,
+                             [&](HloInstructionAdaptor node) { return false; });
   ASSERT_EQ(result, std::nullopt);
+}
+
+TEST_F(HloTraversalTest, HloAnyOf_Found) {
+  auto module = ParseAndReturnVerifiedModule(kTestModule).value();
+  auto fusion = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("fusion"));
+  EXPECT_TRUE(HloAnyOf(*fusion, [&](HloInstructionAdaptor node) {
+    return node.opcode() == HloOpcode::kMultiply;
+  }));
+}
+
+TEST_F(HloTraversalTest, HloAnyOf_NotFound) {
+  auto module = ParseAndReturnVerifiedModule(kTestModule).value();
+  auto fusion = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("fusion"));
+  EXPECT_FALSE(
+      HloAnyOf(*fusion, [&](HloInstructionAdaptor node) { return false; }));
 }
 
 TEST_F(HloTraversalTest, FindAllMultiple) {
@@ -285,7 +302,7 @@ TEST_F(HloTraversalTest, FindAllMultiple) {
   auto module = ParseAndReturnVerifiedModule(kConverts).value();
   auto root = module->entry_computation()->GetInstructionWithName("diff");
   std::vector<const HloInstruction*> converts =
-      HloFindAll({root}, [&](const HloInstruction* node) {
+      HloBfsFindAll({root}, [&](const HloInstruction* node) {
         return node->opcode() == HloOpcode::kConvert;
       });
 
@@ -309,7 +326,7 @@ TEST_F(HloTraversalTest, FindAllNotFound) {
   auto module = ParseAndReturnVerifiedModule(kConverts).value();
   auto root = module->entry_computation()->GetInstructionWithName("diff");
   std::vector<const HloInstruction*> converts =
-      HloFindAll({root}, [&](const HloInstruction* node) {
+      HloBfsFindAll({root}, [&](const HloInstruction* node) {
         return node->opcode() == HloOpcode::kAdd;
       });
   EXPECT_THAT(converts, IsEmpty());

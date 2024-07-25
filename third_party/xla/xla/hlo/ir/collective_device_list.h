@@ -19,14 +19,19 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "xla/hlo/ir/tile_assignment.h"
-#include "xla/util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+std::string ReplicaGroupsToString(
+    absl::Span<const ReplicaGroup> replica_groups);
 
 // Represents a list of replica groups (a list of list of devices) with
 // reshaping and transposing an iota array (iota tile assignment). Can be used
@@ -35,12 +40,21 @@ namespace xla {
 class IotaReplicaGroupList {
  public:
   explicit IotaReplicaGroupList(int64_t num_replica_groups,
+                                int64_t num_devices_per_group)
+      : iota_tile_assignment_(IotaTileAssignment::Create(
+            {num_replica_groups, num_devices_per_group})),
+        num_replica_groups_(num_replica_groups),
+        num_devices_per_group_(num_devices_per_group) {}
+
+  explicit IotaReplicaGroupList(int64_t num_replica_groups,
                                 int64_t num_devices_per_group,
                                 absl::Span<const int64_t> reshape_dims,
                                 absl::Span<const int> transpose_perm)
       : iota_tile_assignment_(IotaTileAssignment::Create(
             {num_replica_groups, num_devices_per_group}, reshape_dims,
-            transpose_perm)) {}
+            transpose_perm)),
+        num_replica_groups_(num_replica_groups),
+        num_devices_per_group_(num_devices_per_group) {}
 
   int64_t num_replica_groups() const;
   int64_t num_devices_per_group() const;
@@ -52,10 +66,16 @@ class IotaReplicaGroupList {
   }
   Array<int64_t> ToArray() const { return iota_tile_assignment_.ToArray(); }
 
+  std::string ToString() const;
+
+  IotaReplicaGroupListProto ToProto() const;
+
+  static IotaReplicaGroupList FromProto(const IotaReplicaGroupListProto& proto);
+
  private:
   IotaTileAssignment iota_tile_assignment_;
-  mutable int64_t num_replica_groups_ = -1;
-  mutable int64_t num_devices_per_group_ = -1;
+  int64_t num_replica_groups_ = -1;
+  int64_t num_devices_per_group_ = -1;
 };
 
 // Represents a series of devices participating in a collective operation
@@ -82,7 +102,21 @@ class CollectiveDeviceList {
     return iota_replica_group_list_;
   }
 
+  std::string ToString() const;
+
+  CollectiveDeviceListProto ToProto() const;
+
+  static CollectiveDeviceList FromProto(const CollectiveDeviceListProto& proto);
+
+  static CollectiveDeviceList FromProto(const HloInstructionProto& proto);
+
  private:
+  // Construct collective device list from replica group start and end
+  // iterators.
+  CollectiveDeviceList(
+      tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator start,
+      tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end);
+
   void MaybeMaterializeFullReplicaGroupList() const;
   std::optional<IotaReplicaGroupList> iota_replica_group_list_ = std::nullopt;
   mutable std::shared_ptr<const std::vector<ReplicaGroup>>

@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -115,7 +116,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
                               /*index*/ {});
   }
 
-  auto slice_adaptor = HloFindIf(
+  auto slice_adaptor = HloBfsFindIf(
       {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](HloInstructionAdaptor node) {
         return IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(
@@ -125,8 +126,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
     auto* slice_instr =
         const_cast<HloInstruction*>(&slice_adaptor->instruction());
 
-    if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
-                           slice_instr->shape())) {
+    if (!IsContiguousSlice(*slice_instr)) {
       return absl::InternalError(
           "DynamicSliceFusion only handles contiguous slices "
           "currently");
@@ -302,7 +302,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
     }
   }
 
-  auto slice_adaptor = HloFindIf(
+  auto slice_adaptor = HloBfsFindIf(
       {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kDynamicUpdateSlice; },
       /*visit_operands=*/false);
@@ -311,10 +311,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
         const_cast<HloInstruction*>(&slice_adaptor->instruction());
     slice_instrs[arg_idx] = slice_instr;
 
-    if (!IsContiguousSlice(slice_instr->shape(),
-                           Cast<HloDynamicUpdateSliceInstruction>(slice_instr)
-                               ->update()
-                               ->shape())) {
+    if (!IsContiguousSlice(*slice_instr)) {
       return absl::InternalError(
           "DynamicSliceFusion only handles contiguous slices "
           "currently");
@@ -415,9 +412,8 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         "operand/result");
   }
 
-  bool deterministic_ops =
-      ir_emitter_context.debug_options().xla_gpu_deterministic_ops() ||
-      ir_emitter_context.debug_options().xla_gpu_exclude_nondeterministic_ops();
+  const bool deterministic_ops =
+      RequireDeterminism(fusion.GetModule()->config());
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,
@@ -816,7 +812,7 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
-  auto maybe_custom_call_adaptor = HloFindIf(
+  auto maybe_custom_call_adaptor = HloBfsFindIf(
       adaptor.GetRoots(), adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
   if (maybe_custom_call_adaptor == std::nullopt) {

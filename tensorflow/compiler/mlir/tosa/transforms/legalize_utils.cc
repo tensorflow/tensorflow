@@ -33,10 +33,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/common.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "xla/tsl/framework/fixedpoint/FixedPoint.h"
-#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
 // Implements legalization and post-legalization optimization helper functions
@@ -324,13 +324,14 @@ Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
     }
     int32_t inv_sqrt_multiplier;
     int inv_sqrt_shift;
-    tflite::GetInvSqrtQuantizedMultiplierExp(
-        value, tflite::kReverseShift, &inv_sqrt_multiplier, &inv_sqrt_shift);
-    const int32_t data = tflite::MultiplyByQuantizedMultiplier(
+    tflite_migration::GetInvSqrtQuantizedMultiplierExp(
+        value, tflite_migration::kReverseShift, &inv_sqrt_multiplier,
+        &inv_sqrt_shift);
+    const int32_t data = tflite_migration::MultiplyByQuantizedMultiplier(
         1, inv_sqrt_multiplier, inv_sqrt_shift + kShift);
     const int32_t output =
-        tflite::MultiplyByQuantizedMultiplier(data, output_scale_multiplier,
-                                              output_scale_shift - kShift) +
+        tflite_migration::MultiplyByQuantizedMultiplier(
+            data, output_scale_multiplier, output_scale_shift - kShift) +
         output_zp;
     return static_cast<int8_t>(std::min(std::max(output, kMin), kMax));
   };
@@ -451,7 +452,7 @@ void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
     int32_t output = 0;
     if (input_diff >= diff_min) {
       const int32_t input_diff_rescaled =
-          tflite::MultiplyByQuantizedMultiplierGreaterThanOne(
+          tflite_migration::MultiplyByQuantizedMultiplierGreaterThanOne(
               input_diff, input_beta_multiplier, input_beta_left_shift);
       const FixedPointScaledDiff input_diff_fixed_point =
           FixedPointScaledDiff::FromRaw(input_diff_rescaled);

@@ -42,6 +42,11 @@ class InPlaceDynamicUpdateSliceFusionTest : public HloTestBase {
   }
 
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    auto opts = HloTestBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_mlir_emitter_level(0);
+    return opts;
+  }
   AffineMapPrinter printer_;
   mlir::MLIRContext mlir_context_;
   stream_executor::DeviceDescription device_info_ =

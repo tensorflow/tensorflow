@@ -46,6 +46,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -74,7 +75,7 @@ ENTRY e {
   static constexpr absl::string_view kResultText = R"(
 version: 3
 results {
-  device: "sm_8.0 with 42331013120B RAM, 108 cores, 1410000KHz clock, 1215000KHz mem clock, 41943040B L2$"
+  device: "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: 1555 GB/s, L2 cache: 40 MB"
   hlo: "{\n  tmp_0 = f16[1,16,17,3]{3,2,1,0} parameter(0)\n  tmp_1 = f16[16,51]{1,0} bitcast(f16[1,16,17,3]{3,2,1,0} tmp_0)\n  tmp_2 = s8[16,17,3]{2,1,0} parameter(1)\n  tmp_3 = s8[51,16]{0,1} bitcast(s8[16,17,3]{2,1,0} tmp_2)\n  tmp_4 = f16[51,16]{0,1} convert(s8[51,16]{0,1} tmp_3)\n  tmp_5 = f16[16,16]{1,0} dot(f16[16,51]{1,0} tmp_1, f16[51,16]{0,1} tmp_4), lhs_contracting_dims={1}, rhs_contracting_dims={0}\n  ROOT tmp_6 = f16[1,16,16]{2,1,0} bitcast(f16[16,16]{1,0} tmp_5)\n}"
   result {
     run_time {
@@ -420,6 +421,37 @@ TEST_F(FileBasedCacheTest, RepeatedAddResultDoesNotWriteTheFileAgain) {
 
   // File was not written again:
   EXPECT_EQ(Read(cache_file_path_), kPlaceholderContent);
+}
+
+TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
+  auto device_description =
+      [](absl::string_view spec_file_name) -> se::DeviceDescription {
+    se::GpuTargetConfigProto proto;
+    std::string spec_string;
+    CHECK_OK(tsl::ReadFileToString(
+        tsl::Env::Default(),
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "hlo_opt",
+                          "gpu_specs", spec_file_name),
+        &spec_string));
+    EXPECT_TRUE(
+        tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));
+    return se::DeviceDescription(proto.gpu_device_info());
+  };
+
+  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
+                device_description("a100_sxm_40.txtpb")),
+            "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: "
+            "1555 GB/s, L2 cache: 40 MB");
+
+  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
+                device_description("a100_sxm_80.txtpb")),
+            "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: "
+            "2039 GB/s, L2 cache: 40 MB");
+
+  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
+                device_description("mi200.txtpb")),
+            "ROCM: gfx90a, Cores: 110, GPU clock: 1.7 GHz, Memory bandwidth: "
+            "1638 GB/s, L2 cache: 8 MB");
 }
 
 }  // namespace

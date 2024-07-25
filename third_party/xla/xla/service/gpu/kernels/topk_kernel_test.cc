@@ -29,13 +29,13 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -226,13 +226,11 @@ void BM_SmallTopk(benchmark::State& state) {
     CHECK_OK(RunTopk(stream.get(), Get(T()), input_buffer.memory(), n,
                      output_values.memory(), output_indices.memory(), k,
                      batch_size));
-    auto timer = se::gpu::GpuTimer::Create(stream.get(),
-                                           true /* warmup run was executed */);
-    CHECK_OK(timer.status());
+    TF_ASSERT_OK_AND_ASSIGN(auto timer, stream->CreateEventBasedTimer(true));
     CHECK_OK(RunTopk(stream.get(), Get(T()), input_buffer.memory(), n,
                      output_values.memory(), output_indices.memory(), k,
                      batch_size));
-    auto timer_duration = timer.value().GetElapsedDuration();
+    auto timer_duration = timer->GetElapsedDuration();
     CHECK_OK(timer_duration.status());
     state.SetIterationTime(absl::ToDoubleSeconds(timer_duration.value()));
   }

@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -27,11 +29,14 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
+
+class SortThunkTest : public testing::TestWithParam<bool> {};
 
 static bool LessThan(const void** data) {
   auto* lhs = reinterpret_cast<const float*>(data[0]);
@@ -39,7 +44,18 @@ static bool LessThan(const void** data) {
   return *lhs < *rhs;
 }
 
-class SortThunkTest : public testing::TestWithParam<bool> {};
+class LessThanComparator : public Thunk::FunctionRegistry {
+ public:
+  static void LessThanWrapper(bool* result, const void*, const void** data,
+                              const void*, const void*, const void*) {
+    *result = LessThan(data);
+  }
+
+  absl::StatusOr<Comparator> FindComparator(std::string_view name) final {
+    DCHECK_EQ(name, "less_than");
+    return LessThanWrapper;
+  }
+};
 
 TEST_P(SortThunkTest, Sort1D) {
   bool is_stable = GetParam();
@@ -109,10 +125,13 @@ TEST_P(SortThunkTest, Sort2D) {
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
-                        /*dimension=*/0, is_stable, LessThan));
+                        /*dimension=*/0, is_stable, "less_than"));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
+
+  LessThanComparator less_than_comparator;
+  params.function_registry = &less_than_comparator;
 
   auto execute_event0 = sort_dim0->Execute(params);
   tsl::BlockUntilReady(execute_event0);
@@ -133,7 +152,7 @@ TEST_P(SortThunkTest, Sort2D) {
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
                         /*dimension=*/1,
-                        /*is_stable=*/false, LessThan));
+                        /*is_stable=*/false, "less_than"));
 
   auto execute_event1 = sort_dim1->Execute(params);
   tsl::BlockUntilReady(execute_event1);

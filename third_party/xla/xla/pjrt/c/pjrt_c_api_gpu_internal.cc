@@ -193,7 +193,8 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       device_ids, description.name(),
       /*num_slices=*/1,
       /*num_hosts_per_slice=*/1,
-      /*num_devices_per_host=*/device_ids.size());
+      /*num_devices_per_host=*/device_ids.size(),
+      /*core_count_per_chip=*/description.core_count());
 
   // Determine the platform ID and name based on the platform.
   xla::PjRtPlatformId platform_id =

@@ -26,15 +26,22 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
+
+//===------------------------------------------------------------------------===
+// mhlo.reduce -> arg min/max
+//===------------------------------------------------------------------------===
 
 // Pattern matches the following reduction function for ArgMax/ArgMin coming
 // from PyTorch
@@ -189,6 +196,19 @@ LogicalResult MatchReduceToArgMinMaxType1(mhlo::ReduceOp reduce_op,
   return success();
 }
 
+// Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
+template <typename Reduce, typename ArgReduce, typename BooleanReduce,
+          bool is_argmax>
+class ConvertReduceOpToArgMinMax : public OpConversionPattern<mhlo::ReduceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+
+  virtual bool IsValueInitValue(const DenseElementsAttr& attr) const = 0;
+};
+
 template <typename Reduce, typename ArgReduce, typename BooleanReduce,
           bool is_argmax>
 LogicalResult ConvertReduceOpToArgMinMax<
@@ -263,6 +283,17 @@ LogicalResult ConvertReduceOpToArgMinMax<
   return success();
 }
 
+// Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
+template <typename Reduce, typename ArgReduce, typename BooleanReduce>
+class ConvertReduceOpToArgMax
+    : public ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
+                                        true> {
+ public:
+  using ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
+                                   true>::ConvertReduceOpToArgMinMax;
+  bool IsValueInitValue(const DenseElementsAttr& attr) const override;
+};
+
 template <typename Reduce, typename ArgReduce, typename BooleanReduce>
 bool ConvertReduceOpToArgMax<Reduce, ArgReduce, BooleanReduce>::
     IsValueInitValue(const DenseElementsAttr& attr) const {
@@ -280,6 +311,17 @@ bool ConvertReduceOpToArgMax<Reduce, ArgReduce, BooleanReduce>::
                                             : value.isMinSignedValue();
   }
 }
+
+// Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
+template <typename Reduce, typename ArgReduce, typename BooleanReduce>
+class ConvertReduceOpToArgMin
+    : public ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
+                                        false> {
+ public:
+  using ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
+                                   false>::ConvertReduceOpToArgMinMax;
+  bool IsValueInitValue(const DenseElementsAttr& attr) const override;
+};
 
 template <typename Reduce, typename ArgReduce, typename BooleanReduce>
 bool ConvertReduceOpToArgMin<Reduce, ArgReduce, BooleanReduce>::
@@ -299,7 +341,281 @@ bool ConvertReduceOpToArgMin<Reduce, ArgReduce, BooleanReduce>::
   }
 }
 
-// Returns true if the given reduce op can be legalized to ArgMax/ArgMin ops.
+//===------------------------------------------------------------------------===
+// mhlo.reduce -> standard reductions
+//===------------------------------------------------------------------------===
+
+// If `value` is a splat constant, returns a success and set `splat_value`
+// to the splate constant value.
+// `SplatValueType` can be `APInt` or `APFloat`.
+template <typename SplatValueType>
+LogicalResult GetConstantSplatValue(Value value, SplatValueType& splat_value) {
+  DenseElementsAttr attr;
+  if (!matchPattern(value, m_Constant(&attr)) || !attr.isSplat()) {
+    return failure();
+  }
+
+  splat_value = attr.getSplatValue<SplatValueType>();
+  return success();
+}
+
+// Replace BinaryOp with a combination of BinaryOp and ReduceOp if the
+// init value doesn't match the expectation of ReduceOp.
+template <typename ReduceOp, typename BinaryOp, bool BuilderHasFAF = false>
+LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
+                                       arith::ConstantOp reduction_indices,
+                                       ConversionPatternRewriter& rewriter) {
+  Value reduce_result = rewriter.create<ReduceOp>(
+      reduce_op.getLoc(), reduce_op.getType(0), input, reduction_indices,
+      /*keep_dim=*/rewriter.getBoolAttr(false));
+
+  if constexpr (BuilderHasFAF) {
+    rewriter.replaceOpWithNewOp<BinaryOp>(reduce_op, reduce_result,
+                                          reduce_op.getInitValues()[0],
+                                          rewriter.getStringAttr("NONE"));
+  } else {
+    rewriter.replaceOpWithNewOp<BinaryOp>(reduce_op, reduce_result.getType(),
+                                          reduce_result,
+                                          reduce_op.getInitValues()[0]);
+  }
+
+  return success();
+}
+
+DenseIntElementsAttr GetDimsAsI32Elements(OpBuilder& b, mhlo::ReduceOp op) {
+  auto dims_attr = op.getDimensions();
+  const auto n_dims = dims_attr.getNumElements();
+
+  SmallVector<int32_t> reduce_dims;
+  reduce_dims.reserve(n_dims);
+  for (auto dim : dims_attr.getValues<int64_t>()) {
+    reduce_dims.push_back(dim);
+  }
+
+  auto dim_type = RankedTensorType::get({n_dims}, b.getI32Type());
+  return DenseIntElementsAttr::get(dim_type, reduce_dims);
+}
+
+// Cannot replace BinaryOp if the init value doesn't match the expectation of
+// ReduceOp and there is no corresponding BinaryOp.
+template <>
+LogicalResult rewriteNonMatchInitValue<TFL::ReduceMaxOp, void>(
+    mhlo::ReduceOp reduce_op, Value input, arith::ConstantOp reduction_indices,
+    ConversionPatternRewriter& rewriter) {
+  return failure();
+}
+
+template <>
+LogicalResult rewriteNonMatchInitValue<TFL::ReduceMinOp, void>(
+    mhlo::ReduceOp reduce_op, Value input, arith::ConstantOp reduction_indices,
+    ConversionPatternRewriter& rewriter) {
+  return failure();
+}
+
+// Converts a mhlo.reduce op with a mlho binary operation into a tensorflow
+// reduction operation. If the initial value can be ignored, then convert it
+// into a single ReduceOp. Otherwise, convert it into a ReduceOp followed by
+// a BinaryOp.
+// For example:
+//   1) A mhlo::ReduceOp on value `x` with a mhlo::AndOp and a constant initial
+// value `true` is converted to a Any on value `x`.
+//   2) A mhlo::ReduceOp on value `x` with a mhlo::AndOp with a non-constant
+// initial value `y` is converted to a Any on value `x`, followed by a
+// And with initial value `y`.
+template <typename SrcBinaryOp, typename TargetReduceOp,
+          typename TargetBinaryOp = void, bool BuilderHasFAF = false>
+class ConvertReduce : public OpConversionPattern<mhlo::ReduceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (failed(MatchReduceOpOperand(reduce_op))) {
+      return failure();
+    }
+
+    if (failed(MatchBinaryReduceFunction<SrcBinaryOp>(reduce_op.getBody()))) {
+      return failure();
+    }
+
+    auto operand = reduce_op.getInputs()[0];
+
+    //
+    // build reduction dims ConstOp from attr (cast to 32bit for tflite).
+    //=-----
+
+    auto tfl_dims = GetDimsAsI32Elements(rewriter, reduce_op);
+    auto tfl_dims_op =
+        rewriter.create<arith::ConstantOp>(reduce_op.getLoc(), tfl_dims);
+
+    //
+    // replace with new reduce op, chaining binary op if needed.
+    //=-----
+
+    if (succeeded(MatchInitValue(reduce_op.getInitValues()[0]))) {
+      rewriter.replaceOpWithNewOp<TargetReduceOp>(
+          reduce_op, reduce_op.getType(0), operand, tfl_dims_op,
+          /*keep_dim=*/rewriter.getBoolAttr(false));
+      return success();
+    }
+    return rewriteNonMatchInitValue<TargetReduceOp, TargetBinaryOp,
+                                    BuilderHasFAF>(reduce_op, operand,
+                                                   tfl_dims_op, rewriter);
+  }
+
+ private:
+  // Checks that the init value matches with the init value expected for the
+  // target ReduceOp.
+  virtual LogicalResult MatchInitValue(Value init_value) const = 0;
+
+  LogicalResult MatchReduceOpOperand(mhlo::ReduceOp reduce_op) const {
+    if (reduce_op.getInputs().size() != 1 ||
+        reduce_op.getInitValues().size() != 1 ||
+        reduce_op.getResults().size() != 1)
+      return failure();
+
+    if (!mlir::isa<RankedTensorType>(reduce_op.getInputs()[0].getType()))
+      return failure();
+    if (!mlir::isa<RankedTensorType>(reduce_op.getType(0))) return failure();
+    return success();
+  }
+};
+
+class ConvertReduceMul
+    : public ConvertReduce<mhlo::MulOp, TFL::ReduceProdOp, TFL::MulOp, true> {
+ public:
+  using ConvertReduce::ConvertReduce;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
+    if (mlir::isa<FloatType>(type)) {
+      float const_value;
+      if (failed(GetConstantSplatValue<float>(init_value, const_value)) ||
+          const_value != 1.0)
+        return failure();
+    } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
+      int32_t const_value;
+      if (failed(GetConstantSplatValue<int32_t>(init_value, const_value)) ||
+          const_value != 1)
+        return failure();
+    } else {
+      return failure();
+    }
+
+    return success();
+  }
+};
+
+class ConvertReduceAdd
+    : public ConvertReduce<mhlo::AddOp, TFL::SumOp, TFL::AddOp, true> {
+ public:
+  using ConvertReduce::ConvertReduce;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
+    if (mlir::isa<FloatType>(type)) {
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isZero())
+        return failure();
+    } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isZero())
+        return failure();
+    } else {
+      return failure();
+    }
+
+    return success();
+  }
+};
+
+class ConvertReduceMax : public ConvertReduce<mhlo::MaxOp, TFL::ReduceMaxOp> {
+ public:
+  using ConvertReduce::ConvertReduce;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
+    if (mlir::isa<FloatType>(type)) {
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isInfinity() || !const_value.isNegative())
+        return failure();
+    } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isMinSignedValue())
+        return failure();
+    } else {
+      return failure();
+    }
+    return success();
+  }
+};
+
+class ConvertReduceMin : public ConvertReduce<mhlo::MinOp, TFL::ReduceMinOp> {
+ public:
+  using ConvertReduce::ConvertReduce;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
+
+    if (mlir::isa<FloatType>(type)) {
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isInfinity() || const_value.isNegative())
+        return failure();
+    } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isMaxSignedValue())
+        return failure();
+    } else {
+      return failure();
+    }
+    return success();
+  }
+};
+
+class ConvertReduceAnd
+    : public ConvertReduce<mhlo::AndOp, TFL::ReduceAllOp, TFL::LogicalAndOp> {
+ public:
+  using ConvertReduce<mhlo::AndOp, TFL::ReduceAllOp,
+                      TFL::LogicalAndOp>::ConvertReduce;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    DenseIntElementsAttr init_attr;
+    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
+        !init_attr.getType().getElementType().isInteger(1) ||
+        !init_attr.isSplat() || !init_attr.getSplatValue<BoolAttr>().getValue())
+      return failure();
+    return success();
+  }
+};
+
+class ConvertReduceOr
+    : public ConvertReduce<mhlo::OrOp, TFL::ReduceAnyOp, TFL::LogicalOrOp> {
+ public:
+  using ConvertReduce<mhlo::OrOp, TFL::ReduceAnyOp,
+                      TFL::LogicalOrOp>::ConvertReduce;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    DenseIntElementsAttr init_attr;
+    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
+        !init_attr.getType().getElementType().isInteger(1) ||
+        !init_attr.isSplat() || init_attr.getSplatValue<BoolAttr>().getValue())
+      return failure();
+    return success();
+  }
+};
+
+//===------------------------------------------------------------------------===
+// register patterns
+//===------------------------------------------------------------------------===
+
+// Returns false if the given reduce op can be legalized to ArgMax/ArgMin ops.
 std::optional<bool> IsReduceOpLegal(mhlo::ReduceOp reduce_op) {
   if (succeeded(MatchReduceToArgMinMaxType1(reduce_op, true, true)) ||
       succeeded(MatchReduceToArgMinMaxType1(reduce_op, false, true)) ||
@@ -307,13 +623,13 @@ std::optional<bool> IsReduceOpLegal(mhlo::ReduceOp reduce_op) {
       succeeded(MatchReduceToArgMinMaxType1(reduce_op, false, false)) ||
       succeeded(MatchReduceToArgMinMaxType2(reduce_op, false)) ||
       succeeded(MatchReduceToArgMinMaxType2(reduce_op, true))) {
-    // If the ReduceOp matches to one of the patterns above, its illegal to have
+    // If the ReduceOp matches to one of the patterns above, its illegal to
+    // have
     // it in the model after the legalization is ran, because it should have
     // been legalized to an ArgMax/ArgMin op.
     return false;
   }
-
-  return true;
+  return std::nullopt;
 }
 
 template class ConvertReduceOpToArgMinMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
@@ -333,6 +649,34 @@ template class ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
 template class ConvertReduceOpToArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp,
                                           false>;
 template class ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
+
+void PopulateReduceArgMinMaxTFPatterns(MLIRContext* ctx,
+                                       RewritePatternSet& patterns) {
+  using ConvertReduceOpToTfArgmax =
+      ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
+
+  using ConvertReduceOpToTfArgmin =
+      ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
+
+  patterns.add<ConvertReduceOpToTfArgmin, ConvertReduceOpToTfArgmax>(ctx);
+}
+
+void PopulateReducePatterns(MLIRContext* ctx, RewritePatternSet& patterns,
+                            ConversionTarget& target) {
+  using ConvertReduceOpToTFLiteArgmax =
+      ConvertReduceOpToArgMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
+                              TFL::ReduceAnyOp>;
+
+  using ConvertReduceOpToTFLiteArgmin =
+      ConvertReduceOpToArgMin<TFL::ReduceMinOp, TFL::ArgMinOp,
+                              TFL::ReduceAllOp>;
+
+  patterns.add<ConvertReduceOpToTFLiteArgmax, ConvertReduceOpToTFLiteArgmin,
+               ConvertReduceMul, ConvertReduceAdd, ConvertReduceMax,
+               ConvertReduceMin, ConvertReduceAnd, ConvertReduceOr>(ctx);
+
+  target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
+}
 
 }  // namespace odml
 }  // namespace mlir

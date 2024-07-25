@@ -255,18 +255,25 @@ class NearComparator {
     // from the 'actual' literal.
     int64_t linear_index;
 
+    int float_distance = -1;
+
     bool operator<(const Mismatch& other) const {
       return rel_error < other.rel_error;
     }
 
     std::string ToString(const Shape& shape) const {
-      return absl::StrFormat(
-          "actual %s, expected %s, index %s, rel error %8.3g, abs error %8.3g",
+      auto s = absl::StrFormat(
+          "actual %s, expected %s, index %s, rel error %8.3g, abs error "
+          "%8.3g",
           FpValueToString(actual), FpValueToString(expected),
           LiteralUtil::MultiIndexAsString(
               IndexUtil::LinearIndexToMultidimensionalIndex(shape,
                                                             linear_index)),
           rel_error, abs_error);
+      if (float_distance >= 0) {
+        StrAppendFormat(&s, ", float distance %d", float_distance);
+      }
+      return s;
     }
   };
 
@@ -455,8 +462,12 @@ class NearComparator {
     // Keep track of the kTopRelativeErrorCount relative error mismatches.
     if (top_rel_mismatches_.size() < kTopRelativeErrorCount ||
         rel_error > top_rel_mismatches_.begin()->rel_error) {
-      Mismatch mismatch = {actual, expected, rel_error, abs_error,
-                           linear_index};
+      Mismatch mismatch = {/*actual=*/actual,
+                           /*expected=*/expected,
+                           /*rel_error=*/rel_error,
+                           /*abs_error=*/abs_error,
+                           /*linear_index=*/linear_index,
+                           /*float_distance=*/float_distance};
       top_rel_mismatches_.insert(mismatch);
       if (top_rel_mismatches_.size() > kTopRelativeErrorCount) {
         top_rel_mismatches_.erase(top_rel_mismatches_.begin());

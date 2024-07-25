@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -31,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -57,9 +57,24 @@ Value BuildIntConstOp(ImplicitLocOpBuilder& builder,
                       Type type);
 
 // Create a const integer vector tensor (1-dim).
+template <typename ConstOpT = TF::ConstOp>
 Value BuildIntArrayConstOp(ImplicitLocOpBuilder& builder,
                            ConversionPatternRewriter& rewriter,
-                           ArrayRef<int64_t> const_value, Type type);
+                           ArrayRef<int64_t> const_value, Type type) {
+  DenseIntElementsAttr const_value_raw;
+  if (type == rewriter.getI64Type()) {
+    const_value_raw = rewriter.getI64TensorAttr(const_value);
+  } else {
+    // Convert I64 const array to I32.
+    llvm::SmallVector<int32_t> const_i32_vec;
+    for (auto element : const_value) {
+      const_i32_vec.push_back(static_cast<int32_t>(element));
+    }
+    const_value_raw = rewriter.getI32TensorAttr(const_i32_vec);
+  }
+  Value result_const = builder.create<ConstOpT>(const_value_raw);
+  return result_const;
+}
 
 // Returns the inverse permutation array for a permutation array.
 llvm::SmallVector<int64_t> GetInversePermutationArray(

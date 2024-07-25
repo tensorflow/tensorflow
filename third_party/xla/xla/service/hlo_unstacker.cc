@@ -408,7 +408,7 @@ void UnstackWhileInput(HloComputation* unstacking_computation,
     for (int64_t i = 0; i < new_shape->tuple_shapes_size(); ++i) {
       std::vector<HloInstruction*> operands = {
           old_while_input,
-          while_instr->AddInstruction(MakeConstantWithShape(
+          while_instr->AddInstruction(MakeScalarConstantWithShape(
               unstacking_computation->parameter_instruction(1)->shape(), i))};
       HloInstruction* slice =
           while_instr->AddInstruction(HloInstruction::CreateFusion(
@@ -457,8 +457,11 @@ bool CanUnstackWhileOperand(const HloInstruction* while_instr,
     return false;
   }
 
-  HloInstruction* root_operand =
-      while_instr->while_body()->root_instruction()->mutable_operand(index);
+  const HloInstruction* root_operand =
+      while_instr->while_body()->root_instruction()->operand(index);
+  if (root_operand == nullptr) {
+    return false;
+  }
   if (Match(root_operand, match::GetTupleElement(match::While()))) {
     VLOG(3) << "Faced a gte originating from loop: "
             << root_operand->ToString();
@@ -521,6 +524,13 @@ bool UnstackWhileOperandAtIndex(
     return false;
   }
 
+  // If unstacker has not found an unstackable shape, there is no point in
+  // applying the unstacker changes.
+  if (unstacker.GetUnstackingComputation() == nullptr) {
+    VLOG(3) << "Failed: unstacking computation is null";
+    return false;
+  }
+
   // At this point, we have the unstacked_shape at hand. We go ahead and apply
   // all the changes that required the unstacked shape.
   //
@@ -575,6 +585,47 @@ Shape MakeUnstackedShapeFromSlice(const Shape& slice_shape, int64_t layers) {
   return ShapeUtil::MakeTupleShape(shapes);
 }
 
+// Checks if the given instruction is a fusion with num_fusion_params
+// parameters. If so, the function looks for the dynamic-index instruction
+// within the fusion that covers the shape of the stacked operand at the given
+// index.
+HloInstruction* GetMostMajorShapeCoveringDynamicIndexInFusion(
+    const UnstackerMetadata& metadata, const HloInstruction* instr,
+    HloOpcode opcode, int64_t num_fusion_params, int64_t stacked_operand_idx) {
+  if (instr->opcode() != HloOpcode::kFusion) {
+    return nullptr;
+  }
+  if (instr->fused_parameters().size() != num_fusion_params) {
+    VLOG(3) << "Fusion has different number of parameters";
+    return nullptr;
+  }
+  if (!metadata.unrollable_loop_bodies.contains(instr->parent())) {
+    VLOG(5) << "Fusion not inside unrollable while body, " << instr->name()
+            << " inside " << instr->parent()->name();
+    return nullptr;
+  }
+
+  WhileLoopConfig while_instr_config =
+      metadata.unrollable_loop_bodies.at(instr->parent());
+
+  for (HloInstruction* fused_instr :
+       instr->fused_instructions_computation()->MakeInstructionPostOrder()) {
+    if (fused_instr->opcode() != opcode) {
+      continue;
+    }
+    std::optional<int64_t> dynamic_index =
+        MatchShapeCoveringDynamicIndexInstruction(
+            fused_instr,
+            instr->fused_instructions_computation()->parameter_instruction(
+                stacked_operand_idx),
+            opcode, while_instr_config);
+    if (dynamic_index.has_value() && dynamic_index.value() == 0) {
+      return fused_instr;
+    }
+  }
+  return nullptr;
+}
+
 // This function recognizes fusions with the following pattern:
 // fusion(stacked, loop_iteration_var)
 // computation {
@@ -587,51 +638,27 @@ std::optional<PatternInfo> GetDSFusionPattern(const UnstackerMetadata& metadata,
                                               const HloInstruction* instr,
                                               int64_t stacked_operand_idx) {
   VLOG(3) << "Checking DSFusion";
-  if (instr->opcode() != HloOpcode::kFusion) {
+  HloInstruction* shape_covering_instr =
+      GetMostMajorShapeCoveringDynamicIndexInFusion(
+          metadata, instr, HloOpcode::kDynamicSlice, 2, stacked_operand_idx);
+  if (shape_covering_instr == nullptr) {
     return std::nullopt;
   }
-  if (instr->fused_parameters().size() != 2) {
-    VLOG(3) << "Fusion has more than two parameters";
-    return std::nullopt;
-  }
-  if (!metadata.unrollable_loop_bodies.contains(instr->parent())) {
-    VLOG(5) << "Instruction not inside unrollable while body, " << instr->name()
-            << " inside " << instr->parent()->name();
-    return std::nullopt;
-  }
-
-  WhileLoopConfig while_instr_config =
-      metadata.unrollable_loop_bodies.at(instr->parent());
-
-  for (HloInstruction* fused_instr :
-       instr->fused_instructions_computation()->MakeInstructionPostOrder()) {
-    if (!Match(fused_instr, match::DynamicSlice())) {
-      continue;
-    }
-    std::optional<int64_t> dynamic_index =
-        MatchShapeCoveringDynamicIndexInstruction(
-            fused_instr,
-            instr->fused_instructions_computation()->parameter_instruction(
-                stacked_operand_idx),
-            HloOpcode::kDynamicSlice, while_instr_config);
-    if (dynamic_index.has_value() && dynamic_index.value() == 0) {
-      HloInstruction* bitcast_operand = nullptr;
-      if (Match(instr->fused_instructions_computation()->root_instruction(),
-                match::Bitcast(match::Op(&bitcast_operand)))) {
-        if (bitcast_operand == fused_instr) {
-          PatternInfo pattern_info;
-          pattern_info.name = "DSFusionPattern";
-          pattern_info.instr = instr;
-          const Shape& slice_shape = instr->shape();
-          const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
-          pattern_info.unstacked_shape =
-              MakeUnstackedShapeFromSlice(slice_shape, num_layers);
-          pattern_info.unstacking_computation =
-              instr->fused_instructions_computation();
-          pattern_info.unstacked_instrs.push_back(instr);
-          return pattern_info;
-        }
-      }
+  HloInstruction* bitcast_operand = nullptr;
+  if (Match(instr->fused_instructions_computation()->root_instruction(),
+            match::Bitcast(match::Op(&bitcast_operand)))) {
+    if (bitcast_operand == shape_covering_instr) {
+      PatternInfo pattern_info;
+      pattern_info.name = "DSFusionPattern";
+      pattern_info.instr = instr;
+      const Shape& slice_shape = instr->shape();
+      const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
+      pattern_info.unstacked_shape =
+          MakeUnstackedShapeFromSlice(slice_shape, num_layers);
+      pattern_info.unstacking_computation =
+          instr->fused_instructions_computation();
+      pattern_info.unstacked_instrs.push_back(instr);
+      return pattern_info;
     }
   }
   return std::nullopt;
@@ -647,9 +674,6 @@ absl::Status UnstackDSFusionPattern(
   HloInstruction* new_operand =
       parent_loop->AddInstruction(HloInstruction::CreateCustomCall(
           slice_shape, {stacked, offset}, "DynamicGte"));
-  VLOG(3) << "CREATING NEW_DY_GTE: " << new_operand->ToString();
-  VLOG(3) << "INPUT: " << stacked->ToString();
-  VLOG(3) << "parent: " << stacked->parent()->name();
   return mutable_dynamic_slicing_fusion->ReplaceAllUsesWithDifferentShape(
       new_operand);
 }
@@ -667,46 +691,25 @@ std::optional<PatternInfo> GetDUSFusionPattern(
     const UnstackerMetadata& metadata, const HloInstruction* instr,
     int64_t stacked_operand_idx) {
   VLOG(3) << "Checking DUSFusion";
-  if (instr->opcode() != HloOpcode::kFusion) {
+  HloInstruction* shape_covering_instr =
+      GetMostMajorShapeCoveringDynamicIndexInFusion(
+          metadata, instr, HloOpcode::kDynamicUpdateSlice, 3,
+          stacked_operand_idx);
+  if (shape_covering_instr == nullptr) {
     return std::nullopt;
   }
-  if (instr->fused_parameters().size() != 3) {
-    return std::nullopt;
-  }
-  if (!metadata.unrollable_loop_bodies.contains(instr->parent())) {
-    VLOG(5) << "Instruction not inside unrollable while body, " << instr->name()
-            << " insided " << instr->parent()->name();
-    return std::nullopt;
-  }
-
-  WhileLoopConfig while_instr_config =
-      metadata.unrollable_loop_bodies.at(instr->parent());
-
-  for (HloInstruction* fused_instr :
-       instr->fused_instructions_computation()->MakeInstructionPostOrder()) {
-    if (!Match(fused_instr, match::DynamicUpdateSlice())) {
-      continue;
-    }
-    std::optional<int64_t> dynamic_index =
-        MatchShapeCoveringDynamicIndexInstruction(
-            fused_instr,
-            instr->fused_instructions_computation()->parameter_instruction(
-                stacked_operand_idx),
-            HloOpcode::kDynamicUpdateSlice, while_instr_config);
-    if (dynamic_index.has_value() && dynamic_index.value() == 0) {
-      if (Match(fused_instr->operand(1), match::Bitcast(match::Parameter()))) {
-        if (fused_instr->parent()->root_instruction() == fused_instr) {
-          PatternInfo pattern_info;
-          pattern_info.name = "DUSFusionPattern";
-          pattern_info.instr = instr;
-          pattern_info.unstacked_shape = MakeUnstackedShapeFromSlice(
-              instr->operand(2)->shape(),
-              instr->operand(0)->shape().dimensions(0));
-          pattern_info.unstacking_computation = nullptr;
-          pattern_info.unstacked_instrs.push_back(instr);
-          return pattern_info;
-        }
-      }
+  if (Match(shape_covering_instr->operand(1),
+            match::Bitcast(match::Parameter()))) {
+    if (shape_covering_instr->parent()->root_instruction() ==
+        shape_covering_instr) {
+      PatternInfo pattern_info;
+      pattern_info.name = "DUSFusionPattern";
+      pattern_info.instr = instr;
+      pattern_info.unstacked_shape = MakeUnstackedShapeFromSlice(
+          instr->operand(2)->shape(), instr->operand(0)->shape().dimensions(0));
+      pattern_info.unstacking_computation = nullptr;
+      pattern_info.unstacked_instrs.push_back(instr);
+      return pattern_info;
     }
   }
   return std::nullopt;
@@ -748,51 +751,30 @@ absl::Status UnstackDUSFusionPattern(
 std::optional<PatternInfo> GetDUSFusionWithPadPattern(
     const UnstackerMetadata& metadata, const HloInstruction* instr,
     int64_t stacked_operand_idx) {
-  VLOG(3) << "Checking DUSFusion";
-  if (instr->opcode() != HloOpcode::kFusion) {
+  VLOG(3) << "Checking DUSFusionWithPad";
+  HloInstruction* shape_covering_instr =
+      GetMostMajorShapeCoveringDynamicIndexInFusion(
+          metadata, instr, HloOpcode::kDynamicUpdateSlice, 3,
+          stacked_operand_idx);
+  if (shape_covering_instr == nullptr) {
     return std::nullopt;
   }
-  if (instr->fused_parameters().size() != 3) {
-    return std::nullopt;
-  }
-  VLOG(3) << "IsDynamicUpdateSlicingFusion: " << instr->name();
-  if (!metadata.unrollable_loop_bodies.contains(instr->parent())) {
-    VLOG(5) << "Instruction not inside unrollable while body, " << instr->name()
-            << " insided " << instr->parent()->name();
-    return std::nullopt;
-  }
-
-  WhileLoopConfig while_instr_config =
-      metadata.unrollable_loop_bodies.at(instr->parent());
-
-  for (HloInstruction* fused_instr :
-       instr->fused_instructions_computation()->MakeInstructionPostOrder()) {
-    if (!Match(fused_instr, match::DynamicUpdateSlice())) {
-      continue;
-    }
-    std::optional<int64_t> dynamic_index =
-        MatchShapeCoveringDynamicIndexInstruction(
-            fused_instr,
-            instr->fused_instructions_computation()->parameter_instruction(
-                stacked_operand_idx),
-            HloOpcode::kDynamicUpdateSlice, while_instr_config);
-    if (dynamic_index.has_value() && dynamic_index.value() == 0) {
-      if (Match(fused_instr->operand(1),
-                match::Bitcast(
-                    match::Pad(match::Parameter(), match::Constant())))) {
-        if (fused_instr->parent()->root_instruction() == fused_instr) {
-          const HloInstruction* pad_instr = fused_instr->operand(1)->operand(0);
-          PatternInfo pattern_info;
-          pattern_info.name = "DUSFusionWithPadPattern";
-          pattern_info.instr = instr;
-          pattern_info.unstacked_shape = MakeUnstackedShapeFromSlice(
-              pad_instr->shape(),
-              fused_instr->operand(0)->shape().dimensions(0));
-          pattern_info.unstacking_computation = nullptr;
-          pattern_info.unstacked_instrs.push_back(instr);
-          return pattern_info;
-        }
-      }
+  if (Match(
+          shape_covering_instr->operand(1),
+          match::Bitcast(match::Pad(match::Parameter(), match::Constant())))) {
+    if (shape_covering_instr->parent()->root_instruction() ==
+        shape_covering_instr) {
+      const HloInstruction* pad_instr =
+          shape_covering_instr->operand(1)->operand(0);
+      PatternInfo pattern_info;
+      pattern_info.name = "DUSFusionWithPadPattern";
+      pattern_info.instr = instr;
+      pattern_info.unstacked_shape = MakeUnstackedShapeFromSlice(
+          pad_instr->shape(),
+          shape_covering_instr->operand(0)->shape().dimensions(0));
+      pattern_info.unstacking_computation = nullptr;
+      pattern_info.unstacked_instrs.push_back(instr);
+      return pattern_info;
     }
   }
   return std::nullopt;
@@ -836,6 +818,100 @@ absl::Status UnstackDUSFusionWithPadPattern(
               user, new_operand));
     }
   }
+  return absl::OkStatus();
+}
+
+// This function recognizes fusions with the following pattern:
+// fusion(stackd, update, loop_iteration_var)
+// computation {
+//   p0 = parameter(0)
+//   p1 = parameter(1)
+//   slice = dynamic-slice(p0, p1, zero)
+//   broadcast = broadcast(constant)
+//   add = add(slice, broadcast)
+//   ROOT reduce = reduce(add, zero), apply=+
+// }
+std::optional<PatternInfo> GetDSFusionWithAddPattern(
+    const UnstackerMetadata& metadata, const HloInstruction* instr,
+    int64_t stacked_operand_idx) {
+  VLOG(3) << "Checking DSFusionWithAdd";
+  HloInstruction* shape_covering_instr =
+      GetMostMajorShapeCoveringDynamicIndexInFusion(
+          metadata, instr, HloOpcode::kDynamicSlice, 2, stacked_operand_idx);
+  if (shape_covering_instr == nullptr) {
+    return std::nullopt;
+  }
+  HloComputation* fused_computation = instr->fused_instructions_computation();
+  HloInstruction* fusion_root = fused_computation->root_instruction();
+  HloInstruction* add_operand;
+  if (Match(fusion_root,
+            match::Reduce(match::Add(match::Op(&add_operand),
+                                     match::Broadcast(match::Constant())),
+                          match::Constant()))) {
+    if (add_operand == shape_covering_instr) {
+      const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
+      PatternInfo pattern_info;
+      pattern_info.name = "DUSFusionWithAddPattern";
+      pattern_info.instr = instr;
+      pattern_info.unstacked_shape =
+          MakeUnstackedShapeFromSlice(instr->shape(), num_layers);
+      HloComputation::Builder builder("unstack_add");
+      HloInstruction* p0 =
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              0, fused_computation->parameter_instruction(0)->shape(), "p0"));
+      HloInstruction* p1 =
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              1, fused_computation->parameter_instruction(1)->shape(), "p1"));
+      HloInstruction* zero =
+          builder.AddInstruction(MakeScalarConstantWithShape(p1->shape(), 0));
+      std::vector<HloInstruction*> slice_starts;
+      slice_starts.reserve(shape_covering_instr->shape().rank());
+      slice_starts.push_back(p1);
+      for (int64_t i = 0; i < shape_covering_instr->shape().rank() - 1; i++) {
+        slice_starts.push_back(zero);
+      }
+      HloInstruction* slice =
+          builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+              shape_covering_instr->shape(), p0, slice_starts,
+              shape_covering_instr->dynamic_slice_sizes()));
+      HloInstruction* zero_reduce =
+          builder.AddInstruction(MakeScalarConstantWithShape(
+              ShapeUtil::MakeScalarShape(slice->shape().element_type()), 0));
+      HloInstruction* reduce =
+          builder.AddInstruction(HloInstruction::CreateReduce(
+              instr->shape(), slice, zero_reduce, fusion_root->dimensions(),
+              fused_computation->root_instruction()->to_apply()));
+      HloComputation* unstack_add =
+          instr->GetModule()->AddEmbeddedComputation(builder.Build());
+      unstack_add->set_root_instruction(reduce);
+      pattern_info.unstacking_computation = unstack_add;
+      pattern_info.unstacked_instrs.push_back(instr);
+      return pattern_info;
+    }
+  }
+  return std::nullopt;
+}
+
+absl::Status UnstackDSFusionWithAddPattern(
+    HloInstruction* mutable_dynamic_slice_with_add_fusion,
+    const Shape& slice_shape) {
+  HloComputation* parent_loop = mutable_dynamic_slice_with_add_fusion->parent();
+  HloInstruction* stacked =
+      mutable_dynamic_slice_with_add_fusion->mutable_operand(0);
+  HloInstruction* offset =
+      mutable_dynamic_slice_with_add_fusion->mutable_operand(1);
+  HloInstruction* new_operand =
+      parent_loop->AddInstruction(HloInstruction::CreateCustomCall(
+          slice_shape, {stacked, offset}, "DynamicGte"));
+  HloInstruction* one = parent_loop->AddInstruction(MakeScalarConstantWithShape(
+      ShapeUtil::MakeScalarShape(slice_shape.element_type()), 1));
+  HloInstruction* broadcast = parent_loop->AddInstruction(
+      HloInstruction::CreateBroadcast(slice_shape, one, {}));
+  HloInstruction* add = mutable_dynamic_slice_with_add_fusion->AddInstruction(
+      HloInstruction::CreateBinary(new_operand->shape(), HloOpcode::kAdd,
+                                   new_operand, broadcast));
+  TF_RETURN_IF_ERROR(
+      mutable_dynamic_slice_with_add_fusion->ReplaceAllUsesWith(add));
   return absl::OkStatus();
 }
 
@@ -942,21 +1018,8 @@ absl::Status UnstackNestedDUSFusionPattern(
           stacked_param_number,
           HloInstruction::CreateParameter(stacked_param_number, slice_shape,
                                           "sliced"));
-
   TF_RETURN_IF_ERROR(
       mutable_dynamic_slicing_fusion->ReplaceAllUsesWith(sliced_param));
-  TF_RETURN_IF_ERROR(
-      parent_fusion->fused_instructions_computation()
-          ->RemoveInstructionAndUnusedOperands(mutable_dynamic_slicing_fusion));
-
-  std::vector<Shape> parameters =
-      parent_fusion->fused_instructions_computation()
-          ->ComputeProgramShape()
-          .parameters();
-  parameters.at(stacked_param_number) = slice_shape;
-  *parent_fusion->fused_instructions_computation()
-       ->ComputeProgramShape()
-       .mutable_parameters() = parameters;
 
   // Create the custom-call to dynamically get the tuple element given the
   // loop iteration number. We rely on WhileLoopUnroller to rewrite this as
@@ -965,8 +1028,8 @@ absl::Status UnstackNestedDUSFusionPattern(
   HloInstruction* new_operand =
       parent_fusion->AddInstruction(HloInstruction::CreateCustomCall(
           slice_shape, {stacked, offset}, "DynamicGte"));
-  return parent_fusion->ReplaceOperandWithDifferentShape(stacked_param_number,
-                                                         new_operand);
+  return parent_fusion->ReplaceOperandWithDifferentShape(
+      sliced_param->parameter_number(), new_operand);
 }
 
 // Identifies the following pattern:
@@ -1030,57 +1093,34 @@ std::optional<PatternInfo> GetReduceFusionPattern(
     const UnstackerMetadata& metadata, const HloInstruction* instr,
     int64_t stacked_operand_idx) {
   VLOG(3) << "Checking ReduceFusion";
-  if (instr->opcode() != HloOpcode::kFusion) {
+  HloInstruction* shape_covering_instr =
+      GetMostMajorShapeCoveringDynamicIndexInFusion(
+          metadata, instr, HloOpcode::kDynamicSlice, 2, stacked_operand_idx);
+  if (shape_covering_instr == nullptr) {
     return std::nullopt;
   }
-  if (instr->fused_parameters().size() != 2) {
-    VLOG(3) << "Fusion has more than two parameters";
-    return std::nullopt;
-  }
-  if (!metadata.unrollable_loop_bodies.contains(instr->parent())) {
-    VLOG(5) << "Instruction not inside unrollable while body, " << instr->name()
-            << " inside " << instr->parent()->name();
-    return std::nullopt;
-  }
-
-  WhileLoopConfig while_instr_config =
-      metadata.unrollable_loop_bodies.at(instr->parent());
-
-  for (HloInstruction* fused_instr :
-       instr->fused_instructions_computation()->MakeInstructionPostOrder()) {
-    if (!Match(fused_instr, match::DynamicSlice())) {
-      continue;
-    }
-    std::optional<int64_t> dynamic_index =
-        MatchShapeCoveringDynamicIndexInstruction(
-            fused_instr,
-            instr->fused_instructions_computation()->parameter_instruction(
-                stacked_operand_idx),
-            HloOpcode::kDynamicSlice, while_instr_config);
-    if (dynamic_index.has_value() && dynamic_index.value() == 0) {
-      HloInstruction* reduce_operand = nullptr;
-      HloInstruction* fusion_root =
-          instr->fused_instructions_computation()->root_instruction();
-      if (Match(fusion_root, match::Reduce(match::Op(&reduce_operand),
-                                           match::ConstantScalar())) &&
-          Match(fusion_root->to_apply()->root_instruction(),
-                match::Add(match::Parameter(), match::Parameter()))) {
-        if (reduce_operand == fused_instr) {
-          PatternInfo pattern_info;
-          pattern_info.name = "ReduceFusion";
-          pattern_info.instr = instr;
-          const Shape& slice_shape = instr->shape();
-          const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
-          pattern_info.unstacked_shape =
-              MakeUnstackedShapeFromSlice(slice_shape, num_layers);
-          pattern_info.unstacking_computation =
-              instr->fused_instructions_computation();
-          pattern_info.unstacked_instrs.push_back(instr);
-          return pattern_info;
-        }
-      }
+  HloInstruction* reduce_operand = nullptr;
+  HloInstruction* fusion_root =
+      instr->fused_instructions_computation()->root_instruction();
+  if (Match(fusion_root, match::Reduce(match::Op(&reduce_operand),
+                                       match::ConstantScalar())) &&
+      Match(fusion_root->to_apply()->root_instruction(),
+            match::Add(match::Parameter(), match::Parameter()))) {
+    if (reduce_operand == shape_covering_instr) {
+      PatternInfo pattern_info;
+      pattern_info.name = "ReduceFusion";
+      pattern_info.instr = instr;
+      const Shape& slice_shape = instr->shape();
+      const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
+      pattern_info.unstacked_shape =
+          MakeUnstackedShapeFromSlice(slice_shape, num_layers);
+      pattern_info.unstacking_computation =
+          instr->fused_instructions_computation();
+      pattern_info.unstacked_instrs.push_back(instr);
+      return pattern_info;
     }
   }
+
   return std::nullopt;
 }
 
@@ -1109,58 +1149,66 @@ absl::StatusOr<bool> HloUnstacker::Run(
   metadata.custom_handlers.push_back(std::make_pair(
       GetDUSFusionWithPadPattern, UnstackDUSFusionWithPadPattern));
   metadata.custom_handlers.push_back(
+      std::make_pair(GetDSFusionWithAddPattern, UnstackDSFusionWithAddPattern));
+  metadata.custom_handlers.push_back(
       std::make_pair(GetReduceFusionPattern, UnstackDSFusionPattern));
   metadata.custom_handlers.push_back(
       std::make_pair(GetNestedDUSFusionPattern, UnstackNestedDUSFusionPattern));
 
-  bool unstacked = false;
-  std::vector<const HloInstruction*> unstacked_instructions;
+  std::vector<HloInstruction*> entry_loops;
   for (HloInstruction* instr :
        module->entry_computation()->MakeInstructionPostOrder()) {
-    if (instr->opcode() != HloOpcode::kWhile) {
-      continue;
+    // Only unstack standard loops with tuple input and output.
+    if (Match(instr, match::While(match::Tuple())) &&
+        Match(instr->while_body()->root_instruction(), match::Tuple())) {
+      entry_loops.push_back(instr);
     }
-    for (int64_t i = 0; i < instr->shape().tuple_shapes_size(); ++i) {
-      // Possibly already unstacked plus we don't handle tuples for now.
-      if (instr->while_init()->operand(i)->shape().IsTuple()) {
+  }
+
+  bool unstacked = false;
+  std::vector<const HloInstruction*> unstacked_instructions;
+  for (HloInstruction* loop : entry_loops) {
+    for (int64_t i = 0; i < loop->shape().tuple_shapes_size(); ++i) {
+      // We don't handle tuples and if we see then we assume they come from a
+      // previous unstacking attempt.
+      if (loop->while_init()->operand(i)->shape().IsTuple()) {
         continue;
       }
-      VLOG(3) << "Attempting to unstack " << instr->name() << " at " << i
-              << " = " << instr->while_init()->operand(i)->ToShortString();
-      if (UnstackWhileOperandAtIndex(metadata, instr, i,
-                                     unstacked_instructions)) {
-        VLOG(3) << "Unstacked " << instr->name() << " at " << i;
-        unstacked |= true;
-      }
+      VLOG(3) << "Attempting to unstack " << loop->name() << " at " << i
+              << " = " << loop->while_init()->operand(i)->ToShortString();
+      unstacked |=
+          UnstackWhileOperandAtIndex(metadata, loop, i, unstacked_instructions);
       VLOG(3) << "###################";
     }
   }
-  if (unstacked) {
-    // Unstacking computations are cloned, leaving the original unstacking
-    // computation unused.
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
-    // We rely on the WhileLoopUnroller pass to unroll unstacked loop bodies
-    // and rewrite custom-calls created by unstacker, i.e., DynamicGte and
-    // DynamicTuple.
-    VLOG(3) << "Unstacked module:\n" << module->ToString();
-    std::vector<HloInstruction*> loops_to_unroll;
-    for (const HloInstruction* instr : unstacked_instructions) {
-      HloInstruction* loop = metadata.bodies[instr->parent()];
-      if (std::find(loops_to_unroll.begin(), loops_to_unroll.end(), loop) ==
-          loops_to_unroll.end()) {
-        loops_to_unroll.push_back(loop);
-      }
-    }
-    for (HloInstruction* loop : loops_to_unroll) {
-      TF_ASSIGN_OR_RETURN(
-          bool unrolled,
-          WhileLoopUnroller::Unroll(loop, /*unroll_factor=*/-1,
-                                    /*wrap_in_trivial_loop=*/true,
-                                    /*force_unroll=*/true, /*prepare=*/false));
-      CHECK(unrolled);
+  if (!unstacked) {
+    return false;
+  }
+  // Unstacking computations are cloned, leaving the original unstacking
+  // computation unused.
+  TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+  // We rely on the WhileLoopUnroller pass to unroll unstacked loop bodies
+  // and rewrite custom-calls created by unstacker, i.e., DynamicGte and
+  // DynamicTuple.
+  std::vector<HloInstruction*> loops_to_unroll;
+  for (const HloInstruction* instr : unstacked_instructions) {
+    HloInstruction* loop = metadata.bodies[instr->parent()];
+    if (std::find(loops_to_unroll.begin(), loops_to_unroll.end(), loop) ==
+        loops_to_unroll.end()) {
+      loops_to_unroll.push_back(loop);
     }
   }
-  return unstacked;
+  // Go over the loops in reverse order to unroll the inner loops first.
+  for (int64_t i = loops_to_unroll.size() - 1; i >= 0; --i) {
+    HloInstruction* loop = loops_to_unroll[i];
+    TF_ASSIGN_OR_RETURN(
+        bool unrolled,
+        WhileLoopUnroller::Unroll(loop, /*unroll_factor=*/-1,
+                                  /*wrap_in_trivial_loop=*/true,
+                                  /*force_unroll=*/true, /*prepare=*/false));
+    CHECK(unrolled);
+  }
+  return true;
 }
 
 }  // namespace xla

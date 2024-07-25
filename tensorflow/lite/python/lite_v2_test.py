@@ -2102,9 +2102,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       with self.assertRaises(convert.ConverterError) as error:
         tflite_model = converter.convert()
       self.assertIn(
-          'Variable constant folding is failed. Please consider using enabling '
-          '`experimental_enable_resource_variables` flag in the TFLite '
-          'converter object.',
+          'is not immutable, try removing mutable variables in your model since'
+          ' mutable variables are currently not supported through this'
+          ' converter',
           str(error.exception),
       )
       return

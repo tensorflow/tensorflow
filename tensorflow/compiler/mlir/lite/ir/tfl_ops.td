@@ -1646,7 +1646,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$lookup,
-    TFL_TensorOf<[F32, I8, UI8]>:$value
+    TFL_TensorOf<[F32, I8, UI8, QI4]>:$value
    );
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);

@@ -57,10 +57,11 @@ absl::StatusOr<CUresult> QueryEvent(GpuContext* context, CUevent event);
 // unique id is positive, and ids are not repeated within the process.
 class GpuContext {
  public:
-  GpuContext(CUcontext context, int64_t id) : context_(context), id_(id) {}
+  GpuContext(CUcontext context, int device_ordinal)
+      : context_(context), device_ordinal_(device_ordinal) {}
 
   CUcontext context() const { return context_; }
-  int64_t id() const { return id_; }
+  int device_ordinal() const { return device_ordinal_; }
 
   // Disallow copying and moving.
   GpuContext(GpuContext&&) = delete;
@@ -70,7 +71,7 @@ class GpuContext {
 
  private:
   CUcontext const context_;
-  const int64_t id_;
+  const int device_ordinal_;
 };
 
 // Manages the singleton map of contexts that we've created, mapping
@@ -98,7 +99,7 @@ class CreatedContexts {
     auto it = insert_result.first;
     if (insert_result.second) {
       // context was not present in the map.  Add it.
-      it->second = std::make_unique<GpuContext>(context, next_id_++);
+      it->second = std::make_unique<GpuContext>(context, device_ordinal);
       (*LiveOrdinal())[device_ordinal].push_back(context);
     }
     return it->second.get();
@@ -161,7 +162,6 @@ class CreatedContexts {
 
   // Lock that guards access-to/mutation-of the live set.
   static absl::Mutex mu_;
-  static int64_t next_id_;
 };
 }  // namespace gpu
 

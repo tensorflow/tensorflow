@@ -289,6 +289,7 @@ class GpuPriorityFusionQueue {
 
     gpu_performance_model_cache_.Invalidate(*instruction);
     fusion_analysis_cache_.Invalidate(*instruction);
+    fusion_info_cache_.Invalidate(instruction);
   }
 
   // Updates data for the new fusion instruction and its users and operands.
@@ -476,7 +477,7 @@ class GpuPriorityFusionQueue {
     // TODO(b/312200883): Remove this.
     auto contains_significant_reduce = [&](const HloInstruction* instr) {
       auto fusion = HloFusionAdaptor::ForInstruction(instr);
-      return HloAnyOf(fusion->GetRoots(), *fusion, [](auto node) {
+      return HloAnyOf(*fusion, [](auto node) {
         if (!(node.opcode() == HloOpcode::kReduce && node.shape().IsArray())) {
           return false;
         }
@@ -512,9 +513,9 @@ class GpuPriorityFusionQueue {
 
     // Avoid cases where we'd create a fusion that hit limitations in ptxas.
     // Would be nice to model this with cost instead.
-    if (auto fits_budget =
-            FusionFitsInBudget(*consumer, *producer, *device_info_,
-                               /*is_consumer_producer_fusion=*/true);
+    if (auto fits_budget = FusionFitsInBudget(
+            *consumer, *producer, *device_info_,
+            /*is_consumer_producer_fusion=*/true, &fusion_info_cache_);
         !fits_budget) {
       return fits_budget;
     }
@@ -639,6 +640,10 @@ class GpuPriorityFusionQueue {
   absl::Mutex can_fuse_cache_mutex_;
 
   GpuPerformanceModelCache gpu_performance_model_cache_;
+
+  // Cache for `FusionFitsInBudget` to avoid recomputing expensive properties
+  // like shared memory usage or number of unnested reductions of fusion nodes.
+  FusionInfoCache fusion_info_cache_;
 
   bool triton_softmax_priority_fusion_enabled_;
 

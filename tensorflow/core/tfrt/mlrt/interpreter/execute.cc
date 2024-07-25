@@ -178,7 +178,7 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
     function_name = context.function_stack_.back().function_object().name();
   }
   context.LogError(absl::InternalError(absl::StrCat(
-      "Start UnwindOnError from function", function_name, " at pc: ", pc)));
+      "Start UnwindOnError from function ", function_name, " at pc: ", pc)));
 
   while (!context.function_stack_.empty()) {
     DCHECK(context.state_ == ExecutionContext::State::kError);

@@ -95,13 +95,19 @@ Thunk::CollectiveExecuteParams::Create(
           ? run_options->device_ordinal()
           : run_options->stream()->parent()->device_ordinal();
 
+  // Default implementation of a collectives interface that can execute
+  // collective operations within the same process.
+  static CollectivesInterface* in_process_collectives =
+      new runtime::InProcessCollectives();
+
   // If CPU executable run options are set, use the collectives interface
-  // provided by the executable run options. Otherwise, use the in-process
-  // collectives interface.
-  static auto* in_process_collectives = new runtime::InProcessCollectives();
+  // provided by the executable run options if it is set. Otherwise, use the
+  // in-process collectives interface.
+  const CpuExecutableRunOptions* cpu_run_options =
+      run_options->cpu_executable_run_options();
   CollectivesInterface* collectives =
-      run_options->cpu_executable_run_options()
-          ? run_options->cpu_executable_run_options()->collectives()
+      cpu_run_options && cpu_run_options->collectives()
+          ? cpu_run_options->collectives()
           : in_process_collectives;
 
   return CollectiveExecuteParams{run_options->run_id(), device_ordinal,

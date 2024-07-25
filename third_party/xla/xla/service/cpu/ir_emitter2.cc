@@ -449,6 +449,25 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
                  se::ThreadDim()});
 }
 
+absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
+    const HloInstruction* instr) {
+  VLOG(2) << "Emit slice-to-dynamic host kernel: " << instr->name();
+
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(instr));
+  llvm::IRBuilder<> ir_builder(module_->getContext());
+  ir_builder.SetInsertPoint(
+      kernel_prototype.function->getEntryBlock().getTerminator());
+
+  llvm_ir::IrArray output_array = kernel_prototype.results[0];
+  auto guard = nested_ir_emitter_->WithBuilder(ir_builder);
+  TF_RETURN_IF_ERROR(nested_ir_emitter_->EmitSliceToDynamic(
+      instr, kernel_prototype.arguments, output_array));
+  return kernels_.emplace_back(
+      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                 se::ThreadDim()});
+}
+
 absl::StatusOr<IrEmitter2::KernelInfo>
 IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
@@ -490,6 +509,26 @@ IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
   }
 
   return EmitElementalHostKernel(instr);
+}
+
+absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
+    const HloInstruction* instr) {
+  HloComputation* comparator = instr->to_apply();
+
+  // We use simple post-order schedule as we are not emitting a "real"
+  // computation that requires buffer assignment.
+  auto schedule = comparator->MakeInstructionPostOrder();
+
+  // Emit LLVM IR for comparator function. We emit it as a top-level computation
+  // to set external linkage and to get a pointer to compiled function later.
+  TF_ASSIGN_OR_RETURN(llvm::Function * comparator_function,
+                      nested_ir_emitter_->EmitComputation(
+                          comparator, comparator->name(),
+                          /*is_top_level_computation=*/true, schedule,
+                          /*allow_reassociation=*/false));
+
+  return comparators_.emplace_back(
+      ComparatorInfo{comparator_function->getName().str()});
 }
 
 //===----------------------------------------------------------------------===//

@@ -28,11 +28,11 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
@@ -329,7 +329,7 @@ uint32_t GemmFloat16Flags(blas::DataType dtype, blas::CallContext context,
 }
 
 absl::Status PopulateProfileFromTimer(
-    std::optional<GpuTimer> &timer, blas::AlgorithmType algorithm,
+    EventBasedTimer *timer, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
   if (output_profile_result) {
     TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
@@ -544,11 +544,11 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         "datatypes for the inputs a (%d) and b (%d) are unsupported",
         static_cast<int>(type_a), static_cast<int>(type_b)));
   }
-  TF_ASSIGN_OR_RETURN(
-      auto timer,
-      GpuTimer::CreateIfNeeded(
-          stream, profile_result && profile_result->warmup_run_executed(),
-          profile_result != nullptr));
+  std::unique_ptr<EventBasedTimer> timer;
+  if (profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                   profile_result->warmup_run_executed()));
+  }
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
@@ -585,7 +585,7 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         algorithm, GemmFloat16Flags(type_a, context, use_hgemm_alt_impl_)));
   }
   TF_RETURN_IF_ERROR(
-      PopulateProfileFromTimer(timer, algorithm, profile_result));
+      PopulateProfileFromTimer(timer.get(), algorithm, profile_result));
 
   return absl::OkStatus();
 }
@@ -605,11 +605,11 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         "datatypes for the inputs a (%d) and b (%d) are unsupported",
         static_cast<int>(type_a), static_cast<int>(type_b)));
   }
-  TF_ASSIGN_OR_RETURN(
-      auto timer,
-      GpuTimer::CreateIfNeeded(
-          stream, profile_result && profile_result->warmup_run_executed(),
-          profile_result != nullptr));
+  std::unique_ptr<EventBasedTimer> timer;
+  if (profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                   profile_result->warmup_run_executed()));
+  }
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
@@ -648,7 +648,7 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         GemmFloat16Flags(type_a, context, use_hgemm_alt_impl_)));
   }
   TF_RETURN_IF_ERROR(
-      PopulateProfileFromTimer(timer, algorithm, profile_result));
+      PopulateProfileFromTimer(timer.get(), algorithm, profile_result));
 
   return absl::OkStatus();
 }

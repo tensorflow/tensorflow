@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -48,6 +47,14 @@ class WhileThunk final : public Thunk {
  private:
   WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
              ThunkExecutor cond_executor, ThunkExecutor body_executor);
+
+  // If `cond` or `body` thunk sequence return unavailable async values, then
+  // we execute the while loop asynchronously by chaining `Execute` calls via
+  // `AndThen` callbacks. This execution mode adds significant overheads, so we
+  // try to avoid it when possible and run everything in the caller thread.
+  tsl::AsyncValueRef<ExecuteEvent> ExecuteAsync(
+      const ExecuteParams& params, tsl::AsyncValueRef<ExecuteEvent> dependency,
+      bool* condition);
 
   BufferAllocation::Slice cond_buffer_;
   ThunkExecutor cond_executor_;

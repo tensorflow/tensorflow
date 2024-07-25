@@ -852,10 +852,15 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
   tsl::profiler::TraceMe traceme("TfrtCpuClient::Compile (mlir::ModuleOp)");
   XlaComputation xla_computation;
+  const ExecutableBuildOptions& exec_build_options =
+      options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false));
+      /*return_tuple=*/false,
+      exec_build_options.has_debug_options()
+          ? exec_build_options.debug_options().xla_use_shardy()
+          : false));
   return Compile(xla_computation, options);
 }
 
@@ -1606,12 +1611,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           &collective_params,
           &custom_call_execute_params};
 
-      auto execute_event = cpu_executable->thunks().Execute(execute_params);
+      auto thunks_execute_event =
+          cpu_executable->thunks().Execute(execute_params);
 
       tsl::profiler::TraceMe trace(
           "ThunkExecutor::Execute (wait for completion)");
-      tsl::BlockUntilReady(execute_event);
-      if (execute_event.IsError()) return execute_event.GetError();
+      tsl::BlockUntilReady(thunks_execute_event);
+      if (thunks_execute_event.IsError())
+        return thunks_execute_event.GetError();
 
     } else {
       return Internal("CpuExecutable has no compute function or thunks.");
@@ -1743,14 +1750,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                   &*collective_params,
                   &*custom_call_params};
 
-              auto execute_event =
+              auto thunks_execute_event =
                   cpu_executable->thunks().Execute(execute_params);
 
               tsl::profiler::TraceMe trace(
                   "ThunkExecutor::Execute (wait for completion)");
-              tsl::BlockUntilReady(execute_event);
-              status = execute_event.IsError() ? execute_event.GetError()
-                                               : absl::OkStatus();
+              tsl::BlockUntilReady(thunks_execute_event);
+              status = thunks_execute_event.IsError()
+                           ? thunks_execute_event.GetError()
+                           : absl::OkStatus();
             } else {
               status = collective_params.status();
             }

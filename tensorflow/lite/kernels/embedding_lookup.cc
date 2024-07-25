@@ -33,6 +33,7 @@ limitations under the License.
 
 #include <cstring>
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -62,7 +63,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, qparams->zero_point != nullptr);
     TfLiteTensor* output;
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-    if ((value->type == kTfLiteUInt8 || value->type == kTfLiteInt8) &&
+    if ((value->type == kTfLiteUInt8 || value->type == kTfLiteInt8 ||
+         value->type == kTfLiteInt4) &&
         (output->type == kTfLiteFloat32)) {
       // EvalHybrid supports only symmetric quantization for now.
       TF_LITE_ENSURE(context, qparams->zero_point->data[0] == 0);
@@ -70,7 +72,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     if (qparams->scale->size > 1 || qparams->zero_point->size > 1) {
       // Per-axis quantization is supported by EvalHybrid only.
       TF_LITE_ENSURE(context, value->type == kTfLiteUInt8 ||
-                                 value->type == kTfLiteInt8);
+                                  value->type == kTfLiteInt8 ||
+                                  value->type == kTfLiteInt4);
       TF_LITE_ENSURE(context, output->type == kTfLiteFloat32);
       // Per-axis quantization must have quantized_dimension == 0 and correct
       // sizes for scale and zero_point.
@@ -160,9 +163,21 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
         }
       }
 
-      for (int j = 0; j < col_size; j++) {
-        output_ptr[j + i * col_size] =
-            value_ptr[j + idx * col_size] * scaling_factor;
+      if (value->type == kTfLiteInt4) {
+        for (int j = 0; j < col_size; j++) {
+          int i8_idx = j + idx * col_size;
+          int i4_idx = i8_idx / 2;
+          bool even = i8_idx % 2 == 0;
+          int8_t i4_val = value_ptr[i4_idx];
+          int8_t i8_val =
+              even ? static_cast<int8_t>(i4_val << 4) >> 4 : i4_val >> 4;
+          output_ptr[j + i * col_size] = i8_val * scaling_factor;
+        }
+      } else {
+        for (int j = 0; j < col_size; j++) {
+          output_ptr[j + i * col_size] =
+              value_ptr[j + idx * col_size] * scaling_factor;
+        }
       }
     }
   }
@@ -180,6 +195,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (value->type) {
     case kTfLiteFloat32:
       return EvalSimple(context, node, lookup, value, output);
+    case kTfLiteInt4:
+      return EvalHybrid(context, node, lookup, value, output);
     case kTfLiteUInt8:
     case kTfLiteInt8:
       if (output->type == kTfLiteFloat32) {

@@ -266,3 +266,54 @@ def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
                              (KernelHasIotaSpatials $dnums),
                              (IsOutputNotTFLNativeLayout $dnums),
                              (IsStandardConv $conv)]>;
+
+
+//===------------------------------------------------------------------------===
+// mhlo.pad
+//===------------------------------------------------------------------------===
+
+// Pull negative pads into slice
+//===---------------------------
+
+def TrivialStrides : NativeCodeCall<
+  "DenseIntElementsAttr::get("
+    "RankedTensorType::get({$0.getType().cast<ShapedType>().getRank()},"
+      "$_builder.getI64Type()),"
+      "llvm::SmallVector<int64_t>($0.getType().cast<ShapedType>().getRank(),"
+        "1))">;
+
+def SliceStart : NativeCodeCall<
+  "SliceStartFromNegPadLows($0.getDefiningOp<mhlo::PadOp>())">;
+
+def SliceEnd : NativeCodeCall<
+  "SliceEndFromNegPadHighs($0.getDefiningOp<mhlo::PadOp>())">;
+
+def AnyNegativePads : Constraint<CPred<
+  "AnyNegativePads($0.getDefiningOp<mhlo::PadOp>())">>;
+
+def MakePadPositive : NativeCodeCall<
+  "ReplaceNegsWithZero($0)">;
+
+def TrivialInterior : Constraint<CPred<
+  "TrivialInterior($0.getDefiningOp<mhlo::PadOp>())">>;
+
+def PullOutNegativePads : Pat<(MHLO_PadOp:$pad
+                                $input,
+                                $val,
+                                $low,
+                                $high,
+                                $interior
+                              ),
+                              (MHLO_PadOp
+                                (MHLO_SliceOp
+                                  $input,
+                                  (SliceStart $pad),
+                                  (SliceEnd $pad),
+                                  (TrivialStrides $pad)),
+                                $val,
+                                (MakePadPositive $low),
+                                (MakePadPositive $high),
+                                $interior
+                              ),
+                              [(AnyNegativePads $pad),
+                               (TrivialInterior $pad)]>;

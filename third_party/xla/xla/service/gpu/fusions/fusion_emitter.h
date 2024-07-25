@@ -134,6 +134,20 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilder<>* builder);
+absl::StatusOr<
+    std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
+               std::vector<llvm_ir::IrArray> /*outputs*/>>
+BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& unique_name,
+                                   absl::Span<const KernelArgument> arguments,
+                                   size_t num_inputs,
+                                   const LaunchDimensions& launch_dimensions,
+                                   llvm::IRBuilder<>* builder);
+
+// Compute the kernel name. The opcode string may contain "-" which cannot be
+// in a PTX function name, so sanitize the name before uniquifying it.
+std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& suggested_name);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

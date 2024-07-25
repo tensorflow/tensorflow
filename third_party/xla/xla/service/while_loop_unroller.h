@@ -35,6 +35,7 @@ namespace xla {
 
 // Config for unrollable while loops.
 struct WhileLoopConfig {
+  const HloInstruction* while_instr;
   // The initial value of the induction variable of the while loop.
   int64_t init;
   // The number of iterations the loop executes.
@@ -52,6 +53,14 @@ struct WhileLoopConfig {
 // 3. And, the size of that dimension must match the loop trip count.
 // If so, it returns the dynamic index.
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
+    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
+    const WhileLoopConfig& config);
+
+// Check if `instr` is a dynamic-slice with the given input and a single dynamic
+// start index that is effectively static, i.e., it is an expression that only
+// involves the iteration variable of the surrounding loop and some constants,
+// if we unroll the surrounding loop. If so, it returns the dynamic index.
+std::optional<int64_t> MatchEffectivelyStaticDynamicSliceInsideLoop(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
     const WhileLoopConfig& config);
 

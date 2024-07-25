@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
@@ -38,6 +39,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateSpmdExpansionPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtDuplicatedCalleeEliminationPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateIfrtMergeReshardsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtVerifyDonationPass();

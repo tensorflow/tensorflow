@@ -20,6 +20,9 @@ load(
     "if_enable_mkl",
     "if_mkl",
     "if_mkl_ml",
+    "if_mkldnn_aarch64_acl",
+    "if_mkldnn_aarch64_acl_openmp",
+    "if_mkldnn_openmp",
     "onednn_v3_define",
 )
 
@@ -56,12 +59,6 @@ load(
 load(
     "//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
-)
-load(
-    "//third_party/mkl_dnn:build_defs.bzl",
-    "if_mkldnn_aarch64_acl",
-    "if_mkldnn_aarch64_acl_openmp",
-    "if_mkldnn_openmp",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",

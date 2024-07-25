@@ -75,7 +75,7 @@ class BufferComparatorTest : public testing::Test {
         ShapeUtil::MakeShape(
             primitive_util::NativeToPrimitiveType<ElementType>(),
             {static_cast<int64_t>(current.size())}),
-        HloModuleConfig(), tolerance);
+        tolerance);
     return comparator
         .CompareEqual(stream.get(), current_buffer.memory(),
                       expected_buffer.memory())
@@ -394,8 +394,7 @@ TEST_F(BufferComparatorTest, BF16) {
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
   InitializeBuffer(stream.get(), BF16, &rng_state, rhs.memory());
 
-  BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}),
-                              HloModuleConfig());
+  BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}));
   EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs.memory(), rhs.memory())
                    .value());
 }

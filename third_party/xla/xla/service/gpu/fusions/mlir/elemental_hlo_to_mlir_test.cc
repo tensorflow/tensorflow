@@ -1645,6 +1645,25 @@ TEST_F(ElementalHloToMlirTest, Map) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, BroadcastSelect) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = pred[] parameter(0)
+      p1 = f32[5,7] parameter(1)
+      p2 = f32[5,7] parameter(2)
+      ROOT r = f32[5,7] select(p0, p1, p2)
+    })",
+                   R"(
+    // CHECK: @main
+    // CHECK-SAME: %[[P0:.*]]: tensor<i8>
+    // CHECK-SAME: %[[P1:.*]]: tensor<5x7xf32>, %[[P2:.*]]: tensor<5x7xf32>
+    // CHECK-SAME: %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
+    // CHECK-DAG: tensor.extract %[[P0]][]
+    // CHECK-DAG: tensor.extract %[[P1]][%[[X]], %[[Y]]]
+    // CHECK-DAG: tensor.extract %[[P2]][%[[X]], %[[Y]]]
+  )"));
+}
+
 }  // namespace
 }  // namespace mlir_converter
 }  // namespace gpu

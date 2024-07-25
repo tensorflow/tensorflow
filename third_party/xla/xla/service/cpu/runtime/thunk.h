@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
+#include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -151,9 +152,24 @@ class Thunk {
    public:
     using Kernel = SE_HOST_Kernel*;
 
+    // TODO(ezhulenev): We rely on legacy IrEmitter to emit comparator
+    // functions, and we use legacy compute function ABI. We should emit a
+    // much simpler comparator function that only takes compared values.
+    using Comparator = void (*)(bool*, /*run_options=*/const void*,
+                                /*params=*/const void**,
+                                /*buffer_table=*/const void*,
+                                /*status=*/const void*,
+                                /*prof_counters=*/const void*);
+
     virtual ~FunctionRegistry() = default;
 
-    virtual absl::StatusOr<Kernel> FindKernel(std::string_view name) = 0;
+    virtual absl::StatusOr<Kernel> FindKernel(std::string_view name) {
+      return Unimplemented("Host kernels are not supported");
+    }
+
+    virtual absl::StatusOr<Comparator> FindComparator(std::string_view name) {
+      return Unimplemented("Comparator functions are not supported");
+    }
   };
 
   //===--------------------------------------------------------------------===//

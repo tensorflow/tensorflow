@@ -23,6 +23,7 @@ limitations under the License.
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <cstring>
@@ -195,22 +196,31 @@ TfLiteStatus SerializationEntry::GetData(TfLiteContext* context,
                        std::strerror(errno));
     return kTfLiteDelegateDataReadError;
   }
-  char buffer[512];
-  while (true) {
-    int bytes_read = read(fd, buffer, 512);
-    if (bytes_read == 0) {
-      // EOF
-      close(fd);
-      return kTfLiteOk;
-    } else if (bytes_read < 0) {
+
+  struct stat file_stat;
+  if (fstat(fd, &file_stat) < 0) {
+    close(fd);
+    TF_LITE_KERNEL_LOG(context, "Could not fstat %s: %s", filepath.c_str(),
+                       std::strerror(errno));
+    return kTfLiteDelegateDataReadError;
+  }
+  data->resize(file_stat.st_size);
+
+  size_t total_read = 0;
+  while (total_read < data->size()) {
+    ssize_t bytes_read =
+        read(fd, data->data() + total_read, data->size() - total_read);
+    total_read += bytes_read;
+
+    if (bytes_read < 0) {
       close(fd);
       TF_LITE_KERNEL_LOG(context, "Error reading %s: %s", filepath.c_str(),
                          std::strerror(errno));
       return kTfLiteDelegateDataReadError;
-    } else {
-      data->append(buffer, bytes_read);
     }
   }
+
+  close(fd);
 #endif  // defined(_WIN32)
 
   TFLITE_LOG_PROD(TFLITE_LOG_INFO,

@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
@@ -329,7 +328,7 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    std::string* result, std::unique_ptr<SavedModelBundle>&& saved_model_bundle,
+    std::string* result,
     const PyFunctionLibrary* quantization_py_function_lib) {
   mlir::TFL::PassConfig pass_config_copy = pass_config;
   pass_config_copy.outline_tf_while = true;
@@ -347,8 +346,7 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       std::move(context), std::move(module), toco_flags, pass_config_copy,
-      saved_model_tags, model_flags.saved_model_dir(),
-      std::move(saved_model_bundle), result,
+      saved_model_tags, model_flags.saved_model_dir(), result,
       /*serialize_stablehlo_ops=*/false, /*export_to_mlir=*/false,
       quantization_py_function_lib);
 

@@ -294,15 +294,15 @@ void HloTestBase::RunAndFilecheckHloModuleGroupRewrite(
 }
 
 absl::StatusOr<Literal> HloTestBase::Execute(
-    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
-  return runner_->Execute(std::move(module), arguments);
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+    bool run_hlo_passes) {
+  return runner_->Execute(std::move(module), arguments, run_hlo_passes);
 }
 
 Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
-  return runner_
-      ->Execute(std::move(module), arguments,
-                /*run_hlo_passes=*/false)
+  return Execute(std::move(module), arguments,
+                 /*run_hlo_passes=*/false)
       .value();
 }
 

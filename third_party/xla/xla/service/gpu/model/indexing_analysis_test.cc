@@ -2654,6 +2654,35 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
               )"));
 }
 
+TEST_F(IndexingAnalysisTest, BroadcastingElementwise) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = pred[] parameter(0)
+      p1 = f32[1000, 1000] parameter(1)
+      p2 = f32[1000, 1000] parameter(2)
+      ROOT select = f32[1000, 1000] select(p0, p1, p2)
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+
+  EXPECT_THAT(GetOutputToInputIndexing(root).ToString(), MatchIndexingString(R"(
+                  operand id = 0
+                    (d0, d1) -> ()
+                    domain:
+                    d0 in [0, 1000)
+                    d1 in [0, 1000)
+                  operand id = 1 (d0, d1) -> (d0, d1)
+                    domain:
+                    d0 in [0, 1000)
+                    d1 in [0, 1000)
+                  operand id = 2 (d0, d1) -> (d0, d1)
+                    domain:
+                    d0 in [0, 1000)
+                    d1 in [0, 1000)
+              )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

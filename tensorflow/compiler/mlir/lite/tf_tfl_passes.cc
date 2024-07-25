@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
@@ -96,6 +97,24 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
   }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
+}
+
+void AddVariableFreezingFromGlobalTensorsPasses(
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager* pass_manager) {
+  // This pass does resource analysis of saved model global tensors and marks
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+
+  if (!pass_config.disable_variable_freezing) {
+    // This pass 'freezes' immutable global tensors and inlines them as tf
+    // constant ops.
+    pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+        /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
+  }
+
+  pass_manager->addPass(mlir::TFL::CreateUnfreezeMutableGlobalTensorsPass());
 }
 
 void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
@@ -238,6 +257,10 @@ void AddPostQuantizationStableHloToTfPasses(
   if (!pass_config.disable_hlo_to_tfl_conversion) {
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::odml::CreatePrepareHloPass());
+    // This pass must be added right before the legalization because pattern
+    // rewriter driver applies folding by default.
+    // TODO: b/354280588 - Rewrite this pass into a pattern in PrepareHloPass.
+    pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
     pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
   }
   // TF dialect passes

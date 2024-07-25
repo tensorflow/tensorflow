@@ -149,6 +149,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_EMBEDDING_LOOKUP: {
+      if (op_sig.inputs.at(1).type == kTfLiteInt4) {
+        return 4;
+      }
+      return 1;
+    }
+
     case BuiltinOperator_FAKE_QUANT: {
       auto fake_quant_params =
           reinterpret_cast<TfLiteFakeQuantParams*>(op_sig.builtin_data);

@@ -624,8 +624,10 @@ cc_library(
     hdrs = ["ir_emitter2.h"],
     deps = [
         ":backend_config_proto_cc",
+        ":dot_op_emitter",
         ":elemental_math_emitter",
         ":ir_emitter",
+        ":ir_function",
         ":parallel_loop_emitter",
         ":shape_partition",
         "//xla:cpu_function_runtime",
@@ -635,13 +637,11 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:elemental_ir_emitter",
-        "//xla/service/cpu:dot_op_emitter",
         "//xla/service/llvm_ir:dynamic_update_slice_util",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
-        "//xla/service/llvm_ir:tuple_ops",
         "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
@@ -850,6 +850,7 @@ cc_library(
         "//xla/service/cpu/runtime:reduce_scatter_thunk",
         "//xla/service/cpu/runtime:resource_use",
         "//xla/service/cpu/runtime:rng_state_thunk",
+        "//xla/service/cpu/runtime:sort_thunk",
         "//xla/service/cpu/runtime:thunk",
         "//xla/service/cpu/runtime:topk_thunk",
         "//xla/service/cpu/runtime:while_thunk",
@@ -1653,6 +1654,23 @@ xla_cc_test(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Target",
+    ],
+)
+
+xla_cc_test(
+    name = "scoped_ir_builder_test",
+    srcs = ["scoped_ir_builder_test.cc"],
+    deps = [
+        ":ir_emitter",
+        ":target_machine_features_fake",
+        "//xla/service:buffer_assignment",
+        "//xla/service:hlo_ordering",
+        "//xla/service:logical_buffer",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

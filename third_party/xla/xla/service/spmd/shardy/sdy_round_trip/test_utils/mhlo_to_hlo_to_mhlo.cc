@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"

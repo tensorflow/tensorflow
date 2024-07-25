@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_frontend_attributes.h"
-#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -680,17 +679,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (opcode == HloOpcode::kAllGather) {
         instruction = CreateAllGather(
             shape, all_operands(), all_gather_dimension,
-            CollectiveDeviceList(std::vector<ReplicaGroup>(
-                proto.replica_groups().begin(), proto.replica_groups().end())),
-            proto.constrain_layout(), channel_id,
-            proto.use_global_device_ids());
+            CollectiveDeviceList::FromProto(proto), proto.constrain_layout(),
+            channel_id, proto.use_global_device_ids());
       } else {
         instruction = CreateAllGatherStart(
             shape, all_operands(), all_gather_dimension,
-            CollectiveDeviceList(std::vector<ReplicaGroup>(
-                proto.replica_groups().begin(), proto.replica_groups().end())),
-            proto.constrain_layout(), channel_id,
-            proto.use_global_device_ids());
+            CollectiveDeviceList::FromProto(proto), proto.constrain_layout(),
+            channel_id, proto.use_global_device_ids());
       }
       break;
     }
@@ -709,9 +704,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      std::vector<ReplicaGroup> replica_groups(proto.replica_groups().begin(),
-                                               proto.replica_groups().end());
-      CollectiveDeviceList device_list(replica_groups);
+      CollectiveDeviceList device_list = CollectiveDeviceList::FromProto(proto);
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
             CreateAllReduce(shape, all_operands(), computations(0), device_list,
@@ -748,12 +741,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         split_dimension = proto.dimensions(0);
       }
       instruction = CreateAllToAll(
-          shape, all_operands(),
-          /*replica_groups=*/
-          CollectiveDeviceList(std::vector<ReplicaGroup>(
-              proto.replica_groups().begin(), proto.replica_groups().end())),
-          /*constrain_layout=*/proto.constrain_layout(),
-          /*channel_id=*/channel_id, split_dimension);
+          shape, all_operands(), CollectiveDeviceList::FromProto(proto),
+          proto.constrain_layout(), channel_id, split_dimension);
       break;
     }
     case HloOpcode::kCollectiveBroadcast: {
@@ -761,10 +750,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      auto replica_groups = std::vector<ReplicaGroup>(
-          proto.replica_groups().begin(), proto.replica_groups().end());
       instruction = CreateCollectiveBroadcast(
-          shape, all_operands(), CollectiveDeviceList(replica_groups), false,
+          shape, all_operands(), CollectiveDeviceList::FromProto(proto), false,
           channel_id);
       break;
     }
@@ -2801,8 +2788,8 @@ bool HloInstruction::IdenticalInternal(
                          : ShapeUtil::Compatible(shape(), other.shape()))) {
     return false;
   }
-  if (sharding_sensitive &&
-      !hlo_instruction_utils::HasEquivalentShardings(*this, other)) {
+  if (sharding_sensitive && has_sharding() && other.has_sharding() &&
+      sharding() != other.sharding()) {
     return false;
   }
   if (operands().size() != other.operands().size()) {
@@ -4816,17 +4803,6 @@ std::string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
-std::string ReplicaGroupsToString(
-    absl::Span<const ReplicaGroup> replica_groups) {
-  std::vector<std::string> replica_group_str;
-  replica_group_str.reserve(replica_groups.size());
-  for (const ReplicaGroup& group : replica_groups) {
-    replica_group_str.push_back(
-        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
-  }
-  return StrCat("{", StrJoin(replica_group_str, ","), "}");
-}
-
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name) {
   static absl::flat_hash_map<std::string, RandomAlgorithm>* map = [] {
@@ -5007,6 +4983,14 @@ HloModule* HloInstruction::GetModule() const {
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
+}
+
+void HloInstruction::UniquifyName(HloModule* module) {
+  UniquifyName(&module->instruction_name_uniquer());
+}
+
+void HloInstruction::UniquifyId(HloModule* module) {
+  SetUniqueId(module->NewUniqueInstructionId());
 }
 
 void HloInstruction::SortInstructionUsersAndControlLists(

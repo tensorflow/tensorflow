@@ -182,7 +182,7 @@ NB_MODULE(xla_extension, m_nb) {
                                                    PyExc_RuntimeError);
 
   // Types
-  nb::enum_<PrimitiveType>(m_nb, "PrimitiveType")
+  nb::enum_<PrimitiveType>(m_nb, "PrimitiveType", nb::is_arithmetic())
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)
       .value("PRED", PRED)
       .value("S4", S4)

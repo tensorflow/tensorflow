@@ -135,6 +135,14 @@ absl::Status HostStream::RecordEvent(Event* event) {
   return absl::OkStatus();
 }
 
+absl::Status HostStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback) {
+  if (EnqueueTaskWithStatus(std::move(callback))) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("Failed to host callback.");
+}
+
 bool HostStream::EnqueueTaskWithStatus(
     absl::AnyInvocable<absl::Status() &&> task) {
   CHECK(task != nullptr);

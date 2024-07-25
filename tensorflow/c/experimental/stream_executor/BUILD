@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",

@@ -18,6 +18,7 @@ package(
     default_visibility = [
         ":internal",
         "//third_party/cloud_tpu/inference_converter:__pkg__",
+        "//waymo/ml/deploy/system/aot_compilation:__pkg__",
     ],
     licenses = ["notice"],
 )

@@ -556,7 +556,9 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:determinism_for_kernels",
+        "//tensorflow/core/util:env_var",
         "@local_xla//xla/stream_executor:numeric_options",
+        "@local_xla//xla/tsl/util:determinism_for_kernels",
     ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
@@ -787,6 +789,8 @@ cc_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
@@ -4315,11 +4319,10 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
-        "@local_xla//xla/stream_executor/gpu:gpu_timer",
+        "@local_xla//xla/stream_executor:event_based_timer",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/cuda:cuda_stream",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -4651,6 +4654,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -5565,6 +5570,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

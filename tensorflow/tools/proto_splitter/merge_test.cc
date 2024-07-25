@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"

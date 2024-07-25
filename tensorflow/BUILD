@@ -1110,7 +1110,6 @@ bzl_library(
         "//tensorflow/core/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
-        "//third_party/mkl_dnn:build_defs_bzl",
         "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",

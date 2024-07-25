@@ -197,6 +197,94 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
                         )"));
 }
 
+TEST_F(IndexingMapTest, Composition_RTVar) {
+  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  std::vector<RTVar> rt_vars{
+      RTVar{Interval{0, 0},
+            /*instr=*/nullptr, zero_dim_map},
+      RTVar({Interval{0, 1}, /*instr=*/nullptr, zero_dim_map}),
+      RTVar({Interval{0, 226}, /*instr=*/nullptr, zero_dim_map})};
+
+  IndexingMap producer(
+      ParseAffineMap("(d0, d1, d2)[s0, s1, s2] -> (d0 + s0, d1 + s1, d2 + s2)",
+                     &mlir_context_),
+      {DimVar{{0, 0}}, DimVar{{0, 1}}, DimVar{{0, 226}}}, {},
+      std::move(rt_vars));
+
+  IndexingMap consumer(
+      ParseAffineMap("(d0, d1)[s0] -> (0, d1, s0)", &mlir_context_),
+      {DimVar{{0, 0}}, DimVar{{0, 1}}}, {RangeVar{0, 31}}, {});
+  printer_.SetSymbolName(0, "s");
+  printer_.SetSymbolName(1, "rt_0");
+  printer_.SetSymbolName(2, "rt_1");
+  printer_.SetSymbolName(3, "rt_2");
+
+  auto composed = ComposeIndexingMaps(consumer, producer);
+  EXPECT_THAT(composed.ToString(printer_), MatchIndexingString(R"(
+    (d0, d1)[s, rt_0, rt_1, rt_2] -> (rt_0, d1 + rt_1, s + rt_2)
+    domain:
+    d0 in [0, 1)
+    d1 in [0, 2)
+    s in [0, 32)
+    rt_0 in [0, 1)
+      hlo: NULL
+      () -> ()
+    rt_1 in [0, 2)
+      hlo: NULL
+      () -> ()
+    rt_2 in [0, 227)
+      hlo: NULL
+      () -> ()
+  )"));
+}
+
+TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
+  auto zero_dim_map = AffineMap::get(&mlir_context_);
+
+  IndexingMap producer(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + s0, d1 + 4 * s1)",
+                     &mlir_context_),
+      {DimVar{{0, 24}}, DimVar{{0, 15}}}, {},
+      {RTVar({Interval{0, 2}, /*instr=*/nullptr, zero_dim_map}),
+       RTVar({Interval{0, 1}, /*instr=*/nullptr, zero_dim_map})});
+
+  std::vector<RTVar> consumer_rt_vars;
+  IndexingMap consumer(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + 2 * s0, d1 + 3 * s1)",
+                     &mlir_context_),
+      {DimVar{{0, 24}}, DimVar{{0, 15}}}, {},
+      {RTVar({Interval{0, 25}, /*instr=*/nullptr, zero_dim_map}),
+       RTVar({Interval{0, 16}, /*instr=*/nullptr, zero_dim_map})});
+
+  printer_.SetSymbolName(0, "ps_0");
+  printer_.SetSymbolName(1, "ps_1");
+  printer_.SetSymbolName(2, "cs_0");
+  printer_.SetSymbolName(3, "cs_1");
+
+  auto composed = ComposeIndexingMaps(consumer, producer);
+  EXPECT_THAT(composed.ToString(printer_), MatchIndexingString(R"(
+    (d0, d1)[ps_0, ps_1, cs_0, cs_1] ->
+      (d0 + cs_0 * 2 + ps_0, d1 + cs_1 * 3 + ps_1 * 4)
+    domain:
+    d0 in [0, 25)
+    d1 in [0, 16)
+    ps_0 in [0, 3)
+      hlo: NULL
+      () -> ()
+    ps_1 in [0, 2)
+      hlo: NULL
+      () -> ()
+    cs_0 in [0, 26)
+      hlo: NULL
+      () -> ()
+    cs_1 in [0, 17)
+      hlo: NULL
+      () -> ()
+    d0 + cs_0 * 2 in [0, 25)
+    d1 + cs_1 * 3 in [0, 16)
+  )"));
+}
+
 TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintUsesDim) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d1, s0, s1)", &mlir_context_),

@@ -31,7 +31,7 @@ TEST_F(ShardyCallInlinerTest, MhloToHloShmapBodyNotInlined) {
   const char* const hloString = R"(
     HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
 
-    %shmap_body.4 (Arg_0.5: f32[1,8]) -> f32[1,8] {
+    %prefix_shmap_body_suffix.4 (Arg_0.5: f32[1,8]) -> f32[1,8] {
       %Arg_0.5 = f32[1,8]{1,0} parameter(0)
       ROOT %add.6 = f32[1,8]{1,0} add(f32[1,8]{1,0} %Arg_0.5, f32[1,8]{1,0} %Arg_0.5), metadata={source_file="-" source_line=11}
     }
@@ -40,7 +40,7 @@ TEST_F(ShardyCallInlinerTest, MhloToHloShmapBodyNotInlined) {
       %Arg_0.1 = f32[8,8]{1,0} parameter(0)
       %custom-call.2 = f32[8,8]{1,0} custom-call(f32[8,8]{1,0} %Arg_0.1), custom_call_target="Sharding", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=3}
       %custom-call.3 = f32[1,8]{1,0} custom-call(f32[8,8]{1,0} %custom-call.2), custom_call_target="SPMDFullToShardShape", sharding={manual}, metadata={source_file="-" source_line=4}
-      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%shmap_body.4
+      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%prefix_shmap_body_suffix.4
       %custom-call.8 = f32[1,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="Sharding", sharding={manual}, metadata={source_file="-" source_line=6}
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %custom-call.8), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
@@ -53,7 +53,7 @@ TEST_F(ShardyCallInlinerTest, MhloToHloShmapBodyNotInlined) {
   HloInstruction* call = FindInstruction(module.get(), xla::HloOpcode::kCall);
   EXPECT_NE(call, nullptr);
   EXPECT_TRUE(call->has_to_apply());
-  EXPECT_EQ(call->to_apply()->name(), "shmap_body.4");
+  EXPECT_EQ(call->to_apply()->name(), "prefix_shmap_body_suffix.4");
 }
 
 }  // namespace sdy

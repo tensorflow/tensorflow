@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK,CHECK-%{PTX}
+// RUN: hlo-opt %s --platform=gpu --xla_gpu_mlir_emitter_level=0 --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK,CHECK-%{PTX}
 
 HloModule LargeReduction, is_scheduled=true
 
@@ -43,7 +43,7 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_20:.*]] = alloca %[[VAL_1]], align 8
 // CHECK:         %[[VAL_21:.*]] = alloca %[[VAL_1]], align 8
 // CHECK:         %[[VAL_22:.*]] = alloca %[[VAL_1]], align 8
-// CHECK-PTX:         %[[VAL_23:.*]] = alloca i32, align 4   
+// CHECK-PTX:         %[[VAL_23:.*]] = alloca i32, align 4
 // CHECK-PTX:         %[[VAL_24:.*]] = alloca i32, align 4
 // CHECK-DAG:         %[[VAL_25:.*]] = alloca %[[VAL_1]], align 8
 // CHECK-DAG:         %[[VAL_26:.*]] = alloca i32, align 4
@@ -117,19 +117,19 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_67:.*]] = bitcast i128 %[[VAL_66]] to <4 x i32>
 // CHECK:         %[[VAL_68:.*]] = extractelement <4 x i32> %[[VAL_67]], i64 0
 // CHECK-PTX:     %[[VAL_69:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_68]], i32 8, i32 31)
-// CHECK-GCN:     %[[VAL_69:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_68]], i32 287)   
+// CHECK-GCN:     %[[VAL_69:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_68]], i32 287)
 // CHECK:         %[[VAL_70:.*]] = insertelement <4 x i32> %[[VAL_67]], i32 %[[VAL_69]], i64 0
 // CHECK:         %[[VAL_71:.*]] = extractelement <4 x i32> %[[VAL_70]], i64 1
 // CHECK-PTX:     %[[VAL_72:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_71]], i32 8, i32 31)
-// CHECK-GCN:     %[[VAL_72:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_71]], i32 287) 
+// CHECK-GCN:     %[[VAL_72:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_71]], i32 287)
 // CHECK:         %[[VAL_73:.*]] = insertelement <4 x i32> %[[VAL_70]], i32 %[[VAL_72]], i64 1
 // CHECK:         %[[VAL_74:.*]] = extractelement <4 x i32> %[[VAL_73]], i64 2
 // CHECK-PTX:     %[[VAL_75:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_74]], i32 8, i32 31)
-// CHECK-GCN:     %[[VAL_75:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_74]], i32 287) 
+// CHECK-GCN:     %[[VAL_75:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_74]], i32 287)
 // CHECK:         %[[VAL_76:.*]] = insertelement <4 x i32> %[[VAL_73]], i32 %[[VAL_75]], i64 2
 // CHECK:         %[[VAL_77:.*]] = extractelement <4 x i32> %[[VAL_76]], i64 3
 // CHECK-PTX:     %[[VAL_78:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_77]], i32 8, i32 31)
-// CHECK-GCN:     %[[VAL_78:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_77]], i32 287) 
+// CHECK-GCN:     %[[VAL_78:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_77]], i32 287)
 // CHECK:         %[[VAL_79:.*]] = insertelement <4 x i32> %[[VAL_76]], i32 %[[VAL_78]], i64 3
 // CHECK:         %[[VAL_80:.*]] = bitcast <4 x i32> %[[VAL_79]] to i128
 // CHECK:         store i128 %[[VAL_80]], ptr{{.*}} %[[VAL_19]], align {{(16|8)}}
@@ -144,19 +144,19 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_83:.*]] = bitcast i128 %[[VAL_82]] to <4 x i32>
 // CHECK:         %[[VAL_84:.*]] = extractelement <4 x i32> %[[VAL_83]], i64 0
 // CHECK-PTX:     %[[VAL_85:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_84]], i32 4, i32 31)
-// CHECK-GCN:     %[[VAL_85:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_84]], i32 159)  
+// CHECK-GCN:     %[[VAL_85:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_84]], i32 159)
 // CHECK:         %[[VAL_86:.*]] = insertelement <4 x i32> %[[VAL_83]], i32 %[[VAL_85]], i64 0
 // CHECK:         %[[VAL_87:.*]] = extractelement <4 x i32> %[[VAL_86]], i64 1
 // CHECK-PTX:     %[[VAL_88:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_87]], i32 4, i32 31)
-// CHECK-GCN:     %[[VAL_88:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_87]], i32 159)  
+// CHECK-GCN:     %[[VAL_88:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_87]], i32 159)
 // CHECK:         %[[VAL_89:.*]] = insertelement <4 x i32> %[[VAL_86]], i32 %[[VAL_88]], i64 1
 // CHECK:         %[[VAL_90:.*]] = extractelement <4 x i32> %[[VAL_89]], i64 2
 // CHECK-PTX:     %[[VAL_91:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_90]], i32 4, i32 31)
-// CHECK-GCN:     %[[VAL_91:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_90]], i32 159)  
+// CHECK-GCN:     %[[VAL_91:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_90]], i32 159)
 // CHECK:         %[[VAL_92:.*]] = insertelement <4 x i32> %[[VAL_89]], i32 %[[VAL_91]], i64 2
 // CHECK:         %[[VAL_93:.*]] = extractelement <4 x i32> %[[VAL_92]], i64 3
 // CHECK-PTX:     %[[VAL_94:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_93]], i32 4, i32 31)
-// CHECK-GCN:     %[[VAL_94:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_93]], i32 159)  
+// CHECK-GCN:     %[[VAL_94:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_93]], i32 159)
 // CHECK:         %[[VAL_95:.*]] = insertelement <4 x i32> %[[VAL_92]], i32 %[[VAL_94]], i64 3
 // CHECK:         %[[VAL_96:.*]] = bitcast <4 x i32> %[[VAL_95]] to i128
 // CHECK:         store i128 %[[VAL_96]], ptr{{.*}} %[[VAL_17]], align {{(16|8)}}
@@ -331,7 +331,7 @@ ENTRY reduce.1 {
 // CHECK-GCN:     %[[VAL_196:.*]] = load %[[VAL_1]], ptr{{.*}} %[[VAL_22]], align 1
 // CHECK-GCN:     store %[[VAL_1]] %[[VAL_196]], ptr{{.*}} %[[VAL_28]], align 1
 // CHECK-PTX:     store i32 0, ptr %[[VAL_23]], align 4
-// CHECK:         br label %[[VAL_175:.*]]   
+// CHECK:         br label %[[VAL_175:.*]]
 
 // CHECK-PTX:   loop3.loop_header10:                              ; preds = %[[VAL_176:.*]], %[[VAL_173]]
 // CHECK-PTX:     %[[VAL_177:.*]] = load i32, ptr %[[VAL_23]], align 4
@@ -396,7 +396,7 @@ ENTRY reduce.1 {
 // CHECK-PTX:     %[[VAL_213:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_212]], i32 16, i32 31)
 // CHECK:         %[[VAL_214:.*]] = insertelement <4 x i32> %[[VAL_211]], i32 %[[VAL_213]], i64 0
 // CHECK:         %[[VAL_215:.*]] = extractelement <4 x i32> %[[VAL_214]], i64 1
-// CHECK-GCN:     %[[VAL_216:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_215]], i32 543)     
+// CHECK-GCN:     %[[VAL_216:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_215]], i32 543)
 // CHECK-PTX:     %[[VAL_216:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_215]], i32 16, i32 31)
 // CHECK:         %[[VAL_217:.*]] = insertelement <4 x i32> %[[VAL_214]], i32 %[[VAL_216]], i64 1
 // CHECK:         %[[VAL_218:.*]] = extractelement <4 x i32> %[[VAL_217]], i64 2
@@ -536,7 +536,7 @@ ENTRY reduce.1 {
 // CHECK-GCN:     %[[VAL_305:.*]] = extractvalue %[[VAL_299]] %[[VAL_300]], 1
 // CHECK-PTX:     %[[VAL_304:.*]] = extractvalue %[[VAL_299]] %[[VAL_300]], 0
 // CHECK-PTX:     %[[VAL_305:.*]] = extractvalue %[[VAL_299]] %[[VAL_302]], 0
-// CHECK-GCN:     %[[VAL_306:.*]] = fadd double %[[VAL_305]], %[[VAL_304]] 
+// CHECK-GCN:     %[[VAL_306:.*]] = fadd double %[[VAL_305]], %[[VAL_304]]
 // CHECK-PTX:     %[[VAL_306:.*]] = fadd double %[[VAL_304]], %[[VAL_305]]
 // CHECK-GCN:     %[[VAL_307:.*]] = extractvalue %[[VAL_299]] %[[VAL_302]], 0
 // CHECK-GCN:     %[[VAL_308:.*]] = extractvalue %[[VAL_299]] %[[VAL_300]], 0

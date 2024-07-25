@@ -55,7 +55,7 @@ namespace xla {
 namespace spmd {
 namespace {
 
-using DimMap = StableHashMap</*tensor dim*/ int, /* mesh dim*/ int>;
+using DimMap = StableMap</*tensor dim*/ int, /* mesh dim*/ int>;
 using MeshDims = absl::Span<const int64_t>;
 
 struct Enumeration {

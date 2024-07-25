@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -135,18 +137,23 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
   }
 
   std::vector<AffineExpr> symbol_lower_bounds(
-      tile_offset_indexing.GetSymbolCount(),
+      tile_offset_indexing.GetRangeVarsCount(),
       mlir::getAffineConstantExpr(0, mlir_context));
+  symbol_lower_bounds.reserve(tile_offset_indexing.GetSymbolCount());
+  for (int i = 0; i < tile_offset_indexing.GetRTVarsCount(); ++i) {
+    symbol_lower_bounds.push_back(mlir::getAffineSymbolExpr(i, mlir_context));
+  }
 
   mlir::AffineMap simplified_affine_map =
       tile_offset_indexing.GetAffineMap().replaceDimsAndSymbols(
-          /*dimReplacements=*/{}, symbol_lower_bounds,
-          tile_offset_indexing.GetDimVarsCount(),
-          /*numResultSyms=*/tile_offset_indexing.GetRangeVarsCount());
+          /*dimReplacements=*/{},
+          /*symReplacements=*/symbol_lower_bounds,
+          /*numResultDims=*/tile_offset_indexing.GetDimVarsCount(),
+          /*numResultSyms=*/tile_offset_indexing.GetRTVarsCount());
 
-  IndexingMap simplified_indexing_map = IndexingMap{
-      simplified_affine_map, tile_offset_indexing.GetDimVars(),
-      tile_offset_indexing.GetRangeVars(), tile_offset_indexing.GetRTVars()};
+  IndexingMap simplified_indexing_map =
+      IndexingMap{simplified_affine_map, tile_offset_indexing.GetDimVars(),
+                  /*range_vars=*/{}, tile_offset_indexing.GetRTVars()};
 
   simplified_indexing_map.Simplify();
   simplified_indexing_map.RescaleSymbols();
@@ -193,7 +200,9 @@ class OrderedUniquePtrValueHashSet {
   };
 
   struct PtrEqual {
-    bool operator()(const T* lhs, const T* rhs) const { return *lhs == *rhs; }
+    bool operator()(const T* lhs, const T* rhs) const {
+      return lhs == rhs || *lhs == *rhs;
+    }
   };
 
   // Stores non-owning pointers to the elements in the set. Elements are
@@ -423,7 +432,8 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
 absl::StatusOr<TiledHloComputation>
 SymbolicTileAnalysis::ComputeTiledHloInstructions(
     absl::Span<const int64_t> tile_parameters,
-    bool constraints_are_known_satisfied) const {
+    bool constraints_are_known_satisfied,
+    bool compute_all_tile_offset_indexing_maps) const {
   if (!constraints_are_known_satisfied) {
     TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
                         ParametersSatisfyConstraints(tile_parameters));
@@ -431,6 +441,48 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
       return absl::InvalidArgumentError(absl::StrCat(
           "Tile parameters ", absl::StrJoin(tile_parameters, ", "),
           " do not satisfy the SymbolicTileAnalysis's constraints."));
+    }
+  }
+
+  // Offset indexing is needed to emit loads/stores and to deduplicate
+  // instructions. In some cases, for example in Cost Model, we need to only
+  // deduplicate instructions.
+  //
+  // Computing tile offset indexing maps is very expensive. This is a
+  // performance optimization to avoid computing tile offset indexing maps for
+  // instructions that are not needed.
+  //
+  // Tile offset indexing is only needed when one HLO instruction has no
+  // operands and multiple tiles have exactly same sizes and strides. We skip
+  // strides in the heuristic below, because they are rarely different.
+  //
+  // Using `compute_all_tile_offset_indexing_maps` will force to compute tile
+  // offset indexing maps for all instructions.
+  llvm::SmallPtrSet<const HloInstruction*, 8> parameters_with_offset_indexing;
+  absl::flat_hash_map<const SymbolicTiledHloInstruction*,
+                      llvm::SmallVector<int64_t>>
+      tile_sizes_map;
+  if (!compute_all_tile_offset_indexing_maps) {
+    absl::flat_hash_set<size_t> hashes;
+    for (const std::unique_ptr<SymbolicTiledHloInstruction>&
+             symbolic_tiled_hlo : symbolic_tiled_hlo_instructions_) {
+      if (!symbolic_tiled_hlo->operands().empty()) {
+        continue;
+      }
+
+      llvm::SmallVector<int64_t> tile_sizes =
+          symbolic_tiled_hlo->TileSizes(tile_parameters);
+      size_t hash_value = absl::HashOf(symbolic_tiled_hlo->hlo(),
+                                       absl::Span<const int64_t>(tile_sizes));
+      tile_sizes_map.emplace(symbolic_tiled_hlo.get(), std::move(tile_sizes));
+
+      auto [it, inserted] = hashes.insert(hash_value);
+      // Two SymbolicTiledHloInstructions have identical hash when looking only
+      // at HLO instruction pointer and tile sizes. We need to compute tile
+      // offset indexing maps for all tiles of this HLO instruction.
+      if (!inserted) {
+        parameters_with_offset_indexing.insert(symbolic_tiled_hlo->hlo());
+      }
     }
   }
 
@@ -447,34 +499,43 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
 
   for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiled_hlo :
        symbolic_tiled_hlo_instructions_) {
-    llvm::SmallVector<int64_t> tile_sizes =
-        symbolic_tiled_hlo->TileSizes(tile_parameters);
+    llvm::SmallVector<int64_t> tile_sizes;
+    auto it = tile_sizes_map.find(symbolic_tiled_hlo.get());
+    if (it != tile_sizes_map.end()) {
+      tile_sizes = it->second;
+    } else {
+      tile_sizes = symbolic_tiled_hlo->TileSizes(tile_parameters);
+    }
+
     llvm::SmallVector<int64_t> tile_strides =
         symbolic_tiled_hlo->TileStrides(tile_parameters);
 
-    TF_ASSIGN_OR_RETURN(
-        IndexingMap tile_offset_indexing,
-        ComputeTileOffsetIndexing(
-            *symbolic_tiled_hlo, output_tiling_info.output_tile_offset_indexing,
-            context_));
+    std::optional<IndexingMap> tile_offset_indexing;
+    if (compute_all_tile_offset_indexing_maps ||
+        parameters_with_offset_indexing.contains(symbolic_tiled_hlo->hlo())) {
+      TF_ASSIGN_OR_RETURN(
+          tile_offset_indexing,
+          ComputeTileOffsetIndexing(
+              *symbolic_tiled_hlo,
+              output_tiling_info.output_tile_offset_indexing, context_));
+    }
 
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<TiledHloInstruction> tiled_hlo_holder,
-        TiledHloInstruction::Create(
-            symbolic_tiled_hlo->hlo(), std::move(tile_sizes),
-            std::move(tile_strides), std::move(tile_offset_indexing)));
+    llvm::SmallVector<const TiledHloInstruction*> operands;
+    for (const SymbolicTiledHloInstruction* operand :
+         symbolic_tiled_hlo->operands()) {
+      operands.push_back(symbolic_to_tiled_hlo_map.at(operand));
+    }
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo_holder,
+                        TiledHloInstruction::Create(
+                            symbolic_tiled_hlo->hlo(), std::move(operands),
+                            std::move(tile_sizes), std::move(tile_strides),
+                            std::move(tile_offset_indexing)));
 
     auto [tiled_hlo, inserted] =
         tiled_hlo_instructions_set.Insert(std::move(tiled_hlo_holder));
 
     symbolic_to_tiled_hlo_map[symbolic_tiled_hlo.get()] = tiled_hlo;
-
-    if (inserted) {
-      for (const SymbolicTiledHloInstruction* operand :
-           symbolic_tiled_hlo->operands()) {
-        tiled_hlo->AppendOperand(symbolic_to_tiled_hlo_map.at(operand));
-      }
-    }
   }
   return TiledHloComputation::FromSortedTiledHloInstructions(
       tiled_hlo_instructions_set.ExtractData(),

@@ -15,18 +15,35 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/tests/executable_impl_test_base.h"
 
+#include <memory>
+#include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
+#include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -50,16 +67,26 @@ void IfrtIrExecutableImplTestBase::SetUp() {
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 IfrtIrExecutableImplTestBase::LoadFromSource(absl::string_view source) {
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&mlir_context_);
   auto op_ref = mlir::parseSourceString<mlir::ModuleOp>(source, &mlir_context_);
-  TF_RET_CHECK(op_ref) << "Failed to parse MLIR source";
+  if (!op_ref) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Failed to parse IFRT IR module string: %s",
+                        diagnostic_handler.ConsumeStatus().message()));
+  }
   return op_ref;
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&mlir_context_);
   auto op_ref =
       mlir::parseSourceFile<mlir::ModuleOp>(file_path, &mlir_context_);
-  TF_RET_CHECK(op_ref) << "Failed to parse MLIR file";
+  if (!op_ref) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Failed to parse IFRT IR module file: %s",
+                        diagnostic_handler.ConsumeStatus().message()));
+  }
   return op_ref;
 }
 

@@ -311,6 +311,8 @@ def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
              "Whether disable set input nodes quantization parameters.">,
       Option<"is_qdq_conversion_", "is-qdq-conversion", "bool", "false",
              "Whether the source graph is a QDQ model intended for conversion only.">,
+      ListOption<"input_ranges_", "input-ranges", "std::string",
+                 "comma separated list of pairs specifying input ranges which correspond to positional func input arguments. Must be in the format '<min double>|<max double>,<min double>|<max double>'. Only used in tests.">,
   ];
 }
 
@@ -476,3 +478,7 @@ def PushTransposeThroughEwisePass : Pass<"push-transpose-through-ewise", "mlir::
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
+def UnfreezeMutableGlobalTensorsPass : Pass<"unfreeze-mutable-global-tensors", "mlir::ModuleOp"> {
+  let summary = "Pass to unfreeze mutable global tensor ops";
+  let constructor = "CreateUnfreezeMutableGlobalTensorsPass()";
+}
