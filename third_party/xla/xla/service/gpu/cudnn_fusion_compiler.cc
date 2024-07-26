@@ -584,10 +584,6 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         absl::StrCat("cudnn_fusion_", fusion.name(), ".json"),
         /*contents=*/dump.dump(1));
   }
-  if (cudnn_frontend::error_t result = graph.validate(); result.is_bad()) {
-    VLOG(3) << result.get_message();
-    return std::nullopt;
-  }
 
   return se::gpu::CudnnGraph(std::move(graph));
 }
