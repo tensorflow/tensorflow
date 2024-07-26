@@ -92,6 +92,10 @@ class CoordinationServiceRpcHandler {
                           tensorflow::CancelBarrierResponse* response,
                           StatusCallback done);
 
+  void PollForErrorAsync(const tensorflow::PollForErrorRequest* request,
+                         tensorflow::PollForErrorResponse* response,
+                         StatusCallback done);
+
  private:
   absl::Mutex mu_;
   CoordinationServiceAgent* agent_ TF_GUARDED_BY(mu_) = nullptr;

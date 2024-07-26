@@ -84,6 +84,12 @@ message HeartbeatResponse {
   // broadcast error code and message to other tasks.
 }
 
+message PollForErrorRequest {
+  CoordinatedTask source_task = 1;
+}
+
+message PollForErrorResponse {}
+
 // Request and response messages for waiting for all tasks.
 message WaitForAllTasksRequest {
   // Removed fields which used to specify the remote task.
@@ -342,4 +348,16 @@ service CoordinationService {
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
   rpc CancelBarrier(CancelBarrierRequest) returns (CancelBarrierResponse);
+
+  // Polls the service for errors.
+  //
+  // This RPC is used by the coordination service agent to send long polling
+  // request to service for errors. The call will block until an error is
+  // reported by the service.
+  //
+  // Possible service errors:
+  //   - Aborted: Service is shutting down.
+  rpc PollForError(PollForErrorRequest) returns (PollForErrorResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 }

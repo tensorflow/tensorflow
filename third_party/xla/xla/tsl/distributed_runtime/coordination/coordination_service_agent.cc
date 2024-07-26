@@ -30,9 +30,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -67,6 +69,7 @@ constexpr absl::Duration kDefaultClusterRegisterTimeout = absl::Hours(1);
 constexpr absl::Duration kDefaultHeartbeatTimeout = absl::Seconds(10);
 constexpr absl::Duration kDefaultShutdownTimeout = absl::Seconds(10);
 constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
+constexpr char kErrorPollingThread[] = "CoordinationServiceErrorPolling";
 
 class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
  public:
@@ -143,6 +146,17 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::Status ShutdownInternal();
   // Starts sending heartbeats to the coordination service.
   void StartSendingHeartbeats();
+  // Use long polling to get error from the coordination service. This function
+  // will block until an error is received or the agent is shutdown or reset.
+  absl::Status PollForError();
+  std::shared_ptr<CallOptions> PollForErrorAsync(StatusCallback done);
+
+  // Starts polling for error from the coordination service.
+  void StartPollingForError();
+  // Cancels the error polling request and stops the error polling thread.
+  void StopErrorPolling();
+  // Resets the cancellation manager for error polling.
+  void ResetCancellationManager();
 
   Env* env_ = nullptr;  // Not owned.
   const uint64_t incarnation_id_ = random::New64();
@@ -166,9 +180,12 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::CondVar heartbeat_thread_cv_;
   bool shutting_down_ TF_GUARDED_BY(heartbeat_thread_shutdown_mu_) = false;
   std::unique_ptr<Thread> heartbeat_thread_;
+  std::unique_ptr<Thread> error_polling_thread_;
   // Must outlive coordination client which may need to access it within
   // GetKeyValueAsync() callbacks.
   CancellationManager cancellation_manager_;
+  std::unique_ptr<CancellationManager> error_polling_cancellation_manager_ =
+      std::make_unique<CancellationManager>();
   std::unique_ptr<CoordinationClient> leader_client_;
 
   CoordinationServiceAgentImpl(const CoordinationServiceAgentImpl&) = delete;
@@ -237,6 +254,16 @@ void CoordinationServiceAgentImpl::StopHeartbeat() {
     heartbeat_thread_cv_.SignalAll();
   }
   heartbeat_thread_ = nullptr;
+}
+
+void CoordinationServiceAgentImpl::StopErrorPolling() {
+  // Cancel pending error polling RPC call.
+  error_polling_cancellation_manager_->StartCancel();
+  error_polling_thread_ = nullptr;
+}
+
+void CoordinationServiceAgentImpl::ResetCancellationManager() {
+  error_polling_cancellation_manager_ = std::make_unique<CancellationManager>();
 }
 
 absl::Status CoordinationServiceAgentImpl::Connect() {
@@ -315,6 +342,13 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
       ThreadOptions(), kHeartbeatThread,
       absl::bind_front(&CoordinationServiceAgentImpl::StartSendingHeartbeats,
                        this)));
+  if (configs_.poll_for_error_from_service_at_startup()) {
+    // Start a thread to poll for error from the coordination service.
+    error_polling_thread_.reset(env_->StartThread(
+        ThreadOptions(), kErrorPollingThread,
+        absl::bind_front(&CoordinationServiceAgentImpl::StartPollingForError,
+                         this)));
+  }
   return absl::OkStatus();
 }
 
@@ -375,6 +409,80 @@ void CoordinationServiceAgentImpl::StartSendingHeartbeats() {
       }
     }
   }
+}
+
+void CoordinationServiceAgentImpl::StartPollingForError() {
+  LOG(INFO) << "Polling error from coordination service. This thread "
+               "will run until an error is encountered or the agent is "
+               "shutdown.";
+  absl::Status status = PollForError();
+  CHECK(!status.ok()) << "PollForError returned OK status. Should "
+                         "always return an error.";
+  if (absl::IsCancelled(status)) {
+    LOG(INFO) << "Stop polling error from coordination service because "
+                 "the service or the agent is shutting down."
+              << status;
+    return;
+  }
+  LOG(INFO) << "Error returned from coordination service after polling: "
+            << status;
+
+  SetError(status);
+}
+
+absl::Status CoordinationServiceAgentImpl::PollForError() {
+  absl::Status status = absl::OkStatus();
+  absl::Notification n;
+  PollForErrorAsync([&](absl::Status s) {
+    status = s;
+    n.Notify();
+  });
+  n.WaitForNotification();
+  CHECK(!status.ok())
+      << "PollForError returned OK status. Should always return an error.";
+  LOG(ERROR)
+      << "PollForError returned with status (this can be an error from this or "
+         "another task): "
+      << status;
+  return status;
+}
+
+std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::PollForErrorAsync(
+    StatusCallback done) {
+  auto call_opts = std::make_shared<CallOptions>();
+
+  absl::Status agent_running_status =
+      ValidateRunningAgent(/*allow_disconnected=*/true);
+  if (!agent_running_status.ok()) {
+    done(agent_running_status);
+    return call_opts;
+  }
+  auto request = std::make_shared<PollForErrorRequest>();
+  auto response = std::make_shared<PollForErrorResponse>();
+  *request->mutable_source_task() = task_;
+  VLOG(3) << "PollForErrorRequest: " << request->DebugString();
+
+  const CancellationToken token =
+      error_polling_cancellation_manager_->get_cancellation_token();
+  const bool already_cancelled =
+      !error_polling_cancellation_manager_->RegisterCallback(
+          token, [call_opts]() { call_opts->StartCancel(); });
+  if (already_cancelled) {
+    done(absl::CancelledError("PollForErrorAsync() was cancelled."));
+    return call_opts;
+  }
+
+  leader_client_->PollForErrorAsync(
+      call_opts.get(), request.get(), response.get(),
+      [call_opts, request, response, done = std::move(done),
+       &cm = error_polling_cancellation_manager_,
+       token](const absl::Status& s) {
+        // RPC call has completed (no longer needs to be cancelled if agent is
+        // destroyed).
+        cm->TryDeregisterCallback(token);
+        done(s);
+      });
+  return call_opts;
 }
 
 absl::Status CoordinationServiceAgentImpl::WaitForAllTasks(
@@ -529,13 +637,14 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
 
   // Tear down agent.
   StopHeartbeat();
+  StopErrorPolling();
   {
     absl::MutexLock l(&state_mu_);
     if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
       const std::string status_message = absl::StrCat(
           "Shutdown() was called while coordination agent is in error state, "
-          "implying that distributed execution failed. Note: agent will still "
-          "shutdown anyway. Agent status: ",
+          "implying that distributed execution failed. Note: agent will "
+          "still shutdown anyway. Agent status: ",
           status_.ToString(),
           "\nThis is usually caused by an earlier error during execution. "
           "Check the logs (this task or the leader) for an earlier error to "
@@ -581,6 +690,8 @@ absl::Status CoordinationServiceAgentImpl::Reset() {
 
   // Reset agent state.
   StopHeartbeat();
+  StopErrorPolling();
+  ResetCancellationManager();
   {
     absl::MutexLock l(&state_mu_);
     state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
