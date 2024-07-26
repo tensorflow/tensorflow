@@ -516,21 +516,28 @@ TEST_F(CoordinateTwoTasksTest,
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-  std::vector<absl::Status> statuses;
-  statuses.reserve(2);
-  for (const CoordinatedTask& task : {task_0_, task_1_}) {
-    coord_service_->PollForErrorAsync(
-        task, [&](const absl::Status& status) { statuses.push_back(status); });
-  }
+  // Use notifications to guarantee the ordering of operations across threads.
+  absl::Notification n0, n1;
+
+  // The heartbeat error below should be propagated to all tasks.
+  absl::StatusCode expected_error_code = absl::StatusCode::kUnavailable;
+  coord_service_->PollForErrorAsync(task_0_, [&](const absl::Status& status) {
+    EXPECT_THAT(status, StatusIs(expected_error_code));
+    n0.Notify();
+  });
+  coord_service_->PollForErrorAsync(task_1_, [&](const absl::Status& status) {
+    EXPECT_THAT(status, StatusIs(expected_error_code));
+    n1.Notify();
+  });
 
   // No heartbeat for a while, leader consider the task as stale and propagate
   // the error to the tasks.
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
-  // The heartbeat error is propagated through error polling.
-  EXPECT_EQ(statuses.size(), 2);
-  EXPECT_THAT(statuses, Each(StatusIs(absl::StatusCode::kUnavailable)));
+  // Make sure the StatusCallbacks are called.
+  n0.WaitForNotification();
+  n1.WaitForNotification();
 }
 
 TEST_F(CoordinateTwoTasksTest,
@@ -538,13 +545,19 @@ TEST_F(CoordinateTwoTasksTest,
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-  std::vector<absl::Status> statuses;
-  statuses.reserve(2);
+  // Use notifications to guarantee the ordering of operations across threads.
+  absl::Notification n0, n1;
 
-  for (const CoordinatedTask& task : {task_0_, task_1_}) {
-    coord_service_->PollForErrorAsync(
-        task, [&](const absl::Status& status) { statuses.push_back(status); });
-  }
+  // The heartbeat error from `task_1_` below should be propagated to all tasks.
+  absl::StatusCode expected_error_code = absl::StatusCode::kUnavailable;
+  coord_service_->PollForErrorAsync(task_0_, [&](const absl::Status& status) {
+    EXPECT_THAT(status, StatusIs(expected_error_code, HasSubstr("task:1")));
+    n0.Notify();
+  });
+  coord_service_->PollForErrorAsync(task_1_, [&](const absl::Status& status) {
+    EXPECT_THAT(status, StatusIs(expected_error_code, HasSubstr("task:1")));
+    n1.Notify();
+  });
 
   // Use a factor of 0.9 to avoid accidental timeout.
   const int64_t sleeping_time =
@@ -557,10 +570,9 @@ TEST_F(CoordinateTwoTasksTest,
   TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
   Env::Default()->SleepForMicroseconds(sleeping_time);
 
-  // The heartbeat error is propagated through error polling.
-  EXPECT_EQ(statuses.size(), 2);
-  EXPECT_THAT(statuses, Each(StatusIs(absl::StatusCode::kUnavailable,
-                                      HasSubstr("task:"))));
+  // Make sure the StatusCallbacks are called.
+  n0.WaitForNotification();
+  n1.WaitForNotification();
 }
 
 TEST_F(CoordinateTwoTasksTest, ReportedErrorCanPropagateThroughErrorPolling) {
@@ -1596,30 +1608,39 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsAfterErrorPollingResponse) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-  std::vector<absl::Status> statuses;
-  statuses.reserve(2);
-  for (const CoordinatedTask& task : {task_0_, task_1_}) {
-    coord_service_->PollForErrorAsync(
-        task, [&](const absl::Status& status) { statuses.push_back(status); });
-  }
+  // Use notifications to guarantee the ordering of operations across threads.
+  absl::Notification n0, n1;
+
+  // The heartbeat error below should be propagated to all tasks.
+  absl::StatusCode expected_error_code = absl::StatusCode::kUnavailable;
+  coord_service_->PollForErrorAsync(task_0_, [&](const absl::Status& status) {
+    EXPECT_THAT(status, StatusIs(expected_error_code));
+    n0.Notify();
+  });
+  coord_service_->PollForErrorAsync(task_1_, [&](const absl::Status& status) {
+    EXPECT_THAT(status, StatusIs(expected_error_code));
+    n1.Notify();
+  });
+
   // No heartbeat for a while, leader consider the task as stale. The error will
   // be propagated through error polling.
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
-  EXPECT_EQ(statuses.size(), 2);
-  EXPECT_THAT(statuses, Each(StatusIs(absl::StatusCode::kUnavailable)));
+  // Make sure the StatusCallbacks are called before the barrier is called.
+  n0.WaitForNotification();
+  n1.WaitForNotification();
 
-  absl::Notification n0;
+  absl::Notification n_barrier;
   absl::Status barrier_status;
   // Barrier should fail when called after the error is propagated.
   coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
                                /*participating_tasks=*/{}, [&](absl::Status s) {
                                  barrier_status = s;
-                                 n0.Notify();
+                                 n_barrier.Notify();
                                });
 
-  n0.WaitForNotification();
+  n_barrier.WaitForNotification();
   EXPECT_TRUE(absl::IsInternal(barrier_status)) << barrier_status;
 }
 
