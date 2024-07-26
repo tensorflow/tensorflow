@@ -26,6 +26,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import test
@@ -355,6 +356,104 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
         nest.flatten(result[0]), nest.flatten(cpu_result[0])
     ):
       self.assertAllEqual(per_feature_result, per_feature_result_cpu)
+
+  def test_embedding_initialization(self):
+
+    def element_id_initializer(shape, dtype):
+      values = math_ops.range(0, shape[0] * shape[1], dtype=dtype)
+      return array_ops.reshape(values, shape)
+
+    table_video = tpu_embedding_v2_utils.TableConfig(
+        vocabulary_size=self.vocabulary_size,
+        dim=128,
+        initializer=init_ops_v2.Constant(1.0),
+        combiner='sum',
+        name='video',
+    )
+
+    table_user = tpu_embedding_v2_utils.TableConfig(
+        vocabulary_size=self.vocabulary_size,
+        dim=128,
+        initializer=element_id_initializer,
+        combiner='sum',
+        name='user',
+    )
+
+    feature_config = {
+        'watched': tpu_embedding_v2_utils.FeatureConfig(
+            table=table_video, output_shape=[16]
+        ),
+        'user': tpu_embedding_v2_utils.FeatureConfig(
+            table=table_user, output_shape=[16]
+        ),
+    }
+
+    resolver = tpu_cluster_resolver.TPUClusterResolver(tpu='')
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    strategy = tpu_strategy.TPUStrategy(resolver)
+    sparse_features = {
+        'watched': sparse_ops.sparse_reorder(
+            sparse_tensor.SparseTensor(
+                indices=[[i, 0] for i in range(16)],
+                values=np.arange(16),
+                dense_shape=[16, 1],
+            )
+        ),
+        'user': sparse_ops.sparse_reorder(
+            sparse_tensor.SparseTensor(
+                indices=[[i, 0] for i in range(16)],
+                values=np.arange(16) + 16,
+                dense_shape=[16, 1],
+            )
+        ),
+    }
+
+    dataset = dataset_ops.DatasetV2.from_tensors(sparse_features)
+    dataset = (
+        dataset.unbatch()
+        .repeat()
+        .batch(16 * strategy.num_replicas_in_sync, drop_remainder=True)
+    )
+
+    dist = strategy.experimental_distribute_dataset(
+        dataset,
+        options=distribute_lib.InputOptions(experimental_fetch_to_device=False),
+    )
+    dist_iter = iter(dist)
+    data = next(dist_iter)
+
+    with strategy.scope():
+      mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
+          feature_config=feature_config,
+          optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
+      )
+
+    @def_function.function
+    def test_fn(data):
+      def step(partitioned_tensor):
+        activations, _ = mid_level_api.dequeue(partitioned_tensor)
+        return activations
+
+      partitioned_tensor = mid_level_api.enqueue(
+          data, device=strategy.extended.worker_devices[0]
+      )
+      return strategy.run(step, args=(partitioned_tensor,))
+
+    result = test_fn(data)
+    watched = result['watched']
+    user = result['user']
+    self.assertEqual(watched.shape, (16, 128))
+    self.assertEqual(user.shape, (16, 128))
+    self.assertAllClose(
+        watched, np.ones(16 * 128).reshape((16, 128)), atol=1e-5, rtol=1e-5
+    )
+    self.assertAllClose(
+        user,
+        2048 + np.arange(16 * 128).reshape((16, 128)),
+        atol=1e-5,
+        rtol=1e-5,
+    )
 
   def _recover_same_sized_tables(self, table, strategy, num_tables=1):
     # This table has num_sparse_cores mod shards, so we need to slice,
