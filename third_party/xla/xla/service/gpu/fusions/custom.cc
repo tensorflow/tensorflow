@@ -419,7 +419,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
       GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
 
   std::unique_ptr<Thunk> thunk;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&custom_call);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
   if (absl::c_any_of(slice_instrs, [&](auto slice_instr) {
         return DynCastOrNull<HloDynamicIndexInstruction>(slice_instr) !=
@@ -656,7 +656,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   }
 
   std::unique_ptr<Thunk> thunk;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&custom_call);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
   auto ffi_thunk = [&](Slices ops, Slices res) {
     auto& called_computations = custom_call.called_computations();
