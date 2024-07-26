@@ -199,6 +199,46 @@ TEST_F(ReshapeMoverTest, MultipleReshapes) {
                          m::Parameter(2)))));
 }
 
+TEST_F(ReshapeMoverTest, ClampScalar) {
+  const std::string hlo_string = R"(
+    HloModule test
+    ENTRY test {
+      constant.0 = f32[] constant(-127)
+      constant.1 = f32[] constant(127)
+      ROOT add0 = f32[8,7,1] clamp(
+        constant.0,
+        f32[8,7,1] reshape(f32[1,8,1,7] parameter(0)),
+        constant.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(
+                  m::Clamp(m::Constant(), m::Parameter(0), m::Constant()))));
+}
+
+TEST_F(ReshapeMoverTest, ClampTensor) {
+  const std::string hlo_string = R"(
+    HloModule test
+    ENTRY test {
+      ROOT add0 = f32[8,7,1] clamp(
+        f32[8,7,1] reshape(f32[1,8,1,7] parameter(0)),
+        f32[8,7,1] reshape(f32[1,8,1,7] parameter(1)),
+        f32[8,7,1] reshape(f32[1,8,1,7] parameter(2)))
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(m::Clamp(m::Parameter(0), m::Parameter(1),
+                                             m::Parameter(2)))));
+}
+
 TEST_F(ReshapeMoverTest, SinkTransposeAcrossBroadcastScalar) {
   const std::string hlo_string = R"(
     HloModule TransposeMulInversedTransposeModule
