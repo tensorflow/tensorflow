@@ -20,14 +20,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -127,31 +125,6 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {4, 4}}, results[2]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {1, 1}}, results[3]);
 }
-
-// Helper functions for pipeline parallelism tests where each stage scales the
-// input by some factor.
-absl::StatusOr<Literal> CreateLinearLayerWeights(int64_t size, float factor) {
-  return LiteralUtil::CreateLiteralWithGenerator<F32, float>(
-      ShapeUtil::MakeShape(F32, {size, size}),
-      [&](absl::Span<const int64_t> idx) -> float {
-        return idx[0] == idx[1] ? factor : 0.0;
-      });
-};
-absl::StatusOr<Literal> CreateZeroInputR2(int64_t microbatches, int64_t size) {
-  return LiteralUtil::CreateLiteralWithGenerator<F32, float>(
-      ShapeUtil::MakeShape(F32, {microbatches, size}),
-      [&](absl::Span<const int64_t> idx) -> float { return 0.0; });
-};
-absl::StatusOr<Literal> CreateFingerprintInput(int64_t microbatches,
-                                               int64_t size,
-                                               float factor = 1.0) {
-  return LiteralUtil::CreateLiteralWithGenerator<F32, float>(
-      ShapeUtil::MakeShape(F32, {microbatches, size}),
-      [&](absl::Span<const int64_t> idx) -> float {
-        float fingerprint = 1.0 * idx[0] + 0.0001 * idx[1];
-        return factor * fingerprint;
-      });
-};
 
 // Naive implementation of pipeline parallelism:
 //   - 4 devices
@@ -262,22 +235,18 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch4Replica4) {
   // data by 1.0, 2.0, 3.0 and 4.0. The combined effect is to scale the input
   // data by 24.0.
   const int64_t kInputSize = 16;
-  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r0,
-                          CreateLinearLayerWeights(kInputSize, 1.0));
-  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r1,
-                          CreateLinearLayerWeights(kInputSize, 2.0));
-  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r2,
-                          CreateLinearLayerWeights(kInputSize, 3.0));
-  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r3,
-                          CreateLinearLayerWeights(kInputSize, 4.0));
+  Literal weights_r0 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 1.0);
+  Literal weights_r1 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 2.0);
+  Literal weights_r2 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 3.0);
+  Literal weights_r3 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 4.0);
 
   // Only the first replica holds the input to the pipeline in this naive
   // implementation. The remaining replicas get zero/dummy input.
   const int64_t kMicrobatches = 4;
-  TF_ASSERT_OK_AND_ASSIGN(Literal real_input,
-                          CreateFingerprintInput(kMicrobatches, kInputSize));
-  TF_ASSERT_OK_AND_ASSIGN(Literal fake_input,
-                          CreateZeroInputR2(kMicrobatches, kInputSize));
+  Literal real_input =
+      LiteralUtil::CreateFingerprintMatixR2<float>(kMicrobatches, kInputSize);
+  Literal fake_input =
+      LiteralUtil::CreateFull<float>({kMicrobatches, kInputSize}, 0.0);
 
   std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
                                               {&weights_r1, &fake_input},
@@ -291,9 +260,8 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch4Replica4) {
   // Check pipeline output for last replica.
   // The combined effect of the pipeline is to scale the input data by 24.0.
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0;
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal expected_output,
-      CreateFingerprintInput(kMicrobatches, kInputSize, kExpectedFactor));
+  Literal expected_output = LiteralUtil::CreateFingerprintMatixR2(
+      kMicrobatches, kInputSize, kExpectedFactor);
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
                                            ErrorSpec{1e-5, 1e-5}));
 }
@@ -408,29 +376,24 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch5Replica4) {
   // data by 1.0, 2.0, 3.0 and 4.0. The combined effect is to scale the input
   // data by 24.0.
   const int64_t kInputSize = 16;
-  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r0,
-                          CreateLinearLayerWeights(kInputSize, 1.0));
-  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r1,
-                          CreateLinearLayerWeights(kInputSize, 2.0));
-  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r2,
-                          CreateLinearLayerWeights(kInputSize, 3.0));
-  TF_ASSERT_OK_AND_ASSIGN(Literal weights_r3,
-                          CreateLinearLayerWeights(kInputSize, 4.0));
+  Literal weights_r0 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 1.0);
+  Literal weights_r1 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 2.0);
+  Literal weights_r2 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 3.0);
+  Literal weights_r3 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 4.0);
 
   // Only the first replica holds the input to the pipeline in this naive
   // implementation. The remaining replicas get zero/dummy input.
   const int64_t kMicrobatches = 5;
-  TF_ASSERT_OK_AND_ASSIGN(Literal real_input,
-                          CreateFingerprintInput(kMicrobatches, kInputSize));
-  TF_ASSERT_OK_AND_ASSIGN(Literal fake_input,
-                          CreateZeroInputR2(kMicrobatches, kInputSize));
+  Literal real_input =
+      LiteralUtil::CreateFingerprintMatixR2<float>(kMicrobatches, kInputSize);
+  Literal fake_input =
+      LiteralUtil::CreateFull<float>({kMicrobatches, kInputSize}, 0.0);
 
   // Check pipeline output for last replica.
   // The combined effect of the pipeline is to scale the input data by 24.0.
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0;
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal expected_output,
-      CreateFingerprintInput(kMicrobatches, kInputSize, kExpectedFactor));
+  Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
+      kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
   std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
                                               {&weights_r1, &fake_input},
                                               {&weights_r2, &fake_input},
