@@ -2,6 +2,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
+    # copybara:uncomment "tf_pyclif_proto_library",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
@@ -1224,6 +1225,14 @@ xla_py_proto_library(
         ":autotune_results_proto",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# tf_pyclif_proto_library(
+#     name = "autotune_results_pyclif",
+#     proto_lib = ":autotune_results_proto",
+#     visibility = ["//visibility:public"],
+# )
+# copybara:uncomment_end
 
 tf_proto_library(
     name = "autotuning_proto",

@@ -15,6 +15,7 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
+    # copybara:uncomment "tf_pyclif_proto_library",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -152,6 +153,15 @@ tf_proto_library(
 #     api_version = 2,
 #     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 #     deps = [":autotune_map_proto"],
+# )
+#
+# tf_pyclif_proto_library(
+#     name = "autotune_map_pyclif",
+#     proto_lib = ":autotune_map_proto",
+#     visibility = [
+#         "//waymo/ml/deploy/benchmark:__subpackages__",
+#         "//waymo/ml/deploy/system/autotuning:__subpackages__",
+#     ],
 # )
 # copybara:uncomment_end
 
