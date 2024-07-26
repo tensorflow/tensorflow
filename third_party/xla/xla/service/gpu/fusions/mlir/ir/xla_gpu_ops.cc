@@ -148,6 +148,18 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
   }
 };
 
+struct XlaGpuOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
+  using OpAsmDialectInterface::OpAsmDialectInterface;
+  AliasResult getAlias(mlir::Attribute attr,
+                       mlir::raw_ostream& os) const final {
+    if (llvm::isa<IndexingMapAttr>(attr)) {
+      os << "indexing_map";
+      return AliasResult::FinalAlias;
+    }
+    return AliasResult::NoAlias;
+  }
+};
+
 }  // namespace
 
 void XlaGpuDialect::initialize() {
@@ -161,7 +173,7 @@ void XlaGpuDialect::initialize() {
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.cc.inc"
       >();
 #undef GET_ATTRDEF_LIST
-  addInterfaces<XlaGpuInlinerInterface>();
+  addInterfaces<XlaGpuInlinerInterface, XlaGpuOpAsmDialectInterface>();
 }
 
 LogicalResult PureCallOp::verifySymbolUses(

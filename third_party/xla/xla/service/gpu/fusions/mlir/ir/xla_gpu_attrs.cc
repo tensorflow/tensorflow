@@ -154,7 +154,7 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
 }
 
 void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
-  printer << "<";
+  printer << "<\n";
   printer.printStrippedAttrOrType(getMap());
   printer << "\ndomain:\n";
   PrintDimVars(printer, getDimVars());
