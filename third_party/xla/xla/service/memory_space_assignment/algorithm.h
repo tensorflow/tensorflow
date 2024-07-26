@@ -372,6 +372,13 @@ class AsynchronousCopyResource {
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
+//
+// Note: Memory space assignment (MSA) creates an MsaAlgorithm object and passes
+// it to the HeapSimulator. The HeapSimulator calls Alloc(), Free() and
+// ShareWith() on the MsaAlgorithm object to create buffer intervals (populate
+// buffer_intervals_), these methods are inherited from
+// GlobalDecreasingSizeBestFitHeap. The HeapSimulator finally calls the Finish()
+// method which is overridden in this class.
 class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   using HloPositionOrUse = std::variant<HloPosition, HloUse>;
