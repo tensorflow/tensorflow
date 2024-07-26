@@ -273,6 +273,8 @@ TfLiteStatus AbsEvalQuantized(TfLiteContext* context, TfLiteNode* node,
   const int kMin = std::numeric_limits<T>::min();
   const int kMax = std::numeric_limits<T>::max();
 
+
+
   std::function<T(T)> func = [&](T i) {
     const int32_t value = std::abs(i - op_data->input_offset);
     if (!op_data->needs_rescale) {
