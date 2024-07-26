@@ -2551,7 +2551,14 @@ absl::Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
     }
   }
 
-  if (hlo->operand_count() > 1 && operands_same_sharding) {
+  bool operand_sharding_more_tiles =
+      (hlo->operand(0)->sharding().IsTiled() ||
+       hlo->operand(0)->sharding().IsTileMaximal()) &&
+      (hlo->sharding().IsTiled() || hlo->sharding().IsTileMaximal()) &&
+      hlo->operand(0)->sharding().NumTiles() > hlo->sharding().NumTiles();
+
+  if ((hlo->operand_count() > 1 && operands_same_sharding) ||
+      (hlo->operand_count() == 1 && operand_sharding_more_tiles)) {
     // Do the element-wise operation. Then reshard the result to the specified
     // sharding.
     std::vector<HloInstruction*> original_operands;
