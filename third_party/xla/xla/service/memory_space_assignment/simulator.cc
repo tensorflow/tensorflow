@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/layout.h"
 #include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -62,7 +62,7 @@ void RuntimeSimulator::InitializeAlternateMemoryMap(
   }
 }
 
-float RuntimeSimulator::SimulateElapsedTimeWithoutAsyncCopies(
+float RuntimeSimulator::SimulateElapsedTimeWithoutAsyncCopyLikes(
     const HloLiveRange& hlo_live_range, const AllocationSequence& allocations) {
   InitializeAlternateMemoryMap(allocations);
   const auto& instruction_sequence =
@@ -99,17 +99,32 @@ float RuntimeSimulator::SimulateElapsedTimeWithoutAsyncCopies(
   return total_elapsed;
 }
 
-MemoryTransferDirection GetAsyncCopyDirection(
-    const HloInstruction* async_copy_start, int64_t alternate_memory_space) {
-  CHECK_EQ(async_copy_start->opcode(), HloOpcode::kCopyStart);
+bool IsAsyncCopyLikeStart(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kCopyStart ||
+         (instruction->opcode() == HloOpcode::kAsyncStart &&
+          instruction->async_wrapped_instruction()->opcode() ==
+              HloOpcode::kSlice);
+}
+
+bool IsAsyncCopyLikeDone(const HloInstruction* instruction) {
+  return (instruction->opcode() == HloOpcode::kCopyDone ||
+          (instruction->opcode() == HloOpcode::kAsyncDone &&
+           instruction->async_wrapped_instruction()->opcode() ==
+               HloOpcode::kSlice));
+}
+
+MemoryTransferDirection GetAsyncCopyLikeDirection(
+    const HloInstruction* async_copy_like_start,
+    int64_t alternate_memory_space) {
+  CHECK(IsAsyncCopyLikeStart(async_copy_like_start));
 
   int64_t operand_memory_space =
-      async_copy_start->operand(0)->shape().layout().memory_space();
-
+      async_copy_like_start->operand(0)->shape().layout().memory_space();
   // Get all users
   std::optional<int64_t> output_memory_space;
-  for (const HloInstruction* user : async_copy_start->users()) {
-    if (user->opcode() == HloOpcode::kCopyDone) {
+  for (const HloInstruction* user : async_copy_like_start->users()) {
+    if (user->opcode() == HloOpcode::kCopyDone ||
+        user->opcode() == HloOpcode::kAsyncDone) {
       output_memory_space.emplace(user->shape().layout().memory_space());
       break;
     }
@@ -129,56 +144,58 @@ MemoryTransferDirection GetAsyncCopyDirection(
   return MemoryTransferDirection::kUnsupported;
 }
 
-const std::list<OutstandingAsyncCopy>&
+const std::list<OutstandingAsyncCopyLike>&
 RuntimeSimulator::GetOutstandingReadDefaultQueue() const {
   return outstanding_read_default_queue_;
 }
 
-const std::list<OutstandingAsyncCopy>&
+const std::list<OutstandingAsyncCopyLike>&
 RuntimeSimulator::GetOutstandingWriteDefaultQueue() const {
   return outstanding_write_default_queue_;
 }
 
 const HloInstruction* RuntimeSimulator::RemoveBytesFromQueueIfNotEmpty(
-    std::list<OutstandingAsyncCopy>& async_copy_queue, float processed_bytes) {
-  if (async_copy_queue.empty()) return nullptr;
-  CHECK_GE(async_copy_queue.front().remaining_bytes_to_transfer,
+    std::list<OutstandingAsyncCopyLike>& async_copy_like_queue,
+    float processed_bytes) {
+  if (async_copy_like_queue.empty()) return nullptr;
+  CHECK_GE(async_copy_like_queue.front().remaining_bytes_to_transfer,
            processed_bytes);
-  async_copy_queue.front().remaining_bytes_to_transfer -= processed_bytes;
-  if (async_copy_queue.front().remaining_bytes_to_transfer == 0.0) {
+  async_copy_like_queue.front().remaining_bytes_to_transfer -= processed_bytes;
+  if (async_copy_like_queue.front().remaining_bytes_to_transfer == 0.0) {
     const HloInstruction* retired_instruction =
-        async_copy_queue.front().copy_start_inst;
-    async_copy_queue.pop_front();
+        async_copy_like_queue.front().copy_like_start_inst;
+    async_copy_like_queue.pop_front();
     return retired_instruction;
   }
   return nullptr;
 }
 
-float RuntimeSimulator::SimulateAsyncCopyDone(
-    const HloInstruction* copy_done_instruction) {
-  const HloInstruction* copy_start_instruction =
-      copy_done_instruction->operand(0);
-  MemoryTransferDirection direction =
-      GetAsyncCopyDirection(copy_start_instruction, alternate_memory_space_);
+float RuntimeSimulator::SimulateAsyncCopyLikeDone(
+    const HloInstruction* copy_like_done_instruction) {
+  const HloInstruction* copy_like_start_instruction =
+      copy_like_done_instruction->operand(0);
+  MemoryTransferDirection direction = GetAsyncCopyLikeDirection(
+      copy_like_start_instruction, alternate_memory_space_);
   if (direction == MemoryTransferDirection::kUnsupported) {
     // The memory access is not a default <-> alternate memory copy.
     LOG(WARNING) << "Unsupported memory transfer direction for copy-done: "
-                 << copy_done_instruction->ToString();
+                 << copy_like_done_instruction->ToString();
     return 0.0;
   }
-  std::list<OutstandingAsyncCopy>& same_direction_queue =
+  std::list<OutstandingAsyncCopyLike>& same_direction_queue =
       direction == MemoryTransferDirection::kDefaultToAlternate
           ? outstanding_read_default_queue_
           : outstanding_write_default_queue_;
-  std::list<OutstandingAsyncCopy>& opposite_direction_queue =
+  std::list<OutstandingAsyncCopyLike>& opposite_direction_queue =
       direction == MemoryTransferDirection::kDefaultToAlternate
           ? outstanding_write_default_queue_
           : outstanding_read_default_queue_;
 
-  if (absl::c_find_if(
-          same_direction_queue, [&](const OutstandingAsyncCopy& async_copy) {
-            return async_copy.copy_start_inst == copy_start_instruction;
-          }) == same_direction_queue.end()) {
+  if (absl::c_find_if(same_direction_queue,
+                      [&](const OutstandingAsyncCopyLike& async_copy_like) {
+                        return async_copy_like.copy_like_start_inst ==
+                               copy_like_start_instruction;
+                      }) == same_direction_queue.end()) {
     // The copy has already finished; thus, the copy-done takes no time.
     return 0.0;
   }
@@ -186,7 +203,7 @@ float RuntimeSimulator::SimulateAsyncCopyDone(
   // Each iteration of the while loop simulates transferring a number of
   // bytes from each queue that is equal to the smaller of the two elements
   // at the front of each queue. If that causes us to finish a copy in the
-  // same_direction_queue, and that copy is the copy_done_instruction, we
+  // same_direction_queue, and that copy is the copy_like_done_instruction, we
   // break the loop.
   float elapsed_time = 0.0;
   const HloInstruction* retired_instruction_in_same_direction_queue = nullptr;
@@ -211,7 +228,7 @@ float RuntimeSimulator::SimulateAsyncCopyDone(
     retired_instruction_in_same_direction_queue =
         RemoveBytesFromQueueIfNotEmpty(same_direction_queue, bytes_to_process);
   } while (retired_instruction_in_same_direction_queue !=
-           copy_start_instruction);
+           copy_like_start_instruction);
   return elapsed_time;
 };
 
@@ -227,22 +244,22 @@ float RuntimeSimulator::SimulateComputeInstruction(
           *instruction, operands_in_alternate_memory,
           outputs_in_alternate_memory);
 
-  // Execute the outstanding async copy in the idle time.
-  ProcessAsyncCopiesInIdleTime(default_memory_idle_time);
+  // Execute the outstanding async copy likes in the idle time.
+  ProcessAsyncCopyLikesInIdleTime(default_memory_idle_time);
 
   float inst_elapsed = cost_analysis_->GetInstructionElapsedInAlternateMemory(
       *instruction, operands_in_alternate_memory, outputs_in_alternate_memory);
   return inst_elapsed;
 }
 
-void RuntimeSimulator::ProcessAsyncCopiesInIdleTime(float time) {
+void RuntimeSimulator::ProcessAsyncCopyLikesInIdleTime(float time) {
   if (time <= 0.0) {
     return;
   }
   float remaining_simulation_time = time;
   // This loop simulates the execution of the front memory requests in the
   // read and/or write queues. The loop terminates when the remaining time is
-  // exhausted or there are no more outstanding async copies.
+  // exhausted or there are no more outstanding async copy likes.
   while ((!outstanding_read_default_queue_.empty() ||
           !outstanding_write_default_queue_.empty()) &&
          remaining_simulation_time > 0.0) {
@@ -300,34 +317,33 @@ float RuntimeSimulator::SimulateElapsedTime(
     }
     if (instruction->parent()->IsAsyncComputation()) {
       // We assume the overhead of async computations can be hidden perfectly.
-      // We plan to integrate the async copy overhead analysis later
-      // (b/351913186).
       continue;
     }
-    if (instruction->opcode() == HloOpcode::kCopyStart) {
+    if (IsAsyncCopyLikeStart(instruction)) {
       // Try to categorize the async copy instruction into
       // read-from-default and write-to-default queues.
       MemoryTransferDirection direction =
-          GetAsyncCopyDirection(instruction, alternate_memory_space_);
-      const Shape& transfer_shape = instruction->operand(0)->shape();
+          GetAsyncCopyLikeDirection(instruction, alternate_memory_space_);
+      const Shape& transfer_shape =
+          (instruction->opcode() == HloOpcode::kCopyStart)
+              ? instruction->operand(0)->shape()
+              : ShapeUtil::GetSubshape(instruction->shape(),
+                                       /*index=*/{1});
       float transfer_bytes = static_cast<float>(
           cost_analysis_->base_costs().GetShapeSize(transfer_shape));
       if (direction == MemoryTransferDirection::kDefaultToAlternate) {
         outstanding_read_default_queue_.push_back(
-            OutstandingAsyncCopy{instruction, transfer_bytes});
+            OutstandingAsyncCopyLike{instruction, transfer_bytes});
       } else if (direction == MemoryTransferDirection::kAlternateToDefault) {
         outstanding_write_default_queue_.push_back(
-            OutstandingAsyncCopy{instruction, transfer_bytes});
+            OutstandingAsyncCopyLike{instruction, transfer_bytes});
       } else {
         // The copy does not involve default memory.
       }
-    } else if (instruction->opcode() == HloOpcode::kCopyDone) {
-      inst_elapsed = SimulateAsyncCopyDone(instruction);
+    } else if (IsAsyncCopyLikeDone(instruction)) {
+      inst_elapsed = SimulateAsyncCopyLikeDone(instruction);
     } else {
       // This branch is for the compute instructions.
-      // TODO(b/351913186): Plan to add another branch to handle async
-      // copy instructions caused by slicing.
-
       absl::Span<const ShapeIndex> outputs_in_alternate_memory;
       auto output_it = outputs_in_alternate_memory_map_.find(instruction);
       if (output_it != outputs_in_alternate_memory_map_.end()) {

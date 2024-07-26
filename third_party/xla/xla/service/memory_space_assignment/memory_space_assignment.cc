@@ -358,8 +358,8 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     runtime_simulator.emplace(options_.cost_analysis,
                               options_.alternate_memory_space);
     float estimated_time =
-        runtime_simulator->SimulateElapsedTimeWithoutAsyncCopies(hlo_live_range,
-                                                                 allocations_);
+        runtime_simulator->SimulateElapsedTimeWithoutAsyncCopyLikes(
+            hlo_live_range, allocations_);
     VLOG(1) << "Estimated elapsed time without async copies (sec): "
             << estimated_time;
   }
