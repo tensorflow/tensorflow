@@ -2907,10 +2907,10 @@ xla_cc_test(
 
 cc_library(
     name = "custom_kernel_fusion_autotuner",
-    srcs = if_cuda_is_configured(["custom_kernel_fusion_autotuner.cc"]),
-    hdrs = if_cuda_is_configured(["custom_kernel_fusion_autotuner.h"]),
+    srcs = if_gpu_is_configured(["custom_kernel_fusion_autotuner.cc"]),
+    hdrs = if_gpu_is_configured(["custom_kernel_fusion_autotuner.h"]),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    deps = if_cuda_is_configured([
+    deps = if_gpu_is_configured([
         ":autotuner_compile_util",
         ":autotuner_util",
         ":backend_configs_cc",
