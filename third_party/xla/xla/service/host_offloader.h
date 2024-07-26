@@ -67,8 +67,17 @@ bool operator==(const InstructionAndShapeIndex& lhs,
 // tensors along each path have their memory space set as host memory space. If
 // a MoveToHost custom call is paired with a DynamicUpdateSlice, the
 // DynamicUpdateSlice will write into host memory space. Otherwise, a copy from
-// device to host will be inserted. All MoveToHost and MoveToDevice custom calls
-// are removed by the end of this pass.
+// device to host will be inserted.
+//
+// If an output of a host offloaded computation is only used on host, the memory
+// space of the usages are updated to reflect it and no copies to and from host
+// are performed. Any MoveToHost instructions for outputs used only on host, are
+// removed.
+// TODO(b/347101407): A better approach could be to remove redundant copies in a
+// generalized fashion. Should also be moved out of Host Offloader.
+//
+// All MoveToHost and MoveToDevice custom calls are removed by the end of this
+// pass.
 class HostOffloader : public HloModulePass {
  public:
   explicit HostOffloader(int64_t host_memory_space_color)
@@ -167,6 +176,12 @@ class HostOffloader : public HloModulePass {
   absl::StatusOr<bool> ApplySchedulingFix(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Starting from the outputs of the host offloaded computation, track all
+  // their usages. For the outputs that are ONLY used on host, remove redundant
+  // copies to and from host, as well as update the memory space.
+  absl::StatusOr<bool> HandleRedundantCopiesBackToHost(
+      const HloModule* module, HloInstruction* instruction);
 };
 
 }  // namespace xla
