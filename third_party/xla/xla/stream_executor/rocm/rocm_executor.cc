@@ -459,6 +459,20 @@ void GpuExecutor::Deallocate(DeviceMemoryBase* mem) {
   GpuDriver::DeviceDeallocate(context_, mem->opaque());
 }
 
+absl::StatusOr<std::unique_ptr<MemoryAllocation>>
+GpuExecutor::HostMemoryAllocate(uint64_t size) {
+  auto* buffer = GpuDriver::HostAllocate(context_, size);
+  if (buffer == nullptr && size > 0) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+  }
+  return std::make_unique<HostMemoryAllocation>(buffer, size, this);
+}
+
+void GpuExecutor::HostMemoryDeallocate(void* location, uint64_t size) {
+  return GpuDriver::HostDeallocate(context_, location);
+}
+
 bool GpuExecutor::SynchronizeAllActivity() {
   return GpuDriver::SynchronizeContext(context_);
 }
