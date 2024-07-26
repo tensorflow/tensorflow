@@ -51,11 +51,13 @@ pybind_extension(
     ],
     deps = [
         ":calibration_wrapper_lib",
+        "@pybind11",
+        "//third_party/python_runtime:headers",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
+        # "//tensorflow/lite/python:pywrap_tflite",
+        # "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
@@ -93,6 +95,8 @@ py_strict_test(
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/lite/python:lite",
+        # "//tensorflow/lite/python:pywrap_tflite",
+        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/framework:dtypes",
