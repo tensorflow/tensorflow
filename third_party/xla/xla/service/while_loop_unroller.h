@@ -27,9 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal_util.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/service/pattern_matcher.h"
 
 namespace xla {
 
@@ -61,7 +59,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
 // involves the iteration variable of the surrounding loop and some constants,
 // if we unroll the surrounding loop. If so, it returns the dynamic index.
 std::optional<int64_t> MatchEffectivelyStaticDynamicSliceInsideLoop(
-    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
+    const HloInstruction* instr, const HloInstruction* input,
     const WhileLoopConfig& config);
 
 // This pass unrolls while loops with the given unrolling factor. The value of

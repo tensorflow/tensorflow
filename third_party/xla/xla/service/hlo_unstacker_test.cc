@@ -257,6 +257,66 @@ TEST_F(UnstackerTest, UnstackLoopSingleNestedFusionUser) {
                                       std::nullopt, false));
 }
 
+// Instead of slicing the entire shape, this test slices only even elements from
+// the first parameter.
+TEST_F(UnstackerTest, UnstackLoopSingleNestedFusionUserDynamicIndex) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  %fused_computation.slice (param_0.51117: s8[6,128,128], p1: s32[]) -> s8[128,128] {
+    %param_0.51117 = s8[6,128,128] parameter(0)
+    p1 = s32[] parameter(1)
+    %constant.85694 = s32[] constant(0)
+    %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[6,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
+    ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.22040)
+  }
+
+  %fused_computation.inner (param_0.34523: bf16[8,128], param_1.30691: s8[6,128,128], p2: s32[]) -> bf16[8,128] {
+    %param_0.34523 = bf16[8,128] parameter(0)
+    %param_1.30691 = s8[6,128,128] parameter(1)
+    p2 = s32[] parameter(2)
+    %fusion.67830 = s8[128,128] fusion(s8[6,128,128] %param_1.30691, p2), kind=kLoop, calls=%fused_computation.slice
+    ROOT %convolution.3447 = bf16[8,128] convolution(bf16[8,128] %param_0.34523, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
+  }
+
+  %while.body (wide_param: (s32[], bf16[8,128], s8[6,128,128])) -> (s32[], bf16[8,128], s8[6,128,128]) {
+    wide_p = (s32[], bf16[8,128], s8[6,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    p0 = bf16[8,128] get-tuple-element(wide_p), index=1
+    p1 = s8[6,128,128] get-tuple-element(wide_p), index=2
+    one = s32[] constant(1)
+    inc = s32[] add(i, one)
+    two = s32[] constant(2)
+    mult = s32[] multiply(i, two)
+    fusion.conv = bf16[8,128] fusion(p0, p1, mult), kind=kOutput, calls=%fused_computation.inner
+    ROOT out = (s32[], bf16[8,128], s8[6,128,128]) tuple(inc, fusion.conv, p1)
+  }
+
+  %while.cond (wide_param: (s32[], bf16[8,128], s8[6,128,128])) -> pred[] {
+    wide_p = (s32[], bf16[8,128], s8[6,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    %constant.12857 = s32[] constant(3)
+    ROOT %compare.1921 = pred[]{:T(512)} compare(s32[] i, s32[] %constant.12857), direction=LT
+  }
+
+  ENTRY main {
+    p0 = s8[6,128,128] parameter(0)
+    p1 = bf16[8,128] parameter(1)
+    init = s32[] constant(0)
+    while.input = (s32[], bf16[8,128], s8[6,128,128]) tuple(init, p1, p0)
+    while.out = (s32[], bf16[8,128], s8[6,128,128]) while(while.input), condition=%while.cond , body=%while.body
+    while_use = s8[6,128,128] get-tuple-element(while.out), index=2
+    ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto original = module->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
+  EXPECT_TRUE(unstacked);
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
+                                      std::nullopt, false));
+}
+
 TEST_F(UnstackerTest, UnstackLoopSingleNestedFusionUserMultipleIndex) {
   std::string hlo_string = R"(
     HloModule SimpleLoop

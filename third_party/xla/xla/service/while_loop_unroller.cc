@@ -407,8 +407,11 @@ bool IsEffectivelyStatic(const HloInstruction* instr,
 }
 
 std::optional<int64_t> MatchEffectivelyStaticDynamicSliceInsideLoop(
-    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
+    const HloInstruction* instr, const HloInstruction* input,
     const WhileLoopConfig& config) {
+  if (instr->opcode() != HloOpcode::kDynamicSlice) {
+    return std::nullopt;
+  }
   int64_t start_indices_offset = 1;
   const HloInstruction* operand = instr->operand(0);
   if (operand != input) {

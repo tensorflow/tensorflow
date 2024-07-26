@@ -644,28 +644,67 @@ Shape MakeUnstackedShapeFromSlice(const Shape& slice_shape, int64_t layers) {
 }
 
 // Checks if the given instruction is a fusion with num_fusion_params
-// parameters. If so, the function looks for the dynamic-index instruction
-// within the fusion that covers the shape of the stacked operand at the given
-// index.
-HloInstruction* GetMostMajorShapeCoveringDynamicIndexInFusion(
+// parameters inside an unrollable loop. If so, it returns the loop config.
+std::optional<WhileLoopConfig> IsFusionInsideUnrollableLoopWithNumParameter(
     const UnstackerMetadata& metadata, const HloInstruction* instr,
-    HloOpcode opcode, int64_t num_fusion_params, int64_t stacked_operand_idx) {
+    int64_t num_fusion_params) {
   if (instr->opcode() != HloOpcode::kFusion) {
-    return nullptr;
+    return std::nullopt;
   }
   if (instr->fused_parameters().size() != num_fusion_params) {
     VLOG(3) << "Fusion has different number of parameters";
-    return nullptr;
+    return std::nullopt;
   }
   if (!metadata.unrollable_loop_bodies.contains(instr->parent())) {
     VLOG(5) << "Fusion not inside unrollable while body, " << instr->name()
             << " inside " << instr->parent()->name();
+    return std::nullopt;
+  }
+  return metadata.unrollable_loop_bodies.at(instr->parent());
+}
+
+// Checks if the instruction is a fusion with num_fusion_params parameters
+// inside an unrollable loop and within its fusion computation there is an
+// effectively static dynamic-slice instruction on the most major dimension of
+// the operand at the given stacked_operand_idx. If so, it returns the
+// dynamic-slice instruction.
+HloInstruction* GetMostMajorEffectivelyStaticDynamicSliceInFusion(
+    const UnstackerMetadata& metadata, const HloInstruction* instr,
+    int64_t num_fusion_params, int64_t stacked_operand_idx) {
+  std::optional<WhileLoopConfig> while_instr_config =
+      IsFusionInsideUnrollableLoopWithNumParameter(metadata, instr,
+                                                   num_fusion_params);
+  if (!while_instr_config.has_value()) {
     return nullptr;
   }
+  for (HloInstruction* fused_instr :
+       instr->fused_instructions_computation()->MakeInstructionPostOrder()) {
+    std::optional<int64_t> dynamic_index =
+        MatchEffectivelyStaticDynamicSliceInsideLoop(
+            fused_instr,
+            instr->fused_instructions_computation()->parameter_instruction(
+                stacked_operand_idx),
+            while_instr_config.value());
+    if (dynamic_index.has_value() && dynamic_index.value() == 0) {
+      return fused_instr;
+    }
+  }
+  return nullptr;
+}
 
-  WhileLoopConfig while_instr_config =
-      metadata.unrollable_loop_bodies.at(instr->parent());
-
+// Checks if the instruction is a fusion with num_fusion_params parameters
+// inside an unrollable loop and within its fusion computation looks for the
+// dynamic-index instruction that covers the shape of the operand at the given
+// index.
+HloInstruction* GetMostMajorShapeCoveringDynamicIndexInFusion(
+    const UnstackerMetadata& metadata, const HloInstruction* instr,
+    HloOpcode opcode, int64_t num_fusion_params, int64_t stacked_operand_idx) {
+  std::optional<WhileLoopConfig> while_instr_config =
+      IsFusionInsideUnrollableLoopWithNumParameter(metadata, instr,
+                                                   num_fusion_params);
+  if (!while_instr_config.has_value()) {
+    return nullptr;
+  }
   for (HloInstruction* fused_instr :
        instr->fused_instructions_computation()->MakeInstructionPostOrder()) {
     if (fused_instr->opcode() != opcode) {
@@ -676,7 +715,7 @@ HloInstruction* GetMostMajorShapeCoveringDynamicIndexInFusion(
             fused_instr,
             instr->fused_instructions_computation()->parameter_instruction(
                 stacked_operand_idx),
-            opcode, while_instr_config);
+            opcode, while_instr_config.value());
     if (dynamic_index.has_value() && dynamic_index.value() == 0) {
       return fused_instr;
     }
@@ -685,20 +724,22 @@ HloInstruction* GetMostMajorShapeCoveringDynamicIndexInFusion(
 }
 
 // This function recognizes fusions with the following pattern:
-// fusion(stacked, loop_iteration_var)
+// fusion(stacked, f(loop_iteration_var))
 // computation {
 //   p0 = parameter(0)
 //   p1 = parameter(1)
 //   slice = dynamic_slice(p0, p1, zero, ...)
 //   ROOT bitcast = bitcast(slice)
 // }
+// where f is a function of loop_iteration_var. It indicates that the slicing
+// offset is effectively static after unrolling.
 std::optional<PatternInfo> GetDSFusionPattern(const UnstackerMetadata& metadata,
                                               const HloInstruction* instr,
                                               int64_t stacked_operand_idx) {
   VLOG(3) << "Checking DSFusion";
   HloInstruction* shape_covering_instr =
-      GetMostMajorShapeCoveringDynamicIndexInFusion(
-          metadata, instr, HloOpcode::kDynamicSlice, 2, stacked_operand_idx);
+      GetMostMajorEffectivelyStaticDynamicSliceInFusion(metadata, instr, 2,
+                                                        stacked_operand_idx);
   if (shape_covering_instr == nullptr) {
     return std::nullopt;
   }
@@ -1009,6 +1050,8 @@ std::optional<PatternInfo> GetNestedDSFusionPattern(
   WhileLoopConfig while_instr_config =
       metadata.unrollable_loop_bodies.at(instr->parent());
 
+  VLOG(3) << "Checking NestedDSFusionPattern";
+
   HloInstruction* inner_fusion_user = nullptr;
   for (HloInstruction* fused_instr :
        instr->fused_instructions_computation()->MakeInstructionPostOrder()) {
@@ -1035,11 +1078,11 @@ std::optional<PatternInfo> GetNestedDSFusionPattern(
       continue;
     }
     std::optional<int64_t> dynamic_index =
-        MatchShapeCoveringDynamicIndexInstruction(
+        MatchEffectivelyStaticDynamicSliceInsideLoop(
             inner_fusion_instr,
             inner_fusion_user->fused_instructions_computation()
                 ->parameter_instruction(0),
-            HloOpcode::kDynamicSlice, while_instr_config);
+            while_instr_config);
     if (dynamic_index.has_value() && dynamic_index.value() == 0) {
       const int64_t num_layers =
           inner_fusion_user->operand(0)->shape().dimensions(0);
@@ -1288,7 +1331,8 @@ absl::StatusOr<bool> HloUnstacker::Run(
         continue;
       }
       VLOG(3) << "Attempting to unstack " << loop->name() << " at " << i
-              << " = " << loop->while_init()->operand(i)->ToShortString();
+              << " = " << loop->while_init()->operand(i)->shape().ToString(true)
+              << loop->while_init()->operand(i)->ToShortString();
       unstacked |=
           UnstackWhileOperandAtIndex(metadata, loop, i, unstacked_instructions);
       VLOG(3) << "###################";
