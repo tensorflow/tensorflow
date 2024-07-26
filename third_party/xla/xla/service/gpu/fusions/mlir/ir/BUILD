@@ -83,6 +83,7 @@ cc_library(
     name = "xla_gpu",
     srcs = [
         "xla_gpu_attrs.cc",
+        "xla_gpu_dialect.cc",
         "xla_gpu_ops.cc",
     ],
     hdrs = [

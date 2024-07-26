@@ -44,13 +44,8 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Transforms/InliningUtils.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
 #include "xla/service/gpu/model/indexing_map.h"
-
-#define GET_ATTRDEF_CLASSES
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.cc.inc"
-#undef GET_ATTRDEF_CLASSES
 
 namespace xla {
 namespace gpu {
@@ -78,103 +73,7 @@ using mlir::ValueRange;
 
 namespace arith = mlir::arith;
 
-struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
-  using DialectInlinerInterface::DialectInlinerInterface;
-  // Returns true if the given operation 'callable', that implements the
-  // 'CallableOpInterface', can be inlined into the position given call
-  // operation 'call', that is registered to the current dialect and implements
-  // the `CallOpInterface`. 'wouldBeCloned' is set to true if the region of the
-  // given 'callable' is set to be cloned during the inlining process, or false
-  // if the region is set to be moved in-place (i.e. no duplicates would be
-  // created).
-  bool isLegalToInline(mlir::Operation* call, mlir::Operation* callable,
-                       bool wouldBeCloned) const final {
-    if (!wouldBeCloned) {
-      // If no duplicate would be created, 'call' is likely the only caller of
-      // 'callable'.
-      return true;
-    }
-    // Otherwise, inline only if the called function is small. We could
-    // theoretically also inline if there is no other caller in the function
-    // that contains the callee that has a call path to the callable, but that
-    // is more expensive to check.
-    auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(callable);
-    if (!func_op) {
-      return false;
-    }
-    auto region = func_op.getCallableRegion();
-    if (!region) {
-      return false;
-    }
-
-    // If callee and caller call the same third function, inline. We have no
-    // guarantee that the indices are the same, but there is a good chance they
-    // are (or if the callee gets inlined as well, there will be CSE
-    // opportunities).
-    // This is duct tape to work around the limitations of our partitioner.
-    // Ideally, the partitioner would be aware of the actual indexing and create
-    // the partitions based on it (i.e., the case where the indices are the same
-    // would never happen).
-    llvm::SmallDenseSet<llvm::StringRef> callee_calls;
-    for (auto call : region->getOps<PureCallOp>()) {
-      callee_calls.insert(call.getCallee());
-    }
-    for (auto call : call->getParentRegion()->getOps<PureCallOp>()) {
-      if (callee_calls.contains(call.getCallee())) {
-        return true;
-      }
-    }
-
-    constexpr int kMaxOperationsToInline = 8;
-    int num_ops = 0;
-    region->front().walk([&](mlir::Operation* op) { ++num_ops; });
-
-    // Don't inline functions that are called more than once and contain more
-    // than one call themselves.
-    return num_ops <= kMaxOperationsToInline;
-  }
-  // Returns true if the given operation 'op', that is registered to this
-  // dialect, can be inlined into the given region, false otherwise.
-  // 'wouldBeCloned' is set to true if the given 'op' is set to be cloned
-  // during the inlining process, or false if the operation is set to be moved
-  // in-place(i.e. no duplicates would be created). 'valueMapping' contains any
-  // remapped values from within the 'src' region. This can be used to examine
-  // what values may potentially replace the operands to 'op'.
-  bool isLegalToInline(mlir::Operation* op, mlir::Region* dest,
-                       bool wouldBeCloned,
-                       mlir::IRMapping& valueMapping) const final {
-    // We allow any op from the xla_gpu dialect to be inlined.
-    return true;
-  }
-};
-
-struct XlaGpuOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
-  using OpAsmDialectInterface::OpAsmDialectInterface;
-  AliasResult getAlias(mlir::Attribute attr,
-                       mlir::raw_ostream& os) const final {
-    if (llvm::isa<IndexingMapAttr>(attr)) {
-      os << "indexing_map";
-      return AliasResult::FinalAlias;
-    }
-    return AliasResult::NoAlias;
-  }
-};
-
 }  // namespace
-
-void XlaGpuDialect::initialize() {
-  addOperations<
-#define GET_OP_LIST
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.cc.inc"
-#undef GET_OP_LIST
-      >();
-  addAttributes<
-#define GET_ATTRDEF_LIST
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.cc.inc"
-      >();
-#undef GET_ATTRDEF_LIST
-  addInterfaces<XlaGpuInlinerInterface, XlaGpuOpAsmDialectInterface>();
-}
 
 LogicalResult PureCallOp::verifySymbolUses(
     mlir::SymbolTableCollection& symbolTable) {

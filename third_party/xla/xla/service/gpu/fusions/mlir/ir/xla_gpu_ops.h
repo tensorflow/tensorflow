@@ -28,8 +28,8 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.h"  // IWYU pragma: keep
 
-#define GET_OP_CLASSES
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.h.inc"
+#define GET_OP_CLASSES
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h.inc"
 #undef GET_OP_CLASSES
 #define GET_ATTRDEF_CLASSES
