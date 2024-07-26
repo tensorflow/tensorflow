@@ -2407,7 +2407,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       raise ValueError(
           "The `quantized_input_stats` flag must be defined when either "
           "`inference_type` flag or `inference_input_type` flag is set to "
-          "tf.int8 or tf.uint8. Currently `inference_type={}` and "
+          "tf.int8 or tf.uint8. Currently, `inference_type={}` and "
           "`inference_input_type={}`.".format(
               _get_tf_type_name(converter_kwargs["inference_type"]),
               _get_tf_type_name(converter_kwargs["inference_input_type"]),
