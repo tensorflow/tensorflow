@@ -55,6 +55,33 @@ limitations under the License.
 namespace xla {
 namespace exhaustive_op_test {
 
+// Determines if the real component of the complex number is subnormal.
+//
+// See also IsSubnormal to check if either component is subnormal.
+bool IsSubnormalReal(xla::complex64);
+bool IsSubnormalReal(xla::complex128);
+
+// Determines if the imaginary component of the complex number is subnormal.
+//
+// See also IsSubnormal to check if either component is subnormal.
+bool IsSubnormalImaginary(xla::complex64);
+bool IsSubnormalImaginary(xla::complex128);
+
+// Determines if the NativeT is subnormal.
+//
+// For complex numbers, this will return true if either real or imaginary
+// component is subnormal. See IsSubnormalReal and IsSubnormalImaginary if you
+// only care about one component.
+template <typename NativeT>
+bool IsSubnormal(NativeT value) {
+  if constexpr (std::is_same_v<NativeT, xla::complex64> ||
+                std::is_same_v<NativeT, xla::complex128>) {
+    return IsSubnormalReal(value) || IsSubnormalImaginary(value);
+  } else {
+    return std::fpclassify(value) == FP_SUBNORMAL;
+  }
+}
+
 struct ErrorSpec {
   double abs_err = 0;
   double rel_err = 0;
