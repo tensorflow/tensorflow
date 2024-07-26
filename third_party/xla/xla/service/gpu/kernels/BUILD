@@ -412,17 +412,6 @@ cuda_library(
     ]),
 )
 
-cuda_library(
-    name = "cutlass_gemm_kernel_bf16xbf16_to_f32",
-    srcs = if_cuda_is_configured(["cutlass_gemm_kernel_bf16xbf16_to_f32.cu.cc"]),
-    copts = ["-Wno-unknown-attributes"],
-    deps = if_cuda_is_configured([
-        ":cutlass_gemm_adaptor",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@cutlass_archive//:cutlass",
-    ]),
-)
-
 #===--------------------------------------------------------------------------------------------===#
 # CUTLASS Gemm kernel libraries
 #===--------------------------------------------------------------------------------------------===#
