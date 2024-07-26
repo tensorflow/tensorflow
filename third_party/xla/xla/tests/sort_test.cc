@@ -41,7 +41,7 @@ XLA_TEST_F(SortTest, SortDim0) {
     }
   )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
 }
 
 XLA_TEST_F(SortTest, SortDim1) {
@@ -60,7 +60,7 @@ XLA_TEST_F(SortTest, SortDim1) {
     }
   )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
 }
 
 }  // namespace

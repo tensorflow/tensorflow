@@ -462,6 +462,9 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
       case 16:
         sort(std::integral_constant<size_t, 16>{});
         break;
+      case 25:
+        sort(std::integral_constant<size_t, 25>{});
+        break;
       default:
         return Internal("Unsupported number of sorted inputs: %d", data.size());
     }
