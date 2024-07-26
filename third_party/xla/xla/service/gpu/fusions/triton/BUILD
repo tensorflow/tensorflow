@@ -417,6 +417,9 @@ xla_cc_test(
     name = "triton_support_test",
     srcs = ["triton_support_test.cc"],
     shard_count = 20,
+    # TODO(b/353912594): this test does not need to run on GPU, but it is broken on CPU in OSS.
+    # Force it to run on GPU temporarily in order to get important OSS coverage.
+    tags = ["gpu"],
     deps = [
         ":triton_fusion_emitter",
         ":triton_support",
