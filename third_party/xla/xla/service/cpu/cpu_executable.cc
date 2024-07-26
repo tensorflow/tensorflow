@@ -82,7 +82,7 @@ FunctionRegistry::FunctionRegistry(SimpleOrcJIT* jit) : jit_(jit) {}
 
 absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
     std::string_view name) {
-  VLOG(2) << "Find host kernel with a name " << name;
+  VLOG(3) << "Find host kernel with a name " << name;
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
       jit_->FindCompiledSymbol(std::string(name));
@@ -96,7 +96,7 @@ absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
 
 absl::StatusOr<FunctionRegistry::Comparator> FunctionRegistry::FindComparator(
     std::string_view name) {
-  VLOG(2) << "Find comparator with a name " << name;
+  VLOG(3) << "Find comparator with a name " << name;
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
       jit_->FindCompiledSymbol(std::string(name));

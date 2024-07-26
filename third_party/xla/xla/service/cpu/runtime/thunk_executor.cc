@@ -153,7 +153,8 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   // alive while thunk executor has pending tasks.
   auto execute_event = state->execute_event;
   execute_event.AndThen([state = std::move(state)] {
-    CHECK_EQ(state->pending_sink_nodes.load(std::memory_order_acquire), 0)
+    auto cnt = state->pending_sink_nodes.load(std::memory_order_acquire);
+    DCHECK_EQ(cnt, 0)
         << "All sink nodes must be completed before execute_event is marked "
            "available.";
   });
@@ -244,7 +245,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
     ExecuteState::Node& node = state->nodes[id];
 
     int64_t cnt = node.counter.load(std::memory_order_acquire);
-    CHECK_EQ(cnt, 0) << "Node counter must be 0";  // Crash Ok
+    DCHECK_EQ(cnt, 0) << "Node counter must be 0";  // Crash Ok
 
     // If we have multiple ready thunks, split the ready queue and offload
     // thunks processing to the task runner.
