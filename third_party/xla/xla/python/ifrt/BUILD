@@ -230,8 +230,8 @@ xla_cc_test(
     size = "small",
     srcs = ["sharding_test.cc"],
     deps = [
+        ":device_test_util",
         ":ifrt",
-        ":sharding_test_util",
         "//xla/python/ifrt/ir:sharding_param",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -260,16 +260,17 @@ cc_library(
 )
 
 cc_library(
-    name = "sharding_test_util",
+    name = "device_test_util",
     testonly = True,
-    srcs = ["sharding_test_util.cc"],
-    hdrs = ["sharding_test_util.h"],
+    srcs = ["device_test_util.cc"],
+    hdrs = ["device_test_util.h"],
     deps = [
         ":ifrt",
         ":mock",
         ":test_util",
         "//xla:util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -465,11 +466,11 @@ xla_cc_test(
     name = "sharding_serdes_test",
     srcs = ["sharding_serdes_test.cc"],
     deps = [
+        ":device_test_util",
         ":ifrt",
         ":serdes",
         ":serdes_proto_cc",
         ":sharding_serdes",
-        ":sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
@@ -492,9 +493,9 @@ xla_cc_test(
     srcs = ["array_spec_test.cc"],
     deps = [
         ":array_spec_proto_cc",
+        ":device_test_util",
         ":ifrt",
         ":sharding_serdes",
-        ":sharding_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -513,8 +514,8 @@ xla_cc_test(
     srcs = ["device_test.cc"],
     deps = [
         ":device_proto_cc",
+        ":device_test_util",
         ":ifrt",
-        ":sharding_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
@@ -553,9 +554,9 @@ xla_cc_test(
     size = "small",
     srcs = ["remap_plan_test.cc"],
     deps = [
+        ":device_test_util",
         ":ifrt",
         ":sharding_serdes",
-        ":sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -695,10 +696,10 @@ xla_cc_test(
     deps = [
         ":custom_call_program",
         ":custom_call_program_serdes",
+        ":device_test_util",
         ":ifrt",
         ":program_serdes",
         ":serdes",
-        ":sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",

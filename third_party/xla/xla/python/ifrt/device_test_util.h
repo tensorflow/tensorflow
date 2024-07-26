@@ -13,28 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_SHARDING_TEST_UTIL_H_
-#define XLA_PYTHON_IFRT_SHARDING_TEST_UTIL_H_
+#ifndef XLA_PYTHON_IFRT_DEVICE_TEST_UTIL_H_
+#define XLA_PYTHON_IFRT_DEVICE_TEST_UTIL_H_
 
 #include <memory>
 
+#include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
 namespace test_util {
 
-// Parameters for ShardingTest.
+// Parameters for DeviceTest.
 // Requests `num_devices` total devices, where `num_addressable_devices` of them
 // are addressable, and the rest of devices are non-addressable.
-struct ShardingTestParam {
+struct DeviceTestParam {
   int num_devices;
   int num_addressable_devices;
 };
 
-// Test fixture for sharding tests.
-class ShardingTest : public testing::TestWithParam<ShardingTestParam> {
+// Test fixture for device tests.
+class DeviceTest : public testing::TestWithParam<DeviceTestParam> {
  public:
   void SetUp() override;
   Client* client() { return client_.get(); }
@@ -52,4 +54,4 @@ class ShardingTest : public testing::TestWithParam<ShardingTestParam> {
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_SHARDING_TEST_UTIL_H_
+#endif  // XLA_PYTHON_IFRT_DEVICE_TEST_UTIL_H_

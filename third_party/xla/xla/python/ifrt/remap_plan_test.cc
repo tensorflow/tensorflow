@@ -25,11 +25,11 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -43,7 +43,7 @@ using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class RemapPlanTest : public test_util::ShardingTest {};
+class RemapPlanTest : public test_util::DeviceTest {};
 
 TEST_P(RemapPlanTest, ToFromProto) {
   RemapPlan plan;
@@ -408,7 +408,7 @@ TEST_P(RemapPlanTest, InvalidOutputDevices) {
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/4,
                              /*num_addressable_devices=*/4}));
 
