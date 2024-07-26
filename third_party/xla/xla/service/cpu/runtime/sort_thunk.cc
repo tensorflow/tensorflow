@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
@@ -61,7 +62,7 @@ static absl::Status VerifySortInputs(absl::Span<const SortThunk::Input> inputs,
     return Internal("Inputs must not be empty");
   }
 
-  // All inputs must have the same shape (ignoring element type) and layout.
+  // All inputs must have the same shape and layout (ignoring element type).
   auto equal = Shape::Equal().IgnoreElementType();
   const Shape& shape = inputs[0].shape;
 
@@ -78,12 +79,6 @@ static absl::Status VerifySortInputs(absl::Span<const SortThunk::Input> inputs,
     return Internal(
         "Shape of dimensions [%s] can't be sorted along dimension %d",
         absl::StrJoin(shape.dimensions(), ","), dimension);
-  }
-
-  // We support only monotonic layouts with dim0 major.
-  if (!LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    return Internal("Unsupported sort input layout %s",
-                    shape.ToString(/*print_layout=*/true));
   }
 
   return absl::OkStatus();
@@ -340,18 +335,29 @@ struct SortDims {
 // We sort `outer_dim_size * inner_dim_size` vectors of length
 // `sort_dim_size`, by iterating over `data` memory and calling `std::sort`
 // (or `std::stable_sort`) on each (strided) slice of the buffer.
-static SortDims GetSortDims(absl::Span<const int64_t> dimensions,
-                            int64_t dimension) {
+static SortDims GetSortDims(const Shape& shape, int64_t dimension) {
   int64_t sort_dimension =
-      dimension >= 0 ? dimension : dimensions.size() + dimension;
+      dimension >= 0 ? dimension : shape.rank() + dimension;
+
+  // We need to normalize shape + layout into a descending layout, so that we
+  // can compute access strides according to the physical layout.
+  Shape physical_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+
+  // Map `sort_dimension` from logical to physical.
+  auto logical_to_physical = LayoutUtil::MakeLogicalToPhysical(shape.layout());
+  sort_dimension = logical_to_physical[sort_dimension];
 
   auto product = [](absl::Span<const int64_t> dims) {
     return absl::c_accumulate(dims, int64_t{1}, std::multiplies<>());
   };
 
-  int64_t outer_dim_size = product(dimensions.subspan(0, dimension));
+  // Use physical dimensions to compute access strides.
+  absl::Span<const int64_t> dimensions = physical_shape.dimensions();
+
+  int64_t outer_dim_size = product(dimensions.subspan(0, sort_dimension));
   int64_t sort_dim_size = dimensions[sort_dimension];
-  int64_t inner_dim_size = product(dimensions.subspan(dimension + 1));
+  int64_t inner_dim_size = product(dimensions.subspan(sort_dimension + 1));
   int64_t num_iterations = outer_dim_size * inner_dim_size;
 
   return SortDims{outer_dim_size, sort_dim_size, inner_dim_size,
@@ -398,7 +404,7 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
                                 SortThunk::LessThan* less_than) {
   // All inputs have the same dimensions and layout, so we can use the first
   // shape to get the sort dimensions.
-  SortDims sort_dims = GetSortDims(shapes[0].dimensions(), dimension);
+  SortDims sort_dims = GetSortDims(shapes[0], dimension);
 
   // Iterate over all the 1-dimensional slices of the buffers and sort them.
   for (int64_t i = 0; i < sort_dims.num_iterations; ++i) {
@@ -499,7 +505,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
                                         data.back().size());
 
     VLOG(3) << absl::StreamFormat("  sort input #%d: %s in slice %s (%p)", idx,
-                                  input.shape.ToString(),
+                                  input.shape.ToString(/*print_layout=*/true),
                                   input.slice.ToString(), data.back().opaque());
   }
 
