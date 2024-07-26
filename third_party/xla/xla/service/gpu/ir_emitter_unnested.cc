@@ -580,7 +580,9 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
 
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      std::move(thunk_sequence)));
+      std::move(thunk_sequence),
+      ir_emitter_context_->debug_options()
+          .xla_enable_command_buffers_during_profiling()));
 
   return absl::OkStatus();
 }

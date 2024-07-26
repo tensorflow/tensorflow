@@ -873,7 +873,12 @@ message DebugOptions {
   // Relative precision for comparing different GEMM solutions
   float xla_gpu_autotune_gemm_rtol = 316;
 
-  // Next id: 317
+  // Allow launching command buffers while profiling active.
+  // When disabled, execute in op-by-op mode.
+  // TODO(b/355487968): Remove this option when validation complete.
+  bool xla_enable_command_buffers_during_profiling = 317;
+
+  // Next id: 318
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
