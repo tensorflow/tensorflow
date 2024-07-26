@@ -97,11 +97,12 @@ absl::Status TakeStatus(XLA_FFI_Error* error) {
   return status;
 }
 
-absl::Status Call(Ffi& handler, CallFrame& call_frame,
-                  const CallOptions& options, ExecutionStage stage) {
+absl::Status CallWithApi(const XLA_FFI_Api* api, Ffi& handler,
+                         CallFrame& call_frame, const CallOptions& options,
+                         ExecutionStage stage) {
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
-  XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(
-      GetXlaFfiApi(), &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
+  XLA_FFI_CallFrame ffi_call_frame =
+      call_frame.Build(api, &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
   XLA_FFI_Error* status = nullptr;
   try {
     status = handler.Call(&ffi_call_frame);
@@ -109,6 +110,11 @@ absl::Status Call(Ffi& handler, CallFrame& call_frame,
     return Unknown("XLA FFI call failed: %s", e.what());
   }
   return TakeStatus(status);
+}
+
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options, ExecutionStage stage) {
+  return CallWithApi(GetXlaFfiApi(), handler, call_frame, options, stage);
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
@@ -550,6 +556,13 @@ static XLA_FFI_InternalApi internal_api = {
 static XLA_FFI_Api api = {
     XLA_FFI_Api_STRUCT_SIZE,
     /*priv=*/nullptr,
+
+    XLA_FFI_Api_Version{
+        XLA_FFI_Api_Version_STRUCT_SIZE,
+        /*priv=*/nullptr,
+        XLA_FFI_API_MAJOR,
+        XLA_FFI_API_MINOR,
+    },
 
     &internal_api,
 

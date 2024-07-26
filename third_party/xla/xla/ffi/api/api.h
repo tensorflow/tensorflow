@@ -1297,6 +1297,19 @@ class Handler : public Ffi {
                                     call_frame->struct_size))
       return err;
 
+    // Check the API versions.
+    auto api_version = call_frame->api->api_version;
+    if (api_version.major_version != XLA_FFI_API_MAJOR ||
+        api_version.minor_version != XLA_FFI_API_MINOR) {
+      return InvalidArgument(
+          call_frame->api,
+          StrCat("FFI handler's API version (", XLA_FFI_API_MAJOR, ".",
+                 XLA_FFI_API_MINOR,
+                 ") does not match the framework's API version (",
+                 api_version.major_version, ".", api_version.minor_version,
+                 ")"));
+    }
+
     // Check that handler is called during correct execution stage.
     if (XLA_FFI_PREDICT_FALSE(call_frame->stage !=
                               static_cast<XLA_FFI_ExecutionStage>(stage))) {

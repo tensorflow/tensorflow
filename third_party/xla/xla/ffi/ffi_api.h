@@ -62,6 +62,10 @@ struct CallOptions {
 // `error` if it's not nullptr; returns OK status otherwise.
 absl::Status TakeStatus(XLA_FFI_Error* error);
 
+absl::Status CallWithApi(const XLA_FFI_Api* api, Ffi& handler,
+                         CallFrame& call_frame, const CallOptions& options = {},
+                         ExecutionStage stage = ExecutionStage::kExecute);
+
 absl::Status Call(Ffi& handler, CallFrame& call_frame,
                   const CallOptions& options = {},
                   ExecutionStage stage = ExecutionStage::kExecute);

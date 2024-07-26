@@ -843,6 +843,19 @@ TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, ApiVersion) {
+  auto handler = Ffi::Bind().To([]() { return absl::OkStatus(); });
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+  auto api = GetXlaFfiApi();
+  XLA_FFI_Api api_copy = *api;
+  api_copy.api_version.major_version += 1;
+  auto status = CallWithApi(&api_copy, *handler, call_frame);
+  EXPECT_TRUE(absl::StrContains(status.message(), "FFI handler's API version"))
+      << "status.message():\n"
+      << status.message() << "\n";
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
