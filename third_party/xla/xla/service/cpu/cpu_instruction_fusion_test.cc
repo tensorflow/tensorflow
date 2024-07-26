@@ -20,18 +20,20 @@ limitations under the License.
 #include <set>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 namespace {
 
 using InstructionFusionTest = HloTestBase;
@@ -453,7 +455,6 @@ TEST_F(OpcodeFusionTest, Slice_Negate) {
       HloInstruction::CreateSlice(slice_shape, param0, {0}, {4}, {2}));
   builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(F32, {2}), HloOpcode::kNegate, slice1));
-
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
@@ -928,6 +929,6 @@ ENTRY main {
   EXPECT_TRUE(fused_something);
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
 }
+
 }  // namespace
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

@@ -32,10 +32,45 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
-using CpuAotCompilationTest = HloTestBase;
+class CpuAotCompilationTest : public HloTestBase {
+ protected:
+  void ExportAndLoad(std::string_view hlo_string) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+
+    auto compiler = backend().compiler();
+    auto name = absl::AsciiStrToUpper(
+        PlatformUtil::CanonicalPlatformName("host").value());
+    TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                            se::PlatformManager::PlatformWithName(name));
+    TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                            platform->ExecutorForDevice(0));
+
+    // JIT compile executable
+    auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::unique_ptr<Executable>> executables,
+        compiler->Compile(std::move(module_group), {{stream_exec}}, nullptr));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<AotCompilationResult> exported_aot_result,
+        compiler->Export(executables[0].get()));
+
+    // Serialize-deserialize AOT compilation result.
+    TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                            exported_aot_result->SerializeAsString());
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<AotCompilationResult> loaded_aot_result,
+        compiler->LoadAotCompilationResult(serialized_aot_result));
+
+    // Load Executable from AOT compilation result.
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Executable> executable,
+        loaded_aot_result->LoadExecutable(compiler, stream_exec));
+  }
+};
 
 TEST_F(CpuAotCompilationTest, ExportAndLoadExecutable) {
   const absl::string_view hlo_string = R"(
@@ -46,39 +81,22 @@ TEST_F(CpuAotCompilationTest, ExportAndLoadExecutable) {
       ROOT b = f32[2, 2]{1,0} add(a, a)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  auto compiler = backend().compiler();
-  auto name = absl::AsciiStrToUpper(
-      PlatformUtil::CanonicalPlatformName("host").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
-
-  // JIT compile executable
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<Executable>> executables,
-      compiler->Compile(std::move(module_group), {{stream_exec}}, nullptr));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AotCompilationResult> exported_aot_result,
-      compiler->Export(executables[0].get()));
-
-  // Serialize-deserialize AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          exported_aot_result->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AotCompilationResult> loaded_aot_result,
-      compiler->LoadAotCompilationResult(serialized_aot_result));
-
-  // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      loaded_aot_result->LoadExecutable(compiler, stream_exec));
+  ExportAndLoad(hlo_string);
 }
 
-}  // namespace cpu
-}  // namespace xla
+TEST_F(CpuAotCompilationTest, ExportAndLoadExecutableNoKernels) {
+  // Copy operation implemented in the runtime and this module does not have
+  // any jit compiled kernels. We test that we still can export and load such
+  // executable.
+  const absl::string_view hlo_string = R"(
+    HloModule Test
+
+    ENTRY main {
+      a = f32[2, 2]{1,0} parameter(0)
+      ROOT b = f32[2, 2]{1,0} copy(a)
+    })";
+
+  ExportAndLoad(hlo_string);
+}
+
+}  // namespace xla::cpu

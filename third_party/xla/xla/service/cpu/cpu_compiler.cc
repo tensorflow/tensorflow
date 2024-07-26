@@ -1710,6 +1710,8 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
 
+  VLOG(2) << "Load XLA:CPU executable for module: " << module->name();
+
   // Recreate BufferAssignment from proto.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
@@ -1732,10 +1734,17 @@ CpuExecutableAotCompilationResult::LoadExecutable(
 
   // Create a named buffer from compiled object file.
   llvm::StringRef data(proto_.obj_file().data(), proto_.obj_file().size());
-  auto obj_file =
-      llvm::MemoryBuffer::getMemBuffer(data, proto_.entry_function_name());
 
-  cantFail((*jit)->AddObjFile(std::move(obj_file)));
+  // We might have an XLA:CPU executable that has only runtime thunks and
+  // doesn't have any corresponding object files.
+  if (data.empty()) {
+    VLOG(2) << "Loaded XLA:CPU executable does not have an object file";
+  } else {
+    VLOG(2) << "Load XLA:CPU executable object file with entry function: "
+            << proto_.entry_function_name();
+    cantFail((*jit)->AddObjFile(
+        llvm::MemoryBuffer::getMemBuffer(data, proto_.entry_function_name())));
+  }
 
   std::unique_ptr<CpuExecutable> cpu_executable;
 
@@ -1822,18 +1831,23 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
   if (!cpu_executable)
     return Internal("Could not downcast Executable to CpuExecutable");
 
-  if (cpu_executable->obj_files().size() != 1) {
-    return absl::InternalError(
-        absl::StrCat("Can't export CPU execuable, expected exactly one object "
-                     "file but got: ",
-                     cpu_executable->obj_files().size()));
+  if (cpu_executable->obj_files().size() > 1) {
+    return Internal(
+        "Can't export CPU executable %s, expected at most one object file but "
+        "got: %d",
+        cpu_executable->module().name(), cpu_executable->obj_files().size());
   }
+
+  std::string_view obj_file = cpu_executable->obj_files().empty()
+                                  ? std::string_view("")
+                                  : cpu_executable->obj_files()[0];
 
   auto kind = cpu_executable->has_thunks() ? CompilationResultProto::KERNELS
                                            : CompilationResultProto::CLASSIC;
+
   return {std::make_unique<CpuExecutableAotCompilationResult>(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
-      cpu_executable->module_name(), cpu_executable->obj_files()[0], kind)};
+      cpu_executable->module_name(), obj_file, kind)};
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
