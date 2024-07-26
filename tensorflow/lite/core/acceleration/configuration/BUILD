@@ -100,7 +100,6 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/memory",
