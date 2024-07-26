@@ -328,9 +328,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     bool allow_filtering_kernels_spilling_registers) {
   std::unique_ptr<HloModule> new_module =
       ExtractInstructionIntoNewModule(*fusion);
-  // TODO(anlunx): Disable command buffers for now because it breaks triton
-  // autotuner test. Enable this when the function of command buffers is stable.
-  debug_opts.clear_xla_gpu_enable_command_buffer();
   if (!allow_filtering_kernels_spilling_registers) {
     debug_opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
         false);
