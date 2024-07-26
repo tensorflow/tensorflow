@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "Eigen/Core"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #define _USE_MATH_DEFINES
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -515,6 +517,24 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
 std::unique_ptr<Array2D<float>> MatmulArray2D(const Array2D<float>& lhs,
                                               const Array2D<float>& rhs);
+
+// Functionality exposed for testing. Do not rely on anything in this namespace
+// outside this file.
+namespace internal {
+
+// Use this class to represent the precise details of the error to enable
+// special treatment.
+enum class EvalErrorDetail : uint32_t {
+  // The evaluation result depends on dynamic values such as parameters and
+  // infeed. Therefore, the HLO's value cannot be statically evaluated.
+  kDynamicValueDependence = 0,
+};
+
+extern const absl::string_view kEvalErrorDetailUrl;
+
+std::optional<EvalErrorDetail> ParseEvalErrorDetail(const absl::Status& error);
+
+}  // namespace internal
 }  // namespace xla
 
 #endif  // XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
