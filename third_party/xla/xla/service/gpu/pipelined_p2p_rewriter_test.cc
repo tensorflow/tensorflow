@@ -211,8 +211,8 @@ TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined1) {
   CHECK: %get-tuple-element = get-tuple-element(%param.1), index=1
   CHECK: %get-tuple-element.1 = get-tuple-element(%param.1), index=2
   CHECK: %count.1 = get-tuple-element(%param.1), index=0
-  CHECK: %recv-done = recv-done(%get-tuple-element), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-  CHECK: %recv-data = get-tuple-element(%recv-done), index=0
+  CHECK: %recv-done.p.clone = recv-done(%get-tuple-element), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+  CHECK: %recv-data = get-tuple-element(%recv-done.p.clone), index=0
   CHECK: %c1 = constant(1)
   CHECK: %new-count = add(%count.1, %c1)
   CHECK: %replica = replica-id()
@@ -227,7 +227,7 @@ TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined1) {
   CHECK: %s = dot(%c, %d), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
   CHECK: %send-data = add(%c, %s)
   CHECK: %after-all = after-all()
-  CHECK: %send-done = send-done(%get-tuple-element.1), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+  CHECK: %send-done.p.clone = send-done(%get-tuple-element.1), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
   CHECK{LITERAL}: %recv = recv(%after-all), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"}
   CHECK{LITERAL}: %send = send(%send-data, %after-all), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"}
   CHECK: ROOT %tuple = tuple(%new-count, %recv, %send)
@@ -248,13 +248,13 @@ TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined1) {
   CHECK{LITERAL}: %recv.1 = recv(%after-all.1), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"}
   CHECK{LITERAL}: %send.1 = send(%init, %after-all.1), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"}
   CHECK: %while-init = tuple(%c0, %recv.1, %send.1)
-  CHECK: %while-result = while(%while-init), condition=%while-cond, body=%while-body,
+  CHECK: %while-result.p.clone = while(%while-init), condition=%while-cond, body=%while-body,
   CHECK-SAME{LITERAL}: backend_config={"known_trip_count":{"n":"25"}}
-  CHECK: %get-tuple-element.2 = get-tuple-element(%while-result), index=1
-  CHECK: %get-tuple-element.3 = get-tuple-element(%while-result), index=2
-  CHECK: %recv-done.1 = recv-done(%get-tuple-element.2), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-  CHECK: %send-done.1 = send-done(%get-tuple-element.3), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-  CHECK: ROOT %entry-result = get-tuple-element(%recv-done.1), index=0
+  CHECK: %get-tuple-element.2 = get-tuple-element(%while-result.p.clone), index=1
+  CHECK: %get-tuple-element.3 = get-tuple-element(%while-result.p.clone), index=2
+  CHECK: %recv-done.1.p.clone = recv-done(%get-tuple-element.2), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+  CHECK: %send-done.1.p.clone = send-done(%get-tuple-element.3), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+  CHECK: ROOT %entry-result = get-tuple-element(%recv-done.1.p.clone), index=0
   CHECK: })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -592,10 +592,10 @@ TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined2) {
   CHECK: %get-tuple-element.2 = get-tuple-element(%param.1), index=3
   CHECK: %get-tuple-element.3 = get-tuple-element(%param.1), index=4
   CHECK: %count.1 = get-tuple-element(%param.1), index=0
-  CHECK: %recv-done = recv-done(%get-tuple-element), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-  CHECK: %recv-data.0 = get-tuple-element(%recv-done), index=0
-  CHECK: %recv-done.1 = recv-done(%get-tuple-element.2), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
-  CHECK: %recv-data.1 = get-tuple-element(%recv-done.1), index=0
+  CHECK: %recv-done.p.clone = recv-done(%get-tuple-element), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+  CHECK: %recv-data.0 = get-tuple-element(%recv-done.p.clone), index=0
+  CHECK: %recv-done.1.p.clone = recv-done(%get-tuple-element.2), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
+  CHECK: %recv-data.1 = get-tuple-element(%recv-done.1.p.clone), index=0
   CHECK: %replica = replica-id()
   CHECK: %constant0 = constant(0)
   CHECK: %compare0 = compare(%replica, %constant0), direction=EQ
@@ -614,8 +614,8 @@ TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined2) {
   CHECK: %s = dot(%c, %d), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
   CHECK: %send-data = add(%c, %s)
   CHECK: %after-all = after-all()
-  CHECK: %send-done = send-done(%get-tuple-element.1), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-  CHECK: %send-done.1 = send-done(%get-tuple-element.3), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
+  CHECK: %send-done.p.clone = send-done(%get-tuple-element.1), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+  CHECK: %send-done.1.p.clone = send-done(%get-tuple-element.3), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
   CHECK{LITERAL}: %recv = recv(%after-all), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{3,0}}"}
   CHECK{LITERAL}: %send = send(%send-data, %after-all), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{3,0}}"}
   CHECK: %after-all.1 = after-all()
@@ -642,21 +642,21 @@ TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined2) {
   CHECK{LITERAL}: %recv.3 = recv(%after-all.3), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}}"}
   CHECK{LITERAL}: %send.3 = send(%init, %after-all.3), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}}"}
   CHECK: %while-init = tuple(%c0, %recv.2, %send.2, %recv.3, %send.3)
-  CHECK{LITERAL}: %while-result = while(%while-init), condition=%while-cond, body=%while-body, backend_config={"known_trip_count":{"n":"25"}}
-  CHECK: %get-tuple-element.4 = get-tuple-element(%while-result), index=1
-  CHECK: %get-tuple-element.5 = get-tuple-element(%while-result), index=2
-  CHECK: %get-tuple-element.6 = get-tuple-element(%while-result), index=3
-  CHECK: %get-tuple-element.7 = get-tuple-element(%while-result), index=4
-  CHECK: %recv-done.2 = recv-done(%get-tuple-element.4), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-  CHECK: %recv-data.3 = get-tuple-element(%recv-done.2), index=0
-  CHECK: %recv-done.3 = recv-done(%get-tuple-element.6), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
-  CHECK: %recv-data.4 = get-tuple-element(%recv-done.3), index=0
+  CHECK{LITERAL}: %while-result.p.clone = while(%while-init), condition=%while-cond, body=%while-body, backend_config={"known_trip_count":{"n":"25"}}
+  CHECK: %get-tuple-element.4 = get-tuple-element(%while-result.p.clone), index=1
+  CHECK: %get-tuple-element.5 = get-tuple-element(%while-result.p.clone), index=2
+  CHECK: %get-tuple-element.6 = get-tuple-element(%while-result.p.clone), index=3
+  CHECK: %get-tuple-element.7 = get-tuple-element(%while-result.p.clone), index=4
+  CHECK: %recv-done.2.p.clone = recv-done(%get-tuple-element.4), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+  CHECK: %recv-data.3 = get-tuple-element(%recv-done.2.p.clone), index=0
+  CHECK: %recv-done.3.p.clone = recv-done(%get-tuple-element.6), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
+  CHECK: %recv-data.4 = get-tuple-element(%recv-done.3.p.clone), index=0
   CHECK: %replica.1 = replica-id()
   CHECK: %constant0.1 = constant(0)
   CHECK: %compare0.1 = compare(%replica.1, %constant0.1), direction=EQ
   CHECK: %compare.1 = broadcast(%compare0.1), dimensions={}
-  CHECK: %send-done.2 = send-done(%get-tuple-element.5), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-  CHECK: %send-done.3 = send-done(%get-tuple-element.7), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
+  CHECK: %send-done.2.p.clone = send-done(%get-tuple-element.5), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+  CHECK: %send-done.3.p.clone = send-done(%get-tuple-element.7), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
   CHECK: ROOT %entry-result = select(%compare.1, %recv-data.3, %recv-data.4)
   CHECK: })";
 
