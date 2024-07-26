@@ -1555,7 +1555,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     tsl::port::ScopedFlushDenormal flush;
     tsl::port::ScopedSetRound round(FE_TONEAREST);
 
-    XlaCustomCallStatus status;
+    // Execution status for XLA:CPU "classic" runtime or thunks.
+    XlaCustomCallStatus compute_function_status;
+    tsl::AsyncValueRef<cpu::Thunk::ExecuteEvent> thunks_execute_event;
 
     // Immediately allocate memory and prepare for computation.
     buffer_alloc.Allocate();
@@ -1574,8 +1576,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     if (cpu_executable->has_compute_function()) {
       // Call jit-compiled function implementing XLA executable.
       cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
-                                         buffer_pointers.data(), &status,
-                                         nullptr);
+                                         buffer_pointers.data(),
+                                         &compute_function_status, nullptr);
 
     } else if (cpu_executable->has_thunks()) {
       // Call interpreted thunk sequence implementing XLA executable.
@@ -1611,14 +1613,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           &collective_params,
           &custom_call_execute_params};
 
-      auto thunks_execute_event =
-          cpu_executable->thunks().Execute(execute_params);
+      thunks_execute_event = cpu_executable->thunks().Execute(execute_params);
 
       tsl::profiler::TraceMe trace(
           "ThunkExecutor::Execute (wait for completion)");
       tsl::BlockUntilReady(thunks_execute_event);
-      if (thunks_execute_event.IsError())
-        return thunks_execute_event.GetError();
 
     } else {
       return Internal("CpuExecutable has no compute function or thunks.");
@@ -1628,10 +1627,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       std::move(donation_transaction).Commit();
     }
 
-    std::optional<absl::string_view> error_message =
-        xla::CustomCallStatusGetMessage(&status);
-    if (error_message) {
-      return Internal("Generated function failed: %s", *error_message);
+    // Forward errors (if any) after executing compute function or thunks.
+    if (cpu_executable->has_compute_function()) {
+      if (auto error_message =
+              xla::CustomCallStatusGetMessage(&compute_function_status)) {
+        return Internal("Generated function failed: %s", *error_message);
+      }
+    } else if (thunks_execute_event.IsError()) {
+      return thunks_execute_event.GetError();
     }
 
   } else {
