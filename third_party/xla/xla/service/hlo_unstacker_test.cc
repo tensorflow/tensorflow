@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/service/hlo_unstacker.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -29,6 +33,17 @@ namespace xla {
 namespace {
 
 using UnstackerTest = HloTestBase;
+
+int64_t GetSliceCountInEntry(HloModule* module) {
+  int64_t slice_instrs_count = 0;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kSlice) {
+      slice_instrs_count++;
+    }
+  }
+  return slice_instrs_count;
+}
 
 TEST_F(UnstackerTest, UnstackLoopSingleFusionUser) {
   std::string hlo_string = R"(
@@ -74,6 +89,8 @@ TEST_F(UnstackerTest, UnstackLoopSingleFusionUser) {
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions.
+  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt));
 }
@@ -234,6 +251,8 @@ TEST_F(UnstackerTest, UnstackLoopSingleNestedFusionUser) {
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions.
+  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -310,6 +329,9 @@ TEST_F(UnstackerTest, UnstackLoopSingleNestedFusionUserMultipleIndex) {
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions. For each unstacked input, we
+  // create 4 slices, 8 in total.
+  EXPECT_EQ(GetSliceCountInEntry(module.get()), 8);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -366,6 +388,8 @@ TEST_F(UnstackerTest, UnstackLoopSingleNestedFusionUserDiffereOperandsOrder) {
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions.
+  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -440,6 +464,8 @@ TEST_F(UnstackerTest, UnstackLoopMultipleNestedFusionUsersSameUnstackingComps) {
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions.
+  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -633,6 +659,9 @@ TEST_F(UnstackerTest, UnstackMultipleLoops) {
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions. For each loop there is one
+  // unstacked input that creates 4 slices, in total 8 slices for two loops.
+  EXPECT_EQ(GetSliceCountInEntry(module.get()), 8);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -710,6 +739,8 @@ TEST_F(UnstackerTest, UnstackNestedLoopSingleNestedFusionUser) {
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions.
+  EXPECT_EQ(GetSliceCountInEntry(module.get()), 4);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }

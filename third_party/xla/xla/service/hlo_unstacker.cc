@@ -51,9 +51,28 @@ limitations under the License.
 namespace xla {
 namespace {
 
+// TODO: b/352400145 - Unify the patterns, handlers and their type into a class
+// or struct.
+enum class PatternType {
+  DSFusionPattern,
+  NestedDSFusionPattern,
+  Other,
+};
+
+static std::string PatternTypeToString(PatternType pattern_type) {
+  switch (pattern_type) {
+    case PatternType::DSFusionPattern:
+      return "DSFusionPattern";
+    case PatternType::NestedDSFusionPattern:
+      return "NestedDSFusionPattern";
+    case PatternType::Other:
+      return "Other";
+  }
+}
+
 // Holds the information about custom unstacking patterns.
 struct PatternInfo {
-  std::string name;
+  PatternType type;
   std::vector<const HloInstruction*> unstacked_instrs;
   const HloInstruction* instr;
   Shape unstacked_shape;
@@ -61,12 +80,12 @@ struct PatternInfo {
 
   std::string ToString() const {
     if (unstacking_computation == nullptr) {
-      return absl::StrCat("name: \n\t", name, "\n", "instr: \n\t",
-                          instr->name(), "\n", "shape: \n\t",
+      return absl::StrCat("type: \n\t", PatternTypeToString(type), "\n",
+                          "instr: \n\t", instr->name(), "\n", "shape: \n\t",
                           unstacked_shape.ToString(true));
     } else {
-      return absl::StrCat("name: \n\t", name, "\n", "instr: \n\t",
-                          instr->name(), "\n", "shape: \n\t",
+      return absl::StrCat("type: \n\t", PatternTypeToString(type), "\n",
+                          "instr: \n\t", instr->name(), "\n", "shape: \n\t",
                           unstacked_shape.ToString(true), "\n", "comp: \n",
                           unstacking_computation->name());
     }
@@ -136,6 +155,7 @@ class UnstackerTransformer {
         continue;
       }
       PatternInfo& pattern_info = stacked_user.value();
+      pattern_type_ = pattern_info.type;
       VLOG(3) << "PatternInfo:" << "\n" << pattern_info.ToString();
 
       if (pattern_info.unstacking_computation != nullptr &&
@@ -192,7 +212,7 @@ class UnstackerTransformer {
     return unstacking_computation_;
   }
 
-  std::vector<std::function<void(const Shape*, HloComputation*)>>&
+  std::vector<std::function<void(const UnstackerTransformer&)>>&
   GetLoopChanges() {
     return loop_changes_;
   }
@@ -211,11 +231,14 @@ class UnstackerTransformer {
   }
 
   void AddLoopChange(
-      std::function<void(const Shape*, HloComputation*)> loop_change) {
+      std::function<void(const UnstackerTransformer&)> loop_change) {
     loop_changes_.push_back(loop_change);
   }
 
+  PatternType GetPatternType() const { return pattern_type_; }
+
  private:
+  PatternType pattern_type_;
   const UnstackerMetadata& metadata_;
   // This pointer is populated if the unstacker finds unstackable loop input.
   std::unique_ptr<Shape> unstacked_shape_ = nullptr;
@@ -226,7 +249,7 @@ class UnstackerTransformer {
   // A vector of lambdas that describe necessary changes to the shape of the
   // loops to unstack. The lambdas accept the pointer to the new unstacked
   // shape.
-  std::vector<std::function<void(const Shape*, HloComputation*)>> loop_changes_;
+  std::vector<std::function<void(const UnstackerTransformer&)>> loop_changes_;
   // a list of lambdas that captures all the changes to the hlo graph needed for
   // unstacking.
   std::vector<std::function<absl::Status()>> body_changes_;
@@ -375,11 +398,12 @@ bool CanPropagateGteShapeChangesInComputation(
 // This function is responsible for:
 // 1. Hoisting the unstacking computation outside the while_instr.
 // 2. Replacing the input of the while_instr with the new unstacked version.
-void UnstackWhileInput(HloComputation* unstacking_computation,
-                       HloInstruction* while_instr, const Shape* new_shape,
-                       int64_t index) {
+void UnstackWhileInput(const UnstackerTransformer& unstacker,
+                       HloInstruction* while_instr, int64_t index) {
   VLOG(3) << "Unstacking while input: " << while_instr->name() << " at "
           << index;
+  const Shape* new_shape = unstacker.GetUnstackedShape();
+  HloComputation* unstacking_computation = unstacker.GetUnstackingComputation();
   const Shape& slice_shape = new_shape->tuple_shapes(0);
   HloInstruction* old_while_input =
       while_instr->while_init()->mutable_operand(index);
@@ -406,17 +430,53 @@ void UnstackWhileInput(HloComputation* unstacking_computation,
     // Hoist the unstacking computation outside the while_instr and create a
     // tuple of slices.
     for (int64_t i = 0; i < new_shape->tuple_shapes_size(); ++i) {
-      std::vector<HloInstruction*> operands = {
-          old_while_input,
-          while_instr->AddInstruction(MakeScalarConstantWithShape(
-              unstacking_computation->parameter_instruction(1)->shape(), i))};
-      HloInstruction* slice =
-          while_instr->AddInstruction(HloInstruction::CreateFusion(
-              slice_shape, HloInstruction::FusionKind::kLoop, operands,
-              while_instr->GetModule()->AddEmbeddedComputation(
-                  unstacking_computation->Clone()),
-              "hoisted"));
-      slices.push_back(slice);
+      HloInstruction* root_instr = unstacking_computation->root_instruction();
+      // TODO: b/352400145 - After unifying patterns and handlers, instead of
+      // using the pattern type to determine the unstacked input, we should use
+      // the pattern object to call the appropriate method.
+      //
+      // For DSFusionPattern and NestedDSFusionPattern, we rewrite the
+      // dynamic-slice as a slice instruction in the hope that these slices are
+      // later prefetched using async-slice by MSA. For other patterns, we
+      // resort to the original unstacking computation until we find benefit in
+      // doing otherwise.
+      if (unstacker.GetPatternType() == PatternType::DSFusionPattern ||
+          unstacker.GetPatternType() == PatternType::NestedDSFusionPattern) {
+        HloInstruction* dynamic_slice = root_instr->mutable_operand(0);
+        std::vector<int64_t> new_start_indices;
+        new_start_indices.reserve(dynamic_slice->shape().rank());
+        std::vector<int64_t> new_limit_indices;
+        new_limit_indices.reserve(dynamic_slice->shape().rank());
+        std::vector<int64_t> new_strides;
+        new_strides.reserve(dynamic_slice->shape().rank());
+        new_start_indices.push_back(i);
+        new_limit_indices.push_back(i + 1);
+        new_strides.push_back(1);
+        for (int64_t j = 1; j < dynamic_slice->shape().rank(); ++j) {
+          new_start_indices.push_back(0);
+          new_limit_indices.push_back(
+              dynamic_slice->mutable_operand(0)->shape().dimensions(j));
+          new_strides.push_back(1);
+        }
+        HloInstruction* slice =
+            while_instr->AddInstruction(HloInstruction::CreateSlice(
+                dynamic_slice->shape(), old_while_input, new_start_indices,
+                new_limit_indices, new_strides));
+
+        slices.push_back(slice);
+      } else {
+        std::vector<HloInstruction*> operands = {
+            old_while_input,
+            while_instr->AddInstruction(MakeScalarConstantWithShape(
+                unstacking_computation->parameter_instruction(1)->shape(), i))};
+        HloInstruction* slice =
+            while_instr->AddInstruction(HloInstruction::CreateFusion(
+                slice_shape, HloInstruction::FusionKind::kLoop, operands,
+                while_instr->GetModule()->AddEmbeddedComputation(
+                    unstacking_computation->Clone()),
+                "hoisted"));
+        slices.push_back(slice);
+      }
     }
   }
   HloInstruction* new_operand_element =
@@ -474,28 +534,27 @@ bool CanUnstackWhileOperand(const HloInstruction* while_instr,
     }
   }
 
-  auto loop_change = [=](HloInstruction* loop, const Shape* new_shape,
-                         HloComputation* unstacking_computation,
-                         int64_t idx) mutable {
+  auto loop_change = [=](const UnstackerTransformer& unstacker,
+                         HloInstruction* loop, int64_t idx) mutable {
     Shape old_shape = ShapeUtil::MakeStaticShape(
         loop->while_body()->parameter_instruction(0)->shape());
-    ShapeUtil::UpdateTupleShape(*new_shape, idx, &old_shape);
+    ShapeUtil::UpdateTupleShape(*unstacker.GetUnstackedShape(), idx,
+                                &old_shape);
 
     loop->while_body()->ReplaceParameter(
         0, HloInstruction::CreateParameter(0, old_shape, "unstacked"));
     loop->while_condition()->ReplaceParameter(
         0, HloInstruction::CreateParameter(0, old_shape, "unstacked"));
 
-    CHECK_NE(unstacking_computation, nullptr);
-    UnstackWhileInput(unstacking_computation, loop, new_shape, idx);
+    CHECK_NE(unstacker.GetUnstackingComputation(), nullptr);
+    UnstackWhileInput(unstacker, loop, idx);
     // Update the input and output shape of the loop.
     *loop->mutable_shape() = old_shape;
   };
-  auto loop_change_wrapper = [&loop_change, while_instr, index](
-                                 const Shape* new_shape,
-                                 HloComputation* unstacking_computation) {
+  auto loop_change_wrapper = [&loop_change, while_instr,
+                              index](const UnstackerTransformer& unstacker) {
     HloInstruction* mutable_loop = const_cast<HloInstruction*>(while_instr);
-    loop_change(mutable_loop, new_shape, unstacking_computation, index);
+    loop_change(unstacker, mutable_loop, index);
   };
   unstacker.AddLoopChange(loop_change_wrapper);
   return true;
@@ -567,8 +626,7 @@ bool UnstackWhileOperandAtIndex(
   }
   // Apply the changes to the shape of the loop body and condition computations.
   for (auto& loop_change : unstacker.GetLoopChanges()) {
-    loop_change(unstacker.GetUnstackedShape(),
-                unstacker.GetUnstackingComputation());
+    loop_change(unstacker);
   }
   for (const HloInstruction* instr : unstacker.GetUnstackedInstructions()) {
     unstacked_instructions.push_back(instr);
@@ -649,9 +707,10 @@ std::optional<PatternInfo> GetDSFusionPattern(const UnstackerMetadata& metadata,
             match::Bitcast(match::Op(&bitcast_operand)))) {
     if (bitcast_operand == shape_covering_instr) {
       PatternInfo pattern_info;
-      pattern_info.name = "DSFusionPattern";
+      pattern_info.type = PatternType::DSFusionPattern;
       pattern_info.instr = instr;
-      const Shape& slice_shape = instr->shape();
+      // const Shape& slice_shape = instr->shape();
+      const Shape& slice_shape = shape_covering_instr->shape();
       const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
       pattern_info.unstacked_shape =
           MakeUnstackedShapeFromSlice(slice_shape, num_layers);
@@ -674,8 +733,18 @@ absl::Status UnstackDSFusionPattern(
   HloInstruction* new_operand =
       parent_loop->AddInstruction(HloInstruction::CreateCustomCall(
           slice_shape, {stacked, offset}, "DynamicGte"));
+
+  HloInstruction* bitcast = mutable_dynamic_slicing_fusion->AddInstruction(
+      HloInstruction::CreateBitcast(mutable_dynamic_slicing_fusion->shape(),
+                                    new_operand));
+  HloInstruction* bitcast_fusion =
+      mutable_dynamic_slicing_fusion->AddInstruction(
+          HloInstruction::CreateFusion(mutable_dynamic_slicing_fusion->shape(),
+                                       HloInstruction::FusionKind::kLoop,
+                                       bitcast));
+
   return mutable_dynamic_slicing_fusion->ReplaceAllUsesWithDifferentShape(
-      new_operand);
+      bitcast_fusion);
 }
 
 // This function recognizes fusions with the following pattern:
@@ -703,7 +772,7 @@ std::optional<PatternInfo> GetDUSFusionPattern(
     if (shape_covering_instr->parent()->root_instruction() ==
         shape_covering_instr) {
       PatternInfo pattern_info;
-      pattern_info.name = "DUSFusionPattern";
+      pattern_info.type = PatternType::Other;
       pattern_info.instr = instr;
       pattern_info.unstacked_shape = MakeUnstackedShapeFromSlice(
           instr->operand(2)->shape(), instr->operand(0)->shape().dimensions(0));
@@ -767,7 +836,7 @@ std::optional<PatternInfo> GetDUSFusionWithPadPattern(
       const HloInstruction* pad_instr =
           shape_covering_instr->operand(1)->operand(0);
       PatternInfo pattern_info;
-      pattern_info.name = "DUSFusionWithPadPattern";
+      pattern_info.type = PatternType::Other;
       pattern_info.instr = instr;
       pattern_info.unstacked_shape = MakeUnstackedShapeFromSlice(
           pad_instr->shape(),
@@ -851,7 +920,7 @@ std::optional<PatternInfo> GetDSFusionWithAddPattern(
     if (add_operand == shape_covering_instr) {
       const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
       PatternInfo pattern_info;
-      pattern_info.name = "DUSFusionWithAddPattern";
+      pattern_info.type = PatternType::Other;
       pattern_info.instr = instr;
       pattern_info.unstacked_shape =
           MakeUnstackedShapeFromSlice(instr->shape(), num_layers);
@@ -925,7 +994,7 @@ absl::Status UnstackDSFusionWithAddPattern(
 //    (We assume that the stacked parameter is always the first operand and
 //    the slicing offset is the second operand.)
 // 4. The fusion user contains a shape-covering dynamic-slice instruction.
-std::optional<PatternInfo> GetNestedDUSFusionPattern(
+std::optional<PatternInfo> GetNestedDSFusionPattern(
     const UnstackerMetadata& metadata, const HloInstruction* instr,
     int64_t stacked_operand_idx) {
   if (instr->opcode() != HloOpcode::kFusion) {
@@ -975,10 +1044,10 @@ std::optional<PatternInfo> GetNestedDUSFusionPattern(
       const int64_t num_layers =
           inner_fusion_user->operand(0)->shape().dimensions(0);
       PatternInfo pattern_info;
-      pattern_info.name = "NestedDUSFusionPattern";
+      pattern_info.type = PatternType::NestedDSFusionPattern;
       pattern_info.instr = inner_fusion_user;
       pattern_info.unstacked_shape =
-          MakeUnstackedShapeFromSlice(inner_fusion_user->shape(), num_layers);
+          MakeUnstackedShapeFromSlice(inner_fusion_instr->shape(), num_layers);
       pattern_info.unstacking_computation =
           inner_fusion_user->fused_instructions_computation();
       pattern_info.unstacked_instrs.push_back(inner_fusion_user);
@@ -989,8 +1058,8 @@ std::optional<PatternInfo> GetNestedDUSFusionPattern(
 }
 
 // The function below captures all the changes necessary to hlo graph for it's
-// corresponding (IsNestedDynamicSlicingFusion) pattern to unstack.
-absl::Status UnstackNestedDUSFusionPattern(
+// corresponding (GetNestedDSFusionPattern) pattern to unstack.
+absl::Status UnstackNestedDSFusionPattern(
     HloInstruction* mutable_dynamic_slicing_fusion, const Shape& slice_shape) {
   // We are sure that this lambda is called with a nested fusion.
   HloInstruction* parent_fusion =
@@ -1018,9 +1087,16 @@ absl::Status UnstackNestedDUSFusionPattern(
           stacked_param_number,
           HloInstruction::CreateParameter(stacked_param_number, slice_shape,
                                           "sliced"));
+  HloInstruction* bitcast = mutable_dynamic_slicing_fusion->AddInstruction(
+      HloInstruction::CreateBitcast(mutable_dynamic_slicing_fusion->shape(),
+                                    sliced_param));
+  HloInstruction* bitcast_fusion =
+      mutable_dynamic_slicing_fusion->AddInstruction(
+          HloInstruction::CreateFusion(mutable_dynamic_slicing_fusion->shape(),
+                                       HloInstruction::FusionKind::kLoop,
+                                       bitcast));
   TF_RETURN_IF_ERROR(
-      mutable_dynamic_slicing_fusion->ReplaceAllUsesWith(sliced_param));
-
+      mutable_dynamic_slicing_fusion->ReplaceAllUsesWith(bitcast_fusion));
   // Create the custom-call to dynamically get the tuple element given the
   // loop iteration number. We rely on WhileLoopUnroller to rewrite this as
   // a get-tuple-element hlo once the iteration number is known and loop
@@ -1051,19 +1127,35 @@ std::optional<PatternInfo> GetDSAndDUSPattern(const UnstackerMetadata& metadata,
     return std::nullopt;
   }
 
-  std::optional<PatternInfo> ds_pattern_info =
-      GetDSFusionPattern(metadata, instr, instr->operand_index(stacked));
-
-  if (!ds_pattern_info.has_value()) {
+  HloInstruction* shape_covering_ds_instr =
+      GetMostMajorShapeCoveringDynamicIndexInFusion(
+          metadata, instr, HloOpcode::kDynamicSlice, 2, stacked_operand_idx);
+  if (shape_covering_ds_instr == nullptr) {
+    return std::nullopt;
+  }
+  HloInstruction* bitcast_operand = nullptr;
+  if (!Match(instr->fused_instructions_computation()->root_instruction(),
+             match::Bitcast(match::Op(&bitcast_operand)))) {
+    return std::nullopt;
+  }
+  if (bitcast_operand != shape_covering_ds_instr) {
     return std::nullopt;
   }
   if (!GetDUSFusionPattern(metadata, stacked->users()[1],
                            stacked->users()[1]->operand_index(stacked))) {
     return std::nullopt;
   }
-  ds_pattern_info->name = "DSAndDUSPattern";
-  ds_pattern_info->unstacked_instrs.push_back(stacked->users()[1]);
-  return ds_pattern_info;
+  PatternInfo pattern_info;
+  pattern_info.type = PatternType::Other;
+  pattern_info.instr = instr;
+  const Shape& slice_shape = instr->shape();
+  const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
+  pattern_info.unstacked_shape =
+      MakeUnstackedShapeFromSlice(slice_shape, num_layers);
+  pattern_info.unstacking_computation = instr->fused_instructions_computation();
+  pattern_info.unstacked_instrs.push_back(instr);
+  pattern_info.unstacked_instrs.push_back(stacked->users()[1]);
+  return pattern_info;
 }
 
 absl::Status UnstackDSAndDUSPattern(HloInstruction* mutable_dynamic_slice,
@@ -1073,8 +1165,16 @@ absl::Status UnstackDSAndDUSPattern(HloInstruction* mutable_dynamic_slice,
   HloComputation* parent = stacked_gte->parent();
   ShapeUtil::UpdateTupleShape(stacked_gte->shape(), stacked_gte_index,
                               parent->root_instruction()->mutable_shape());
+
+  HloComputation* parent_loop = mutable_dynamic_slice->parent();
+  HloInstruction* stacked = mutable_dynamic_slice->mutable_operand(0);
+  HloInstruction* offset = mutable_dynamic_slice->mutable_operand(1);
+  HloInstruction* new_operand =
+      parent_loop->AddInstruction(HloInstruction::CreateCustomCall(
+          slice_shape, {stacked, offset}, "DynamicGte"));
   TF_RETURN_IF_ERROR(
-      UnstackDSFusionPattern(mutable_dynamic_slice, slice_shape));
+      mutable_dynamic_slice->ReplaceAllUsesWithDifferentShape(new_operand));
+
   HloInstruction* mutable_dynamic_update_slice = stacked_gte->users()[1];
   TF_RETURN_IF_ERROR(
       UnstackDUSFusionPattern(mutable_dynamic_update_slice, slice_shape));
@@ -1108,7 +1208,7 @@ std::optional<PatternInfo> GetReduceFusionPattern(
             match::Add(match::Parameter(), match::Parameter()))) {
     if (reduce_operand == shape_covering_instr) {
       PatternInfo pattern_info;
-      pattern_info.name = "ReduceFusion";
+      pattern_info.type = PatternType::Other;
       pattern_info.instr = instr;
       const Shape& slice_shape = instr->shape();
       const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
@@ -1122,6 +1222,19 @@ std::optional<PatternInfo> GetReduceFusionPattern(
   }
 
   return std::nullopt;
+}
+
+absl::Status UnstackReduceFusionPattern(HloInstruction* mutable_reduce_fusion,
+                                        const Shape& slice_shape) {
+  HloComputation* parent_loop = mutable_reduce_fusion->parent();
+
+  HloInstruction* stacked = mutable_reduce_fusion->mutable_operand(0);
+  HloInstruction* offset = mutable_reduce_fusion->mutable_operand(1);
+
+  HloInstruction* new_operand =
+      parent_loop->AddInstruction(HloInstruction::CreateCustomCall(
+          slice_shape, {stacked, offset}, "DynamicGte"));
+  return mutable_reduce_fusion->ReplaceAllUsesWithDifferentShape(new_operand);
 }
 
 };  // namespace
@@ -1151,9 +1264,9 @@ absl::StatusOr<bool> HloUnstacker::Run(
   metadata.custom_handlers.push_back(
       std::make_pair(GetDSFusionWithAddPattern, UnstackDSFusionWithAddPattern));
   metadata.custom_handlers.push_back(
-      std::make_pair(GetReduceFusionPattern, UnstackDSFusionPattern));
+      std::make_pair(GetReduceFusionPattern, UnstackReduceFusionPattern));
   metadata.custom_handlers.push_back(
-      std::make_pair(GetNestedDUSFusionPattern, UnstackNestedDUSFusionPattern));
+      std::make_pair(GetNestedDSFusionPattern, UnstackNestedDSFusionPattern));
 
   std::vector<HloInstruction*> entry_loops;
   for (HloInstruction* instr :
@@ -1204,7 +1317,7 @@ absl::StatusOr<bool> HloUnstacker::Run(
     TF_ASSIGN_OR_RETURN(
         bool unrolled,
         WhileLoopUnroller::Unroll(loop, /*unroll_factor=*/-1,
-                                  /*wrap_in_trivial_loop=*/true,
+                                  /*wrap_in_trivial_loop=*/false,
                                   /*force_unroll=*/true, /*prepare=*/false));
     CHECK(unrolled);
   }
