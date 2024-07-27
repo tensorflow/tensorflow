@@ -21,12 +21,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/xla_computation.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"

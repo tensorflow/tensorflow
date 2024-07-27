@@ -28,13 +28,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/client/local_client.h"
 #include "xla/service/compile_only_service.h"
 #include "xla/service/local_service.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 
