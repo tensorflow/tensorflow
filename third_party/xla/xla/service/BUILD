@@ -626,6 +626,7 @@ xla_cc_test(
         ":collective_pipeliner",
         ":hlo_parser",
         ":hlo_pass_pipeline",
+        ":host_memory_offload_annotations_hdr",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",

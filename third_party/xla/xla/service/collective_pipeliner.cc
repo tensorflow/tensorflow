@@ -1205,7 +1205,9 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
   }
   int64_t count = 0;
   absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order;
-  for (auto* instr : while_body->MakeInstructionPostOrder()) {
+  std::vector<HloInstruction*> instructions_post_order =
+      while_body->MakeInstructionPostOrder();
+  for (auto* instr : instructions_post_order) {
     if (instr->opcode() == HloOpcode::kGetTupleElement) {
       if (index_range && instr->tuple_index() == 0) {
         index_ranges.insert({instr, *index_range});
@@ -1214,7 +1216,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     instruction_order[instr] = count++;
   }
 
-  for (auto* instr : while_body->instructions()) {
+  for (auto* instr : instructions_post_order) {
     if (direction == CollectivePipeliner::PipeliningDirection::kForward &&
         (instr->operand_count() != 1 ||
          instr->shape().dimensions_size() !=
