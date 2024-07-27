@@ -63,5 +63,27 @@ XLA_TEST_F(SortTest, SortDim1) {
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
 }
 
+XLA_TEST_F(SortTest, SortTwiceWithSameComparator) {
+  std::string_view hlo_text_module = R"(
+    HloModule sort
+
+    compare {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT lt = pred[] compare(p0, p1), direction=LT
+    }
+
+    ENTRY e {
+      x = f32[32,64] parameter(0)
+      y = f32[64,32] parameter(1)
+      sort_x = f32[32,64] sort(x), dimensions={0}, to_apply=compare
+      sort_y = f32[64,32] sort(y), dimensions={1}, to_apply=compare
+      ROOT tuple = (f32[32,64], f32[64,32]) tuple(sort_x, sort_y)
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
+}
+
 }  // namespace
 }  // namespace xla
