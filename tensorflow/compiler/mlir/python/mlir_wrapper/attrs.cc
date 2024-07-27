@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 
 void init_attrs(py::module& m) {
-  py::class_<mlir::Attribute>(m, "Attribute");
+  py::class_<mlir::Attribute> give_me_a_name(m, "Attribute");
   py::class_<mlir::IntegerAttr, mlir::Attribute>(m, "IntegerAttr")
       .def("get",
            py::overload_cast<mlir::Type, int64_t>(&mlir::IntegerAttr::get));
