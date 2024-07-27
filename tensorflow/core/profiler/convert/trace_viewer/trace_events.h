@@ -57,11 +57,11 @@ using TraceEventTrack = std::vector<TraceEvent*>;
 std::vector<TraceEvent*> MergeEventTracks(
     const std::vector<const TraceEventTrack*>& event_tracks);
 
-tsl::Status DoStoreAsLevelDbTable(
+absl::Status DoStoreAsLevelDbTable(
     std::unique_ptr<tsl::WritableFile>& file, const Trace& trace,
     const std::vector<std::vector<const TraceEvent*>>& events_by_level);
 
-tsl::Status DoLoadFromLevelDbTable(
+absl::Status DoLoadFromLevelDbTable(
     const std::string& filename,
     std::unique_ptr<TraceEventsFilterInterface> filter,
     std::unique_ptr<TraceVisibilityFilter> visibility_filter,
@@ -287,7 +287,7 @@ class TraceEventsContainerBase {
   // Loads the contents of this container from a level-db sstable file.
   // In order to be efficient, requires resolution__ to be set.
   // If span_ is not set, it is initialized from the loaded trace_.
-  tsl::Status LoadFromLevelDbTable(
+  absl::Status LoadFromLevelDbTable(
       const std::string& filename,
       std::unique_ptr<TraceEventsFilterInterface> filter = nullptr,
       std::unique_ptr<TraceVisibilityFilter> visibility = nullptr,
