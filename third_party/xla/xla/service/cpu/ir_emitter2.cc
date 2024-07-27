@@ -546,6 +546,12 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
     const HloInstruction* instr) {
   HloComputation* comparator = instr->to_apply();
 
+  // Find if we already emitted this comparator.
+  auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
+    return info.name == comparator->name();
+  });
+  if (info != comparators_.end()) return *info;
+
   // We use simple post-order schedule as we are not emitting a "real"
   // computation that requires buffer assignment.
   auto schedule = comparator->MakeInstructionPostOrder();
