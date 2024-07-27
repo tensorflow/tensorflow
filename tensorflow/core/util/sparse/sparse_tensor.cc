@@ -257,7 +257,7 @@ Status SparseTensor::IndicesValidHelper() const {
       if (!valid) {
         return errors::InvalidArgument(index,
                                        " is out of bounds: need 0 <= index < [",
-                                       str_util::Join(shape_, ","), "]");
+                                       absl::StrJoin(shape_, ","), "]");
       }
       if (!increasing) {
         return errors::InvalidArgument(
