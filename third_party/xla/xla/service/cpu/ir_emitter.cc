@@ -4159,6 +4159,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
             .EmitLoop(IrName(target_op, desc)));
 
     std::vector<llvm::Value*> tuple_operand_ptrs;
+    tuple_operand_ptrs.reserve(output_arrays.size());
     for (int64_t i = 0; i < output_arrays.size(); ++i) {
       tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
     }
