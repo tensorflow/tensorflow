@@ -49,8 +49,8 @@ struct DevicePutResult {
   // dangerous due to `owning_pybuffer`.
   DevicePutResult(const DevicePutResult&) = delete;
   DevicePutResult& operator=(const DevicePutResult&) = delete;
-  DevicePutResult(DevicePutResult&&) = default;
-  DevicePutResult& operator=(DevicePutResult&&) = default;
+  DevicePutResult(DevicePutResult&&) noexcept = default;
+  DevicePutResult& operator=(DevicePutResult&&) noexcept = default;
 
   // Points to the on-device array. Not owned.
   tsl::RCReference<ifrt::Array> ifrt_array;

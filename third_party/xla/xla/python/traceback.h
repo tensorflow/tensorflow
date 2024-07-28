@@ -48,7 +48,7 @@ class Traceback {
   ~Traceback();
 
   Traceback(const Traceback&) = delete;
-  Traceback(Traceback&& other);
+  Traceback(Traceback&& other) noexcept;
   Traceback& operator=(const Traceback&) = delete;
   Traceback& operator=(Traceback&&) = delete;
 
