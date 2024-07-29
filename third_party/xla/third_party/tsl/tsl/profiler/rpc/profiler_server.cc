@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/grpc/include/grpcpp/security/server_credentials.h"
+#include "third_party/grpc/include/grpcpp/server_builder.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/types.h"
-#include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 #include "tsl/profiler/rpc/profiler_service_impl.h"
 
 namespace tsl {
