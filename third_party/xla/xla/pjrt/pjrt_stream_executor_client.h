@@ -308,7 +308,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override;
+      XlaComputation computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 

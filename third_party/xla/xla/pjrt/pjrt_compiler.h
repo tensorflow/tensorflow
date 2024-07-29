@@ -161,7 +161,7 @@ class PjRtCompiler {
   // Compiles the 'computation' and returns a 'PjRtExecutable'. The returned
   // PjRtExecutable must be loaded by a compatible client before execution.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, const XlaComputation& computation,
+      CompileOptions options, XlaComputation computation,
       const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
@@ -187,7 +187,7 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 // platform. Forwards errors returned from the registered compiler in case of a
 // compilation failure.
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
-    CompileOptions options, const XlaComputation& computation,
+    CompileOptions options, XlaComputation computation,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 // Variant of `PjRtCompile` that accepts an MLIR module.

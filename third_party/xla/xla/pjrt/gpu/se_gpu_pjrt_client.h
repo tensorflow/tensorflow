@@ -245,7 +245,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       const LoadOptions& load_options);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override;
+      XlaComputation computation, CompileOptions options) override;
 
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;

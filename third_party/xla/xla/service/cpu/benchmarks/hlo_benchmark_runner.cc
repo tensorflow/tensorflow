@@ -59,7 +59,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
   }
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                      client->Compile(computation, compile_options));
+                      client->Compile(std::move(computation), compile_options));
 
   // Convert literals to PjRtBuffers.
   std::vector<std::unique_ptr<PjRtBuffer>> args_buffers;

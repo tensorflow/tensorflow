@@ -3468,7 +3468,7 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
+PjRtStreamExecutorClient::Compile(XlaComputation computation,
                                   CompileOptions options) {
   tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
   VLOG(1) << "PjRtStreamExecutorClient::Compile";
@@ -3501,7 +3501,7 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
-      client()->Compile(computation, argument_layout_pointers,
+      client()->Compile(std::move(computation), argument_layout_pointers,
                         options.executable_build_options));
 
   auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
@@ -3532,7 +3532,7 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
   if (options.argument_layouts) {
-    return Compile(xla_computation, options);
+    return Compile(std::move(xla_computation), options);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
@@ -3559,7 +3559,7 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
                           options.executable_build_options));
 
   options.argument_layouts = arg_layouts_and_pointers.first;
-  return Compile(xla_computation, options);
+  return Compile(std::move(xla_computation), options);
 }
 
 absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(

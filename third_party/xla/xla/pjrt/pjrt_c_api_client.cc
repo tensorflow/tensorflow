@@ -382,8 +382,9 @@ InitializeArgsAndCompile(PjRtCApiClient* api_client, const PJRT_Api* c_api,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
-    const XlaComputation& computation, CompileOptions options) {
+    XlaComputation computation, CompileOptions options) {
   std::string module_str = computation.proto().SerializeAsString();
+  computation = XlaComputation();
   std::string format(pjrt::kHloFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   module_str, format);
@@ -2312,9 +2313,10 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
-    CompileOptions options, const XlaComputation& computation,
+    CompileOptions options, XlaComputation computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   std::string module_str = computation.proto().SerializeAsString();
+  computation = XlaComputation();
   std::string format(pjrt::kHloFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
                                      module_str, format);

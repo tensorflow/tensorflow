@@ -92,7 +92,7 @@ absl::Status IsValidTopologyAndClientForCompile(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(CompileOptions options,
-                                   const XlaComputation& computation,
+                                   XlaComputation computation,
                                    const PjRtTopologyDescription& topology,
                                    PjRtClient* client) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -107,7 +107,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   if (!options.target_config) {
     if (client != nullptr) {
       TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-      return client->Compile(computation, options);
+      return client->Compile(std::move(computation), options);
     }
     auto attr = topology.Attributes();
     if (auto it = attr.find("target_config"); it != attr.end()) {
@@ -136,10 +136,10 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                       GetHloModuleConfig(computation, argument_layout_pointers,
                                          options.executable_build_options));
 
-  HloModuleProto hlo_module_proto = computation.proto();
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(hlo_module_proto, *hlo_config));
+      HloModule::CreateFromProto(computation.proto(), *hlo_config));
+  computation = XlaComputation();
   UpdateEntryComputationLayout(
       hlo_module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
                                   &gpu_compiler, std::placeholders::_1));
@@ -191,7 +191,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false,
       /*use_shardy=*/false));
-  return Compile(std::move(input_options), xla_computation, topology, client);
+  return Compile(std::move(input_options), std::move(xla_computation), topology,
+                 client);
 #else
   return absl::InternalError(
       "GPU AOT compilation requires the target to be built with CUDA or "

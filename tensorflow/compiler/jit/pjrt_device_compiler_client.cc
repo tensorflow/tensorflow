@@ -46,7 +46,7 @@ PjRtDeviceCompilerClient::BuildExecutable(
   VLOG(2) << "Compiling to xla::PjRtLoadedExecutable.";
 
   TF_ASSIGN_OR_RETURN(auto executable,
-                      client_->Compile(*result.computation,
+                      client_->Compile(std::move(*result.computation),
                                        GetPjRtCompileOptions(options, result)));
 
   VLOG(2) << "Compiled PJRT executable " << executable->name()

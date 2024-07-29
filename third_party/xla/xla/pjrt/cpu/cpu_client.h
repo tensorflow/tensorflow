@@ -303,7 +303,7 @@ class TfrtCpuClient final : public PjRtClient {
       const override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override;
+      XlaComputation computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
 

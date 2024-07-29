@@ -584,7 +584,7 @@ class PjRtClient {
 
   // Compile `computation` with given `options`.
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) = 0;
+      XlaComputation computation, CompileOptions options) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(

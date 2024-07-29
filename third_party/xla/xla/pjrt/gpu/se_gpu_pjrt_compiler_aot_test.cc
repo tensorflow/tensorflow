@@ -136,9 +136,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
   xla::CompileOptions opts;
   opts.target_config = gpu_target_config;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtExecutable> executable,
-      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                          compiler.Compile(opts, std::move(computation),
+                                           *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
       se_client->Load(std::move(executable)));
@@ -162,9 +162,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
                           GetXlaComputation(kProgram));
   TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
                           se_client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtExecutable> executable,
-      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                          compiler.Compile(opts, std::move(computation),
+                                           *topology, /*client=*/nullptr));
 
   // Serialize the executable and load it.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
@@ -199,9 +199,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
                           GetXlaComputation(kProgramIdentity));
   TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
                           se_client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtExecutable> executable,
-      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                          compiler.Compile(opts, std::move(computation),
+                                           *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
       se_client->Load(std::move(executable)));

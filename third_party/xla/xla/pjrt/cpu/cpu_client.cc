@@ -695,7 +695,7 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
 }
 
 static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
-    const XlaComputation& computation,
+    XlaComputation computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options,
     const ExecutionOptions& execution_options,
@@ -710,10 +710,10 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
                          /*aot_options=*/nullptr));
 
   // Unoptimized HloModule.
-  const xla::HloModuleProto& hlo_module_proto = computation.proto();
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
-      xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
+      xla::HloModule::CreateFromProto(computation.proto(), *hlo_module_config));
+  computation = XlaComputation();
   VLOG(3) << "Unoptimized HLO module: " << hlo_module->ToString();
   static constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
@@ -730,7 +730,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
-    const XlaComputation& computation, CompileOptions options) {
+    XlaComputation computation, CompileOptions options) {
   tsl::profiler::TraceMe traceme("TfrtCpuClient::Compile (XlaComputation)");
   auto input_options = options;
   ExecutableBuildOptions& build_options = options.executable_build_options;
@@ -815,8 +815,8 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> cpu_executable,
-      JitCompile(computation, argument_layout_pointers, build_options,
-                 execution_options, compile_options,
+      JitCompile(std::move(computation), argument_layout_pointers,
+                 build_options, execution_options, compile_options,
                  eigen_intraop_device()->getPool()->NumThreads()));
   auto cpu_executable_ptr =
       tensorflow::down_cast<cpu::CpuExecutable*>(cpu_executable.get());
@@ -861,7 +861,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
       exec_build_options.has_debug_options()
           ? exec_build_options.debug_options().xla_use_shardy()
           : false));
-  return Compile(xla_computation, options);
+  return Compile(std::move(xla_computation), options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

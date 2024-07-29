@@ -81,7 +81,7 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
       DynamicReshape(inp_0, {inp_1, inp_1}, {2, 3}, dims_are_dynamic);
   auto computation = builder.Build(reshaped).value();
   std::unique_ptr<PjRtLoadedExecutable> executable =
-      client->Compile(computation, CompileOptions()).value();
+      client->Compile(std::move(computation), CompileOptions()).value();
   ExecuteOptions execute_options;
   execute_options.non_donatable_input_indices = {0};
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results =
@@ -117,7 +117,7 @@ TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
   builder.SetUpAlias({}, 0, {});
   auto computation = builder.Build(sum).value();
   std::unique_ptr<PjRtLoadedExecutable> executable =
-      client->Compile(computation, CompileOptions()).value();
+      client->Compile(std::move(computation), CompileOptions()).value();
 
   PjRtCApiClient* c_client = dynamic_cast<PjRtCApiClient*>(client.get());
   ASSERT_NE(c_client, nullptr);

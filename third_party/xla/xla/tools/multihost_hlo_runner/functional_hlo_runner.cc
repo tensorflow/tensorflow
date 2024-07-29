@@ -72,7 +72,6 @@ limitations under the License.
 
 namespace xla {
 
-
 namespace {
 // Creates an HloModule from the given proto.
 absl::StatusOr<std::unique_ptr<HloModule>> HloTextToModule(
@@ -766,8 +765,9 @@ FunctionalHloRunner::Compile(PjRtClient& client, HloModule* hlo_module,
       CompleteCompileOptions(*hlo_module, compile_options);
   XlaComputation computation(hlo_module->ToProto());
   VLOG(1) << "FunctionalHloRunner: compilation started.";
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                      client.Compile(computation, modified_compile_options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client.Compile(std::move(computation), modified_compile_options));
   VLOG(1) << "FunctionalHloRunner: compile succeeded.";
   return executable;
 }
@@ -784,9 +784,9 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> FunctionalHloRunner::Compile(
       CompleteCompileOptions(*hlo_module, compile_options);
   XlaComputation computation(hlo_module->ToProto());
   VLOG(1) << "FunctionalHloRunner: compilation started.";
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtExecutable> executable,
-      PjRtCompile(modified_compile_options, computation, topology, &client));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      PjRtCompile(modified_compile_options,
+                                  std::move(computation), topology, &client));
   VLOG(1) << "FunctionalHloRunner: compile succeeded.";
   return executable;
 }

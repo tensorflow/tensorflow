@@ -67,7 +67,7 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
 
   CompileOptions options;
   XlaComputation computation;
-  auto res = PjRtCompile(options, computation, topology);
+  auto res = PjRtCompile(options, std::move(computation), topology);
 
   EXPECT_TRUE(tsl::errors::IsNotFound(res.status()));
 }
@@ -100,7 +100,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   class PjRtTestCompiler : public PjRtCompiler {
    public:
     absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-        CompileOptions options, const XlaComputation& computation,
+        CompileOptions options, XlaComputation computation,
         const PjRtTopologyDescription& topology, PjRtClient* client) override {
       return tsl::errors::Unimplemented("test compiler!");
     }
@@ -115,7 +115,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
 
   CompileOptions options;
   XlaComputation computation;
-  auto res = PjRtCompile(options, computation, topology);
+  auto res = PjRtCompile(options, std::move(computation), topology);
 
   EXPECT_TRUE(tsl::errors::IsUnimplemented(res.status()));
 }
@@ -127,7 +127,7 @@ TEST(PjRtCompilerTest, PjrtCompileComputationMetric) {
   CellReader<bool> metric_reader(
       std::string{kPjrtCompilerCompileComputationMetricName});
 
-  EXPECT_THAT(PjRtCompile(compile_options, xla_computation, topology,
+  EXPECT_THAT(PjRtCompile(compile_options, std::move(xla_computation), topology,
                           /*client=*/nullptr),
               StatusIs(tensorflow::error::NOT_FOUND));
   // Verify that when the compilation is done, the metric value is always false.

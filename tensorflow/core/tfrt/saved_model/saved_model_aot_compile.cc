@@ -316,7 +316,8 @@ AotCompileToGpuPjRtExecutable(
       GetPjRtCompileOptions(options, **compilation_result);
   pjrt_options.target_config = gpu_config;
   return pjrt_gpu_compiler.Compile(
-      pjrt_options, *((*compilation_result)->computation), topology, nullptr);
+      pjrt_options, std::move(*((*compilation_result)->computation)), topology,
+      nullptr);
 }
 
 absl::StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
@@ -338,7 +339,8 @@ absl::StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
       GetPjRtCompileOptions(options, **compilation_result);
   TF_ASSIGN_OR_RETURN(
       auto executable,
-      se_client->Compile(*((*compilation_result)->computation), pjrt_options));
+      se_client->Compile(std::move(*((*compilation_result)->computation)),
+                         pjrt_options));
   return se_client->SerializeExecutable(*executable);
 }
 

@@ -457,7 +457,7 @@ absl::Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       devices_[device_idx]->client()->pjrt_client()->Compile(
-                          computation, std::move(compile_options)));
+                          std::move(computation), std::move(compile_options)));
   ExecuteOptions execute_options;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,

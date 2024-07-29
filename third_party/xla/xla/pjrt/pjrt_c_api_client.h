@@ -185,7 +185,7 @@ class PjRtCApiCompiler : public PjRtCompiler {
   explicit PjRtCApiCompiler(const PJRT_Api* c_api) : c_api_(c_api) {}
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, const XlaComputation& computation,
+      CompileOptions options, XlaComputation computation,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
@@ -302,7 +302,7 @@ class PjRtCApiClient : public PjRtClient {
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override;
+      XlaComputation computation, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;

@@ -574,11 +574,10 @@ ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
   }
 }
 
-mlir::ModuleOp UnpackPjrtProgram(mlir::OwningOpRef<mlir::ModuleOp>& module) {
+mlir::ModuleOp UnpackPjrtProgram(mlir::OwningOpRef<mlir::ModuleOp>&& module) {
   return *module;
 }
-const xla::XlaComputation& UnpackPjrtProgram(
-    const xla::XlaComputation& computation) {
+xla::XlaComputation UnpackPjrtProgram(xla::XlaComputation&& computation) {
   return computation;
 }
 
@@ -608,7 +607,8 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
                         std::visit(
                             [args, &options](auto& program) {
                               return args->client->client->Compile(
-                                  UnpackPjrtProgram(program), options);
+                                  UnpackPjrtProgram(std::move(program)),
+                                  options);
                             },
                             module_or_hlo));
   args->executable =
@@ -2101,14 +2101,14 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   std::optional<mlir::MLIRContext> context;
   PJRT_ASSIGN_OR_RETURN(auto module_or_hlo,
                         ParsePjrtProgram(context, args->program));
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtExecutable> executable,
-                        std::visit(
-                            [&](auto& program) {
-                              return PjRtCompile(
-                                  options, UnpackPjrtProgram(program),
-                                  *args->topology->topology, client);
-                            },
-                            module_or_hlo));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtExecutable> executable,
+      std::visit(
+          [&](auto& program) {
+            return PjRtCompile(options, UnpackPjrtProgram(std::move(program)),
+                               *args->topology->topology, client);
+          },
+          module_or_hlo));
   args->executable = new PJRT_Executable(std::move(executable));
   return nullptr;
 }

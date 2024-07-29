@@ -119,7 +119,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, {}));
+                          client->Compile(std::move(xla_computation), {}));
 
   std::vector<float> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
@@ -165,7 +165,7 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
   debug_opts->set_xla_dump_hlo_snapshots(true);
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, options));
+                          client->Compile(std::move(xla_computation), options));
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
@@ -399,7 +399,7 @@ TEST(TfrtCpuClientTest, ForwardUserDataToFfiHandler) {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client->Compile(xla_computation, {}));
+                          client->Compile(std::move(xla_computation), {}));
 
   ExecuteContext context;
   TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));

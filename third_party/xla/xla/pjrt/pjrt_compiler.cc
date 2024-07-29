@@ -73,13 +73,13 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
-    CompileOptions options, const XlaComputation& computation,
+    CompileOptions options, XlaComputation computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   auto topology_compiler = topology.compiler();
   ScopedMetricHelper helper(metrics::kPjrtCompilerCompileComputationMetricName);
   if (topology_compiler.has_value()) {
     return (*topology_compiler)
-        ->Compile(std::move(options), computation, topology, client);
+        ->Compile(std::move(options), std::move(computation), topology, client);
   }
   absl::ReaderMutexLock l(&registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
@@ -88,7 +88,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     return tsl::errors::NotFound(absl::StrCat(
         "No compiler registered for platform ", topology.platform_name()));
   }
-  return it->second->Compile(std::move(options), computation, topology, client);
+  return it->second->Compile(std::move(options), std::move(computation),
+                             topology, client);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(

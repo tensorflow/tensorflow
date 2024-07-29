@@ -87,7 +87,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
                       ParseAndReturnUnverifiedModule(program, {}));
 
   xla::XlaComputation xla_computation(hlo_module->ToProto());
-  return client.Compile(xla_computation, compile_options);
+  return client.Compile(std::move(xla_computation), compile_options);
 }
 
 // Given the result of a PjrtExecutable::Execute call (TF-status of vectors of

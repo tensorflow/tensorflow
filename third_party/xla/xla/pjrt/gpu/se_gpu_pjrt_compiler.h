@@ -34,7 +34,7 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
   // compilation, which will not query the GPU attached to the machine.
   // In this case, the `client` argument could be left as `nullptr`.
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, const XlaComputation& computation,
+      CompileOptions options, XlaComputation computation,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(

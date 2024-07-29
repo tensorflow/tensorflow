@@ -76,9 +76,10 @@ TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
       CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
-                               /*client=*/nullptr),
-              StatusIs(absl::StatusCode::kUnimplemented));
+  EXPECT_THAT(
+      compiler.Compile(xla::CompileOptions(), std::move(computation), topology,
+                       /*client=*/nullptr),
+      StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
@@ -89,8 +90,8 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
-                               client.get()),
+  EXPECT_THAT(compiler.Compile(xla::CompileOptions(), std::move(computation),
+                               topology, client.get()),
               StatusIs(absl::StatusCode::kUnimplemented));
 }
 
@@ -101,9 +102,10 @@ TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          compiler.Compile(xla::CompileOptions(), computation,
-                                           *topology, client.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(xla::CompileOptions(), std::move(computation), *topology,
+                       client.get()));
   const LoadOptions load_options;
   TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
                           client->Load(std::move(executable), load_options));

@@ -46,8 +46,9 @@ absl::Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                      client->Compile(computation, std::move(compile_options)));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->Compile(std::move(computation), std::move(compile_options)));
   ExecuteOptions execute_options;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
