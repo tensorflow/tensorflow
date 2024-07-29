@@ -128,8 +128,7 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
   HloInstructionAdaptor add{*module->GetComputationWithName("fused_computation")
                                  ->GetInstructionWithName("add"),
                             fusion_adaptor1.get()};
-  EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("add.1"),
-                                          InstructionAdaptorName("mul"),
+  EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("mul"),
                                           InstructionAdaptorName("res")));
 
   auto fusion_adaptor2 = HloFusionAdaptor::ForInstruction(
@@ -145,7 +144,7 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
       *module->GetComputationWithName("fused_computation_1")
            ->GetInstructionWithName("neg.1"),
       fusion_adaptor2.get()};
-  EXPECT_THAT(neg.GetUsers(), ElementsAre(InstructionAdaptorName("exp.1")));
+  EXPECT_TRUE(neg.GetUsers().empty());
 }
 
 TEST_F(HloTraversalTest, TraverseFusionConsumerFirst) {
@@ -377,8 +376,7 @@ TEST_F(HloTraversalTest, FuseFusionConsumer) {
            ->GetInstructionWithName("reduce.1"),
       fusion.get());
 
-  EXPECT_THAT(reduce_1.GetUsers(),
-              ElementsAre(InstructionAdaptorName("fusion.2")));
+  EXPECT_TRUE(reduce_1.GetUsers().empty());
 
   std::vector<std::string> nodes;
   std::vector<std::string> params;

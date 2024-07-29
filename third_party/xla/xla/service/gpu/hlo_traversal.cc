@@ -40,18 +40,20 @@ namespace {
 
 template <typename F>
 void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
-                  const HloFusionAdaptor& fusion_adaptor, F&& fn) {
+                  const HloFusionAdaptor& fusion_adaptor, F&& add_user) {
   if (user->opcode() == HloOpcode::kTuple && user->IsRoot()) {
     if (auto* fusion = user->parent()->FusionInstruction()) {
       // Skip through the tuple -> get-tuple-element ops and directly go to the
       // "real" users.
       for (const auto* gte : fusion->users()) {
         if (gte->opcode() != HloOpcode::kGetTupleElement) {
-          fn(gte);
+          if (fusion_adaptor.ContainsInstruction(value)) {
+            add_user(gte);
+          }
           continue;
         }
         for (const auto* gte_user : gte->users()) {
-          ResolveUsers(gte, gte_user, fusion_adaptor, fn);
+          ResolveUsers(gte, gte_user, fusion_adaptor, add_user);
         }
       }
     }
@@ -59,10 +61,10 @@ void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
              user->opcode() == HloOpcode::kFusion) {
     auto* param = user->fused_parameter(user->operand_index(value));
     for (const auto* param_user : param->users()) {
-      fn(param_user);
+      add_user(param_user);
     }
-  } else {
-    fn(user);
+  } else if (fusion_adaptor.ContainsInstruction(user)) {
+    add_user(user);
   }
 }
 
