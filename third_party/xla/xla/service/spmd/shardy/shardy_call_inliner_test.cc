@@ -45,6 +45,7 @@ TEST_F(ShardyCallInlinerTest, MhloToHloShmapBodyNotInlined) {
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %custom-call.8), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  module->mutable_config().set_use_shardy_partitioner(true);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyCallInliner().Run(module.get()));
   VLOG(1) << module->ToString();
   // The single call in the module is not inlined.

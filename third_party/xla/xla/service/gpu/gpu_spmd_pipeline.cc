@@ -89,7 +89,7 @@ void AddSPMDPasses(
 
   const HloModuleConfig& config = hlo_module->config();
 
-  if (config.debug_options().xla_use_shardy()) {
+  if (config.use_shardy_partitioner()) {
     spmd_pipeline.AddPass<sdy::ShardyXLA>();
   } else {
     spmd_pipeline.AddPass<HloConstantSplitter>();
