@@ -77,7 +77,7 @@ inline const EventCollector* GetEventCollector(EventCategory category) {
 uint64 GetUniqueArg();
 
 // Returns an id for name to pass to RecordEvent/ScopedRegion.
-uint64 GetArgForName(StringPiece name);
+uint64 GetArgForName(absl::string_view name);
 
 // Records an atomic event through the currently registered EventCollector.
 inline void RecordEvent(EventCategory category, uint64 arg) {
@@ -113,7 +113,7 @@ class ScopedRegion {
 
   // Same as ScopedRegion(category, GetArgForName(name)), but faster if
   // EventCollector::IsEnabled() returns false.
-  ScopedRegion(EventCategory category, StringPiece name)
+  ScopedRegion(EventCategory category, absl::string_view name)
       : collector_(GetEventCollector(category)) {
     if (collector_) {
       collector_->StartRegion(GetArgForName(name));

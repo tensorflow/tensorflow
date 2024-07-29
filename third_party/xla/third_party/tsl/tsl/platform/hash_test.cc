@@ -87,10 +87,10 @@ BENCHMARK(BM_Hash32)->Range(1, 1024);
 TEST(StringPieceHasher, Equality) {
   StringPieceHasher hasher;
 
-  StringPiece s1("foo");
-  StringPiece s2("bar");
-  StringPiece s3("baz");
-  StringPiece s4("zot");
+  absl::string_view s1("foo");
+  absl::string_view s2("bar");
+  absl::string_view s3("baz");
+  absl::string_view s4("zot");
 
   EXPECT_TRUE(hasher(s1) != hasher(s2));
   EXPECT_TRUE(hasher(s1) != hasher(s3));
@@ -110,11 +110,11 @@ TEST(StringPieceHasher, HashMap) {
   string s2("bar");
   string s3("baz");
 
-  StringPiece p1(s1);
-  StringPiece p2(s2);
-  StringPiece p3(s3);
+  absl::string_view p1(s1);
+  absl::string_view p2(s2);
+  absl::string_view p3(s3);
 
-  std::unordered_map<StringPiece, int, StringPieceHasher> map;
+  std::unordered_map<absl::string_view, int, StringPieceHasher> map;
 
   map.insert(std::make_pair(p1, 0));
   map.insert(std::make_pair(p2, 1));

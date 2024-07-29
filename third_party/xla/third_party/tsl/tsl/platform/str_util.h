@@ -67,26 +67,26 @@ inline void StripTrailingWhitespace(std::string* s) {
 
 // Removes leading ascii_isspace() characters.
 // Returns number of characters removed.
-size_t RemoveLeadingWhitespace(StringPiece* text);
+size_t RemoveLeadingWhitespace(absl::string_view* text);
 
 // Removes trailing ascii_isspace() characters.
 // Returns number of characters removed.
-size_t RemoveTrailingWhitespace(StringPiece* text);
+size_t RemoveTrailingWhitespace(absl::string_view* text);
 
 // Removes leading and trailing ascii_isspace() chars.
 // Returns number of chars removed.
-size_t RemoveWhitespaceContext(StringPiece* text);
+size_t RemoveWhitespaceContext(absl::string_view* text);
 
 // Consume a leading positive integer value.  If any digits were
 // found, store the value of the leading unsigned number in "*val",
 // advance "*s" past the consumed number, and return true.  If
 // overflow occurred, returns false.  Otherwise, returns false.
-bool ConsumeLeadingDigits(StringPiece* s, uint64_t* val);
+bool ConsumeLeadingDigits(absl::string_view* s, uint64_t* val);
 
 // Consume a leading token composed of non-whitespace characters only.
 // If *s starts with a non-zero number of non-whitespace characters, store
 // them in *val, advance *s past them, and return true.  Else return false.
-bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
+bool ConsumeNonWhitespace(absl::string_view* s, absl::string_view* val);
 
 // If "*s" starts with "expected", consume it and return true.
 // Otherwise, return false.
@@ -132,12 +132,12 @@ ABSL_DEPRECATE_AND_INLINE() inline std::string Uppercase(absl::string_view s) {
 
 // Capitalize first character of each word in "*s".  "delimiters" is a
 // set of characters that can be used as word boundaries.
-void TitlecaseString(std::string* s, StringPiece delimiters);
+void TitlecaseString(std::string* s, absl::string_view delimiters);
 
 // Replaces the first occurrence (if replace_all is false) or all occurrences
 // (if replace_all is true) of oldsub in s with newsub.
-std::string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
-                          bool replace_all);
+std::string StringReplace(absl::string_view s, absl::string_view oldsub,
+                          absl::string_view newsub, bool replace_all);
 
 // Join functionality
 template <typename T>
@@ -156,36 +156,38 @@ std::string Join(const T& s, const char* sep, Formatter f) {
 }
 
 struct AllowEmpty {
-  bool operator()(StringPiece sp) const { return true; }
+  bool operator()(absl::string_view sp) const { return true; }
 };
 struct SkipEmpty {
-  bool operator()(StringPiece sp) const { return !sp.empty(); }
+  bool operator()(absl::string_view sp) const { return !sp.empty(); }
 };
 struct SkipWhitespace {
-  bool operator()(StringPiece sp) const {
+  bool operator()(absl::string_view sp) const {
     return !absl::StripTrailingAsciiWhitespace(sp).empty();
   }
 };
 
 // Split strings using any of the supplied delimiters. For example:
 // Split("a,b.c,d", ".,") would return {"a", "b", "c", "d"}.
-inline std::vector<string> Split(StringPiece text, StringPiece delims) {
+inline std::vector<string> Split(absl::string_view text,
+                                 absl::string_view delims) {
   return text.empty() ? std::vector<string>()
                       : absl::StrSplit(text, absl::ByAnyChar(delims));
 }
 
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
+std::vector<string> Split(absl::string_view text, absl::string_view delims,
+                          Predicate p) {
   return text.empty() ? std::vector<string>()
                       : absl::StrSplit(text, absl::ByAnyChar(delims), p);
 }
 
-inline std::vector<string> Split(StringPiece text, char delim) {
+inline std::vector<string> Split(absl::string_view text, char delim) {
   return text.empty() ? std::vector<string>() : absl::StrSplit(text, delim);
 }
 
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, char delim, Predicate p) {
+std::vector<string> Split(absl::string_view text, char delim, Predicate p) {
   return text.empty() ? std::vector<string>() : absl::StrSplit(text, delim, p);
 }
 
@@ -228,7 +230,7 @@ size_t Strnlen(const char* str, const size_t string_max_len);
 // This method is useful for producing strings matching "[a-z][a-z0-9_]*"
 // as required by OpDef.ArgDef.name. The resulting string is either empty or
 // matches this regex.
-std::string ArgDefCase(StringPiece s);
+std::string ArgDefCase(absl::string_view s);
 
 }  // namespace str_util
 }  // namespace tsl

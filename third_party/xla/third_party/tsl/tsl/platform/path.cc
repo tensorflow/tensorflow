@@ -46,10 +46,10 @@ namespace {
 const char kPathSep[] = "/";
 }  // namespace
 
-string JoinPathImpl(std::initializer_list<StringPiece> paths) {
+string JoinPathImpl(std::initializer_list<absl::string_view> paths) {
   string result;
 
-  for (StringPiece path : paths) {
+  for (absl::string_view path : paths) {
     if (path.empty()) continue;
 
     if (result.empty()) {
@@ -73,8 +73,9 @@ string JoinPathImpl(std::initializer_list<StringPiece> paths) {
 // no "/" in the path, the first part of the output is the scheme and host, and
 // the second is the path. If the only "/" in the path is the first character,
 // it is included in the first part of the output.
-std::pair<StringPiece, StringPiece> SplitPath(StringPiece uri) {
-  StringPiece scheme, host, path;
+std::pair<absl::string_view, absl::string_view> SplitPath(
+    absl::string_view uri) {
+  absl::string_view scheme, host, path;
   ParseURI(uri, &scheme, &host, &path);
 
   auto pos = path.rfind('/');
@@ -82,58 +83,60 @@ std::pair<StringPiece, StringPiece> SplitPath(StringPiece uri) {
   if (pos == StringPiece::npos) pos = path.rfind('\\');
 #endif
   // Handle the case with no '/' in 'path'.
-  if (pos == StringPiece::npos)
-    return std::make_pair(StringPiece(uri.data(), host.end() - uri.begin()),
-                          path);
+  if (pos == absl::string_view::npos)
+    return std::make_pair(
+        absl::string_view(uri.data(), host.end() - uri.begin()), path);
 
   // Handle the case with a single leading '/' in 'path'.
   if (pos == 0)
     return std::make_pair(
-        StringPiece(uri.data(), path.begin() + 1 - uri.begin()),
-        StringPiece(path.data() + 1, path.size() - 1));
+        absl::string_view(uri.data(), path.begin() + 1 - uri.begin()),
+        absl::string_view(path.data() + 1, path.size() - 1));
 
   return std::make_pair(
-      StringPiece(uri.data(), path.begin() + pos - uri.begin()),
-      StringPiece(path.data() + pos + 1, path.size() - (pos + 1)));
+      absl::string_view(uri.data(), path.begin() + pos - uri.begin()),
+      absl::string_view(path.data() + pos + 1, path.size() - (pos + 1)));
 }
 
 // Return the parts of the basename of path, split on the final ".".
 // If there is no "." in the basename or "." is the final character in the
 // basename, the second value will be empty.
-std::pair<StringPiece, StringPiece> SplitBasename(StringPiece path) {
+std::pair<absl::string_view, absl::string_view> SplitBasename(
+    absl::string_view path) {
   path = Basename(path);
 
   auto pos = path.rfind('.');
-  if (pos == StringPiece::npos)
-    return std::make_pair(path, StringPiece(path.data() + path.size(), 0));
+  if (pos == absl::string_view::npos)
+    return std::make_pair(path,
+                          absl::string_view(path.data() + path.size(), 0));
   return std::make_pair(
-      StringPiece(path.data(), pos),
-      StringPiece(path.data() + pos + 1, path.size() - (pos + 1)));
+      absl::string_view(path.data(), pos),
+      absl::string_view(path.data() + pos + 1, path.size() - (pos + 1)));
 }
 
 }  // namespace internal
 
-bool IsAbsolutePath(StringPiece path) {
+bool IsAbsolutePath(absl::string_view path) {
   return !path.empty() && path[0] == '/';
 }
 
-StringPiece Dirname(StringPiece path) {
+absl::string_view Dirname(absl::string_view path) {
   return internal::SplitPath(path).first;
 }
 
-StringPiece Basename(StringPiece path) {
+absl::string_view Basename(absl::string_view path) {
   return internal::SplitPath(path).second;
 }
 
-StringPiece Extension(StringPiece path) {
+absl::string_view Extension(absl::string_view path) {
   return internal::SplitBasename(path).second;
 }
 
-StringPiece BasenamePrefix(StringPiece path) {
+absl::string_view BasenamePrefix(absl::string_view path) {
   return internal::SplitBasename(path).first;
 }
 
-string CleanPath(StringPiece unclean_path) {
+string CleanPath(absl::string_view unclean_path) {
   string path(unclean_path);
   const char* src = path.c_str();
   string::iterator dst = path.begin();
@@ -214,8 +217,8 @@ string CleanPath(StringPiece unclean_path) {
   return path;
 }
 
-void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
-              StringPiece* path) {
+void ParseURI(absl::string_view uri, absl::string_view* scheme,
+              absl::string_view* host, absl::string_view* path) {
   // 0. Parse scheme
   // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*
   // TODO(keveman): Allow "+" and "-" in the scheme.
@@ -228,8 +231,8 @@ void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
            .OneLiteral("://")
            .GetResult(&uri, scheme)) {
     // If there's no scheme, assume the entire string is a path.
-    *scheme = StringPiece(uri.data(), 0);
-    *host = StringPiece(uri.data(), 0);
+    *scheme = absl::string_view(uri.data(), 0);
+    *host = absl::string_view(uri.data(), 0);
     *path = uri;
     return;
   }
@@ -238,7 +241,7 @@ void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
   if (!strings::Scanner(uri).ScanUntil('/').GetResult(&uri, host)) {
     // No path, so the rest of the URI is the host.
     *host = uri;
-    *path = StringPiece();  // empty path
+    *path = absl::string_view();  // empty path
     return;
   }
 
@@ -246,7 +249,8 @@ void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
   *path = uri;
 }
 
-string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
+string CreateURI(absl::string_view scheme, absl::string_view host,
+                 absl::string_view path) {
   if (scheme.empty()) {
     return string(path);
   }
@@ -352,8 +356,8 @@ string GetTempFilename(const string& extension) {
 namespace {
 // This is private to the file, because it's possibly too limited to be useful
 // externally.
-bool StartsWithSegment(tsl::StringPiece path, tsl::StringPiece segment) {
-  return tsl::str_util::StartsWith(path, segment) &&
+bool StartsWithSegment(absl::string_view path, absl::string_view segment) {
+  return absl::StartsWith(path, segment) &&
          (path.size() == segment.size() ||
           path.at(segment.size()) == internal::kPathSep[0]);
 }
@@ -385,9 +389,9 @@ bool GetTestUndeclaredOutputsDir(string* dir) {
   return true;
 }
 
-bool ResolveTestPrefixes(tsl::StringPiece path, string& resolved_path) {
-  constexpr tsl::StringPiece kTestWorkspaceSegment = "TEST_WORKSPACE";
-  constexpr tsl::StringPiece kOutputDirSegment = "TEST_UNDECLARED_OUTPUTS_DIR";
+bool ResolveTestPrefixes(absl::string_view path, string& resolved_path) {
+  constexpr absl::string_view kTestWorkspaceSegment = "TEST_WORKSPACE";
+  constexpr absl::string_view kOutputDirSegment = "TEST_UNDECLARED_OUTPUTS_DIR";
 
   if (StartsWithSegment(path, kTestWorkspaceSegment)) {
     if (!GetTestWorkspaceDir(&resolved_path)) {

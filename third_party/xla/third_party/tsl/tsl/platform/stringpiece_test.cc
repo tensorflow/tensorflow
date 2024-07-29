@@ -25,24 +25,24 @@ TEST(StringPiece, Ctor) {
   {
     // const char* without size.
     const char* hello = "hello";
-    StringPiece s20(hello);
+    absl::string_view s20(hello);
     EXPECT_TRUE(s20.data() == hello);
     EXPECT_EQ(5, s20.size());
 
     // const char* with size.
-    StringPiece s21(hello, 4);
+    absl::string_view s21(hello, 4);
     EXPECT_TRUE(s21.data() == hello);
     EXPECT_EQ(4, s21.size());
 
     // Not recommended, but valid C++
-    StringPiece s22(hello, 6);
+    absl::string_view s22(hello, 6);
     EXPECT_TRUE(s22.data() == hello);
     EXPECT_EQ(6, s22.size());
   }
 
   {
     string hola = "hola";
-    StringPiece s30(hola);
+    absl::string_view s30(hola);
     EXPECT_TRUE(s30.data() == hola.data());
     EXPECT_EQ(4, s30.size());
 
@@ -50,15 +50,15 @@ TEST(StringPiece, Ctor) {
     hola.push_back('\0');
     hola.append("h2");
     hola.push_back('\0');
-    StringPiece s31(hola);
+    absl::string_view s31(hola);
     EXPECT_TRUE(s31.data() == hola.data());
     EXPECT_EQ(8, s31.size());
   }
 }
 
 TEST(StringPiece, ConversionToString) {
-  EXPECT_EQ("", string(StringPiece("")));
-  EXPECT_EQ("foo", string(StringPiece("foo")));
+  EXPECT_EQ("", string(absl::string_view("")));
+  EXPECT_EQ("foo", string(absl::string_view("foo")));
 }
 
 }  // namespace tsl
