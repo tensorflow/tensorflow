@@ -26,5 +26,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
     ],
 )
