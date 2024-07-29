@@ -46,8 +46,10 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/layout.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
@@ -90,6 +92,7 @@ struct PjitCacheEntry {
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in PjitFunction::Call before calling into compiled computation.
   std::vector<bool> kept_var_bitvec;
+  std::vector<nb::object> in_device_local_layouts;
 
   // Ensures a single thread performs the compilation for a given executable.
   //
@@ -351,11 +354,12 @@ PjitFunction::PjitFunction(
 PjitFunction::~PjitFunction() { GetGlobalPjitFunctionStore().Erase(this); }
 
 void CallShardArgFallback(
-    nb::handle arg, nb::handle sharding, const nb::callable& fallback,
+    nb::handle arg, nb::handle sharding, nb::handle layout,
+    const nb::callable& fallback,
     std::vector<tsl::RCReference<xla::ifrt::Array>>& num_args_arrays,
     std::vector<nb::object>& keep_alive_objects) {
   tsl::profiler::TraceMe traceme("cpp_pjit_shard_arg_fallback");
-  auto py_array_or_bufs = fallback(arg, sharding);
+  auto py_array_or_bufs = fallback(arg, sharding, layout);
   auto py_array = nb::cast<xla::PyArray>(py_array_or_bufs);
   num_args_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
   keep_alive_objects.push_back(std::move(py_array_or_bufs));
@@ -368,6 +372,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                   absl::Span<nb::object const> flat_dynamic_args,
                   bool enable_x64, const std::vector<bool>& kept_args,
                   const std::vector<nb::object>& in_shardings,
+                  const std::vector<nb::object>& in_device_local_layouts,
                   const nb::callable& shard_arg_fallback,
                   std::vector<nb::object>& keep_alive_objects) {
   const auto& addressable_devices =
@@ -401,11 +406,13 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     ++dce_i;
 
     const nb::object& arg = flat_dynamic_args[i];
+    const nb::object& in_device_local_layout =
+        in_device_local_layouts[dce_index];
 
     auto transfer_guard_formatter = [] { return std::string(""); };
 
     if (arg.type().ptr() != xla::PyArray::type().ptr()) {
-      if (data_device != nullptr) {
+      if (data_device != nullptr && in_device_local_layout.is_none()) {
         TF_RETURN_IF_ERROR(
             jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
         TF_ASSIGN_OR_RETURN(
@@ -426,8 +433,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         continue;
       } else {
         CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
-                             shard_arg_fallback, num_args_arrays,
-                             keep_alive_objects);
+                             in_device_local_layout, shard_arg_fallback,
+                             num_args_arrays, keep_alive_objects);
         continue;
       }
     }
@@ -442,17 +449,31 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     DCHECK(py_array.committed() ||
            (!py_array.committed() && sharding_num_devices == 1));
 
+    if (!in_device_local_layout.is_none()) {
+      TF_ASSIGN_OR_RETURN(auto arr_layout, py_array.ifrt_array()->layout());
+      xla::Layout in_xc_layout = nb::cast<xla::Layout>(
+          in_device_local_layout.attr("_to_xla_layout")(py_array.dtype()));
+      if (in_xc_layout != GetXlaLayoutUnsafe(arr_layout)) {
+        CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
+                             in_device_local_layout, shard_arg_fallback,
+                             num_args_arrays, keep_alive_objects);
+        continue;
+      }
+    }
+
     if (sharding.type().ptr() == jax::PmapSharding::type().ptr()) {
+      CHECK(in_device_local_layout.is_none());
       CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
-                           shard_arg_fallback, num_args_arrays,
-                           keep_alive_objects);
+                           in_device_local_layout, shard_arg_fallback,
+                           num_args_arrays, keep_alive_objects);
       continue;
     }
 
     if (py_array.num_shards() != addressable_devices.size()) {
+      CHECK(in_device_local_layout.is_none());
       CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
-                           shard_arg_fallback, num_args_arrays,
-                           keep_alive_objects);
+                           in_device_local_layout, shard_arg_fallback,
+                           num_args_arrays, keep_alive_objects);
       continue;
     }
 
@@ -659,7 +680,8 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
   auto num_args_arrays = PrepareIfrtInputs(
       *cache_entry->executable, flat_dynamic_args,
       call_signature.jax_enable_x64, cache_entry->kept_var_bitvec,
-      cache_entry->in_shardings, shard_arg_fallback_, keep_alive_objects);
+      cache_entry->in_shardings, cache_entry->in_device_local_layouts,
+      shard_arg_fallback_, keep_alive_objects);
 
   if (!num_args_arrays.ok()) {
     VLOG(2) << "Failed to prepare IFRT inputs: " << num_args_arrays.status();
@@ -820,6 +842,13 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
   cache_entry.kept_var_bitvec.reserve(nb::len(kept_var_bitvec));
   for (nb::handle k : kept_var_bitvec) {
     cache_entry.kept_var_bitvec.push_back(nb::cast<bool>(k));
+  }
+
+  nb::sequence in_device_local_layouts =
+      fastpath_data.attr("in_device_local_layouts");
+  cache_entry.in_device_local_layouts.reserve(nb::len(in_device_local_layouts));
+  for (nb::handle dll : in_device_local_layouts) {
+    cache_entry.in_device_local_layouts.push_back(nb::borrow(dll));
   }
 }
 
