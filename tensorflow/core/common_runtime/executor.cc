@@ -649,7 +649,7 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
     // Trace async op start.
     profiler::TraceMeProducer producer(
         [&] {
-          return profiler::TraceMeEncode(
+          return tsl::profiler::TraceMeEncode(
               "ExecutorState::ProcessAsync::Start",
               {{"name", async_kernel->name()},
                {"kernel_type", async_kernel->type_string()},
@@ -1237,7 +1237,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     }
 
     if (abort_run) {
-      TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
+      TRACEPRINTF("StartAbort: %s", s.ToString());
       if (cancellation_manager_) {
         // Use VLOG instead of LOG(warning) because error status is expected
         // when the executor is run under the grappler optimization phase or
@@ -1463,8 +1463,8 @@ void ExecutorState<PropagatorStateType>::Finish() {
           // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
           // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
           [&] {
-            return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                           {{"id", step_id}});
+            return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                {{"id", step_id}});
           },
           tsl::profiler::ContextType::kTfExecutor, trace_id,
           tsl::profiler::TraceMeLevel::kInfo);
@@ -1486,8 +1486,8 @@ void ExecutorState<PropagatorStateType>::Finish() {
             // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
             // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
             [&] {
-              return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                             {{"id", step_id}});
+              return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                  {{"id", step_id}});
             },
             tsl::profiler::ContextType::kTfExecutor, trace_id,
             tsl::profiler::TraceMeLevel::kInfo);
@@ -1501,8 +1501,8 @@ void ExecutorState<PropagatorStateType>::Finish() {
           // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
           // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
           [&] {
-            return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                           {{"id", step_id}});
+            return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                {{"id", step_id}});
           },
           tsl::profiler::ContextType::kTfExecutor, trace_id,
           tsl::profiler::TraceMeLevel::kInfo);

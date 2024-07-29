@@ -28,11 +28,11 @@ limitations under the License.
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/framework/allocator.h"
 
 namespace tensorflow {
 

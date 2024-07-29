@@ -73,15 +73,17 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
-    CHECK:      load ptr
+    CHECK:      load ptr, {{.*}} !align !0
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 1, i32 0
-    CHECK:      load ptr
+    CHECK:      load ptr, {{.*}} !align !0
 
     CHECK:   ret ptr null
     CHECK: }
+
+    CHECK: !0 = !{i64 16}
   )"));
 }
 
@@ -106,6 +108,43 @@ TEST_F(IrEmitter2Test, EmitElementalKernel) {
 
   ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
     CHECK: define ptr @convert(ptr %0) #0 {
+    CHECK:   fptosi float {{.*}} to i32
+    CHECK: }
+  )"));
+}
+
+TEST_F(IrEmitter2Test, EmitParallelKernel) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[1,2,1,16384,256] parameter(0)
+      ROOT convert = s32[1,2,1,16384,256] convert(p0),
+        backend_config={"outer_dimension_partitions":["1","2","1","4"]}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* convert = FindInstruction(hlo.get(), "convert");
+  ASSERT_NE(convert, nullptr);
+
+  IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          ir_emitter.EmitElementalHostKernel(convert));
+
+  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
+    CHECK: @convert_parallel_bounds = private constant [8 x [4 x [2 x i64]]]
+
+    CHECK: define ptr @convert(ptr %0) #0 {
+    CHECK:   %lo_dim_0_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 0, i32 0
+    CHECK:   %up_dim_0_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 0, i32 1
+    CHECK:   %lo_dim_1_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 1, i32 0
+    CHECK:   %up_dim_1_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 1, i32 1
+    CHECK:   %lo_dim_2_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 2, i32 0
+    CHECK:   %up_dim_2_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 2, i32 1
+    CHECK:   %lo_dim_3_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 3, i32 0
+    CHECK:   %up_dim_3_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 3, i32 1
     CHECK:   fptosi float {{.*}} to i32
     CHECK: }
   )"));

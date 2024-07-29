@@ -15,12 +15,9 @@ limitations under the License.
 
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/rng_expander.h"
@@ -28,11 +25,12 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace spmd {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
 
 int64_t CountInstructions(const HloComputation &computation, HloOpcode opcode) {
   int64_t count = 0;
@@ -48,16 +46,15 @@ class StatefulRngSpmdPartitionerTest : public HloTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_partitions,
+      DebugOptions debug_options,
       std::function<void(HloPassPipeline &pipeline)> add_passes = nullptr,
-      int64_t threshold_for_windowed_einsum_mib = 1000000,
-      bool windowed_einsum_use_multiple_streams = false,
       bool skip_checking_windowed_einsum_users = false,
       bool disable_ag_rewrite_for_multiple_consumers = false) {
-    TF_ASSIGN_OR_RETURN(
-        auto module, ParseAndReturnVerifiedModule(
-                         hlo_module, GetModuleConfigForTest(
-                                         /*replica_count=*/1,
-                                         /*num_partitions=*/num_partitions)));
+    HloModuleConfig config = GetModuleConfigForTest(1, num_partitions);
+    config.set_use_spmd_partitioning(true);
+    config.set_debug_options(debug_options);
+    TF_ASSIGN_OR_RETURN(auto module,
+                        ParseAndReturnVerifiedModule(hlo_module, config));
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
@@ -67,8 +64,9 @@ class StatefulRngSpmdPartitionerTest : public HloTestBase {
     pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
     pass.AddPass<StatefulRngSpmdPartitioner>(
         num_partitions,
-        /*num_replicas=*/1, threshold_for_windowed_einsum_mib,
-        windowed_einsum_use_multiple_streams,
+        /*num_replicas=*/1,
+        debug_options.xla_gpu_threshold_for_windowed_einsum_mib(),
+        debug_options.xla_gpu_multi_streamed_windowed_einsum(),
         skip_checking_windowed_einsum_users,
         disable_ag_rewrite_for_multiple_consumers);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -83,6 +81,14 @@ class StatefulRngSpmdPartitionerTest : public HloTestBase {
         EXPECT_NE(hlo->opcode(), HloOpcode::kAllReduce);
       }
     }
+  }
+
+  DebugOptions GetDefaultDebugOptions() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(1000000);
+    debug_options.set_xla_gpu_multi_streamed_windowed_einsum(false);
+    debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
+    return debug_options;
   }
 };
 
@@ -103,9 +109,11 @@ ENTRY entry {
     pipeline.AddPass<RngExpander>();
   };
 
+  DebugOptions debug_options = GetDebugOptionsForTest();
+
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_partitions=*/2, add_passes));
+      auto module, PartitionComputation(hlo_string, /*num_partitions=*/2,
+                                        GetDefaultDebugOptions(), add_passes));
   XLA_VLOG_LINES(1, module->ToString());
   VerifyNoAllReduce(module.get());
 }
@@ -128,8 +136,8 @@ ENTRY entry {
   };
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_partitions=*/2, add_passes));
+      auto module, PartitionComputation(hlo_string, /*num_partitions=*/2,
+                                        GetDefaultDebugOptions(), add_passes));
   XLA_VLOG_LINES(1, module->ToString());
   VerifyNoAllReduce(module.get());
 }
@@ -153,13 +161,15 @@ ENTRY main {
   // 1 while loop to exist which is the rewritten windowed einsum loop for the
   // first ag->dot pattern. The second dot which shares the same operand with
   // the loop will remain as is.
+  DebugOptions debug_options = GetDefaultDebugOptions();
+  debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, PartitionComputation(
-                       hlo_string, /*num_partitions=*/4, /*add_passes=*/nullptr,
-                       /*threshold_for_windowed_einsum_mib=*/0,
-                       /*windowed_einsum_use_multiple_streams=*/true,
-                       /*skip_checking_windowed_einsum_users=*/true,
-                       /*disable_ag_rewrite_for_multiple_consumers=*/true));
+      auto module,
+      PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options,
+                           /*add_passes=*/nullptr,
+                           /*skip_checking_windowed_einsum_users=*/true,
+                           /*disable_ag_rewrite_for_multiple_consumers=*/true));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kWhile),
             1);
@@ -183,6 +193,65 @@ TEST_F(StatefulRngSpmdPartitionerTest, VerifyThresholdSetCorrectly) {
   EXPECT_EQ(rng_spmd_partitioner.options().threshold_for_windowed_einsum_mib,
             threshold);
   EXPECT_EQ(rng_spmd_partitioner.options().unroll_windowed_einsum, true);
+}
+
+TEST_F(StatefulRngSpmdPartitionerTest,
+       MergedSliceThenConcatRotateRightWhileOp) {
+  absl::string_view hlo_string = R"(
+HloModule test
+
+%Body {
+  %param = (f32[12], s32[]) parameter(0)
+  %i = s32[] get-tuple-element(%param), index=1
+  %one = s32[] constant(1)
+  %i_plus_one = s32[] add(s32[] %i, s32[] %one)
+  %param0 = f32[12] get-tuple-element(%param), index=0, sharding={devices=[4]<=[4]}
+  %slice0 = f32[2] slice(%param0), slice={[10:12]}, sharding={devices=[4]<=[4]}
+  %slice1 = f32[10] slice(%param0), slice={[0:10]}, sharding={devices=[4]<=[4]}
+  %concat = f32[12] concatenate(%slice0, %slice1), dimensions={0}, sharding={devices=[4]<=[4]}
+  ROOT %tuple = (f32[12], s32[]) tuple(%concat, %i_plus_one)
+}
+
+%Cond {
+  %param.1 = (f32[12], s32[]) parameter(0)
+  %i.1 = s32[] get-tuple-element(%param.1), index=1
+  %trip_count = s32[] constant(11)
+  ROOT %done = pred[] compare(%i.1, %trip_count), direction=LT
+}
+
+ENTRY %test {
+  %i_start = f32[12] parameter(0)
+  %p_start = s32[] constant(0)
+  %initial_tuple = (f32[12], s32[]) tuple(%i_start, %p_start)
+  ROOT %while = (f32[12], s32[]) while(%initial_tuple), condition=%Cond, body=%Body
+}
+)";
+
+  DebugOptions debug_options = GetDefaultDebugOptions();
+  debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options));
+  const HloInstruction *whileOp =
+      module->entry_computation()->root_instruction();
+  const HloInstruction *root =
+      whileOp->while_body()->GetInstructionWithName("concatenate");
+  auto rotate =
+      op::Concatenate(op::CollectivePermute(op::Slice()), op::Slice());
+  EXPECT_THAT(root, AllOf(rotate, op::Shape("f32[3]")));
+  EXPECT_TRUE(
+      whileOp->frontend_attributes().map().contains("is_pipelined_while_loop"));
+
+  // Checking that the IR is valid when unsafe_pipeline_attr = false
+  debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      module,
+      PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options));
+  whileOp = module->entry_computation()->root_instruction();
+  root = whileOp->while_body()->GetInstructionWithName("concatenate");
+  rotate = op::Concatenate(op::CollectivePermute(op::Slice()), op::Slice());
+  EXPECT_THAT(root, AllOf(rotate, op::Shape("f32[3]")));
 }
 }  // namespace
 }  // namespace spmd

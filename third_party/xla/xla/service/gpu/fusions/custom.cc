@@ -127,7 +127,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
     if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
                            slice_instr->shape())) {
       return absl::InternalError(
-          "AddressComputationFusion only handles contiguous slices "
+          "DynamicSliceFusion only handles contiguous slices "
           "currently");
     }
 
@@ -315,7 +315,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
                                ->update()
                                ->shape())) {
       return absl::InternalError(
-          "AddressComputationFusion only handles contiguous slices "
+          "DynamicSliceFusion only handles contiguous slices "
           "currently");
     }
 
@@ -410,7 +410,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         return slice_instr == nullptr;
       })) {
     return absl::InternalError(
-        "AddressComputationFusion expects at least one sliced "
+        "DynamicSliceFusion expects at least one sliced "
         "operand/result");
   }
 
@@ -504,7 +504,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
 
   if (!found_custom_call && !found_ffi_handler) {
     return absl::InternalError(
-        "AddressComputationFusion expects custom calls that are emittable as "
+        "DynamicSliceFusion expects custom calls that are emittable as "
         "thunks");
   }
 
@@ -583,7 +583,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         return slice_instr == nullptr;
       })) {
     return absl::InternalError(
-        "AddressComputationFusion expects at least one sliced "
+        "DynamicSliceFusion expects at least one sliced "
         "operand/result");
   }
 
@@ -809,7 +809,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
   return result;
 }
 
-absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
+absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
@@ -817,8 +817,7 @@ absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
       adaptor.GetRoots(), adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
   if (maybe_custom_call_adaptor == std::nullopt) {
-    return absl::InternalError(
-        "AddressComputationFusion requires a CustomCall hero");
+    return absl::InternalError("DynamicSliceFusion requires a CustomCall hero");
   }
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(

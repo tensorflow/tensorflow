@@ -31,8 +31,10 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -59,7 +61,7 @@ class CpuExecutable : public Executable {
     se::DeviceMemoryBase AsDeviceMemoryBase() const;
 
     BufferAllocation::Index index = -1;
-    std::variant<std::monostate, std::vector<uint8_t>,
+    std::variant<std::monostate, std::unique_ptr<Literal>,
                  absl::Span<const uint8_t>>
         data;
   };
@@ -130,7 +132,7 @@ class CpuExecutable : public Executable {
   ComputeFunctionType compute_function() const { return compute_function_; }
 
   bool has_thunks() const { return thunks_.has_value(); }
-  ThunkSequence& thunks() { return *thunks_; }
+  ThunkExecutor& thunks() { return *thunks_; }
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
   absl::Span<const ConstantAllocation> constants() const { return constants_; }
@@ -222,8 +224,8 @@ class CpuExecutable : public Executable {
   // A function pointer to the jit-compiled entry function.
   ComputeFunctionType compute_function_ = nullptr;
 
-  // A thunk sequence implementing CpuExecutable.
-  std::optional<ThunkSequence> thunks_;
+  // A thunk executor created from the compiled thunk sequence.
+  std::optional<ThunkExecutor> thunks_;
   // Vector indexed by BufferAllocation::Index for efficient access.
   std::vector<ConstantAllocation> constants_;
   // On-demand JIT host kernels compiler.

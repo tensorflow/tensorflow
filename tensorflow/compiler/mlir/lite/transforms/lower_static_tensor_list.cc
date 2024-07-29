@@ -1223,7 +1223,7 @@ void UpdateFunctionAndRegionType(ConversionPatternRewriter &rewriter,
     signature_conversion.addInputs(arg.getArgNumber(),
                                    updated_argument_types[arg.getArgNumber()]);
   }
-  rewriter.applySignatureConversion(&entry, signature_conversion);
+  rewriter.applySignatureConversion(&entry.front(), signature_conversion);
 }
 
 // Changes the function type of `cond_func` and `body_func` for the given While
@@ -1493,7 +1493,8 @@ struct ConvertWhileRegion : public OpConversionPattern<TF::WhileRegionOp> {
       }
 
       rewriter.inlineRegionBefore(old_region, new_region, new_region.end());
-      rewriter.applySignatureConversion(&new_region, signature_conversion);
+      rewriter.applySignatureConversion(&new_region.front(),
+                                        signature_conversion);
     }
 
     rewriter.replaceOp(op, converted.getResults());

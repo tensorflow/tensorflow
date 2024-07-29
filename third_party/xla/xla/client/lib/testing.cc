@@ -18,12 +18,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/client/xla_builder.h"
 #include "xla/execution_options_util.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/tests/test_utils.h"
 #include "xla/types.h"
 #include "xla/util.h"

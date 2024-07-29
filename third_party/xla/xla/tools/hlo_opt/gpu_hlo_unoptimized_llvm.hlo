@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/gpu_specs/%{GPU}.txtpb | FileCheck %s
+// RUN: hlo-opt %s --xla_gpu_mlir_emitter_level=0 --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/gpu_specs/%{GPU}.txtpb | FileCheck %s
 
 // CHECK:       fusion.in_bounds-true:
 // CHECK:         br label

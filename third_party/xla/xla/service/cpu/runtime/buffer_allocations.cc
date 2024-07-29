@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -28,7 +29,7 @@ namespace xla::cpu {
 
 absl::StatusOr<se::DeviceMemoryBase> BufferAllocations::GetDeviceAddress(
     BufferAllocation::Index buffer_index) const {
-  if (buffer_index < 0 || buffer_index >= buffers_.size()) {
+  if (ABSL_PREDICT_FALSE(buffer_index < 0 || buffer_index >= buffers_.size())) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Invalid buffer_index ", buffer_index,
         " value. It must be in the range [0, ", buffers_.size(), ")"));
@@ -42,7 +43,7 @@ absl::StatusOr<se::DeviceMemoryBase> BufferAllocations::GetDeviceAddress(
   // Handle empty slices explicitly and return a null pointer device memory to
   // guarantee that we do not accidentally write through the empty slice which
   // would hide a real bug in the code.
-  if (buffer_slice.size() == 0) {
+  if (ABSL_PREDICT_FALSE(buffer_slice.size() == 0)) {
     return se::DeviceMemoryBase(nullptr, 0);
   }
 
@@ -52,18 +53,18 @@ absl::StatusOr<se::DeviceMemoryBase> BufferAllocations::GetDeviceAddress(
   int64_t offset = buffer_slice.offset();
   int64_t extent = offset + buffer_slice.size();
 
-  if (offset < 0) {
+  if (ABSL_PREDICT_FALSE(offset < 0)) {
     return absl::InvalidArgumentError(
         absl::StrCat("Buffer slice offset ", offset, " must be non-negative"));
   }
 
-  if (offset >= base.size()) {
+  if (ABSL_PREDICT_FALSE(offset >= base.size())) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Buffer slice offset ", offset, " is out of range for buffer #", index,
         " of size ", base.size()));
   }
 
-  if (extent > base.size()) {
+  if (ABSL_PREDICT_FALSE(extent > base.size())) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Buffer slice extent ", extent, " is out of range for buffer #", index,
         " of size ", base.size()));

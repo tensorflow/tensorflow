@@ -389,7 +389,7 @@ TEST_F(PjrtCApiTest, CompileXlaComputation) {
   xla::DeviceAssignment device_assignment(1, 1);
   device_assignment(0, 0) = 0;
   xla::DeviceAssignmentProto proto;
-  ASSERT_TRUE(device_assignment.Serialize(&proto).ok());
+  device_assignment.Serialize(&proto);
   std::string device_assignment_str = proto.SerializeAsString();
   std::string options_str = BuildSingleDeviceCompileOptionStr();
   args.compile_options = options_str.c_str();
@@ -459,7 +459,7 @@ TEST_F(PjrtCApiTest, CompileInvalidProgramFormat) {
   xla::DeviceAssignment device_assignment(1, 1);
   device_assignment(0, 0) = 0;
   xla::DeviceAssignmentProto proto;
-  ASSERT_TRUE(device_assignment.Serialize(&proto).ok());
+  device_assignment.Serialize(&proto);
   std::string device_assignment_str = proto.SerializeAsString();
   std::string options_str = BuildSingleDeviceCompileOptionStr();
   args.compile_options = options_str.c_str();

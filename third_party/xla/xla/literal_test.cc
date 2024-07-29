@@ -484,6 +484,25 @@ TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   EXPECT_EQ(rowmajor, colmajor);
 }
 
+TEST_F(LiteralUtilTest, DifferentLayoutInEquality) {
+  // Test in equality with literals which have different layouts when layout
+  // sensitive equality is used.
+  Literal colmajor(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1}));
+  colmajor.Set<float>({0, 0}, 1.0);
+  colmajor.Set<float>({0, 1}, 2.0);
+  colmajor.Set<float>({1, 0}, 3.0);
+  colmajor.Set<float>({1, 1}, 4.0);
+
+  Literal rowmajor(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0}));
+  rowmajor.Set<float>({0, 0}, 1.0);
+  rowmajor.Set<float>({0, 1}, 2.0);
+  rowmajor.Set<float>({1, 0}, 3.0);
+  rowmajor.Set<float>({1, 1}, 4.0);
+
+  EXPECT_FALSE(rowmajor.Equal(colmajor, true));
+  EXPECT_FALSE(colmajor.Equal(rowmajor, true));
+}
+
 TEST_F(LiteralUtilTest, TupleEquality) {
   // Test equality with tuples.
   auto scalar = LiteralUtil::CreateR0<float>(1.0);

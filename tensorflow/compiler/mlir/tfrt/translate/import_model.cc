@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/platform/env.h"
@@ -66,7 +68,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -114,8 +115,9 @@ absl::StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
           absl::StrCat("Function ", func_name, " is not found."));
     }
     FunctionDef func_def;
-    TF_RETURN_IF_ERROR(ConvertMlirFunctionToFunctionLibraryDef(
-        func_op, GraphExportConfig(), &func_def));
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(
+            func_op, GraphExportConfig(), &func_def));
     xla_func_defs.push_back(func_def);
 
     // Visit each op in the function and find out referenced functions from the

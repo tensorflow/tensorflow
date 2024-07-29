@@ -42,35 +42,27 @@ limitations under the License.
 #define TENSORFLOW_LITE_STRING_UTIL_H_
 
 #include <stddef.h>
-#include <stdint.h>
 
-#include <limits>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
-// Convenient structure to store string pointer and length. Note that
-// methods on DynamicBuffer enforce that the whole buffer (and by extension
-// every contained string) is of max length (2ul << 30) - 1. See
-// string_util.cc for more info.
-typedef struct {
-  const char* str;
-  size_t len;
-} StringRef;
-
-constexpr uint64_t kDefaultMaxLength = std::numeric_limits<int>::max();
+using ::mlir::TFL::GetString;
+using ::mlir::TFL::GetStringCount;
+using ::mlir::TFL::kDefaultMaxLength;
+using ::mlir::TFL::StringRef;
 
 // DynamicBuffer holds temporary buffer that will be used to create a dynamic
 // tensor. A typical usage is to initialize a DynamicBuffer object, fill in
 // content and call CreateStringTensor in op.Eval().
-class DynamicBuffer {
+class DynamicBuffer : public mlir::TFL::SimpleDynamicBuffer {
  public:
   explicit DynamicBuffer(size_t max_length = kDefaultMaxLength)
-      : offset_({0}), max_length_(max_length) {}
-
+      : mlir::TFL::SimpleDynamicBuffer(max_length) {}
   // Add string to dynamic buffer by resizing the buffer and copying the data.
   TfLiteStatus AddString(const StringRef& string);
 
@@ -83,10 +75,7 @@ class DynamicBuffer {
   void AddJoinedString(const std::vector<StringRef>& strings,
                        StringRef separator);
 
-  // Fill content into a buffer and returns the number of bytes stored.
-  // The function allocates space for the buffer but does NOT take ownership.
-  int WriteToBuffer(char** buffer);
-
+  using mlir::TFL::SimpleDynamicBuffer::WriteToBuffer;
   // Fill content into a string tensor, with the given new_shape. The new shape
   // must match the number of strings in this object. Caller relinquishes
   // ownership of new_shape. If 'new_shape' is nullptr, keep the tensor's
@@ -95,30 +84,20 @@ class DynamicBuffer {
 
   // Fill content into a string tensor. Set shape to {num_strings}.
   void WriteToTensorAsVector(TfLiteTensor* tensor);
-
- private:
-  // Data buffer to store contents of strings, not including headers.
-  std::vector<char> data_;
-  // Offset of the starting index of each string in data buffer.
-  std::vector<size_t> offset_;
-  // Max length in number of characters that we permit the total
-  // buffer containing the concatenation of all added strings to be.
-  // For historical reasons this is limited to 32bit length. At this files
-  // inception, sizes were represented using 32bit which forced an implicit cap
-  // on the size of the buffer. When this was refactored to use size_t (which
-  // could be 64bit) we enforce that the buffer remains at most 32bit length to
-  // avoid a change in behavior.
-  const size_t max_length_;
 };
 
 // Return num of strings in a String tensor.
-int GetStringCount(const void* raw_buffer);
-int GetStringCount(const TfLiteTensor* tensor);
+inline int GetStringCount(const TfLiteTensor* tensor) {
+  // The first integers in the raw buffer is the number of strings.
+  return GetStringCount(tensor->data.raw);
+}
 
 // Get String pointer and length of index-th string in tensor.
 // NOTE: This will not create a copy of string data.
-StringRef GetString(const void* raw_buffer, int string_index);
-StringRef GetString(const TfLiteTensor* tensor, int string_index);
+inline StringRef GetString(const TfLiteTensor* tensor, int string_index) {
+  return GetString(tensor->data.raw, string_index);
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_STRING_UTIL_H_

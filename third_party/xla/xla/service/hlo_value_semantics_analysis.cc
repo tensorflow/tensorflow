@@ -24,6 +24,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -47,7 +49,6 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -941,8 +942,10 @@ std::string HloValueSemanticsTreeToString(
   return ToString(tree);
 }
 
-HloValueSemanticsAnalysis::HloValueSemanticsAnalysis(const HloModule& module)
-    : module_(module), next_id_(0) {}
+HloValueSemanticsAnalysis::HloValueSemanticsAnalysis(
+    const HloModule& module,
+    const absl::flat_hash_set<std::string_view>& execution_threads)
+    : module_(module), execution_threads_(execution_threads), next_id_(0) {}
 
 const HloValueSemantics* HloValueSemanticsAnalysis::GetSemantics(
     const HloInstruction* instruction, const ShapeIndex& index) const {
@@ -964,9 +967,12 @@ int HloValueSemanticsAnalysis::GetHeight(const HloInstruction* instruction,
 }
 
 absl::StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>>
-HloValueSemanticsAnalysis::Run(const HloModule& module) {
+HloValueSemanticsAnalysis::Run(
+    const HloModule& module,
+    const absl::flat_hash_set<std::string_view>& execution_threads) {
   std::unique_ptr<HloValueSemanticsAnalysis> value_semantics_analysis =
-      absl::WrapUnique(new HloValueSemanticsAnalysis(module));
+      absl::WrapUnique(
+          new HloValueSemanticsAnalysis(module, execution_threads));
   value_semantics_analysis->InitializeSendRecvGroups();
   TF_RETURN_IF_ERROR(value_semantics_analysis->InitializeEinsumDepth());
   TF_RETURN_IF_ERROR(value_semantics_analysis->InitializeEinsumHeight());
@@ -1134,8 +1140,12 @@ absl::Status HloValueSemanticsAnalysis::RunOnComputation(
 
 absl::Status HloValueSemanticsAnalysis::RunOnComputation(
     const HloComputation& computation) {
-  HloValueSemanticsPropagation propagation(this);
-  return propagation.Run(computation);
+  if (HloInstruction::IsThreadIncluded(computation.execution_thread(),
+                                       execution_threads_)) {
+    HloValueSemanticsPropagation propagation(this);
+    return propagation.Run(computation);
+  }
+  return absl::OkStatus();
 }
 
 HloValueSemanticsPropagation::HloValueSemanticsPropagation(
@@ -1929,13 +1939,19 @@ absl::Status HloValueSemanticsPropagation::HandleAllReduce(
 absl::Status HloValueSemanticsPropagation::HandleAsyncStart(
     HloInstruction* async_start) {
   RETURN_IF_ALREADY_PROPAGATED(async_start);
-  HloComputation* computation = async_start->async_wrapped_computation();
-  TF_RETURN_IF_ERROR(
-      analysis_->RunOnComputation(*computation, async_start->operands()));
-  const ShapeTree<const HloValueSemantics*>& root_semantics =
-      analysis_->GetInstructionSemantics(computation->root_instruction());
   ShapeTree<const HloValueSemantics*> semantics_shape_tree(async_start->shape(),
                                                            nullptr);
+  HloComputation* computation = async_start->async_wrapped_computation();
+  const bool is_thread_included = HloInstruction::IsThreadIncluded(
+      computation->execution_thread(), analysis_->execution_threads_);
+  if (is_thread_included) {
+    TF_RETURN_IF_ERROR(
+        analysis_->RunOnComputation(*computation, async_start->operands()));
+    const ShapeTree<const HloValueSemantics*>& root_semantics =
+        analysis_->GetInstructionSemantics(computation->root_instruction());
+    analysis_->DeepCopyHloValueSemantics(semantics_shape_tree, root_semantics,
+                                         {}, {1});
+  }
   for (int operand_index = 0; operand_index < async_start->operand_count();
        ++operand_index) {
     HloInstruction* operand = async_start->mutable_operand(operand_index);
@@ -1944,17 +1960,16 @@ absl::Status HloValueSemanticsPropagation::HandleAsyncStart(
     analysis_->DeepCopyHloValueSemantics(
         semantics_shape_tree, operand_semantics_tree, {}, {0, operand_index});
   }
-  analysis_->DeepCopyHloValueSemantics(semantics_shape_tree, root_semantics, {},
-                                       {1});
   semantics_shape_tree.ForEachMutableElement(
-      [&semantics_shape_tree, this, async_start](
+      [&semantics_shape_tree, this, async_start, is_thread_included](
           const ShapeIndex& index, const HloValueSemantics** semantics_ptr) {
         if (!semantics_shape_tree.IsLeaf(index)) {
           *semantics_ptr = analysis_->NewHloValueSemantics(
               HloValueSemanticLabel::kTupleOrToken, {async_start, {}});
           return;
         }
-        if (index.front() == 2 || index.front() == 3) {
+        if ((!is_thread_included && index.front() == 1) || index.front() == 2 ||
+            index.front() == 3) {
           *semantics_ptr = analysis_->NewHloValueSemantics(
               HloValueSemanticLabel::kRandom, {async_start, {}});
         }

@@ -1,3 +1,73 @@
+# Release 2.18.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.data`
+    * Add optional `synchronous` argument to `map`, to specify that the `map`
+      should run synchronously, as opposed to be parallelizable when
+      `options.experimental_optimization.map_parallelization=True`. This saves
+      memory compared to setting `num_parallel_calls=1`.
+* `tf.lite`
+    * `Dequantize` op supports `TensorType_INT4`.
+        * This change includes per-channel dequantization.
+    * Add support for `stablehlo.composite`.
+
+## Keras
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.17.0
 
 ## TensorFlow
@@ -94,6 +164,7 @@ release. It may break some edge cases of TensorFlow API usage.
       delegate features.
     * Flatbuffer version update:
         * `GetTemporaryPointer()` bug fixed.
+    * Add int64 data type support for dynamic update slice's indice tensor.
 
 * `tf.data`
     * Add `wait` to `tf.data.Dataset.load`. If `True`, for snapshots written
@@ -103,9 +174,9 @@ release. It may break some edge cases of TensorFlow API usage.
       `distributed_save` are recommended to set it to `True`.
 
 * `tf.tpu.experimental.embedding.TPUEmbeddingV2`
-    * Add `compute_sparse_core_stats` for sparse core users to profile the 
+    * Add `compute_sparse_core_stats` for sparse core users to profile the
       data with this API to get the `max_ids` and `max_unique_ids`. These
-      numbers will be needed to configure the sparse core embedding mid level 
+      numbers will be needed to configure the sparse core embedding mid level
       api.
     * Remove the `preprocess_features` method since that's no longer needed.
 

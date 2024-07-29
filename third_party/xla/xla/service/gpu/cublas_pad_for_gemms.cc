@@ -180,7 +180,8 @@ static std::vector<HloDotInstruction*> GetRelevantDots(
                 ->config()
                 .debug_options()
                 .xla_gpu_enable_triton_gemm() &&
-            IsTritonSupportedInstruction(*dot, gpu_compute_capability) &&
+            legacy_triton::IsTritonSupportedInstruction(
+                *dot, gpu_compute_capability) &&
             ShouldTritonHandleGEMM(*dot, gpu_compute_capability))) {
         gemms.push_back(dot);
       }

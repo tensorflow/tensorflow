@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "xla/service/spmd/convolution_handler.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <utility>
+#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
@@ -30,11 +35,13 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/numbers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -995,7 +1002,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvolution(
 absl::StatusOr<HloInstruction*> PartitionConvolution(
     const PartitionedHlo& lhs, const PartitionedHlo& rhs,
     const Shape& output_base_shape, const HloSharding& output_sharding,
-    const DotConvDimsMapping& dims_mapping,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dims_mapping,
     absl::FunctionRef<absl::StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>
@@ -1022,41 +1029,41 @@ absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
     return DefaultAction(hlo);
   }
   auto dims_info = dot_as_convolution_util::ParseConvolutionDimsInfo(hlo);
-  spmd::DotConvDimsMapping mapping;
+  dot_as_convolution_util::DotConvolutionDimsInfo mapping;
   for (const auto& dims : dims_info.batch_dims) {
     mapping.batch_dims.emplace_back();
     mapping.batch_dims.back().lhs = dims.lhs;
     mapping.batch_dims.back().rhs = dims.rhs;
     mapping.batch_dims.back().output = dims.output;
-    mapping.batch_dims.back().spatial = dims.spatial_dim;
+    mapping.batch_dims.back().spatial_dim = dims.spatial_dim;
   }
   for (const auto& dims : dims_info.contracting_dims) {
     mapping.contracting_dims.emplace_back();
     mapping.contracting_dims.back().lhs = dims.lhs;
     mapping.contracting_dims.back().rhs = dims.rhs;
     mapping.contracting_dims.back().output = dims.output;
-    mapping.contracting_dims.back().spatial = dims.spatial_dim;
+    mapping.contracting_dims.back().spatial_dim = dims.spatial_dim;
   }
   for (const auto& dims : dims_info.lhs_non_contracting_dims) {
     mapping.lhs_non_contracting_dims.emplace_back();
     mapping.lhs_non_contracting_dims.back().lhs = dims.lhs;
     mapping.lhs_non_contracting_dims.back().rhs = dims.rhs;
     mapping.lhs_non_contracting_dims.back().output = dims.output;
-    mapping.lhs_non_contracting_dims.back().spatial = dims.spatial_dim;
+    mapping.lhs_non_contracting_dims.back().spatial_dim = dims.spatial_dim;
   }
   for (const auto& dims : dims_info.rhs_non_contracting_dims) {
     mapping.rhs_non_contracting_dims.emplace_back();
     mapping.rhs_non_contracting_dims.back().lhs = dims.lhs;
     mapping.rhs_non_contracting_dims.back().rhs = dims.rhs;
     mapping.rhs_non_contracting_dims.back().output = dims.output;
-    mapping.rhs_non_contracting_dims.back().spatial = dims.spatial_dim;
+    mapping.rhs_non_contracting_dims.back().spatial_dim = dims.spatial_dim;
   }
   for (const auto& dims : dims_info.conv_spatial_dims) {
     mapping.conv_spatial_dims.emplace_back();
     mapping.conv_spatial_dims.back().lhs = dims.lhs;
     mapping.conv_spatial_dims.back().rhs = dims.rhs;
     mapping.conv_spatial_dims.back().output = dims.output;
-    mapping.conv_spatial_dims.back().spatial = dims.spatial_dim;
+    mapping.conv_spatial_dims.back().spatial_dim = dims.spatial_dim;
   }
   auto create_sharded_conv =
       [&](HloInstruction* lhs_hlo, HloInstruction* rhs_hlo,

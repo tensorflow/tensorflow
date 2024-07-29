@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -425,6 +425,10 @@ class SplitProvider {
   // Cancels the split provider. After cancelling, all other existing and future
   // calls should return quickly without blocking.
   virtual void Cancel() {}
+  // Used to determine if the split provider is dynamic. Dynamic split providers
+  // are expected to be non-deterministic and may return different splits upon
+  // reinitialization.
+  virtual bool IsDynamic() const { return false; }
 };
 
 // Returns the runner threadpool size from an OpKernelContext.

@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
@@ -60,21 +59,6 @@ StreamCommon::PlatformSpecificHandle StreamCommon::platform_specific_handle()
   PlatformSpecificHandle handle;
   handle.stream = nullptr;
   return handle;
-}
-
-absl::Status StreamCommon::RefreshStatus() {
-  absl::Status status = parent_->GetStatus(this);
-  // We should not put the stream in an error state, just because the GetStatus
-  // method is unimplemented.
-  if (status != absl::UnimplementedError(
-                    "GetStatus is not supported on this executor.")) {
-    CheckStatus(status);
-  }
-  return status;
-}
-
-absl::Status StreamCommon::RecordEvent(Event *event) {
-  return parent_->RecordEvent(this, event);
 }
 
 absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
@@ -157,49 +141,6 @@ void StreamCommon::ReturnSubStream(Stream *sub_stream) {
 
   LOG(FATAL) << "stream=" << this << " did not create the returned sub-stream "
              << sub_stream;
-}
-
-absl::Status StreamCommon::WaitFor(Stream *other) {
-  if (this == other) {
-    return absl::InternalError("stream cannot wait for itself");
-  }
-  if (parent_->CreateStreamDependency(this, other)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("stream cannot wait for other");
-}
-
-absl::Status StreamCommon::WaitFor(Event *event) {
-  return parent_->WaitForEvent(this, event);
-}
-
-absl::Status StreamCommon::Memcpy(void *host_dst,
-                                  const DeviceMemoryBase &gpu_src,
-                                  uint64_t size) {
-  return parent_->Memcpy(this, host_dst, gpu_src, size);
-}
-
-absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
-                                  const void *host_src, uint64_t size) {
-  return parent_->Memcpy(this, gpu_dst, host_src, size);
-}
-
-absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
-                                  const DeviceMemoryBase &gpu_src,
-                                  uint64_t size) {
-  if (parent_->MemcpyDeviceToDevice(this, gpu_dst, gpu_src, size)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to memcpy");
-}
-
-absl::Status StreamCommon::MemZero(DeviceMemoryBase *location, uint64_t size) {
-  return parent_->MemZero(this, location, size);
-}
-
-absl::Status StreamCommon::Memset32(DeviceMemoryBase *location,
-                                    uint32_t pattern, uint64_t size) {
-  return parent_->Memset32(this, location, pattern, size);
 }
 
 absl::Status StreamCommon::DoHostCallback(

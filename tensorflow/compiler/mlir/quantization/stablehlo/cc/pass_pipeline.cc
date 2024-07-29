@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -127,9 +128,10 @@ void AddShapeLegalizationPasses(OpPassManager& pm) {
 }
 
 void AddStablehloQuantToIntPasses(OpPassManager& pm) {
+  pm.addNestedPass<func::FuncOp>(
+      mlir::stablehlo::createStablehloLegalizeQuantToIntPass());
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<func::FuncOp>(mhlo::createMhloQuantLegalizeToIntPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   // Integer graph optimization relies on chlo broadcast ops for easier handling
   // of dynamic shapes. Therefore we lower chlo ops after optimization.

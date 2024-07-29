@@ -894,6 +894,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":string",
+        "//tensorflow/compiler/mlir/lite:string_utils",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
     ],

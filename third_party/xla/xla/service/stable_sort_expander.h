@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_STABLE_SORT_EXPANDER_H_
 #define XLA_SERVICE_STABLE_SORT_EXPANDER_H_
 
+#include <cstdint>
+
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/op_expander_pass.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -30,6 +30,15 @@ namespace xla {
 class StableSortExpander : public OpExpanderPass {
  public:
   absl::string_view name() const override { return "stable-sort-expander"; }
+
+  // Returns the index of the sort operand that is an iota op with an iota
+  // dimension which is the same as the dimension to sort. Also it should have
+  // an integral type that is large enough for the number of elements in the
+  // sort dimension. For now, we only allow S32, because we expect to find a S32
+  // iota operand for all Sort ops which are created by TopK.
+  //
+  // If no operand of the input sort matches the conditions above, returns -1.
+  static int64_t IotaOperandIndexForStableSort(const HloSortInstruction& sort);
 
  private:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;

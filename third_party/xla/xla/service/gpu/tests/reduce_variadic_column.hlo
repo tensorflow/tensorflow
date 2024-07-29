@@ -125,13 +125,13 @@ ENTRY main {
 // CHECK:         %[[VAL_76:.*]] = load float, ptr{{.*}}%[[VAL_39]], align 4
 // CHECK-PTX:     %[[VAL_77:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_76]], i32 16, i32 31)
 // CHECK-GCN:     %[[VAL_76_1:.*]] = bitcast float %[[VAL_76]] to i32
-// CHECK-GCN:     %[[VAL_77_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_76_1:.*]], i32 16)
+// CHECK-GCN:     %[[VAL_77_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_76_1:.*]], i32 543)
 // CHECK-GCN:     %[[VAL_77:.*]] = bitcast i32 %[[VAL_77_1:.*]] to float
 // CHECK:         store float %[[VAL_77]], ptr{{.*}}%[[VAL_26]], align 4
 // CHECK:         %[[VAL_78:.*]] = load float, ptr{{.*}}%[[VAL_37]], align 4
 // CHECK-PTX:     %[[VAL_79:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_78]], i32 16, i32 31)
 // CHECK-GCN:     %[[VAL_78_1:.*]] = bitcast float %[[VAL_78]] to i32
-// CHECK-GCN:     %[[VAL_79_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_78_1:.*]], i32 16)
+// CHECK-GCN:     %[[VAL_79_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_78_1:.*]], i32 543)
 // CHECK-GCN:     %[[VAL_79:.*]] = bitcast i32 %[[VAL_79_1:.*]] to float
 // CHECK:         store float %[[VAL_79]], ptr{{.*}}%[[VAL_25]], align 4
 // CHECK-GCN:     %[[VAL_22_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_22]] to ptr
@@ -156,13 +156,13 @@ ENTRY main {
 // CHECK:         %[[VAL_84:.*]] = load float, ptr{{.*}}%[[VAL_39]], align 4
 // CHECK-PTX:     %[[VAL_85:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_84]], i32 8, i32 31)
 // CHECK-GCN:     %[[VAL_84_1:.*]] = bitcast float %[[VAL_84]] to i32
-// CHECK-GCN:     %[[VAL_85_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_84_1:.*]], i32 8)
+// CHECK-GCN:     %[[VAL_85_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_84_1:.*]], i32 287)
 // CHECK-GCN:     %[[VAL_85:.*]] = bitcast i32 %[[VAL_85_1:.*]] to float
 // CHECK:         store float %[[VAL_85]], ptr{{.*}}%[[VAL_21]], align 4
 // CHECK:         %[[VAL_86:.*]] = load float, ptr{{.*}}%[[VAL_37]], align 4
 // CHECK-PTX:     %[[VAL_87:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_86]], i32 8, i32 31)
 // CHECK-GCN:     %[[VAL_86_1:.*]] = bitcast float %[[VAL_86]] to i32
-// CHECK-GCN:     %[[VAL_87_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_86_1:.*]], i32 8)
+// CHECK-GCN:     %[[VAL_87_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_86_1:.*]], i32 287)
 // CHECK-GCN:     %[[VAL_87:.*]] = bitcast i32 %[[VAL_87_1:.*]] to float
 // CHECK:         store float %[[VAL_87]], ptr{{.*}}%[[VAL_20]], align 4
 // CHECK-GCN:     %[[VAL_17_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_17]] to ptr
@@ -187,13 +187,13 @@ ENTRY main {
 // CHECK:         %[[VAL_92:.*]] = load float, ptr{{.*}}%[[VAL_39]], align 4
 // CHECK-PTX:     %[[VAL_93:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_92]], i32 4, i32 31)
 // CHECK-GCN:     %[[VAL_92_1:.*]] = bitcast float %[[VAL_92]] to i32
-// CHECK-GCN:     %[[VAL_93_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_92_1:.*]], i32 4)
+// CHECK-GCN:     %[[VAL_93_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_92_1:.*]], i32 159)
 // CHECK-GCN:     %[[VAL_93:.*]] = bitcast i32 %[[VAL_93_1:.*]] to float
 // CHECK:         store float %[[VAL_93]], ptr{{.*}}%[[VAL_16]], align 4
 // CHECK:         %[[VAL_94:.*]] = load float, ptr{{.*}}%[[VAL_37]], align 4
 // CHECK-PTX:     %[[VAL_95:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_94]], i32 4, i32 31)
 // CHECK-GCN:     %[[VAL_94_1:.*]] = bitcast float %[[VAL_94]] to i32
-// CHECK-GCN:     %[[VAL_95_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_94_1:.*]], i32 4)
+// CHECK-GCN:     %[[VAL_95_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_94_1:.*]], i32 159)
 // CHECK-GCN:     %[[VAL_95:.*]] = bitcast i32 %[[VAL_95_1:.*]] to float
 // CHECK:         store float %[[VAL_95]], ptr{{.*}}%[[VAL_15]], align 4
 // CHECK-GCN:     %[[VAL_12_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_12]] to ptr
@@ -218,13 +218,13 @@ ENTRY main {
 // CHECK:         %[[VAL_100:.*]] = load float, ptr{{.*}}%[[VAL_39]], align 4
 // CHECK-PTX:     %[[VAL_101:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_100]], i32 2, i32 31)
 // CHECK-GCN:     %[[VAL_100_1:.*]] = bitcast float %[[VAL_100]] to i32
-// CHECK-GCN:     %[[VAL_101_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_100_1:.*]], i32 2)
+// CHECK-GCN:     %[[VAL_101_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_100_1:.*]], i32 95)
 // CHECK-GCN:     %[[VAL_101:.*]] = bitcast i32 %[[VAL_101_1:.*]] to float
 // CHECK:         store float %[[VAL_101]], ptr{{.*}}%[[VAL_11]], align 4
 // CHECK:         %[[VAL_102:.*]] = load float, ptr{{.*}}%[[VAL_37]], align 4
 // CHECK-PTX:     %[[VAL_103:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_102]], i32 2, i32 31)
 // CHECK-GCN:     %[[VAL_102_1:.*]] = bitcast float %[[VAL_102]] to i32
-// CHECK-GCN:     %[[VAL_103_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_102_1:.*]], i32 2)
+// CHECK-GCN:     %[[VAL_103_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_102_1:.*]], i32 95)
 // CHECK-GCN:     %[[VAL_103:.*]] = bitcast i32 %[[VAL_103_1:.*]] to float
 // CHECK:         store float %[[VAL_103]], ptr{{.*}}%[[VAL_10]], align 4
 // CHECK-GCN:     %[[VAL_7_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_7]] to ptr
@@ -249,13 +249,13 @@ ENTRY main {
 // CHECK:         %[[VAL_108:.*]] = load float, ptr{{.*}}%[[VAL_39]], align 4
 // CHECK-PTX:     %[[VAL_109:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_108]], i32 1, i32 31)
 // CHECK-GCN:     %[[VAL_108_1:.*]] = bitcast float %[[VAL_108]] to i32
-// CHECK-GCN:     %[[VAL_109_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_108_1:.*]], i32 1)
+// CHECK-GCN:     %[[VAL_109_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_108_1:.*]], i32 63)
 // CHECK-GCN:     %[[VAL_109:.*]] = bitcast i32 %[[VAL_109_1:.*]] to float
 // CHECK:         store float %[[VAL_109]], ptr{{.*}}%[[VAL_6]], align 4
 // CHECK:         %[[VAL_110:.*]] = load float, ptr{{.*}}%[[VAL_37]], align 4
 // CHECK-PTX:     %[[VAL_111:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_110]], i32 1, i32 31)
 // CHECK-GCN:     %[[VAL_110_1:.*]] = bitcast float %[[VAL_110]] to i32
-// CHECK-GCN:     %[[VAL_111_1:.*]] = call i32 @__ockl_readuplane_i32(i32 %[[VAL_110_1:.*]], i32 1)
+// CHECK-GCN:     %[[VAL_111_1:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_110_1:.*]], i32 63)
 // CHECK-GCN:     %[[VAL_111:.*]] = bitcast i32 %[[VAL_111_1:.*]] to float
 // CHECK:         store float %[[VAL_111]], ptr{{.*}}%[[VAL_5]], align 4
 // CHECK-GCN:     %[[VAL_2_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_2]] to ptr

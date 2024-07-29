@@ -578,8 +578,11 @@ class HloToStablehloCustomCallOpConverter
   bool allowExperimentalFeatures;
 };
 
-template <typename HloOpTy>
-class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
+template <typename StablehloOpTy>
+class HloToStablehloOpConverter
+    : public OpConversionPattern<StablehloToHloOp<StablehloOpTy>> {
+  using HloOpTy = StablehloToHloOp<StablehloOpTy>;
+
  public:
   HloToStablehloOpConverter(TypeConverter& converter, MLIRContext* context,
                             bool allowExperimentalFeatures)
@@ -678,14 +681,27 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
   bool allowExperimentalFeatures;
 };
 
+// Deprecated ops.
+template <>
+class HloToStablehloOpConverter<stablehlo::UnaryEinsumOp>
+    : public OpConversionPattern<stablehlo::UnaryEinsumOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(stablehlo::UnaryEinsumOp stablehloOp,
+                                typename stablehlo::UnaryEinsumOp::Adaptor,
+                                ConversionPatternRewriter&) const final {
+    return stablehloOp.emitError(
+        "UnaryEinsumOp is deprecated and not supported in MHLO");
+  }
+};
+
 template <typename... StablehloOpTypes>
 void populateHloToStablehloPatterns(RewritePatternSet* patterns,
                                     TypeConverter* converter,
                                     MLIRContext* context,
                                     bool allowExperimentalFeatures) {
-  patterns
-      ->add<HloToStablehloOpConverter<StablehloToHloOp<StablehloOpTypes>>...>(
-          *converter, context, allowExperimentalFeatures);
+  patterns->add<HloToStablehloOpConverter<StablehloOpTypes>...>(
+      *converter, context, allowExperimentalFeatures);
 }
 
 template <typename... HloOpTypes>

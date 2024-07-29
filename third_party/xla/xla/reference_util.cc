@@ -42,7 +42,7 @@ namespace xla {
   auto result =
       std::make_unique<Array2D<double>>(input.height(), input.width());
   for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
-    for (int64_t colno = 0; colno < input.height(); ++colno) {
+    for (int64_t colno = 0; colno < input.width(); ++colno) {
       (*result)(rowno, colno) = input(rowno, colno);
     }
   }

@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"

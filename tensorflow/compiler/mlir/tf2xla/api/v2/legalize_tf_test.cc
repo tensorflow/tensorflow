@@ -368,6 +368,23 @@ TEST(LegalizeTFTest, SkipsTensorListSetItemIfDimensionsTooLarge) {
               Not(ComputationProtoContains("%.*=.*DynamicUpdateSlice")));
 }
 
+TEST(LegalizeTFTest, LegalizesFunctionWithBoundedDynamicArg) {
+  static constexpr char kMlirModuleWithBoundedDynamicArgStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+  func.func @main(%arg0: tensor<?xi32, #mhlo.type_extensions<bounds = [3]>> ) -> (tensor<?xi32, #mhlo.type_extensions<bounds = [3]>>) {
+    func.return %arg0 : tensor<?xi32, #mhlo.type_extensions<bounds = [3]>>
+  }
+})";
+
+  auto compilation_result = CompileMlirModule(
+      kMlirModuleWithBoundedDynamicArgStr,
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
+
+  ASSERT_TRUE(compilation_result.ok());
+  EXPECT_THAT(compilation_result,
+              ComputationProtoContains("element_type:.S32\n.*dimensions: 3"));
+}
+
 }  // namespace v2
 }  // namespace tf2xla
 }  // namespace tensorflow

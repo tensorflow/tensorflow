@@ -70,6 +70,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -101,6 +102,35 @@ void RemoveUnusedAndUninitializedGlobals(
   }
 }
 
+static absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
+                              absl::string_view cache_file_path) {
+  std::string resolved_path;
+  if (!tsl::io::ResolveTestPrefixes(cache_file_path, resolved_path)) {
+    return FailedPrecondition("File path can not be resolved: %s",
+                              cache_file_path);
+  }
+  if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
+    std::string serialized;
+    TF_RETURN_IF_ERROR(
+        tsl::ReadFileToString(tsl::Env::Default(), resolved_path, &serialized));
+    CompilationCacheProto proto;
+    if (!proto.ParseFromString(std::string(serialized))) {
+      return Internal("Failed to parse serialized CompilationCacheProto.");
+    }
+    // Register all cached kernel names with the name uniquer to avoid
+    // naming conflicts.
+    for (const auto& [name, _] : proto.entries()) {
+      TF_RET_CHECK(ir_emitter_context.name_uniquer()->GetUniqueName(name) ==
+                   name)
+          << "Failed registering " << name << "in NameUniquer.";
+    }
+    TF_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
+  } else {
+    VLOG(1) << "Compilation cache file does not exist: " << resolved_path;
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
@@ -109,12 +139,29 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const std::string& platform_name, se::Platform::Id platform_id,
     const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
-    const BufferValue::SizeFunction& buffer_size_bytes_function) {
+    const BufferValue::SizeFunction& buffer_size_bytes_function,
+    bool split_constants_module) {
   CompileModuleResults results;
   results.llvm_module =
       std::make_unique<llvm::Module>(hlo_module->name(), *llvm_context);
   results.llvm_module->setTargetTriple(target_triple);
   results.llvm_module->setDataLayout(data_layout);
+
+  absl::string_view cache_file_path =
+      hlo_module->config().debug_options().xla_gpu_kernel_cache_file();
+  const bool use_cache =
+      !cache_file_path.empty() && split_constants_module &&
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_llvm_module_compilation_parallelism();
+
+  if (split_constants_module) {
+    // Constants are emitted into a separate module to avoid caching them.
+    results.llvm_module_constants = std::make_unique<llvm::Module>(
+        absl::StrCat(hlo_module->name(), "_consts"), *llvm_context);
+    results.llvm_module_constants->setTargetTriple(target_triple);
+    results.llvm_module_constants->setDataLayout(data_layout);
+  }
 
   {
     tsl::profiler::ScopedAnnotation annotation([&] {
@@ -179,7 +226,12 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform_name, gpu_device_info,
-      mlir_context.get(), results.llvm_module.get(), /*emit_kernels=*/true);
+      mlir_context.get(), results.llvm_module.get(),
+      results.llvm_module_constants.get(), /*emit_kernels=*/true);
+
+  if (use_cache) {
+    TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
+  }
 
   std::vector<BufferAllocation*> allocations;
   results.output_shape = hlo_module->result_shape();
@@ -203,8 +255,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     if (supports_runtime_managed_constants) {
       // Remove these globals from the generated code to indicate that XLA is
       // responsible for allocating and initializing them.
-      RemoveUnusedAndUninitializedGlobals(ir_emitter_context.llvm_module(),
-                                          ir_emitter_context.constants());
+      RemoveUnusedAndUninitializedGlobals(
+          ir_emitter_context.llvm_module_constants(),
+          ir_emitter_context.constants());
     }
 
     results.constants = std::move(ir_emitter_context.constants());
@@ -216,6 +269,10 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   }
 
   results.executable = ir_emitter->ConsumeThunkSequence();
+  if (use_cache) {
+    results.kernel_compilation_cache =
+        ir_emitter_context.kernel_cache().Export();
+  }
 
   return results;
 }

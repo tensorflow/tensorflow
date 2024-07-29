@@ -249,10 +249,11 @@ tf_cc_test(
     name = "profiler_disabled_test",
     srcs = ["profiler_disabled_test.cc"],
     deps = [
-        ":profiler_lock",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/profiler/lib:profiler_lock",
     ],
 )
 

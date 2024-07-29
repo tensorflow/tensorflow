@@ -40,12 +40,13 @@ namespace {
 void WriteAllFuzzers(string root_location, std::vector<string> api_def_dirs,
                      std::vector<string> op_names) {
   OpList ops;
-  StatusOr<ApiDefMap> api_def_map = LoadOpsAndApiDefs(ops, false, api_def_dirs);
+  absl::StatusOr<ApiDefMap> api_def_map =
+      LoadOpsAndApiDefs(ops, false, api_def_dirs);
 
   TF_CHECK_OK(api_def_map.status());
 
   Env* env = Env::Default();
-  tsl::Status status;
+  absl::Status status;
   std::unique_ptr<WritableFile> fuzz_file = nullptr;
   for (const OpDef& op_def : ops.op()) {
     if (std::find(op_names.begin(), op_names.end(), op_def.name()) ==

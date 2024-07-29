@@ -25,7 +25,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/tsl/c/tsl_status_internal.h"
+#include "xla/tsl/framework/device_id_utils.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/framework/device.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
-#include "tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -58,7 +59,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
       tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name(),
                                            DeviceType(device->device_type())));
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
-                      pjrt_client->LookupAddressableDevice(pjrt_device_id));
+                      pjrt_client->LookupAddressableDevice(
+                          xla::PjRtLocalDeviceId(pjrt_device_id)));
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
       cpu_tensor->data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
@@ -265,7 +267,9 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
                                            DeviceType(dst->device_type()))
           .value();
   xla::PjRtDevice* pjrt_dst_device =
-      (*pjrt_dst_client)->LookupAddressableDevice(pjrt_dst_device_id).value();
+      (*pjrt_dst_client)
+          ->LookupAddressableDevice(xla::PjRtLocalDeviceId(pjrt_dst_device_id))
+          .value();
 
   absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
       src_device_buffer->CopyToDevice(pjrt_dst_device);

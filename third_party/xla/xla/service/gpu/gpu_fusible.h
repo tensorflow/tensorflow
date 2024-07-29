@@ -215,8 +215,8 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 std::vector<const HloInstruction*> GetFusionRoots(
     const HloComputation& computation);
 
-// Whether the instruction is a Triton Softmax fusion.
-bool IsTritonSoftmaxFusion(const HloInstruction& instr);
+// Whether the instruction is a generic Triton fusion.
+bool IsGenericTritonFusion(const HloInstruction& instr);
 
 // Whether the fusion will likely behave poorly with vectorization due to the
 // instructions it contains.

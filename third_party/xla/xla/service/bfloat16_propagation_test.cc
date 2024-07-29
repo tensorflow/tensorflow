@@ -15,17 +15,29 @@ limitations under the License.
 
 #include "xla/service/bfloat16_propagation.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/service/float_support.h"
+#include "xla/service/hlo_verifier.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

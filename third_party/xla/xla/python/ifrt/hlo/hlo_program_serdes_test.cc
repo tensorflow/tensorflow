@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
@@ -29,13 +32,16 @@ limitations under the License.
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
-using ::testing::IsNull;
+using ::testing::HasSubstr;
 using ::testing::Not;
+using ::tsl::testing::StatusIs;
 
 TEST(HloProgramSerDesTest, RoundTrip) {
   static constexpr absl::string_view kMlirModuleStr = R"(
@@ -75,6 +81,56 @@ module {
     }
   });
   EXPECT_FALSE(has_unsupported_dialect);
+}
+
+TEST(HloProgramSerDesTest, SerializationError) {
+  static constexpr absl::string_view kMlirModuleStr = R"(
+module {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = "UnknownOp"(%arg0) : (tensor<f32>) -> tensor<f32>
+    return %0 : tensor<f32>
+  }
+})";
+
+  Serialized serialized;
+  {
+    auto context = std::make_unique<mlir::MLIRContext>();
+    context->allowUnregisteredDialects();
+    TF_ASSERT_OK_AND_ASSIGN(
+        mlir::OwningOpRef<mlir::ModuleOp> module,
+        xla::ParseMlirModuleString(kMlirModuleStr, *context));
+    auto program =
+        std::make_unique<HloProgram>(std::move(context), std::move(module));
+    EXPECT_THAT(Serialize(*program),
+                StatusIs(Not(absl::StatusCode::kOk),
+                         HasSubstr("Failed to serialize StableHLO")));
+  }
+}
+
+TEST(HloProgramSerDesTest, DeserializationError) {
+  static constexpr absl::string_view kMlirModuleStr = R"(
+module {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    return %arg0 : tensor<f32>
+  }
+})";
+
+  Serialized serialized;
+  {
+    auto context = std::make_unique<mlir::MLIRContext>();
+    TF_ASSERT_OK_AND_ASSIGN(
+        mlir::OwningOpRef<mlir::ModuleOp> module,
+        xla::ParseMlirModuleString(kMlirModuleStr, *context));
+    auto program =
+        std::make_unique<HloProgram>(std::move(context), std::move(module));
+    TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
+  }
+
+  serialized.set_data("invalid data");
+
+  EXPECT_THAT(Deserialize<HloProgram>(serialized, /*options=*/nullptr),
+              StatusIs(Not(absl::StatusCode::kOk),
+                       HasSubstr("Failed to deserialize StableHLO module")));
 }
 
 }  // namespace

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -117,6 +118,26 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) = 0;
+
+  // Copies the arrays to a new set of devices.
+  //
+  // This method copies individual buffers of each array to the destination
+  // devices without altering their physical layout.
+  //
+  // This API should be used only with arrays that have the same source device
+  // list and memory kind. Every IFRT implementation must enforce this by
+  // returning an `INVALID_ARGUMENT` error if `arrays` contains different device
+  // lists or memory kinds.
+  //
+  // Implementations may return `UNIMPLEMENTED` if they do not know how to copy
+  // the data as instructed.
+  //
+  // It may fail if the buffer data would be sent from/to an unaddressable
+  // device.
+  virtual absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
+      absl::Span<tsl::RCReference<Array>> arrays,
+      std::optional<DeviceList> devices, std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) = 0;
 
   // Remaps shards across input `Array`s to create new `Array`s based on `plan`.

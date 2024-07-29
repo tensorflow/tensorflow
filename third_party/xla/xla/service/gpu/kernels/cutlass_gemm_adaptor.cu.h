@@ -283,7 +283,9 @@ static void Initialize(void *params, const Arguments &args, int32_t device_sms,
   // defined by custom gemm kernel.
   static_assert(sizeof(typename Traits<Tag>::Params) <= 1024,
                 "Params struct size is too large");
-  static_assert(alignof(typename Traits<Tag>::Params) <= 64,
+  // The alignment check here needs to be consistent with the definition of
+  // Params in file cutlass_gemm_custom_kernel.cc
+  static_assert(alignof(typename Traits<Tag>::Params) <= 128,
                 "Params struct alignment is too large");
 
   // Convert CUTLASS operation arguments to a device kernel parameters.

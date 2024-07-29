@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/thread_annotations.h"
@@ -49,6 +50,19 @@ class HostStream : public StreamCommon {
   // Blocks until all tasks are done, returns the first error reported by a task
   // (if any) and clears the error status.
   absl::Status BlockUntilDone();
+
+  absl::Status WaitFor(Stream* other) override;
+  absl::Status WaitFor(Event* event) override;
+  absl::Status RecordEvent(Event* event) override;
+  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
+  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                        uint64_t size) override;
+  absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+                      uint64_t size) override;
+  absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
+                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+                      uint64_t size) override;
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

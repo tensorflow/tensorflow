@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -38,7 +37,6 @@ limitations under the License.
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
@@ -99,8 +97,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
-#include "tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -312,8 +310,16 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
+  // We need LICM before unswitching loops, because our loop unswitcher only
+  // detects for loops with a single if inside them.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateUnswitchLoopsPass());
+  // We need LICM again after unswitching, because that can introduce new
+  // opportunities for LICM. This would not be necessary if LICM also moved
+  // instructions over ifs.
+  pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateVectorizeLoadsAndStoresPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateOptimizeLoopsPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertPureCallOpsPass());
   pm.addPass(CreateLowerTensorsPass(
       is_amd, is_amd ? device.rocm_compute_capability().gcn_arch_name()

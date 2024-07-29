@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -46,10 +47,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/nb_absl_inlined_vector.h"  // IWYU pragma: keep
+#include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/py_values.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
@@ -283,9 +288,12 @@ absl::Status ParseArguments(
     signature.dynamic_arg_treedefs.reserve(positional_args.size());
 
     // Positional arguments.
+    int num_positional_args = positional_args.size();
     for (int i = 0; i < positional_args.size(); ++i) {
-      if (std::find(static_argnums.begin(), static_argnums.end(), i) ==
-          static_argnums.end()) {
+      if (std::find_if(static_argnums.begin(), static_argnums.end(),
+                       [i, num_positional_args](int t) {
+                         return t >= 0 ? i == t : i == t + num_positional_args;
+                       }) == static_argnums.end()) {
         signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
         xla::PyTreeDef& pytree_def = signature.dynamic_arg_treedefs.back();
         pytree_def.Flatten(positional_args[i], flat_dynamic_args);
@@ -399,6 +407,66 @@ void BuildJaxjitSubmodule(nb::module_& m) {
              xla::ValueOrThrowWrapper(xla::PyArgSignatureOfValue));
 
   jitlib.def("_is_float0", &xla::IsFloat0);
+
+  nb::class_<ArgumentSignature> argument_signature(jitlib, "ArgumentSignature");
+  argument_signature.def_ro("static_args", &ArgumentSignature::static_args)
+      .def_ro("static_arg_names", &ArgumentSignature::static_arg_names)
+      .def_ro("dynamic_arg_names", &ArgumentSignature::dynamic_arg_names)
+      .def_ro("dynamic_arg_treedefs", &ArgumentSignature::dynamic_arg_treedefs)
+      .def("__repr__", &ArgumentSignature::DebugString)
+      .def("__str__", &ArgumentSignature::DebugString)
+      .def("__hash__",
+           [](const ArgumentSignature& s) { return absl::HashOf(s); })
+      .def("__eq__", [](const ArgumentSignature& a,
+                        const ArgumentSignature& b) { return a == b; })
+      .def("__ne__", [](const ArgumentSignature& a,
+                        const ArgumentSignature& b) { return a != b; });
+
+  jitlib.def(
+      "parse_arguments",
+      [](nb::sequence positional_args, nb::sequence keyword_args,
+         nb::tuple kwnames, absl::Span<int const> static_argnums,
+         absl::Span<nb::str const> static_argnames,
+         xla::PyTreeRegistry* pytree_registry) {
+        ArgumentSignature signature;
+        absl::InlinedVector<nanobind::object, 2> flat_dynamic_args;
+        nb::object positional_args_seq = nb::steal(PySequence_Fast(
+            positional_args.ptr(), "positional_args must be a list or tuple"));
+        if (!positional_args_seq.ptr()) {
+          throw nb::python_error();
+        }
+        nb::object keyword_args_seq = nb::steal(PySequence_Fast(
+            keyword_args.ptr(), "keyword_args must be a list or tuple"));
+        if (!keyword_args_seq.ptr()) {
+          throw nb::python_error();
+        }
+        absl::Span<PyObject* const> positional_args_span =
+            absl::MakeSpan(PySequence_Fast_ITEMS(positional_args_seq.ptr()),
+                           PySequence_Fast_GET_SIZE(positional_args_seq.ptr()));
+        absl::Span<PyObject* const> keyword_args_span =
+            absl::MakeSpan(PySequence_Fast_ITEMS(keyword_args_seq.ptr()),
+                           PySequence_Fast_GET_SIZE(keyword_args_seq.ptr()));
+        xla::ThrowIfError(ParseArguments(
+            positional_args_span, keyword_args_span, kwnames, static_argnums,
+            static_argnames, pytree_registry, signature, flat_dynamic_args));
+        return std::make_pair(std::move(signature),
+                              std::move(flat_dynamic_args));
+      },
+      nb::arg("positional_args"), nb::arg("keyword_args"), nb::arg("kwnames"),
+      nb::arg("static_argnums"), nb::arg("static_argnames"),
+      nb::arg("pytree_registry"),
+      R"doc(Parses the arguments to a function as jax.jit would.
+
+Returns a ArgumentSignature and the flattened dynamic arguments.
+
+Args:
+  positional_args: The positional arguments.
+  keyword_args: The keyword arguments.
+  kwnames: The keyword names.
+  static_argnums: The static argument numbers.
+  static_argnames: The static argument names.
+  pytree_registry: The pytree registry.
+)doc");
 }
 
 }  // namespace jax

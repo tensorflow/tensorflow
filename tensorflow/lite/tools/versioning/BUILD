@@ -108,14 +108,10 @@ cc_library(
         ":op_signature",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
-        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@flatbuffers",
     ],
 )
 

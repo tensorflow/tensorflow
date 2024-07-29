@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -123,10 +122,11 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>();
-  pipeline.AddPass<GpuConvRewriter>();
+  pipeline.AddPass<GpuConvRewriter>(gpu_version);
   pipeline.AddPass<GpuConvPaddingLegalization>();
   auto rcc = std::get<se::RocmComputeCapability>(gpu_version);
-  pipeline.AddPass<CudnnFusedConvRewriter>(rcc);
+  pipeline.AddPass<CudnnFusedConvRewriter>(rcc, dnn_version,
+                                           GetToolkitVersion());
 
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that

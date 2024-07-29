@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/logging.h"
@@ -359,6 +361,49 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
   return nullptr;
 }
 
+static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
+    XLA_FFI_DeviceMemory_Allocate_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_DeviceMemory_Allocate_Args",
+      XLA_FFI_DeviceMemory_Allocate_Args_STRUCT_SIZE, args->struct_size));
+
+  // TODO(ezhulenev): We happen to have the same alignment requirement for
+  // device memory on CPU and GPU backends, but instead of hardcoding it here
+  // we should query it for the platform XLA FFI handler is registered with.
+  static constexpr int64_t kMaxAlignment = 16;
+
+  if (!absl::has_single_bit(args->alignment) ||
+      args->alignment > kMaxAlignment) {
+    return new XLA_FFI_Error{absl::InvalidArgumentError(
+        absl::StrCat("Unsupported alignment: ", args->alignment))};
+  }
+
+  absl::StatusOr<stream_executor::OwningDeviceMemory> memory =
+      args->ctx->allocator->Allocate(args->ctx->device_ordinal, args->size);
+  if (!memory.ok()) {
+    return new XLA_FFI_Error{std::move(memory).status()};
+  }
+
+  args->data = memory->Release().opaque();
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
+    XLA_FFI_DeviceMemory_Free_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_DeviceMemory_Free_Args",
+      XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE, args->struct_size));
+
+  absl::Status status = args->ctx->allocator->Deallocate(
+      args->ctx->device_ordinal,
+      stream_executor::DeviceMemoryBase(args->data, args->size));
+  if (!status.ok()) {
+    return new XLA_FFI_Error{std::move(status)};
+  }
+
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // XLA FFI Internal Api Implementation
 //===----------------------------------------------------------------------===//
@@ -419,6 +464,8 @@ static XLA_FFI_Api api = {
     XLA_FFI_Stream_Get,
     XLA_FFI_TypeId_Register,
     XLA_FFI_ExecutionContext_Get,
+    XLA_FFI_DeviceMemory_Allocate,
+    XLA_FFI_DeviceMemory_Free,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &api; }

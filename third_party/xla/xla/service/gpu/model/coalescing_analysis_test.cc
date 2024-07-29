@@ -73,7 +73,6 @@ class CoalescingTest : public HloTestBase {
     HloInstruction* root = module->entry_computation()->root_instruction();
     auto analysis = AnalyzeFusion(*root, device_info_);
     return xla::gpu::IsReadCoalescedHeuristic(analysis.GetEmitterFusionKind(),
-                                              analysis.device_info(),
                                               root->operand(0), root);
   }
 
@@ -252,63 +251,6 @@ TEST_F(CoalescingTest, TransposeOnlyOuterDims) {
   //   (thread_x) -> (thread_x * 4 + s0 + (thread_x floordiv 16) * 1984)
   //   for s0 in [0, 3]
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
-}
-
-TEST_F(CoalescingTest, NormalizedGatherIsCoalesced) {
-  absl::string_view ir = R"(
-    HloModule module
-
-    fusion {
-      p0 = f32[32, 4, 8]{2,1,0} parameter(0)
-      ROOT negate = f32[32, 4, 8]{2,1,0} negate(p0)
-    }
-
-    ENTRY entry {
-      input = f32[128, 8]{1,0} parameter(0)
-      indices = s32[32, 2]{1,0} parameter(1)
-      // We are reading a consecutive window of 16 elements of 4 bytes each.
-      gather = f32[32, 4, 8]{2,1,0} gather(input, indices), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0,1}, index_vector_dim=1, slice_sizes={4, 8}
-      ROOT %fusion = f32[32, 4, 8]{2,1,0} fusion(gather), kind=kLoop, calls=fusion
-  })";
-  EXPECT_TRUE(IsReadCoalescedHeuristic(ir));
-}
-
-TEST_F(CoalescingTest, NormalizedGatherWindowTooSmallNotCoalesced) {
-  absl::string_view ir = R"(
-    HloModule module
-
-    fusion {
-      p0 = f32[32, 4, 8]{2,1,0} parameter(0)
-      ROOT negate = f32[32, 4, 8]{2,1,0} negate(p0)
-    }
-
-    ENTRY entry {
-      input = f32[128, 9]{1,0} parameter(0)
-      indices = s32[32, 2]{1,0} parameter(1)
-      // We are reading 32 elements of 4 bytes each, but it is not consecutive,
-      // as we are not reading all elements of the most minor dimension.
-      gather = f32[32, 4, 8]{2,1,0} gather(input, indices), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0,1}, index_vector_dim=1, slice_sizes={4, 8}
-      ROOT %fusion = f32[32, 4, 8]{2,1,0} fusion(gather), kind=kLoop, calls=fusion
-  })";
-  EXPECT_FALSE(IsReadCoalescedHeuristic(ir));
-}
-
-TEST_F(CoalescingTest, UnsimplifiedGatherNotCoalesced) {
-  absl::string_view ir = R"(
-    HloModule module
-
-    fusion {
-      p0 = f32[32, 4, 8]{2,1,0} parameter(0)
-      ROOT negate = f32[32, 4, 8]{2,1,0} negate(p0)
-    }
-
-    ENTRY entry {
-      input = f32[128, 8]{1,0} parameter(0)
-      indices = s32[32, 2]{1,0} parameter(1)
-      gather = f32[32, 4, 8]{2,1,0} gather(input, indices), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={1,0}, index_vector_dim=1, slice_sizes={4, 8}
-      ROOT %fusion = f32[32, 4, 8]{2,1,0} fusion(gather), kind=kLoop, calls=fusion
-  })";
-  EXPECT_FALSE(IsReadCoalescedHeuristic(ir));
 }
 
 TEST_F(CoalescingTest, PadOp) {

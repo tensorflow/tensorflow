@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -24,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -152,32 +152,6 @@ std::optional<HloSharding> PropagateDimwiseSharding(
   }
 
   return input_spec;
-}
-
-HloSharding PropagateDimwiseShardingSlice(const HloSharding& input_spec,
-                                          const Shape& old_shape,
-                                          const Shape& new_shape,
-                                          const Array<int64_t>& device_mesh) {
-  if (input_spec.IsReplicated()) {
-    return input_spec;
-  }
-
-  CHECK(old_shape.IsArray());
-
-  std::vector<int64_t> tensor_to_mesh_dim =
-      GetTensorDimToMeshDim(new_shape.rank(), input_spec, device_mesh,
-                            /* consider_reverse_device_meshes */ true);
-
-  std::vector<int64_t> tensor_dims;
-  std::vector<int64_t> mesh_dims;
-  for (size_t i = 0; i < new_shape.rank(); ++i) {
-    if (new_shape.dimensions(i) == old_shape.dimensions(i) &&
-        tensor_to_mesh_dim[i] > -1) {
-      tensor_dims.push_back(i);
-      mesh_dims.push_back(tensor_to_mesh_dim[i]);
-    }
-  }
-  return Tile(new_shape, tensor_dims, mesh_dims, device_mesh);
 }
 
 // Propagate sharding for ReduceWindow-like operations.
@@ -2371,6 +2345,47 @@ absl::StatusOr<int64_t> GetPartialReduceReductionDim(
   }
 
   return parsed_json[kReductionDimKey].asInt64();
+}
+
+bool OpEncountersShardToFull(const HloInstruction* op) {
+  std::queue<const HloInstruction*> queue;
+  queue.push(op);
+
+  absl::flat_hash_set<const HloInstruction*> visited;
+  while (!queue.empty()) {
+    const HloInstruction* instruction = queue.front();
+    queue.pop();
+    if (visited.contains(instruction)) {
+      continue;
+    }
+    visited.insert(instruction);
+
+    for (const HloComputation* computation :
+         instruction->called_computations()) {
+      for (const HloInstruction* parameter :
+           computation->parameter_instructions()) {
+        if (spmd::IsSPMDShardToFullShapeCustomCall(parameter)) {
+          return true;
+        } else if (spmd::IsSPMDFullToShardShapeCustomCall(parameter) ||
+                   parameter == instruction || visited.contains(parameter)) {
+          continue;
+        }
+        queue.push(parameter);
+      }
+    }
+
+    for (const HloInstruction* user : instruction->users()) {
+      if (spmd::IsSPMDShardToFullShapeCustomCall(user)) {
+        return true;
+      } else if (spmd::IsSPMDFullToShardShapeCustomCall(user) ||
+                 visited.contains(user)) {
+        continue;
+      }
+      queue.push(user);
+    }
+  }
+
+  return false;
 }
 
 }  // namespace spmd

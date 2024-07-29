@@ -167,7 +167,6 @@ class RocmComputeCapability {
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
   RocmComputeCapability() = default;
-  ~RocmComputeCapability() = default;
 
   std::string gcn_arch_name() const { return gcn_arch_name_; }
 

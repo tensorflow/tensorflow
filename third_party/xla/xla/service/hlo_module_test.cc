@@ -746,8 +746,7 @@ ENTRY ReduceR3ToR2.v3 {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(computation_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleProtoWithConfig proto,
-                          module->ToProtoWithConfig());
+  xla::HloModuleProtoWithConfig proto = module->ToProtoWithConfig();
   std::string serialized_module;
   ASSERT_TRUE(tsl::SerializeToStringDeterministic(proto, &serialized_module));
   std::string original_debug_str = proto.DebugString();
@@ -756,9 +755,8 @@ ENTRY ReduceR3ToR2.v3 {
   // Verify that we can create a module from our parsed proto copy
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reconstructed_module,
                           HloModule::CreateFromProtoWithConfig(proto));
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::HloModuleProtoWithConfig reconstructed_module_proto,
-      reconstructed_module->ToProtoWithConfig());
+  xla::HloModuleProtoWithConfig reconstructed_module_proto =
+      reconstructed_module->ToProtoWithConfig();
 
   // The two protos should be equivalent except for the `id` field
   google::protobuf::util::MessageDifferencer diff;
@@ -817,7 +815,7 @@ static absl::StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
     DeviceAssignmentProto device_assignment_proto;
     DeviceAssignment device_assignment(/*replica_count=*/3,
                                        /*computation_count=*/2);
-    TF_RETURN_IF_ERROR(device_assignment.Serialize(&device_assignment_proto));
+    device_assignment.Serialize(&device_assignment_proto);
     proto.mutable_static_device_assignment()->Swap(&device_assignment_proto);
   }
   // Shardable Value Update Pairs
@@ -882,8 +880,7 @@ TEST_F(HloModuleTest, HloModuleConfigCreateFromProto) {
                           MakeTestModuleConfigProto());
   TF_ASSERT_OK_AND_ASSIGN(auto good_config,
                           HloModuleConfig::CreateFromProto(input_proto));
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto output_proto,
-                          good_config->ToProto());
+  HloModuleConfigProto output_proto = good_config->ToProto();
 
   google::protobuf::util::MessageDifferencer diff;
   diff.set_message_field_comparison(
@@ -894,13 +891,11 @@ TEST_F(HloModuleTest, HloModuleConfigCreateFromProto) {
 TEST_F(HloModuleTest, HloModuleConfigToProto) {
   auto module = CreateNewVerifiedModule();
   const HloModuleConfig& good_config = module->config();
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto first_proto,
-                          good_config.ToProto());
+  HloModuleConfigProto first_proto = good_config.ToProto();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModuleConfig> remade_config,
                           HloModuleConfig::CreateFromProto(first_proto));
   ASSERT_NE(remade_config, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto second_proto,
-                          remade_config->ToProto());
+  HloModuleConfigProto second_proto = remade_config->ToProto();
 
   google::protobuf::util::MessageDifferencer diff;
   diff.set_message_field_comparison(

@@ -117,6 +117,16 @@ message DebugOptions {
   reserved 177;  // Was xla_cpu_use_xla_runtime
   bool xla_cpu_use_thunk_runtime = 298;
 
+  // When true, XLA:CPU uses HLO module scheduler that is optimized for
+  // extracting concurrency at the cost of extra memory: we extend the live
+  // ranges of temporaries to allow XLA runtime to schedule independent
+  // operations in parallel on separate threads.
+  bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
+
+  // A `prefer-vector-width` value that is passed to the LLVM backend. Default
+  // value is `256` (AVX2 on x86 platforms).
+  int32 xla_cpu_prefer_vector_width = 308;
+
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
 
   // When true, "unsafe" mathematical optimizations are enabled. These
@@ -405,8 +415,8 @@ message DebugOptions {
   bool xla_gpu_enable_all_gather_combine_by_dim = 254;
   bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
 
-  // Combine GPU all-reduces into a single operation over a contiguous buffer.
-  bool xla_gpu_all_reduce_contiguous = 158;
+  // Was xla_gpu_all_reduce_contiguous
+  reserved 158;
 
   // Split AR across all partitions into logical RS followed by AR.
   bool xla_gpu_enable_all_reduce_splitter = 299;
@@ -725,12 +735,21 @@ message DebugOptions {
   // will use for p2p operations.
   int64 xla_gpu_nccl_p2p_max_nchannels = 274;
 
-  bool xla_gpu_enable_mlir_emitters = 275;
+  reserved 275;  // was xla_gpu_enable_mlir_emitters
+
+  // Choose the level of mlir emitters that are enabled.
+  // Current levels:
+  // 0: Disabled.
+  // 1: Loop emitter
+  // 2: + Loop-like emitters
+  // 3: + Transpose
+  // 4: + Reduce
+  int64 xla_gpu_mlir_emitter_level = 303;
   // The maximum number of kernels to emit with MLIR. Unlimited if 0.
-  int64 xla_gpu_max_mlir_kernels = 281;
+  reserved 281;  // was xla_gpu_max_mlir_kernels
   // The number of initial kernels to not emit with MLIR. Only supported kernels
   // are counted.
-  int64 xla_gpu_skip_mlir_kernels = 282;
+  reserved 282;  // was xla_gpu_skip_mlir_kernels
 
   // Threshold to rewrite matmul to cuBLAS or Triton (minumum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
@@ -786,7 +805,28 @@ message DebugOptions {
   // a deterministic implementation.
   bool xla_gpu_exclude_nondeterministic_ops = 297;
 
-  // Next id: 300
+  // If true, Nccl errors will terminate the process.
+  bool xla_gpu_nccl_terminate_on_error = 301;
+
+  // Use Shardonnay, a new partitioner, to replace the existing
+  // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
+  // details.
+  bool xla_use_shardonnay = 302;
+
+  bool xla_gpu_shard_autotuning = 304;
+
+  bool xla_gpu_enable_approx_costly_collectives = 305;
+
+  string xla_gpu_kernel_cache_file = 306;
+
+  // Recognises rotate-right patterns (slice, slice, concat) within a while
+  // loop and labels the while loop as a pipelined while loop. This is an
+  // unsafe flag.
+  bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
+
+  string xla_gpu_per_fusion_autotune_cache_dir = 310;
+
+  // Next id: 311
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -995,198 +1035,6 @@ message HloModuleConfigProto {
 message HloModuleProtoWithConfig {
   HloModuleProto hlo_module = 1;
   HloModuleConfigProto config = 2;
-}
-
-message GetDeviceHandlesRequest {
-  int64 device_count = 1;
-}
-
-message GetDeviceHandlesResponse {
-  repeated DeviceHandle device_handles = 1;
-}
-
-message TransferToClientRequest {
-  GlobalDataHandle data = 1;
-
-  // This optional field directs the service to return the literal in this
-  // layout. A shape is used to hold the layout to accommodate tuples.
-  ShapeProto shape_with_layout = 2;
-}
-
-message TransferToClientResponse {
-  LiteralProto literal = 1;
-}
-
-message TransferToServerRequest {
-  LiteralProto literal = 1;
-  DeviceHandle device_handle = 2;
-}
-
-message TransferToServerResponse {
-  GlobalDataHandle data = 1;
-}
-
-message TransferToInfeedRequest {
-  LiteralProto literal = 1;
-  int64 replica_id = 2;
-  DeviceHandle device_handle = 3;
-}
-
-message TransferToInfeedResponse {}
-
-message TransferFromOutfeedRequest {
-  // This optional field directs the service to return the literal in this
-  // layout. A shape is used to hold the layout to accommodate tuples.
-  ShapeProto shape_with_layout = 1;
-
-  int64 replica_id = 2;
-  DeviceHandle device_handle = 3;
-}
-
-message TransferFromOutfeedResponse {
-  LiteralProto literal = 1;
-}
-
-message ResetDeviceRequest {
-  DeviceHandle device_handle = 1;
-}
-
-message ResetDeviceResponse {}
-
-message ComputationGraphStatsRequest {
-  HloModuleProto computation = 1;
-  DebugOptions debug_options = 2;
-}
-
-message ComputationStatsResponse {
-  ComputationStats stats = 1;
-}
-
-message CreateChannelHandleRequest {
-  ChannelHandle.ChannelType channel_type = 1;
-}
-
-message CreateChannelHandleResponse {
-  ChannelHandle channel = 1;
-}
-
-message UnregisterRequest {
-  repeated GlobalDataHandle data = 1;
-}
-
-message UnregisterResponse {}
-
-message CompileRequest {
-  // The graph to be compiled.
-  HloModuleProto computation = 1;
-
-  // Options that affect how XLA compiles code to service this request.
-  ExecutionOptions execution_options = 2;
-
-  // The layouts of the input arguments. If not set, the default layout will be
-  // used. Although the real arguments are not needed in compilation, the
-  // layouts of the arguments can affect the compilation.
-  repeated ShapeProto input_shape_with_layout = 3;
-}
-
-message CompileResponse {
-  // The handle to the executable.
-  ExecutionHandle handle = 1;
-}
-
-message ExecuteRequest {
-  ExecutionHandle handle = 1;
-
-  // The shape and layout of the arguments must be the same as the those of the
-  // executable's parameters.
-  repeated GlobalDataHandle arguments = 2;
-}
-
-// TODO(b/118493728): Remove this and ExecuteGraphParallelRequest and replace
-// the uses with calls to Compile and Execute.
-message ExecuteGraphRequest {
-  HloModuleProto computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-
-  // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 3;
-}
-
-message ExecuteGraphParallelRequest {
-  repeated ExecuteGraphRequest requests = 1;
-}
-
-message ExecuteResponse {
-  GlobalDataHandle output = 1;
-  ExecutionProfile profile = 2;
-}
-
-message ExecuteParallelResponse {
-  repeated ExecuteResponse responses = 1;
-}
-
-message ComputeConstantGraphRequest {
-  HloModuleProto computation = 1;
-  LayoutProto output_layout = 2;
-}
-
-message ComputeConstantResponse {
-  // A LiteralProto is returned directly for this request.
-  LiteralProto literal = 1;
-}
-
-message DeconstructTupleRequest {
-  GlobalDataHandle tuple_handle = 2;
-}
-
-message DeconstructTupleResponse {
-  repeated GlobalDataHandle element_handles = 1;
-}
-
-message LoadDataRequest {
-  // Describes the path of the ColumnIO tablet to load.
-  string columnio_tablet_path = 1;
-
-  // Describes the field to load within the ColumnIO tablet.
-  string columnio_field = 2;
-
-  // Individual element shape, excluding rows.
-  ShapeProto element_shape = 3;
-
-  // Warning: ColumnIO does not support random-access, so use offset with
-  // caution in performance-critical scenarios.
-  int64 offset = 4;
-
-  // Maximum number of elements (with shape element_shape) to load.
-  int64 limit = 5;
-
-  // If more than one item is requested (via limit > 1), then this request
-  // attribute zips together the produced vectors.
-  bool zip = 6;
-}
-
-message LoadDataResponse {
-  GlobalDataHandle data = 1;
-  ShapeProto data_shape = 2;
-  int64 available_rows = 3;
-  int64 rows_loaded = 4;
-  int64 nanoseconds = 5;
-}
-
-message GetShapeRequest {
-  GlobalDataHandle data = 1;
-}
-
-message GetShapeResponse {
-  ShapeProto shape = 1;
-}
-
-message UnpackRequest {
-  GlobalDataHandle data = 1;
-}
-
-message UnpackResponse {
-  repeated GlobalDataHandle tied_data = 1;
 }
 
 // A trace estimated by the Latency Hiding Scheduler.

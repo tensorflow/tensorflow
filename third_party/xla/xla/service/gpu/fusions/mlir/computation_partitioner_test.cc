@@ -81,39 +81,84 @@ TEST_F(ComputationPartitionerTest, PartitionDiamonds) {
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(fusion, &mlir_context_);
-  auto param = fusion->GetInstructionWithName("param");
-  auto slice01 = fusion->GetInstructionWithName("slice0.1");
-  auto slice02 = fusion->GetInstructionWithName("slice0.2");
-  auto add0 = fusion->GetInstructionWithName("add0");
-  auto slice11 = fusion->GetInstructionWithName("slice1.1");
-  auto slice12 = fusion->GetInstructionWithName("slice1.2");
-  auto add1 = fusion->GetInstructionWithName("add1");
-  auto slice21 = fusion->GetInstructionWithName("slice2.1");
-  auto slice22 = fusion->GetInstructionWithName("slice2.2");
-  auto add2 = fusion->GetInstructionWithName("add2");
-  auto slice31 = fusion->GetInstructionWithName("slice3.1");
-  auto slice32 = fusion->GetInstructionWithName("slice3.2");
-  auto add3 = fusion->GetInstructionWithName("add3");
 
-  const auto& graphs = computation.subgraphs();
-  ASSERT_THAT(graphs, SizeIs(5));
-  EXPECT_THAT(graphs[0].instructions, UnorderedElementsAre(param));
-  EXPECT_THAT(graphs[1].instructions,
-              UnorderedElementsAre(slice01, slice02, add0));
-  EXPECT_THAT(graphs[2].instructions,
-              UnorderedElementsAre(slice11, slice12, add1));
-  EXPECT_THAT(graphs[3].instructions,
-              UnorderedElementsAre(slice21, slice22, add2));
-  EXPECT_THAT(graphs[4].instructions,
-              UnorderedElementsAre(slice31, slice32, add3));
+  constexpr auto kExpected = R"(PartitionedComputation fused_computation:
+      SUBGRAPH fused_computation_add3 {
+        %slice3.1 = f32[2]{0} slice(f32[3]{0} %add2), slice={[0:2]}
+        %slice3.2 = f32[2]{0} slice(f32[3]{0} %add2), slice={[1:3]}
+        ROOT %add3 = f32[2]{0} add(f32[2]{0} %slice3.1, f32[2]{0} %slice3.2)
+      }
+      SUBGRAPH fused_computation_add2 {
+        %slice2.1 = f32[3]{0} slice(f32[4]{0} %add1), slice={[0:3]}
+        %slice2.2 = f32[3]{0} slice(f32[4]{0} %add1), slice={[1:4]}
+        ROOT %add2 = f32[3]{0} add(f32[3]{0} %slice2.1, f32[3]{0} %slice2.2)
+      }
+      SUBGRAPH fused_computation_add1 {
+        %slice1.1 = f32[4]{0} slice(f32[5]{0} %add0), slice={[0:4]}
+        %slice1.2 = f32[4]{0} slice(f32[5]{0} %add0), slice={[1:5]}
+        ROOT %add1 = f32[4]{0} add(f32[4]{0} %slice1.1, f32[4]{0} %slice1.2)
+      }
+      SUBGRAPH fused_computation_add0 {
+        %slice0.1 = f32[5]{0} slice(f32[6]{0} %param), slice={[0:5]}
+        %slice0.2 = f32[5]{0} slice(f32[6]{0} %param), slice={[1:6]}
+        ROOT %add0 = f32[5]{0} add(f32[5]{0} %slice0.1, f32[5]{0} %slice0.2)
+      }
+      SUBGRAPH fused_computation_param {
+        ROOT %param = f32[6]{0} parameter(0)
+      })";
+  EXPECT_EQ(computation.ToString(6), kExpected);
+}
 
-  EXPECT_THAT(graphs[1].roots, ElementsAre(add0));
-  EXPECT_THAT(graphs[2].roots, ElementsAre(add1));
-  EXPECT_THAT(graphs[3].roots, ElementsAre(add2));
-  EXPECT_THAT(graphs[4].roots, ElementsAre(add3));
+TEST_F(ComputationPartitionerTest, SimpleConcatenate) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fused_computation {
+      %param1 = f32[6] parameter(0)
+      %param2 = f32[3] parameter(1)
+      %neg = f32[6] negate(%param1)
+      %exp = f32[3] exponential(%param2)
+      ROOT %concat = f32[9] concatenate(%neg, %exp), dimensions={0}
+    })")
+                    .value();
 
-  EXPECT_EQ(&computation.GetRootSubgraph(), &graphs[4]);
-  EXPECT_EQ(&computation.FindSubgraph(slice21), &graphs[3]);
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(fusion, &mlir_context_);
+
+  EXPECT_THAT(computation.subgraphs(), SizeIs(1));
+}
+
+TEST_F(ComputationPartitionerTest, DiamondConcatenate) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fused_computation {
+      %param1 = f32[6] parameter(0)
+      %param2 = f32[6] parameter(1)
+      %log = f32[6] log(%param1)
+      %add = f32[6] add(%log, %param2)
+      %neg = f32[6] negate(%log)
+      %exp = f32[6] exponential(%add)
+      ROOT %concat = f32[12] concatenate(%neg, %exp), dimensions={0}
+    })")
+                    .value();
+
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(fusion, &mlir_context_);
+
+  constexpr auto kExpected = R"(PartitionedComputation fused_computation:
+      SUBGRAPH fused_computation_concat {
+        %neg = f32[6]{0} negate(f32[6]{0} %log)
+        %param2 = f32[6]{0} parameter(1)
+        %add = f32[6]{0} add(f32[6]{0} %log, f32[6]{0} %param2)
+        %exp = f32[6]{0} exponential(f32[6]{0} %add)
+        ROOT %concat = f32[12]{0} concatenate(f32[6]{0} %neg, f32[6]{0} %exp), dimensions={0}
+      }
+      SUBGRAPH fused_computation_log {
+        %param1 = f32[6]{0} parameter(0)
+        ROOT %log = f32[6]{0} log(f32[6]{0} %param1)
+      })";
+  EXPECT_EQ(computation.ToString(6), kExpected);
 }
 
 TEST_F(ComputationPartitionerTest, TupleRoot) {
@@ -131,8 +176,22 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(fusion, &mlir_context_);
-
-  ASSERT_THAT(computation.subgraphs(), SizeIs(5)) << computation.ToString();
+  // We don't analyze the actual indexes of the tuple, so we assume %add and
+  // %sub have different indexing. That's why the parameters end up in separate
+  // functions.
+  constexpr auto kExpected = R"(PartitionedComputation fused_computation:
+      SUBGRAPH fused_computation_root {
+        %add = f32[6]{0} add(f32[6]{0} %p0, f32[6]{0} %p1)
+        %sub = f32[6]{0} subtract(f32[6]{0} %p0, f32[6]{0} %p1)
+        ROOT %root = (f32[6]{0}, f32[6]{0}) tuple(f32[6]{0} %add, f32[6]{0} %sub)
+      }
+      SUBGRAPH fused_computation_p1 {
+        ROOT %p1 = f32[6]{0} parameter(1)
+      }
+      SUBGRAPH fused_computation_p0 {
+        ROOT %p0 = f32[6]{0} parameter(0)
+      })";
+  EXPECT_EQ(computation.ToString(6), kExpected);
 }
 
 TEST_F(ComputationPartitionerTest, Epilogue) {
@@ -180,7 +239,7 @@ TEST_F(ComputationPartitionerTest, Epilogue) {
       "f32) -> (f32, f32)");
 }
 
-TEST_F(ComputationPartitionerTest, EnforcePartitioning) {
+TEST_F(ComputationPartitionerTest, TransposeAsRoot) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     fused_computation {

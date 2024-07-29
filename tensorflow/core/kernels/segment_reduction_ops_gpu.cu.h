@@ -977,9 +977,10 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
                   typename TTypes<T>::ConstMatrix input_flat,
                   typename TTypes<Index>::ConstVec indices_vec,
                   typename TTypes<SegmentId>::ConstVec segment_vec,
-                  typename TTypes<T>::Matrix output_flat) {
+                  Tensor* output) {
     const GPUDevice& device = context->eigen_gpu_device();
 
+    auto output_flat = output->flat_outer_dims<T>();
     const SegmentId nsegments = input_flat.dimension(0);
     const Index ninner = input_flat.dimension(1);
     const Index nouter = indices_vec.dimension(0);

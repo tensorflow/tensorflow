@@ -54,9 +54,9 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-   (((bl_x * 16 + th_x floordiv 8) floordiv 3 + chunk_id * 5376) floordiv 625) mod 100,
-   (((bl_x * 128 + th_x) floordiv 3 + chunk_id * 43008) floordiv 25) mod 200,
-   (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
+    ((bl_x * 128 + th_x + chunk_id * 129024) floordiv 15000) mod 100,
+    ((bl_x * 128 + th_x + chunk_id * 129024) floordiv 75) mod 200,
+    (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
   )
   domain:
   th_x in [0, 127]
@@ -148,9 +148,10 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-                ((bl_x * 16 + th_x floordiv 8) floordiv 75) mod 10,
-                ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20,
-                (bl_x * 128 + th_x) mod 30)
+                  ((bl_x * 128 + th_x) floordiv 600) mod 10,
+                  ((bl_x * 128 + th_x) floordiv 30) mod 20,
+                  (bl_x * 128 + th_x) mod 30
+                )
                 domain:
                 th_x in [0, 127]
                 th_y in [0, 0]
@@ -166,8 +167,8 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
   EXPECT_THAT(thread_id_to_input_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
-              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-                ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20)
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
+                (((bl_x * 128 + th_x) floordiv 30) mod 20)
                 domain:
                 th_x in [0, 127]
                 th_y in [0, 0]
@@ -179,6 +180,42 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
                 unroll_id in [0, 0]
                 th_x + bl_x * 128 in [0, 5999]
             )"));
+}
+
+TEST_F(MlirLoopFusionTest, Constant_Broadcast) {
+  auto kHloString = R"(
+    HloModule module
+
+    bcast {
+      zero = bf16[] constant(0)
+      ROOT broadcast = bf16[2,16,48]{2,1,0} broadcast(zero), dimensions={}
+    }
+
+    ENTRY entry {
+      ROOT %fusion = bf16[2,16,48]{2,1,0} fusion(), kind=kLoop, calls=bcast
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d1 * 1024 + d0)>
+    // CHECK: #[[MAP1:.*]] = affine_map<(d0, d1) -> (((d1 * 1024 + d0) floordiv 768) mod 2)>
+    // CHECK: #[[MAP2:.*]] = affine_map<(d0, d1) -> (((d1 * 1024 + d0) floordiv 48) mod 16)>
+    // CHECK: #[[MAP3:.*]] = affine_map<(d0, d1) -> ((d1 * 1024 + d0) mod 48)>
+    // CHECK: func.func @fused_computation(%[[ARG0:.*]]: tensor<2x16x48xbf16>
+    // CHECK: %[[UPPER_BOUND:.*]] = arith.constant 1535 : index
+    // CHECK: %[[THREAD_ID:.*]] = gpu.thread_id
+    // CHECK: %[[BLOCK_ID:.*]] = gpu.block_id
+    // CHECK: %[[LINEAR:.*]] = xla_gpu.apply_indexing #[[MAP0]]
+    // CHECL: %[[IN_BOUNDS:.*]] = arith.cmpi sle, %[[LINEAR]], %[[UPPER_BOUND]] : index
+    // scf.if %[[IN_BOUNDS]]
+    // CHECK: %[[I0:.*]] = xla_gpu.apply_indexing #[[MAP1]]
+    // CHECK: %[[I1:.*]] = xla_gpu.apply_indexing #[[MAP2]]
+    // CHECK: %[[I2:.*]] = xla_gpu.apply_indexing #[[MAP3]]
+    // CHECK: %[[BCAST:.*]] = xla_gpu.pure_call @bcast_broadcast
+    // CHECK: %[[INSERTED:.*]] = tensor.insert %[[BCAST]] into %[[ARG0]][%[[I0]], %[[I1]], %[[I2]]]
+    // CHECK: func.func private @bcast_broadcast
+    // CHECK: arith.constant 0.000000e+00
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0}));
 }
 
 TEST_F(MlirLoopFusionTest, NoCodeDuplication) {
@@ -386,9 +423,11 @@ TEST_F(MlirLoopFusionTest, MinimumMaximum) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-LABEL: fused_computation_tuple
-    // CHECK:   arith.minimumf
-    // CHECK:   arith.maximumf
+    // CHECK:       func.func @fused_computation
+    // CHECK:         xla_gpu.pure_call @fused_computation_tuple
+    // CHECK:       func.func private @fused_computation_tuple
+    // CHECK-DAG:     arith.minimumf
+    // CHECK-DAG:     arith.maximumf
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

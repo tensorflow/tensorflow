@@ -21,11 +21,11 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

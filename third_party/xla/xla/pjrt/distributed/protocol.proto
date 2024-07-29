@@ -31,6 +31,20 @@ package xla;
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/compiler/"
                     "xla/pjrt/distributed/protocol_go_proto";
 
+message IntValuesProto {
+  repeated int64 values = 1;
+}
+
+message DeviceAttributeProto {
+  oneof attribute {
+    string string_value = 1;
+    bool bool_value = 2;
+    int64 int_value = 3;
+    IntValuesProto int_values = 4;
+    float float_value = 5;
+  }
+}
+
 // Describes a device local to a host.
 message DeviceProto {
   int32 local_device_ordinal = 1;
@@ -42,6 +56,7 @@ message DeviceProto {
   // passed to EnumerateDevices(). In other words, the coordinator node
   // determines the global device IDs during EnumerateDevices().
   int32 global_device_id = 4;  // Globally unique ID number.
+
   // Devices with the same slice_index are connected by fast network, e.g.
   // NVLink on GPUs.
   int32 slice_index = 5;
@@ -51,7 +66,12 @@ message DeviceProto {
 
   // The number of cores (e.g. SMs on GPUs) on the device.
   int32 core_count = 7;
-};
+
+  string device_kind = 8;
+  string to_string = 9;
+  string debug_string = 10;
+  map<string, DeviceAttributeProto> attributes = 11;
+}
 
 message LocalTopologyProto {
   int32 node_id = 1;

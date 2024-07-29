@@ -79,5 +79,23 @@ bool StatefulRngSpmdPartitioner::CanSideEffectingHaveReplicatedSharding(
   return spmd::SpmdPartitioner::CanSideEffectingHaveReplicatedSharding(hlo);
 }
 
+absl::Status StatefulRngSpmdPartitioner::HandleRotateRightWhilePreprocessing(
+    HloComputation* computation) {
+  if (!computation->IsWhileBodyComputation()) {
+    return absl::OkStatus();
+  }
+  HloInstruction* while_loop = computation->WhileCallInstruction();
+  TF_RET_CHECK(while_loop);
+  if (computation->parent()
+          ->config()
+          .debug_options()
+          .xla_gpu_unsafe_pipelined_loop_annotator()) {
+    xla::FrontendAttributes attributes;
+    (*attributes.mutable_map())["is_pipelined_while_loop"] = "true";
+    while_loop->add_frontend_attributes(attributes);
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace spmd
 }  // namespace xla

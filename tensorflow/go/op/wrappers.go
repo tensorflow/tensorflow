@@ -19417,9 +19417,15 @@ func GatherNdBadIndicesPolicy(value string) GatherNdAttr {
 //
 //	indices.shape[:-1] + params.shape[indices.shape[-1]:]
 //
-// Note that on CPU, if an out of bound index is found, an error is returned.
-// On GPU, if an out of bound index is found, a 0 is stored in the
-// corresponding output value.
+// If `indices` contains any out-of-bound indices, depending on
+// `bad_indices_policy`, the op will either return an error or ignore the
+// out-of-bound indices. `bad_indices_policy` can be one of the following values:
+//  1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+//     historically on CPU and GPU we handle errors in different ways, and for
+//     backward compatibility we keep the default behavior.
+//  2. "ERROR": raises error; GPU does not support this value.
+//  3. "IGNORE": ignore error and set the corresponding output to 0;
+//     supported on both CPU and GPU.
 //
 // Some examples below.
 //
@@ -42848,6 +42854,17 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 	return op.Output(0)
 }
 
+// ScatterNdAttr is an optional argument to ScatterNd.
+type ScatterNdAttr func(optionalAttr)
+
+// ScatterNdBadIndicesPolicy sets the optional bad_indices_policy attribute to value.
+// If not specified, defaults to ""
+func ScatterNdBadIndicesPolicy(value string) ScatterNdAttr {
+	return func(m optionalAttr) {
+		m["bad_indices_policy"] = value
+	}
+}
+
 // Scatters `updates` into a tensor of shape `shape` according to `indices`.
 //
 // Scatter sparse `updates` according to individual values at the specified
@@ -42938,8 +42955,14 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 //	 [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
 //	 [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
 //
-// Note that on CPU, if an out of bound index is found, an error is returned.
-// On GPU, if an out of bound index is found, the index is ignored.
+// If `indices` contains any out-of-bound indices, depending on
+// `bad_indices_policy`, the op will either return an error or ignore the
+// out-of-bound indices. `bad_indices_policy` can be one of the following values:
+//  1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+//     historically on CPU and GPU we handle errors in different ways, and for
+//     backward compatibility we keep the default behavior.
+//  2. "ERROR": raises error; GPU does not support this value.
+//  3. "IGNORE": ignore the bad indices; supported on both CPU and GPU.
 //
 // Arguments:
 //
@@ -42949,15 +42972,20 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 //
 // Returns A new tensor with the given shape and updates applied according
 // to the indices.
-func ScatterNd(scope *Scope, indices tf.Output, updates tf.Output, shape tf.Output) (output tf.Output) {
+func ScatterNd(scope *Scope, indices tf.Output, updates tf.Output, shape tf.Output, optional ...ScatterNdAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "ScatterNd",
 		Input: []tf.Input{
 			indices, updates, shape,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

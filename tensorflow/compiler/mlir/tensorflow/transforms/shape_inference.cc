@@ -1268,7 +1268,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     input_shapes.push_back(xla::TypeToShape(type));
   }
 
-  tsl::Status status = loader->RefineDynamicShapes(input_shapes);
+  absl::Status status = loader->RefineDynamicShapes(input_shapes);
   if (!status.ok()) {
     // Do not return false here.
     //

@@ -810,9 +810,9 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
-            "@local_tsl//tsl/framework:device_id_utils",
             "@local_tsl//tsl/platform:statusor",
             "@local_xla//xla/stream_executor",
+            "@local_xla//xla/tsl/framework:device_id_utils",
         ],
     }),
 )

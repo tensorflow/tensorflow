@@ -20,6 +20,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/device.h"
@@ -58,14 +59,14 @@ using ::testing::EquivToProto;
 using ::testing::proto::Partially;
 #endif
 
-IfrtProxyVersion Version() {
-  IfrtProxyVersion version;
-  version.set_protocol_version(kClientMinVersion);
-  return version;
-}
-
-class ClientTest : public ::testing::Test {
+class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
  protected:
+  IfrtProxyVersion Version() {
+    IfrtProxyVersion version;
+    version.set_protocol_version(GetParam());
+    return version;
+  }
+
   void SetUp() override {
     session_ = std::make_shared<MockClientSession>();
     rpc_helper_ = std::make_shared<RpcHelper>(Version(), session_);
@@ -127,7 +128,7 @@ class ClientTest : public ::testing::Test {
   std::unique_ptr<Client> client_;
 };
 
-TEST_F(ClientTest, Init) {
+TEST_P(ClientTest, Init) {
   EXPECT_EQ(client_->platform_name(), "ifrt-service");
   EXPECT_EQ(client_->platform_version(), "n/a");
   EXPECT_EQ(client_->platform_id(), 42);
@@ -172,13 +173,12 @@ TEST_F(ClientTest, Init) {
 
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
 #if defined(PLATFORM_GOOGLE)
-TEST_F(ClientTest, GetDefaultDeviceAssignmentSuccess) {
+TEST_P(ClientTest, GetDefaultDeviceAssignmentSuccess) {
   IfrtResponse response;
   xla::DeviceAssignment assignment(1, 3);
-  ASSERT_THAT(assignment.Serialize(
-                  response.mutable_get_default_device_assignment_response()
-                      ->mutable_device_assignment()),
-              IsOk());
+  assignment.Serialize(
+      response.mutable_get_default_device_assignment_response()
+          ->mutable_device_assignment());
 
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(
@@ -198,7 +198,7 @@ TEST_F(ClientTest, GetDefaultDeviceAssignmentSuccess) {
 
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
 #if defined(PLATFORM_GOOGLE)
-TEST_F(ClientTest, GetDefaultDeviceAssignmentFailure) {
+TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(
                                get_default_device_assignment_request {
@@ -212,6 +212,13 @@ TEST_F(ClientTest, GetDefaultDeviceAssignmentFailure) {
   EXPECT_THAT(client_->GetDefaultDeviceAssignment(1, 3), Not(IsOk()));
 }
 #endif
+
+INSTANTIATE_TEST_SUITE_P(
+    ClientTestWithAllVersions, ClientTest,
+    testing::Range(kClientMinVersion, kClientMaxVersion + 1),
+    [](const testing::TestParamInfo<ClientTest::ParamType>& info) {
+      return absl::StrCat(info.param);
+    });
 
 }  // namespace
 }  // namespace proxy

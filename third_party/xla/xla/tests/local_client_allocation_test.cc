@@ -16,12 +16,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/status/statusor.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/service/local_service.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/statusor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tests/test_macros.h"

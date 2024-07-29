@@ -377,6 +377,14 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
   std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays;
   num_args_arrays.reserve(num_args);
 
+  struct CopyGroup {
+    std::vector<int> indices;
+    std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  };
+  absl::flat_hash_map<std::pair<xla::ifrt::Device*, xla::ifrt::MemoryKind>,
+                      CopyGroup>
+      copy_groups;
+
   xla::DevicePutOptions options;
   options.squash_64bit_types = !enable_x64;
   options.allow_zero_copy = true;
@@ -454,23 +462,36 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     // `PjitFunction::ComputeCallSignature()`.
     DCHECK(ifrt_array != nullptr) << "PyArray has been unexpectedly deleted.";
 
+    const auto& ifrt_sharding = ifrt_array->sharding();
     if (sharding_num_devices == 1 &&
-        ifrt_array->sharding().devices().front() != addressable_devices[0]) {
-      xla::ifrt::DeviceList::Devices ifrt_devices;
-      ifrt_devices.push_back(addressable_devices[0]);
-      auto sharding = xla::ifrt::OpaqueSharding::Create(
-          xla::ifrt::DeviceList(std::move(ifrt_devices)),
-          ifrt_array->sharding().memory_kind());
-      TF_ASSIGN_OR_RETURN(
-          auto copied_ifrt_array,
-          ifrt_array->Reshard(std::move(sharding),
-                              xla::ifrt::ArrayCopySemantics::kReuseInput));
-      num_args_arrays.push_back(std::move(copied_ifrt_array));
+        ifrt_sharding.devices().front() != addressable_devices[0]) {
+      auto& copy_group = copy_groups[std::make_pair(
+          ifrt_sharding.devices().front(), ifrt_sharding.memory_kind())];
+      copy_group.indices.push_back(num_args_arrays.size());
+      copy_group.arrays.push_back(tsl::FormRef(ifrt_array));
+      num_args_arrays.push_back({});
     } else {
       num_args_arrays.push_back(tsl::FormRef(ifrt_array));
     }
 
     keep_alive_objects.push_back(arg);
+  }
+
+  if (!copy_groups.empty()) {
+    xla::ifrt::Client* const ifrt_client =
+        executable.ifrt_loaded_executable()->client();
+    xla::ifrt::DeviceList ifrt_devices(
+        xla::ifrt::DeviceList::Devices({addressable_devices[0]}));
+    for (auto& [key, group] : copy_groups) {
+      TF_ASSIGN_OR_RETURN(
+          auto copied_ifrt_arrays,
+          ifrt_client->CopyArrays(absl::MakeSpan(group.arrays), ifrt_devices,
+                                  /*memory_kind=*/std::nullopt,
+                                  xla::ifrt::ArrayCopySemantics::kReuseInput));
+      for (int i = 0; i < copied_ifrt_arrays.size(); ++i) {
+        num_args_arrays[group.indices[i]] = std::move(copied_ifrt_arrays[i]);
+      }
+    }
   }
 
   return num_args_arrays;

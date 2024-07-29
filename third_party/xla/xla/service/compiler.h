@@ -28,18 +28,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/threadpool.h"
@@ -160,6 +160,8 @@ class Compiler {
     // Registry of MLIR dialects and plugins to be loaded during optimization.
     // If non-null, it will be used to construct relevant MLIR contexts.
     mlir::DialectRegistry* registry = nullptr;
+
+    MultiProcessKeyValueStore key_value_store;
   };
 
   virtual ~Compiler() = default;

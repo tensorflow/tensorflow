@@ -869,7 +869,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
            xla::ValueOrThrowWrapper(
                [](const DeviceAssignment& da) -> absl::StatusOr<nb::bytes> {
                  DeviceAssignmentProto proto;
-                 TF_RETURN_IF_ERROR(da.Serialize(&proto));
+                 da.Serialize(&proto);
                  std::string result;
                  if (!tsl::SerializeToStringDeterministic(proto, &result)) {
                    return Unknown(

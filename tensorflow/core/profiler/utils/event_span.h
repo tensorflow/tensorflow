@@ -102,7 +102,7 @@ enum GenericEventType {
 
 // Contains the type and timespan of an event.
 struct EventTypeSpan {
-  EventType type;  // type of this event.
+  EventType type;                // type of this event.
   tsl::profiler::Timespan span;  // timespan of this event.
   EventTypeSpan(EventType t, tsl::profiler::Timespan s) : type(t), span(s) {}
   // Equality test.
@@ -245,8 +245,11 @@ std::string PrintStepMarker(const StepMarker& step_marker);
 // Returns a string that prints the given StepEvents.
 std::string PrintStepEvents(const StepEvents& step_events);
 
-// Combines the src StepEvents into dst.
-void CombineStepEvents(const StepEvents& src, StepEvents* dst);
+// Unions the map of StepEvents and combines the src StepEvents into dst.
+void UnionCombineStepEvents(const StepEvents& src, StepEvents* dst);
+
+// Intersects the map of StepEvents and combines the src StepEvents into dst.
+void IntersectCombineStepEvents(const StepEvents& src, StepEvents* dst);
 
 // Converts from overlapped events to non-overlapped events.
 std::vector<EventTypeSpan> ToNonOverlappedEvents(

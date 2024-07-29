@@ -17,6 +17,8 @@ module {
     return %ret : f32
   }
 }
+
+// CHECK-LABEL: module {
 // CHECK: @caller
 // CHECK-NOT: xla_gpu.pure_call @add
 // CHECK: arith.addf
@@ -43,6 +45,8 @@ module {
     return %4 : f32
   }
 }
+
+// CHECK-LABEL: module {
 // CHECK: @fused_computation
 // CHECK-NOT: xla_gpu.pure_call @add
 // CHECK: gpu.thread_id
@@ -86,6 +90,8 @@ module {
     return %ret : f32
   }
 }
+
+// CHECK-LABEL: module {
 // CHECK: @caller
 // CHECK: arith.addf
 // CHECK: xla_gpu.pure_call @large
@@ -105,6 +111,8 @@ module {
     return %ret : f32
   }
 }
+
+// CHECK-LABEL: module {
 // CHECK: @caller
 // CHECK-NOT: xla_gpu.pure_call
 // CHECK: arith.addf
@@ -166,6 +174,8 @@ module {
     return %ret : f32
   }
 }
+
+// CHECK-LABEL: module {
 // CHECK: @caller
 // CHECK: arith.constant 0.000000e+00
 // CHECK: xla_gpu.pure_call @fib5
@@ -191,6 +201,7 @@ module {
   }
 }
 
+// CHECK-LABEL: module {
 // CHECK: @caller
 // CHECK-NEXT: complex.create
 
@@ -228,7 +239,57 @@ module {
   }
 }
 
+// CHECK-LABEL: module {
 // CHECK-NOT: func.func
 // CHECK: func.func @caller
 // CHECK-NOT: xla_gpu.pure_call
 // CHECK-NOT: func.func
+
+// -----
+
+module {
+  func.func private @callee1(%a: f32) -> f32 {
+    %b0 = arith.addf %a, %a : f32
+    %b1 = arith.addf %b0, %a : f32
+    %b2 = arith.addf %b1, %a : f32
+    %b3 = arith.addf %b2, %a : f32
+    %b4 = arith.addf %b3, %a : f32
+    %b5 = arith.addf %b4, %a : f32
+    %b6 = arith.addf %b5, %a : f32
+    %b7 = arith.addf %b6, %a : f32
+    %b8 = arith.addf %b7, %a : f32
+    %b9 = arith.addf %b8, %a : f32
+    %b10 = arith.addf %b9, %a : f32
+    %b11 = arith.addf %b10, %a : f32
+    return %b11 : f32
+  }
+
+  func.func private @callee2(%a: f32) -> f32 {
+    %call = xla_gpu.pure_call @callee1(%a) : (f32) -> (f32)
+    %b0 = arith.addf %a, %a : f32
+    %b1 = arith.addf %b0, %a : f32
+    %b2 = arith.addf %b1, %a : f32
+    %b3 = arith.addf %b2, %a : f32
+    %b4 = arith.addf %b3, %a : f32
+    %b5 = arith.addf %b4, %a : f32
+    %b6 = arith.addf %b5, %a : f32
+    %b7 = arith.addf %b6, %a : f32
+    %b8 = arith.addf %b7, %a : f32
+    %b9 = arith.addf %b8, %a : f32
+    %ret = arith.addf %call, %b9 : f32
+    return %ret : f32
+  }
+
+  func.func @caller(%a: f32, %b: f32) -> f32 {
+    %call1 = xla_gpu.pure_call @callee2(%a) : (f32) -> (f32)
+    %call2 = xla_gpu.pure_call @callee1(%a) : (f32) -> (f32)
+    %ret = arith.addf %call1, %call2 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: module {
+// CHECK:         func.func private @callee1
+// CHECK-NOT:     callee2
+// CHECK:         func.func @caller
+// CHECK-COUNT-2: pure_call @callee1

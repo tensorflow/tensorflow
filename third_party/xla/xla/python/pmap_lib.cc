@@ -156,14 +156,15 @@ absl::StatusOr<ShardArgResult> ShardArg(
           ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
                               devices.end());
           // pmap does not support memory_kind for now.
-          auto sharding = xla::ifrt::OpaqueSharding::Create(
-              xla::ifrt::DeviceList(std::move(ifrt_devices)),
-              xla::ifrt::MemoryKind());
-          TF_ASSIGN_OR_RETURN(auto copied_ifrt_array,
-                              result.ifrt_array->Reshard(
-                                  std::move(sharding),
-                                  xla::ifrt::ArrayCopySemantics::kReuseInput));
-          result.ifrt_array = std::move(copied_ifrt_array);
+          auto* ifrt_client = result.ifrt_array->client();
+          TF_ASSIGN_OR_RETURN(
+              auto copied_ifrt_arrays,
+              ifrt_client->CopyArrays(
+                  absl::MakeSpan(&result.ifrt_array, 1),
+                  xla::ifrt::DeviceList(std::move(ifrt_devices)),
+                  xla::ifrt::MemoryKind(),
+                  xla::ifrt::ArrayCopySemantics::kReuseInput));
+          result.ifrt_array = std::move(copied_ifrt_arrays.front());
         }
         return result;
       }

@@ -215,18 +215,21 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:utils",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/distributed:protocol_proto_cc",
+        "//xla/pjrt/distributed:topology_util",
         "//xla/python/ifrt",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/service:hlo_proto_cc",
@@ -244,6 +247,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -268,6 +272,30 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_attribute_map_util",
+    srcs = ["pjrt_attribute_map_util.cc"],
+    hdrs = ["pjrt_attribute_map_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/pjrt:pjrt_common",
+        "//xla/python/ifrt:attribute_map",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_attribute_map_util_test",
+    srcs = ["pjrt_attribute_map_util_test.cc"],
+    deps = [
+        ":pjrt_attribute_map_util",
+        "//xla/pjrt:pjrt_common",
+        "//xla/python/ifrt:attribute_map",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "basic_string_array",
     srcs = ["basic_string_array.cc"],
     hdrs = ["basic_string_array.h"],
@@ -279,6 +307,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -298,7 +327,9 @@ xla_cc_test(
     deps = [
         ":basic_string_array",
         ":tfrt_cpu_client_test_lib",
+        "//xla:shape_util",
         "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
         "//xla/tsl/concurrency:ref_count",

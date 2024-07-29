@@ -62,10 +62,10 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -453,9 +453,9 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_LookupAddressableDevice_Args",
       PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE, args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(
-      xla::PjRtDevice * addressable_device,
-      args->client->client->LookupAddressableDevice(args->local_hardware_id));
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtDevice * addressable_device,
+                        args->client->client->LookupAddressableDevice(
+                            xla::PjRtLocalDeviceId(args->local_hardware_id)));
   args->addressable_device = GetCDevice(args->client, addressable_device);
   return nullptr;
 }
@@ -1141,8 +1141,7 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
   program->format_size = kHloWithConfigFormat.size();
   PJRT_ASSIGN_OR_RETURN(std::shared_ptr<xla::HloModule> hlo_module,
                         GetOptimizedProgramModule(args));
-  PJRT_ASSIGN_OR_RETURN(xla::HloModuleProtoWithConfig proto,
-                        hlo_module->ToProtoWithConfig());
+  xla::HloModuleProtoWithConfig proto = hlo_module->ToProtoWithConfig();
   if (program->code == nullptr) {
     program->code_size = proto.ByteSizeLong();
     if (program->code_size >= 2ull * 1024 * 1024 * 1024) {

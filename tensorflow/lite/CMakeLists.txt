@@ -495,7 +495,37 @@ if(TFLITE_ENABLE_XNNPACK)
     TFLITE_DELEGATES_XNNPACK_SRCS
     FILTER ".*(_test|_tester)\\.(cc|h)"
   )
+  if(FLATBUFFERS_FLATC_EXECUTABLE)
+    set(FLATC ${FLATBUFFERS_FLATC_EXECUTABLE})
+  else()
+    set(FLATC flatc)
+  endif()
+  add_custom_command(
+         OUTPUT "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+         COMMAND "${FLATC}" -c
+           -o "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/"
+           --gen-mutable --gen-object-api
+           "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
+         DEPENDS "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
+         )
+
+  add_library(xnnpack-delegate STATIC
+    "${TFLITE_DELEGATES_XNNPACK_SRCS}"
+    "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+  )
+  target_include_directories(xnnpack-delegate
+    PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE "${PROJECT_BINARY_DIR}"
+  )
+  target_link_libraries(xnnpack-delegate
+    Eigen3::Eigen
+    flatbuffers::flatbuffers
+    gemmlowp::gemmlowp
+    ruy::ruy
+    )
+
   list(APPEND TFLITE_TARGET_DEPENDENCIES
+    xnnpack-delegate
     XNNPACK
   )
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_BUILD_WITH_XNNPACK_DELEGATE")
@@ -603,7 +633,6 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_DELEGATES_GPU_SRCS}
   ${TFLITE_DELEGATES_NNAPI_SRCS}
   ${TFLITE_DELEGATES_SRCS}
-  ${TFLITE_DELEGATES_XNNPACK_SRCS}
   ${TFLITE_DELEGATES_EXTERNAL_SRCS}
   ${TFLITE_EXPERIMENTAL_REMAT_SRCS}
   ${TFLITE_EXPERIMENTAL_RESOURCE_SRCS}
@@ -626,6 +655,10 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )
 add_library(tensorflow-lite

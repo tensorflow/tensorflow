@@ -215,7 +215,7 @@ class GpuPerformanceModelBase {
 
   static absl::Duration ComputeTime(
       const se::DeviceDescription& gpu_device_info, int64_t flops,
-      int num_blocks, int num_threads_per_block);
+      int64_t num_blocks, int64_t num_threads_per_block);
 
   static absl::Duration CombineComputeAndMemoryAccessTime(
       absl::Duration compute_time, absl::Duration memory_access_time,

@@ -19,10 +19,10 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "tsl/platform/status.h"
 

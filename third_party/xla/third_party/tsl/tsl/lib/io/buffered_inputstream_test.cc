@@ -36,7 +36,7 @@ class ReadOnceInputStream : public InputStreamInterface {
  public:
   ReadOnceInputStream() : start_(true) {}
 
-  virtual Status ReadNBytes(int64_t bytes_to_read, tstring* result) {
+  virtual absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) {
     if (bytes_to_read < 11) {
       return errors::InvalidArgument("Not reading all bytes: ", bytes_to_read);
     }
@@ -52,9 +52,9 @@ class ReadOnceInputStream : public InputStreamInterface {
   int64_t Tell() const override { return start_ ? 0 : 10; }
 
   // Resets the stream to the beginning.
-  Status Reset() override {
+  absl::Status Reset() override {
     start_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -311,7 +311,7 @@ TEST(BufferedInputStream, OutOfRangeCache) {
     TF_ASSERT_OK((in.ReadNBytes(7, &read)));
     EXPECT_EQ(read, "3456789");
     EXPECT_EQ(10, in.Tell());
-    Status s = in.ReadNBytes(5, &read);
+    absl::Status s = in.ReadNBytes(5, &read);
     // Make sure the read is failing with OUT_OF_RANGE error. If it is failing
     // with other errors, it is not caching the OUT_OF_RANGE properly.
     EXPECT_EQ(error::OUT_OF_RANGE, s.code()) << s;

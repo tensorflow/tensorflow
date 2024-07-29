@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
@@ -435,8 +437,28 @@ absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
       absl::StrCat("Not supported custom op ", op_sig.custom_name));
 }
 
+bool CheckIsBroadcastable(const std::vector<int32_t>* longer_dims,
+                          const std::vector<int32_t>* shorter_dims) {
+  int idx_1 = longer_dims->size() - 1;
+  int idx_2 = shorter_dims->size() - 1;
+  int max_idx = std::max(idx_1, idx_2);
+  int data_1 = 0;
+  int data_2 = 0;
+  for (int i = max_idx; i >= 0; --i) {
+    data_1 = idx_1 < 0 ? 1 : longer_dims->at(idx_1);
+    data_2 = idx_2 < 0 ? 1 : shorter_dims->at(idx_2);
+    if (data_1 != data_2 && data_1 != 1 && data_2 != 1) {
+      return false;
+    }
+    --idx_1;
+    --idx_2;
+  }
+  return true;
+}
+
 absl::Status CheckAddMulBroadcastCompatibility(
-    const OpSignatureTensorSpec& input0, const OpSignatureTensorSpec& input1) {
+    const OpSignatureTensorSpec& input0, const OpSignatureTensorSpec& input1,
+    GpuCompatibilityFlags flags) {
   if (input0.dims.size() > 1 && input1.dims.size() > 1 &&
       input0.dims.size() != input1.dims.size()) {
     const std::vector<int32_t>*longer_dims, *shorter_dims;
@@ -447,22 +469,26 @@ absl::Status CheckAddMulBroadcastCompatibility(
       longer_dims = &input1.dims;
       shorter_dims = &input0.dims;
     }
-    bool is_broadcastable = false;
 
-    if (longer_dims->size() == 4 && shorter_dims->size() == 3 &&
-        longer_dims->at(0) == 1) {
-      // Broadcasting 3D to 4D with batch 1 works.
-      is_broadcastable = true;
-    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
-               longer_dims->at(0) == 1 && shorter_dims->at(0) == 1 &&
-               shorter_dims->at(1) == 1) {
-      // Broadcasting 2D [1, 1] to 4D [1, x, y, z] works.
-      is_broadcastable = true;
-    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
-               longer_dims->at(0) == shorter_dims->at(0) &&
-               longer_dims->at(3) == shorter_dims->at(1)) {
-      // Broadcasting 2D [b, c] to 4D [b, x, y, c] works.
-      is_broadcastable = true;
+    bool is_broadcastable = false;
+    if (flags == GpuCompatibilityFlags::kEnhancedBroadcast) {
+      is_broadcastable = CheckIsBroadcastable(longer_dims, shorter_dims);
+    } else {
+      if (longer_dims->size() == 4 && shorter_dims->size() == 3 &&
+          longer_dims->at(0) == 1) {
+        // Broadcasting 3D to 4D with batch 1 works.
+        is_broadcastable = true;
+      } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+                 longer_dims->at(0) == 1 && shorter_dims->at(0) == 1 &&
+                 shorter_dims->at(1) == 1) {
+        // Broadcasting 2D [1, 1] to 4D [1, x, y, z] works.
+        is_broadcastable = true;
+      } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+                 longer_dims->at(0) == shorter_dims->at(0) &&
+                 longer_dims->at(3) == shorter_dims->at(1)) {
+        // Broadcasting 2D [b, c] to 4D [b, x, y, c] works.
+        is_broadcastable = true;
+      }
     }
 
     if (!is_broadcastable) {
@@ -480,7 +506,8 @@ absl::Status CheckAddMulBroadcastCompatibility(
 // Logics here used to be in TFLiteOperationParser:IsSupported()
 // of tensorflow/lite/delegates/gpu/common/model_builder.cc but they're all
 // migrated into here.
-absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
+absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
+                                           GpuCompatibilityFlags flags) {
   TfLiteBuiltinOperator opcode = static_cast<TfLiteBuiltinOperator>(op_sig.op);
   switch (opcode) {
     case kTfLiteBuiltinAdd: {
@@ -489,7 +516,8 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       }
       const auto& input0 = op_sig.inputs.at(0);
       const auto& input1 = op_sig.inputs.at(1);
-      auto broadcastable = CheckAddMulBroadcastCompatibility(input0, input1);
+      auto broadcastable =
+          CheckAddMulBroadcastCompatibility(input0, input1, flags);
       if (!broadcastable.ok()) {
         return broadcastable;
       }
@@ -598,6 +626,51 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       return absl::OkStatus();
     }
 
+    case kTfLiteBuiltinDynamicUpdateSlice: {
+      if (op_sig.inputs.size() != 3) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice requires 3 inputs.");
+      }
+      OpSignatureTensorSpec operand = op_sig.inputs[0];
+      OpSignatureTensorSpec update_slice = op_sig.inputs[1];
+      OpSignatureTensorSpec start_indices = op_sig.inputs[2];
+      if (operand.dims.size() == 4 && operand.dims[0] != 1) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice only support 4D operand with batch size 1.");
+      }
+
+      if (start_indices.dims.size() > 1) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice only support 1D start_indices.");
+      }
+
+      if (operand.type != update_slice.type) {
+        return absl::InternalError(
+            absl::StrCat("Array to update and updated slice must have the same "
+                         "data type, but got: array to update: ",
+                         operand.type, ", updated slice: ", update_slice.type));
+      }
+
+      if (start_indices.dims.size() != 1) {
+        return absl::InternalError(
+            absl::StrCat("Start indices must have be 1D, but got: ",
+                         start_indices.dims.size()));
+      }
+
+      if (start_indices.type != kTfLiteInt32) {
+        return absl::InvalidArgumentError(
+            "start_indices must be of type int32.");
+      }
+
+      if (update_slice.dims.size() != operand.dims.size()) {
+        return absl::InternalError(absl::StrCat(
+            "Operand and update must have the same number of "
+            "dimensions, but got: operand: ",
+            operand.dims.size(), ", update: ", update_slice.dims.size()));
+      }
+
+      return absl::OkStatus();
+    }
     case kTfLiteBuiltinFullyConnected: {
       const TfLiteFullyConnectedParams* tf_options;
       RETURN_IF_ERROR(RetrieveBuiltinData(op_sig, &tf_options));
@@ -740,7 +813,8 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       } else {
         const auto& input0 = op_sig.inputs.at(0);
         const auto& input1 = op_sig.inputs.at(1);
-        auto broadcastable = CheckAddMulBroadcastCompatibility(input0, input1);
+        auto broadcastable =
+            CheckAddMulBroadcastCompatibility(input0, input1, flags);
         if (!broadcastable.ok()) {
           return broadcastable;
         }
@@ -1011,14 +1085,16 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
 
   return absl::InvalidArgumentError(absl::StrCat(
       "Not supported op ", tflite::EnumNamesBuiltinOperator()[op_sig.op]));
-}
+}  // NOLINT(readability/fn_size)
 
 absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
                                            const Operator* op,
                                            const SubGraph* subgraph,
                                            const Model* model) {
   OpSignature op_sig = GetOpSignature(op_code, op, subgraph, model);
-  auto status = CheckGpuDelegateCompatibility(op_sig);
+  // Offline compatibility assumes enhanced broadcast is enabled.
+  auto status = CheckGpuDelegateCompatibility(
+      op_sig, GpuCompatibilityFlags::kEnhancedBroadcast);
   if (op_sig.builtin_data) {
     free(op_sig.builtin_data);
   }
@@ -1027,9 +1103,9 @@ absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
 
 absl::Status CheckGpuDelegateCompatibility(
     const TfLiteContext* context, const TfLiteNode* node,
-    const TfLiteRegistration* registration) {
+    const TfLiteRegistration* registration, GpuCompatibilityFlags flags) {
   return CheckGpuDelegateCompatibility(
-      GetOpSignature(context, node, registration));
+      GetOpSignature(context, node, registration), flags);
 }
 
 }  // namespace tflite

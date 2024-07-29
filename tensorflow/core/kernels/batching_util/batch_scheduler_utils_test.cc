@@ -42,6 +42,30 @@ TEST(GetNextAllowedBatchSizeTest, GreaterThanAllowedBatchSize) {
   EXPECT_EQ(GetNextAllowedBatchSize(10, {2, 4, 8}, false), 10);
 }
 
+TEST(GetPrevAllowedBatchSizeTest, PaddingDisallowed) {
+  EXPECT_EQ(GetPrevAllowedBatchSize(3, {2, 4, 8}, true), 3);
+}
+
+TEST(GetPrevAllowedBatchSizeTest, EmptyAllowedBatchSizes) {
+  EXPECT_EQ(GetPrevAllowedBatchSize(3, {}, false), 3);
+}
+
+TEST(GetPrevAllowedBatchSizeTest, PrevAllowedBatchSizeFound) {
+  EXPECT_EQ(GetPrevAllowedBatchSize(3, {1, 2, 4, 8}, false), 2);
+}
+
+TEST(GetPrevAllowedBatchSizeTest, NoSmallerAllowedBatchSizeFound) {
+  EXPECT_EQ(GetPrevAllowedBatchSize(3, {4, 8}, false), 3);
+}
+
+TEST(GetPrevAllowedBatchSizeTest, AlreadyAllowedBatchSize) {
+  EXPECT_EQ(GetPrevAllowedBatchSize(2, {1, 2, 4, 8}, false), 2);
+}
+
+TEST(GetPrevAllowedBatchSizeTest, GreaterThanMaxAllowedBatchSize) {
+  EXPECT_EQ(GetPrevAllowedBatchSize(10, {2, 4, 8}, false), 8);
+}
+
 }  // namespace
 
 }  // namespace serving

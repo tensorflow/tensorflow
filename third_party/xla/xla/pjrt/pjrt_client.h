@@ -51,10 +51,9 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 
 // API notes:
@@ -531,12 +530,7 @@ class PjRtClient {
       PjRtGlobalDeviceId global_device_id) const = 0;
 
   // Return an addressable PjRtDevice for a given
-  // PjRtDevice::local_hardware_id().
-  ABSL_DEPRECATED("Use LookupAddressableDevice(PjRtLocalDeviceId) instead")
-  virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const {
-    return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
-  }
+  // PjRtDevice::local_device_id().
   virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const = 0;
 

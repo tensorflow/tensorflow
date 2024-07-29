@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/service/llvm_compiler.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/status/statusor.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -55,6 +60,6 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
     result.push_back(std::move(executable));
   }
 
-  return {std::move(result)};
+  return std::move(result);
 }
 }  // namespace xla

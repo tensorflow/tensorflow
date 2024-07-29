@@ -20,7 +20,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -51,9 +50,9 @@ class CustomFusion : public FusionInterface {
 // compile-time instead of allocating a new buffer for it at runtime by
 // translating the static slice into offset + size of the original buffer passed
 // into the custom call `%gemm`.
-class AddressComputationFusion : public FusionInterface {
+class DynamicSliceFusion : public FusionInterface {
  public:
-  explicit AddressComputationFusion(const HloFusionAnalysis& analysis)
+  explicit DynamicSliceFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(

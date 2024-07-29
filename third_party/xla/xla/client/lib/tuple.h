@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_TUPLE_H_
 #define XLA_CLIENT_LIB_TUPLE_H_
 
+#include "absl/status/statusor.h"
 #include "xla/client/xla_builder.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

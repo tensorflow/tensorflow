@@ -21,13 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/client/global_data.h"
 #include "xla/client/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service_interface.h"
-#include "xla/statusor.h"
+#include "xla/service/service.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -38,8 +37,10 @@ namespace xla {
 // lifetime-oriented methods.
 class Client {
  public:
-  explicit Client(ServiceInterface* stub);
+  explicit Client(Service* stub);
   virtual ~Client();
+
+  using XlaComputationInstance = xla::XlaComputationInstance;
 
   // Compile the computation with the given argument shapes and returns the
   // handle to the compiled executable. The compiled executable is cached on the
@@ -70,7 +71,9 @@ class Client {
   //   will be filled with profile data from the execution.
   absl::StatusOr<std::unique_ptr<GlobalData>> Execute(
       const ExecutionHandle& handle, absl::Span<GlobalData* const> arguments,
-      ExecutionProfile* execution_profile = nullptr);
+      ExecutionProfile* execution_profile = nullptr
+
+  );
 
   // Executes the computation with the given arguments and returns the global
   // data that was produced from the execution.
@@ -93,26 +96,6 @@ class Client {
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 
-  // A struct to represent a computation instance to be executed.
-  // * If execution_options.device_handles is not empty, the computation is
-  //   executed on the devices associated with the handles by partitioning the
-  //   computation based on the attached sharding attributes. Otherwise, a
-  //   device is chosen by the service.
-  struct XlaComputationInstance {
-    const XlaComputation& computation;
-    std::vector<GlobalData*> arguments;
-    ExecutionOptions execution_options;
-    ExecutionProfile* execution_profile;
-
-    XlaComputationInstance(const XlaComputation& computation,
-                           std::vector<GlobalData*> arguments,
-                           ExecutionOptions execution_options,
-                           ExecutionProfile* execution_profile)
-        : computation(computation),
-          arguments(std::move(arguments)),
-          execution_options(execution_options),
-          execution_profile(execution_profile) {}
-  };
 
   // Executes a list XlaComputationInstances and returns global data produced
   // from each computation.
@@ -202,11 +185,6 @@ class Client {
   absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> DeconstructTuple(
       const GlobalData& data);
 
-  // Retrieves the statistics of the given computation.
-  absl::StatusOr<ComputationStats> GetComputationStats(
-      const XlaComputation& computation,
-      const DebugOptions& debug_options) const;
-
   // Returns the Shape of the given array specified by 'data'. The shape
   // includes the Layout of the array as it is stored on the service.
   absl::StatusOr<Shape> GetShape(const GlobalData& data);
@@ -227,18 +205,13 @@ class Client {
 
   absl::StatusOr<XlaComputation> LoadSnapshot(const HloSnapshot& module);
 
-  ServiceInterface* stub() { return stub_; }
+  Service* stub() { return stub_; }
 
  private:
-  // Returns the execution statistics (e.g., gflop/s) as a string from the
-  // ExecutionProfile returned from an execution of the computation.
-  absl::StatusOr<std::string> ExecutionStatsAsString(
-      const XlaComputation& computation, const ExecutionProfile& profile);
-
   absl::StatusOr<ChannelHandle> CreateChannelHandleByType(
       ChannelHandle::ChannelType type);
 
-  ServiceInterface* stub_;  // Stub that this client is connected on.
+  Service* stub_;  // Stub that this client is connected on.
 
   Client(const Client&) = delete;
   Client& operator=(const Client&) = delete;

@@ -70,7 +70,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   TF_LITE_ENSURE_TYPES_EQ(context, operand->type, update->type);
-  TF_LITE_ENSURE_TYPES_EQ(context, start_indices->type, kTfLiteInt32);
+  TF_LITE_ENSURE(context, start_indices->type == kTfLiteInt32 ||
+                              start_indices->type == kTfLiteInt64);
 
   output->type = operand->type;
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(operand->dims);
@@ -92,25 +93,24 @@ int TensorIndexToFlat(const int* index, const int dims,
 
 // A helper function to compute the clamped start indices to ensure they are
 // not out of bounds.
-std::vector<int> ClampStartIndices(int input_dims, const int32_t* indices_data,
+std::vector<int> ClampStartIndices(int input_dims, const int64_t* indices_data,
                                    const RuntimeShape& input_shape,
                                    const RuntimeShape& update_shape) {
   std::vector<int> clamped_start_indices(input_dims, 0);
   for (int i = 0; i < input_dims; i++) {
-    clamped_start_indices[i] =
-        std::min(std::max(0, indices_data[i]),
-                 input_shape.Dims(i) - update_shape.Dims(i));
+    clamped_start_indices[i] = static_cast<int32_t>(
+        std::min<int64_t>(std::max<int64_t>(0, indices_data[i]),
+                          input_shape.Dims(i) - update_shape.Dims(i)));
   }
   return clamped_start_indices;
 }
 
 template <typename T>
 void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
-                        const TfLiteTensor* indice, TfLiteTensor* output) {
+                        const int64_t* indices_data, TfLiteTensor* output) {
   const auto& input_shape = GetTensorShape(input);
   const auto& update_shape = GetTensorShape(update);
   const T* update_data = GetTensorData<T>(update);
-  const int32_t* indices_data = GetTensorData<int32_t>(indice);
   T* output_data = GetTensorData<T>(output);
 
   const int input_dims = input_shape.DimensionsCount();
@@ -158,21 +158,43 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
+  const auto& input_shape = GetTensorShape(operand);
+  const int input_dims = input_shape.DimensionsCount();
+  std::vector<int64_t> indices_data_i64;
+  if (indice->type == kTfLiteInt32) {
+    for (int i = 0; i < input_dims; i++)
+      indices_data_i64.push_back(static_cast<int64_t>(indice->data.i32[i]));
+  } else if (indice->type == kTfLiteInt64) {
+    for (int i = 0; i < input_dims; i++)
+      indices_data_i64.push_back(indice->data.i64[i]);
+  } else {
+    TF_LITE_KERNEL_LOG(context,
+                       "DynamicUpdateSlice only currently supports "
+                       "int32 or int64 indices type, got %d.",
+                       indice->type);
+    return kTfLiteError;
+  }
+
   switch (operand->type) {
     case kTfLiteFloat32:
-      DynamicUpdateSlice<float>(operand, update, indice, output);
+      DynamicUpdateSlice<float>(operand, update, indices_data_i64.data(),
+                                output);
       break;
     case kTfLiteBool:
-      DynamicUpdateSlice<bool>(operand, update, indice, output);
+      DynamicUpdateSlice<bool>(operand, update, indices_data_i64.data(),
+                               output);
       break;
     case kTfLiteInt8:
-      DynamicUpdateSlice<int8_t>(operand, update, indice, output);
+      DynamicUpdateSlice<int8_t>(operand, update, indices_data_i64.data(),
+                                 output);
       break;
     case kTfLiteInt32:
-      DynamicUpdateSlice<int32_t>(operand, update, indice, output);
+      DynamicUpdateSlice<int32_t>(operand, update, indices_data_i64.data(),
+                                  output);
       break;
     case kTfLiteInt64:
-      DynamicUpdateSlice<int64_t>(operand, update, indice, output);
+      DynamicUpdateSlice<int64_t>(operand, update, indices_data_i64.data(),
+                                  output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,

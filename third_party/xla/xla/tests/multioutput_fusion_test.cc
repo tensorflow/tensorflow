@@ -245,7 +245,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
 #ifdef XLA_TEST_BACKEND_GPU
-  if (GetDebugOptionsForTest().xla_gpu_enable_mlir_emitters()) {
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() > 0) {
     GTEST_SKIP() << "Nested fusions not supported on GPU with MLIR emitters.";
   }
 #endif

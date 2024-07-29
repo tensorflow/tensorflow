@@ -16,10 +16,10 @@ limitations under the License.
 #define XLA_SERVICE_CPU_RUNTIME_CONV_IMPL_H_
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tsl/framework/convolution/eigen_spatial_convolutions.h"
+#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 // 'tensorflow' namespace is used so that types don't require qualification.
@@ -190,6 +190,56 @@ void EigenConv3DImpl(
             .reshape(post_contract_dims);
   }
 }
+
+// Extern Conv2D template for all supported devices and data types.
+// TODO(abanas): These templates are instantiated in convolution_thunk.cc. Move
+// the definitions from this file to convolution thunk, and make all runtime
+// conv targets depend on it.
+#define CONV2D_EXTERN_TEMPLATE(EigenDevice, ScalarType)                    \
+  extern template void EigenConv2DImpl<EigenDevice, ScalarType>(           \
+      const EigenDevice& device, ScalarType* out, ScalarType* lhs,         \
+      ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,     \
+      Eigen::Index input_y, Eigen::Index input_channels,                   \
+      Eigen::Index kernel_x, Eigen::Index kernel_y,                        \
+      Eigen::Index kernel_channels, Eigen::Index kernel_filters,           \
+      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index x_stride, \
+      Eigen::Index y_stride, Eigen::Index padding_x_before,                \
+      Eigen::Index padding_x_after, Eigen::Index padding_y_before,         \
+      Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
+      Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
+      Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count)
+
+CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
+CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
+CONV2D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, Eigen::half);
+CONV2D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
+
+#undef CONV2D_EXTERN_TEMPLATE
+
+// Extern Conv3D template for all supported devices and data types.
+#define CONV3D_EXTERN_TEMPLATE(EigenDevice, ScalarType)                        \
+  extern template void EigenConv3DImpl<EigenDevice, ScalarType>(               \
+      const EigenDevice& device, ScalarType* out, ScalarType* lhs,             \
+      ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,         \
+      Eigen::Index input_y, Eigen::Index input_z, Eigen::Index input_channels, \
+      Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,     \
+      Eigen::Index kernel_channels, Eigen::Index kernel_filters,               \
+      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,     \
+      Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,     \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,             \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,             \
+      Eigen::Index padding_z_before, Eigen::Index padding_z_after,             \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,                \
+      Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
+      Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
+      Eigen::Index feature_group_count)
+
+CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
+CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
+CONV3D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, Eigen::half);
+CONV3D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
+
+#undef CONV3D_EXTERN_TEMPLATE
 
 }  // namespace xla
 }  // namespace tensorflow

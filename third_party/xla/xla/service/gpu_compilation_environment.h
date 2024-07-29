@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {

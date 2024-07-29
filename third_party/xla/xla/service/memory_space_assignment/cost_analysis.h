@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -126,7 +126,11 @@ class CostAnalysis {
   // An optional Cache object may be provided to some of the methods below to
   // speed up the lookup.
   struct Cache {
+    // TODO(hanruobing): This map assumes the nested while loops have the same
+    // hard-coded trip count. We plan to replace it with a more accurate
+    // estimation provided by 'while_nest_trip_count'.
     absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
+    absl::flat_hash_map<const HloComputation*, float> computation_trip_count;
     absl::flat_hash_map<HloPosition, float> memory_boundedness;
   };
 
@@ -260,6 +264,13 @@ class CostAnalysis {
   // means the instruction is not in a while loop.
   int CalculateComputationNestLevel(const HloInstruction* instruction,
                                     bool while_only) const;
+
+  // Returns the number of times the instruction will be executed.
+  // For instructions in nested loops, this is the product of the number of
+  // trip counts of outer loops.
+  float CalculateNestTripCount(const HloInstruction* instruction,
+                               Cache* cache = nullptr) const;
+
   float GetWhileNestMultiplier(int while_nest_level) const;
 
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }

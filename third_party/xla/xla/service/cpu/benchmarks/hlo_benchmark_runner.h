@@ -25,10 +25,15 @@ limitations under the License.
 
 namespace xla::cpu {
 
+// A string-to-string mapping that allows to parametrize HLO benchmarks.
+using StrToStrMapping =
+    std::initializer_list<std::pair<absl::string_view, absl::string_view>>;
+
 absl::Status RunHloBenchmark(benchmark::State& state,
                              std::string_view hlo_module,
-                             absl::Span<const Literal* const> args);
+                             absl::Span<const Literal* const> args,
+                             StrToStrMapping replacements = {});
 
-}
+}  // namespace xla::cpu
 
 #endif  // XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_

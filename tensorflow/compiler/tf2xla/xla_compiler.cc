@@ -910,7 +910,7 @@ Status XlaCompiler::XLAShapeForArgument(
     case XlaCompiler::Argument::kParameter: {
       if (is_entry_computation) {
         TensorShape shape;
-        if (absl::holds_alternative<TensorShape>(arg.shape)) {
+        if (std::holds_alternative<TensorShape>(arg.shape)) {
           shape = std::get<TensorShape>(arg.shape);
         } else {
           TF_RETURN_IF_ERROR(
@@ -928,16 +928,17 @@ Status XlaCompiler::XLAShapeForArgument(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_determination_fns, xla_shape));
         // If the arg is dynamic then we update the shape to reflect that. The
-        // arg's value_dynamism is a Tensor of bools set to the dynamism of each
-        // dimension.
-        if (arg.value_dynamism.has_value()) {
-          auto dynamism = arg.value_dynamism.value().vec<bool>();
-          for (int i = 0; i < dynamism.size(); ++i) {
-            xla_shape->set_dynamic_dimension(i, dynamism(i));
+        // layout etc above lose it by forcing a swap to TensorShape.
+        if (std::holds_alternative<xla::Shape>(arg.shape) &&
+            std::get<xla::Shape>(arg.shape).is_dynamic()) {
+          xla::Shape dynamic_shape = std::get<xla::Shape>(arg.shape);
+          for (int i = 0; i < xla_shape->dimensions_size(); ++i) {
+            xla_shape->set_dynamic_dimension(
+                i, dynamic_shape.is_dynamic_dimension(i));
           }
         }
       } else {
-        if (absl::holds_alternative<xla::Shape>(arg.shape)) {
+        if (std::holds_alternative<xla::Shape>(arg.shape)) {
           *xla_shape = std::get<xla::Shape>(arg.shape);
         } else {
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(

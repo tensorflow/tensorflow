@@ -22,7 +22,8 @@ namespace cpu {
 
 extern "C" {
 extern void __xla_cpu_runtime_OneDnnSoftmax(const void* run_options_ptr,
-                                            void* input, void* result);
+                                            void* input, void* result,
+                                            void* softmax_config_ptr);
 }  // extern "C"
 
 }  // namespace cpu

@@ -111,7 +111,7 @@ const char* GetRocmTracerEventSourceName(const RocmTracerEventSource& source);
 enum class RocmTracerEventDomain {
   InvalidDomain = 0,
   HIP_API,
-  HCC_OPS,  // TODO(rocm-profiler): renme this to HIP_OPS
+  HIP_OPS,
 };
 const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain);
 // RocmTracerSyncTypes forward decleration

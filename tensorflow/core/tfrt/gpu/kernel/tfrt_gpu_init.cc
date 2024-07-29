@@ -17,11 +17,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/tsl/framework/serving_device_selector_policies.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/gpu/kernel/gpu_runner.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tsl/framework/serving_device_selector_policies.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {

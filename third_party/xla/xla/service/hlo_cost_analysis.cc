@@ -178,52 +178,70 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
   bool seen_trivial_user = false;
   CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
                            hlo->opcode() == HloOpcode::kGetTupleElement));
+  auto handle_slice = [this](const HloInstruction* hlo,
+                             const HloInstruction* user) -> int64_t {
+    return GetShapeSize(user->shape());
+  };
+  auto handle_dynamic_slice = [&seen_trivial_user, this](
+                                  const HloInstruction* hlo,
+                                  const HloInstruction* user) -> int64_t {
+    if (hlo == user->operand(0)) {
+      return GetShapeSize(user->shape());
+    }
+    if (!seen_trivial_user) {
+      seen_trivial_user = true;
+      return GetShapeSize(hlo->shape());
+    }
+    return 0;
+  };
+  auto handle_dynamic_update_slice =
+      [&seen_trivial_user, this](const HloInstruction* hlo,
+                                 const HloInstruction* user) -> int64_t {
+    // Operand 0 is aliased to the output.
+    if (hlo != user->operand(0) && !seen_trivial_user) {
+      seen_trivial_user = true;
+      return GetShapeSize(hlo->shape());
+    }
+    return 0;
+  };
   for (const HloInstruction* user : hlo->users()) {
     switch (user->opcode()) {
       case HloOpcode::kFusion: {
         for (int64_t idx : user->OperandIndices(hlo)) {
-          auto nested_size =
-              FusionParameterReadBytes(user->fused_parameter(idx));
+          const auto& fusion_users = user->users();
           const HloInstruction* root_instruction =
               user->fused_instructions_computation()->root_instruction();
           // We define the nested fusion as simple if the parameter directly
           // feeds the root.
           const bool fusion_is_simple =
               user->fused_parameter(idx) == root_instruction->operand(0);
-          const auto& fusion_users = user->users();
-          auto is_slice = [](const HloInstruction* hlo) {
-            return hlo->opcode() == HloOpcode::kSlice ||
-                   hlo->opcode() == HloOpcode::kDynamicSlice;
-          };
-          // If the nested fusion is simple and the user is a slice,
-          // we only load that portion of the parameter.
           // TODO(b/332998529): deal with nested fusions more generally.
-          if (fusion_is_simple && fusion_users.size() == 1 &&
-              is_slice(fusion_users[0])) {
-            size += GetShapeSize(fusion_users[0]->shape());
-          } else {
-            size += nested_size;
+          for (const HloInstruction* fusion_user : fusion_users) {
+            if (fusion_is_simple &&
+                fusion_user->opcode() == HloOpcode::kSlice) {
+              size += handle_slice(user, fusion_user);
+            } else if (fusion_is_simple &&
+                       fusion_user->opcode() == HloOpcode::kDynamicSlice) {
+              size += handle_dynamic_slice(user, fusion_user);
+            } else if (fusion_is_simple && fusion_user->opcode() ==
+                                               HloOpcode::kDynamicUpdateSlice) {
+              size += handle_dynamic_update_slice(user, fusion_user);
+            } else if (!seen_trivial_user) {
+              seen_trivial_user = true;
+              size += FusionParameterReadBytes(user->fused_parameter(idx));
+            }
           }
         }
         break;
       }
       case HloOpcode::kSlice:
-        size += GetShapeSize(user->shape());
+        size += handle_slice(hlo, user);
         break;
       case HloOpcode::kDynamicSlice:
-        if (hlo == user->operand(0)) {
-          size += GetShapeSize(user->shape());
-        } else if (!seen_trivial_user) {
-          seen_trivial_user = true;
-          size += GetShapeSize(hlo->shape());
-        }
+        size += handle_dynamic_slice(hlo, user);
         break;
       case HloOpcode::kDynamicUpdateSlice:
-        // Operand 0 is aliased to the output.
-        if (hlo != user->operand(0) && !seen_trivial_user) {
-          seen_trivial_user = true;
-          size += GetShapeSize(hlo->shape());
-        }
+        size += handle_dynamic_update_slice(hlo, user);
         break;
       case HloOpcode::kBroadcast:
       case HloOpcode::kReshape:
@@ -1379,6 +1397,15 @@ float HloCostAnalysis::bytes_accessed() const {
 
 float HloCostAnalysis::optimal_seconds() const {
   return properties_sum_[kOptimalSecondsKey];
+}
+
+HloCostAnalysis::Properties HloCostAnalysis::properties(
+    const HloInstruction& hlo) const {
+  auto it = hlo_properties_.find(&hlo);
+  if (it == hlo_properties_.end()) {
+    return Properties();
+  }
+  return it->second;
 }
 
 int64_t HloCostAnalysis::flop_count(const HloInstruction& hlo) const {

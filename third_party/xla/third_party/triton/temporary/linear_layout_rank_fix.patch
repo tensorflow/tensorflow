@@ -1,0 +1,19 @@
+Fixes for b/348174903
+
+I'll upstream this.
+
+diff --git a/lib/Tools/LinearLayout.cpp b/lib/Tools/LinearLayout.cpp
+--- a/lib/Tools/LinearLayout.cpp
++++ b/lib/Tools/LinearLayout.cpp
+@@ -119,6 +119,11 @@ getInjectiveMat(const LinearLayout &layo
+ // outDim as columns.  In other words, finds the number of linearly-independent
+ // bases for this output dimension.
+ int getMatrixRank(std::unique_ptr<uint64_t[]> m, int numRows, int numCols) {
++  // f2reduce underflows if the number of cols is 0, return the rank early in
++  // this case.
++  if (numCols == 0) {
++    return 0;
++  }
+   // stride is specified in number of 64-bit words per row, and we pack our
+   // matrix so that there's only one uint64_t per row.
+   assert(numCols <= 64);

@@ -37,6 +37,7 @@ default_visibility = [
     # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
     "//tensorflow/cc/saved_model:__subpackages__",
     #internal starburst clustering service,
+    "//waymo/ml/deploy/benchmark:__subpackages__",
 ]
 
 package(
@@ -261,7 +262,7 @@ filegroup(
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
-        "@local_tsl//tsl/framework:device_type.h",
+        "@local_xla//xla/tsl/framework:device_type.h",
     ],
 )
 
@@ -344,7 +345,7 @@ filegroup(
         "variant_op_registry.h",
         "variant_tensor_data.cc",
         "variant_tensor_data.h",
-        "@local_tsl//tsl/framework:device_type.h",
+        "@local_xla//xla/tsl/framework:device_type.h",
     ],
 )
 
@@ -494,7 +495,7 @@ cc_library(
         ":type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/framework:allocator",
+        "@local_xla//xla/tsl/framework:allocator",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
@@ -525,7 +526,7 @@ cc_library(
     name = "allocator_registry_impl",
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
-        "@local_tsl//tsl/framework:allocator_registry_impl",
+        "@local_xla//xla/tsl/framework:allocator_registry_impl",
     ],
     alwayslink = 1,
 )
@@ -661,7 +662,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/framework:numeric_types",
+        "@local_xla//xla/tsl/framework:numeric_types",
     ],
 )
 
@@ -686,6 +687,7 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/utils:__subpackages__",
+        "//waymo/ml/deploy/benchmark:__subpackages__",
     ],
     deps = [
         ":bounds_check",
@@ -717,6 +719,7 @@ cc_library(
         "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
+        "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
         "//waymo/ml/compiler/frontend/kernels:__pkg__",
     ],
@@ -799,7 +802,7 @@ cc_library(
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/framework:type_traits",
+        "@local_xla//xla/tsl/framework:type_traits",
     ],
 )
 
@@ -877,7 +880,7 @@ tf_cuda_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/framework:device_type",
+        "@local_xla//xla/tsl/framework:device_type",
         "@local_xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
@@ -1700,6 +1703,7 @@ tf_proto_library(
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
+        "//waymo/ml/deploy/benchmark:__subpackages__",
     ],
 )
 

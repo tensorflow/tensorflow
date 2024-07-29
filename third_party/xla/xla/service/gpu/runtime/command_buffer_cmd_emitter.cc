@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/replica_id_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -205,6 +206,11 @@ static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {
                                     thunk.arguments(), thunk.graph());
 }
 
+static absl::StatusOr<Command> Convert(const WaitForStreamsThunk& thunk) {
+  return std::make_unique<BarrierCmd>(thunk.stream_id(),
+                                      thunk.wait_for_stream_id());
+}
+
 //===----------------------------------------------------------------------===//
 static absl::StatusOr<Command> CopyMetadata(absl::StatusOr<Command> cmd,
                                             const Thunk& thunk) {
@@ -284,10 +290,8 @@ static absl::Status AppendCommands(
     case Thunk::Kind::kNcclReduceScatterDone:
       return append(Convert<NcclCollectiveDoneThunk>(thunk));
 
-    // Currently all collective operations recorded on the tracing stream and do
-    // not need to have a separate done command.
     case Thunk::Kind::kWaitForStreams:
-      return absl::OkStatus();
+      return append(Convert<WaitForStreamsThunk>(thunk));
 
     default:
       return Internal("Unsupported thunk kind: %s",

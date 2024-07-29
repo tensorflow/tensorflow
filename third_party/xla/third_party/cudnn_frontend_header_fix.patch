@@ -1,5 +1,5 @@
 diff --git a/include/cudnn_frontend.h b/include/cudnn_frontend.h
-index 0f0d5a6..802bcbb 100644
+index 7bca425..cd74e3a 100644
 --- a/include/cudnn_frontend.h
 +++ b/include/cudnn_frontend.h
 @@ -97,7 +97,7 @@
@@ -11,3 +11,42 @@ index 0f0d5a6..802bcbb 100644
  
  #include "cudnn_frontend_ConvDesc.h"
  #include "cudnn_frontend_Heuristics.h"
+diff --git a/include/cudnn_frontend/backend/backend_descriptor.h b/include/cudnn_frontend/backend/backend_descriptor.h
+index dc7ad25..ade164a 100644
+--- a/include/cudnn_frontend/backend/backend_descriptor.h
++++ b/include/cudnn_frontend/backend/backend_descriptor.h
+@@ -2,7 +2,7 @@
+ 
+ #include <memory>
+ 
+-#include "cudnn.h"
++#include "third_party/gpus/cudnn/cudnn.h"
+ 
+ namespace cudnn_frontend::detail {
+ 
+diff --git a/include/cudnn_frontend/backend/execution_helpers.h b/include/cudnn_frontend/backend/execution_helpers.h
+index 334ffde..d2ca694 100644
+--- a/include/cudnn_frontend/backend/execution_helpers.h
++++ b/include/cudnn_frontend/backend/execution_helpers.h
+@@ -2,7 +2,7 @@
+ 
+ #include <vector>
+ 
+-#include "cudnn.h"
++#include "third_party/gpus/cudnn/cudnn.h"
+ 
+ #include "backend_descriptor.h"
+ 
+diff --git a/include/cudnn_frontend/backend/plan_helpers.h b/include/cudnn_frontend/backend/plan_helpers.h
+index 1fa458d..8c37d10 100644
+--- a/include/cudnn_frontend/backend/plan_helpers.h
++++ b/include/cudnn_frontend/backend/plan_helpers.h
+@@ -2,7 +2,7 @@
+ 
+ #include <vector>
+ 
+-#include "cudnn.h"
++#include "third_party/gpus/cudnn/cudnn.h"
+ 
+ #include "backend_descriptor.h"
+ 

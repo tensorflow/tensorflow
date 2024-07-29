@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "xla/test.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace {
@@ -144,6 +145,48 @@ TEST(Array2dTest, Linspace) {
   EXPECT_FLOAT_EQ((*arr)(1, 1), 2.5);
   EXPECT_FLOAT_EQ((*arr)(2, 0), 3.0);
   EXPECT_FLOAT_EQ((*arr)(2, 1), 3.5);
+}
+
+TEST(Array2dTest, LinspaceF8E5M2) {
+  auto arr = MakeLinspaceArray2D<tsl::float8_e5m2>(1.0, 3.5, 3, 2);
+
+  EXPECT_EQ(arr->n1(), 3);
+  EXPECT_EQ(arr->n2(), 2);
+
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 0)), 1.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 1)), 1.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 0)), 2.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 1)), 2.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 0)), 3.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 1)), 3.5);
+}
+
+TEST(Array2dTest, LinspaceF8E4M3Fn) {
+  auto arr = MakeLinspaceArray2D<tsl::float8_e4m3fn>(1.0, 3.5, 3, 2);
+
+  EXPECT_EQ(arr->n1(), 3);
+  EXPECT_EQ(arr->n2(), 2);
+
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 0)), 1.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 1)), 1.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 0)), 2.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 1)), 2.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 0)), 3.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 1)), 3.5);
+}
+
+// We need this test for float8_e4m3fn because it doesn't have a representation
+// for infinity. We need to ensure the algorithm used for linspace doesn't
+// convert large numbers directly to F8E4M3FN.
+TEST(Array2dTest, LinspaceF8E4M3FnNoNan) {
+  auto arr = MakeLinspaceArray2D<tsl::float8_e4m3fn>(0, 1, 23, 42);
+
+  for (int64_t n1 = 0; n1 < arr->n1(); ++n1) {
+    for (int64_t n2 = 0; n2 < arr->n2(); ++n2) {
+      // Check for NaN.
+      EXPECT_EQ((*arr)(n1, n2), (*arr)(n1, n2));
+    }
+  }
 }
 
 TEST(Array2dTest, Stringification) {

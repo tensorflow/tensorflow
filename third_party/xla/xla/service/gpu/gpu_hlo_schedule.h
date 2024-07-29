@@ -18,17 +18,24 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 namespace gpu {
 
-int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
+// Returns `absl::OkStatus` if every instruction in the profile is present in
+// the module. `absl::InvalidArgumentError` with missing culprit costs/latencies
+// otherwise.
+absl::Status IsProfileApplicable(
+    const HloModule* module,
+    const tensorflow::profiler::ProfiledInstructionsProto& profile);
 
 struct ScheduleMetadata {
   int64_t scheduler_mem_limit;

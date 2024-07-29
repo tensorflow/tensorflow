@@ -38,7 +38,7 @@ limitations under the License.
 #if TF_HIPBLASLT
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
-#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 

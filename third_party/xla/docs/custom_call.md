@@ -116,9 +116,9 @@ void do_custom_call(CUstream stream, BufferF32 in0, BufferF32 in1,
 XLA_FFI_DEFINE_HANDLER(handler, do_custom_call,
                        ffi::Ffi::Bind()
                            .Ctx<xla::ffi::PlatformStream<CUstream>>()
-                           .Arg<Buffer>()
-                           .Arg<Buffer>()
-                           .Ret<Buffer>());
+                           .Arg<BufferF32>()
+                           .Arg<BufferF32>()
+                           .Ret<BufferF32>());
 
 XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(), "do_custom_call",
                          "CUDA", handler);

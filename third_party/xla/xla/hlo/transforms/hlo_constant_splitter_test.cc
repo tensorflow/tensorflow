@@ -62,6 +62,49 @@ TEST_F(HloConstantSplitterTest, SplitConstants) {
   }
 }
 
+TEST_F(HloConstantSplitterTest, OnlySplitConstantsAllowedBySeedConstraints) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      param = (f32[], f32[]) parameter(0),
+        sharding={{maximal device=0}, {maximal device=0}}
+      gte0 = f32[] get-tuple-element(param), index=0
+      gte1 = f32[] get-tuple-element(param), index=1
+      constant1 = f32[] constant(1)
+      add0 = f32[] add(constant1, gte0)
+      add1 = f32[] add(constant1, add0)
+      constant2 = f32[] constant(2)
+      add2 = f32[] multiply(constant2, gte1)
+      ROOT root = (f32[], f32[], f32[]) tuple(constant2, add1, add2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  TF_ASSERT_OK(HloConstantSplitter(/* split_expressions */ false,
+                                   [](const HloInstruction* instruction) {
+                                     return instruction->name() != "constant1";
+                                   })
+                   .Run(module.get())
+                   .status());
+
+  // Check that every constant has at most one user except constant1 which
+  // should have 2 as it is not split.
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kConstant &&
+          instruction->name() != "constant1") {
+        EXPECT_LE(instruction->user_count(), 1);
+      }
+    }
+  }
+
+  const HloInstruction* constant1 = FindInstruction(module.get(), "constant1");
+  ASSERT_NE(constant1, nullptr);
+  EXPECT_EQ(constant1->user_count(), 2);
+}
+
 TEST_F(HloConstantSplitterTest, PreservingConstantsWithZeroUsers) {
   const char* module_str = R"(
     HloModule test_module

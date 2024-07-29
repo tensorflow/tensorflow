@@ -73,11 +73,11 @@ class PrimitiveType(enum.IntEnum):
   U16: PrimitiveType
   U32: PrimitiveType
   U64: PrimitiveType
-  F8_E4M3FN: PrimitiveType
-  F8_E4M3B11FNUZ: PrimitiveType
-  F8_E4M3FNUZ: PrimitiveType
-  F8_E5M2: PrimitiveType
-  F8_E5M2FNUZ: PrimitiveType
+  F8E4M3FN: PrimitiveType
+  F8E4M3B11FNUZ: PrimitiveType
+  F8E4M3FNUZ: PrimitiveType
+  F8E5M2: PrimitiveType
+  F8E5M2FNUZ: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType
   F32: PrimitiveType
@@ -622,9 +622,11 @@ ArrayImpl = Any
 #   traceback: Traceback
 #   _HAS_DYNAMIC_ATTRIBUTES: bool = ...
 
-def copy_array_to_devices_with_sharding(
-    self: ArrayImpl, devices: List[Device], sharding: Any
-) -> ArrayImpl: ...
+def batched_copy_array_to_devices_with_sharding(
+    arrays: Sequence[ArrayImpl],
+    devices: Sequence[List[Device]],
+    sharding: Sequence[Any],
+) -> Sequence[ArrayImpl]: ...
 
 def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
 
@@ -734,7 +736,6 @@ def cuda_array_interface_to_buffer(
     device_id: int | None = None,
 ) -> ArrayImpl: ...
 
-
 # === BEGIN py_traceback.cc
 
 class Frame:
@@ -814,7 +815,6 @@ def is_optimized_build() -> bool: ...
 def json_to_pprof_profile(json: str) -> bytes: ...
 def pprof_profile_to_json(proto: bytes) -> str: ...
 
-
 class PmapFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
   def __getstate__(self) -> Any: ...
@@ -849,9 +849,8 @@ class DeviceList:
   def memory_kinds(self) -> Tuple[str, ...]: ...
 
 class Sharding: ...
-class XLACompatibleSharding(Sharding): ...
 
-class NamedSharding(XLACompatibleSharding):
+class NamedSharding(Sharding):
   def __init__(
       self,
       mesh: Any,
@@ -868,13 +867,13 @@ class NamedSharding(XLACompatibleSharding):
   _internal_device_list: DeviceList
   _manual_axes: frozenset[Any]
 
-class SingleDeviceSharding(XLACompatibleSharding):
+class SingleDeviceSharding(Sharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...
   _device: Device
   _memory_kind: Optional[str]
   _internal_device_list: DeviceList
 
-class PmapSharding(XLACompatibleSharding):
+class PmapSharding(Sharding):
   def __init__(
       self, devices: Sequence[Any], sharding_spec: pmap_lib.ShardingSpec
   ): ...
@@ -882,7 +881,7 @@ class PmapSharding(XLACompatibleSharding):
   sharding_spec: pmap_lib.ShardingSpec
   _internal_device_list: DeviceList
 
-class GSPMDSharding(XLACompatibleSharding):
+class GSPMDSharding(Sharding):
   def __init__(
       self,
       devices: Sequence[Device],

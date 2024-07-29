@@ -330,6 +330,11 @@ TEST_F(IndexingAnalysisTest, ReshapeNothing) {
   output_indexing.Simplify();
   EXPECT_THAT(output_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap("KNOWN EMPTY"))));
+  // Even though the indexing is known empty, the rank of the map should still
+  // be 1.
+  EXPECT_EQ(
+      output_indexing.indexing_maps[0].begin()->GetAffineMap().getNumResults(),
+      1);
 }
 
 TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputPermutation) {
@@ -1750,8 +1755,8 @@ TEST_F(IndexingAnalysisTest, ReduceOp) {
                             d1 in [0, 9]
                           )"))));
 
-  auto output_indexing = GetInputToOutputIndexing(root);
-  EXPECT_THAT(output_indexing.indexing_maps,
+  auto output_indexing_0 = GetInputToOutputIndexing(root, 0);
+  EXPECT_THAT(output_indexing_0.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2, d3) -> (d0, d2)
                             domain:
@@ -1759,8 +1764,10 @@ TEST_F(IndexingAnalysisTest, ReduceOp) {
                             d1 in [0, 19]
                             d2 in [0, 9]
                             d3 in [0, 49]
-                          )")),
-                          ElementsAre(MatchIndexingMap(R"(
+                          )"))));
+  auto output_indexing_1 = GetInputToOutputIndexing(root, 1);
+  EXPECT_THAT(output_indexing_1.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             ()[s0, s1] -> (s0, s1)
                             domain:
                             s0 in [0, 149]
@@ -1843,56 +1850,39 @@ TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
                             d0 in [0, 9]
                           )"))));
 
+  constexpr std::string_view kInputToOutputIndexing = R"(
+      (d0, d1) -> (d1)
+      domain:
+      d0 in [0, 255]
+      d1 in [0, 9]
+  )";
   auto input_indexing_0 = GetInputToOutputIndexing(root, /*input_id=*/0);
-
-  EXPECT_THAT(input_indexing_0.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> (d1)
-                            domain:
-                            d0 in [0, 255]
-                            d1 in [0, 9]
-                          )")),
-                          ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> (d1)
-                            domain:
-                            d0 in [0, 255]
-                            d1 in [0, 9]
-                          )")),
-                          ElementsAre(MatchIndexingMap(R"(
-                            ()[s0] -> (s0)
-                            domain:
-                            s0 in [0, 9]
-                          )")),
-                          ElementsAre(MatchIndexingMap(R"(
-                            ()[s0] -> (s0)
-                            domain:
-                            s0 in [0, 9]
-                          )"))));
+  EXPECT_THAT(
+      input_indexing_0.indexing_maps,
+      ElementsAre(ElementsAre(MatchIndexingMap(kInputToOutputIndexing)),
+                  ElementsAre(MatchIndexingMap(kInputToOutputIndexing))));
 
   auto input_indexing_1 = GetInputToOutputIndexing(root, /*input_id=*/1);
-  EXPECT_THAT(input_indexing_1.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> (d1)
-                            domain:
-                            d0 in [0, 255]
-                            d1 in [0, 9]
-                          )")),
-                          ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> (d1)
-                            domain:
-                            d0 in [0, 255]
-                            d1 in [0, 9]
-                          )")),
-                          ElementsAre(MatchIndexingMap(R"(
-                            ()[s0] -> (s0)
-                            domain:
-                            s0 in [0, 9]
-                          )")),
-                          ElementsAre(MatchIndexingMap(R"(
-                            ()[s0] -> (s0)
-                            domain:
-                            s0 in [0, 9]
-                          )"))));
+  EXPECT_THAT(
+      input_indexing_1.indexing_maps,
+      ElementsAre(ElementsAre(MatchIndexingMap(kInputToOutputIndexing)),
+                  ElementsAre(MatchIndexingMap(kInputToOutputIndexing))));
+
+  constexpr std::string_view kInitToOutputIndexing = R"(
+      ()[s0] -> (s0)
+      domain:
+      s0 in [0, 9]
+  )";
+  auto input_indexing_2 = GetInputToOutputIndexing(root, /*input_id=*/2);
+  EXPECT_THAT(
+      input_indexing_2.indexing_maps,
+      ElementsAre(ElementsAre(MatchIndexingMap(kInitToOutputIndexing)),
+                  ElementsAre(MatchIndexingMap(kInitToOutputIndexing))));
+  auto input_indexing_3 = GetInputToOutputIndexing(root, /*input_id=*/2);
+  EXPECT_THAT(
+      input_indexing_3.indexing_maps,
+      ElementsAre(ElementsAre(MatchIndexingMap(kInitToOutputIndexing)),
+                  ElementsAre(MatchIndexingMap(kInitToOutputIndexing))));
 }
 
 TEST_F(IndexingAnalysisTest, ReduceWindowOp_NoPadding) {

@@ -1815,37 +1815,6 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
 
 namespace {
 
-// Removes layers of tuple indirection introduced via 'tuple' and
-// 'get-tuple-element' instructions to more directly identify the source of the
-// given HLO value (identified by the given `ShapeIndex` into the output of the
-// given `HloInstruction`).
-//
-// e.g. for the following:
-//    %x = some-op(...)
-//    %foo = get-tuple-element(%x), index=0
-//    %bar = tuple(%y, %foo)
-//
-// ... FollowTupleIndirection(%bar, {1}) == {%x, {0}} (output 1 of 'bar' comes
-// from output 0 of %x).
-//
-// Note that all 'tuple' instructions are followed before all
-// 'get-tuple-element' instructions are followed. This is because it is assumed
-// that tupling a value and then extracting it from the tuple again will not
-// occur in properly-optimized IR.
-std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(
-    const HloInstruction* instruction, ShapeIndex operand_index) {
-  while (instruction->opcode() == HloOpcode::kTuple && !operand_index.empty()) {
-    instruction = instruction->operand(operand_index.front());
-    operand_index.pop_front();
-  }
-  while (instruction->opcode() == HloOpcode::kGetTupleElement) {
-    operand_index.push_front(instruction->tuple_index());
-    instruction = instruction->operand(0);
-  }
-
-  return {instruction, operand_index};
-}
-
 // Returns in-place input/output pairs for the given fusion instruction,
 // according to the aliasing rules for the corresponding fusion computation.
 //
@@ -1892,23 +1861,40 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
             in_place_input_source =
                 output_source_instruction->operand(input.operand_number);
             in_place_input_index = input.operand_index;
+            // Follow tuple indirection backwards from the instruction input to
+            // try to find a fusion parameter. If found, that parameter aliases
+            // the current output. If not, the current output aliases no input.
+            std::tie(in_place_input_source, in_place_input_index) =
+                FollowTupleIndirection(in_place_input_source,
+                                       in_place_input_index);
+            if (in_place_input_source->opcode() == HloOpcode::kFusion) {
+              // Nested fusions can have aliasing that allows us to peephole
+              // through to their producer.
+              auto nested_in_place_input_output_pairs =
+                  HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+                      in_place_input_source);
+              for (const auto& pair : nested_in_place_input_output_pairs) {
+                if (pair.second == in_place_input_index) {
+                  // If the nested fusion has aliasing that matches the index of
+                  // this input for its output, then peephole to its input.
+                  in_place_input_source =
+                      in_place_input_source->operand(pair.first.operand_number);
+                  in_place_input_index = pair.first.operand_index;
+                  std::tie(in_place_input_source, in_place_input_index) =
+                      FollowTupleIndirection(in_place_input_source,
+                                             in_place_input_index);
+                }
+              }
+            }
           }
         }
 
-        if (in_place_input_source) {
-          // Follow tuple indirection backwards from the instruction input to
-          // try to find a fusion parameter. If found, that parameter aliases
-          // the current output. If not, the current output aliases no input.
-          std::tie(in_place_input_source, in_place_input_index) =
-              FollowTupleIndirection(in_place_input_source,
-                                     in_place_input_index);
-
-          if (in_place_input_source->opcode() == HloOpcode::kParameter) {
-            in_place_input_output_pairs.emplace_back(
-                HloOperandIndex{in_place_input_source->parameter_number(),
-                                in_place_input_index},
-                index);
-          }
+        if (in_place_input_source != nullptr &&
+            in_place_input_source->opcode() == HloOpcode::kParameter) {
+          in_place_input_output_pairs.emplace_back(
+              HloOperandIndex{in_place_input_source->parameter_number(),
+                              in_place_input_index},
+              index);
         }
       });
   return in_place_input_output_pairs;
@@ -2178,6 +2164,20 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   // Loop fusions that contain transposing copies won't reach here as they have
   // different layouts, which fails the check in the beginning of this function.
   return user->IsElementwiseOnOperand(user->operand_index(operand));
+}
+
+std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(
+    const HloInstruction* instruction, ShapeIndex operand_index) {
+  while (instruction->opcode() == HloOpcode::kTuple && !operand_index.empty()) {
+    instruction = instruction->operand(operand_index.front());
+    operand_index.pop_front();
+  }
+  while (instruction->opcode() == HloOpcode::kGetTupleElement) {
+    operand_index.push_front(instruction->tuple_index());
+    instruction = instruction->operand(0);
+  }
+
+  return {instruction, operand_index};
 }
 
 }  // namespace xla

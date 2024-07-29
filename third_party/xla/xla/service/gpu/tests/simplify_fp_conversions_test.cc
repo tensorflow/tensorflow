@@ -31,6 +31,14 @@ class SimplifyFPConversionsTest : public HloTestBase {
     return debug_options;
   }
 
+  bool SupportsMultiplyBF16() {
+    const auto& device_description =
+        backend().default_stream_executor()->GetDeviceDescription();
+    const auto& cc = device_description.gpu_compute_capability();
+    return std::holds_alternative<se::CudaComputeCapability>(cc) &&
+           std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper();
+  }
+
   void SetEnableSimplifyFpConversions(bool enable_simplify_all_fp_conversions) {
     enable_simplify_all_fp_conversions_ = enable_simplify_all_fp_conversions;
   }
@@ -62,16 +70,39 @@ TEST_F(SimplifyFPConversionsTest, RedundantTypeConversionsGetCleanedUp) {
 
   SetEnableSimplifyFpConversions(true);
 
-  // This matcher ensures that there will be no convert in between the rsqrt and
-  // the broadcast instruction.
-  MatchOptimizedHlo(kHloText, R"(
-// CHECK: rsqrt(
-// CHECK-NOT: convert(
-// CHECK: broadcast(
+  if (SupportsMultiplyBF16()) {
+    // If the GPU supports multiplication of bf16 values, only rsqrt is wrapped
+    // in the convert operations.
+    MatchOptimizedHlo(kHloText, R"(
+// CHECK: %[[P0:.*]] = bf16{{.*}} parameter({{.*}})
+// CHECK: %[[C0:.*]] = f32{{.*}} convert(%[[P0]])
+// CHECK: %[[RSQRT:.*]] = f32{{.*}} rsqrt(%[[C0]])
+// CHECK: %[[RCONV:.*]] = bf16{{.*}} convert(%[[RSQRT]])
+// CHECK: %[[BCAST:.*]] = bf16{{.*}} broadcast(%[[RCONV]])
+// CHECK: %[[P1:.*]] = bf16{{.*}} parameter({{.*}})
+// CHECK: ROOT {{.*}} = bf16{{.*}} multiply(%[[BCAST]], %[[P1]])
 )");
+  } else {
+    // If the GPU only supports multiplication of f32 values, make sure that
+    // there's no conversion between rsqrt and broadcast operations.
+    MatchOptimizedHlo(kHloText, R"(
+// CHECK: %[[P0:.*]] = bf16{{.*}} parameter({{.*}})
+// CHECK: %[[C0:.*]] = f32{{.*}} convert(%[[P0]])
+// CHECK: %[[RSQRT:.*]] = f32{{.*}} rsqrt(%[[C0]])
+// CHECK: %[[BCAST:.*]] = f32{{.*}} broadcast(%[[RSQRT]])
+// CHECK-DAG: %[[P1:.*]] = bf16{{.*}} parameter({{.*}})
+// CHECK-DAG: %[[C1:.*]] = f32{{.*}} convert(%[[P1]])
+// CHECK: %[[MUL:.*]] = f32{{.*}} multiply(%[[BCAST]], %[[C1]])
+// CHECK: ROOT {{.*}} = bf16{{.*}} convert(%[[MUL]])
+)");
+  }
 }
 
 TEST_F(SimplifyFPConversionsTest, RedundantTypeConversionsArePresentInTest) {
+  if (SupportsMultiplyBF16()) {
+    GTEST_SKIP() << "No double convert is expected on Hopper";
+  }
+
   // This test ensures that the HLO that we use in the previous test is actually
   // meaningful and would lead to redundant type conversions if the simplifier
   // didn't clean them up.

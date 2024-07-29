@@ -27,3 +27,27 @@ message CompilationResultProto {
   bytes binary = 4;
   map<string, string> dnn_compiled_graphs = 5;
 }
+
+message LaunchDimensionsProto {
+  uint64 num_blocks = 1;
+  uint64 num_threads_per_block = 2;
+}
+
+message ClusterDimProto {
+  uint64 x = 1;
+  uint64 y = 2;
+  uint64 z = 3;
+}
+
+message CompilationCacheEntryProto {
+  string fingerprint = 1;
+  LaunchDimensionsProto launch_dimensions = 2;
+  optional ClusterDimProto cluster_dim = 3;
+  int64 shmem_bytes = 4;
+  bytes binary = 5;
+}
+
+message CompilationCacheProto {
+  // Key is the kernel name.
+  map<string, CompilationCacheEntryProto> entries = 1;
+}

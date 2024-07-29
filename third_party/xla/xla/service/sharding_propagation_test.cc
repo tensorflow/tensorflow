@@ -10198,6 +10198,31 @@ ENTRY %reshape {
   EXPECT_THAT(instruction, op::Sharding("{devices=[1,2,2]0,1,2,3}"));
 }
 
+TEST_F(ShardingPropagationTest, LayoutConstraint) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[102,192,192] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3}
+  %custom-call = f32[102,192,192]{0,1,2} custom-call(f32[102,192,192] %param0), custom_call_target="LayoutConstraint"
+  ROOT %copy = f32[102,192,192] copy(%custom-call),
+    sharding={devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "custom-call");
+  EXPECT_THAT(instruction->shape(), ShapeUtil::MakeShapeWithDenseLayout(
+                                        F32, {102, 192, 192}, {0, 1, 2}));
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,2,2]0,1,2,3}"));
+}
+
 TEST_F(ShardingPropagationTest, OffloadingPropagation) {
   const char* const hlo_string = R"(
 HloModule module

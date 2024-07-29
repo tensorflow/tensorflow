@@ -80,8 +80,8 @@ Shape::Shape(const ShapeProto& shape_proto) {
   }
 }
 
-ShapeProto Shape::ToProto() const {
-  ShapeProto proto;
+void Shape::SetProto(ShapeProto& proto) const {
+  proto.Clear();
   proto.set_element_type(element_type_);
   proto.mutable_dimensions()->Reserve(dimensions_size());
   for (const int64_t dimension : dimensions()) {
@@ -92,11 +92,16 @@ ShapeProto Shape::ToProto() const {
   }
   proto.mutable_tuple_shapes()->Reserve(tuple_shapes_size());
   for (const Shape& shape : tuple_shapes()) {
-    *proto.add_tuple_shapes() = shape.ToProto();
+    shape.SetProto(*proto.add_tuple_shapes());
   }
   if (has_layout()) {
-    *proto.mutable_layout() = layout().ToProto();
+    layout().SetProto(*proto.mutable_layout());
   }
+}
+
+ShapeProto Shape::ToProto() const {
+  ShapeProto proto;
+  SetProto(proto);
   return proto;
 }
 

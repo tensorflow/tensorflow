@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/frontend_attributes.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/service/hlo_ordering.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {

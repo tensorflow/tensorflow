@@ -46,7 +46,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -309,20 +308,24 @@ NB_MODULE(xla_extension, m_nb) {
         {
           nb::gil_scoped_release gil_release;
           CpuClientOptions options;
-          if (distributed_client != nullptr) {
-            options.kv_store =
-                GetDistributedKeyValueStore(distributed_client,
-                                            /*key_prefix=*/"cpu:");
-            options.node_id = node_id;
-            options.num_nodes = num_nodes;
-
-            options.collectives = std::move(collectives);
-          }
 
           options.asynchronous = asynchronous;
+          options.collectives = std::move(collectives);
+          options.process_id = node_id;
           std::unique_ptr<PjRtClient> client =
               xla::ValueOrThrow(GetTfrtCpuClient(options));
-          ifrt_client = ifrt::PjRtClient::Create(std::move(client));
+          ifrt::PjRtClient::CreateOptions ifrt_options;
+          ifrt_options.pjrt_client =
+              std::shared_ptr<PjRtClient>(std::move(client));
+          if (distributed_client != nullptr) {
+            ifrt_options.kv_store =
+                GetDistributedKeyValueStore(distributed_client,
+                                            /*key_prefix=*/"cpu:");
+            ifrt_options.process_id = node_id;
+            ifrt_options.num_processes = num_nodes;
+          }
+          ifrt_client =
+              ValueOrThrow(ifrt::PjRtClient::Create(std::move(ifrt_options)));
         }
         return PyClient::Make(std::move(ifrt_client));
       },

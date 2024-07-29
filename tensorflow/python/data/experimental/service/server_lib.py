@@ -334,7 +334,7 @@ class WorkerConfig(
     if protocol is None:
       protocol = _pywrap_utils_exp.TF_DATA_DefaultProtocol()
     if data_transfer_address is None:
-      data_transfer_address = "localhost:%port%"
+      data_transfer_address = "localhost:%dts_port%"
     heartbeat_interval_ms = _get_time_or_placeholder(heartbeat_interval_ms)
     dispatcher_timeout_ms = _get_time_or_placeholder(dispatcher_timeout_ms)
 

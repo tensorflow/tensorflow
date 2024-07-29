@@ -16,24 +16,27 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_CUDNN_FUSED_CONV_REWRITER_H_
 #define XLA_SERVICE_GPU_CUDNN_FUSED_CONV_REWRITER_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
 
 // Rewrites custom-calls targeting cudnnConvolutionForward to
 // cudnnConvolutionBiasActivationForward by fusing operations following forward
-// convolution.  This transform must run after cudnn_conv_rewriter.
+// convolution.  This transform must run after GpuConvRewriter.
 //
 // Semantics of underlying cudnn ops:
 //
-// https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
-// https://docs.nvidia.com/deeplearning/cudnn/developer-guide/index.html#scaling-parameters
+// https://docs.nvidia.com/deeplearning/cudnn/latest/api/cudnn-cnn-library.html#cudnnconvolutionforward
+// https://docs.nvidia.com/deeplearning/cudnn/latest/developer/misc.html#scaling-parameters
 //
 // ## Floating-point convs
 //
@@ -83,7 +86,7 @@ namespace gpu {
 //          alpha2_f32 * side_input +
 //          bias_f32
 //
-//   result_f32        = max(result_f32, 0)
+//   result_f32        = max(base, 0)
 //   result_s8_option1 = max(convert_s8(clamp(-128, base, 127)), 0)
 //   result_s8_option2 = convert_s8(clamp(-128, max(base, 0), 127))
 //
@@ -98,10 +101,18 @@ namespace gpu {
 // pass returns an error -- cudnn will not be able to run it.
 class CudnnFusedConvRewriter : public HloModulePass {
  public:
-  explicit CudnnFusedConvRewriter(se::CudaComputeCapability cc)
-      : compute_capability_(cc) {}
-  explicit CudnnFusedConvRewriter(se::RocmComputeCapability cc)
-      : compute_capability_(cc) {}
+  CudnnFusedConvRewriter(se::CudaComputeCapability cc,
+                         se::dnn::VersionInfo dnn_version,
+                         int32_t toolkit_version)
+      : compute_capability_(cc),
+        dnn_version_(dnn_version),
+        toolkit_version_(toolkit_version) {}
+  CudnnFusedConvRewriter(se::RocmComputeCapability cc,
+                         se::dnn::VersionInfo dnn_version,
+                         int32_t toolkit_version)
+      : compute_capability_(cc),
+        dnn_version_(dnn_version),
+        toolkit_version_(toolkit_version) {}
 
   absl::string_view name() const override {
     return "cudnn-fused-convolution-rewriter";
@@ -114,6 +125,8 @@ class CudnnFusedConvRewriter : public HloModulePass {
 
  private:
   const se::GpuComputeCapability compute_capability_;
+  const se::dnn::VersionInfo dnn_version_;
+  const int32_t toolkit_version_;
 };
 
 }  // namespace gpu

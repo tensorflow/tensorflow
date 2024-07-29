@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
@@ -55,41 +56,9 @@ absl::Span<const int64_t> DecodeDims(int64_t* encoded_dims_data) {
   return absl::MakeSpan(dims_begin, dims_begin + dims_count);
 }
 
-// TODO(heinsaar): Once on C++20, this can (and should) be a local lambda with
-//                 an explicit template parameter list.
-class ArgInserter {
- public:
-  template <typename B>
-  explicit ArgInserter(B&& b) : b_(std::forward<B>(b)) {}
-
-  template <typename... Args>
-  void operator()(Args&&... args) const {
-    b_.AddBufferArg(std::forward<Args>(args)...);
-  }
-
- private:
-  ffi::CallFrameBuilder& b_;
-};
-
-// TODO(heinsaar): Once on C++20, this can (and should) be a local lambda with
-//                 an explicit template parameter list.
-class RetInserter {
- public:
-  template <typename B>
-  explicit RetInserter(B&& b) : b_(std::forward<B>(b)) {}
-
-  template <typename... Args>
-  void operator()(Args&&... args) const {
-    b_.AddBufferRet(std::forward<Args>(args)...);
-  }
-
- private:
-  ffi::CallFrameBuilder& b_;
-};
-
-template <typename Builder>
-void BuildBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
-                  absl::Span<void* const> address_space, Builder&& builder) {
+void BuildArgBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
+                     absl::Span<void* const> address_space,
+                     ffi::CallFrameBuilder& builder) {
   int64_t dim_pos = 0;
   for (int64_t i = 0; i < types.size(); ++i) {
     auto dtype = static_cast<xla::PrimitiveType>(types[i]);
@@ -97,9 +66,29 @@ void BuildBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
     auto elem_count = absl::c_accumulate(dims, 1, std::multiplies<int64_t>());
     auto data_width = xla::primitive_util::ByteWidth(dtype) * elem_count;
 
-    builder(tensorflow::se::DeviceMemoryBase(address_space[i], data_width),
-            /*type = */ dtype,
-            /*dims = */ dims);
+    builder.AddBufferArg(
+        tensorflow::se::DeviceMemoryBase(address_space[i], data_width),
+        /*type = */ dtype,
+        /*dims = */ dims);
+    dim_pos += 1;            // Jumps over count value
+    dim_pos += dims.size();  // Jumps over all dimensions in a shape
+  }
+}
+
+void BuildRetBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
+                     absl::Span<void* const> address_space,
+                     ffi::CallFrameBuilder& builder) {
+  int64_t dim_pos = 0;
+  for (int64_t i = 0; i < types.size(); ++i) {
+    auto dtype = static_cast<xla::PrimitiveType>(types[i]);
+    auto dims = DecodeDims(encoded_dims + dim_pos);
+    auto elem_count = absl::c_accumulate(dims, 1, std::multiplies<int64_t>());
+    auto data_width = xla::primitive_util::ByteWidth(dtype) * elem_count;
+
+    builder.AddBufferRet(
+        tensorflow::se::DeviceMemoryBase(address_space[i], data_width),
+        /*type = */ dtype,
+        /*dims = */ dims);
     dim_pos += 1;            // Jumps over count value
     dim_pos += dims.size();  // Jumps over all dimensions in a shape
   }
@@ -113,14 +102,6 @@ static absl::Status BuildAndCallFfi(
     int64_t* operand_dims) {
   CHECK_EQ(outputs.size(), result_types.size());
   CHECK_EQ(inputs.size(), operand_types.size());
-
-  if (absl::c_any_of(operand_types, [](int32_t type) {
-        return static_cast<xla::PrimitiveType>(type) ==
-               xla::PrimitiveType::TUPLE;
-      })) {
-    return absl::InternalError(
-        "Tuple operands are not supported yet in typed FFI custom calls.");
-  }
 
   // Find the registered FFI handler for this custom call target.
   absl::StatusOr<ffi::HandlerRegistration> registration =
@@ -139,7 +120,7 @@ static absl::Status BuildAndCallFfi(
     // Backend config not empty, so proceed to parse it into an MLIR attribute
     // and build an MLIR compatible map of attributes out of it.
     mlir::Attribute attr = mlir::parseAttribute(backend_config, &mlir_context);
-    if (auto dict = attr.dyn_cast_or_null<mlir::DictionaryAttr>()) {
+    if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
       TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     } else {
       return absl::InternalError(
@@ -156,8 +137,8 @@ static absl::Status BuildAndCallFfi(
   builder.AddAttributes(attrs.Build());
 
   // Decode dimensions metadata into shapes and build operand & result buffers
-  BuildBuffers(operand_types, operand_dims, inputs, ArgInserter(builder));
-  BuildBuffers(result_types, result_dims, outputs, RetInserter(builder));
+  BuildArgBuffers(operand_types, operand_dims, inputs, builder);
+  BuildRetBuffers(result_types, result_dims, outputs, builder);
 
   // Forward executable run options to the FFI handlers via the call options.
   ffi::CallOptions call_options = {
@@ -173,18 +154,13 @@ static absl::Status BuildAndCallFfi(
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_HandleFfiCall(
     const void* run_options_ptr, const char* target_name_ptr,
-    int64_t target_name_len, void* output, void** inputs,
+    int64_t target_name_len, void** outputs, void** inputs,
     const char* opaque_str_ptr, int64_t opaque_str_len, void* status_opaque,
     int32_t* operand_types, int64_t operand_count, int64_t* operand_dims,
     int32_t* result_types, int64_t result_count, int64_t* result_dims) {
   auto target_name = absl::string_view(target_name_ptr, target_name_len);
   auto backend_config = absl::string_view(opaque_str_ptr, opaque_str_len);
   auto xla_status = reinterpret_cast<XlaCustomCallStatus*>(status_opaque);
-
-  void** outputs = &output;
-  if (result_count > 1) {  // output is a tuple
-    outputs = reinterpret_cast<void**>(output);
-  }
 
   // Annotate memory coming from jit compiled function as initialized to
   // suppress false positives from msan sanitizer.

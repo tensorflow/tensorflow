@@ -73,9 +73,17 @@ tf_cc_test(
     name = "tfprof_advisor_test",
     srcs = ["tfprof_advisor_test.cc"],
     deps = [
+        ":checker",
         ":tfprof_advisor",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:step_stats_proto_cc",
+        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler/internal:tfprof_node",
+        "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_tf_testlib",
+        "@com_google_absl//absl/strings",
     ],
 )

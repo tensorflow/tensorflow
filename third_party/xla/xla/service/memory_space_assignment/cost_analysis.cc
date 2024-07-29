@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,9 +36,9 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -227,10 +228,53 @@ int CostAnalysis::CalculateComputationNestLevel(
   return nest_level;
 }
 
+// TODO(hanruobing): This function assumes all nested layers have the
+// same hard-coded trip count for simplicity. I plan to replace it with the
+// more accurate function (CalculateNestTripCount).
 float CostAnalysis::GetWhileNestMultiplier(int while_nest_level) const {
   return IPow<float>(
       options_.xla_tpu_memory_space_assignment_while_execution_count,
       while_nest_level);
+}
+
+float CostAnalysis::CalculateNestTripCount(const HloInstruction* instruction,
+                                           CostAnalysis::Cache* cache) const {
+  float total_trip_count = 1.0;
+  const HloComputation* computation = instruction->parent();
+  while (!computation->IsEntryComputation()) {
+    if (cache) {
+      auto it = cache->computation_trip_count.find(computation);
+      if (it != cache->computation_trip_count.end()) {
+        if (computation == instruction->parent()) {
+          return it->second;
+        } else {
+          total_trip_count *= it->second;
+          break;
+        }
+      }
+    }
+    CallGraphNode& node = call_graph_->GetNode(computation);
+    absl::Span<const CallSite> callsites = node.caller_callsites();
+    const xla::CallSite& callsite = callsites[0];
+    if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+      HloInstruction* while_op = callsite.instruction();
+      std::optional<float> trip_count;
+      if (!trip_count.has_value()) {
+        // TODO(hanruobing): Apply PrepareModuleForUnrolling on the module may
+        // provide more accurate results for trip count analysis . However, it
+        // may downgrade the performance of MSA. We need more evaluation to
+        // decide whether to apply that pass before MSA.
+        trip_count = ComputeWhileLoopTripCount(while_op);
+      }
+      total_trip_count *= trip_count.value_or(
+          options_.xla_tpu_memory_space_assignment_while_execution_count);
+    }
+    computation = callsite.instruction()->parent();
+  }
+  if (cache) {
+    cache->computation_trip_count[instruction->parent()] = total_trip_count;
+  }
+  return total_trip_count;
 }
 
 float CostAnalysis::GetDefaultMemoryAccessOverhead(

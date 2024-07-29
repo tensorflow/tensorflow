@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/framework/allocator.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 

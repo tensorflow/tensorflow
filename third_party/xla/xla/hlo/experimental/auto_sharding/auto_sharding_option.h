@@ -117,7 +117,7 @@ struct AutoShardingOption {
   bool allow_recompute_heavy_op = true;
 
   // If true, allow adding 1d strategies in 2d logical mesh.
-  bool allow_mixed_mesh_shape = false;
+  bool allow_mixed_mesh_shape = true;
 
   // The number of micro batches if gradient accumulation is used.
   // If this is not 1, the cost of all-reduce for gradient synchronization
@@ -201,6 +201,16 @@ struct AutoShardingOption {
   // TODO(331684721,329508561): Generate windowed-einsum strategies by default
   // once it is fully implemented.
   bool generate_windowed_einsum_strategies = false;
+
+  // Whether or not to allow shardings where a tensor dim is shared across a
+  // number of devices larger than the size of the tensor dimension
+  bool allow_shardings_small_dims_across_many_devices = false;
+
+  // Split constant expressions as well when invoking HloConstantSplitter.
+  bool enable_expression_constant_splitter = false;
+
+  // Whether to post-process the solution by reshaping / resharding tensors.
+  bool post_process = true;
 
   // Prints a debug string.
   std::string ToString() const;

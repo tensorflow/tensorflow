@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -25,12 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tsl/platform/statusor.h"
 
@@ -72,7 +75,9 @@ void GraphOptPass::runOnOperation() {
                                      FunctionDefLibrary());
   GraphExportConfig confs;
   auto graph = std::make_unique<Graph>(flib_def);
-  Status status = ConvertMlirToGraph(module_in, confs, &graph, &flib_def);
+  absl::flat_hash_set<Node*> control_ret_nodes;
+  Status status = tensorflow::tf2xla::v2::ConvertMlirToGraph(
+      module_in, confs, &graph, &flib_def, &control_ret_nodes);
   if (!status.ok()) {
     mlir::emitError(mlir::UnknownLoc::get(&ctx)) << status.message();
     return signalPassFailure();

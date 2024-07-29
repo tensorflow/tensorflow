@@ -17,11 +17,11 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/side_effect_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"

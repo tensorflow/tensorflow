@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/statusor.h"
 

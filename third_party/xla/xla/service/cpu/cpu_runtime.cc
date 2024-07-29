@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -164,6 +163,8 @@ extern const char* const kOneDnnSoftmaxSymbolName =
     "__xla_cpu_runtime_OneDnnSoftmax";
 extern const char* const kOneDnnLayerNormSymbolName =
     "__xla_cpu_runtime_OneDnnLayerNorm";
+extern const char* const kOneDnnConvolutionSymbolName =
+    "__xla_cpu_runtime_OneDnnConvolution";
 extern const char* const kOneDnnMatMulReorderSymbolName =
     "__xla_cpu_runtime_OneDnnMatMulReorder";
 extern const char* const kHandleFfiCallSymbolName =
@@ -546,12 +547,12 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
     const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name,
-    const char* hlo_module, int64_t hlo_module_id) {
+    const char* hlo_module, int64_t program_id) {
   VLOG(3) << "TracingStart " << name;
   auto trace_in =
       tsl::profiler::TraceMeEncode(name, {{"hlo_op", name},
                                           {"hlo_module", hlo_module},
-                                          {"hlo_module_id", hlo_module_id}});
+                                          {"program_id", program_id}});
   return tsl::profiler::TraceMe::ActivityStart(trace_in);
 }
 

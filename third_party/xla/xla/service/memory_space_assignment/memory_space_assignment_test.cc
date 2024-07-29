@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -65,8 +66,8 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/testing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -109,18 +110,6 @@ int64_t ReservedScopedMemoryFn(
         operands_in_alternate_memory,
     const absl::flat_hash_set<ShapeIndex>& outputs_in_alternate_memory) {
   return 0;
-}
-
-template <typename MessageType>
-absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
-  tsl::protobuf::TextFormat::Parser parser;
-  MessageType parsed_proto;
-  tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
-                                                   text_proto.size());
-  if (!parser.Parse(&input_stream, &parsed_proto)) {
-    return absl::InvalidArgumentError("Could not parse text proto");
-  }
-  return parsed_proto;
 }
 
 class TestBufferIntervalComparator : public BufferIntervalComparator {
@@ -8094,6 +8083,101 @@ ENTRY main {
   EXPECT_THAT(
       ShapeUtil::GetSubshape(fusion2->shape(), {0}).layout().memory_space(),
       kAlternateMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, AsyncOpCustomFusionMultipleUsers) {
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+fused_computation_start {
+  param0 = f32[2,1] parameter(0)
+  negate = f32[2,1] negate(param0)
+  ROOT custom-call = (f32[2,1], f32[2,1], u32[], u32[]) custom-call(negate), custom_call_target="AsyncOpStart"
+}
+
+fused_computation_update1 {
+  param0 = f32[2,1] parameter(0)
+  param1 = f32[2,1] parameter(1)
+  param2 = f32[2,1] parameter(2)
+  param3 = f32[2,1] parameter(3)
+  param4 = u32[] parameter(4)
+  param5 = u32[] parameter(5)
+  add = f32[2,1] add(param0, param1)
+  negate = f32[2,1] negate(param2)
+  ROOT tuple = (f32[2,1], f32[2,1], f32[2,1], f32[2,1], u32[], u32[]) tuple(add, param2, param3, negate, param4, param5)
+}
+
+fused_computation_update2 {
+  param0 = f32[2,1] parameter(0)
+  param1 = f32[2,1] parameter(1)
+  param2 = f32[2,1] parameter(2)
+  param3 = f32[2,1] parameter(3)
+  param4 = u32[] parameter(4)
+  param5 = u32[] parameter(5)
+  add = f32[2,1] add(param0, param1)
+  negate = f32[2,1] negate(param2)
+  ROOT tuple = (f32[2,1], f32[2,1], f32[2,1], f32[2,1], u32[], u32[]) tuple(add, param2, param3, negate, param4, param5)
+}
+
+fused_computation_done {
+  param0 = f32[2,1] parameter(0)
+  param1 = f32[2,1] parameter(1)
+  param2 = u32[] parameter(2)
+  param3 = u32[] parameter(3)
+  negate = f32[2,1] negate(param0)
+  ROOT custom-call = f32[2,1] custom-call(param0, param1, negate, param2, param3), custom_call_target="AsyncOpDone"
+}
+
+ENTRY main {
+  param = f32[2,1] parameter(0)
+  negate1 = f32[2,1] negate(param)
+  negate2 = f32[2,1] negate(negate1)
+  fusion1 = (f32[2,1], f32[2,1], u32[], u32[]) fusion(negate1), kind=kCustom, output_to_operand_aliasing={{0}: (0, {})}, calls=fused_computation_start
+  negate3 = f32[2,1] negate(negate2)
+  negate4 = f32[2,1] negate(negate3)
+  gte0 = f32[2,1] get-tuple-element(fusion1), index=0
+  gte1 = f32[2,1] get-tuple-element(fusion1), index=1
+  gte2 = u32[] get-tuple-element(fusion1), index=2
+  gte3 = u32[] get-tuple-element(fusion1), index=3
+  fusion2 = (f32[2,1], f32[2,1], f32[2,1], f32[2,1], u32[], u32[]) fusion(negate4, negate2, gte0, gte1, gte2, gte3), kind=kLoop, output_to_operand_aliasing={{1}: (2, {}), {2}: (3, {}), {3}: (3, {}), {4}: (4, {}), {5}: (5, {})}, calls=fused_computation_update1
+  gte4 = f32[2,1] get-tuple-element(fusion2), index=0
+  negate5 = f32[2,1] negate(gte4)
+  negate10 = f32[2,1] negate(negate5)
+  negate11 = f32[2,1] negate(negate10)
+  negate12 = f32[2,1] negate(negate11)
+  negate13 = f32[2,1] negate(negate12)
+  negate14 = f32[2,1] negate(negate13)
+  negate15 = f32[2,1] negate(negate14)
+  negate16 = f32[2,1] negate(negate15)
+  negate17 = f32[2,1] negate(negate16)
+  negate18 = f32[2,1] negate(negate17)
+  negate19 = f32[2,1] negate(negate18)
+  fusion3 = (f32[2,1], f32[2,1], f32[2,1], f32[2,1], u32[], u32[]) fusion(negate19, negate2, gte0, gte1, gte2, gte3), kind=kLoop, output_to_operand_aliasing={{1}: (2, {}), {2}: (3, {}), {3}: (3, {}), {4}: (4, {}), {5}: (5, {})}, calls=fused_computation_update2
+  gte9 = f32[2,1] get-tuple-element(fusion3), index=0
+  negate6 = f32[2,1] negate(gte9)
+  gte5 = f32[2,1] get-tuple-element(fusion3), index=1
+  gte6 = f32[2,1] get-tuple-element(fusion3), index=2
+  gte7 = u32[] get-tuple-element(fusion3), index=4
+  gte8 = u32[] get-tuple-element(fusion3), index=5
+  fusion4 = f32[2,1] fusion(gte5, gte6, gte7, gte8), kind=kCustom, output_to_operand_aliasing={{}: (1, {})}, calls=fused_computation_done
+  ROOT add = f32[2,1] add(negate6, fusion4)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        std::string_view inst_name = position.instruction->name();
+        if (inst_name == "fusion1" ||
+            (inst_name == "fusion2" && position.index != ShapeIndex({0})) ||
+            (inst_name == "fusion3" && position.index != ShapeIndex({0}))) {
+          return true;
+        }
+        return false;
+      };
+  AssignMemorySpace(module.get(), options);
 }
 
 // This test seeks to test that MSA will schedule async copy operations with

@@ -18,16 +18,20 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_dataflow_analysis.h"
+#include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -634,6 +638,169 @@ ENTRY %main {
   const HloValue& value = dataflow->GetUniqueValueAt(output2, {});
   EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
       {&async_start_use, &call_use, &async_done_use}, value, *dataflow));
+}
+
+TEST_F(HloOrderingTest,
+       UsesBeforeValueDefinitionValueIsAsyncWrappedCallInstruction) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule UsesBeforeValueDefinitionValueIsAsyncWrappedCallInstruction, input_output_alias={ {}: (0, {}, must-alias) }, entry_computation_layout={(f32[2,2])->f32[2,2]}
+
+%host_computation {
+  %arg_0.2 = f32[2,2] parameter(0)
+  %constant.1 = f32[] constant(2)
+  %broadcast.1 = f32[2,2] broadcast(f32[] %constant.1), dimensions={}
+  ROOT %multiply.1 = f32[2,2] multiply(f32[2,2] %arg_0.2, f32[2,2] %broadcast.1)
+}, execution_thread="host"
+
+%async_wrapped_comp {
+  %param_0 = f32[2,2] parameter(0)
+  ROOT %async_wrapped_call = f32[2,2] custom-call(f32[2,2] %param_0), custom_call_target="HostExecute", called_computations={%host_computation}
+}, execution_thread="host"
+
+ENTRY %main {
+  %p0 = f32[2,2] parameter(0)
+  %host-async-start = ((f32[2,2]), f32[2,2], u32[]) async-start(f32[2,2] %p0), async_execution_thread="host", calls=%async_wrapped_comp
+  %host-async-done = f32[2,2] async-done(((f32[2,2]), f32[2,2], u32[]) %host-async-start)
+  ROOT %copy.1 = f32[2,2] copy(f32[2,2] %host-async-done)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+
+  HloInstruction* async_start =
+      FindInstruction(module.get(), "host-async-start");
+  HloInstruction* async_done = FindInstruction(module.get(), "host-async-done");
+  HloInstruction* async_wrapped_call =
+      FindInstruction(module.get(), "async_wrapped_call");
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+
+  ASSERT_NE(async_start, nullptr);
+  ASSERT_NE(async_done, nullptr);
+  ASSERT_NE(async_wrapped_call, nullptr);
+  ASSERT_NE(p0, nullptr);
+
+  HloUse async_start_use = HloUse{async_start, 0};
+  HloUse async_done_use = HloUse{async_done, 0, {0, 0}};
+  HloUse call_use = HloUse{async_wrapped_call, 0};
+  const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
+
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_FALSE(
+      ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
+  EXPECT_FALSE(
+      ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
+  EXPECT_FALSE(
+      ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
+}
+
+TEST_F(HloOrderingTest,
+       UsesBeforeValueDefinitionValueIsAnAliasedAsyncWrappedCallInstruction) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule UsesBeforeValueDefinitionValueIsAnAliasedAsyncWrappedCallInstruction, input_output_alias={ {}: (0, {}, must-alias) }, entry_computation_layout={(f32[2,2])->f32[2,2]}
+
+%host_computation {
+  %arg_0.2 = f32[2,2] parameter(0)
+  %constant.1 = f32[] constant(2)
+  %broadcast.1 = f32[2,2] broadcast(f32[] %constant.1), dimensions={}
+  ROOT %multiply.1 = f32[2,2] multiply(f32[2,2] %arg_0.2, f32[2,2] %broadcast.1)
+}, execution_thread="host"
+
+%async_wrapped_comp {
+  %param_0 = f32[2,2] parameter(0)
+  ROOT %async_wrapped_call = f32[2,2] custom-call(f32[2,2] %param_0), custom_call_target="HostExecute", called_computations={%host_computation}, output_to_operand_aliasing={{}: (0, {})}
+}, execution_thread="host"
+
+ENTRY %main {
+  %p0 = f32[2,2] parameter(0)
+  %host-async-start = ((f32[2,2]), f32[2,2], u32[]) async-start(f32[2,2] %p0), async_execution_thread="host", calls=%async_wrapped_comp
+  ROOT %host-async-done = f32[2,2] async-done(((f32[2,2]), f32[2,2], u32[]) %host-async-start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+
+  HloInstruction* async_start =
+      FindInstruction(module.get(), "host-async-start");
+  HloInstruction* async_done = FindInstruction(module.get(), "host-async-done");
+  HloInstruction* async_wrapped_call =
+      FindInstruction(module.get(), "async_wrapped_call");
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+
+  ASSERT_NE(async_start, nullptr);
+  ASSERT_NE(async_done, nullptr);
+  ASSERT_NE(async_wrapped_call, nullptr);
+  ASSERT_NE(p0, nullptr);
+
+  HloUse async_start_use = HloUse{async_start, 0};
+  HloUse async_done_use = HloUse{async_done, 0, {0, 0}};
+  HloUse call_use = HloUse{async_wrapped_call, 0};
+  const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
+
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_TRUE(
+      ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
+  EXPECT_TRUE(
+      ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
+  EXPECT_TRUE(
+      ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
+}
+
+TEST_F(HloOrderingTest, AsyncOpUsesBeforeValueDefinitionUseIsTuple) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule AsyncOpUsesBeforeValueDefinitionUseIsTuple, entry_computation_layout={((f32[2,2]))->f32[2,2]}
+
+%host_computation {
+  p0 = (f32[2,2]) parameter(0)
+  p0_gte = f32[2,2] get-tuple-element(p0), index=0
+  %constant.1 = f32[] constant(2)
+  %broadcast.1 = f32[2,2] broadcast(f32[] %constant.1), dimensions={}
+  ROOT %multiply.1 = f32[2,2] multiply(f32[2,2] p0_gte, f32[2,2] %broadcast.1)
+}, execution_thread="host"
+
+%async_wrapped_comp {
+  %param_0 = (f32[2,2]) parameter(0)
+  ROOT %async_wrapped_call = f32[2,2] custom-call(%param_0), custom_call_target="HostExecute", called_computations={%host_computation}
+}, execution_thread="host"
+
+ENTRY %main {
+  %p0 = (f32[2,2]) parameter(0)
+  %host-async-start = (((f32[2,2])), f32[2,2], u32[]) async-start(%p0), async_execution_thread="host", calls=%async_wrapped_comp
+  ROOT %host-async-done = f32[2,2] async-done(%host-async-start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+
+  HloInstruction* async_start =
+      FindInstruction(module.get(), "host-async-start");
+  HloInstruction* async_done = FindInstruction(module.get(), "host-async-done");
+  HloInstruction* async_wrapped_call =
+      FindInstruction(module.get(), "async_wrapped_call");
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+
+  ASSERT_NE(async_start, nullptr);
+  ASSERT_NE(async_done, nullptr);
+  ASSERT_NE(async_wrapped_call, nullptr);
+  ASSERT_NE(p0, nullptr);
+
+  HloUse async_start_use = HloUse{async_start, 0};
+  HloUse async_done_use = HloUse{async_done, 0, {0, 0, 0}};
+  HloUse call_use = HloUse{async_wrapped_call, 0};
+  const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
+
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_FALSE(
+      ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
+  EXPECT_FALSE(
+      ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
+  EXPECT_FALSE(
+      ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
 }
 
 TEST_F(HloOrderingTest, OrderingBetweenAsyncOpAndItsWrapped) {

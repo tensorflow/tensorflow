@@ -28,8 +28,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"

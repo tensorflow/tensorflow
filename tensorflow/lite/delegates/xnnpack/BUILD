@@ -597,13 +597,16 @@ cc_library(
     srcs = ["odml_sdpa_tester.cc"],
     hdrs = ["odml_sdpa_tester.h"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/genai:genai_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1624,6 +1627,11 @@ cc_test(
 cc_test(
     name = "odml_sdpa_test",
     srcs = ["odml_sdpa_test.cc"],
+    data = [
+        ":odml_sdpa_composite_gqa.tflite",
+        ":odml_sdpa_composite_mha.tflite",
+        ":odml_sdpa_composite_mqa.tflite",
+    ],
     linkopts = select({
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],

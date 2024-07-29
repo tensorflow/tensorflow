@@ -26,13 +26,13 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
-#include "tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
@@ -55,6 +55,8 @@ class IfrtServingExecutableTestHelper {
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry() {
     return &ifrt_restore_tensor_registry_;
   }
+
+  int num_cores() const { return client_->addressable_device_count(); }
 
  private:
   static constexpr int kThreadPoolNumThreads = 16;

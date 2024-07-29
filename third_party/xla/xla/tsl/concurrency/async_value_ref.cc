@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 
 namespace tsl {
 
@@ -29,10 +30,9 @@ RCReference<IndirectAsyncValue> MakeIndirectAsyncValue() {
 }
 
 RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status) {
-  auto* error_value =
-      internal::AllocateAndConstruct<ErrorAsyncValue>(std::move(status));
-
-  return TakeRef(error_value);
+  CHECK(!status.ok()) << "status must be an error";  // NOLINT
+  return TakeRef(
+      internal::AllocateAndConstruct<ErrorAsyncValue>(std::move(status)));
 }
 
 RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message) {

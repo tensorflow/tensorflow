@@ -21,8 +21,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
-#include "tsl/framework/serving_device_selector.h"
-#include "tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -31,12 +31,13 @@ namespace {
 class IfrtServingCoreSelectorTest : public ::testing::Test {
  protected:
   explicit IfrtServingCoreSelectorTest() {
-    core_selector_ =
-        std::make_unique<IfrtServingCoreSelector>(&serving_device_selector_);
+    core_selector_ = std::make_unique<IfrtServingCoreSelector>(
+        &serving_device_selector_, num_cores_);
   }
 
   tsl::test_util::MockServingDeviceSelector serving_device_selector_;
   std::unique_ptr<IfrtServingCoreSelector> core_selector_;
+  int num_cores_ = 2;
 };
 
 TEST_F(IfrtServingCoreSelectorTest, ReservedDevicesReturns) {
@@ -46,6 +47,10 @@ TEST_F(IfrtServingCoreSelectorTest, ReservedDevicesReturns) {
       .WillOnce([this](::testing::Unused) {
         return tsl::DeviceReservation(0, &serving_device_selector_);
       });
+  // Warm up each core first.
+  for (int i = 0; i < num_cores_; ++i) {
+    EXPECT_THAT(core_selector_->ReserveDevice(program_id1).device_index(), i);
+  }
   tsl::DeviceReservation reservation =
       core_selector_->ReserveDevice(program_id1);
   EXPECT_THAT(reservation.device_index(), 0);

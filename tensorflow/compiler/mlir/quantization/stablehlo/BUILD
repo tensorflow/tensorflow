@@ -344,6 +344,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -657,8 +658,8 @@ tf_cc_test(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/framework:numeric_types",
         "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/tsl/framework:numeric_types",
     ],
 )
 
@@ -706,8 +707,8 @@ tf_cc_test(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/framework:numeric_types",
         "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/tsl/framework:numeric_types",
     ],
 )
 

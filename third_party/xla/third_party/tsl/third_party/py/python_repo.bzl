@@ -45,9 +45,10 @@ Please check python_init_repositories() in your WORKSPACE file.
         )
         requirements_content = [ctx.read(requirements)] + local_wheel_requirements
         merged_requirements_content = "\n".join(requirements_content)
-        requirements_with_local_wheels = requirements_with_local_wheels.replace(
-            "@" + requirements.repo_name,
-            "@" + ctx.name,
+
+        requirements_with_local_wheels = "@{repo}//:{label}".format(
+            repo = ctx.name,
+            label = requirements.name,
         )
 
         ctx.file(

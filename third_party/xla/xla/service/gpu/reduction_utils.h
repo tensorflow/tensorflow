@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_REDUCTION_UTILS_H_
 
 #include <cstdint>
+#include <ostream>
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
@@ -57,6 +58,9 @@ struct ReductionDimensions {
            dimensions == other.dimensions;
   }
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const ReductionDimensions& reduction_dimensions);
 
 // Returns true if using the reduction emitter is estimated to be faster than
 // using the elemental emitter.

@@ -4,7 +4,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
@@ -139,11 +139,13 @@ TFLITE_HEADERS = [
     "//tensorflow/lite/c:c_api_opaque.h",
     "//tensorflow/lite/c:c_api_types.h",
     "//tensorflow/lite/c:common.h",
+    "//tensorflow/lite/core/async/c:types.h",
     "//tensorflow/lite/core/c:c_api.h",
     "//tensorflow/lite/core/c:c_api_opaque.h",
     "//tensorflow/lite/core/c:c_api_types.h",
     "//tensorflow/lite/core/c:c_api_experimental.h",
     "//tensorflow/lite/core/c:common.h",
+    "//tensorflow/lite/core/c:operator.h",
     "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
 ]
 # LINT.ThenChange(../c/BUILD:exported_headers)
@@ -199,8 +201,10 @@ aar_with_jni(
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
         "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/async/c:types.h",
         "//tensorflow/lite/core/c:c_api.h",
         "//tensorflow/lite/core/c:c_api_types.h",
+        "//tensorflow/lite/core/c:operator.h",
         # TODO(b/175298345): move the stable parts of common.h into
         # a separate header file that contains no experimental APIs
         # (perhaps also replacing concrete struct types with opaque types
@@ -876,6 +880,15 @@ java_test(
         "@com_google_truth",
         "@junit",
     ],
+)
+
+tflite_cc_library_with_c_headers_test(
+    name = "native_headers_lib_for_test",
+    testonly = True,
+    srcs = [],
+    hdrs = TFLITE_HEADERS,
+    visibility = ["//visibility:private"],
+    deps = [],
 )
 
 #-----------------------------------------------------------------------------

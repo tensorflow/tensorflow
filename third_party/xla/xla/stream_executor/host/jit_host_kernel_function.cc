@@ -454,5 +454,5 @@ static void RegisterJitKernelFunctionLoader() {
 }  // namespace stream_executor::host
 
 STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
-    jot_kernel_function_loader,
+    jit_kernel_function_loader,
     stream_executor::host::RegisterJitKernelFunctionLoader());

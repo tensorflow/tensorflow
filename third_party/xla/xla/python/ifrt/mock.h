@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/framework/allocator.h"
 
 namespace xla {
 namespace ifrt {
@@ -120,6 +121,12 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               AssembleArrayFromSingleDeviceArrays,
               (Shape shape, std::shared_ptr<const Sharding> sharding,
                absl::Span<tsl::RCReference<Array>> arrays,
+               ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, CopyArrays,
+              (absl::Span<tsl::RCReference<Array>> arrays,
+               std::optional<DeviceList> devices,
+               std::optional<MemoryKind> memory_kind,
                ArrayCopySemantics semantics),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, RemapArrays,

@@ -87,10 +87,6 @@ mlir::SmallVector<mlir::Value> UnrealizedConversionCast(
     mlir::TypeRange types, mlir::ValueRange values,
     mlir::ImplicitLocOpBuilder& b);
 
-// Converts any integers that aren't yet signless to signless.
-mlir::SmallVector<mlir::Value> ConvertToSignless(mlir::ValueRange values,
-                                                 mlir::ImplicitLocOpBuilder& b);
-
 // Creates an affine.apply op for the given expression and values.
 mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
                             mlir::ValueRange symbols,

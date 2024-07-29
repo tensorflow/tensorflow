@@ -93,6 +93,22 @@ module @donate_to_reshard_and_call_error {
 
 // -----
 
+!array0 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
+!array1 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [2, 3]>
+module @donate_to_two_copy_arrays_error {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> (!array1, !array1)
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) {donated=true} : (!array0) -> !array1
+    // expected-error @+1 {{'ifrt.CopyArrays' op input #0 already donated.}}
+    %1, %ctrl_1 = ifrt.CopyArrays(%arg0) {donated=true} : (!array0) -> !array1
+    return %0, %1 : !array1, !array1
+  }
+}
+
+// -----
+
 !array = !ifrt.array<tensor<2xi32>,
                      #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
 module @program_arg_not_donated_to_remap_error {

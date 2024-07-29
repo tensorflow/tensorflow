@@ -28,9 +28,9 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/tools/optimization:optimization_pass_runner_lib",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_xla//xla:status_macros",
-        "@local_xla//xla:statusor",
     ],
 )
 

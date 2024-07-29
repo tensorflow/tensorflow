@@ -17,21 +17,24 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/api/PortableApi.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
+#include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -77,7 +80,7 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // Serialize portable artifact.
     TF_ASSIGN_OR_RETURN(std::string serialized,
                         xla::SerializeUsingVersionedStablehlo(
-                            *module, mlir::stablehlo::getCurrentVersion()));
+                            *module, mlir::stablehlo::getMinimumVersion()));
     return serialized;
   }
 
@@ -88,15 +91,27 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // many programs may end up creating too many threads.
     auto context = std::make_unique<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
+    mlir::BaseScopedDiagnosticHandler diagnostic_handler(context.get());
+
     mlir::OwningOpRef<mlir::ModuleOp> module =
         mlir::stablehlo::deserializePortableArtifact(serialized, context.get());
+    if (!module) {
+      const absl::Status status = diagnostic_handler.ConsumeStatus();
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to deserialize StableHLO module;\n\nDetailed "
+                       "error from MLIR: ",
+                       status.message()));
+    }
 
     // Convert StableHLO back to MHLO to keep the contract the same before and
     // after a serialization/deserialization round trip.
     mlir::PassManager pm(context.get());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     if (!mlir::succeeded(pm.run(*module))) {
-      return absl::InvalidArgumentError("StableHLO => MHLO failed");
+      const absl::Status status = diagnostic_handler.ConsumeStatus();
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Failed to legalize StableHLO to MHLO;\n\nDetailed error from MLIR: ",
+          status.message()));
     }
 
     return std::make_unique<HloProgram>(std::move(context), std::move(module));

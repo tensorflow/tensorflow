@@ -41,10 +41,10 @@ inline bool IsSupportedType(xla::PrimitiveType dtype) {
              TestCPUFeature(CPUFeature::AVX_NE_CONVERT) ||
              TestCPUFeature(CPUFeature::AMX_BF16);
     case F16:
-      return TestCPUFeature(CPUFeature::AVX512BW) &&
-             (TestCPUFeature(CPUFeature::AVX512_FP16) ||
-              TestCPUFeature(CPUFeature::AMX_FP16) ||
-              TestCPUFeature(CPUFeature::AVX_NE_CONVERT));
+      return (TestCPUFeature(CPUFeature::AVX512BW) &&
+              (TestCPUFeature(CPUFeature::AVX512_FP16) ||
+               TestCPUFeature(CPUFeature::AMX_FP16))) ||
+             TestCPUFeature(CPUFeature::AVX_NE_CONVERT);
     default:
       return false;
   }

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
 

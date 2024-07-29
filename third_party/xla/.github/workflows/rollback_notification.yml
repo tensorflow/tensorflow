@@ -13,6 +13,8 @@
 # limitations under the License.
 # ============================================================================
 name: Rollback Notification
+permissions:
+  pull-requests: write
 on:
   push:
     branches:
@@ -21,8 +23,6 @@ on:
 jobs:
   rollback-notification:
     if: contains(github.event.head_commit.message, 'revert')
-    permissions:
-      pull-requests: write
     runs-on: ubuntu-22.04
     defaults:
       run:

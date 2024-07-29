@@ -113,31 +113,9 @@ class BlasLt : public gpu::BlasLt {
         DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
         DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
         DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
-        ScratchAllocator& scratch_allocator,
-        blas::ProfileResult* profile_result = nullptr) const override;
-
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
-        DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
-        DeviceMemoryBase bias_buffer,  // may be null
-        DeviceMemoryBase aux_buffer,   // may be null
-        DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
-        DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
-        DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
-        std::optional<DeviceMemoryBase> workspace,
-        blas::ProfileResult* profile_result = nullptr) const override;
-
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
-        DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
-        DeviceMemoryBase bias_buffer,  // may be null
-        DeviceMemoryBase aux_buffer,   // may be null
-        DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
-        DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
-        DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
         std::optional<DeviceMemoryBase> workspace,
         std::optional<ScratchAllocator*> scratch_allocator,
-        blas::ProfileResult* profile_result = nullptr) const;
+        blas::ProfileResult* profile_result = nullptr) const override;
 
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         size_t max_algorithm_count, size_t max_workspace_size) const override;
@@ -147,30 +125,6 @@ class BlasLt : public gpu::BlasLt {
                                 bool beta_on_device, blas::DataType A_type,
                                 blas::DataType B_type, blas::DataType C_type,
                                 blas::DataType D_type) const override;
-
-    // API that uses scratch_allocator to allocate workspace
-    absl::Status DoMatmul(Stream* stream, const void* alpha, DeviceMemoryBase a,
-                          DeviceMemoryBase b, const void* beta,
-                          DeviceMemoryBase c, DeviceMemoryBase d,
-                          const MatmulAlgorithm& algorithm,
-                          ScratchAllocator& scratch_allocator,
-                          DeviceMemoryBase bias, DeviceMemoryBase aux,
-                          DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-                          DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-                          DeviceMemoryBase d_amax,
-                          blas::ProfileResult* profile_result) const override;
-
-    // API that uses pre-allocated buffer as workspace
-    absl::Status DoMatmul(Stream* stream, const void* alpha, DeviceMemoryBase a,
-                          DeviceMemoryBase b, const void* beta,
-                          DeviceMemoryBase c, DeviceMemoryBase d,
-                          const MatmulAlgorithm& algorithm,
-                          DeviceMemoryBase bias, DeviceMemoryBase aux,
-                          DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-                          DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-                          DeviceMemoryBase d_amax,
-                          std::optional<DeviceMemoryBase> workspace,
-                          blas::ProfileResult* profile_result) const override;
 
     absl::Status DoMatmul(Stream* stream, const void* alpha, DeviceMemoryBase a,
                           DeviceMemoryBase b, const void* beta,

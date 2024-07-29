@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/client.h"
 #include "xla/client/xla_computation.h"
 #include "xla/service/compile_only_service.h"
 #include "xla/service/compiler.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 

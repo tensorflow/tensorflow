@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -51,8 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "xla/union_find.h"
 
 namespace xla {
 namespace gpu {
@@ -65,45 +64,6 @@ int Arity(const Shape& shape) {
 
 const Shape& TupleShape(const Shape& shape, int index) {
   return shape.IsTuple() ? shape.tuple_shapes(index) : shape;
-}
-
-absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
-    const HloComputation& computation) {
-  constexpr int kRootIndexing = 0;
-  int next_indexing = 1;
-  absl::flat_hash_map<const HloInstruction*, int> indexing;
-
-  std::function<int(const HloInstruction*)> indexing_for_instr;
-  indexing_for_instr = [&](const HloInstruction* instr) -> int {
-    auto it = indexing.find(instr);
-    if (it != indexing.end()) return it->second;
-
-    if (instr->opcode() != HloOpcode::kTuple &&
-        !HloInstruction::IsOpElementwise(instr->opcode())) {
-      return indexing[instr] = next_indexing++;
-    }
-    if (instr->user_count() == 0) {
-      return indexing[instr] = kRootIndexing;
-    }
-    // If all users have the same indexing, we can reuse it.
-    std::optional<int> instr_indexing = std::nullopt;
-    for (auto* user : instr->users()) {
-      auto user_indexing = indexing_for_instr(user);
-      if (user->opcode() == HloOpcode::kConcatenate ||
-          user->opcode() == HloOpcode::kSelect ||
-          user->opcode() == HloOpcode::kTuple ||
-          (instr_indexing && user_indexing != *instr_indexing)) {
-        instr_indexing = std::nullopt;
-        break;
-      }
-      instr_indexing = user_indexing;
-    }
-    return indexing[instr] = instr_indexing ? *instr_indexing : next_indexing++;
-  };
-  for (auto* instr : computation.instructions()) {
-    indexing_for_instr(instr);
-  }
-  return indexing;
 }
 
 }  // namespace
@@ -164,27 +124,28 @@ EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
   return result;
 }
 
-std::string PartitionedComputation::Subgraph::ToString() const {
+std::string PartitionedComputation::Subgraph::ToString(int indentation) const {
+  std::string indent(indentation, ' ');
   std::ostringstream ss;
-  ss << "SUBGRAPH " << name << " {\n";
+  ss << indent << "SUBGRAPH " << name << " {\n";
   for (auto* instr :
        (*instructions.begin())->parent()->MakeInstructionPostOrder()) {
     if (!instructions.contains(instr)) continue;
-    ss << "  ";
+    ss << indent << "  ";
     if (absl::c_linear_search(roots, instr)) {
       ss << "ROOT ";
     }
     ss << instr->ToString() << "\n";
   }
-  ss << "}";
+  ss << indent << "}";
   return ss.str();
 }
 
-std::string PartitionedComputation::ToString() const {
+std::string PartitionedComputation::ToString(int indentation) const {
   std::ostringstream ss;
   ss << "PartitionedComputation " << computation_->name() << ":";
   for (const Subgraph& subgraph : subgraphs_) {
-    ss << "\n" << subgraph.ToString();
+    ss << "\n" << subgraph.ToString(indentation);
   }
   return ss.str();
 }
@@ -198,71 +159,107 @@ std::string PartitionedComputations::ToString() const {
   return ss.str();
 }
 
+template <typename C, typename F>
+bool AllIdentical(const C& c, F&& f) {
+  auto begin = std::begin(c);
+  auto end = std::end(c);
+  if (begin == end || begin + 1 == end) {
+    return true;
+  }
+  auto v = f(*begin);
+  ++begin;
+  for (; begin != end; ++begin) {
+    if (f(*begin) != v) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Whether the instruction is evaluated more than once by any of its direct
+// users. By 'more than once', we mean with a different indexing - for example,
+// reduce will evaluate its argument more than once (in a loop), but with only
+// one indexing.
+bool IsEvaluatedMoreThanOnce(const HloInstruction* instr) {
+  return absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
+    if (user->opcode() == HloOpcode::kGather &&
+        absl::c_linear_search(user->OperandIndices(instr), 1) &&
+        instr->shape().rank() >= 2 && instr->shape().dimensions(1) > 1) {
+      return true;
+    }
+    if (user->opcode() == HloOpcode::kConcatenate &&
+        user->OperandIndices(instr).size() > 1) {
+      return true;
+    }
+    return false;
+  });
+}
+
 PartitionedComputation::PartitionedComputation(
     const HloComputation* computation, mlir::MLIRContext* mlir_context,
     std::function<bool(const HloInstruction*)> is_subgraph_root)
     : computation_(computation) {
   CHECK_NE(computation, nullptr);
-  // For each instruction, figure out what function it goes in. Parameters don't
-  // count.
-  absl::node_hash_map<const HloInstruction*,
-                      tensorflow::UnionFind<const HloInstruction*>>
-      disjoint_sets;
-  auto indexing = PartitionGraphByIndexing(*computation);
-  for (auto* instruction : computation->instructions()) {
-    disjoint_sets[instruction].Get() = instruction;
-  }
-  for (auto* instruction : computation->instructions()) {
-    // If the instruction has to become a subgraph root, then we do not merge.
-    bool can_merge = !is_subgraph_root(instruction);
-    if (instruction->user_count() > 0) {
-      // If all users have the same indexing, we can merge.
-      int64_t one_user_indexing = indexing.at(instruction->users().front());
-      can_merge &=
-          absl::c_all_of(instruction->users(), [&](const HloInstruction* user) {
-            return indexing.at(user) == one_user_indexing;
-          });
-    }
-    auto is_bad_gather = [&](const HloInstruction* user) {
-      // Don't merge into a gather that would evaluate the index more than once.
-      return user->opcode() == HloOpcode::kGather &&
-             user->operand_index(instruction) == 1 &&
-             instruction->shape().dimensions(1) > 1;
-    };
-    auto is_concat = [&](const HloInstruction* user) {
-      // Concat codegen doesn't work if any of a concat's transitive inputs is
-      // reused. Instead of checking, we just cut the function at the concat,
-      // which has the benefit of leading to slightly easier to read IR.
-      return user->opcode() == HloOpcode::kConcatenate;
-    };
-    auto is_tuple = [&](const HloInstruction* user) {
-      return user->shape().IsTuple();
-    };
-    can_merge &= absl::c_none_of(instruction->users(), is_bad_gather);
-    can_merge &= absl::c_none_of(instruction->users(), is_concat);
-    can_merge &= absl::c_none_of(instruction->users(), is_tuple);
-    if (can_merge) {
-      auto& set = disjoint_sets[instruction];
-      for (auto* user : instruction->users()) {
-        set.Merge(&disjoint_sets[user]);
-      }
-    }
+
+  int next_function_id = 0;
+  int next_indexing_id = 0;
+
+  auto pre_order = computation->MakeInstructionPostOrder();
+  absl::c_reverse(pre_order);
+  absl::flat_hash_map<const HloInstruction*, int> instr_indices;
+  for (auto [i, instr] : llvm::enumerate(pre_order)) {
+    instr_indices[instr] = i;
   }
 
-  ConstHloInstructionMap<std::vector<const HloInstruction*>> functions;
-  for (auto* instruction : computation->MakeInstructionPostOrder()) {
-    functions[disjoint_sets[instruction].Get()].push_back(instruction);
+  std::vector<std::pair<int, int>> ids(pre_order.size());
+  auto allocate_new_function = [&](const HloInstruction* instr) {
+    ids[instr_indices[instr]] = {next_function_id++, next_indexing_id++};
+  };
+
+  for (auto [instr_index, instr] : llvm::enumerate(pre_order)) {
+    bool is_root = instr->user_count() == 0 || is_subgraph_root(instr);
+    bool users_have_consistent_indexing = AllIdentical(
+        instr->users(),
+        [&](const HloInstruction* user) { return ids[instr_indices[user]]; });
+    bool all_users_elementwise =
+        absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
+          return HloInstruction::IsOpElementwise(user->opcode());
+        });
+
+    if (!is_root && users_have_consistent_indexing && all_users_elementwise) {
+      // All users are elementwise and have the same indexing, therefore we can
+      // merge these functions.
+      ids[instr_index] = ids[instr_indices[instr->users().front()]];
+    } else if (is_root || instr->user_count() > 1 ||
+               IsEvaluatedMoreThanOnce(instr)) {
+      // This is a root, or this instruction will be evaluated with more than
+      // one indexing. Either because there's more than one user, or because
+      // the single user requires values at more than one indexing.
+      allocate_new_function(instr);
+    } else {
+      // This is a single-user instruction that is evaluated with a single
+      // indexing, but it is different from the user's indexing. For example,
+      // consider this graph:
+      //
+      //   add -> x -> transpose -> sub
+      //     `-----------------------^
+      //
+      // If `x` had the same indexing as `transpose` and `sub`, we would later
+      // merge `add` as well, which is invalid. It's still OK for `x`,
+      // `tranpose` and `sub` to be in the same function.
+      ids[instr_index] = ids[instr_indices[instr->users().front()]];
+      ids[instr_index].second = next_indexing_id++;
+    }
+  }
+  std::vector<std::vector<const HloInstruction*>> functions(next_function_id);
+  for (auto [id, instr] : llvm::reverse(llvm::zip(ids, pre_order))) {
+    functions[id.first].push_back(instr);
   }
 
   subgraphs_.reserve(functions.size());
-  for (auto& [cluster_id, instructions] : functions) {
-    auto is_different_cluster = [cluster_id = cluster_id,
-                                 &disjoint_sets](auto* user) {
-      auto it = disjoint_sets.find(user);
-      if (it == disjoint_sets.end()) {
-        return true;
-      }
-      return it->second.Get() != cluster_id;
+  for (auto&& [function_id, instructions] : llvm::enumerate(functions)) {
+    auto is_different_function = [&, function_id = function_id](auto* user) {
+      return ids[instr_indices[user]].first != function_id;
     };
 
     std::vector<const HloInstruction*> roots;
@@ -270,7 +267,7 @@ PartitionedComputation::PartitionedComputation(
     const xla::Shape* first_root_shape = nullptr;
     for (auto* instruction : instructions) {
       if (instruction->user_count() == 0 ||
-          absl::c_any_of(instruction->users(), is_different_cluster)) {
+          absl::c_any_of(instruction->users(), is_different_function)) {
         roots.push_back(instruction);
         if (first_root_shape) {
           CHECK(!instruction->shape().IsTuple())
@@ -342,11 +339,10 @@ PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
   absl::flat_hash_set<const HloInstruction*> seen;
   std::function<void(const HloInstruction*)> visit;
   visit = [&](const HloInstruction* instruction) {
+    if (subgraph.injected_value_starts.contains(instruction)) return;
     if (!seen.insert(instruction).second) return;
     for (auto [index, operand] : llvm::enumerate(instruction->operands())) {
-      if (!subgraph.injected_value_starts.contains(operand)) {
-        visit(operand);
-      }
+      visit(operand);
     }
   };
 
@@ -447,7 +443,7 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
   llvm::SmallVector<mlir::Type> result_types;
 
   auto element_type = [&](const auto& shape) {
-    return *ConvertPrimitiveTypeToMlirType(shape.element_type(), b);
+    return PrimitiveTypeToMlirType(shape.element_type(), b);
   };
 
   for (auto* root : subgraph.roots) {

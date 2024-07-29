@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace gpu {

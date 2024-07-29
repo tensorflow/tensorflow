@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
@@ -236,6 +237,22 @@ class ExecutableBuildOptions {
 
   absl::StatusOr<ExecutableBuildOptionsProto> ToProto() const;
 
+  int process_index() const { return process_index_; }
+  void set_process_index(const int process_index) {
+    process_index_ = process_index;
+  }
+  int process_count() const { return process_count_; }
+  void set_process_count(const int process_count) {
+    process_count_ = process_count;
+  }
+
+  std::shared_ptr<KeyValueStoreInterface> key_value_store() const {
+    return key_value_store_;
+  }
+  void set_key_value_store(std::shared_ptr<KeyValueStoreInterface> kv_store) {
+    key_value_store_ = kv_store;
+  }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -262,6 +279,9 @@ class ExecutableBuildOptions {
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
   std::string fdo_profile_;
   int64_t device_memory_size_ = 0;
+  int process_index_ = 0;
+  int process_count_ = 1;
+  std::shared_ptr<KeyValueStoreInterface> key_value_store_;
 };
 
 absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(

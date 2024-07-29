@@ -24,19 +24,35 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def _map_v2(input_dataset,  # pylint: disable=unused-private-name
-            map_func,
-            num_parallel_calls=None,
-            deterministic=None,
-            name=None):
+def _map_v2(
+    input_dataset,  # pylint: disable=unused-private-name
+    map_func,
+    num_parallel_calls=None,
+    deterministic=None,
+    synchronous=None,
+    name=None,
+):
   """See `Dataset.map()` for details."""
   if num_parallel_calls is None or debug_mode.DEBUG_MODE:
     if deterministic is not None and not debug_mode.DEBUG_MODE:
-      warnings.warn("The `deterministic` argument has no effect unless the "
-                    "`num_parallel_calls` argument is specified.")
+      warnings.warn(
+          "The `deterministic` argument has no effect unless the "
+          "`num_parallel_calls` argument is specified."
+      )
     return _MapDataset(
-        input_dataset, map_func, preserve_cardinality=True, name=name)
+        input_dataset,
+        map_func,
+        preserve_cardinality=True,
+        force_synchronous=False if synchronous is None else synchronous,
+        name=name,
+    )
   else:
+    if synchronous:
+      raise ValueError(
+          "`synchronous` is not supported with `num_parallel_calls`, but"
+          " `num_parallel_calls` was set to ",
+          num_parallel_calls,
+      )
     return _ParallelMapDataset(
         input_dataset,
         map_func,
@@ -46,15 +62,30 @@ def _map_v2(input_dataset,  # pylint: disable=unused-private-name
         name=name)
 
 
-def _map_v1(input_dataset,  # pylint: disable=unused-private-name
-            map_func,
-            num_parallel_calls=None,
-            deterministic=None):
+def _map_v1(
+    input_dataset,  # pylint: disable=unused-private-name
+    map_func,
+    num_parallel_calls=None,
+    deterministic=None,
+    synchronous=None,
+):
   """See `Dataset.map()` for details."""
   if num_parallel_calls is None or debug_mode.DEBUG_MODE:
     return dataset_ops.DatasetV1Adapter(
-        _MapDataset(input_dataset, map_func, preserve_cardinality=False))
+        _MapDataset(
+            input_dataset,
+            map_func,
+            preserve_cardinality=False,
+            force_synchronous=False if synchronous is None else synchronous,
+        )
+    )
   else:
+    if synchronous:
+      raise ValueError(
+          "`synchronous` is not supported with `num_parallel_calls`, but"
+          " `num_parallel_calls` was set to ",
+          num_parallel_calls,
+      )
     return dataset_ops.DatasetV1Adapter(
         _ParallelMapDataset(
             input_dataset,
@@ -68,7 +99,9 @@ def _map_v1_with_legacy_function(  # pylint: disable=unused-private-name
     input_dataset,
     map_func,
     num_parallel_calls=None,
-    deterministic=None):
+    deterministic=None,
+    synchronous=False,
+):
   """See `Dataset.map()` for details."""
   if num_parallel_calls is None:
     if deterministic is not None:
@@ -78,9 +111,18 @@ def _map_v1_with_legacy_function(  # pylint: disable=unused-private-name
         _MapDataset(
             input_dataset,
             map_func,
+            force_synchronous=synchronous,
             preserve_cardinality=False,
-            use_legacy_function=True))
+            use_legacy_function=True,
+        )
+    )
   else:
+    if synchronous:
+      raise ValueError(
+          "`synchronous` is not supported with `num_parallel_calls`, but"
+          " `num_parallel_calls` was set to ",
+          num_parallel_calls,
+      )
     return dataset_ops.DatasetV1Adapter(
         _ParallelMapDataset(
             input_dataset,
@@ -94,13 +136,16 @@ def _map_v1_with_legacy_function(  # pylint: disable=unused-private-name
 class _MapDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over elements in its input."""
 
-  def __init__(self,
-               input_dataset,
-               map_func,
-               use_inter_op_parallelism=True,
-               preserve_cardinality=True,
-               use_legacy_function=False,
-               name=None):
+  def __init__(
+      self,
+      input_dataset,
+      map_func,
+      force_synchronous=False,
+      use_inter_op_parallelism=True,
+      preserve_cardinality=True,
+      use_legacy_function=False,
+      name=None,
+  ):
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
     self._preserve_cardinality = preserve_cardinality
@@ -109,6 +154,7 @@ class _MapDataset(dataset_ops.UnaryDataset):
         self._transformation_name(),
         dataset=input_dataset,
         use_legacy_function=use_legacy_function)
+    self._force_synchronous = force_synchronous
     self._name = name
     variant_tensor = gen_dataset_ops.map_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -116,7 +162,9 @@ class _MapDataset(dataset_ops.UnaryDataset):
         f=self._map_func.function,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
         preserve_cardinality=self._preserve_cardinality,
-        **self._common_args)
+        force_synchronous=self._force_synchronous,
+        **self._common_args
+    )
     super().__init__(input_dataset, variant_tensor)
 
   def _functions(self):

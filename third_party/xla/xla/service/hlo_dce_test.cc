@@ -692,6 +692,38 @@ TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementAdjustTuple) {
           m::Tuple(m::Negate(), m::Add()).WithShapeEqualTo(&expected_shape)));
   EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
 }
+TEST_F(HloDceTest,
+       MultiOutputFusionRemoveUnusedTupleElementWithControlAdjustTupleAndDep) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_add {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(p0, add)
+  }
 
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_add
+    gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    add.2 = f32[32,32]{1,0} add(param0, param1), control-predecessors={gte.1}
+    ROOT add = f32[32,32]{1,0} add(add.2, gte.1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  auto changed = dce.Run(module.get());
+  ASSERT_TRUE(changed.ok());
+  EXPECT_TRUE(*changed);
+  HloInstruction* fusion;
+  HloInstruction* add2;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Add(&add2, m::Parameter(), m::Parameter()),
+                                m::Fusion(&fusion))));
+  EXPECT_EQ(add2->control_predecessors().size(), 1);
+  EXPECT_EQ(add2->control_predecessors()[0], fusion);
+}
 }  // namespace
 }  // namespace xla

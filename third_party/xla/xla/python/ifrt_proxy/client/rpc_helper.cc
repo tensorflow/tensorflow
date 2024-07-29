@@ -148,6 +148,7 @@ RPC(DisassembleIntoSingleDeviceArrays, disassemble_into_single_device_arrays);
 RPC(CopyToHostBuffer, copy_to_host_buffer);
 RPC(IsArrayDeleted, is_array_deleted);
 RPC(DestructArray, destruct_array)
+RPC(CopyArrays, copy_arrays);
 RPC(Reshard, reshard);
 RPC(FullyReplicatedShard, fully_replicated_shard);
 RPC(DeleteArray, delete_array);

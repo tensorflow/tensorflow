@@ -1602,6 +1602,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -2639,6 +2640,7 @@ cuda_py_strict_test(
     srcs = ["sparse_bincount_ops_test.py"],
     deps = [
         ":sparse_ops",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",

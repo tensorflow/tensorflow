@@ -22,13 +22,77 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
+#include "tsl/platform/logging.h"
 
 namespace xla::cpu {
+
+// Dictates how a dot operation is implemented.
+enum class DotImplementationStrategy {
+  // The dot operation is lowered into LLVM IR that implements a naive nested
+  // loop that computes the result one element at a time.  This is our
+  // "fallback"; we don't really want this to kick in for any non-trivial dot
+  // operation.
+  kNaiveLlvmIr,
+
+  // The dot operation is lowered into LLVM IR that implements a tiled
+  // Matrix*Vector operation.  This strategy also allows fusing in a bias add
+  // into the dot.  The matrix can be row major or column major, both are
+  // supported.
+  kTiledLlvmIrGemv,
+
+  // The dot operation is lowered into LLVM IR that implements a tiled
+  // Matrix*Matrix operation.  No fusions are supported.  The two inputs
+  // and the output have to be row major.
+  kTiledLlvmIrGemm,
+
+  // The dot operation is lowered into a call into an Eigen routine.  No fusions
+  // are supported today.  The two inputs and the output have to be row major.
+  // However, we do allow transposing either the LHS or the RHS as part of the
+  // GEMM -- we expose this flexibility as flexibility in the contraction
+  // dimensions, but we can also see this as flexibility in the input layouts.
+  kEigen,
+};
+
+// Represents a dot operation.  We use this in lieu of an `HloInstruction`
+// because we want to be able to create this for the "inner" dot operation in a
+// batch dot, for which there is no separate HLO instruction.
+struct DotInfo {
+  Shape lhs_shape;
+  Shape rhs_shape;
+  Shape result_shape;
+  DotDimensionNumbers dim_nums;
+
+  DotInfo() = default;
+
+  explicit DotInfo(const HloInstruction& instr) {
+    CHECK_EQ(instr.opcode(), HloOpcode::kDot);
+    lhs_shape = instr.operand(0)->shape();
+    rhs_shape = instr.operand(1)->shape();
+    result_shape = instr.shape();
+    dim_nums = instr.dot_dimension_numbers();
+  }
+};
+
+// Returns true if `instr` is a batch dot.
+bool IsBatchDot(const HloInstruction& instr);
+
+// Returns true if `dot_info` is a batch dot.
+bool IsBatchDot(const DotInfo& dot_info);
+
+// Returns `DotInfo` for the inner dot operation of the `batch_dot`.
+DotInfo InnerDotInfo(const DotInfo& batch_dot);
+
+// Returns the implementation strategy for a dot with the configuration
+// `dot_info`.
+DotImplementationStrategy GetDotImplementationStrategy(
+    const HloModuleConfig& config, const HloInstruction& instr,
+    const TargetMachineFeatures& target_machine_features);
 
 // Returns true if the two operands and the output of `dot_instr` must have row
 // major layout.
@@ -57,13 +121,17 @@ std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
 // dimensions as the result, and the result is computed as `addend_array` +
 // dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
 // for Matrix-vector products.
+//
+// If `allow_runtime_calls` is false and DotEmitter tries to emit a call to a
+// runtime API, it will return an error.
 absl::Status EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
-    const TargetMachineFeatures& target_machine_features);
+    const HloModuleConfig& hlo_module_config,
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls = true);
 
 }  // namespace xla::cpu
 

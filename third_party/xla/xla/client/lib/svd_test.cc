@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/client/lib/arithmetic.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"

@@ -327,10 +327,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "816e41809c043ff285e8c0f06a75a1fa250211bbfb2dc0a037eeef39f1a9e427",
-        strip_prefix = "curl-8.4.0",
+        sha256 = "9c6db808160015f30f3c656c0dec125feb9dc00753596bf858a272b5dd8dc398",
+        strip_prefix = "curl-8.6.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.se/download/curl-8.4.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.se/download/curl-8.6.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -378,10 +378,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "zlib",
         build_file = "//third_party:zlib.BUILD",
-        sha256 = "b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30",
-        strip_prefix = "zlib-1.2.13",
+        sha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23",
+        strip_prefix = "zlib-1.3.1",
         system_build_file = "//third_party/systemlibs:zlib.BUILD",
-        urls = tf_mirror_urls("https://zlib.net/fossils/zlib-1.2.13.tar.gz"),
+        urls = tf_mirror_urls("https://zlib.net/zlib-1.3.1.tar.gz"),
     )
 
     tf_http_archive(

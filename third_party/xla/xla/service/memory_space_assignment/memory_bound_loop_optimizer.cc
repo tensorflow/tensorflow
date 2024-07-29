@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -56,6 +57,18 @@ limitations under the License.
 
 namespace xla {
 namespace memory_space_assignment {
+namespace {
+
+std::optional<int64_t> GetInstructionIndex(
+    const HloInstruction* instruction,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instructions_to_index) {
+  auto it = instructions_to_index.find(instruction);
+  return it == instructions_to_index.end() ? std::nullopt
+                                           : std::optional<int64_t>(it->second);
+}
+
+}  // namespace
 
 /*static*/ absl::StatusOr<std::unique_ptr<MemoryBoundLoopOptimizer>>
 MemoryBoundLoopOptimizer::Create(
@@ -102,28 +115,29 @@ absl::Status MemoryBoundLoopOptimizer::Initialize() {
   // memory. Also populate instructions_in_loop_ and
   // instructions_in_{prev,next}_iterations_ data structures to help find the
   // loop values.
-  for (int i = loop_start_; i < loop_end_; ++i) {
-    const HloInstruction* inst = instruction_sequence[i];
-    instructions_in_loop_[inst] = i - loop_start_;
-    VLOG(3) << "  inst in loop [" << (i - loop_start_) << "]: " << inst->name();
+  int prev_iteration_start = loop_start_ - loop_size_;
+  int next_iteration_start = loop_start_ + loop_size_;
+  for (int i = 0; i < loop_size_; ++i) {
+    const HloInstruction* loop_inst = instruction_sequence[loop_start_ + i];
+    instructions_in_loop_[loop_inst] = i;
+    const HloInstruction* prev_iteration_inst =
+        instruction_sequence[prev_iteration_start + i];
+    instructions_in_prev_iteration_[prev_iteration_inst] = i;
+    const HloInstruction* next_iteration_inst =
+        instruction_sequence[next_iteration_start + i];
+    instructions_in_next_iteration_[next_iteration_inst] = i;
+
+    VLOG(3) << "  inst in loop [" << (i) << "]: " << loop_inst->name();
     if (!loop_computation) {
-      loop_computation = inst->parent();
+      loop_computation = loop_inst->parent();
     } else {
-      TF_RET_CHECK(loop_computation == inst->parent());
+      TF_RET_CHECK(loop_computation == loop_inst->parent());
     }
     remaining_memory_.push_back(
         alternate_memory_size_ -
-        reserved_scoped_memory_fn_(inst, /*operands_in_alternate_memory=*/{},
+        reserved_scoped_memory_fn_(loop_inst,
+                                   /*operands_in_alternate_memory=*/{},
                                    /*outputs_in_alternate_memory=*/{}));
-  }
-
-  for (int i = loop_start_ - loop_size_; i < loop_start_; ++i) {
-    const HloInstruction* inst = instruction_sequence[i];
-    instructions_in_prev_iteration_[inst] = i - loop_start_ + loop_size_;
-  }
-  for (int i = loop_end_; i < loop_end_ + loop_size_; ++i) {
-    const HloInstruction* inst = instruction_sequence[i];
-    instructions_in_next_iteration_[inst] = i - loop_end_;
   }
 
   // Create a tree set to keep track of all the values that the loop
@@ -163,41 +177,13 @@ absl::Status MemoryBoundLoopOptimizer::Initialize() {
 
 void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
     const HloBuffer& buffer, const HloComputation* loop_computation) {
-  // Define helper lambdas to get the loop-relative index of the given
-  // instruction.
-  auto get_index_in_loop =
-      [&](const HloInstruction* instruction,
-          const absl::flat_hash_map<const HloInstruction*, int64_t>&
-              instructions_in_loop,
-          int64_t relative_index = 0) {
-        std::optional<int64_t> loop_index;
-        if (instructions_in_loop.contains(instruction)) {
-          loop_index = hlo_live_range_.instruction_schedule().at(instruction) -
-                       loop_start_ + relative_index;
-          CHECK_GE(*loop_index, 0);
-          CHECK_LT(*loop_index, loop_size_);
-        }
-        return loop_index;
-      };
-  auto get_index_in_current_iteration = [&](const HloInstruction* instruction) {
-    return get_index_in_loop(instruction, instructions_in_loop_);
-  };
-  auto get_index_in_prev_iteration = [&](const HloInstruction* instruction) {
-    return get_index_in_loop(instruction, instructions_in_prev_iteration_,
-                             loop_size_);
-  };
-  auto get_index_in_next_iteration = [&](const HloInstruction* instruction) {
-    return get_index_in_loop(instruction, instructions_in_next_iteration_,
-                             -loop_size_);
-  };
-
   loop_values_.push_back({});
   LoopValue& loop_value = loop_values_.back();
   float pos_bytes = 0;
   float use_bytes = 0;
   bool has_footer_consumer = false;
   for (const HloValue* value : buffer.values()) {
-    // For each position and use of the value, populate the respecive position
+    // For each position and use of the value, populate the respective position
     // and use fields for the current, previous, and next iterations along with
     // the loop indices.
     for (const HloPosition& position : value->positions()) {
@@ -205,14 +191,14 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
         continue;
       }
       std::optional<int64_t> loop_index =
-          get_index_in_current_iteration(position.instruction);
+          GetInstructionIndex(position.instruction, instructions_in_loop_);
       std::optional<int64_t> prev_iteration_index;
       if (loop_index) {
         loop_value.loop_positions.push_back({*loop_index, position});
         VLOG(3) << "Pos match: " << position.instruction->name() << " at "
                 << *loop_index;
-      } else if ((prev_iteration_index =
-                      get_index_in_prev_iteration(position.instruction))) {
+      } else if ((prev_iteration_index = GetInstructionIndex(
+                      position.instruction, instructions_in_prev_iteration_))) {
         loop_value.prev_iteration_positions.push_back(
             {*prev_iteration_index, position});
         VLOG(3) << "Pos match (prev iteration): "
@@ -239,14 +225,14 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
         continue;
       }
       std::optional<int64_t> loop_index =
-          get_index_in_current_iteration(use.instruction);
+          GetInstructionIndex(use.instruction, instructions_in_loop_);
       std::optional<int64_t> next_iteration_index;
       if (loop_index) {
         loop_value.loop_uses.push_back({*loop_index, use});
         VLOG(3) << "Use match: " << use.instruction->name() << " at "
                 << *loop_index;
-      } else if ((next_iteration_index =
-                      get_index_in_next_iteration(use.instruction))) {
+      } else if ((next_iteration_index = GetInstructionIndex(
+                      use.instruction, instructions_in_next_iteration_))) {
         loop_value.next_iteration_uses.push_back({*next_iteration_index, use});
         VLOG(3) << "Use match (next iteration): " << use.instruction->name()
                 << " at " << *next_iteration_index;
@@ -334,18 +320,6 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
     for (const HloValue* value : buffer.values()) {
       VLOG(3) << value->ToString();
     }
-    auto sort_positions = [](const std::pair<int64_t, HloPosition>& a,
-                             const std::pair<int64_t, HloPosition>& b) {
-      return a.first < b.first;
-    };
-    auto sort_uses = [](const std::pair<int64_t, HloUse>& a,
-                        const std::pair<int64_t, HloUse>& b) {
-      return a.first < b.first;
-    };
-    absl::c_sort(loop_value.loop_positions, sort_positions);
-    absl::c_sort(loop_value.prev_iteration_positions, sort_positions);
-    absl::c_sort(loop_value.loop_uses, sort_uses);
-    absl::c_sort(loop_value.next_iteration_uses, sort_uses);
     loop_value.hlo_values = buffer.values();
   } else {
     loop_values_.pop_back();

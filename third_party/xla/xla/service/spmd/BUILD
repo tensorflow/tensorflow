@@ -309,10 +309,10 @@ cc_library(
         "whole_graph_manual_pass.h",
     ],
     deps = [
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

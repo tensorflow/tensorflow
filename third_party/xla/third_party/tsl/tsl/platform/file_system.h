@@ -392,8 +392,8 @@ class FileSystem {
   /// to determine if there needs to be a temp location to safely write objects.
   /// If the file system cannot create a temp file, it's possibile that
   /// uncomplete result may appear in the given file.
-  virtual Status CanCreateTempFile(const std::string& fname,
-                                   bool* can_create_temp_file);
+  virtual absl::Status CanCreateTempFile(const std::string& fname,
+                                         bool* can_create_temp_file);
 
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches() { FlushCaches(nullptr); }

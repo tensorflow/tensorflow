@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/logical_buffer_analysis.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/compactptrset.h"

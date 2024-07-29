@@ -20,8 +20,8 @@ limitations under the License.
 #include <iosfwd>
 #include <optional>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

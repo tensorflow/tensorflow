@@ -27,6 +27,7 @@ xla_cc_binary(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )
 

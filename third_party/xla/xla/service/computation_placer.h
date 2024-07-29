@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/service/global_device_id.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
@@ -64,7 +64,7 @@ class DeviceAssignment : public Array2D<int64_t> {
       const;
 
   // Protocol buffer serialization and deserialization.
-  absl::Status Serialize(DeviceAssignmentProto* proto) const;
+  void Serialize(DeviceAssignmentProto* proto) const;
 
   // Return a std::unique_ptr<DeviceAssignment> instead of a DeviceAssignment
   // directly because one of the supported TF platforms (mac) does not compile

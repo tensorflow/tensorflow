@@ -20,11 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "grpcpp/server_builder.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/compile_only_client.h"
-#include "xla/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 
