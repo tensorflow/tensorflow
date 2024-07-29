@@ -94,6 +94,10 @@ class HandlerBase {
 
   virtual ~HandlerBase() = default;
 
+  inline Array<int64_t> GetDeviceMesh() {
+    return is_generating_strategies_1d_ ? device_mesh_1d_ : device_mesh_;
+  }
+
   void AppendNewStrategy(const std::string& name,
                          const HloSharding& output_spec,
                          absl::Span<const HloSharding> input_specs,
@@ -155,7 +159,7 @@ class HandlerBase {
   void Enumerate(std::function<void(const Enumeration&)> split_func,
                  size_t num_outer_dims = 2, size_t num_inner_dims = 2,
                  bool half = false) {
-    absl::Span<const int64_t> mesh_shape = device_mesh_.dimensions();
+    absl::Span<const int64_t> mesh_shape = GetDeviceMesh().dimensions();
     for (int64_t dim0 = 0; dim0 < mesh_shape.size(); ++dim0) {
       for (int64_t dim1 = 0; dim1 < mesh_shape.size(); ++dim1) {
         if (dim0 == dim1) continue;
@@ -172,7 +176,7 @@ class HandlerBase {
   // where a subset of all tensor dims is mapped to a subset of mesh dims, such
   // that each tensor dim is mapped to at most mesh dim, and no two tensor dims
   // are mapped to the same mesh dim.
-  // TODO(b/226977360): We might need to generalize this to also allow cases
+  // TODO(b/356201483): We might need to generalize this to also allow cases
   // where a tensor dim can be mapped to multiple mesh dims.
   void EnumerateGeneral(std::function<void(const DimMap&)> split_func,
                         int tensor_rank, int current_tensor_dim,
@@ -223,6 +227,8 @@ class HandlerBase {
   const Array<int64_t>& device_mesh_1d_;
   const HloInstruction* lhs_;
   const HloInstruction* rhs_;
+
+  bool is_generating_strategies_1d_;
 };
 
 class DotHandler : public HandlerBase {
@@ -579,7 +585,7 @@ std::string DotHandler::GenerateNameForDotSharding(const DimMap& output_dim_map,
     if (auto it = lhs_dim_map.find(lhs_con_dims_[i]);
         it != lhs_dim_map.end() && it->second >= 0) {
       contraction_dim_sharded =
-          contraction_dim_sharded || (device_mesh_.dim(it->second) > 1);
+          contraction_dim_sharded || (GetDeviceMesh().dim(it->second) > 1);
     }
   }
 
@@ -664,22 +670,22 @@ void DotHandler::GenerateDotShardingStrategiesFromOutputSharding(
   // TODO(b/348372403): Consolidate the generation of all dot strategies
   // (including replicated strategies) in one place.
   if (!IsFullyReplicatedStrategy(output_dim_map, lhs_dim_map, rhs_dim_map,
-                                 device_mesh_) &&
+                                 GetDeviceMesh()) &&
       // This second condition is added to ensure parity with the older strategy
       // generation code. Removing it will only increase the search space.
-      IsFullySharded(output_dim_map, device_mesh_.num_dimensions())) {
+      IsFullySharded(output_dim_map, GetDeviceMesh().num_dimensions())) {
     MaybeAppend(GenerateNameForDotSharding(output_dim_map, lhs_dim_map),
-                lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+                lhs_dim_map, rhs_dim_map, output_dim_map, GetDeviceMesh());
   }
 
   // Generate shardings for contraction dimensions
-  if (used_mesh_dims.size() == device_mesh_.num_dimensions()) {
+  if (used_mesh_dims.size() == GetDeviceMesh().num_dimensions()) {
     return;
   }
 
   absl::flat_hash_set<int> unused_mesh_dims;
-  for (size_t i = 0; i < device_mesh_.num_dimensions(); ++i) {
-    if (!used_mesh_dims.contains(i) && device_mesh_.dim(i) > 1) {
+  for (size_t i = 0; i < GetDeviceMesh().num_dimensions(); ++i) {
+    if (!used_mesh_dims.contains(i) && GetDeviceMesh().dim(i) > 1) {
       unused_mesh_dims.insert(i);
     }
   }
@@ -709,7 +715,7 @@ void DotHandler::GenerateDotShardingStrategiesFromOutputSharding(
     // TODO: Fix the above
     if (IsFullyReplicatedStrategy(output_dim_map, lhs_dim_map_with_contractions,
                                   rhs_dim_map_with_contractions,
-                                  device_mesh_)) {
+                                  GetDeviceMesh())) {
       return;
     }
     CHECK(!lhs_dim_map_with_contractions.empty());
@@ -728,7 +734,7 @@ void DotHandler::GenerateDotShardingStrategiesFromOutputSharding(
     MaybeAppend(GenerateNameForDotSharding(output_dim_map,
                                            lhs_dim_map_with_contractions),
                 lhs_dim_map_with_contractions, rhs_dim_map_with_contractions,
-                output_dim_map, device_mesh_,
+                output_dim_map, GetDeviceMesh(),
                 /*compute_cost=*/0, communication_cost_fn);
   };
 
@@ -752,7 +758,7 @@ void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
     sharded_tensor_dims.insert(tensor_dim);
     used_mesh_dims.insert(mesh_dim);
   }
-  if (used_mesh_dims.size() == device_mesh_.num_dimensions() ||
+  if (used_mesh_dims.size() == GetDeviceMesh().num_dimensions() ||
       sharded_tensor_dims.size() == operand->shape().rank()) {
     return;
   }
@@ -762,7 +768,7 @@ void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
     if (sharded_tensor_dims.contains(tensor_dim)) {
       continue;
     }
-    for (int64_t mesh_dim = 0; mesh_dim < device_mesh_.num_dimensions();
+    for (int64_t mesh_dim = 0; mesh_dim < GetDeviceMesh().num_dimensions();
          ++mesh_dim) {
       if (used_mesh_dims.contains(mesh_dim) ||
           (device_mesh.dim(mesh_dim) == 1)) {
@@ -804,7 +810,7 @@ void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
     sharded_tensor_dims.insert(tensor_dim);
     used_mesh_dims.insert(mesh_dim);
   }
-  if (used_mesh_dims.size() == device_mesh_.num_dimensions() ||
+  if (used_mesh_dims.size() == GetDeviceMesh().num_dimensions() ||
       sharded_tensor_dims.size() == ins_->shape().rank()) {
     return;
   }
@@ -814,7 +820,7 @@ void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
     if (sharded_tensor_dims.contains(tensor_dim)) {
       continue;
     }
-    for (int64_t mesh_dim = 0; mesh_dim < device_mesh_.num_dimensions();
+    for (int64_t mesh_dim = 0; mesh_dim < GetDeviceMesh().num_dimensions();
          ++mesh_dim) {
       if (used_mesh_dims.contains(mesh_dim) ||
           (device_mesh.dim(mesh_dim) == 1)) {
@@ -840,17 +846,27 @@ void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
 }
 
 absl::Status DotHandler::RegisterStrategies() {
-  absl::flat_hash_set<int> all_mesh_dims;
-  for (int i = 0; i < device_mesh_.num_dimensions(); ++i) {
-    all_mesh_dims.insert(i);
-  }
-  EnumerateGeneral(
-      /*split_func=*/
-      [&](const DimMap& output_dim_map) {
-        GenerateDotShardingStrategiesFromOutputSharding(output_dim_map);
-      },
-      ins_->shape().rank(), /*current_tensor_dim=*/0, all_mesh_dims,
-      /*current_dim_map=*/{});
+  auto generate_strategies_for_mesh = [&]() {
+    absl::flat_hash_set<int> all_mesh_dims;
+    for (int i = 0; i < GetDeviceMesh().num_dimensions(); ++i) {
+      all_mesh_dims.insert(i);
+    }
+    EnumerateGeneral(
+        /*split_func=*/
+        [&](const DimMap& output_dim_map) {
+          GenerateDotShardingStrategiesFromOutputSharding(output_dim_map);
+        },
+        ins_->shape().rank(), /*current_tensor_dim=*/0, all_mesh_dims,
+        /*current_dim_map=*/{});
+  };
+
+  // TODO(b/356201483): Remove this when EnumerateGeneral can handle a tensor
+  // dims sharded across multiple mesh dims
+  is_generating_strategies_1d_ = false;
+  generate_strategies_for_mesh();
+  is_generating_strategies_1d_ = true;
+  generate_strategies_for_mesh();
+
   SortStrategies();
   return absl::OkStatus();
 }
@@ -887,7 +903,7 @@ void ConvHandler::GenerateConvolutionShardingStrategiesFromOutputSharding(
 
   // Propagate batch dim sharding
   auto it = output_dim_map.find(out_batch_dim_);
-  if (it != output_dim_map.end() && device_mesh_.dim(it->second) > 1) {
+  if (it != output_dim_map.end() && GetDeviceMesh().dim(it->second) > 1) {
     int mesh_dim = it->second;
     lhs_dim_map[lhs_batch_dim_] = mesh_dim;
     used_mesh_dims.insert(mesh_dim);
@@ -898,7 +914,7 @@ void ConvHandler::GenerateConvolutionShardingStrategiesFromOutputSharding(
 
   // Propagate out channel dim sharding
   it = output_dim_map.find(out_out_channel_dim_);
-  if (it != output_dim_map.end() && device_mesh_.dim(it->second) > 1) {
+  if (it != output_dim_map.end() && GetDeviceMesh().dim(it->second) > 1) {
     int mesh_dim = it->second;
     lhs_dim_map[rhs_out_channel_dim_] = mesh_dim;
     used_mesh_dims.insert(mesh_dim);
@@ -907,16 +923,16 @@ void ConvHandler::GenerateConvolutionShardingStrategiesFromOutputSharding(
     absl::StrAppend(&name, "oc-1");
   }
 
-  MaybeAppend(name, lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+  MaybeAppend(name, lhs_dim_map, rhs_dim_map, output_dim_map, GetDeviceMesh());
 
   // Generate shardings for contraction dimensions
-  if (used_mesh_dims.size() == device_mesh_.num_dimensions()) {
+  if (used_mesh_dims.size() == GetDeviceMesh().num_dimensions()) {
     return;
   }
 
   absl::flat_hash_set<int> unused_mesh_dims;
-  for (size_t i = 0; i < device_mesh_.num_dimensions(); ++i) {
-    if (!used_mesh_dims.contains(i) && device_mesh_.dim(i) > 1) {
+  for (size_t i = 0; i < GetDeviceMesh().num_dimensions(); ++i) {
+    if (!used_mesh_dims.contains(i) && GetDeviceMesh().dim(i) > 1) {
       unused_mesh_dims.insert(i);
     }
   }
@@ -940,7 +956,7 @@ void ConvHandler::GenerateConvolutionShardingStrategiesFromOutputSharding(
     };
 
     MaybeAppend(name, lhs_dim_map_with_contractions,
-                rhs_dim_map_with_contractions, output_dim_map, device_mesh_,
+                rhs_dim_map_with_contractions, output_dim_map, GetDeviceMesh(),
                 /*compute_cost=*/0, communication_cost_fn);
   }
 }
@@ -965,16 +981,26 @@ absl::Status ConvHandler::RegisterStrategies() {
     SplitDepthwise(false);
   }
 
-  absl::flat_hash_set<int> all_mesh_dims;
-  for (int i = 0; i < device_mesh_.num_dimensions(); ++i) {
-    all_mesh_dims.insert(i);
-  }
-  EnumerateGeneral(
-      [&](const DimMap& output_dim_map) {
-        GenerateConvolutionShardingStrategiesFromOutputSharding(output_dim_map);
-      },
-      2, /*current_tensor_dim=*/0, all_mesh_dims,
-      /*current_dim_map=*/{});
+  auto generate_strategies_for_mesh = [&]() {
+    absl::flat_hash_set<int> all_mesh_dims;
+    for (int i = 0; i < GetDeviceMesh().num_dimensions(); ++i) {
+      all_mesh_dims.insert(i);
+    }
+    EnumerateGeneral(
+        [&](const DimMap& output_dim_map) {
+          GenerateConvolutionShardingStrategiesFromOutputSharding(
+              output_dim_map);
+        },
+        2, /*current_tensor_dim=*/0, all_mesh_dims,
+        /*current_dim_map=*/{});
+  };
+
+  // TODO(b/356201483): Remove this when EnumerateGeneral can handle a tensor
+  // dims sharded across multiple mesh dims
+  is_generating_strategies_1d_ = false;
+  generate_strategies_for_mesh();
+  is_generating_strategies_1d_ = true;
+  generate_strategies_for_mesh();
 
   // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
   // and only keep the data parallel strategies.
@@ -1015,10 +1041,10 @@ void ConvHandler::SplitDepthwise(bool forward) {
 
         MaybeAppend(absl::StrCat("b", out_batch_mesh_dim, "oc",
                                  out_out_channel_mesh_dim, "@depthwise"),
-                    lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+                    lhs_dim_map, rhs_dim_map, output_dim_map, GetDeviceMesh());
       };
   absl::flat_hash_set<int> all_mesh_dims;
-  for (int i = 0; i < device_mesh_.num_dimensions(); ++i) {
+  for (int i = 0; i < GetDeviceMesh().num_dimensions(); ++i) {
     all_mesh_dims.insert(i);
   }
   EnumerateGeneral(split_func, 2, /*current_tensor_dim=*/0, all_mesh_dims,

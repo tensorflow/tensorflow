@@ -809,6 +809,32 @@ ENTRY %entry {
                       op::Sharding("{devices=[2,2]0,1,2,3}"))));
 }
 
+TEST_F(AutoShardingTest, Check1DShardingStrategyForDotWith2DMesh) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+ENTRY %entry {
+  %param0 = bf16[16,8512]{1,0} parameter(0)
+  %param1 = s8[2,68096,8512]{2,1,0} parameter(1), sharding={devices=[1,128,1]<=[16,8]T(1,0)}
+  %dot = bf16[16,2,68096]{2,1,0} dot(bf16[16,8512]{1,0} %param0, s8[2,68096,8512]{2,1,0} %param1), lhs_contracting_dims={1}, rhs_contracting_dims={2}
+  ROOT %copy = bf16[16,2,68096]{2,1,0} copy(%dot)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
+  option.device_mesh_shape = {8, 16};
+  option.allow_mixed_mesh_shape = false;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  LOG(INFO) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(dot, nullptr);
+  EXPECT_THAT(dot, op::Sharding("{devices=[1,1,128]<=[16,8]T(0,1)}"));
+}
+
 TEST_F(AutoShardingTest, TwoMatmulWithoutDotReplicationEnabled) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
