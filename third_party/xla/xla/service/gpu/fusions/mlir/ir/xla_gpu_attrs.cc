@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
@@ -161,6 +162,32 @@ void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
   PrintRangeVars(printer, getRangeVars());
   PrintConstraints(printer, getConstraints());
   printer << ">";
+}
+
+IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
+                                     const IndexingMap& indexing_map) {
+  llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints;
+  for (auto& constraint : indexing_map.GetConstraints()) {
+    constraints.push_back({constraint.first, constraint.second});
+  }
+  return get(context, indexing_map.GetAffineMap(), indexing_map.GetDimVars(),
+             indexing_map.GetRangeVars(), constraints);
+}
+
+mlir::LogicalResult IndexingMapAttr::verify(
+    mlir::function_ref<mlir::InFlightDiagnostic()> emitError,
+    mlir::AffineMap map, ArrayRef<DimVar> dim_vars,
+    ArrayRef<RangeVar> range_vars,
+    ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
+  if (map.getNumDims() != dim_vars.size()) {
+    return emitError()
+           << "dim size must match the number of dimensions in the affine map";
+  }
+  if (map.getNumSymbols() != range_vars.size()) {
+    return emitError()
+           << "range size must match the number of symbols in the affine map";
+  }
+  return mlir::success();
 }
 
 }  // namespace gpu
