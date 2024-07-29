@@ -60,12 +60,12 @@ class PosixRandomAccessFile : public RandomAccessFile {
     }
   }
 
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     *result = filename_;
     return absl::OkStatus();
   }
 
-  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     absl::Status s;
     char* dst = scratch;
@@ -93,7 +93,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
         s = IOError(filename_, errno);
       }
     }
-    *result = StringPiece(scratch, dst - scratch);
+    *result = absl::string_view(scratch, dst - scratch);
     return s;
   }
 
@@ -114,7 +114,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
                                        " bytes for file reading.");
     }
 
-    StringPiece tmp;
+    absl::string_view tmp;
     absl::Status s = Read(offset, n, &tmp, scratch);
 
     absl::Cord tmp_cord = absl::MakeCordFromExternal(
@@ -142,7 +142,7 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  absl::Status Append(StringPiece data) override {
+  absl::Status Append(absl::string_view data) override {
     size_t r = fwrite(data.data(), 1, data.size(), file_);
     if (r != data.size()) {
       return IOError(filename_, errno);
@@ -182,7 +182,7 @@ class PosixWritableFile : public WritableFile {
     return absl::OkStatus();
   }
 
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     *result = filename_;
     return absl::OkStatus();
   }
@@ -308,7 +308,7 @@ absl::Status PosixFileSystem::GetChildren(const string& dir,
   }
   struct dirent* entry;
   while ((entry = readdir(d)) != nullptr) {
-    StringPiece basename = entry->d_name;
+    absl::string_view basename = entry->d_name;
     if ((basename != ".") && (basename != "..")) {
       result->push_back(entry->d_name);
     }
