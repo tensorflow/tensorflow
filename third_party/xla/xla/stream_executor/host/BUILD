@@ -138,7 +138,6 @@ xla_cc_test(
         ":ptr_host_kernel_function",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:kernel_factory",
         "//xla/stream_executor:kernel_spec",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/functional:any_invocable",

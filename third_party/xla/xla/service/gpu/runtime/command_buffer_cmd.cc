@@ -64,7 +64,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
@@ -714,7 +713,7 @@ absl::Status CustomKernelLaunchCmd::Initialize(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<se::Kernel> kernel,
-      se::KernelFactory::Create(params.executor, custom_kernel_.kernel_spec()));
+      params.executor->LoadKernel(custom_kernel_.kernel_spec()));
 
   absl::MutexLock lock(&mutex_);
   kernels_.emplace(params.executor, std::move(kernel));

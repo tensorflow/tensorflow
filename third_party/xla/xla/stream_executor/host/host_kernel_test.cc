@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
-#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -157,8 +156,7 @@ TEST(HostKernelTest, Addition3D) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto add,
-                          KernelFactory::Create(executor.get(), spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add, executor->LoadKernel(spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
   TF_ASSERT_OK(stream->Launch(ThreadDim(2, 2, 3), BlockDim(1), *add, kargs));
@@ -184,8 +182,7 @@ TEST(HostKernelTest, JitAddition) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto add,
-                          KernelFactory::Create(executor.get(), spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add, executor->LoadKernel(spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
   TF_ASSERT_OK(stream->Launch(ThreadDim(4), BlockDim(1), *add, kargs));

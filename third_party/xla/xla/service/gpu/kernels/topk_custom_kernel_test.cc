@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -111,9 +110,8 @@ TEST_P(TopKKernelTest, TopKFloat) {
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto kernel,
-      se::KernelFactory::Create(executor, custom_kernel->kernel_spec()));
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel,
+                          executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
@@ -166,9 +164,8 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto kernel,
-      se::KernelFactory::Create(executor, custom_kernel->kernel_spec()));
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel,
+                          executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
