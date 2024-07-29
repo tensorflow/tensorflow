@@ -150,6 +150,10 @@ GetUniqueDeviceStates(PjRtGpuClientCreationInfo* info) {
 
   auto input_states = std::move(info->local_device_states);
 
+#if 1
+  return input_states;
+
+#else
   absl::flat_hash_map<int, int> hardware_id_to_local_id;
   for (const auto& id_state : input_states) {
     int local_id = id_state.second->local_device_id().value();
@@ -177,6 +181,7 @@ GetUniqueDeviceStates(PjRtGpuClientCreationInfo* info) {
     local_device_states.emplace(id_state.first, std::move(id_state.second));
   }
   return local_device_states;
+#endif
 }
 
 // Coordinate creation of a PjRt GPU client with distributed devices when there

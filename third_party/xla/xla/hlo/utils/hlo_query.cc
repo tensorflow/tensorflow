@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -268,5 +269,22 @@ HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
   return gte;
 }
 
+bool IsBeforeInComputation(const HloComputation* computation,
+                           absl::string_view inst1, absl::string_view inst2) {
+  int index1 = -1;
+  int index2 = -1;
+  int current_index = 0;
+  for (auto instruction : computation->instructions()) {
+    if (instruction->name() == inst1) {
+      index1 = current_index;
+    }
+    if (instruction->name() == inst2) {
+      index2 = current_index;
+    }
+    current_index++;
+  }
+  current_index++;
+  return index1 < index2;
+}
 }  // namespace hlo_query
 }  // namespace xla

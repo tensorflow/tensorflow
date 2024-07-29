@@ -73,13 +73,13 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
     iter = u32[] get-tuple-element(param), index=0
     data = f32[2,2] get-tuple-element(param), index=1
     weights = f32[2,2] get-tuple-element(param), index=2
-    matmul = f32[2,2] dot(weights, data), lhs_contracting_dims={1},
-        rhs_contracting_dims={0}
-    cp = f32[2,2] collective-permute(matmul),
-        source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+    cp = f32[2,2] collective-permute(data),
+      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+    matmul = f32[2,2] dot(weights, cp),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
     iter_increment = u32[] constant(1)
     next_iter = u32[] add(iter, iter_increment)
-    ROOT result = (u32[], f32[2,2], f32[2,2]) tuple(next_iter, cp, weights)
+    ROOT result = (u32[], f32[2,2], f32[2,2]) tuple(next_iter, matmul, weights)
   }
 
   ENTRY test_computation {

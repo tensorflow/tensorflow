@@ -48,6 +48,7 @@ class GpuSpmdPartitioningTest : public HloTestBase,
     HloModuleConfig config = GetModuleConfigForTest(
         /*replica_count=*/1, /*num_partitions=*/num_devices);
     config.set_num_partitions(num_devices);
+    config.set_use_shardy_partitioner(UseShardy());
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
 
@@ -67,7 +68,6 @@ class GpuSpmdPartitioningTest : public HloTestBase,
 
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_use_shardy(UseShardy());
     return debug_options;
   }
 };

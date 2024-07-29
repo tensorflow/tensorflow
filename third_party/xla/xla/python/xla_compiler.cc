@@ -1199,10 +1199,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_gpu_dump_autotune_logs_to,
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_gpu_dump_autotune_logs_to(value);
-                   })
-      // TODO(b/352486192): Move this to `ExecutableBuildOptions`.
-      .def_prop_rw("xla_use_shardy", &DebugOptions::xla_use_shardy,
-                   &DebugOptions::set_xla_use_shardy);
+                   });
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(nb::init<>())
@@ -1276,7 +1273,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
           [](ExecutableBuildOptions& options, std::vector<bool> values) {
             absl::InlinedVector<bool, 1> v(values.begin(), values.end());
             options.set_allow_spmd_sharding_propagation_to_output(v);
-          });
+          })
+      .def_prop_rw("use_shardy_partitioner",
+                   &ExecutableBuildOptions::use_shardy_partitioner,
+                   &ExecutableBuildOptions::set_use_shardy_partitioner);
 
   nb::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type",
                                                nb::is_arithmetic());
