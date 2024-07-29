@@ -122,8 +122,8 @@ class GpuExecutor : public StreamExecutorCommon {
 
   int device_ordinal() const override { return device_ordinal_; };
 
-  absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                         Kernel* kernel) override;
+  absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
+      const MultiKernelLoaderSpec& spec) override;
 
   // (supported on CUDA only)
   void UnloadKernel(const Kernel* kernel) override;
@@ -239,8 +239,6 @@ class GpuExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) override;
-
-  absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
 
   absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
       CommandBuffer::Mode mode) override;

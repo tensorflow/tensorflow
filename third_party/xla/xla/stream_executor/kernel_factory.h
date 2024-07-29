@@ -22,8 +22,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -33,9 +31,7 @@ class KernelFactory {
   // Creates kernel on a given executor from a given kernel specification.
   static inline absl::StatusOr<std::unique_ptr<Kernel>> Create(
       StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
-    TF_ASSIGN_OR_RETURN(auto kernel, executor->CreateKernel());
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
-    return kernel;
+    return executor->LoadKernel(spec);
   }
 };
 

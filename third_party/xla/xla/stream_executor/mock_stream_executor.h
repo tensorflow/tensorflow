@@ -59,8 +59,8 @@ class MockStreamExecutor : public StreamExecutor {
   MockStreamExecutor() = default;
   MOCK_METHOD(absl::Status, Init, (), (override));
   MOCK_METHOD(int, device_ordinal, (), (const, override));
-  MOCK_METHOD(absl::Status, GetKernel,
-              (const MultiKernelLoaderSpec& spec, Kernel* kernel), (override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Kernel>>, LoadKernel,
+              (const MultiKernelLoaderSpec& spec), (override));
   MOCK_METHOD(bool, UnloadModule, (ModuleHandle module_handle), (override));
   MOCK_METHOD(absl::Status, LoadModule,
               (const MultiModuleLoaderSpec& spec, ModuleHandle* module_handle),
@@ -124,8 +124,6 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(blas::BlasSupport*, AsBlas, (), (override));
   MOCK_METHOD(fft::FftSupport*, AsFft, (), (override));
   MOCK_METHOD(dnn::DnnSupport*, AsDnn, (), (override));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Kernel>>, CreateKernel, (),
-              (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<CommandBuffer>>,
               CreateCommandBuffer, (CommandBuffer::Mode mode), (override));
   MOCK_METHOD(std::optional<AllocatorStats>, GetAllocatorStats, (), (override));

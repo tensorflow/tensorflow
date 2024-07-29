@@ -70,10 +70,8 @@ class HostExecutor : public StreamExecutorCommon {
 
   absl::Status Init() override;
 
-  absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                         Kernel* kernel) override;
-
-  absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
+  absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
+      const MultiKernelLoaderSpec& spec) override;
 
   absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                       const BlockDim& block_dims, const Kernel& kernel,

@@ -255,9 +255,9 @@ absl::StatusOr<bool> GpuExecutor::DelayKernelIsSupported(GpuStream* stream) {
   return false;
 }
 
-absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                    Kernel* kernel) {
-  GpuKernel* rocm_kernel = AsGpuKernel(kernel);
+absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::LoadKernel(
+    const MultiKernelLoaderSpec& spec) {
+  auto rocm_kernel = std::make_unique<GpuKernel>(this);
   hipModule_t module = nullptr;
   const std::string* kernel_name;
 
@@ -272,7 +272,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     if (module == nullptr) {
       TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(context_, hsaco, &module));
     }
-    kernel_to_gpu_binary_[kernel] = hsaco;
+    kernel_to_gpu_binary_[rocm_kernel.get()] = hsaco;
   } else if (spec.has_in_process_symbol()) {
     kernel_name = &spec.in_process_symbol().kernel_name();
     void* symbol = spec.in_process_symbol().symbol();
@@ -310,12 +310,12 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   // unable to get kernel metadata for in-process kernel
   if (!spec.has_in_process_symbol()) {
     KernelMetadata kernel_metadata;
-    TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
-    kernel->set_metadata(kernel_metadata);
+    TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel.get(), &kernel_metadata));
+    rocm_kernel->set_metadata(kernel_metadata);
   }
-  kernel->set_name(*kernel_name);
-  kernel->set_args_packing(spec.kernel_args_packing());
-  return absl::OkStatus();
+  rocm_kernel->set_name(*kernel_name);
+  rocm_kernel->set_args_packing(spec.kernel_args_packing());
+  return std::move(rocm_kernel);
 }
 
 absl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
@@ -667,10 +667,6 @@ absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
   } else {
     return absl::InvalidArgumentError("Failed to initialize GPU stream");
   }
-}
-
-absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::CreateKernel() {
-  return std::make_unique<GpuKernel>(this);
 }
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> GpuExecutor::CreateCommandBuffer(

@@ -107,15 +107,13 @@ class StreamExecutor {
     return AllocateArray<T>(1);
   }
 
-  // Retrieves (loads) a kernel, if one exists.
+  // Loads a kernel from a MultiKernelLoaderSpec.
   //
   // Parameters:
   //   spec: The MultiKernelLoaderSpec is usually generated as a compile-time
   //    constant into an appropriate namespace.
-  //   kernel: Outparam that the kernel is loaded into. A given Kernel
-  //    instantiation should not be loaded into more than once.
-  virtual absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                                 Kernel* kernel) {
+  virtual absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
+      const MultiKernelLoaderSpec& spec) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -313,12 +311,6 @@ class StreamExecutor {
   // Returns null if there was an error initializing the DNN support for the
   // underlying platform.
   virtual dnn::DnnSupport* AsDnn() { return nullptr; }
-
-  // Creates a new Kernel object.
-  // TODO(klucke) Combine with GetKernel.
-  virtual absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() {
-    return absl::UnimplementedError("Kernels are not implemented");
-  }
 
   // Creates a new CommandBuffer object.
   virtual absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(

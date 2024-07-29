@@ -86,8 +86,8 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   absl::Status Init() override { return absl::OkStatus(); }
 
   int device_ordinal() const override { return device_ordinal_; };
-  absl::Status GetKernel(const MultiKernelLoaderSpec &spec,
-                         Kernel *kernel) override {
+  absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
+      const MultiKernelLoaderSpec &spec) override {
     return absl::UnimplementedError("Not Implemented");
   }
   absl::Status Launch(Stream *stream, const ThreadDim &thread_dims,

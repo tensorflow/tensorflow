@@ -216,13 +216,11 @@ absl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
       "Feature not supported on CUDA platform (LoadModuleFromHsaco)");
 }
 
-absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                    Kernel* kernel) {
-  GpuKernel* cuda_kernel = AsGpuKernel(kernel);
+absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::LoadKernel(
+    const MultiKernelLoaderSpec& spec) {
+  auto cuda_kernel = std::make_unique<GpuKernel>(this);
   CUmodule module;
   const std::string* kernel_name;
-
-  VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
 
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -230,7 +228,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     const char* cubin = reinterpret_cast<const char*>(
         spec.cuda_cubin_in_memory().cubin_bytes().data());
     TF_RETURN_IF_ERROR(LoadModuleFromCuBin(cubin, &module));
-    kernel_to_gpu_binary_[kernel] = cubin;
+    kernel_to_gpu_binary_[cuda_kernel.get()] = cubin;
 
   } else if (spec.has_cuda_ptx_in_memory()) {
     kernel_name = &spec.cuda_ptx_in_memory().kernel_name();
@@ -249,7 +247,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
 
     absl::MutexLock lock{&in_memory_modules_mu_};
     TF_RETURN_IF_ERROR(LoadModuleFromPtx(ptx, &module));
-    kernel_to_gpu_binary_[kernel] = ptx;
+    kernel_to_gpu_binary_[cuda_kernel.get()] = ptx;
 
   } else if (spec.has_in_process_symbol()) {
     kernel_name = &spec.in_process_symbol().kernel_name();
@@ -265,7 +263,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   } else {
     return absl::InternalError("No method of loading CUDA kernel provided");
   }
-
+  VLOG(3) << "LoadKernel on kernel : " << *kernel_name;
   // If we resolved kernel from a symbol pointer, there is no need to load it
   // from a module, as CUDA runtime did that automatically for us.
   if (!spec.has_in_process_symbol()) {
@@ -284,11 +282,11 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   cuda_kernel->set_arity(spec.arity());
 
   KernelMetadata kernel_metadata;
-  TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel, &kernel_metadata));
-  kernel->set_metadata(kernel_metadata);
-  kernel->set_name(*kernel_name);
-  kernel->set_args_packing(spec.kernel_args_packing());
-  return absl::OkStatus();
+  TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel.get(), &kernel_metadata));
+  cuda_kernel->set_metadata(kernel_metadata);
+  cuda_kernel->set_name(*kernel_name);
+  cuda_kernel->set_args_packing(spec.kernel_args_packing());
+  return std::move(cuda_kernel);
 }
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
@@ -791,10 +789,6 @@ absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
   } else {
     return absl::InvalidArgumentError("Failed to initialize gpu stream");
   }
-}
-
-absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::CreateKernel() {
-  return std::make_unique<GpuKernel>(this);
 }
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> GpuExecutor::CreateCommandBuffer(
