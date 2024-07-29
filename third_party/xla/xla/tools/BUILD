@@ -819,6 +819,7 @@ xla_test(
     data = [
         ":data/add.hlo",
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
+        "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
@@ -830,6 +831,8 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
+        "//xla/service/gpu:autotuner_util",
+        "//xla/service/gpu:gpu_symbol_repository",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_macros_header",

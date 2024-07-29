@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/gpu_symbol_repository.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
@@ -42,6 +43,10 @@ limitations under the License.
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/error_codes.pb.h"
 #include "tsl/protobuf/status.pb.h"
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/autotuner_util.h"
+#endif
 
 namespace xla {
 namespace {
@@ -214,6 +219,107 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(MainForGpu)) {
   TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
   EXPECT_TRUE(result.has_status());
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);
+}
+
+TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(LoadAutotuneDataCpu)) {
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kCpu),
+              IsOkAndHolds(false));
+}
+
+TEST_F(XlaCompileLibTest,
+       DISABLED_ON_CPU(LoadAutotuneDataGpuDataPresentAndAutotuningEnabled)) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  gpu::AutotunerUtil::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
+
+  AutotuneResults autotune_results;
+  TF_ASSERT_OK(tsl::ReadTextProto(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+                        "gpu_compiler_test_autotune_db.textproto"),
+      &autotune_results));
+  data->autotune_results = autotune_results;
+  mod.backend_specific_data = std::move(data);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(3);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              IsOkAndHolds(true));
+  EXPECT_FALSE(gpu::AutotunerUtil::ResultCacheIsEmpty());
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
+
+TEST_F(XlaCompileLibTest,
+       DISABLED_ON_CPU(LoadAutotuneDataGpuDataPresentAndAutotuningDisabled)) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  gpu::AutotunerUtil::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
+
+  AutotuneResults autotune_results;
+  TF_ASSERT_OK(tsl::ReadTextProto(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+                        "gpu_compiler_test_autotune_db.textproto"),
+      &autotune_results));
+  data->autotune_results = autotune_results;
+  mod.backend_specific_data = std::move(data);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(0);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              IsOkAndHolds(false));
+  EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
+
+TEST_F(XlaCompileLibTest,
+       DISABLED_ON_CPU(LoadAutotuneDataGpuDataNotPresentAndAutotuningEnabled)) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  gpu::AutotunerUtil::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(3);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              IsOkAndHolds(false));
+  EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
+
+TEST_F(
+    XlaCompileLibTest,
+    DISABLED_ON_CPU(LoadAutotuneDataGpuDataNotPresentAndAutotuningDisabled)) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  gpu::AutotunerUtil::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(0);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              IsOkAndHolds(false));
+  EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 }  // namespace

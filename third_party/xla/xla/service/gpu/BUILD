@@ -65,6 +65,8 @@ filegroup(
     ]),
 )
 
+exports_files(srcs = ["gpu_compiler_test_autotune_db.textproto"])
+
 tf_proto_library(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
