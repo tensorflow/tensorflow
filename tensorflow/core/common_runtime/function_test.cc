@@ -385,6 +385,7 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
 TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
   class DummyStackTrace : public AbstractStackTrace {
     absl::Span<StackFrame const> ToFrames() const override { return {}; }
+    std::vector<StackFrame> ToUncachedFrames() const override { return {}; }
 
     std::string ToString(const TracePrintingOptions& opts) const override {
       return "DummyStackTrace";

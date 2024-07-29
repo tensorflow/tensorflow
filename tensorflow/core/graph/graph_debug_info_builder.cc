@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
@@ -95,6 +96,10 @@ FrozenStackTrace::FrozenStackTrace(
 }
 
 absl::Span<StackFrame const> FrozenStackTrace::ToFrames() const {
+  return frames_;
+}
+
+std::vector<StackFrame> FrozenStackTrace::ToUncachedFrames() const {
   return frames_;
 }
 
