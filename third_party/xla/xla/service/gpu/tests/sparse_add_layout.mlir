@@ -35,10 +35,10 @@ module {
     // CHECK-NEXT: %[[CVT:.*]] = triton_gpu.convert_layout %[[D]]
     // CHECK-SAME:   : tensor<64x64xf32, #[[BLOCKED4x4]]>
     // CHECK-SAME:     -> tensor<64x64xf32, #[[BLOCKED1x1]]>
-    // CHECK-NEXT: tt.print "" {hex = false} : %[[CVT]]
+    // CHECK-NEXT: tt.print "" {hex = false, isSigned = array<i32: 0>} : %[[CVT]]
     // CHECK-SAME:   : tensor<64x64xf32, #[[BLOCKED1x1]]>
     // A use with side effects so we don't DCE the whole function.
-    tt.print "" { hex = false } : %d : tensor<64x64xf32>
+    tt.print "" { hex = false, isSigned = array<i32: 0>} : %d : tensor<64x64xf32>
 
     // CHECK-NEXT: tt.return 
     tt.return
