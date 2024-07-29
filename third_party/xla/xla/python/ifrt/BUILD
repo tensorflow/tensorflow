@@ -40,6 +40,7 @@ cc_library(
         "client.cc",
         "compiler.cc",
         "device.cc",
+        "device_allocation.cc",
         "dtype.cc",
         "remap_plan.cc",
         "executable.cc",
@@ -63,6 +64,7 @@ cc_library(
         "compiler.h",
         "remap_plan.h",
         "device.h",
+        "device_allocation.h",
         "dtype.h",
         "executable.h",
         "future.h",
@@ -160,6 +162,42 @@ xla_cc_test(
         ":attribute_map",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "basic_device_allocation",
+    srcs = ["basic_device_allocation.cc"],
+    hdrs = ["basic_device_allocation.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":attribute_map",
+        ":ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "basic_device_allocation_test",
+    size = "small",
+    srcs = ["basic_device_allocation_test.cc"],
+    deps = [
+        ":basic_device_allocation",
+        ":device_test_util",
+        ":ifrt",
+        ":mock",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 

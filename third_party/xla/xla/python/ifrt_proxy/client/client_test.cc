@@ -25,6 +25,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
@@ -259,6 +260,81 @@ TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
           absl::InternalError("injected from test"))));
 
   EXPECT_THAT(client_->GetDefaultDeviceAssignment(1, 3), Not(IsOk()));
+}
+#endif
+
+// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
+#if defined(PLATFORM_GOOGLE)
+TEST_P(ClientTest, AllocateDevicesSuccess) {
+  if (Version().protocol_version() <= 4) {
+    GTEST_SKIP() << "AllocateDevices is not supported in protocol version <= 4";
+  }
+  IfrtResponse response;
+  AllocateDevicesResponse& allocate_devices_response =
+      *response.mutable_allocate_devices_response();
+  *allocate_devices_response.mutable_device_list() =
+      DeviceList(DeviceList::Devices(client_->devices().begin(),
+                                     client_->devices().end()))
+          .ToProto();
+  *allocate_devices_response.mutable_addressable_device_list() =
+      DeviceList(DeviceList::Devices(client_->addressable_devices().begin(),
+                                     client_->addressable_devices().end()))
+          .ToProto();
+  allocate_devices_response.set_default_memory_kind("mock");
+  allocate_devices_response.add_all_memory_kinds("mock");
+  AttributeMap::Map attributes;
+  attributes.insert({"name", AttributeMap::StringValue("abc")});
+  *allocate_devices_response.mutable_attributes() =
+      AttributeMap(attributes).ToProto();
+  allocate_devices_response.set_debug_string("debug string");
+
+  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                             R"pb(
+                               allocate_devices_request {
+                                 name: "abc"
+                                 constraints: {}
+                               }
+                             )pb")))))
+      .WillOnce(MockClientSessionReturnResponse(response));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto assignment_got,
+                          client_->AllocateDevices("abc", AttributeMap({})));
+  EXPECT_EQ(assignment_got->GetDeviceList().devices(), client_->devices());
+  EXPECT_EQ(assignment_got->GetAddressableDeviceList().devices(),
+            client_->addressable_devices());
+  EXPECT_EQ(assignment_got->GetDefaultMemoryKind(), MemoryKind("mock"));
+  EXPECT_THAT(assignment_got->GetAllMemoryKinds(),
+              ElementsAre(MemoryKind("mock")));
+  EXPECT_EQ(assignment_got->Attributes().map(), AttributeMap(attributes).map());
+  EXPECT_EQ(assignment_got->DebugString(), "debug string");
+
+  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                             R"pb(
+                               destruct_device_allocation_request {}
+                             )pb")))))
+      .WillOnce(MockClientSessionReturnResponse(response));
+  assignment_got.reset();
+}
+#endif
+
+// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
+#if defined(PLATFORM_GOOGLE)
+TEST_P(ClientTest, AllocateDevicesFailure) {
+  if (Version().protocol_version() <= 4) {
+    GTEST_SKIP() << "AllocateDevices is not supported in protocol version <= 4";
+  }
+
+  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                             R"pb(
+                               allocate_devices_request {
+                                 name: "abc"
+                                 constraints: {}
+                               }
+                             )pb")))))
+      .WillOnce(Return(Future<ClientSession::Response>(
+          absl::InternalError("injected from test"))));
+
+  EXPECT_THAT(client_->AllocateDevices("abc", AttributeMap({})), Not(IsOk()));
 }
 #endif
 

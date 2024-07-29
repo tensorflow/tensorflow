@@ -19,15 +19,18 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -154,6 +157,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, Attributes).WillByDefault([this]() {
     return delegated_->Attributes();
   });
+  ON_CALL(*this, AllocateDevices)
+      .WillByDefault([this](absl::string_view name, AttributeMap constraints) {
+        return delegated_->AllocateDevices(name, std::move(constraints));
+      });
   ON_CALL(*this, device_count).WillByDefault([this]() {
     return delegated_->device_count();
   });

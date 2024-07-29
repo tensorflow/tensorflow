@@ -53,8 +53,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/basic_device_allocation.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -524,6 +526,34 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
 }
 
 const AttributeMap& PjRtClient::Attributes() const { return attributes_; }
+
+absl::StatusOr<tsl::RCReference<DeviceAllocation>> PjRtClient::AllocateDevices(
+    absl::string_view name, AttributeMap constraints) {
+  DCHECK(this);
+  for (const auto& [key, value] : constraints.map()) {
+    if (key == Client::kIfrtDeviceIds) {
+      if (constraints.map().size() != 1) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            Client::kIfrtDeviceIds, " cannot be used with other constraints"));
+      }
+      const auto* int64_list_value =
+          std::get_if<AttributeMap::Int64ListValue>(&value);
+      if (int64_list_value == nullptr) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(Client::kIfrtDeviceIds, " must be an Int64ListValue"));
+      }
+      std::vector<DeviceId> device_ids;
+      device_ids.reserve(int64_list_value->value.size());
+      for (auto v : int64_list_value->value) {
+        device_ids.push_back(DeviceId(v));
+      }
+      return BasicDeviceAllocation::Create(this, device_ids);
+    }
+  }
+  return absl::UnimplementedError(
+      absl::StrCat("Not supported constraints for DeviceAllocation ", name,
+                   ": ", constraints.DebugString()));
+}
 
 absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
 PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer) {

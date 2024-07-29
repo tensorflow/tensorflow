@@ -40,9 +40,9 @@
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -205,6 +205,11 @@ Future<BackendInterface::Response> IfrtBackend::Process(
     case IfrtRequest::RequestCase::kGetDefaultDeviceAssignmentRequest:
       return Future<Response>(
           HandleGetDefaultDeviceAssignmentRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kAllocateDevicesRequest:
+      return Future<Response>(HandleAllocateDevicesRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kDestructDeviceAllocationRequest:
+      return Future<Response>(
+          HandleDestructDeviceAllocationRequest(std::move(request)));
     default:
       return Future<Response>(absl::UnimplementedError(absl::StrCat(
           "Got unimplemented request type: ", request->request_case())));
@@ -1302,6 +1307,71 @@ IfrtBackend::HandleGetDefaultDeviceAssignmentRequest(
       ifrt_resp->mutable_get_default_device_assignment_response()
           ->mutable_device_assignment());
 
+  return ifrt_resp;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleAllocateDevicesRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const auto& allocate_devices_request = request->allocate_devices_request();
+  TF_ASSIGN_OR_RETURN(
+      auto constraints,
+      AttributeMap::FromProto(allocate_devices_request.constraints()));
+  TF_ASSIGN_OR_RETURN(auto device_allocation,
+                      client_->AllocateDevices(allocate_devices_request.name(),
+                                               std::move(constraints)));
+  auto* device_allocation_ptr = device_allocation.get();
+
+  uint64_t handle = handle_generator_.New();
+  {
+    absl::MutexLock lock(&device_allocations_mutex_);
+    device_allocations_.insert({handle, std::move(device_allocation)});
+  }
+
+  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto* allocate_devices_resp = ifrt_resp->mutable_allocate_devices_response();
+
+  allocate_devices_resp->set_device_allocation_handle(handle);
+  *allocate_devices_resp->mutable_device_list() =
+      device_allocation_ptr->GetDeviceList().ToProto();
+  *allocate_devices_resp->mutable_addressable_device_list() =
+      device_allocation_ptr->GetAddressableDeviceList().ToProto();
+  if (device_allocation_ptr->GetDefaultMemoryKind().memory_kind().has_value()) {
+    allocate_devices_resp->set_default_memory_kind(std::string(
+        *device_allocation_ptr->GetDefaultMemoryKind().memory_kind()));
+  }
+  for (const auto& memory_kind : device_allocation_ptr->GetAllMemoryKinds()) {
+    TF_RET_CHECK(memory_kind.memory_kind().has_value());
+    allocate_devices_resp->add_all_memory_kinds(
+        std::string(*memory_kind.memory_kind()));
+  }
+  *allocate_devices_resp->mutable_attributes() =
+      device_allocation_ptr->Attributes().ToProto();
+  allocate_devices_resp->set_debug_string(device_allocation_ptr->DebugString());
+
+  return ifrt_resp;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleDestructDeviceAllocationRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  {
+    absl::MutexLock lock(&device_allocations_mutex_);
+    bool deleted =
+        device_allocations_.erase(request->destruct_device_allocation_request()
+                                      .device_allocation_handle());
+    if (!deleted) {
+      return absl::NotFoundError(
+          absl::StrCat("Unknown array handle: ",
+                       request->destruct_device_allocation_request()
+                           .device_allocation_handle()));
+    }
+  }
+  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+
+  // Currently HandleDestructDeviceAllocationResponse is an empty message, but
+  // proxy clients may rely on its presence for correct demuxing.
+  ifrt_resp->mutable_destruct_device_allocation_response();
   return ifrt_resp;
 }
 

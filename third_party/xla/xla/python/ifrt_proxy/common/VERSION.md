@@ -24,3 +24,9 @@
 *   Changes:
     *   Changed the serialization of client and device attributes to use `xla.ifrt.AttributeMapProto` instead of `map<string, xla.ifrt.proto.Variant>`.
 
+## Version 5
+
+*   Added date: 2024-08-01.
+*   Changes:
+    *   Added native support for `Client::AllocateDevices()` and `DeviceAllocation` objects that do not add or remove devices.
+
