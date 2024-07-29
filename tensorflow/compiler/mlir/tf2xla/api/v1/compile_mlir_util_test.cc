@@ -263,8 +263,7 @@ absl::StatusOr<xla::XlaComputation> BuildHloFromGraph(
       BuildHloFromGraph(graph, builder, mlir_context, xla_params, returns,
                         use_output_shapes, xla_args,
                         /*control_rets=*/{}, DEVICE_TPU,
-                        FunctionLibraryDefinition(OpRegistry::Global()),
-                        /*debug_info=*/{}));
+                        FunctionLibraryDefinition(OpRegistry::Global())));
   return builder.Build();
 }
 

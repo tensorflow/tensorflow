@@ -539,6 +539,14 @@ HloSharding InferDotOperandSharding(
     const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
     bool consider_other_operand, bool may_combine_partial_sharding);
 
+// Same as above, but takes the sharding of the dot and the other operand as
+// input.
+HloSharding InferDotOperandSharding(
+    const HloSharding* dot_sharding, const HloSharding* other_operand_sharding,
+    int64_t operand_index,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
+    bool consider_other_operand, bool may_combine_partial_sharding);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 
