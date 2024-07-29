@@ -59,12 +59,18 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   if (quant_specs.default_ranges.first.has_value() ||
       quant_specs.default_ranges.second.has_value()) {
+    mlir::TFL::DefaultQuantParamsPassOptions default_quant_params_pass_options;
+    default_quant_params_pass_options.default_min_ =
+        quant_specs.default_ranges.first.value_or(0.0);
+    default_quant_params_pass_options.default_max_ =
+        quant_specs.default_ranges.second.value_or(0.0);
+    default_quant_params_pass_options.is_signed_ =
+        quant_specs.IsSignedInferenceType();
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateDefaultQuantParamsPass(
-            quant_specs.default_ranges.first.value_or(0.0),
-            quant_specs.default_ranges.second.value_or(0.0),
-            quant_specs.IsSignedInferenceType()));
+            default_quant_params_pass_options));
   }
+
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateQuantizePass(quant_specs));
   bool emit_quant_adaptor_ops =
@@ -95,8 +101,11 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateOptimizeBatchMatmulPass());
   }
+  // Add TFLite optimize pass.
+  mlir::TFL::OptimizePassOptions optimize_pass_options;
+  optimize_pass_options.enable_canonicalization_ = true;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
+      mlir::TFL::CreateOptimizePass(optimize_pass_options));
 }
 
 void AddVariableFreezingFromGlobalTensorsPasses(
@@ -152,8 +161,12 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateOptimizeBatchMatmulPass());
   }
+
+  // Add TFLite optimize pass.
+  mlir::TFL::OptimizePassOptions optimize_pass_options;
+  optimize_pass_options.enable_canonicalization_ = true;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
+      mlir::TFL::CreateOptimizePass(optimize_pass_options));
 }
 
 void AddPreQuantizationStableHloToTfPasses(
@@ -300,14 +313,17 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
     mlir::OpPassManager* pass_manager) {
   // This pass wraps all the tf.FakeQuant ops in a custom op so they are not
   // folded before being converted to tfl.quantize and tfl.dequantize ops.
-  auto wrapped_ops = mlir::TFL::AllTfFakeQuantOps();
+  std::vector<std::string> target_ops = mlir::TFL::AllTfFakeQuantOps();
+  mlir::TFL::RaiseCustomOpsPassOptions raise_custom_ops_pass_options;
+  raise_custom_ops_pass_options.target_ops_ = target_ops;
   pass_manager->addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateRaiseCustomOpsPass(wrapped_ops));
+      mlir::TFL::CreateRaiseCustomOpsPass(raise_custom_ops_pass_options));
 
   mlir::TF::StandardPipelineOptions standard_pipeline_options;
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
   mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
+
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateDeviceIndexSelectorPass());
 
@@ -372,13 +388,16 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   if (pass_config.lower_tensor_list_ops &&
       toco_flags.tf_quantization_mode().empty()) {
     // TODO(haoliang): Add this pass by default.
+    mlir::TFL::LowerStaticTensorListPassOptions
+        lower_static_tensor_list_pass_options;
+    lower_static_tensor_list_pass_options.allow_tensorlist_pass_through_ =
+        toco_flags.force_select_tf_ops() || toco_flags.enable_select_tf_ops();
+    lower_static_tensor_list_pass_options.default_to_single_batch_ =
+        toco_flags.default_to_single_batch_in_tensor_list_ops();
+    lower_static_tensor_list_pass_options.enable_dynamic_update_slice_ =
+        toco_flags.enable_dynamic_update_slice();
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass(
-        /*allow_tensorlist_pass_through=*/toco_flags.force_select_tf_ops() ||
-            toco_flags.enable_select_tf_ops(),
-        /*default_to_single_batch=*/
-        toco_flags.default_to_single_batch_in_tensor_list_ops(),
-        /*enable_dynamic_update_slice=*/
-        toco_flags.enable_dynamic_update_slice()));
+        lower_static_tensor_list_pass_options));
   }
 
   if (pass_config.shape_inference) {
@@ -433,6 +452,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     if (pass_config.shape_inference) {
       pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
     }
+
     // Force layout supported by TFLite, this will transpose the data
     // to match 'kTFLiteDataLayout'
     mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
@@ -440,13 +460,19 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     layout_optimization_options.skip_fold_transpose_in_ops = true;
     mlir::TF::CreateLayoutOptimizationPipeline(
         pass_manager->nest<mlir::func::FuncOp>(), layout_optimization_options);
+
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
+    mlir::TFL::PrepareTFPassOptions prepare_tf_pass_options;
+    prepare_tf_pass_options.unfold_batch_matmul_ =
+        pass_config.unfold_batch_matmul;
+    prepare_tf_pass_options.allow_bf16_and_f16_type_legalization_ =
+        !pass_config.runtime_verification;
+    prepare_tf_pass_options.use_fake_quant_num_bits_ =
+        toco_flags.use_fake_quant_num_bits();
     pass_manager->addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul,
-                                       /*allow_bf16_and_f16_type_legalization=*/
-                                       !pass_config.runtime_verification,
-                                       toco_flags.use_fake_quant_num_bits()));
+        mlir::TFL::CreatePrepareTFPass(prepare_tf_pass_options));
+
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::createCanonicalizerPass());
     if (pass_config.shape_inference) {
@@ -465,9 +491,15 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateInitTextFileToImportPass(saved_model_dir.str()));
 
+    // Add legalize TF pass to TFL dialect.
+    mlir::TFL::LegalizeTFPassOptions legalize_tf_pass_options;
+    legalize_tf_pass_options.run_tfl_runtime_verification_ =
+        pass_config.runtime_verification;
+    legalize_tf_pass_options.preserve_assert_op_ =
+        pass_config.preserve_assert_op;
     pass_manager->addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification,
-                                        pass_config.preserve_assert_op));
+        mlir::TFL::CreateLegalizeTFPass(legalize_tf_pass_options));
+
     pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
@@ -478,9 +510,14 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
           mlir::TFL::CreateOptimizeBatchMatmulPass());
     }
     pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
+
+    // Add TFLite optimize pass.
+    mlir::TFL::OptimizePassOptions optimize_pass_options;
+    optimize_pass_options.enable_canonicalization_ = true;
+    optimize_pass_options.disable_fuse_mul_and_fc_ =
+        toco_flags.disable_fuse_mul_and_fc();
     pass_manager->addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true,
-                                      toco_flags.disable_fuse_mul_and_fc()));
+        mlir::TFL::CreateOptimizePass(optimize_pass_options));
 
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops

@@ -25,6 +25,7 @@ limitations under the License.
 #include <climits>
 #include <complex>
 #include <cstdint>
+#include <memory>
 #include <utility>
 
 #include "absl/status/statusor.h"
@@ -86,6 +87,11 @@ class LegalizeTFPass : public impl::LegalizeTFPassBase<LegalizeTFPass> {
                           bool preserve_assert_op) {
     this->run_tfl_runtime_verification_ = run_tfl_runtime_verification;
     this->preserve_assert_op_ = preserve_assert_op;
+  }
+
+  explicit LegalizeTFPass(const LegalizeTFPassOptions& options) {
+    this->run_tfl_runtime_verification_ = options.run_tfl_runtime_verification_;
+    this->preserve_assert_op_ = options.preserve_assert_op_;
   }
 
   /// Performs the lowering to TFLite dialect.
@@ -1137,6 +1143,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
     bool run_tfl_runtime_verification, bool preserve_assert_op) {
   return std::make_unique<LegalizeTFPass>(run_tfl_runtime_verification,
                                           preserve_assert_op);
+}
+
+// Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
+    const LegalizeTFPassOptions& options) {
+  return std::make_unique<LegalizeTFPass>(options);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass() {

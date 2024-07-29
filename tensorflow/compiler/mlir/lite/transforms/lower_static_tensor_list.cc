@@ -20,25 +20,20 @@ limitations under the License.
 // be represented using a TensorFlow op. Otherwise, TensorFlow Lite dialect op
 // is used.
 
-#include <climits>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -57,14 +52,11 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
@@ -121,6 +113,14 @@ struct LowerStaticTensorListPass
     this->allow_tensorlist_pass_through_ = allow_tensorlist_pass_through;
     this->default_to_single_batch_ = default_to_single_batch;
     this->enable_dynamic_update_slice_ = enable_dynamic_update_slice;
+  }
+
+  explicit LowerStaticTensorListPass(
+      const TFL::LowerStaticTensorListPassOptions &options) {
+    this->allow_tensorlist_pass_through_ =
+        options.allow_tensorlist_pass_through_;
+    this->default_to_single_batch_ = options.default_to_single_batch_;
+    this->enable_dynamic_update_slice_ = options.enable_dynamic_update_slice_;
   }
 
   void runOnOperation() override;
@@ -1659,6 +1659,11 @@ std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
   return std::make_unique<LowerStaticTensorListPass>(
       allow_tensorlist_pass_through, default_to_single_batch,
       enable_dynamic_update_slice);
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
+    const LowerStaticTensorListPassOptions &options) {
+  return std::make_unique<LowerStaticTensorListPass>(options);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>

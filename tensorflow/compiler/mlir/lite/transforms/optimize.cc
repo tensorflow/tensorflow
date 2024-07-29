@@ -37,7 +37,6 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -136,6 +135,11 @@ class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
                         bool disable_fuse_mul_and_fc = false) {
     this->enable_canonicalization_ = enable_canonicalization;
     this->disable_fuse_mul_and_fc_ = disable_fuse_mul_and_fc;
+  }
+
+  explicit OptimizePass(const OptimizePassOptions &options) {
+    this->enable_canonicalization_ = options.enable_canonicalization_;
+    this->disable_fuse_mul_and_fc_ = options.disable_fuse_mul_and_fc_;
   }
 
   void runOnOperation() override;
@@ -2583,6 +2587,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
     bool enable_canonicalization, bool disable_fuse_mul_and_fc) {
   return std::make_unique<OptimizePass>(enable_canonicalization,
                                         disable_fuse_mul_and_fc);
+}
+
+// Creates an instance of the TensorFlow Lite dialect Optimize pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
+    const OptimizePassOptions &options) {
+  return std::make_unique<OptimizePass>(options);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {
