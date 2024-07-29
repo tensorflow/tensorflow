@@ -43,7 +43,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -1295,6 +1295,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
   }();
 
   AddGroupIdConstraint(map, root_index, groups_);
+  map.Simplify();
   return map;
 }
 
@@ -1321,6 +1322,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
       GetBitcastMap(tiling_.GetXlaShape(),
                     hero.operand(hero_operand_index)->shape(), ctx));
   AddGroupIdConstraint(map, root_index, groups_);
+  map.Simplify();
   return map;
 }
 

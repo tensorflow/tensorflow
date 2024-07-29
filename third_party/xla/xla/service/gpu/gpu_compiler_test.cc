@@ -27,12 +27,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -44,7 +46,11 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+<<<<<<< HEAD
 #include "xla/tests/test_macros.h"
+=======
+#include "xla/xla_data.pb.h"
+>>>>>>> upstream/master
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
@@ -63,7 +69,6 @@ namespace m = ::xla::match;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::TempDir;
-using ::tsl::testing::StatusIs;
 
 class GpuCompilerTest : public HloTestBase {
  public:
@@ -214,6 +219,36 @@ ENTRY e {
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
 
+TEST_F(GpuCompilerTest, NonFusedInstructionsAreWrapped) {
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p = f32[2,4,4] parameter(0)
+  ROOT _ = f32[2,4,4]{2,1,0} transpose(p), dimensions={0,2,1}
+})",
+                                                       config));
+
+  config.set_debug_options(debug_options);
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+
+  HloModule& compiled_module = executable->module();
+  const HloInstruction* entry_root =
+      compiled_module.entry_computation()->root_instruction();
+  EXPECT_THAT(entry_root, GmockMatch(m::Fusion()));
+}
+
 class PersistedAutotuningTest : public HloTestBase {
  protected:
   static constexpr absl::string_view kHloText = R"(
@@ -348,7 +383,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_string));
 
-  EXPECT_EQ(CountCopies(*module), 5);
+  EXPECT_EQ(CountCopies(*module), 7);
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* while_op = root->operand(0)->operand(0);
@@ -366,11 +401,15 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+<<<<<<< HEAD
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
   }
   GTEST_SKIP() << "TODO(b/344573710): this test is flaky, disable it "
                << " until flakiness is fixed.";
+=======
+  GTEST_SKIP() << "TODO(b/354864068): Test fails in OSS stack on A100-80.";
+>>>>>>> upstream/master
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()
@@ -444,6 +483,126 @@ ENTRY main {
   // enabling triton gemm
   EXPECT_EQ(triton_enabled_module->computation_count(),
             triton_disabled_module->computation_count());
+}
+
+class FloatNormalizationTest : public GpuCompilerTest,
+                               public ::testing::WithParamInterface<
+                                   std::pair<PrimitiveType, PrimitiveType>> {};
+
+INSTANTIATE_TEST_SUITE_P(
+    Fp8s, FloatNormalizationTest,
+    ::testing::Values(
+        std::make_pair(PrimitiveType::F8E4M3FN, PrimitiveType::F8E4M3FN),
+        std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E4M3FN),
+        std::make_pair(PrimitiveType::F8E4M3FN, PrimitiveType::F8E5M2),
+        std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E5M2)));
+
+TEST_P(FloatNormalizationTest, Fp8Normalization) {
+  // TODO(b/344573710) Make this test not require a GPU when AutotuneCacheKey is
+  // more stable.
+  const PrimitiveType lhs_type = GetParam().first;
+  const PrimitiveType rhs_type = GetParam().second;
+  const std::string lhs_name =
+      primitive_util::LowercasePrimitiveTypeName(lhs_type);
+  const std::string rhs_name =
+      primitive_util::LowercasePrimitiveTypeName(rhs_type);
+  const std::string module_str = absl::Substitute(R"(
+HloModule sch
+
+ENTRY main {
+  parameter = $0[1600,1600]{1,0} parameter(0)
+  parameter.1 = $1[1600,1600]{1,0} parameter(1)
+  neg = $1[1600,1600]{1,0} negate(parameter.1)
+  dot = f16[1600,1600]{1,0} dot(parameter,neg), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  constant = f16[] constant(0)
+  broadcast = f16[1600,1600]{1,0} broadcast(constant), dimensions={}
+  ROOT maximum = f16[1600,1600]{1,0} maximum(dot,broadcast)
+})",
+                                                  lhs_name, rhs_name);
+
+  auto optimize_module = [&](bool enable_triton, bool enable_blas,
+                             bool enable_blas_fallback)
+      -> absl::StatusOr<std::unique_ptr<HloModule>> {
+    HloModuleConfig config;
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(enable_blas_fallback);
+    debug_options.set_xla_gpu_enable_triton_gemm(enable_triton);
+    if (!enable_blas) {
+      debug_options.add_xla_disable_hlo_passes("cublas-gemm-rewriter");
+    }
+    config.set_debug_options(debug_options);
+    config.set_num_partitions(1);
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                        ParseAndReturnVerifiedModule(module_str, config));
+    return GetOptimizedModule(std::move(module));
+  };
+
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+
+  const std::string triton_keep_types = absl::Substitute(
+      R"(CHECK: fusion($0{{[^)]*}}, $1{{[^)]*}}){{.*}}"kind":"__triton_gemm")",
+      lhs_name, rhs_name);
+  const std::string cublaslt_keep_types = absl::Substitute(
+      R"(CHECK: custom-call($0{{[^)]*}}, $1{{[^)]*}}){{.*}}custom_call_target="__cublas$$lt$$matmul$$f8")",
+      lhs_name, rhs_name);
+  const std::string cublas_convert_to_f16 =
+      R"(CHECK: custom-call(f16{{[^)]*}}, f16{{[^)]*}}){{.*}}custom_call_target="__cublas$gemm")";
+  const std::string fallback_convert_to_f16 =
+      R"(CHECK: dot(f16{{[^)]*}}, f16{{[^)]*}}))";
+
+  {
+    // Triton enabled, no fallback.
+    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
+                            optimize_module(/*enable_triton=*/true,
+                                            /*enable_blas=*/true,
+                                            /*enable_blas_fallback=*/false));
+    // Triton supports f8e4m3fn on Hopper and f8e5m2 on Ampere.
+    const std::string triton_expected_check =
+        (cc.IsAtLeastHopper() ||
+         (cc.IsAtLeastAmpere() && lhs_type == F8E5M2 && rhs_type == F8E5M2))
+            ? triton_keep_types
+            : cublas_convert_to_f16;
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matched,
+        RunFileCheck(optimized_module_no_fallback->ToString(),
+                     triton_expected_check));
+    EXPECT_TRUE(filecheck_matched);
+  }
+
+  {
+    // Triton disabled, BLAS enabled.
+    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_triton,
+                            optimize_module(/*enable_triton=*/false,
+                                            /*enable_blas=*/true,
+                                            /*enable_blas_fallback=*/true));
+    // cuBLASlt is only available on Hopper and it doesn't support
+    // f8e5m2×f8e5m2.
+    const std::string blas_expected_check =
+        (cc.IsAtLeastHopper() && !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
+            ? cublaslt_keep_types
+            : cublas_convert_to_f16;
+
+    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                            RunFileCheck(optimized_module_no_triton->ToString(),
+                                         blas_expected_check));
+    EXPECT_TRUE(filecheck_matched);
+  }
+
+  {
+    // Neither Triton nor BLAS enabled, always fall back.
+    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_nothing,
+                            optimize_module(/*enable_triton=*/false,
+                                            /*enable_blas=*/false,
+                                            /*enable_blas_fallback=*/false));
+    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                            RunFileCheck(optimized_module_nothing->ToString(),
+                                         fallback_convert_to_f16));
+    EXPECT_TRUE(filecheck_matched);
+  }
 }
 
 TEST_F(GpuCompilerTest, CollectivePermuteDecompositionAndPipelining) {
@@ -652,6 +811,20 @@ TEST_F(KernelCacheTest, CacheGrowsWithNewKernels) {
   EXPECT_EQ(CacheEntryCount(), 2);
 }
 
+TEST_F(KernelCacheTest, AllKernelsAreCachedBecauseSplitModuleUsesRoundRobin) {
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(R"(
+  ENTRY e {
+    p = s8[] parameter(0)
+    n = s8[] negate(p)
+    a = s8[] add(n, n)
+    s = s8[] subtract(p, a)
+    ROOT _ = s8[] multiply(s, p)
+  })",
+                  /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 4);
+}
+
 class KernelCacheTestSingleThreaded : public KernelCacheTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -681,6 +854,56 @@ class NoKernelCacheTest : public KernelCacheTest {
 TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
   EXPECT_FALSE(CacheFileExists());
+}
+
+TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
+  const char* hlo = R"(
+  HloModule test, entry_computation_layout={()->(s32[], s32[])}
+    %Body (param: (s32[], s32[])) -> (s32[], s32[]) {
+      %param = (s32[], s32[]) parameter(0)
+      %i = s32[] get-tuple-element((s32[], s32[]) %param), index=1
+      %one = s32[] constant(1)
+      %i_plus_one = s32[] add(s32[] %i, s32[] %one)
+      %permute = s32[] collective-permute(%i_plus_one), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+      ROOT %tuple = (s32[], s32[]) tuple(s32[] %permute, s32[] %i_plus_one)
+    }
+    %Cond (param.1: (s32[], s32[])) -> pred[] {
+      %param.1 = (s32[], s32[]) parameter(0)
+      %i.1 = s32[] get-tuple-element((s32[], s32[]) %param.1), index=1
+      %trip_count = s32[] constant(10)
+      ROOT %done = pred[] compare(s32[] %i.1, s32[] %trip_count), direction=LT
+    }
+    ENTRY %test () -> (s32[], s32[]) {
+      %i_start = s32[] constant(0)
+      %p_start = s32[] constant(0)
+      %initial_tuple = (s32[], s32[]) tuple(s32[] %i_start, s32[] %p_start)
+      ROOT %while = (s32[], s32[]) while((s32[], s32[]) %initial_tuple), condition=%Cond, body=%Body, frontend_attributes={is_pipelined_while_loop="true"}
+    })";
+
+  const char* kExpected = R"(
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
+  )";
+
+  DebugOptions debug_options;
+  HloModuleConfig config;
+  debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(true);
+  config.set_debug_options(debug_options);
+  config.set_num_partitions(4);
+  config.set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                          ParseAndReturnVerifiedModule(hlo, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(std::move(unoptimized_module)));
+  HloPrintOptions options;
+  options.set_print_operand_shape(false);
+  options.set_print_result_shape(false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matched,
+      RunFileCheck(optimized_module->ToString(options), kExpected));
+  EXPECT_TRUE(filecheck_matched);
 }
 
 }  // namespace

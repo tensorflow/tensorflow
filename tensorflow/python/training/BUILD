@@ -1049,6 +1049,10 @@ py_strict_library(
     name = "server_lib",
     srcs = ["server_lib.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",

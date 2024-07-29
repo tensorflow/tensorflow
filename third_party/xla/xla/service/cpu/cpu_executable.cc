@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#define EIGEN_USE_THREADS
+
 #include <stdint.h>
 
 #include <algorithm>
@@ -34,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/Support/Error.h"
 #include "xla/executable_run_options.h"
@@ -61,7 +64,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
@@ -74,12 +76,13 @@ namespace xla {
 namespace cpu {
 
 using ConstantAllocation = CpuExecutable::ConstantAllocation;
-using HostKernels = CpuExecutable::HostKernels;
+using FunctionRegistry = CpuExecutable::FunctionRegistry;
 
-HostKernels::HostKernels(SimpleOrcJIT* jit) : jit_(jit) {}
+FunctionRegistry::FunctionRegistry(SimpleOrcJIT* jit) : jit_(jit) {}
 
-absl::StatusOr<SE_HOST_Kernel*> HostKernels::Find(std::string_view name) {
-  VLOG(2) << "Find host kernel with a name " << name;
+absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
+    std::string_view name) {
+  VLOG(3) << "Find host kernel with a name " << name;
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
       jit_->FindCompiledSymbol(std::string(name));
@@ -88,7 +91,21 @@ absl::StatusOr<SE_HOST_Kernel*> HostKernels::Find(std::string_view name) {
         absl::StrCat("Can't resolve host kernel with a name ", name,
                      " in the jit compiled module."));
   }
-  return reinterpret_cast<SE_HOST_Kernel*>(sym->getAddress().getValue());
+  return reinterpret_cast<Kernel>(sym->getAddress().getValue());
+}
+
+absl::StatusOr<FunctionRegistry::Comparator> FunctionRegistry::FindComparator(
+    std::string_view name) {
+  VLOG(3) << "Find comparator with a name " << name;
+
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
+      jit_->FindCompiledSymbol(std::string(name));
+  if (!sym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't resolve comparator with a name ", name,
+                     " in the jit compiled module."));
+  }
+  return reinterpret_cast<Comparator>(sym->getAddress().getValue());
 }
 
 se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
@@ -130,7 +147,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
   if (!sym) {
-    return absl::InvalidArgumentError(
+    return absl::NotFoundError(
         absl::StrCat("Symbol ", entry_function_name, " not found."));
   }
   // getAddress can do work under the hood in the jit, so it needs to be
@@ -158,7 +175,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_profile_index_map), std::move(assignment)));
 
   executable->jit_ = std::move(jit);
-  executable->host_kernels_ = HostKernels(executable->jit_.get());
+  executable->function_registry_ = FunctionRegistry(executable->jit_.get());
 
   TF_ASSIGN_OR_RETURN(executable->thunks_,
                       ThunkExecutor::Create(std::move(thunks)));
@@ -359,15 +376,21 @@ absl::Status CpuExecutable::ExecuteThunks(
                       Thunk::CollectiveExecuteParams::Create(run_options));
 
   // Prepare for executing XLA custom calls.
-  // TODO(penporn): Consolidate with other thunk parameter set up calls.
   TF_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
                       Thunk::CustomCallExecuteParams::Create(run_options));
 
+  // Use the intra-op thread pool to offload thunk executor tasks.
+  Thunk::TaskRunner task_runner = [run_options](Thunk::Task task) {
+    run_options->intra_op_thread_pool()->getPool()->Schedule(std::move(task));
+  };
+
   Thunk::ExecuteParams execute_params = {
-      &*host_kernels_,
+      &*function_registry_,
       &allocations,
-      runtime::GetXfeedManager(run_options->device_ordinal()),
+      runtime::GetXfeedManager(
+          run_options->stream()->parent()->device_ordinal()),
       run_options->intra_op_thread_pool(),
+      &task_runner,
       &collective_execute_params,
       &custom_call_execute_params};
 

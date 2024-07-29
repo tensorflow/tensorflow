@@ -342,7 +342,7 @@ class MatrixDiagOp : public XlaOpKernel {
   static constexpr int kNumV1Inputs = 1;
 };
 
-REGISTER_XLA_OP(Name("MatrixDiag"), MlirXlaOpKernel);
+REGISTER_XLA_OP(Name("MatrixDiag"), MatrixDiagOp);
 REGISTER_XLA_OP(Name("MatrixDiagV2")
                     .CompileTimeConstantInput("k")
                     .CompileTimeConstantInput("num_rows")

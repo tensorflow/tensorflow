@@ -36,9 +36,11 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -46,7 +48,6 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
@@ -302,7 +303,7 @@ class Interpreter {
   template <class T>
   T* typed_tensor(int tensor_index) {
     if (TfLiteTensor* tensor_ptr = tensor(tensor_index)) {
-      if (tensor_ptr->type == typeToTfLiteType<T>()) {
+      if (tensor_ptr->type == typeToTfLiteType<std::decay_t<T>>()) {
         return reinterpret_cast<T*>(tensor_ptr->data.raw);
       }
     }
@@ -314,7 +315,7 @@ class Interpreter {
   template <class T>
   const T* typed_tensor(int tensor_index) const {
     if (const TfLiteTensor* tensor_ptr = tensor(tensor_index)) {
-      if (tensor_ptr->type == typeToTfLiteType<T>()) {
+      if (tensor_ptr->type == typeToTfLiteType<std::decay_t<T>>()) {
         return reinterpret_cast<const T*>(tensor_ptr->data.raw);
       }
     }

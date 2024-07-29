@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -38,9 +39,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -75,6 +76,11 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/event_based_timer.h"
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/gpu/gpu_activation.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -84,25 +90,11 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "tsl/platform/random.h"
-#endif
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_activation.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
-#else
-namespace stream_executor::gpu {
-class GpuTimer {};
-}  // namespace stream_executor::gpu
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -255,6 +247,15 @@ class ResourceRequests : public Thunk::ResourceRequests {
             << params.collective_max_nchannels
             << "; max number of channels for p2p " << params.p2p_max_nchannels;
 
+    std::vector<CliqueRequest> ordered_cliques = GetOrderedCliqueRequests();
+    for (size_t i = 0; i < ordered_cliques.size(); ++i) {
+      const CliqueRequest& r = ordered_cliques[i];
+      VLOG(2) << "  clique #" << i << " (for global device id "
+              << params.global_device_id.value() << ")"
+              << ": num_local_participants=" << r.num_local_participants
+              << "; id=" << r.id << "; key=" << r.key.ToString();
+    }
+
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode("AcquireCollectiveCliques",
                                           {{"num_cliques", cliques_.size()}});
@@ -264,7 +265,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     NcclClique::AcquiredCliquesMap cliques_map;
 
-    for (const CliqueRequest& r : GetOrderedCliqueRequests()) {
+    for (const CliqueRequest& r : ordered_cliques) {
       std::optional<int64_t> rank = r.key.rank(params.global_device_id);
 
       if (!rank.has_value()) {
@@ -345,10 +346,9 @@ class ResourceRequests : public Thunk::ResourceRequests {
   absl::flat_hash_map<NcclCliqueKey, CliqueRequest> cliques_;
 };
 
-absl::Status MaybeSyncAndProfile(
-    const ServiceExecutableRunOptions* run_options,
-    std::optional<se::gpu::GpuTimer> execution_timer,
-    se::Stream* stream_to_sync);
+absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
+                                 se::EventBasedTimer* execution_timer,
+                                 se::Stream* stream_to_sync);
 
 absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions* run_options);
@@ -426,16 +426,13 @@ absl::Status ExecuteThunks(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  std::optional<se::gpu::GpuTimer> execution_timer;
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  std::unique_ptr<se::EventBasedTimer> execution_timer;
   if (ExecutionProfile* profile =
           run_options->run_options().execution_profile();
       profile) {
-    TF_ASSIGN_OR_RETURN(
-        execution_timer,
-        se::gpu::GpuTimer::Create(main_stream, profile->warmup_run_executed()));
+    TF_ASSIGN_OR_RETURN(execution_timer, main_stream->CreateEventBasedTimer(
+                                             profile->warmup_run_executed()));
   }
-#endif
 
   // Parameters for executing collective operations.
   TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_params,
@@ -492,7 +489,7 @@ absl::Status ExecuteThunks(
 
   TF_RETURN_IF_ERROR(thunk_sequence.ExecuteOnStream(execute_params));
 
-  return MaybeSyncAndProfile(run_options, std::move(execution_timer),
+  return MaybeSyncAndProfile(run_options, execution_timer.get(),
                              block_host_until_done ? main_stream : nullptr);
 }
 
@@ -572,23 +569,19 @@ absl::Status RendezvousAfterInitialization(
   return absl::OkStatus();
 }
 
-absl::Status MaybeSyncAndProfile(
-    const ServiceExecutableRunOptions* run_options,
-    std::optional<se::gpu::GpuTimer> execution_timer,
-    se::Stream* stream_to_sync = nullptr) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
+                                 se::EventBasedTimer* execution_timer,
+                                 se::Stream* stream_to_sync = nullptr) {
   // If we're measuring the execution time then it's important to queue the
   // stop event before triggering any synchronization.
   if (ExecutionProfile* profile =
           run_options->run_options().execution_profile();
       profile) {
-    CHECK(execution_timer.has_value());
     TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
                         execution_timer->GetElapsedDuration());
     profile->set_compute_time_ns(
         std::max(absl::ToDoubleNanoseconds(elapsed), 1.0));
   }
-#endif
 
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.

@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/cast.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -182,8 +182,6 @@ class PythonHooks {
   static void set_e2e_context(PythonHookContext* e2e_context) {
     e2e_context_ = e2e_context;
   }
-
-  static PythonHookContext* e2e_context() { return e2e_context_; }
 
   static int ProfileFunction(PyObject* obj, PyFrameObject* frame, int what,
                              PyObject* arg);

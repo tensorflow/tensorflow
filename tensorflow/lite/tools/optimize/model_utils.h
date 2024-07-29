@@ -26,18 +26,22 @@ namespace tflite {
 namespace optimize {
 namespace utils {
 
+// LINT.IfChange(MakeDequantizeOperator)
 // Creates a Dequantize OperatorT object.
 void MakeDequantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
                             int32_t input, int32_t output);
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.cc:MakeDequantizeOperator)
 
 // Creates a Quantize OperatorT object.
 void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
                           int32_t input, int32_t output);
 
+// LINT.IfChange(MakeTensor)
 // Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
                 const std::vector<int32_t>& shape_signature,
                 const TensorType& type, std::unique_ptr<TensorT>* tensor);
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.cc:MakeTensor)
 
 // Create a new TensorT object with quantization parameters.
 void MakeTensorWithQuantParam(const string& name,
@@ -53,7 +57,9 @@ bool QuantizationParametersExist(const TensorT* tensor);
 bool HasBuffer(const ModelT* model, const SubGraphT* subgraph,
                int tensor_index);
 
+// LINT.IfChange(HasMinMax)
 bool HasMinMax(const TensorT* tensor);
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.cc:HasMinMax)
 
 // Set version of OperatorCode. The version will only be applied for operations
 // that have been quantized.

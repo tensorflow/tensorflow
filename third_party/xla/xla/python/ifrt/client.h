@@ -20,19 +20,17 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -198,9 +196,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // * supports_executable_serialization (bool; default = true): Whether IFRT
   //   executables produced by this client are serializable. If false, all
   //   executables from this client are considered not serializable.
-  using ClientAttribute = xla::PjRtValueType;
-  virtual absl::flat_hash_map<std::string, ClientAttribute> attributes()
-      const = 0;
+  virtual const AttributeMap& Attributes() const = 0;
 
   virtual int device_count() const = 0;
   virtual int addressable_device_count() const = 0;

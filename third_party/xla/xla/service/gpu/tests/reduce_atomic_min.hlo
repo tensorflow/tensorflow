@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck %s --check-prefixes=CHECK,CHECK-%{PTX}
+// RUN: hlo-opt %s --platform=gpu --xla_gpu_mlir_emitter_level=0 --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck %s --check-prefixes=CHECK,CHECK-%{PTX}
 
 // Check that for "min" we are still using atomics (CAS loop).
 
@@ -113,7 +113,7 @@ ENTRY reduce.1 {
 // CHECK-PTX:     %[[VAL_87:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_86]], i32 16, i32 31)
 // CHECK-GCN:     %[[VAL_87_1:.*]] = bitcast float %[[VAL_86]] to i32
 // CHECK-GCN:     %[[VAL_87_2:.*]] = call i32 @llvm.amdgcn.ds.swizzle(i32 %[[VAL_87_1]], i32 543)
-// CHECK-GCN:     %[[VAL_87:.*]] = bitcast i32 %[[VAL_87_2]] to float 
+// CHECK-GCN:     %[[VAL_87:.*]] = bitcast i32 %[[VAL_87_2]] to float
 // CHECK:         store float %[[VAL_87]], ptr{{.*}} %[[VAL_37]], align 4
 // CHECK-GCN:     %[[VAL_88_1:.*]] = addrspacecast ptr{{.*}} %partial_reduction_result to ptr
 // CHECK-GCN:     %[[VAL_88_2:.*]] = addrspacecast ptr{{.*}} %[[VAL_37]] to ptr
@@ -186,7 +186,7 @@ ENTRY reduce.1 {
 // CHECK:       loop2.loop_header:                                ; preds = %[[VAL_108:.*]], %[[VAL_82]]
 // CHECK-PTX:     %[[VAL_109:.*]] = load i32, ptr %[[VAL_43]], align 4
 // CHECK-GCN:     %[[VAL_109:.*]] = load i32, ptr{{.*}} %[[LOOP2_I_2]], align 4
-// CHECK:         %[[VAL_110:.*]] = icmp uge i32 %[[VAL_109]], 
+// CHECK:         %[[VAL_110:.*]] = icmp uge i32 %[[VAL_109]],
 // CHECK:         br i1 %[[VAL_110]], label %loop2.loop_exit, label %loop2.loop_body
 
 // CHECK:       loop2.loop_body:                                  ; preds = %[[VAL_107]]

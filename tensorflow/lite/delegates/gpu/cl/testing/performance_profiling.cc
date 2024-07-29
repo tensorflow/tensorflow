@@ -250,7 +250,7 @@ absl::Status RunCommandBufferSample(int num_tests, double model_time_ms,
   for (auto& cb : cbs) {
     RETURN_IF_ERROR(cb.Init(env->queue(), /*simultaneous_use=*/false));
     for (int i = 0; i < num_inferences_in_cb; ++i) {
-      RETURN_IF_ERROR(context->AddToCommanBuffer(cb.GetCommandBuffer()));
+      RETURN_IF_ERROR(context->AddToCommandBuffer(cb.GetCommandBuffer()));
     }
     RETURN_IF_ERROR(cb.Finalize());
   }

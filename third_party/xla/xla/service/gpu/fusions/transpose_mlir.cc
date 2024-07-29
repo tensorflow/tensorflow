@@ -27,17 +27,17 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/TypeRange.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeRange.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -79,6 +79,7 @@ using mlir_converter::ApplyIndexing;
 constexpr int kNumRows = 4;
 constexpr int kBaseBlockSize = WarpSize();
 constexpr int kNumThreadsPerBlock = 128;
+constexpr int kMaxVectorizedBytes = 4;
 
 }  // namespace
 
@@ -126,20 +127,28 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
   // the input dimensions are divisible by the vector size. Vectorizing loads
   // for large data types does not help (there's already enough parallelism).
   const auto& device = analysis_.device_info();
-  bool enough_work = Product(block_counts_) * kNumThreadsPerBlock >=
-                     4 * device.core_count() * device.threads_per_core_limit();
-  bool enough_shmem = shmem_usage * 4 <= device.shared_memory_per_block();
-  bool aligned_dims =
-      (input_shape_[2] % 2 == 0) && (input_shape_[permutation_[2]] % 2 == 0);
-  if (max_element_bytes < 4 && enough_work && enough_shmem && aligned_dims) {
-    compute_block_sizes(2);
+  for (int vec_size = kMaxVectorizedBytes / max_element_bytes; vec_size > 1;
+       vec_size /= 2) {
+    int elems_per_thread = vec_size * vec_size;
+    bool enough_work = Product(block_counts_) * kNumThreadsPerBlock >=
+                       elems_per_thread * device.core_count() *
+                           device.threads_per_core_limit();
+    bool enough_shmem =
+        shmem_usage * elems_per_thread <= device.shared_memory_per_block();
+    bool aligned_dims = (input_shape_[2] % vec_size == 0) &&
+                        (input_shape_[permutation_[2]] % vec_size == 0);
+    if (enough_work && enough_shmem && aligned_dims) {
+      compute_block_sizes(vec_size);
+      break;
+    }
   }
 }
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
-  const auto& hero = analysis_.fusion_hero(root_index);
-  if (hero.opcode() != HloOpcode::kTranspose) {
+  const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  if (!GetDescriptionForTiledTransposeEmitter(
+          analysis_.fusion_root(root_index).instruction(), hero)) {
     // The shape of non-transpose roots are bitcast compatible with the input
     // shape of transpose heroes.
     auto map = ComposeIndexingMaps(
@@ -156,7 +165,8 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  if (hero.opcode() != HloOpcode::kTranspose) {
+  if (!GetDescriptionForTiledTransposeEmitter(
+          analysis_.fusion_root(root_index).instruction(), hero)) {
     auto map = ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, mlir_context),
         *ComputeOutputToInputIndexing(
@@ -237,10 +247,11 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     auto* root_tuple = fusion.fused_expression_root();
     for (auto root : side_output_roots_) {
       side_output_indices.push_back(input_indices(root));
-      side_outputs.append(mlir_converter::ProvideParameter(
+      ValueRange param_values = mlir_converter::ProvideParameter(
           root_computation, root_tuple, root_tuple->operand_index(root),
           side_output_indices.back(), call_target_provider, entry_function,
-          builder));
+          builder);
+      side_outputs.append(param_values.begin(), param_values.end());
     }
 
     for (const auto& [value, indices, output] :

@@ -72,7 +72,12 @@ pkg_tar(
         "//tensorflow/c:headers",
     ],
     package_dir = "include/",
-    strip_prefix = "/external/local_xla",
+    # TODO(ddunleavy): Remove `local_tsl` after TSL move is completed.
+    remap_paths = {
+        "external/local_xla/xla": "xla",
+        "external/local_tsl/tsl": "tsl",
+    },
+    strip_prefix = ".",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580

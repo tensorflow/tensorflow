@@ -6,9 +6,9 @@
 !array1 = !ifrt.array<tensor<2xi32>, #sharding, [2,3], memory_kind = "device">
 module @good_arrays {
   func.func @main(%arg0: !array0) -> !array1 attributes {ifrt.function} {
-    %0, %ctrl_1 = ifrt.Call @identity(%arg0) on devices [0,1]
+    %0, %ctrl_0 = ifrt.Call @identity(%arg0) on devices [0,1]
         : (!array0) -> !array0
-    %1 = "ifrt.Reshard"(%0) : (!array0) -> !array1
+    %1, %ctrl_1 = ifrt.Reshard(%0) : (!array0) -> !array1
     return %1 : !array1
   }
 
@@ -55,10 +55,10 @@ module @reshard_with_unspecified_sharding {
       -> !ifrt.array<tensor<2xi32>, #sharding, [2,3]>
       attributes {ifrt.function} {
     // expected-error @+1 {{'ifrt.Reshard' op result 0 has unspecified sharding.}}
-    %0 = ifrt.Reshard(%arg0)
+    %0, %ctrl_0 = ifrt.Reshard(%arg0)
         : (!ifrt.array<tensor<2xi32>, #sharding, [0,1]>)
         -> !ifrt.array<tensor<2xi32>, #ifrt.sharding_unspecified, [2,3]>
-    %1 = ifrt.Reshard(%0)
+    %1, %ctrl_1 = ifrt.Reshard(%0)
         : (!ifrt.array<tensor<2xi32>, #ifrt.sharding_unspecified, [2,3]>)
         -> !ifrt.array<tensor<2xi32>, #sharding, [2,3]>
     return %1 : !ifrt.array<tensor<2xi32>, #sharding, [2,3]>

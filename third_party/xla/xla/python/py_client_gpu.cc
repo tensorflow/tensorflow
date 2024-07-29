@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string_view>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "xla/service/custom_call_status.h"
 #include "tsl/platform/errors.h"
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
@@ -24,7 +27,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/primitive_util.h"
@@ -99,10 +102,12 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
     PyTuple_SET_ITEM(host_input_arrays.ptr(), i, array.inc_ref().ptr());
   }
   EnterHostCallback();
-  std::optional<nb::tuple> maybe_result_tuple =
-      callback->Call(host_input_arrays, status);
+  absl::StatusOr<nb::tuple> maybe_result_tuple =
+      callback->Call(host_input_arrays);
   LeaveHostCallback();
-  if (!maybe_result_tuple) {
+  if (!maybe_result_tuple.ok()) {
+    std::string_view msg = maybe_result_tuple.status().message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return;
   }
   nb::tuple result_tuple = maybe_result_tuple.value();

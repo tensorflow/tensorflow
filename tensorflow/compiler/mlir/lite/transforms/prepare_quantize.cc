@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -342,6 +344,25 @@ void PrepareQuantizePass::runOnOperation() {
     quant_specs_.legacy_float_scale = legacy_float_scale_;
     quant_specs_.disable_set_input_nodes_quantization_params =
         disable_set_input_nodes_quantization_params_;
+    for (const auto& ir : input_ranges_) {
+      std::pair<std::string, std::string> input_range = absl::StrSplit(ir, '|');
+      std::optional<double> optional_min;
+      std::optional<double> optional_max;
+
+      if (!input_range.first.empty()) {
+        double min;
+        (void)absl::SimpleAtod(input_range.first, &min);
+        optional_min = min;
+      }
+
+      if (!input_range.second.empty()) {
+        double max;
+        (void)absl::SimpleAtod(input_range.second, &max);
+        optional_max = max;
+      }
+
+      quant_specs_.input_ranges.emplace_back(optional_min, optional_max);
+    }
   }
 
   if (quant_specs_.post_training_quantization) {

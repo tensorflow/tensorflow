@@ -105,4 +105,13 @@ ConditionalThunk::BufferUses ConditionalThunk::buffer_uses() const {
   return buffer_uses;
 }
 
+ConditionalThunk::ResourceUses ConditionalThunk::resource_uses() const {
+  ResourceUses resource_uses;
+  for (const auto& branch_executor : branch_executors_) {
+    ResourceUses uses = branch_executor.resource_uses();
+    resource_uses.insert(resource_uses.end(), uses.begin(), uses.end());
+  }
+  return resource_uses;
+}
+
 }  // namespace xla::cpu

@@ -295,7 +295,8 @@ bool HostOffloader::InstructionIsAllowedBetweenMoveToHostAndDus(
     return ShapeUtil::ReshapeIsBitcast(instruction->operand(0)->shape(),
                                        instruction->shape());
   }
-  return instruction->opcode() == HloOpcode::kBitcast;
+  return (instruction->opcode() == HloOpcode::kBitcast ||
+          instruction->opcode() == HloOpcode::kCopy);
 }
 
 bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(

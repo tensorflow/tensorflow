@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -24,6 +25,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -47,6 +50,26 @@ DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
 
 class CollectiveOpsTestE2E : public HloTestBase {
  public:
+  bool IsCuda() {
+    return std::holds_alternative<se::CudaComputeCapability>(Capability());
+  }
+
+  const se::GpuComputeCapability& Capability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
+  bool HasFp8Support() {
+    if (IsCuda()) {
+      return std::get<se::CudaComputeCapability>(Capability()).IsAtLeast(8, 9);
+    }
+    return std::get<se::RocmComputeCapability>(Capability())
+               .has_fp8_support() &&
+           GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  }
+
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
                                                          int64_t num_replicas) {
     DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
@@ -650,7 +673,8 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
 // E2E tests comparing the results of windowed einsum and non-windowed cases.
 class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
  public:
-  void CollectiveOpsCompareWindowedNonWindowed(absl::string_view hlo_text) {
+  void CollectiveOpsCompareWindowedNonWindowed(
+      absl::string_view hlo_text, bool disable_dot_merger = false) {
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
 
@@ -661,6 +685,9 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
     opts.set_xla_gpu_graph_min_graph_size(200);
     opts.set_xla_gpu_enable_triton_gemm(false);
+    if (disable_dot_merger) {
+      opts.add_xla_disable_hlo_passes("dot-merger");
+    }
     config.set_debug_options(opts);
     config.set_num_partitions(kNumPartitions);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -689,6 +716,9 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     auto ref_opts = GetDebugOptionsForTest();
     ref_opts.set_xla_gpu_graph_min_graph_size(200);
     ref_opts.set_xla_gpu_enable_triton_gemm(false);
+    if (disable_dot_merger) {
+      ref_opts.add_xla_disable_hlo_passes("dot-merger");
+    }
     ref_config.set_debug_options(ref_opts);
     ref_config.set_num_partitions(kNumPartitions);
     TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
@@ -779,7 +809,10 @@ ENTRY main.12 {
 } // main.12
 )";
 
-  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+  // Disable the dot merger pass which can prevent the creation of FP8 GEMM
+  // Custom Calls.
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
@@ -853,6 +886,221 @@ ENTRY main.9_spmd {
 )";
 
   CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+}
+
+TEST_F(CollectiveOpsTestE2E, PostLayoutCollectivePipeliner) {
+  // We need fp8 support to test the post-layout collective pipeliner. This will
+  // preserve the desired fp8 patterns and so the gemm rewriter can correctly
+  // recognize them and rewrite to custom fp8 gemm calls.
+  if (!HasFp8Support()) {
+    GTEST_SKIP() << "Test requires a post-Ada GPU.";
+  }
+
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule module, entry_computation_layout={(bf16[384,128], bf16[96,128], bf16[], bf16[])->bf16[384,128]}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+while_cond {
+  param = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+while_body {
+  param = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[384,128] get-tuple-element(param), index=1
+  get-tuple-element.k = bf16[96,128] get-tuple-element(param), index=2
+  constant.2561 = s32[] constant(0)
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.k = bf16[32,128] dynamic-slice(get-tuple-element.k, select.1348, constant.2561), dynamic_slice_sizes={32,128}
+  r = bf16[32,128] bitcast(dynamic-slice.k)
+  a = bf16[32,128] add(r, r), control-predecessors={constant.2559}
+  // A fp8 pattern of quant-dequant before the collective AG.
+  qa = f8e4m3fn[32,128] convert(a)
+  dqa = bf16[32,128] convert(qa)
+  a_scale = bf16[] get-tuple-element(param), index=3
+  a_scales = bf16[32,128] broadcast(a_scale), dimensions={}
+  dqa_unscaled = bf16[32,128] multiply(dqa, a_scales)
+  mb = bf16[128,128] all-gather(dqa_unscaled), channel_id=1, use_global_device_ids=true, dimensions={0}, replica_groups={{0,1,2,3}}
+  ma = bf16[128,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561), dynamic_slice_sizes={128,128}
+
+  qma = f8e4m3fn[128,128] convert(ma)
+  dqma = bf16[128,128] convert(qma)
+  ma_scale = bf16[] get-tuple-element(param), index=4
+  ma_scales = bf16[128,128] broadcast(ma_scale), dimensions={}
+  dqma_unscaled = bf16[128,128] multiply(dqma, ma_scales)
+  mc = bf16[128,128] dot(dqma_unscaled, mb), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dynamic-update-slice.35 = bf16[384,128] dynamic-update-slice(get-tuple-element.395, mc, select.1348, constant.2561)
+  ROOT tuple = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.k, a_scale, ma_scale), control-predecessors={a}
+}
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[384,128] parameter(0)
+  p1 = bf16[96,128] parameter(1)
+  s0 = bf16[] parameter(2)
+  s1 = bf16[] parameter(3)
+  tuple = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) tuple(c0, p0, p1, s0, s1)
+  while = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[384,128] get-tuple-element(while), index=1
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
+  opts.set_xla_gpu_enable_pipelined_collectives(true);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  config.set_debug_options(opts);
+  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
+  HloInstruction* gemm_op =
+      FindInstruction(&executable->module(), HloOpcode::kCustomCall);
+  EXPECT_THAT(gemm_op, NotNull());
+  EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
+}
+
+TEST_F(CollectiveOpsTestE2E,
+       PostLayoutCollectivePipelinerShouldFlattenCallGraph) {
+  // The allgather in the loop has a nested while loop as its operand,
+  // when the pipelining happens, the nested while loop will be peeled outside.
+  // However, when a while is cloned, its call sites are still preserved which
+  // will error out in alias analysis. When the graph is flattened, the error
+  // should not happen.
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule module
+
+while_cond {
+  param = (s32[], f32[2,128], f32[8,128], f32[8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_nested_cond {
+  param.nested = (s32[], f32[2,128]) parameter(0)
+  gte.nested = s32[] get-tuple-element(param.nested), index=0
+  constant.nested = s32[] constant(3)
+  ROOT cmp.nested = pred[] compare(gte.nested, constant.nested), direction=LT
+}
+while_nested_body {
+  param.body_nested = (s32[], f32[2,128]) parameter(0)
+  gte.body_nested = s32[] get-tuple-element(param.body_nested), index=0
+  gte.2.body_nested = f32[2,128] get-tuple-element(param.body_nested), index=1
+
+  constant.body_nested = s32[] constant(1)
+  add.body_nested = s32[] add(gte.body_nested, constant.body_nested)
+  rsqrt.body_nested = f32[2,128] rsqrt(gte.2.body_nested)
+  ROOT tuple.body_nested = (s32[], f32[2,128]) tuple(add.body_nested, rsqrt.body_nested)
+}
+
+while_body {
+  param = (s32[], f32[2,128], f32[8,128], f32[8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = f32[2,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = f32[8,128] get-tuple-element(param), index=2
+  get-tuple-element.36 = f32[8,128] get-tuple-element(param), index=3
+
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  mul = f32[2,128] multiply(get-tuple-element.395, get-tuple-element.395)
+  constant.while = s32[] constant(0)
+  tuple.1 = (s32[], f32[2,128]) tuple(constant.while, mul)
+  while.1 = (s32[], f32[2,128]) while(tuple.1), condition=while_nested_cond, body=while_nested_body
+  gte.while = f32[2,128] get-tuple-element(while.1), index=1
+  add.while = f32[2,128] add(gte.while, get-tuple-element.395)
+
+  ag.1 = f32[8,128] all-gather(add.while), replica_groups={}, dimensions={0}
+  add.ag = f32[8,128] add(ag.1, get-tuple-element.36)
+
+  ROOT tuple = (s32[], f32[2,128], f32[8,128], f32[8,128]) tuple(add.230, get-tuple-element.395, get-tuple-element.35, ag.1)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = f32[2,128] parameter(0)
+  p1 = f32[8,128] parameter(1)
+
+  tuple = (s32[], f32[2,128], f32[8,128], f32[8,128]) tuple(c0, p0, p1, p1)
+  while = (s32[], f32[2,128], f32[8,128], f32[8,128]) while(tuple), condition=while_cond, body=while_body
+  gte1 = f32[2,128] get-tuple-element(while), index=1
+  gte2 = f32[8,128] get-tuple-element(while), index=3
+  ROOT tuple.result = (f32[2,128], f32[8,128]) tuple(gte1, gte2)
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
+  opts.set_xla_gpu_enable_pipelined_all_reduce(true);
+  opts.set_xla_gpu_enable_pipelined_all_gather(true);
+  opts.set_xla_gpu_enable_pipelined_reduce_scatter(true);
+
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  config.set_debug_options(opts);
+  config.set_use_spmd_partitioning(false);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
+}
+
+TEST_F(CollectiveOpsTestE2E, AllToAllCollectiveQuantizer) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f32[4,32,128]{2,1,0})->bf16[4,32,128]{2,1,0}}, num_partitions=4
+ENTRY entry {
+  param = f32[4,32,128]{2,1,0} parameter(0)
+  all-to-all = f32[4,32,128]{2,1,0} all-to-all(param), channel_id=1, replica_groups={{0,1,2,3}}, dimensions={1}
+  ROOT convert = bf16[4,32,128]{2,1,0} convert(all-to-all)
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
+  HloInstruction* all_to_all =
+      FindInstruction(&executable->module(), HloOpcode::kAllToAll);
+  EXPECT_THAT(all_to_all, NotNull());
+  EXPECT_EQ(all_to_all->shape().element_type(), BF16);
 }
 
 }  // namespace

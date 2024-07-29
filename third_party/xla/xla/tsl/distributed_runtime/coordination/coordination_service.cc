@@ -31,12 +31,16 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
@@ -139,6 +143,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                     StatusCallback done) override;
   absl::Status CancelBarrier(std::string_view barrier_id,
                              const CoordinatedTask& task) override;
+  void PollForErrorAsync(const CoordinatedTask& task,
+                         StatusCallback done) override;
 
  private:
   const DeviceInfo& ListClusterDevices() override
@@ -184,6 +190,39 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                                 CoordinatedTaskEqual>& tasks_at_barrier,
       int64_t cluster_size);
   bool isRecoverableJob(std::string_view task_name) const;
+  // Sends responses to error polling requests when an error is encountered.
+  void SendErrorPollingResponse(const absl::Status& error);
+  // Responds to error polling or stops the service when an error is
+  // encountered. Should only be called when there is no service to client
+  // connection. Returns true if the service stops, otherwise returns false.
+  bool SendErrorPollingResponseOrStopService(const absl::Status& error);
+  // Returns whether the clients are polling for error from the service. If the
+  // clients are not polling for error from the service, the service should stop
+  // when there is an error. Otherwise, the service should not stop.
+  bool IsClientPollingForError() const;
+
+  class ErrorPollingState {
+   public:
+    // Returns whether the error polling requests have been responded.
+    bool Responded() const { return responded_; }
+    // Sets the error and executes the status callbacks.
+    void SetError(const absl::Status& error);
+    // Gets the error that is propagated to the agents.
+    const absl::Status& GetError() const { return error_; }
+    // Returns true if the task has sent request to poll for error from the
+    // service.
+    bool IsTaskPolling(absl::string_view task_name) const {
+      return polling_task_names_.contains(task_name);
+    }
+    // Adds a task to the error polling state.
+    void AddTask(const CoordinatedTask& task, StatusCallback&& done);
+
+   private:
+    bool responded_ = false;
+    absl::Status error_ = absl::OkStatus();
+    std::vector<StatusCallback> done_callbacks_;
+    absl::flat_hash_set<std::string> polling_task_names_;
+  };
 
   class TaskState {
    public:
@@ -246,6 +285,10 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // silently if configured. This is useful when we know that a task can
   // immediately resume work upon re-connecting to the service.
   bool allow_new_incarnation_to_reconnect_ = false;
+  // Whether the agents are polling for error from the service. It will be set
+  // to true when the service sees the first error polling request. Once set to
+  // true, the value will never change back to false, so no mutex is needed.
+  bool client_polling_for_error_ = false;
   std::function<DeviceInfo(const DeviceInfo& devices)>
       post_aggregate_device_fn_;
 
@@ -277,10 +320,31 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
   absl::flat_hash_set<std::string> recoverable_jobs_;
 
+  ErrorPollingState error_polling_state_ ABSL_GUARDED_BY(state_mu_);
+
   CoordinationServiceStandaloneImpl(const CoordinationServiceStandaloneImpl&) =
       delete;
   void operator=(const CoordinationServiceStandaloneImpl&) = delete;
 };
+
+void CoordinationServiceStandaloneImpl::ErrorPollingState::SetError(
+    const absl::Status& error) {
+  if (responded_) return;
+  responded_ = true;
+  error_ = error;
+  for (auto& done_cb : done_callbacks_) {
+    done_cb(error_);
+  }
+  done_callbacks_.clear();
+}
+
+void CoordinationServiceStandaloneImpl::ErrorPollingState::AddTask(
+    const CoordinatedTask& task, StatusCallback&& done) {
+  // Do not allow to insert a task if the service has already responded.
+  if (Responded()) return;
+  polling_task_names_.insert(GetTaskName(task));
+  done_callbacks_.emplace_back(done);
+}
 
 void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
     uint64_t task_incarnation) {
@@ -414,11 +478,9 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
                 status = MakeCoordinationError(absl::UnavailableError(
                     absl::StrCat("Task ", task_name,
                                  " heartbeat timeout. This indicates that the "
-                                 "remote task "
-                                 "has failed, got preempted, or crashed "
-                                 "unexpectedly. Check "
-                                 "the task logs for an earlier error to debug "
-                                 "further.")));
+                                 "remote task has failed, got preempted, or "
+                                 "crashed unexpectedly. Check the task logs "
+                                 "for an earlier error to debug further.")));
                 SetTaskError(task_name, status);
               }
             }
@@ -426,23 +488,23 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
           // Propagate heartbeat timeout errors to other connected tasks.
           if (!stale_task_names.empty()) {
             if (!has_service_to_client_connection) {
-              // Error cannot be propagated since there is no service-to-client
-              // connection, so shut down service instead. Note: we cannot
-              // destroy the thread within its own function. However, this
-              // thread will be destroyed once the function returns.
-              LOG(ERROR)
-                  << "Stopping coordination service as the following tasks are "
-                     "unhealthy (stopped sending heartbeats):\n"
-                  << absl::StrJoin(stale_task_names, "\n")
-                  << "\nCheck the task logs for an earlier error to debug "
-                     "further.";
-              Stop(/*shut_staleness_thread=*/false);
-              return;
+              absl::Status heartbeat_timeout_error =
+                  MakeCoordinationError(absl::UnavailableError(absl::StrCat(
+                      "The following tasks are unhealthy (stopped sending "
+                      "heartbeats):\n",
+                      absl::StrJoin(stale_task_names, "\n"),
+                      "\nCheck the task logs for an earlier error to debug "
+                      "further.")));
+              if (SendErrorPollingResponseOrStopService(
+                      heartbeat_timeout_error)) {
+                return;
+              }
+            } else {
+              for (const auto& stale_task_name : stale_task_names) {
+                PropagateError(GetTaskFromName(stale_task_name));
+              }
+              stale_task_names.clear();
             }
-            for (const auto& stale_task_name : stale_task_names) {
-              PropagateError(GetTaskFromName(stale_task_name));
-            }
-            stale_task_names.clear();
           }
 
           // Barrier timeout check.
@@ -479,15 +541,15 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
           }
           if (!has_service_to_client_connection &&
               expired_barriers.contains(shutdown_barrier_id_)) {
-            // Error cannot be propagated since there is no service-to-client
-            // connection, so shut down service instead. Note: we cannot
-            // destroy the thread within its own function. However, this
-            // thread will be destroyed once the function returns.
-            LOG(ERROR)
-                << "Stopping coordination service as shutdown barrier "
-                   "timed out. Check the task logs for an earlier error.";
-            Stop(/*shut_staleness_thread=*/false);
+            // Error cannot be propagated through service-to-client connection.
+            // Note: we cannot destroy the thread within its own function.
+            // However, this thread will be destroyed once the function returns.
+            SendErrorPollingResponseOrStopService(
+                MakeCoordinationError(absl::DeadlineExceededError(
+                    "Shutdown barrier timed out. Check the task logs for an "
+                    "earlier error.")));
           }
+
           // Reset this for the next barrier check.
           expired_barriers.clear();
         }
@@ -528,6 +590,12 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
     // Note: sequence matters here, this must happen after barrier clean-up as
     // the state is used in `PassBarrier`.
     cluster_state_.clear();
+  }
+  // Cancel all pending PollForErrorAsync() calls.
+  if (IsClientPollingForError()) {
+    SendErrorPollingResponse(
+        absl::CancelledError("Coordination service is shutting down. "
+                             "Cancelling PollForErrorAsync()"));
   }
   // Destroy thread outside of the mutex.
   if (shut_staleness_thread) {
@@ -666,6 +734,7 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
 
 void CoordinationServiceStandaloneImpl::ShutdownTaskAsync(
     const CoordinatedTask& task, StatusCallback done) {
+  VLOG(3) << "Task " << GetTaskName(task) << " invoked ShutdownTaskAsync()";
   if (shutdown_barrier_timeout_ > absl::ZeroDuration()) {
     // Impose shutdown barrier so that all tasks can disconnect together.
     BarrierAsync(shutdown_barrier_id_, shutdown_barrier_timeout_, task, {},
@@ -813,6 +882,8 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
           "Task with task_name=", task_name,
           " must be registered before sending heartbeat messages")));
     }
+    VLOG(10) << "Record heartbeat from task: " << task_name
+             << "at incarnation: " << incarnation << "at " << absl::Now();
     s = cluster_state_[task_name]->RecordHeartbeat(incarnation);
   }
 
@@ -862,6 +933,7 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
 
 void CoordinationServiceStandaloneImpl::PropagateError(
     const CoordinatedTask& source_task, bool is_reported_by_task) {
+  VLOG(3) << "PropagateError() from " << GetTaskName(source_task);
   // If the error task is recoverable, do not propagate the error to other
   // connected tasks.
   if (isRecoverableJob(source_task.job_name())) return;
@@ -898,15 +970,13 @@ void CoordinationServiceStandaloneImpl::PropagateError(
         continue;
     }
 
-    // Don't propagate error if there is no service-to-client connection.
+    // If there is no service-to-client connection, use error polling or stop
+    // the service.
     if (client_cache_ == nullptr) {
-      LOG(ERROR)
-          << "Stopping coordination service as there is no "
-             "service-to-client connection, but we encountered an error: "
-          << error;
-      Stop(/*shut_staleness_thread=*/false);
+      SendErrorPollingResponseOrStopService(error);
       return;
     }
+
     CoordinationClient* client = client_cache_->GetClient(std::string(task));
     auto response = std::make_shared<ReportErrorToTaskResponse>();
     auto n = std::make_shared<absl::Notification>();
@@ -1073,6 +1143,50 @@ void CoordinationServiceStandaloneImpl::SetTaskError(std::string_view task_name,
 
   LOG(ERROR) << task_name
              << " has been set to ERROR in coordination service: " << error;
+}
+
+void CoordinationServiceStandaloneImpl::PollForErrorAsync(
+    const CoordinatedTask& task, StatusCallback done) {
+  const std::string task_name = GetTaskName(task);
+  VLOG(3) << "Task " << task_name << " invoked PollForErrorAsync().";
+
+  absl::MutexLock l(&state_mu_);
+  if (ServiceHasStopped()) {
+    done(MakeCoordinationError(absl::InternalError(
+        "PollForError requested after coordination service has shut down.")));
+    return;
+  }
+
+  if (client_cache_ != nullptr) {
+    done(MakeCoordinationError(
+        absl::InternalError("Should not use error polling from service when "
+                            "there is service to client connection.")));
+    return;
+  }
+
+  client_polling_for_error_ = true;
+
+  if (!cluster_state_.contains(task_name)) {
+    done(MakeCoordinationError(absl::InvalidArgumentError(
+        absl::StrCat("Unexpected task (", task_name,
+                     ") that is not in the cluster polling for errors."))));
+    return;
+  }
+
+  if (cluster_state_[task_name]->GetState() !=
+      CoordinatedTaskState::TASKSTATE_CONNECTED) {
+    done(MakeCoordinationError(absl::InvalidArgumentError(
+        absl::StrCat("Task (", task_name,
+                     ") that has not been registered polling for errors."))));
+    return;
+  }
+
+  if (error_polling_state_.Responded()) {
+    done(error_polling_state_.GetError());
+    return;
+  }
+
+  error_polling_state_.AddTask(task, std::move(done));
 }
 
 void CoordinationServiceStandaloneImpl::BarrierAsync(
@@ -1325,8 +1439,40 @@ void CoordinationServiceStandaloneImpl::PassBarrier(std::string_view barrier_id,
   barrier->done_callbacks.clear();
 }
 
-bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
+void CoordinationServiceStandaloneImpl::SendErrorPollingResponse(
+    const absl::Status& error) {
+  CHECK(IsClientPollingForError())
+      << "`SendErrorPollingResponse` should only be called after agents poll "
+         "errors from the service.";
+  {
+    absl::MutexLock l(&state_mu_);
+    if (error_polling_state_.Responded()) {
+      return;
+    }
+  }
+  LOG(ERROR) << "An error is encountered. Sending the error as a response to "
+                "all error polling requests: "
+             << error;
+  std::vector<std::string> missing_tasks;
+  {
+    absl::MutexLock l(&state_mu_);
+    missing_tasks.reserve(cluster_state_.size());
+    for (const auto& [task_name, task_state] : cluster_state_) {
+      if (!error_polling_state_.IsTaskPolling(task_name)) {
+        missing_tasks.push_back(task_name);
+      }
+    }
+    error_polling_state_.SetError(error);
+  }
+  if (!missing_tasks.empty()) {
+    LOG(ERROR) << absl::StrFormat(
+        "The following %d tasks in the cluster has not sent request to poll "
+        "for error. Error will not be propagated to these tasks: %s",
+        missing_tasks.size(), absl::StrJoin(missing_tasks, ","));
+  }
+}
 
+bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
     const std::vector<CoordinatedTask>& tasks_args,
     const absl::flat_hash_map<CoordinatedTask, bool, CoordinatedTaskHash,
                               CoordinatedTaskEqual>& tasks_at_barrier,
@@ -1383,6 +1529,31 @@ std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(
 bool CoordinationServiceStandaloneImpl::isRecoverableJob(
     const std::string_view task_name) const {
   return recoverable_jobs_.find(task_name) != recoverable_jobs_.end();
+}
+
+bool CoordinationServiceStandaloneImpl::SendErrorPollingResponseOrStopService(
+    const absl::Status& error) {
+  CHECK(!error.ok()) << "SendErrorPollingResponseOrStopService called with OK "
+                        "status. Should always return an error.";
+  // Should be called only when there is no service-to-client connection.
+  assert(client_cache_ == nullptr);
+  if (IsClientPollingForError()) {
+    LOG(ERROR)
+        << "Use error polling to propagate the following error to all tasks: "
+        << error;
+    SendErrorPollingResponse(error);
+    return false;
+  }
+
+  LOG(ERROR) << "Stopping coordination service as there is no "
+                "service-to-client connection, but we encountered an error: "
+             << error;
+  Stop(/*shut_staleness_thread=*/false);
+  return true;
+}
+
+bool CoordinationServiceStandaloneImpl::IsClientPollingForError() const {
+  return client_polling_for_error_;
 }
 
 // Register standalone coordination service implementation.

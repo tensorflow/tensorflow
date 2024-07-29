@@ -39,21 +39,25 @@ namespace xla::cpu {
 absl::Status RunHloBenchmark(benchmark::State& state,
                              std::string_view hlo_module,
                              absl::Span<const Literal* const> args,
-                             StrToStrMapping replacements) {
+                             StrToStrMapping replacements,
+                             bool disable_parallel_task_assigner) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       GetTfrtCpuClient(CpuClientOptions()));
   PjRtDevice* device = client->devices().front();
 
-  HloModuleConfig config;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnUnverifiedModule(
-          absl::StrReplaceAll(hlo_module, replacements), HloModuleConfig()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnUnverifiedModule(
+                          absl::StrReplaceAll(hlo_module, replacements),
+                          HloModuleConfig() /* unused */));
 
   XlaComputation computation(module->ToProto());
 
   // Compile HLO module to executable.
   CompileOptions compile_options;
+  if (disable_parallel_task_assigner) {
+    compile_options.executable_build_options.mutable_debug_options()
+        ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
+  }
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       client->Compile(computation, compile_options));
 

@@ -127,10 +127,6 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Reshard(
-      std::shared_ptr<const Sharding> new_sharding,
-      ArrayCopySemantics semantics) override;
-
   static char ID;  // NOLINT
 
  private:

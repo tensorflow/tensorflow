@@ -15,17 +15,17 @@ limitations under the License.
 
 #include "xla/tests/filecheck.h"
 
-#include <cstdlib>
 #include <string>
 
-#include "xla/types.h"
-#include "xla/util.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/resource_loader.h"
 #include "tsl/platform/subprocess.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -48,7 +48,7 @@ absl::StatusOr<bool> RunFileCheckWithPatternFile(
   std::string binary_name = "FileCheck";
   tsl::io::AppendDotExeIfWindows(binary_name);
   std::string file_check_path = tsl::GetDataDependencyFilepath(
-      tsl::testing::kIsOpenSource
+      tsl::kIsOpenSource
           ? tsl::io::JoinPath("external", "llvm-project", "llvm", binary_name)
           : tsl::io::JoinPath("llvm", "llvm-project", "llvm", binary_name));
 
@@ -92,11 +92,11 @@ absl::StatusOr<bool> RunFileCheckWithPatternFile(
     }
 
     // Log at ERROR level so these show up even if you don't pass --logtostderr.
-    LOG(ERROR) << "FileCheck stderr:\n" << standard_error;
     LOG(ERROR) << "FileCheck input was:\n" << input;
+    LOG(ERROR) << "FileCheck stderr:\n" << standard_error;
   } else if (!standard_error.empty()) {
-    LOG(INFO) << "FileCheck stderr:\n" << standard_error;
     LOG(INFO) << "FileCheck input was:\n" << input;
+    LOG(INFO) << "FileCheck stderr:\n" << standard_error;
   }
   return succeeded;
 }

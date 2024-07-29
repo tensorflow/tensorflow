@@ -16,12 +16,13 @@ limitations under the License.
 #include "xla/service/cpu/runtime_topk.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <limits>
-#include <memory>
 #include <numeric>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/dynamic_annotations.h"
 
 template <typename T>
@@ -31,6 +32,11 @@ static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
   // initialized.
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(values,
                                       input_size * batch_size * sizeof(T));
+  static constexpr auto convert_to_int = [](T value) {
+    uint32_t x = absl::bit_cast<uint32_t>(value);
+    return static_cast<int32_t>(x) < 0 ? std::numeric_limits<int32_t>::max() - x
+                                       : x;
+  };
 
   std::vector<int32_t> temp_indices(input_size);
   for (int64_t batch = 0; batch != batch_size; ++batch) {
@@ -38,17 +44,9 @@ static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
 
     const T* values_batch = values + batch * input_size;
 
-    auto convert_to_int = [](T value) {
-      uint32_t x;
-      std::memcpy(&x, &value, sizeof(x));
-      return static_cast<int32_t>(x) < 0
-                 ? std::numeric_limits<int32_t>::max() - x
-                 : x;
-    };
-
     auto kth_element = temp_indices.begin() + k;
     std::partial_sort(temp_indices.begin(), kth_element, temp_indices.end(),
-                      [&](size_t i1, size_t i2) {
+                      [values_batch](size_t i1, size_t i2) {
                         // Do the comparison in integers to enforce a total
                         // order of -NaN < -Inf < -0 < +0 < +Inf < +NaN.
                         int32_t v1 = convert_to_int(values_batch[i1]);

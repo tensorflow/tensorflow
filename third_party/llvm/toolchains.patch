@@ -1,9 +1,9 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index c43ab727e285..7d848d2dffae 100644
+index 38970d9929b9..2690c97aa3e0 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -30,6 +30,36 @@ exports_files([
-     "utils/lit/lit.py",
+@@ -34,6 +34,36 @@ exports_files([
+     "utils/lldbDataFormatters.py",
  ])
  
 +config_setting(

@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CLOUD_CURL_HTTP_REQUEST_H_
 #define TENSORFLOW_TSL_PLATFORM_CLOUD_CURL_HTTP_REQUEST_H_
 
+#include <curl/curl.h>
+
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include <curl/curl.h>
 #include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

@@ -19,10 +19,10 @@ limitations under the License.
 #include <unordered_set>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/lite/c/c_api_types.h"
 
 namespace mlir {
 namespace lite {
@@ -44,7 +44,7 @@ namespace lite {
 // When `legacy_float_scale` is true, the quantizer will use float scale instead
 // of double, and call TOCO's quantization routines to maintain bit-exactness of
 // the values with the TOCO quantizer.
-TfLiteStatus QuantizeModel(
+absl::Status QuantizeModel(
     absl::string_view model_buffer, const tflite::TensorType &input_type,
     const tflite::TensorType &output_type,
     const tflite::TensorType &inference_type,

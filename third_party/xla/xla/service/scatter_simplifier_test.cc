@@ -281,5 +281,70 @@ TEST_F(ScatterSimplifierTest,
       Cast<HloScatterInstruction>(scatter)));
 }
 
+TEST_F(ScatterSimplifierTest, ScatterIntoScalar) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[] parameter(0)
+      indices = s32[0]{0} parameter(1)
+      updates = s32[] parameter(2)
+      ROOT scatter = s32[] scatter(operand, indices, updates),
+          update_window_dims={},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=0,
+          to_apply=scatter_computation
+    }
+  )";
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr).value();
+  RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
+    CHECK: ENTRY
+    CHECK: %[[OPERAND:.*]] = s32[] parameter(0)
+    CHECK: %[[UPDATES:.*]] = s32[] parameter(2)
+    CHECK: ROOT %{{.*}} = s32[] add(%[[OPERAND]], %[[UPDATES]])
+  )");
+}
+
+TEST_F(ScatterSimplifierTest, VariadicScatterIntoScalar) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = f32[] parameter(0)
+      p1 = bf16[] parameter(1)
+      p2 = f32[] parameter(2)
+      p3 = bf16[] parameter(3)
+      ROOT tuple = tuple(p2, p3)
+    }
+
+    ENTRY kernel_entry {
+      operand0 = f32[] parameter(0)
+      operand1 = bf16[] parameter(1)
+      indices = s32[0]{0} parameter(2)
+      updates0 = f32[] parameter(3)
+      updates1 = bf16[] parameter(4)
+      ROOT scatter = (f32[], bf16[]) scatter(operand0, operand1, indices, updates0, updates1),
+          update_window_dims={},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=0,
+          to_apply=scatter_computation
+    })";
+
+  RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
+    CHECK: ENTRY
+    CHECK: %[[UPDATES0:.*]] = f32[] parameter(3)
+    CHECK: %[[UPDATES1:.*]] = bf16[] parameter(4)
+    CHECK: ROOT %{{.*}} = (f32[], bf16[]) tuple(%[[UPDATES0]], %[[UPDATES1]])
+  )");
+}
+
 }  // namespace
 }  // namespace xla

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/semaphore.h"
 
+#include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
 #include "xla/test.h"
 #include "tsl/platform/env.h"
@@ -25,6 +26,10 @@ namespace {
 
 TEST(SemaphoreTest, UnthreadedTests) {
   Semaphore semaphore(2);
+  EXPECT_EQ(semaphore.capacity(), 2);
+  EXPECT_FALSE(semaphore.TryAcquire(semaphore.capacity() + 1));
+  EXPECT_TRUE(semaphore.TryAcquire(semaphore.capacity()));
+  semaphore.Release(semaphore.capacity());
   semaphore.Acquire(1);
   semaphore.Release(1);
 

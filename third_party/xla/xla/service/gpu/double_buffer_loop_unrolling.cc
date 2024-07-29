@@ -533,7 +533,7 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::Run(
   for (HloInstruction* while_instr : while_instrs) {
     TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
                         while_instr->backend_config<WhileLoopBackendConfig>());
-    if (!config.has_known_trip_count()) {
+    if (!config.has_known_trip_count() || config.known_trip_count().n() == 1) {
       VLOG(2) << while_instr->ToString()
               << " doesn't have exact trip count, skipping loop unrolling "
                  "for now";

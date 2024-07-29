@@ -19,10 +19,11 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/experimental/base/public/runtime.h"
 #include "tensorflow/cc/experimental/base/public/runtime_builder.h"
 #include "tensorflow/cc/experimental/base/public/status.h"
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 

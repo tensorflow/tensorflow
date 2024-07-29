@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
@@ -244,7 +245,11 @@ absl::StatusOr<std::vector<TritonGemmConfig>> GetPossibleMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability& compute_capability,
     const int32_t toolkit_version, const DebugOptions& debug_options) {
-  DevicelessConfig test_config{/*model_str=*/"", compute_capability};
+  se::GpuDeviceInfoProto deviceless_proto;
+  auto ccc = deviceless_proto.mutable_cuda_compute_capability();
+  ccc->set_major(compute_capability.major);
+  ccc->set_minor(compute_capability.minor);
+  DevicelessConfig test_config{se::DeviceDescription{deviceless_proto}};
   AutotuneConfig autotune_config{test_config, debug_options};
   GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
                                     debug_options, nullptr);
@@ -371,9 +376,9 @@ HloModule t
 
 ENTRY e {
   p0 = s8[7,8192] parameter(0)
-  p0c = bf16[7,8192] convert(p0)
-  p1 = bf16[8192,18] parameter(1)
-  ROOT dot.0 = bf16[7,18] dot(p0c, p1),
+  p0c = f16[7,8192] convert(p0)
+  p1 = f16[8192,18] parameter(1)
+  ROOT dot.0 = f16[7,18] dot(p0c, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
@@ -386,7 +391,7 @@ ENTRY e {
 ; CHECK-NEXT: kLoop
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/4, /*arel=*/1e-1}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1, /*arel=*/0.5}));
 }
 
 TEST_F(GemmFusionAutotunerTestWithMorePreciseReduction, SelectsSplitK) {
@@ -396,9 +401,9 @@ HloModule t
 
 ENTRY e {
   p0 = s8[7,8192] parameter(0)
-  p0c = bf16[7,8192] convert(p0)
-  p1 = bf16[8192,18] parameter(1)
-  ROOT dot.0 = bf16[7,18] dot(p0c, p1),
+  p0c = f16[7,8192] convert(p0)
+  p1 = f16[8192,18] parameter(1)
+  ROOT dot.0 = f16[7,18] dot(p0c, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
@@ -411,7 +416,7 @@ ENTRY e {
 ; CHECK-NEXT: kLoop
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
 }
 
 TEST_F(GemmFusionAutotunerTest, ApplySplitKWithoutAlteringTiling) {
@@ -776,15 +781,10 @@ ENTRY e {
   DebugOptions opts;
   MultiProcessKeyValueStore key_value_store;
   pipeline.AddPass<GemmFusionAutotuner>(
-      AutotuneConfig{DevicelessConfig{backend()
-                                          .default_stream_executor()
-                                          ->GetDeviceDescription()
-                                          .model_str(),
-                                      backend()
-                                          .default_stream_executor()
-                                          ->GetDeviceDescription()
-                                          .cuda_compute_capability()},
-                     opts},
+      AutotuneConfig{
+          DevicelessConfig{
+              backend().default_stream_executor()->GetDeviceDescription()},
+          opts},
       GetToolkitVersion(), &thread_pool, key_value_store);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -843,6 +843,34 @@ ENTRY e {
 // CHECK:   ROOT %triton_gemm_out = f16[16,16]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
 // CHECK-SAME: "block_m":
 )");
+}
+
+// TODO(b/337839570): Triton currently has a limitation where it crashes
+// on small block_k values depending on the bit-width of the inputs to the
+// dot. For this test case, it should skip any block_k values that are <= 16
+// since the smallest type has a bit-width of 8.
+TEST_F(GemmFusionAutotunerExhaustiveTest, SkipsCrashingTileKConfig) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+ENTRY e {
+  x = s8[33,33]{1,0} parameter(0)
+  c = f16[33,33]{1,0} convert(x)
+  y = f16[33,33]{1,0} parameter(1)
+  ROOT out = f16[33,33]{1,0} dot(c, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)")
+                                                  .value();
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
+      GetPossibleMatmulAutotuneConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
+  EXPECT_TRUE(std::all_of(
+      configs.begin(), configs.end(),
+      [](const TritonGemmConfig& config) { return config.block_k > 16; }));
 }
 
 class GemmFusionAutotunerDisableSplitK : public GemmFusionAutotunerTest {

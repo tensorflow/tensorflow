@@ -19,7 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -88,9 +88,9 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    ((bl_x * 128 + th_x + chunk_id * 129024) floordiv 15000) mod 100,
-    ((bl_x * 128 + th_x + chunk_id * 129024) floordiv 75) mod 200,
-    (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
+    (bl_x * 128 + chunk_id * 129024 + th_x) floordiv 15000,
+    ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 75) mod 200,
+    ((bl_x * 128 + chunk_id * 129024 + th_x) mod 75) * 4 + unroll_id
   )
   domain:
   th_x in [0, 127]
@@ -101,7 +101,7 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   bl_z in [0, 0]
   chunk_id in [0, 11]
   unroll_id in [0, 3]
-  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999996]
+  bl_x * 128 + chunk_id * 129024 + th_x in [0, 1499999]
 )"));
 }
 
@@ -183,7 +183,7 @@ TEST_F(LoopTest, Broadcast) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-                ((bl_x * 128 + th_x) floordiv 600) mod 10,
+                (bl_x * 128 + th_x) floordiv 600,
                 ((bl_x * 128 + th_x) floordiv 30) mod 20,
                 (bl_x * 128 + th_x) mod 30)
                 domain:
@@ -195,7 +195,7 @@ TEST_F(LoopTest, Broadcast) {
                 bl_z in [0, 0]
                 chunk_id in [0, 0]
                 unroll_id in [0, 0]
-                th_x + bl_x * 128 in [0, 5999]
+                bl_x * 128 + th_x in [0, 5999]
             )"));
   auto thread_id_to_input_indexing =
       loop_fusion->ComputeThreadIdToInputIndexing(
@@ -213,7 +213,7 @@ TEST_F(LoopTest, Broadcast) {
                 bl_z in [0, 0]
                 chunk_id in [0, 0]
                 unroll_id in [0, 0]
-                th_x + bl_x * 128 in [0, 5999]
+                bl_x * 128 + th_x in [0, 5999]
             )"));
 }
 

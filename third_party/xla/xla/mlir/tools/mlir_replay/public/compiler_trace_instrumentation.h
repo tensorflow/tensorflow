@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassInstrumentation.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 
 namespace mlir {

@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_
 
+// This file is copied to MLIR to avoid a dependency on TFLite.
+// LINT.IfChange
+
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -253,4 +256,6 @@ inline int Offset(const RuntimeShape& shape, int* index) {
 
 }  // namespace tflite
 
-#endif  // ENSORFLOW_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h)
+
+#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_RUNTIME_SHAPE_H_

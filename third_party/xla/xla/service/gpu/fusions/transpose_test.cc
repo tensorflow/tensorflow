@@ -20,7 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -36,6 +36,11 @@ namespace {
 
 class TransposeTest : public HloTestBase {
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    auto opts = HloTestBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_mlir_emitter_level(0);
+    return opts;
+  }
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };
@@ -138,7 +143,7 @@ TEST_F(TransposeTest, ThreadIndexing201) {
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
-          (d3 * 32 + s1 * 4) mod 64 + d0 floordiv 32,
+          (d3 mod 2) * 32 + s1 * 4 + d0 floordiv 32,
           d0 mod 32
         )
         domain:
@@ -213,10 +218,9 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
         d3 in [0, 1]
         d4 in [0, 0]
         d5 in [0, 0]
-        s0 in [0, 7]
+        s0 in [0, 5]
         s1 in [0, 0]
         s2 in [0, 0]
-        d0 floordiv 32 + s0 * 4 in [0, 23]
         d0 mod 32 in [0, 23]
       )"));
   EXPECT_THAT(
@@ -235,10 +239,9 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
         d3 in [0, 1]
         d4 in [0, 0]
         d5 in [0, 0]
-        s0 in [0, 7]
+        s0 in [0, 5]
         s1 in [0, 0]
         s2 in [0, 0]
-        d0 floordiv 32 + s0 * 4 in [0, 23]
         d0 mod 32 in [0, 23]
       )"));
 }

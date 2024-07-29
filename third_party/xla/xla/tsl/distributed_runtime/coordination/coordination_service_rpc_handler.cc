@@ -301,4 +301,18 @@ void CoordinationServiceRpcHandler::CancelBarrierAsync(
   done(service_->CancelBarrier(request->barrier_id(), request->source_task()));
 }
 
+void CoordinationServiceRpcHandler::PollForErrorAsync(
+    const tensorflow::PollForErrorRequest* request,
+    tensorflow::PollForErrorResponse* response, StatusCallback done) {
+  absl::ReaderMutexLock l(&mu_);
+  if (service_ == nullptr) {
+    done(MakeCoordinationError(
+        absl::InternalError("Coordination service is not enabled.")));
+    return;
+  }
+  service_->PollForErrorAsync(
+      request->source_task(),
+      [done = std::move(done)](const absl::Status& status) { done(status); });
+}
+
 }  // namespace tsl

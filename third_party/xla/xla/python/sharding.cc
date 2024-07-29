@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
@@ -191,16 +191,8 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
       CheckAndCanonicalizeMemoryKind(memory_kind_, internal_device_list_);
 
   nb::module_ si = nb::module_::import_("jax._src.sharding_impls");
-  // TODO(parkers): Once jax always has preprocess_with_manual, we can
-  // remove the fallback.
-  nb::object preprocess_fn;
-  try {
-    preprocess_fn = si.attr("preprocess_with_manual");
-  } catch (nb::python_error& e) {
-    parsed_pspec_ = si.attr("preprocess")(mesh_, spec_, parsed_pspec_);
-    return;
-  }
-  parsed_pspec_ = preprocess_fn(mesh_, spec_, parsed_pspec_, manual_axes_);
+  parsed_pspec_ =
+      si.attr("preprocess")(mesh_, spec_, parsed_pspec_, manual_axes_);
 }
 
 SingleDeviceSharding::SingleDeviceSharding(nb::object device,

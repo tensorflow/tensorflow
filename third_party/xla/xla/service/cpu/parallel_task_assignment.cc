@@ -95,8 +95,8 @@ class DefaultCostModel : public ParallelCostModel {
       // TODO(b/29630486) Develop system bandwidth model.
       max_parallelism = std::min<int64_t>(
           max_parallelism_, std::ceil(std::sqrt(tsl::port::MaxParallelism())));
-      // Use shape size instruction cost and L2 cache size min per-thread cost.
-      instruction_cost = shape_size_(instruction->shape());
+      // Use bytes accessed cost and L2 cache size min per-thread cost.
+      instruction_cost = bytes_accessed;
       min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
     } else {
       // Use max parallelism for compute bound instructions.

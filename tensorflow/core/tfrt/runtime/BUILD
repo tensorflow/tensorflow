@@ -20,6 +20,7 @@ package_group(
         # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/pathways/serving/...",
         # copybara:uncomment "//learning/serving/...",
+        # copybara:uncomment "//smartass/brain/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
     ],
 )

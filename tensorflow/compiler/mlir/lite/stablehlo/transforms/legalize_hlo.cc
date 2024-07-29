@@ -2069,54 +2069,6 @@ class ConvertReduceOpToTfAny
   }
 };
 
-class ConvertReduceOpToTfArgmax
-    : public ConvertReduceOpToArgMinMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp,
-                                        true> {
- public:
-  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
-
-  bool IsValueInitValue(const DenseElementsAttr& attr) const override {
-    auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
-      return false;
-    if (mlir::isa<FloatType>(element_type)) {
-      auto value = *attr.value_begin<APFloat>();
-      return value.isNegative() && value.isInfinity();
-    } else if (element_type.isInteger(1)) {
-      auto value = *attr.value_begin<APInt>();
-      return value.isZero();
-    } else {
-      auto value = *attr.value_begin<APInt>();
-      return element_type.isUnsignedInteger() ? value.isMinValue()
-                                              : value.isMinSignedValue();
-    }
-  }
-};
-
-class ConvertReduceOpToTfArgmin
-    : public ConvertReduceOpToArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp,
-                                        false> {
- public:
-  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
-
-  bool IsValueInitValue(const DenseElementsAttr& attr) const override {
-    auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
-      return false;
-    if (mlir::isa<FloatType>(element_type)) {
-      auto value = *attr.value_begin<APFloat>();
-      return !value.isNegative() && value.isInfinity();
-    } else if (element_type.isInteger(1)) {
-      auto value = *attr.value_begin<APInt>();
-      return value.isZero();
-    } else {
-      auto value = *attr.value_begin<APInt>();
-      return element_type.isUnsignedInteger() ? value.isMaxValue()
-                                              : value.isMaxSignedValue();
-    }
-  }
-};
-
 class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -3684,13 +3636,15 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
             ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
             ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
             ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertSliceOp,
-            ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
             ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
             ConvertReduceOpToTfAll, ConvertReduceOpToTfProd,
             ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
             ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
             ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp,
             ConvertDynamicIotaOp, ConvertRealDynamicSliceOp>(context);
+
+  PopulateReduceArgMinMaxTFPatterns(context, *patterns);
+
   populateWithGenerated(*patterns);
 }
 

@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/operator_property.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/model.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
-#include "tensorflow/lite/tools/optimize/operator_property.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
 namespace tflite {

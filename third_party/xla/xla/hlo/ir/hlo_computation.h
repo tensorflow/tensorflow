@@ -317,6 +317,10 @@ class HloComputation {
   // SetAndSanitizeName().
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Use the given `module` to select a unique name for this computation based
+  // on computation's existing name.
+  void UniquifyName(HloModule* module);
+
   // Prints a string representation of the computation.
   //
   // (We express the default options using an overload rather than a default
@@ -344,8 +348,6 @@ class HloComputation {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
-  absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Overload which accepts an order to emit the instructions in.
   absl::Cord ToCord(

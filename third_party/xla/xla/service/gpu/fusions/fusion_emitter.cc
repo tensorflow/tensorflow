@@ -42,15 +42,14 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
@@ -189,15 +188,15 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
       mlir::AffineMap::get(/*dimCount=*/6,
                            /*symbolCount=*/2, output_dims, ctx),
       dim_vars, range_vars, /*rt_vars=*/{});
-  // Remove the unroll_elem_id symbol if unrolling divides num_elements.
-  if (num_elements % unroll_factor == 0) {
-    indexing_map.AddConstraint(linear_index.replace({{unroll_elem_id, c0}}),
-                               Interval{0, num_elements - unroll_factor});
-  } else {
-    indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
-  }
+  indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   indexing_map.Simplify();
   return indexing_map;
+}
+
+std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& suggested_name) {
+  return ir_emitter_context.name_uniquer()->GetUniqueName(
+      llvm_ir::SanitizeFunctionName(suggested_name));
 }
 
 absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
@@ -208,6 +207,20 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilder<>* builder) {
+  return BuildKernelPrototypeFromUniqueName(
+      ir_emitter_context,
+      GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
+      num_inputs, launch_dimensions, builder);
+}
+
+absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
+                          std::vector<llvm_ir::IrArray>>>
+BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& unique_kernel_name,
+                                   absl::Span<const KernelArgument> arguments,
+                                   size_t num_inputs,
+                                   const LaunchDimensions& launch_dimensions,
+                                   llvm::IRBuilder<>* builder) {
   // If some arguments have the same buffer, we will pass them only once.
   llvm::SmallVector<int> to_llvm_arg_no(arguments.size());
   llvm::SmallVector<int> to_arg_no;
@@ -224,11 +237,6 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
   }
   const int kNumLlvmArgs = to_arg_no.size();
 
-  // Compute the kernel name. The opcode string may contain "-" which cannot be
-  // in a PTX function name, so sanitize the name before uniquifying it.
-  std::string kernel_name = ir_emitter_context.name_uniquer()->GetUniqueName(
-      llvm_ir::SanitizeFunctionName(suggested_name));
-
   // Create the kernel and add it to the module.
   auto* llvm_module = ir_emitter_context.llvm_module();
   llvm::LLVMContext& context = llvm_module->getContext();
@@ -240,12 +248,12 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
-                             kernel_name, llvm_module);
+                             unique_kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
   TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-      ir_emitter_context.gpu_device_info(), launch_dimensions, kernel_name,
-      llvm_module));
+      ir_emitter_context.gpu_device_info(), launch_dimensions,
+      unique_kernel_name, llvm_module));
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.

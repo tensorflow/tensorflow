@@ -39,7 +39,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -393,8 +393,8 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
-                                  dims.block_counts(), kernel, *kernel_args);
+  return stream->Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                        kernel, *kernel_args);
 }
 
 absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
@@ -406,9 +406,8 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
-                                  dims.block_counts(), cluster_dim, kernel,
-                                  *kernel_args);
+  return stream->Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                        cluster_dim, kernel, *kernel_args);
 }
 
 // Unimplemented for integers yet.
@@ -622,16 +621,8 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
 }
 
 bool RequireDeterminism(const HloModuleConfig& config) {
-  static bool require_cudnn_determinism = [] {
-    // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
-    bool cudnn_deterministic = false;
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
-                                        /*default_val=*/false,
-                                        &cudnn_deterministic));
-    return cudnn_deterministic;
-  }();
-  return require_cudnn_determinism ||
-         config.debug_options().xla_gpu_deterministic_ops();
+  return config.debug_options().xla_gpu_deterministic_ops() ||
+         config.debug_options().xla_gpu_exclude_nondeterministic_ops();
 }
 
 namespace {

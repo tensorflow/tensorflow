@@ -15,24 +15,29 @@ limitations under the License.
 
 #include "xla/service/platform_util.h"
 
-#include <algorithm>
+#include <optional>
+#include <set>
 #include <string>
-#include <utility>
+#include <string_view>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/util.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -46,7 +51,7 @@ constexpr char kInterpreter[] = "interpreter";
 
 namespace {
 
-std::string CanonicalPlatformName(const std::string& platform_name) {
+std::string CanonicalPlatformName(std::string_view platform_name) {
   std::string lowercase_platform_name = absl::AsciiStrToLower(platform_name);
   // "cpu" and "host" mean the same thing.
   if (lowercase_platform_name == "cpu") {
@@ -54,9 +59,12 @@ std::string CanonicalPlatformName(const std::string& platform_name) {
   }
   // When configured on CUDA, "gpu" and "cuda" mean the same thing.
   // When configured on ROCm, "gpu" and "rocm" mean the same thing.
+  // When configured on SYCL, "gpu" and "sycl" mean the same thing.
   if (lowercase_platform_name == "gpu") {
 #if TENSORFLOW_USE_ROCM
     return "rocm";
+#elif TENSORFLOW_USE_SYCL
+    return "sycl";
 #else
     return "cuda";
 #endif
@@ -80,18 +88,18 @@ absl::StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
 
 }  // namespace
 
-/*static */ absl::StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
-    const std::string& platform_name) {
+absl::StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
+    std::string_view platform_name) {
   return xla::CanonicalPlatformName(platform_name);
 }
 
-/* static */ absl::StatusOr<std::vector<se::Platform*>>
+absl::StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
   // Gather all platforms which have an XLA compiler.
   return xla::GetSupportedPlatforms();
 }
 
-/* static */ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
+absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
 
   se::Platform* platform = nullptr;
@@ -123,7 +131,7 @@ PlatformUtil::GetSupportedPlatforms() {
 }
 
 /*static*/ absl::StatusOr<se::Platform*> PlatformUtil::GetPlatform(
-    const std::string& platform_name) {
+    std::string_view platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(
                           xla::CanonicalPlatformName(platform_name)));
@@ -141,8 +149,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
     if (!cc.IsAtLeast(kMinCudaComputeCapabilityMajor,
                       kMinCudaComputeCapabilityMinor)) {
       LOG(INFO) << "StreamExecutor cuda device (" << executor->device_ordinal()
-                << ") is of "
-                << "insufficient compute capability: "
+                << ") is of insufficient compute capability: "
                 << kMinCudaComputeCapabilityMajor << "."
                 << kMinCudaComputeCapabilityMinor << " required, "
                 << "device is " << cc.ToString();
@@ -162,7 +169,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
   return true;
 }
 
-/* static */ absl::StatusOr<std::vector<se::StreamExecutor*>>
+absl::StatusOr<std::vector<se::StreamExecutor*>>
 PlatformUtil::GetStreamExecutors(
     se::Platform* platform,
     const std::optional<std::set<int>>& allowed_devices) {
@@ -239,7 +246,7 @@ PlatformUtil::GetStreamExecutors(
   }
   if (out.empty()) {
     return Internal("no supported devices found for platform %s",
-                         platform->Name());
+                    platform->Name());
   }
   return out;
 }

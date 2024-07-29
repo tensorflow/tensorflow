@@ -415,11 +415,8 @@ message DebugOptions {
   bool xla_gpu_enable_all_gather_combine_by_dim = 254;
   bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
 
-  // Was xla_gpu_all_reduce_contiguous
-  reserved 158;
-
-  // Split AR across all partitions into logical RS followed by AR.
-  bool xla_gpu_enable_all_reduce_splitter = 299;
+  // Was xla_gpu_all_reduce_contiguous, xla_gpu_enable_all_reduce_splitter
+  reserved 158, 299;
 
   // Enable allreduce reassociation on allreduces that are converted to a wider
   // type. The resulting allreduce will be promoted to a wider-typed allreduce.
@@ -584,6 +581,7 @@ message DebugOptions {
   bool xla_gpu_enable_pipelined_all_gather = 227;
   bool xla_gpu_enable_pipelined_reduce_scatter = 231;
   bool xla_gpu_enable_pipelined_p2p = 246;
+  bool xla_gpu_run_post_layout_collective_pipeliner = 313;
 
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
@@ -808,10 +806,10 @@ message DebugOptions {
   // If true, Nccl errors will terminate the process.
   bool xla_gpu_nccl_terminate_on_error = 301;
 
-  // Use Shardonnay, a new partitioner, to replace the existing
+  // Use Shardy, a new partitioner, to replace the existing
   // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
   // details.
-  bool xla_use_shardonnay = 302;
+  bool xla_use_shardy = 302;
 
   bool xla_gpu_shard_autotuning = 304;
 
@@ -826,7 +824,61 @@ message DebugOptions {
 
   string xla_gpu_per_fusion_autotune_cache_dir = 310;
 
-  // Next id: 311
+  // The command buffer trace cache size, increasing the cache size may
+  // sometimes reduces the chances of doing command buffer tracing for
+  // updating command buffer instance.
+  int64 xla_cmd_buffer_trace_cache_size = 311;
+
+  // Enable this flag will use a separate memory space color for
+  // temp buffer, and then will use separate memory allocator to allocate it,
+  // as there is no other memory allocation interference,
+  // it will allocate temp buffer to some fix address on every iteration,
+  // which is good for cuda-graph perf.
+  bool xla_gpu_temp_buffer_use_separate_color = 312;
+
+  // Custom call targets with legacy registry API (non FFI API),
+  // that support recording to command buffer custom command,
+  // i.e, custom call target supports cuda-graph capturing for CUDA devices.
+  // This flag is read if CUSTOM_CALL command type is recorded into
+  // command buffer.
+  repeated string legacy_command_buffer_custom_call_targets = 314;
+
+  // This flag is used for controlling HLO dumping and NVTX marker. If turned
+  // on, both HLO dumping and NVTX marker will use syntactic sugar wrappers
+  // as op names, while the actual op names will be shown if turned off.
+  //
+  // Here is an example HLO excerpt with the flag off:
+  //
+  //   async_computation {
+  //    param_0 = f32[1,4,8]{1,0,2} parameter(0)
+  //    ROOT all-to-all.3.1 = f32[1,4,8]{1,0,2} all-to-all(param_0),
+  //                          replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={2}
+  //   }
+  //  ...
+  //
+  //  all-to-all-start =
+  //    ((f32[1,4,8]{1,0,2}), f32[1,4,8]{1,0,2}) async-start(bitcast.24.0),
+  //    calls=async_computation, backend_config={...}
+  //  all-to-all-done = f32[1,4,8]{1,0,2} async-done(all-to-all-start)
+  //
+  // and with the flag on:
+  //
+  //  all-to-all-start = ((f32[1,4,8]{1,0,2}), f32[1,4,8]{1,0,2})
+  //                     all-to-all-start(bitcast.24.0),
+  //                     replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={2},
+  //                     backend_config={...}
+  //  all-to-all-done = f32[1,4,8]{1,0,2} all-to-all-done(all-to-all-start)
+  bool xla_syntax_sugar_async_ops = 315;
+
+  // Relative precision for comparing different GEMM solutions
+  float xla_gpu_autotune_gemm_rtol = 316;
+
+  // Allow launching command buffers while profiling active.
+  // When disabled, execute in op-by-op mode.
+  // TODO(b/355487968): Remove this option when validation complete.
+  bool xla_enable_command_buffers_during_profiling = 317;
+
+  // Next id: 318
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -864,7 +916,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-// Next id: 24.
+// Next id: 25.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -971,12 +1023,17 @@ message ExecutionOptions {
 
   // Amount of device memory available for the executable to use.
   int64 device_memory_size = 22;
+
+  // Use Shardy, a new partitioner, to replace the existing
+  // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
+  // details.
+  bool use_shardy_partitioner = 24;
 }
 
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 34.
+// Next id: 35.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1030,6 +1087,7 @@ message HloModuleConfigProto {
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
   bytes fdo_profile = 31;
   int64 device_memory_size = 32;
+  bool use_shardy_partitioner = 34;
 }
 
 message HloModuleProtoWithConfig {

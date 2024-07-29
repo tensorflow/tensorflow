@@ -133,6 +133,10 @@ class TestCoordinationClient : public CoordinationClient {
               (CallOptions*, const HeartbeatRequest*, HeartbeatResponse*,
                StatusCallback),
               (override));
+  MOCK_METHOD(void, PollForErrorAsync,
+              (CallOptions * call_opts, const PollForErrorRequest*,
+               PollForErrorResponse*, StatusCallback),
+              (override));
 
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
@@ -419,6 +423,35 @@ TEST_F(CoordinationServiceAgentTest, ConnectAfterResetError) {
   TF_ASSERT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting.
   TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, ConnectAfterReset_WithErrorPolling) {
+  // Connect coordination agent and set it to error.
+  PollForErrorResponse mocked_response;
+  EXPECT_CALL(*GetClient(), PollForErrorAsync(_, _, _, _))
+      .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
+                      InvokeArgument<3>(absl::UnavailableError("Test Error."))))
+      .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
+                      InvokeArgument<3>(absl::InternalError("Test Error."))));
+
+  CoordinationServiceConfig config;
+  config.set_poll_for_error_from_service_at_startup(true);
+  InitializeAgent(config);
+  // The agent will be in ERROR state after the first call to Connect() because
+  // the error polling thread will be created and will immediately return an
+  // error.
+  TF_ASSERT_OK(agent_->Connect());
+  // Wait a bit for the error polling thread to start.
+  absl::SleepFor(absl::Seconds(2));
+  ASSERT_TRUE(agent_->IsError());
+
+  TF_ASSERT_OK(agent_->Reset());
+  // Agent should be able to reconnect to the service after resetting. The error
+  // polling thread will be recreated when the agent is connected again.
+  TF_EXPECT_OK(agent_->Connect());
+  absl::SleepFor(absl::Seconds(2));
+  // The agent should again be in ERROR state after Connect().
+  EXPECT_TRUE(agent_->IsError());
 }
 
 TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {

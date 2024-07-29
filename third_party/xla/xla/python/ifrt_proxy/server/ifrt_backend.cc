@@ -22,6 +22,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -274,9 +275,16 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     }
     d->set_debug_string(AsProtoStringData(device->DebugString()));
     d->set_to_string(AsProtoStringData(device->ToString()));
-    for (const auto& [name, attr] : device->Attributes()) {
-      TF_ASSIGN_OR_RETURN((*d->mutable_attributes())[name],
-                          ToVariantProto(attr));
+    if (version_.protocol_version() <= 3) {
+      for (const auto& [name, attr] : device->Attributes().map()) {
+        TF_ASSIGN_OR_RETURN(
+            (*d->mutable_deprecated_attributes())[name],
+            std::visit(
+                [&](const auto& attr) { return ToVariantProto(attr.value); },
+                attr));
+      }
+    } else {
+      *d->mutable_attributes() = device->Attributes().ToProto();
     }
   }
   for (auto* addressable_device : client_->addressable_devices()) {
@@ -697,13 +705,24 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
   TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
                                           reshard_request.copy_semantics()));
 
-  TF_ASSIGN_OR_RETURN(auto resharded_array,
-                      array->Reshard(sharding, semantics));
+  // Emulate the old `Array::Reshard` behavior using `Client::CopyArrays`. No
+  // existing IFRT implementations before `Array::Reshard` was deleted actually
+  // supported resharding, so this should be safe.
+  if (!array->sharding().HasSamePartitioning(*sharding)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "IFRT Proxy does not support resharding, but got ",
+        array->sharding().DebugString(), " as the original sharding and ",
+        sharding->DebugString(), " as the target sharding"));
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto copied_arrays,
+      client_->CopyArrays(absl::MakeSpan(&array, 1), sharding->devices(),
+                          sharding->memory_kind(), semantics));
 
   uint64_t resharded_array_handle = handle_generator_.New();
   {
     absl::MutexLock lock(&arrays_mutex_);
-    arrays_.insert({resharded_array_handle, std::move(resharded_array)});
+    arrays_.insert({resharded_array_handle, std::move(copied_arrays[0])});
   }
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
@@ -860,13 +879,6 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     // Populate executable metadata.
     compile_resp->set_name(AsProtoStringData(executable->name()));
     compile_resp->set_num_devices(executable->num_devices());
-    for (const auto& logical_device_id :
-         executable->addressable_device_logical_ids()) {
-      LogicalDeviceIds* proto =
-          compile_resp->add_addressable_device_logical_ids();
-      proto->set_replica(logical_device_id.replica);
-      proto->set_partition(logical_device_id.partition);
-    }
     for (const auto* device : executable->addressable_devices()) {
       compile_resp->add_addressable_device_ids(device->Id().value());
     }

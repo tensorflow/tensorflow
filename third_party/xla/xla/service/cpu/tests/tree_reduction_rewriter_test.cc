@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <utility>
-
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tsl/platform/test.h"
 
@@ -63,7 +61,7 @@ add {
 }
 
 ENTRY main {
-  input = f32[1000,1000] parameter(0)
+  input = f32[100,100] parameter(0)
   zero = f32[] constant(0)
   ROOT out = f32[] reduce(input, zero), dimensions={0,1}, to_apply=add
 }
@@ -71,7 +69,7 @@ ENTRY main {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK:    [[INSTR_0:%[^ ]+]] = f32[32,32]{1,0} reduce-window([[INSTR_1:%[^ ]+]], [[INSTR_2:%[^ ]+]]), window={size=32x32 stride=32x32 pad=12_12x12_12}, to_apply=[[INSTR_3:%[^ ]+]]
+; CHECK:    [[INSTR_0:%[^ ]+]] = f32[4,4]{1,0} reduce-window([[INSTR_1:%[^ ]+]], [[INSTR_2:%[^ ]+]]), window={size=32x32 stride=32x32 pad=14_14x14_14}, to_apply=[[INSTR_3:%[^ ]+]]
 ; CHECK-NEXT: ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce([[INSTR_0]], [[INSTR_2]]), dimensions={0,1}, to_apply=[[INSTR_3]]
       )");
 }

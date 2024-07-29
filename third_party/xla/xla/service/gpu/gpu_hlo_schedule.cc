@@ -33,8 +33,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -50,6 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/gpu_schedule_postprocessing.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
+#include "xla/service/gpu/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/latency_hiding_scheduler.h"
@@ -417,42 +416,6 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
 }
 }  // end namespace
 
-absl::Status IsProfileApplicable(
-    const HloModule* module,
-    const tensorflow::profiler::ProfiledInstructionsProto& profile) {
-  absl::flat_hash_set<absl::string_view> all_instruction_names;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (HloInstruction* instr : comp->instructions()) {
-      all_instruction_names.insert(instr->name());
-    }
-  }
-
-  std::vector<std::string> missing_costs_names;
-  for (const auto& cost : profile.costs()) {
-    if (!all_instruction_names.contains(cost.name())) {
-      missing_costs_names.push_back(cost.name());
-    }
-  }
-  std::vector<std::string> missing_latency_names;
-  for (const auto& latency : profile.latencies()) {
-    if (!all_instruction_names.contains(latency.source())) {
-      missing_latency_names.push_back(latency.source());
-    }
-
-    if (!all_instruction_names.contains(latency.target())) {
-      missing_latency_names.push_back(latency.target());
-    }
-  }
-  if (!(missing_costs_names.empty() && missing_latency_names.empty())) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("\nMissing costs: %s;\nMissing latencies: %s",
-                        absl::StrJoin(missing_costs_names, ", "),
-                        absl::StrJoin(missing_latency_names, ", ")));
-  }
-
-  return absl::OkStatus();
-}
-
 static int64_t GetSchedulerMemoryLimit(
     const HloModule* module, const se::DeviceDescription& gpu_device_info,
     int pointer_size);
@@ -507,17 +470,15 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
           .debug_options()
           .xla_gpu_enable_analytical_latency_estimator();
   if (profile.has_value()) {
-    latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
-        config, std::move(gpu_latency_estimator), profile.value());
+    auto aggregator = std::make_unique<GPUProfileStatisticsAggregator>();
+    auto pg_latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+        config, std::move(gpu_latency_estimator), profile.value(),
+        std::move(aggregator));
     LOG(INFO)
         << "Found profile, using profile guided latency estimator. Profile:\n"
         << profile->DebugString();
-    absl::Status s = IsProfileApplicable(module, profile.value());
-    if (!s.ok()) {
-      LOG(INFO) << "PGLE profile may not applicable to the module, but will "
-                   "still be used : "
-                << s.message();
-    }
+    TF_RETURN_IF_ERROR(pg_latency_estimator->CheckAccuracy(*module));
+    latency_estimator = std::move(pg_latency_estimator);
   } else if (enable_analytical_latency_estimator) {
     latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
         config, std::move(gpu_latency_estimator), gpu_device_info,
@@ -545,6 +506,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
       shape_size_in_bytes, async_tracker.get(), latency_estimator.get(),
       config);
+  pipeline.AddPass<SchedulingInstructionAnnotator>();
   pipeline.AddPass<LatencyHidingScheduler>(
       std::move(latency_estimator), std::move(async_tracker),
       std::move(scheduler_core), shape_size_in_bytes);

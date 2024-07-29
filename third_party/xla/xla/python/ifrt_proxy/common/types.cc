@@ -26,6 +26,7 @@
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 
 namespace xla {

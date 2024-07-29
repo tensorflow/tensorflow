@@ -17,23 +17,26 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <numeric>
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/concatenate.h"
+#include "xla/service/gpu/fusions/loop.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -43,14 +46,36 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
 using llvm::SmallVector;
 using mlir::Value;
 using mlir::ValueRange;
 
+// Computes the unroll factor that divides concat dimension of all operands.
+int ComputeUnrollFactor(const HloFusionAnalysis& analysis,
+                        int unroll_factor_for_the_largest_shape) {
+  auto& concat = analysis.fusion_hero(0).instruction();
+  int unroll_factor = unroll_factor_for_the_largest_shape;
+  int64_t dim = concat.concatenate_dimension();
+  for (const HloInstruction* operand : concat.operands()) {
+    if (unroll_factor == 1) return 1;
+    unroll_factor = std::gcd(unroll_factor, operand->shape().dimensions(dim));
+  }
+  return unroll_factor;
+}
+
+}  // namespace
+
+MlirConcatenateFusion::MlirConcatenateFusion(const HloFusionAnalysis& analysis)
+    : analysis_(analysis),
+      largest_shape_(GetLargestConcatOperandShape(analysis_)),
+      config_(ComputeLoopFusionConfig(analysis_, largest_shape_)),
+      unroll_factor_(ComputeUnrollFactor(analysis_, config_.unroll_factor)) {}
+
 LaunchDimensions MlirConcatenateFusion::launch_dimensions() const {
-  return CalculateLaunchDimensions(GetLargestConcatOperandShape(analysis_),
-                                   analysis_.device_info());
+  return CalculateLaunchDimensions(largest_shape_, analysis_.device_info(),
+                                   config_);
 }
 
 std::optional<IndexingMap>
@@ -64,9 +89,8 @@ MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
   // TODO(b/331356433): Add constraints depending on the `hero_operand_index`.
-  return GetDefaultThreadIdIndexingMap(launch_dimensions(), /*unroll_factor=*/1,
-                                       GetLargestConcatOperandShape(analysis_),
-                                       ctx);
+  return GetDefaultThreadIdIndexingMap(launch_dimensions(), unroll_factor_,
+                                       largest_shape_, ctx);
 }
 
 std::vector<mlir_converter::EpilogueSpecification>
@@ -113,6 +137,7 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
     auto thread_id_to_output_map = ComposeIndexingMaps(
         ComposeIndexingMaps(thread_id_to_input_map, input_to_output_map),
         epilogue_indexing);
+    thread_id_to_output_map.Simplify();
 
     auto loop_nest_body_builder =
         [&, operand_index = operand_index](

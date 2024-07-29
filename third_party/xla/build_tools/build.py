@@ -86,6 +86,9 @@ class BuildType(enum.Enum):
   JAX_CPU = enum.auto()
   JAX_GPU = enum.auto()
 
+  TENSORFLOW_CPU = enum.auto()
+  TENSORFLOW_GPU = enum.auto()
+
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class DockerImage:
@@ -97,7 +100,9 @@ class DockerImage:
     """Pulls docker image with retries to avoid transient rate limit errors."""
     for _ in range(retries):
       pull_proc = sh(["docker", "pull", self.image_url], check=False)
-      if pull_proc.returncode != 0:
+      if pull_proc.returncode == 0:
+        break  # Don't keep pulling after successful pull.
+      else:
         time.sleep(15)
 
     # write SHA of image to the sponge config
@@ -159,16 +164,23 @@ class Build:
   docker_image: DockerImage
   target_patterns: Tuple[str, ...]
   configs: Tuple[str, ...] = ()
-  tag_filters: Tuple[str, ...] = ()
+  build_tag_filters: Tuple[str, ...] = ()
+  test_tag_filters: Tuple[str, ...] = ()
   action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
   def bazel_test_command(self) -> List[str]:
+    """Returns a bazel test command for this build.
+
+    Returns: List of command line arguments
+    """
     options = _dict_to_cli_options(self.options)
     configs = [f"--config={config}" for config in self.configs]
-    build_tag_filters = f"--build_tag_filters={','.join(self.tag_filters)}"
-    test_tag_filters = f"--test_tag_filters={','.join(self.tag_filters)}"
+    build_tag_filters = (
+        f"--build_tag_filters={','.join(self.build_tag_filters)}"
+    )
+    test_tag_filters = f"--test_tag_filters={','.join(self.test_tag_filters)}"
     action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
     test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
 
@@ -196,7 +208,7 @@ _DEFAULT_IMAGE = DockerImage(
 
 # TODO(b/338885148): Remove this once the TF containers have cuDNN 9
 _CUDNN_9_IMAGE = DockerImage(
-    image_url="gcr.io/tensorflow-sigs/build@sha256:dddcaf30321e9007103dce75c51b83fea3c06de462fcf41e7c6ae93f37fc3545",
+    image_url="gcr.io/tensorflow-sigs/build@sha256:0a9728e258d7e0e5830d1960a65968ffdc1d138af5441e30948918e0d50ab2c7",
 )
 
 _ARM64_JAX_MULTI_PYTHON_IMAGE = DockerImage(
@@ -214,7 +226,8 @@ def nvidia_gpu_build_with_compute_capability(
       docker_image=_CUDNN_9_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
-      tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
+      test_tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
+      build_tag_filters=("-no_oss", "requires-gpu-nvidia"),
       options=dict(
           run_under="//tools/ci_build/gpu_build:parallel_gpu_execute",
           repo_env=f"TF_CUDA_COMPUTE_CAPABILITIES={compute_capability/10}",
@@ -223,34 +236,39 @@ def nvidia_gpu_build_with_compute_capability(
   )
 
 
+cpu_x86_tag_filter = (
+    "-no_oss",
+    "-gpu",
+    "-requires-gpu-nvidia",
+    "-requires-gpu-amd",
+)
 _CPU_X86_BUILD = Build(
     type_=BuildType.CPU_X86,
     repo="openxla/xla",
     docker_image=_DEFAULT_IMAGE,
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
-    tag_filters=(
-        "-no_oss",
-        "-gpu",
-        "-requires-gpu-nvidia",
-        "-requires-gpu-amd",
-    ),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=cpu_x86_tag_filter,
+    test_tag_filters=cpu_x86_tag_filter,
     options=_DEFAULT_BAZEL_OPTIONS,
+)
+
+cpu_arm_tag_filter = (
+    "-no_oss",
+    "-gpu",
+    "-requires-gpu-nvidia",
+    "-requires-gpu-amd",
+    "-not_run:arm",
 )
 _CPU_ARM64_BUILD = Build(
     type_=BuildType.CPU_ARM64,
     repo="openxla/xla",
     docker_image=_ARM64_JAX_MULTI_PYTHON_IMAGE,
     configs=("warnings", "rbe_cross_compile_linux_arm64_xla", "nonccl"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
-    tag_filters=(
-        "-no_oss",
-        "-gpu",
-        "-requires-gpu-nvidia",
-        "-not_run:arm",
-        "-requires-gpu-amd",
-    ),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
+    build_tag_filters=cpu_arm_tag_filter,
+    test_tag_filters=cpu_arm_tag_filter,
 )
 # TODO(ddunleavy): Setup additional build for a100 tests once L4 RBE is ready.
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
@@ -274,7 +292,9 @@ _JAX_CPU_BUILD = Build(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
     ),
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS, override_repository="xla=/github/xla"
+    ),
 )
 
 _JAX_GPU_BUILD = Build(
@@ -284,17 +304,70 @@ _JAX_GPU_BUILD = Build(
     configs=(
         "avx_posix",
         "mkl_open_source_only",
-        "rbe_linux_cuda12.3_nvcc_py3.9",
+        "rbe_linux_cuda12.3_nvcc_py3.10",
         "tensorflow_testing_rbe_linux",
     ),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
-    tag_filters=("-multiaccelerator",),
+    build_tag_filters=("-multiaccelerator",),
+    test_tag_filters=("-multiaccelerator",),
     test_env=dict(
         JAX_SKIP_SLOW_TESTS=1,
         TF_CPP_MIN_LOG_LEVEL=0,
         JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
     ),
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS, override_repository="xla=/github/xla"
+    ),
+)
+
+_TENSORFLOW_CPU_BUILD = Build(
+    type_=BuildType.TENSORFLOW_CPU,
+    repo="tensorflow/tensorflow",
+    docker_image=_DEFAULT_IMAGE,
+    configs=(
+        "release_cpu_linux",
+        "rbe_linux_cpu",
+        "linux_cpu_pycpp_test_filters",
+    ),
+    target_patterns=(
+        "//tensorflow/compiler/...",
+        "-//tensorflow/compiler/tf2tensorrt/...",
+        "//tensorflow/python/...",
+        "-//tensorflow/python/distribute/...",
+        "-//tensorflow/python/compiler/tensorrt/...",
+    ),
+    options=dict(
+        verbose_failures=True,
+        test_output="errors",
+        override_repository="xla=/github/xla",
+        profile="profile.json.gz",
+    ),
+)
+
+_TENSORFLOW_GPU_BUILD = Build(
+    type_=BuildType.TENSORFLOW_GPU,
+    repo="tensorflow/tensorflow",
+    docker_image=_DEFAULT_IMAGE,
+    configs=(
+        "release_gpu_linux",
+        "rbe_linux_cuda",
+        "linux_cuda_pycpp_test_filters",
+    ),
+    target_patterns=(
+        "//tensorflow/compiler/...",
+        "-//tensorflow/compiler/tf2tensorrt/...",
+        "//tensorflow/python/...",
+        "-//tensorflow/python/distribute/...",
+        "-//tensorflow/python/compiler/tensorrt/...",
+    ),
+    build_tag_filters=("-no_oss", "+gpu"),
+    test_tag_filters=("-no_oss", "+gpu"),
+    options=dict(
+        verbose_failures=True,
+        test_output="errors",
+        override_repository="xla=/github/xla",
+        profile="profile.json.gz",
+    ),
 )
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
@@ -306,6 +379,8 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
+    "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
+    "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
 }
 
 

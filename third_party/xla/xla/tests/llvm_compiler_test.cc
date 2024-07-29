@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -41,10 +41,12 @@ namespace {
 using LLVMCompilerTest = HloTestBase;
 
 const char* const kHloText = R"(
-HloModule Constant
+HloModule Add
 
 ENTRY main  {
-  ROOT constant = f32[] constant(42.0)
+  constant.0 = f32[] constant(42.0)
+  constant.1 = f32[] constant(43.0)
+  ROOT add.0 = f32[] add(constant.0, constant.1)
 }
 )";
 
@@ -61,8 +63,12 @@ TEST_F(LLVMCompilerTest, HooksTest) {
     return absl::OkStatus();
   };
 
-  // Create HLO module, and run the compiler.
+  // Create HLO module. Note this module needs to consist of at least one
+  // instruction that is compiled using LLVM (e.g. for CPU thunks runtime it is
+  // 'add' instruction), otherwise the hooks are never called.
   auto hlo_module = ParseAndReturnVerifiedModule(kHloText).value();
+
+  // Create and run the compiler.
   LLVMCompiler* compiler =
       tensorflow::down_cast<xla::LLVMCompiler*>(backend().compiler());
   compiler->SetPreOptimizationHook(pre_opt_hook);

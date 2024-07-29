@@ -35,6 +35,7 @@ class CollectivePermuteThunk final : public CollectiveThunk {
 
   static absl::StatusOr<std::unique_ptr<CollectivePermuteThunk>> Create(
       Info info, OpParams op_params, OpBuffers op_buffers,
+      OpResources op_resources,
       absl::Span<const SourceTargetPair> source_target_pairs);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
@@ -42,6 +43,7 @@ class CollectivePermuteThunk final : public CollectiveThunk {
  private:
   CollectivePermuteThunk(
       Info info, OpParams op_params, OpBuffers op_buffers,
+      OpResources op_resources,
       absl::Span<const SourceTargetPair> source_target_pairs);
 
   std::vector<SourceTargetPair> source_target_pairs_;

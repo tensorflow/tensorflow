@@ -450,6 +450,7 @@ xla_cc_test(
     ],
     deps = [
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:subprocess",
         "@local_tsl//tsl/platform:test",
@@ -608,8 +609,11 @@ xla_cc_binary(
         "//xla/service:hlo_runner",
         "//xla/service:interpreter_plugin",
         "//xla/service:platform_util",
+        "//xla/translate/mhlo_to_hlo:translate",
+        "//xla/translate/stablehlo_to_hlo:translate",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
@@ -627,6 +631,8 @@ xla_cc_test(
     srcs = ["run_hlo_module_bin_test.cc"],
     data = [
         "data/add.hlo",
+        "data/add_mhlo.mlir",
+        "data/add_stablehlo.mlir",
         "data/must_alias.hlo",
         "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
@@ -797,7 +803,7 @@ tsl_gpu_library(
         "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/service/gpu:gpu_symbol_repository",
-    ]),
+    ]) + if_google(["@com_google_protobuf//:duration_cc_proto"]),
 )
 
 xla_test(
@@ -841,7 +847,7 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_tsl//tsl/protobuf:status_proto_cc",
-    ],
+    ] + if_google(["@com_google_protobuf//:duration_cc_proto"]),
 )
 
 xla_test(

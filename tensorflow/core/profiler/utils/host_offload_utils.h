@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
@@ -32,12 +33,17 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+struct LineBuilderAndEventEndTimeFrontier {
+  XLineBuilder line_builder;
+  uint64_t event_end_time_frontier_ns;
+};
+
 class HostOffloadEventProcessor {
  public:
   HostOffloadEventProcessor(XPlaneBuilder* plane_builder,
-                            XLineBuilder* host_offload_op_line_builder)
+                            uint64_t start_timestamp_ns)
       : plane_builder_(plane_builder),
-        host_offload_op_line_builder_(host_offload_op_line_builder) {}
+        start_timestamp_ns_(start_timestamp_ns) {}
   ~HostOffloadEventProcessor() = default;
 
   void ProcessHostOffloadOpEvent(const XEventVisitor& event,
@@ -55,7 +61,10 @@ class HostOffloadEventProcessor {
       absl::StrCat("S(", xla::Layout::kHostMemorySpace, ")");
 
   XPlaneBuilder* plane_builder_;
-  XLineBuilder* host_offload_op_line_builder_;
+  uint64_t start_timestamp_ns_;
+
+  std::vector<LineBuilderAndEventEndTimeFrontier>
+      host_offload_op_line_builders_;
 };
 
 }  // namespace profiler

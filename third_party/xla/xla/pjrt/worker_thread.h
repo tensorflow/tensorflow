@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef XLA_PJRT_WORKER_THREAD_H_
 #define XLA_PJRT_WORKER_THREAD_H_
 
-#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/platform/env.h"
 
@@ -37,14 +38,14 @@ class WorkerThread {
   ~WorkerThread();
 
   // Adds 'fn' to the queue of closures to be executed by the worker thread.
-  void Schedule(std::function<void()> fn);
+  void Schedule(absl::AnyInvocable<void() &&> fn);
 
  private:
   bool WorkAvailable() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
   absl::Mutex mu_;
-  std::queue<std::function<void()>> work_queue_ ABSL_GUARDED_BY(mu_);
+  std::queue<absl::AnyInvocable<void() &&>> work_queue_ ABSL_GUARDED_BY(mu_);
 
   std::unique_ptr<tsl::Thread> thread_;
 };

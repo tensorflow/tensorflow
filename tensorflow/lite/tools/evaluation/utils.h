@@ -107,7 +107,7 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
 #endif  // !defined(TFLITE_WITHOUT_XNNPACK)
 TfLiteDelegatePtr CreateXNNPACKDelegate(
     int num_threads, bool force_fp16,
-    const char* experimental_weight_cache_file_path = nullptr);
+    const char* weight_cache_file_path = nullptr);
 
 TfLiteDelegatePtr CreateCoreMlDelegate();
 }  // namespace evaluation

@@ -16,12 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/dynamic_slice_fusion_rewriter.h"
 
 #include <cstddef>
-#include <cstdint>
-#include <functional>
 #include <optional>
-#include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
@@ -29,22 +25,18 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/service/buffer_value.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
-#define PLATFORM "GPU"
 namespace xla::gpu {
 
 class DynamicSliceFusionRewriterTest : public HloTestBase {};
@@ -100,14 +92,13 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
@@ -165,14 +156,13 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
@@ -231,15 +221,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
@@ -294,15 +283,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
@@ -359,7 +347,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
     ; CHECK-DAG:     kind=kCustom, calls=%address-computation,
     ; CHECK-DAG:     backend_config={
     ; CHECK-DAG:       "kind":"__custom_fusion",
-    ; CHECK-DAG:       "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK-DAG:       "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK-DAG:     }
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
@@ -368,8 +356,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
@@ -450,8 +437,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
@@ -510,15 +496,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotContiguousSlice) {
@@ -556,7 +541,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotContiguousSlice) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
                             std::nullopt);
 }
 
@@ -599,7 +584,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
                             std::nullopt);
 }
 
@@ -672,14 +657,13 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmDuplicateOperand) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
@@ -735,14 +719,13 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
@@ -798,14 +781,13 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
@@ -862,14 +844,13 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
@@ -920,22 +901,20 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::AnyBuffer dst) {
-  return stream->MemcpyD2D(
-      &dst.data, src.data,
-      absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
-          sizeof(float));
+  se::DeviceMemoryBase dst_mem = dst.device_memory();
+  se::DeviceMemoryBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
@@ -944,7 +923,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                            .Arg<ffi::AnyBuffer>()  // src
                            .Arg<ffi::AnyBuffer>()  // dst
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
                          kMemcpy);
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
@@ -967,12 +946,6 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
-  // TF_ASSERT_OK_AND_ASSIGN(
-  //     HloSchedule schedule,
-  //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
-  //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-  //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
@@ -990,20 +963,20 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            DynamicSliceFusionRewriter(PLATFORM), expected);
+  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
+                            expected);
 }
 
 void Callback_Void(se::gpu::GpuStreamHandle stream, void** buffers,
                    const char* /*opaque*/, size_t /*opaque_len*/) {}
 
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Void, PLATFORM);
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Void, "gpu");
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
   XlaBuilder b(TestName());
@@ -1043,14 +1016,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            DynamicSliceFusionRewriter(PLATFORM), expected);
+  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
@@ -1104,14 +1077,14 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            DynamicSliceFusionRewriter(PLATFORM), expected);
+  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
@@ -1184,7 +1157,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK-DAG:   [[GTE6:%[^ ]+]] = f32[1024]{0} get-tuple-element([[FUSION]]), index=2
     ; CHECK-DAG:   [[GTE7:%[^ ]+]] = (f32[128]{0}, f32[256]{0}) get-tuple-element([[FUSION]]), index=1
@@ -1194,8 +1167,8 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            DynamicSliceFusionRewriter(PLATFORM), expected);
+  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
@@ -1222,8 +1195,8 @@ TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
   // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            DynamicSliceFusionRewriter(PLATFORM), std::nullopt);
+  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
+                            std::nullopt);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
@@ -1281,14 +1254,13 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
@@ -1351,14 +1323,13 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
@@ -1421,15 +1392,14 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
@@ -1488,15 +1458,14 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
@@ -1553,14 +1522,13 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
@@ -1625,15 +1593,14 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT {{.*}} = f16[4,8,8]{2,1,0} log([[FUSION]])
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
@@ -1705,7 +1672,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       [[DUS_MAIN:%[^ ]+]] = f16[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:       [[WORKSPACE_MAIN:%[^ ]+]] = s8[256]{0} get-tuple-element([[FUSION]]), index=1
@@ -1715,8 +1682,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
@@ -1776,15 +1742,14 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
-                            expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
 }  // namespace xla::gpu

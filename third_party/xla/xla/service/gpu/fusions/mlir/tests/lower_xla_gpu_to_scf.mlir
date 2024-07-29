@@ -80,6 +80,23 @@ module {
 // -----
 
 module {
+  func.func @reducer(%a: i8, %b: i8) -> i8 {
+    return %a : i8
+  }
+
+  func.func @shuffler_i8(%a: i8) -> i8 {
+    %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : i8
+    return %ret : i8
+  }
+}
+
+// CHECK: @shuffler_i8(
+// CHECK-NOT: vector
+// CHECK-COUNT-1: gpu.shuffle down {{.*}}, %[[C1]]
+
+// -----
+
+module {
   func.func @predicated_insert(
       %v: i32, %tensor: tensor<2xi32>, %index: index,
       %cond: i1) -> tensor<2xi32> {

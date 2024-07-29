@@ -167,6 +167,12 @@ class TestCoordinationClient : public CoordinationClient {
                               StatusCallback done) override {
     done(absl::UnimplementedError("ReportErrorToTaskAsync"));
   }
+  void PollForErrorAsync(CallOptions* call_opts,
+                         const PollForErrorRequest* request,
+                         PollForErrorResponse* response,
+                         StatusCallback done) override {
+    done(absl::UnimplementedError("PollForErrorAsync"));
+  }
 };
 
 class CPluginCoordinationServiceAgentTest : public ::testing::Test {

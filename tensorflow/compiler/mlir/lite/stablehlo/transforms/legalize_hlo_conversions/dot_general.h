@@ -18,12 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_DOT_GENERAL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_DOT_GENERAL_H_
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -41,7 +38,14 @@ namespace odml {
 // Concat ) are inserted for shape inference purposes.
 // 4) All the DotOp are converted to DotGeneral during the optimization pass
 // (ConvertDotOp).
-Value ConvertDotGeneralOp(PatternRewriter& rewriter, Operation* old_op);
+class LowerDotGeneralOp : public OpConversionPattern<mhlo::DotGeneralOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DotGeneralOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
 }  // namespace odml
 }  // namespace mlir
 

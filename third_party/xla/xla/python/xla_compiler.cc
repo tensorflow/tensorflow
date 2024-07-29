@@ -34,15 +34,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/ndarray.h"
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/ndarray.h"
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/pair.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/stl/variant.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/array.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
@@ -354,13 +354,14 @@ absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
         return reinterpret_cast<XLA_FFI_Handler*>(capsule.data());
       };
 
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * prepare, handler("prepare"));
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * initialize, handler("initialize"));
-      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * execute, handler("execute"));
+      XLA_FFI_Handler_Bundle bundle;
+      TF_ASSIGN_OR_RETURN(bundle.instantiate, handler("instantiate"));
+      TF_ASSIGN_OR_RETURN(bundle.prepare, handler("prepare"));
+      TF_ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
+      TF_ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
 
       return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
-          xla::ffi::GetXlaFfiApi(), fn_name, platform,
-          XLA_FFI_Handler_Bundle{prepare, initialize, execute}, traits));
+          xla::ffi::GetXlaFfiApi(), fn_name, platform, bundle, traits));
     }
 
     return absl::InvalidArgumentError(
@@ -395,18 +396,64 @@ void DefRepeatedProperty(nb::class_<T>& cls, const char* name,
       });
 }
 
+template <typename T, typename Container>
+void DefRepeatedEnumProperty(nb::class_<T>& cls, const char* name,
+                             Container* (T::*getter)()) {
+  cls.def_prop_rw(
+      name,
+      [getter](T& obj) {
+        Container* elems = (obj.*getter)();
+        std::vector<typename Container::value_type> result;
+        result.reserve(elems->size());
+        std::copy(elems->begin(), elems->end(), std::back_inserter(result));
+        return result;
+      },
+      [getter](T& obj, nb::sequence new_elems) {
+        Container* elems = (obj.*getter)();
+        elems->Clear();
+        for (nb::handle e : new_elems) {
+          elems->Add(nb::cast<int>(e.attr("value")));
+        }
+      });
+}
+
 }  // namespace
 
 void BuildXlaCompilerSubmodule(nb::module_& m) {
   // Shapes
   nb::class_<Layout> layout_class(m, "Layout");
   layout_class.def(nb::init<absl::Span<const int64_t>>())
+      .def("__init__",
+           [](Layout* self, nb::sequence minor_to_major, nb::sequence tiling,
+              int64_t element_size_in_bits) {
+             std::vector<Tile> xla_tiles;
+             xla_tiles.reserve(nb::len(tiling.ptr()));
+             for (auto tile : tiling) {
+               xla_tiles.push_back(Tile(
+                   SequenceToVector<int64_t>(nb::cast<nb::sequence>(tile))));
+             }
+             std::vector<int64_t> xla_minor_to_major =
+                 SequenceToVector<int64_t>(minor_to_major);
+             new (self)
+                 Layout(xla_minor_to_major, xla_tiles, element_size_in_bits);
+           })
       .def("minor_to_major",
            [](Layout layout) { return SpanToNbTuple(layout.minor_to_major()); })
+      .def("element_size_in_bits", &Layout::element_size_in_bits)
+      .def("tiling",
+           [](Layout layout) {
+             std::vector<nb::tuple> result;
+             result.reserve(layout.tiles().size());
+             for (auto& t : layout.tiles()) {
+               result.push_back(SpanToNbTuple(t.dimensions()));
+             }
+             return result;
+           })
       .def("__eq__", [](const Layout& layout,
                         const Layout& other) { return layout == other; })
       .def("__ne__", [](const Layout& layout,
                         const Layout& other) { return layout != other; })
+      .def("__str__", &Layout::ToString)
       .def("__hash__",
            [](const Layout& layout) { return absl::HashOf(layout); })
       .def("to_string", &Layout::ToString)
@@ -1000,8 +1047,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
           targets[nb::str(name.data(), name.size())] = nb::capsule(target);
         }
 
-        for (const auto& [name, registration] :
-             ffi::StaticRegisteredHandlers(platform)) {
+        auto ffi_handlers = ffi::StaticRegisteredHandlers(platform);
+        if (!ffi_handlers.ok()) return targets;
+
+        for (const auto& [name, registration] : *ffi_handlers) {
           nb::dict bundle;
           auto export_handler = [&](std::string_view name, XLA_FFI_Handler* h) {
             if (h != nullptr) {
@@ -1150,7 +1199,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_gpu_dump_autotune_logs_to,
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_gpu_dump_autotune_logs_to(value);
-                   });
+                   })
+      // TODO(b/352486192): Move this to `ExecutableBuildOptions`.
+      .def_prop_rw("xla_use_shardy", &DebugOptions::xla_use_shardy,
+                   &DebugOptions::set_xla_use_shardy);
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(nb::init<>())
@@ -1226,7 +1278,8 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
             options.set_allow_spmd_sharding_propagation_to_output(v);
           });
 
-  nb::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
+  nb::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type",
+                                               nb::is_arithmetic());
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
       .value("MAXIMAL", OpSharding::MAXIMAL)
       .value("MANUAL", OpSharding::MANUAL)
@@ -1294,8 +1347,8 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                       &xla::OpSharding::mutable_iota_transpose_perm);
   DefRepeatedProperty(op_sharding, "tuple_shardings",
                       &xla::OpSharding::mutable_tuple_shardings);
-  DefRepeatedProperty(op_sharding, "last_tile_dims",
-                      &xla::OpSharding::mutable_last_tile_dims);
+  DefRepeatedEnumProperty(op_sharding, "last_tile_dims",
+                          &xla::OpSharding::mutable_last_tile_dims);
 
   nb::class_<HloSharding> hlo_sharding(m, "HloSharding");
   hlo_sharding

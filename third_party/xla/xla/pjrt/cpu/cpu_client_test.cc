@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
+#include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -30,6 +33,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "xla/client/xla_computation.h"
 #include "xla/ffi/ffi.h"
@@ -95,7 +99,7 @@ TEST(TfrtCpuClientTest, MemorySpace) {
 }
 
 TEST(TfrtCpuClientTest, DonationWithExecutionError) {
-  constexpr char kProgram[] =
+  static constexpr char kProgram[] =
       R"(
 HloModule DonationWithExecutionError,
           input_output_alias={ {}: (0, {}, must-alias) }
@@ -130,17 +134,17 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
   auto result = pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
                                          /*options=*/{});
   ASSERT_FALSE(result.ok());
-  EXPECT_THAT(result.status().message(), ::testing::HasSubstr("test error."));
+  EXPECT_THAT(result.status().message(), HasSubstr("test error."));
 
   result = pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
                                     /*options=*/{});
   ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().message(),
-              ::testing::HasSubstr("buffer has been deleted or donated."));
+              HasSubstr("buffer has been deleted or donated."));
 }
 
 TEST(TfrtCpuClientTest, HloSnapshot) {
-  constexpr char kProgram[] = R"(
+  static constexpr char kProgram[] = R"(
     HloModule add
     ENTRY add {
       x = f32[3,2] parameter(0)
@@ -366,8 +370,8 @@ struct MemsetValue {
 static absl::Status MemsetFromValue(
     ffi::Result<ffi::BufferR1<PrimitiveType::F32>> result,
     MemsetValue* memset_value) {
-  for (size_t i = 0; i < result->dimensions.at(0); ++i) {
-    result->data.base()[i] = memset_value->value;
+  for (size_t i = 0; i < result->element_count(); ++i) {
+    result->typed_data()[i] = memset_value->value;
   }
   return absl::OkStatus();
 }

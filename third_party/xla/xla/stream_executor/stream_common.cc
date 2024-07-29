@@ -17,28 +17,20 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
-#include <optional>
-#include <sstream>
-#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/stacktrace.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -52,6 +44,13 @@ absl::Status StreamCommon::Launch(const ThreadDim &thread_dims,
                                   const BlockDim &block_dims, const Kernel &k,
                                   const KernelArgs &args) {
   return parent_->Launch(this, thread_dims, block_dims, k, args);
+}
+
+absl::Status StreamCommon::Launch(const ThreadDim &thread_dims,
+                                  const BlockDim &block_dims,
+                                  const ClusterDim &cluster_dims,
+                                  const Kernel &k, const KernelArgs &args) {
+  return parent_->Launch(this, thread_dims, block_dims, cluster_dims, k, args);
 }
 
 StreamCommon::PlatformSpecificHandle StreamCommon::platform_specific_handle()
@@ -100,6 +99,7 @@ absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
   // No streams are reusable; create a new stream.
   TF_ASSIGN_OR_RETURN(auto stream, parent_->CreateStream());
   Stream *sub_stream = stream.get();
+  sub_stream->set_name(absl::StrFormat("Sub-stream of %s", name()));
   sub_streams_.emplace_back(std::move(stream), false);
   VLOG(1) << "stream=" << this << " created new sub_stream=" << sub_stream;
 
@@ -141,22 +141,6 @@ void StreamCommon::ReturnSubStream(Stream *sub_stream) {
 
   LOG(FATAL) << "stream=" << this << " did not create the returned sub-stream "
              << sub_stream;
-}
-
-absl::Status StreamCommon::DoHostCallback(
-    absl::AnyInvocable<void() &&> callback) {
-  return DoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
-    std::move(cb)();
-    return absl::OkStatus();
-  });
-}
-
-absl::Status StreamCommon::DoHostCallbackWithStatus(
-    absl::AnyInvocable<absl::Status() &&> callback) {
-  if (parent_->HostCallback(this, std::move(callback))) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to host callback");
 }
 
 void StreamCommon::CheckError(bool operation_retcode) {

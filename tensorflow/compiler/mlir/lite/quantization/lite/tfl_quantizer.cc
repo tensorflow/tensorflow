@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iostream>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/lite/c/c_api_types.h"
 
 using llvm::cl::opt;
 
@@ -35,7 +35,7 @@ static opt<std::string> inputFileName(llvm::cl::Positional,
 namespace mlir {
 namespace {
 
-TfLiteStatus QuantizeAnnotatedModel(llvm::StringRef buffer,
+absl::Status QuantizeAnnotatedModel(llvm::StringRef buffer,
                                     std::string& output_buffer) {
   return mlir::lite::QuantizeModel(
       buffer, tflite::TensorType_INT8, tflite::TensorType_INT8,
@@ -59,7 +59,8 @@ int main(int argc, char** argv) {
   std::string output_buffer;
   if (auto status = mlir::QuantizeAnnotatedModel(buffer->getBuffer().str(),
                                                  output_buffer);
-      status != kTfLiteOk) {
+      !status.ok()) {
+    llvm::errs() << status.message() << "\n";
     return 1;
   }
 

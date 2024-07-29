@@ -1,4 +1,4 @@
-// RUN: triton-opt %s -split-input-file --convert-nv-gpu-to-llvm | FileCheck %s
+// RUN: xla-opt %s --sparse-wgmma-to-llvm | FileCheck %s
 
 module attributes {"triton_gpu.num-warps" = 4 : i32} {
   tt.func @wgmma_sp(%descA: i64, %metaA: i32, %descB: i64, %acc: !llvm.struct<(f32, f32, f32, f32, f32, f32, f32, f32)>) {

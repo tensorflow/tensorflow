@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_FRAMEWORK_CONVOLUTION_EIGEN_CONVOLUTION_HELPERS_H_
 #define XLA_TSL_FRAMEWORK_CONVOLUTION_EIGEN_CONVOLUTION_HELPERS_H_
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace Eigen {
 namespace internal {

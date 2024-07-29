@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {

@@ -80,9 +80,6 @@ int RandomSeed();
 // NOTE: This function is not thread-safe.
 int PickUnusedPortOrDie();
 
-// Constant which is false internally and true in open source.
-inline constexpr bool kIsOpenSource = TSL_IS_IN_OSS;
-
 }  // namespace testing
 }  // namespace tsl
 

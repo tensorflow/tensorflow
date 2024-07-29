@@ -15,20 +15,33 @@ limitations under the License.
 
 #include "xla/service/float_normalization.h"
 
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/float_support.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/tuple_simplifier.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -184,6 +197,18 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
   if (CountSubshapesWithMatchingType(original_shape, from) == 0) {
     return absl::OkStatus();
   }
+
+  bool is_root = computation->root_instruction() == hlo;
+
+  // If we are rewriting the root instruction of the entry computation, we need
+  // to save and restore original input output alias config.
+  std::optional<HloInputOutputAliasConfig> alias_config;
+  HloModule* module = computation->parent();
+  if (is_root && module->has_entry_computation() &&
+      module->entry_computation() == computation) {
+    alias_config = module->input_output_alias_config();
+  }
+
   ShapeUtil::ForEachMutableSubshape(
       hlo->mutable_shape(), [&](Shape* subshape, const xla::ShapeIndex& index) {
         if (subshape->element_type() == from) {
@@ -191,7 +216,6 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
         }
       });
   float_normalization_->UpdateLayout(hlo->mutable_shape());
-  bool is_root = computation->root_instruction() == hlo;
   std::vector<HloInstruction*> materialized_users = hlo->users();
   TF_ASSIGN_OR_RETURN(
       auto new_hlo,
@@ -241,6 +265,9 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
   }
   if (is_root) {
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
+    if (alias_config.has_value()) {
+      module->set_input_output_alias_config(*alias_config);
+    }
   }
   changed_ = true;
   return absl::OkStatus();

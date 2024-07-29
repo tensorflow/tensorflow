@@ -24,8 +24,6 @@ limitations under the License.
 
 namespace mlir::odml {
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOutlineCompositesPass();
-
 std::unique_ptr<OperationPass<ModuleOp>> CreateSHLOSimplifyPass();
 
 #define GEN_PASS_REGISTRATION

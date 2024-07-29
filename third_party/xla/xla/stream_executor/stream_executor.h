@@ -51,6 +51,22 @@ limitations under the License.
 
 namespace stream_executor {
 
+// Identifies the memory space where an allocation resides.
+enum class MemoryType { kDevice = 0, kUnified, kCollective, kHost = 5 };
+
+inline std::string MemoryTypeString(MemoryType memory_type) {
+  switch (memory_type) {
+    case MemoryType::kDevice:
+      return "device";
+    case MemoryType::kUnified:
+      return "unified";
+    case MemoryType::kCollective:
+      return "collective";
+    case MemoryType::kHost:
+      return "host";
+  }
+}
+
 // Interface which defines the method for interacting with an accelerator device
 // (e.g. GPU, TPU).
 class StreamExecutor {
@@ -195,6 +211,11 @@ class StreamExecutor {
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
   virtual void HostMemoryDeallocate(void* mem) = 0;
 
+  // Returns the memory space of the given pointer.
+  virtual absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) {
+    return absl::UnimplementedError("Not implemented");
+  }
+
   // Synchronizes all activity occurring in the StreamExecutor's context.
   virtual bool SynchronizeAllActivity() = 0;
 
@@ -230,10 +251,6 @@ class StreamExecutor {
                               uint8_t pattern, uint64_t size) {
     return absl::InternalError("Not implemented");
   }
-
-  // Enqueues on a stream a user-specified function to be run on the host.
-  virtual bool HostCallback(Stream* stream,
-                            absl::AnyInvocable<absl::Status() &&> callback) = 0;
 
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;

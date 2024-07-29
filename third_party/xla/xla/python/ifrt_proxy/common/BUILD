@@ -67,9 +67,10 @@ tf_proto_library(
     srcs = ["ifrt_service.proto"],
     protodeps = [
         ":types_proto",
-        # copybara:uncomment "//google/protobuf:any",
+        # copybara:uncomment "@com_google_protobuf//:any",
         "//xla:xla_data_proto",
         "//xla/pjrt:execute_options_proto",
+        "//xla/python/ifrt:attribute_map_proto",
         "//xla/python/ifrt:dtype_proto",
         "//xla/python/ifrt:remap_plan_proto",
         "//xla/python/ifrt:serdes_proto",
@@ -138,6 +139,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

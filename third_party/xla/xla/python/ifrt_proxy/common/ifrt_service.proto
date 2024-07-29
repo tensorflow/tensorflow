@@ -18,6 +18,7 @@ package xla.ifrt.proxy;
 
 import "google/protobuf/any.proto";
 import "xla/pjrt/execute_options.proto";
+import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
@@ -55,7 +56,7 @@ message IfrtRequest {
         disassemble_into_single_device_arrays_request = 7;
     DeleteArrayRequest delete_array_request = 9;
     CopyArraysRequest copy_arrays_request = 24;
-    ReshardRequest reshard_request = 10;
+    ReshardRequest reshard_request = 10 [deprecated = true];
     FullyReplicatedShardRequest fully_replicated_shard_request = 20;
     IsArrayDeletedRequest is_array_deleted_request = 11;
     DestructArrayRequest destruct_array_request = 12;
@@ -102,7 +103,7 @@ message IfrtResponse {
         disassemble_into_single_device_arrays_response = 7;
     DeleteArrayResponse delete_array_response = 9;
     CopyArraysResponse copy_arrays_response = 24;
-    ReshardResponse reshard_response = 10;
+    ReshardResponse reshard_response = 10 [deprecated = true];
     FullyReplicatedShardResponse fully_replicated_shard_response = 20;
     IsArrayDeletedResponse is_array_deleted_response = 11;
     DestructArrayResponse destruct_array_response = 12;
@@ -218,7 +219,9 @@ message InitResponse {
     repeated int32 memory_ids = 8;
     string debug_string = 4;
     string to_string = 5;
-    map<string, proto.Variant> attributes = 6;
+    map<string, proto.Variant> deprecated_attributes = 6
+        [deprecated = true];            // Deprecated since Version 4.
+    AttributeMapProto attributes = 10;  // New in Version 4.
   }
 
   repeated Device devices = 6;  // == ifrt::Client::devices()
@@ -365,16 +368,6 @@ message DestructArrayResponse {}
 
 // ================ Compiler-related operations ================
 
-// Modeled after `xla::PjRtLoadedExecutable::LogicalDeviceIds`.
-//
-// TODO(hyeontaek): this XLA-specific type is temporary and will be removed when
-// `addressable_device_logical_ids()` is removed from `LoadedExecutable` or
-// moved to a type-erased proto field.
-message LogicalDeviceIds {
-  int32 replica = 1;
-  int32 partition = 2;
-}
-
 // Compiles `mlir_module` and returns a `LoadedExecutable`.
 message CompileRequest {
   xla.ifrt.Serialized program = 1;
@@ -389,13 +382,14 @@ message CompileResponse {
   // `LoadedExecutableMetadataResponse` for the rest of metadata.
   string name = 2;
   int32 num_devices = 3;
-  repeated LogicalDeviceIds addressable_device_logical_ids = 4;
   repeated int32 addressable_device_ids = 5;
   oneof fingerprint {
     bytes fingerprint_value = 6;
     tensorflow.StatusProto fingerprint_error = 7;
   }
   fixed64 ready_future_handle = 9;
+
+  reserved 4;
 }
 
 // ================ LoadedExecutable-related operations ================

@@ -53,6 +53,19 @@ class FusedMHAThunk : public Thunk {
   FusedMHAThunk(const FusedMHAThunk&) = delete;
   FusedMHAThunk& operator=(const FusedMHAThunk&) = delete;
 
+  BufferAllocation::Slice lhs_bmm1_buffer() const { return lhs_bmm1_buffer_; }
+  BufferAllocation::Slice rhs_bmm1_buffer() const { return rhs_bmm1_buffer_; }
+  BufferAllocation::Slice rhs_bmm2_buffer() const { return rhs_bmm2_buffer_; }
+  BufferAllocation::Slice output_buffer() const { return output_buffer_; }
+  BufferAllocation::Slice scratch_buffer() const { return scratch_buffer_; }
+  BufferAllocation::Slice bias_buffer() const { return bias_buffer_; }
+  BufferAllocation::Slice activation_buffer() const {
+    return activation_buffer_;
+  }
+  BufferAllocation::Slice seqlen_q_buffer() const { return seqlen_q_buffer_; }
+  BufferAllocation::Slice seqlen_k_buffer() const { return seqlen_k_buffer_; }
+
+  GpufMHAConfig config() const { return config_; }
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -101,6 +114,40 @@ class FusedMHABackwardThunk : public Thunk {
 
   FusedMHABackwardThunk(const FusedMHABackwardThunk&) = delete;
   FusedMHABackwardThunk& operator=(const FusedMHABackwardThunk&) = delete;
+
+  BufferAllocation::Slice bmm1_grad_gemm1_rhs_buffer() const {
+    return bmm1_grad_gemm1_rhs_buffer_;
+  }
+  BufferAllocation::Slice bmm1_grad_gemm2_rhs_buffer() const {
+    return bmm1_grad_gemm2_rhs_buffer_;
+  }
+  BufferAllocation::Slice bmm2_grad_gemm1_lhs_buffer() const {
+    return bmm2_grad_gemm1_lhs_buffer_;
+  }
+  BufferAllocation::Slice bmm2_grad_gemm2_rhs_buffer() const {
+    return bmm2_grad_gemm2_rhs_buffer_;
+  }
+  BufferAllocation::Slice d_output_buffer() const { return d_output_buffer_; }
+  BufferAllocation::Slice scratch_buffer() const { return scratch_buffer_; }
+  BufferAllocation::Slice d_bmm1_lhs_buffer() const {
+    return d_bmm1_lhs_buffer_;
+  }
+  BufferAllocation::Slice d_bmm1_rhs_buffer() const {
+    return d_bmm1_rhs_buffer_;
+  }
+  BufferAllocation::Slice d_bmm2_rhs_buffer() const {
+    return d_bmm2_rhs_buffer_;
+  }
+  BufferAllocation::Slice d_s_buffer() const { return d_s_buffer_; }
+  BufferAllocation::Slice d_bias_buffer() const { return d_bias_buffer_; }
+  BufferAllocation::Slice fwd_output_buffer() const {
+    return fwd_output_buffer_;
+  }
+  BufferAllocation::Slice bias_buffer() const { return bias_buffer_; }
+  BufferAllocation::Slice seqlen_q_buffer() const { return seqlen_q_buffer_; }
+  BufferAllocation::Slice seqlen_k_buffer() const { return seqlen_k_buffer_; }
+
+  GpufMHABackwardConfig config() const { return config_; }
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;

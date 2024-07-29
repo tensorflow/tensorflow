@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -64,15 +65,6 @@ TEST(AsyncValueRefTest, MakeAvailableStatusOr) {
   EXPECT_EQ(**value, 42);
 }
 
-TEST(AsyncValueRefTest, ImplicitValueConversion) {
-  auto payload = []() -> AsyncValueRef<WrappedInt32> {
-    return WrappedInt32{42};
-  }();
-
-  EXPECT_TRUE(payload.IsConcrete());
-  EXPECT_EQ(payload->value(), 42);
-}
-
 TEST(AsyncValueRefTest, ImplicitStatusConversion) {
   auto error = []() -> AsyncValueRef<WrappedInt32> {
     return absl::InternalError("Error");
@@ -81,44 +73,6 @@ TEST(AsyncValueRefTest, ImplicitStatusConversion) {
   EXPECT_TRUE(error.IsAvailable());
   EXPECT_TRUE(error.IsError());
   EXPECT_EQ(error.GetError(), absl::InternalError("Error"));
-}
-
-TEST(AsyncValueRefTest, ImplicitStatusConversionWithStatusPayload) {
-  auto status = []() -> absl::StatusOr<absl::Status> {
-    return absl::InternalError("Error");
-  }();
-
-  auto error = []() -> AsyncValueRef<absl::Status> {
-    return absl::InternalError("Error");
-  }();
-
-  // Check that AsyncValueRef<absl::Status> behavior is consistent with
-  // absl::StatusOr<absl::Status> for implicit error conversion.
-
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(*status, absl::InternalError("Error"));
-
-  EXPECT_TRUE(error.IsConcrete());
-  EXPECT_EQ(error.get(), absl::InternalError("Error"));
-}
-
-TEST(AsyncValueRefTest, ImplicitStatusConversionWithStatusOrPayload) {
-  auto status = []() -> absl::StatusOr<absl::StatusOr<int32_t>> {
-    return absl::StatusOr<int32_t>(absl::InternalError("Error"));
-  }();
-
-  auto error = []() -> AsyncValueRef<absl::StatusOr<int32_t>> {
-    return absl::StatusOr<int32_t>(absl::InternalError("Error"));
-  }();
-
-  // Check that AsyncValueRef<absl::StatusOr<T>> behavior is consistent with
-  // absl::StatusOr<absl::StatusOr<T>> for implicit error conversion.
-
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(status->status(), absl::InternalError("Error"));
-
-  EXPECT_TRUE(error.IsConcrete());
-  EXPECT_EQ(error->status(), absl::InternalError("Error"));
 }
 
 TEST(AsyncValueRefTest, ImplicitStatusConversionWithStatusOrPayloadAndStatus) {
@@ -400,7 +354,7 @@ TEST(AsyncValueRefTest, FlatMapAvailable) {
   AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
 
   AsyncValueRef<float> fmapped_to_float = ref.FlatMap([](int32_t value) {
-    return MakeAvailableAsyncValueRef<float>(1.0f * value);
+    return MakeAvailableAsyncValueRef<float>(static_cast<float>(value));
   });
 
   EXPECT_TRUE(fmapped_to_float.IsAvailable());
@@ -411,7 +365,7 @@ TEST(AsyncValueRefTest, FlatMapUnavailable) {
   AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
 
   AsyncValueRef<float> fmapped_to_float = ref.FlatMap([](int32_t value) {
-    return MakeAvailableAsyncValueRef<float>(1.0f * value);
+    return MakeAvailableAsyncValueRef<float>(static_cast<float>(value));
   });
 
   EXPECT_FALSE(fmapped_to_float.IsAvailable());
@@ -419,6 +373,32 @@ TEST(AsyncValueRefTest, FlatMapUnavailable) {
 
   EXPECT_TRUE(fmapped_to_float.IsAvailable());
   EXPECT_EQ(fmapped_to_float.get(), 42.0f);
+}
+
+TEST(AsyncValueRefTest, FlatMapAvailableError) {
+  AsyncValueRef<int32_t> ref =
+      MakeErrorAsyncValueRef(absl::InternalError("error"));
+
+  AsyncValueRef<float> fmapped_to_float = ref.FlatMap([](int32_t value) {
+    return MakeAvailableAsyncValueRef<float>(static_cast<float>(value));
+  });
+
+  EXPECT_TRUE(fmapped_to_float.IsError());
+  EXPECT_EQ(fmapped_to_float.GetError(), absl::InternalError("error"));
+}
+
+TEST(AsyncValueRefTest, FlatMapUnavailableError) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+
+  AsyncValueRef<float> fmapped_to_float = ref.FlatMap([](int32_t value) {
+    return MakeAvailableAsyncValueRef<float>(static_cast<float>(value));
+  });
+
+  EXPECT_FALSE(fmapped_to_float.IsAvailable());
+  ref.SetError(absl::InternalError("error"));
+
+  EXPECT_TRUE(fmapped_to_float.IsError());
+  EXPECT_EQ(fmapped_to_float.GetError(), absl::InternalError("error"));
 }
 
 struct DeferredExecutor : public AsyncValue::Executor {
@@ -526,7 +506,7 @@ TEST(AsyncValueRefTest, FlatMapAvailableOnExecutor) {
   DeferredExecutor executor;
   AsyncValueRef<float> fmapped_to_float =
       ref.FlatMap(executor, [](int32_t value) {
-        return MakeAvailableAsyncValueRef<float>(1.0f * value);
+        return MakeAvailableAsyncValueRef<float>(static_cast<float>(value));
       });
 
   ref.SetStateConcrete();
@@ -774,6 +754,37 @@ TEST(AsyncValueRefTest, Cast) {
   typed_indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Cast<A>(c_typed_indirect));
   EXPECT_TRUE(Cast<C>(c_typed_indirect));
+}
+
+TEST(AsyncValueRefTest, RecursiveOwnership) {
+  // This is a test for recursive ownership of AsyncValue:
+  //   (1) AsyncValueRef owned by a State object
+  //   (2) State object owned by AsyncValue::AndThen callback.
+  //
+  // We check that setting async value state concrete and then running all
+  // AndThen callbacks doesn't cause an asan error.
+  struct State {
+    explicit State(AsyncValueRef<int32_t> value) : value(std::move(value)) {}
+    AsyncValueRef<int32_t> value;
+  };
+
+  AsyncValueRef<int32_t> value = MakeConstructedAsyncValueRef<int32_t>(42);
+  auto state = std::make_unique<State>(std::move(value));
+
+  State* state_ptr = state.get();
+  int64_t counter = 0;
+
+  // Enqueue callbacks.
+  state_ptr->value.AndThen([&, value = 1] { counter += value; });
+  state_ptr->value.AndThen([&, value = 2] { counter += value; });
+  state_ptr->value.AndThen([&, value = 3] { counter += value; });
+
+  // Move state ownership to the callback.
+  state_ptr->value.AndThen([state = std::move(state)] {});
+
+  // Run all callbacks and as a side effect destroy the `state` object.
+  state_ptr->value.SetStateConcrete();
+  EXPECT_EQ(counter, 1 + 2 + 3);
 }
 
 }  // namespace tsl

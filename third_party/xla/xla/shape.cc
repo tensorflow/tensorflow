@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -170,6 +171,20 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   }
 }
 
+void Shape::DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete) {
+  CHECK(IsArray());
+  CHECK(absl::c_is_sorted(sorted_dims_to_delete));
+  dimensions_ = RemoveElements(sorted_dims_to_delete, dimensions_);
+  dynamic_dimensions_ =
+      RemoveElements(sorted_dims_to_delete, dynamic_dimensions_);
+  if (LayoutUtil::HasLayout(*this)) {
+    for (auto it = sorted_dims_to_delete.rbegin();
+         it != sorted_dims_to_delete.rend(); ++it) {
+      layout_->DeleteDimension(*it);  // NOLINT: optional-access
+    }
+  }
+}
+
 const Shape& Shape::tuple_shapes(int index) const {
   return tuple_shapes_[index];
 }
@@ -246,6 +261,9 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
         }
         if (ignore_tail_padding_alignment_in_elements_in_layout_) {
           equal.IgnoreTailPaddingAlignmentInElements();
+        }
+        if (ignore_split_config_in_layout_) {
+          equal.IgnoreSplitConfigs();
         }
         if (!equal(lhs.layout(), rhs.layout())) {
           VLOG(3) << "CompareShapes: lhs layout != rhs layout";

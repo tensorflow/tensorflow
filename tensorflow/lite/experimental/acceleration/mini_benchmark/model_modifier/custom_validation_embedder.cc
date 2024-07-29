@@ -20,9 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/tools/verifier.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"

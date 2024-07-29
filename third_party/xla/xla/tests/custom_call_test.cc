@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <ostream>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -394,13 +395,11 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
 
   auto constant_1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
-  auto constant_2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
   auto res_1 = builder.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {}), {constant_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   auto res_2 = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {}), {constant_2}, "CustomCallFail",
+      ShapeUtil::MakeShape(F32, {}), {res_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, res_1, res_2));
@@ -421,9 +420,8 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
     }
     ENTRY test {
       c0 = f32[] constant(1.0)
-      c1 = f32[] constant(2.0)
       call0 = f32[] call(f32[] %c0), to_apply=sub
-      call1 = f32[] call(f32[] %c1), to_apply=sub
+      call1 = f32[] call(f32[] %call0), to_apply=sub
       ROOT sum = f32[] add(%call0, %call1)
     }
   )";
@@ -517,8 +515,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail", "Host",
                          kAlwaysFail);
 
 static absl::Status FfiR0F32Add2(R0F32Buffer in, R0F32ResultBuffer out) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
   *out_data = *in_data + 2.0f;
   return absl::OkStatus();
 }
@@ -537,8 +535,8 @@ static absl::Status R0FAdd2(AnyBuffer in, ResultBufferBase out) {
   using NativeType =
       typename ::xla::primitive_util::PrimitiveTypeToNative<dtype>::type;
 
-  auto in_data = reinterpret_cast<const NativeType*>(in.data.opaque());
-  auto out_data = reinterpret_cast<NativeType*>(out->data.opaque());
+  auto in_data = reinterpret_cast<const NativeType*>(in.untyped_data());
+  auto out_data = reinterpret_cast<NativeType*>(out->untyped_data());
   *out_data = *in_data + 2.0f;
 
   return absl::OkStatus();
@@ -546,11 +544,11 @@ static absl::Status R0FAdd2(AnyBuffer in, ResultBufferBase out) {
 
 // This represents a kernel that is valid only for F32 and F64 types
 static absl::Status FfiR0FAdd2BufferBase(AnyBuffer in, ResultBufferBase out) {
-  if (in.dtype != out->dtype) {
+  if (in.element_type() != out->element_type()) {
     return absl::InternalError("Input and output dtypes mismatch");
   }
 
-  switch (in.dtype) {
+  switch (in.element_type()) {
     case PrimitiveType::F32:
       return R0FAdd2<PrimitiveType::F32>(in, out);
     case PrimitiveType::F64:
@@ -572,8 +570,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
 
 static absl::Status FfiR0F32AddN(R0F32Buffer in, R0F32ResultBuffer out,
                                  float n) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
   *out_data = *in_data + n;
   return absl::OkStatus();
 }
@@ -589,8 +587,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddN",
 
 static absl::Status FfiR0F32AddNPointer(R0F32Buffer in, R0F32ResultBuffer out,
                                         float* n) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
   *out_data = *in_data + *n;
   return absl::OkStatus();
 }
@@ -605,16 +603,9 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddNPointer",
                          "Host", kFfiR0F32AddNPointer);
 
 static absl::Status FfiF32ReduceSum(F32Buffer in, R0F32ResultBuffer out) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
-
-  // Calculate the total size of the vector
-  // Manual calculation is used here instead of absl::c_accumulate to trigger
-  // sanitizer check for dimensions
-  auto size = 1;
-  for (auto dim : in.dimensions) {
-    size *= dim;
-  }
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
+  auto size = in.element_count();
 
   // Calculate the sum of the vector
   *out_data = absl::c_accumulate(absl::MakeSpan(in_data, size), 0.0f);
@@ -634,15 +625,15 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32ReduceSum",
 static absl::Status FfiF32Accumulate(F32Buffer in, InitMethod init,
                                      R0F32ResultBuffer out,
                                      BinaryOp binary_op) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
 
   // Init method is an artificial enum to demonstrate handling enums with
   // different underlying types. Normally it would be just a float scalar.
   float init_value = (init == InitMethod::kZero) ? 0.0f : 1.0f;
 
   // Calculate the total size of the vector
-  auto size = absl::c_accumulate(in.dimensions, 1, std::multiplies<int>());
+  auto size = in.element_count();
 
   // Calculate the sum or the product of the vector, based on binary_op value.
   switch (binary_op) {
@@ -669,14 +660,12 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Accumulate",
                          "Host", kFfiF32Accumulate);
 
 static absl::Status FfiF32Add1ToValues(F32Buffer in, F32ResultBuffer out) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
 
   // Calculate and verify the total size of the vector
-  const auto in_size =
-      absl::c_accumulate(in.dimensions, 1, std::multiplies<int>());
-  const auto out_size =
-      absl::c_accumulate(out->dimensions, 1, std::multiplies<int>());
+  const auto in_size = in.element_count();
+  const auto out_size = out->element_count();
   if (in_size != out_size) {
     return absl::InternalError("Input and output sizes mismatch");
   }
@@ -700,10 +689,10 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Add1ToValues",
 static absl::Status FfiF32TupleSwap(R0F32Buffer in0, R0F32Buffer in1,
                                     R0F32ResultBuffer out0,
                                     R0F32ResultBuffer out1) {
-  auto in_data0 = in0.data.base();
-  auto in_data1 = in1.data.base();
-  auto out_data0 = out0->data.base();
-  auto out_data1 = out1->data.base();
+  auto in_data0 = in0.typed_data();
+  auto in_data1 = in1.typed_data();
+  auto out_data0 = out0->typed_data();
+  auto out_data1 = out1->typed_data();
   *out_data0 = *in_data1;
   *out_data1 = *in_data0;
   return absl::OkStatus();
@@ -726,14 +715,14 @@ static absl::Status FfiTupleRotate(R0F32Buffer in0, R0F32Buffer in1,
                                    R0F32ResultBuffer out1,
                                    R0F32ResultBuffer out2,
                                    R0F32ResultBuffer out3) {
-  auto in_data0 = in0.data.base();
-  auto in_data1 = in1.data.base();
-  auto in_data2 = in2.data.base();
-  auto in_data3 = in3.data.base();
-  auto out_data0 = out0->data.base();
-  auto out_data1 = out1->data.base();
-  auto out_data2 = out2->data.base();
-  auto out_data3 = out3->data.base();
+  auto in_data0 = in0.typed_data();
+  auto in_data1 = in1.typed_data();
+  auto in_data2 = in2.typed_data();
+  auto in_data3 = in3.typed_data();
+  auto out_data0 = out0->typed_data();
+  auto out_data1 = out1->typed_data();
+  auto out_data2 = out2->typed_data();
+  auto out_data3 = out3->typed_data();
   *out_data0 = *in_data1;
   *out_data1 = *in_data2;
   *out_data2 = *in_data3;
@@ -759,17 +748,17 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiTupleRotate",
 static absl::Status VerifyR2Dimensions(ffi::AnyBuffer in, int32_t rows,
                                        int32_t cols) {
   std::string message;
-  if (in.dimensions.size() != 2) {
+  if (in.dimensions().size() != 2) {
     message += absl::StrFormat("dimensions.size() != 2 because %d != 2\n",
-                               in.dimensions.size());
+                               in.dimensions().size());
   }
-  if (in.dimensions.front() != rows) {
+  if (in.dimensions().front() != rows) {
     message += absl::StrFormat("dimensions.front() != rows because %d != %d\n",
-                               in.dimensions.front(), rows);
+                               in.dimensions().front(), rows);
   }
-  if (in.dimensions.back() != cols) {
+  if (in.dimensions().back() != cols) {
     message += absl::StrFormat("dimensions.back() != cols because %d != %d\n",
-                               in.dimensions.back(), cols);
+                               in.dimensions().back(), cols);
   }
   if (!message.empty()) {
     return absl::Status(absl::StatusCode::kFailedPrecondition,
@@ -791,10 +780,10 @@ static absl::Status SwapTupleAnyBuffersToS16U32(ffi::AnyBuffer in_1,
                                                 ffi::AnyBuffer in_2,
                                                 ResultBufferR0<S16> out_1,
                                                 ResultBufferR0<U32> out_2) {
-  auto tuple_elem_1 = reinterpret_cast<uint32_t*>(in_1.data.opaque());
-  auto tuple_elem_2 = reinterpret_cast<int16_t*>(in_2.data.opaque());
-  out_1->data.base()[0] = tuple_elem_2[0];
-  out_2->data.base()[0] = tuple_elem_1[0];
+  auto tuple_elem_1 = reinterpret_cast<uint32_t*>(in_1.untyped_data());
+  auto tuple_elem_2 = reinterpret_cast<int16_t*>(in_2.untyped_data());
+  out_1->typed_data()[0] = tuple_elem_2[0];
+  out_2->typed_data()[0] = tuple_elem_1[0];
   return absl::OkStatus();
 }
 
@@ -814,10 +803,10 @@ static absl::Status SwapTupleU32S16ToS16U32(ffi::BufferR0<U32> in_1,
                                             ffi::BufferR0<S16> in_2,
                                             ResultBufferR0<S16> out_1,
                                             ResultBufferR0<U32> out_2) {
-  auto tuple_elem_1 = in_1.data.base();
-  auto tuple_elem_2 = in_2.data.base();
-  out_1->data.base()[0] = tuple_elem_2[0];
-  out_2->data.base()[0] = tuple_elem_1[0];
+  auto tuple_elem_1 = in_1.typed_data();
+  auto tuple_elem_2 = in_2.typed_data();
+  out_1->typed_data()[0] = tuple_elem_2[0];
+  out_2->typed_data()[0] = tuple_elem_1[0];
   return absl::OkStatus();
 }
 
@@ -838,25 +827,25 @@ static absl::Status HandleTupleDifferentRanks(ffi::BufferR0<U32> x_1,
                                               ffi::BufferR3<F32> y_2,
                                               ResultBuffer<S32, 1> x_out,
                                               ResultBuffer<F32, 3> y_out) {
-  if (x_2.data.ElementCount() != x_out->data.ElementCount()) {
+  if (x_2.element_count() != x_out->element_count()) {
     return absl::FailedPreconditionError(
         "`x_2` parameter should have the same number of elements as `x_out`");
   }
-  if (y_1.dimensions != y_out->dimensions.subspan(1) ||
-      y_2.dimensions.front() + 1 != y_out->dimensions.front()) {
+  if (y_1.dimensions() != y_out->dimensions().subspan(1) ||
+      y_2.dimensions().front() + 1 != y_out->dimensions().front()) {
     return absl::FailedPreconditionError(
         "Cannot concatenate `y_1` and `y_2` due to dimensions mismatch. "
         "`y_2` dimensions should represent a batched `y_1`");
   }
   // Multiply R1 vector by R0 scalar
-  const auto factor = x_1.data.base()[0];
-  for (int i = 0; i < x_2.data.ElementCount(); ++i) {
-    x_out->data.base()[i] = factor * x_2.data.base()[i];
+  const auto factor = x_1.typed_data()[0];
+  for (int i = 0; i < x_2.element_count(); ++i) {
+    x_out->typed_data()[i] = factor * x_2.typed_data()[i];
   }
   // Append R2 buffer to R3 buffer
   auto last_pos =
-      std::copy_n(y_2.data.base(), y_2.data.ElementCount(), y_out->data.base());
-  std::copy_n(y_1.data.base(), y_1.data.ElementCount(), last_pos);
+      std::copy_n(y_2.typed_data(), y_2.element_count(), y_out->typed_data());
+  std::copy_n(y_1.typed_data(), y_1.element_count(), last_pos);
   return absl::OkStatus();
 }
 
@@ -881,19 +870,19 @@ static absl::Status Concat3Vectors(ffi::BufferR2<F32> vec_1,
                                    ffi::BufferR2<F32> vec_2,
                                    ffi::BufferR2<F32> vec_3,
                                    ResultBuffer<F32, 2> out) {
-  if (out->dimensions.back() != 3) {
+  if (out->dimensions().back() != 3) {
     return absl::FailedPreconditionError("output dimension 0 expected to be 3");
   }
-  float* out_data = out->data.base();
+  float* out_data = out->typed_data();
 
   ffi::BufferR2<F32>* vecs[3] = {&vec_1, &vec_2, &vec_3};
-  for (int elem_idx = 0; elem_idx < out->dimensions.front(); ++elem_idx) {
+  for (int elem_idx = 0; elem_idx < out->dimensions().front(); ++elem_idx) {
     for (int vec_idx = 0; vec_idx < 3; ++vec_idx) {
       // {{vec_0[0], vec_1[0], vec_2[0]},
       //  {vec_0[1], vec_1[1], vec_2[1]},
       //  ...}
-      const auto out_idx = elem_idx * out->dimensions.back() + vec_idx;
-      out_data[out_idx] = vecs[vec_idx]->data.base()[elem_idx];
+      const auto out_idx = elem_idx * out->dimensions().back() + vec_idx;
+      out_data[out_idx] = vecs[vec_idx]->typed_data()[elem_idx];
     }
   }
   return absl::OkStatus();
@@ -936,11 +925,6 @@ XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  // NOTE: In the current CPU implementation, the 'kInternal' status code is
-  // returned when the target is not found. This behavior differs from that of
-  // the GPU, which returns 'kUnimplemented' in such case. When the CPU adopts
-  // the thunks runtime, the status code will be unified across both backends.
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), HasSubstr("No registered implementation"));
 }
 
@@ -960,7 +944,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiReportsFirstFailure) {
+XLA_TEST_F(FfiCustomCallTest, FfiReportsOneOfFailures) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -977,12 +961,15 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsFirstFailure) {
 
   module->AddEntryComputation(builder.Build());
 
+  // Execution order is undefined because custom calls do not have data
+  // dependency, and we check that the error message contains one of the two
+  // error codes.
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1"));
+  EXPECT_THAT(status.message(), HasSubstr("Failed:"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsFirstFailure) {
+XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
   const char* const kModuleStr = R"(
     HloModule m
     sub_2 {
@@ -1000,9 +987,12 @@ XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsFirstFailure) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
+  // Execution order is undefined because custom calls do not have data
+  // dependency, and we check that the error message contains one of the two
+  // error codes.
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(), HasSubstr("Failed: 2"));
+  EXPECT_THAT(status.message(), HasSubstr("Failed:"));
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {

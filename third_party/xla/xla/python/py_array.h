@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -152,6 +152,10 @@ class PyArray : public nanobind::object {
       bool weak_type, bool committed, bool skip_checks);
 
   static absl::Status RegisterTypes(nanobind::module_& m);
+
+  static PyArray borrow(PyObject* ptr) {
+    return nanobind::borrow<xla::PyArray>(ptr);
+  }
 
   using Storage = PyArray_Storage;
 

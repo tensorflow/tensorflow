@@ -597,7 +597,10 @@ tf_kernel_library(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 
@@ -850,9 +853,10 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -1433,13 +1437,8 @@ tf_cc_test(
         ":text_line_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/data:dataset_utils",
     ],
 )
 
@@ -1468,14 +1467,10 @@ tf_cc_test(
         ":tf_record_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/data:dataset_utils",
     ],
 )
 

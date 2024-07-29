@@ -38,7 +38,8 @@ namespace xla::gpu {
 class CommandBufferThunk : public Thunk {
  public:
   CommandBufferThunk(CommandBufferCmdSequence commands, ThunkInfo thunk_info,
-                     std::unique_ptr<SequentialThunk> thunks = nullptr);
+                     std::unique_ptr<SequentialThunk> thunks = nullptr,
+                     bool enable_command_buffers_during_profiling = false);
 
   const std::unique_ptr<SequentialThunk>& thunks() const { return thunks_; }
 
@@ -127,6 +128,10 @@ class CommandBufferThunk : public Thunk {
   // thunk mechanism. We use it as a fallback mechanism to work around CUPTI
   // bugs that lead to memory corruption when CUPTI traces CUDA graph execution.
   std::unique_ptr<SequentialThunk> thunks_;
+
+  // When true, allows command buffers to be used while profiling active.
+  // TODO(b/355487968): Remove this option when validation complete.
+  bool enable_command_buffers_during_profiling_;
 
   // Command buffer thunk state allocated in heap to allow global (per-process)
   // management of instantiated command buffers.

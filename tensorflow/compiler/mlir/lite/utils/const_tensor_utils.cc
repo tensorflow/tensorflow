@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 
+#include <algorithm>
 #include <cassert>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -33,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -443,6 +446,48 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
   content.assign(reinterpret_cast<const char*>(buffer.data()), buffer.size());
   ret.set_tensor_content(content);
   return ret;
+}
+
+int64_t GetSizeInBits(mlir::ShapedType shaped_type) {
+  return GetSizeInBits(shaped_type.getElementType()) *
+         shaped_type.getNumElements();
+}
+
+int64_t GetSizeInBits(mlir::quant::QuantizedType quant_type) {
+  const int64_t bits = std::max(quant_type.getStorageTypeIntegralWidth(),
+                                static_cast<uint32_t>(CHAR_BIT));
+  assert(IsPowerOfTwo(bits));
+  return bits;
+}
+
+int64_t GetSizeInBits(mlir::Type type) {
+  if (type.isIntOrFloat()) {
+    const int64_t bits =
+        std::max(type.getIntOrFloatBitWidth(), static_cast<uint32_t>(CHAR_BIT));
+    assert(IsPowerOfTwo(bits));
+    return bits;
+  }
+  if (mlir::isa<mlir::ShapedType>(type)) {
+    auto shaped_type = mlir::cast<mlir::ShapedType>(type);
+    if (mlir::isa<mlir::ComplexType>(shaped_type.getElementType())) {
+      auto complex_type =
+          mlir::cast<mlir::ComplexType>(shaped_type.getElementType());
+      return GetSizeInBits(complex_type.getElementType()) * 2;
+    } else if (mlir::isa<mlir::quant::QuantizedType>(
+                   shaped_type.getElementType())) {
+      auto quant_type =
+          mlir::cast<mlir::quant::QuantizedType>(shaped_type.getElementType());
+      return GetSizeInBits(quant_type);
+    } else {
+      return GetSizeInBits(shaped_type);
+    }
+  }
+
+  return 0;
+}
+
+int64_t GetSizeInBytes(mlir::Type type) {
+  return ExactIntegerDivide(GetSizeInBits(type), CHAR_BIT);
 }
 
 }  // namespace TFL

@@ -34,7 +34,6 @@ add_mlir_library(MLIRBufferTransforms
   tile_loops_pass.cc
   vectorize_copy.cc
   unbufferize_pass.cc
-  unroll_loops.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -93,9 +94,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
           std::nullopt) override;
 
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
-
-  bool HostCallback(Stream* stream,
-                    absl::AnyInvocable<absl::Status() &&> callback) override;
 
   bool SynchronizeAllActivity() override;
 

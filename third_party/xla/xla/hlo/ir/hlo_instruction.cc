@@ -679,17 +679,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (opcode == HloOpcode::kAllGather) {
         instruction = CreateAllGather(
             shape, all_operands(), all_gather_dimension,
-            CollectiveDeviceList(std::vector<ReplicaGroup>(
-                proto.replica_groups().begin(), proto.replica_groups().end())),
-            proto.constrain_layout(), channel_id,
-            proto.use_global_device_ids());
+            CollectiveDeviceList::FromProto(proto), proto.constrain_layout(),
+            channel_id, proto.use_global_device_ids());
       } else {
         instruction = CreateAllGatherStart(
             shape, all_operands(), all_gather_dimension,
-            CollectiveDeviceList(std::vector<ReplicaGroup>(
-                proto.replica_groups().begin(), proto.replica_groups().end())),
-            proto.constrain_layout(), channel_id,
-            proto.use_global_device_ids());
+            CollectiveDeviceList::FromProto(proto), proto.constrain_layout(),
+            channel_id, proto.use_global_device_ids());
       }
       break;
     }
@@ -708,9 +704,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      std::vector<ReplicaGroup> replica_groups(proto.replica_groups().begin(),
-                                               proto.replica_groups().end());
-      CollectiveDeviceList device_list(replica_groups);
+      CollectiveDeviceList device_list = CollectiveDeviceList::FromProto(proto);
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
             CreateAllReduce(shape, all_operands(), computations(0), device_list,
@@ -747,12 +741,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         split_dimension = proto.dimensions(0);
       }
       instruction = CreateAllToAll(
-          shape, all_operands(),
-          /*replica_groups=*/
-          CollectiveDeviceList(std::vector<ReplicaGroup>(
-              proto.replica_groups().begin(), proto.replica_groups().end())),
-          /*constrain_layout=*/proto.constrain_layout(),
-          /*channel_id=*/channel_id, split_dimension);
+          shape, all_operands(), CollectiveDeviceList::FromProto(proto),
+          proto.constrain_layout(), channel_id, split_dimension);
       break;
     }
     case HloOpcode::kCollectiveBroadcast: {
@@ -760,10 +750,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      auto replica_groups = std::vector<ReplicaGroup>(
-          proto.replica_groups().begin(), proto.replica_groups().end());
       instruction = CreateCollectiveBroadcast(
-          shape, all_operands(), CollectiveDeviceList(replica_groups), false,
+          shape, all_operands(), CollectiveDeviceList::FromProto(proto), false,
           channel_id);
       break;
     }
@@ -1184,6 +1172,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_RET_CHECK(proto.called_computation_ids_size() == 2)
             << "While should have 2 called computation but has "
             << proto.called_computation_ids_size();
+        computation_map.at(proto.called_computation_ids(0))
+            ->SetWhileCallInstruction(instruction.get());
       }
 
       for (const int64_t operand_id : proto.operand_ids()) {
@@ -3615,7 +3605,8 @@ void HloInstruction::PrintWithCanonicalNameMap(
 
   if (options.print_metadata() &&
       (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
-       !metadata_->source_file().empty())) {
+       !metadata_->source_file().empty() ||
+       !metadata_->scheduling_name().empty())) {
     printer->Append(", metadata={");
     printer->Append(xla::OpMetadataToString(
         *metadata_, options.print_metadata_only_op_name()));
@@ -4813,17 +4804,6 @@ std::string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
-std::string ReplicaGroupsToString(
-    absl::Span<const ReplicaGroup> replica_groups) {
-  std::vector<std::string> replica_group_str;
-  replica_group_str.reserve(replica_groups.size());
-  for (const ReplicaGroup& group : replica_groups) {
-    replica_group_str.push_back(
-        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
-  }
-  return StrCat("{", StrJoin(replica_group_str, ","), "}");
-}
-
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name) {
   static absl::flat_hash_map<std::string, RandomAlgorithm>* map = [] {
@@ -5004,6 +4984,14 @@ HloModule* HloInstruction::GetModule() const {
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
+}
+
+void HloInstruction::UniquifyName(HloModule* module) {
+  UniquifyName(&module->instruction_name_uniquer());
+}
+
+void HloInstruction::UniquifyId(HloModule* module) {
+  SetUniqueId(module->NewUniqueInstructionId());
 }
 
 void HloInstruction::SortInstructionUsersAndControlLists(

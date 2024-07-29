@@ -60,8 +60,8 @@ For example, if we have a reduction from `tensor<2x4x8x16xf32>` to
 `(d0, d1) -> (r0, d0, d1, r1)`, where `d_i` are the dimension variables that
 correspond to the indices of the output tensor. Range variables `r_j` encode
 multiple values, i.e. to compute a `(d0, d1)` element of the output, we need
-`(r0, d0, d1, r1)` elements of the input, where `r0 in [0, 2)` and
-`r1 in [0, 16)`.
+`(r0, d0, d1, r1)` elements of the input, where `r0 in [0, 1]` and
+`r1 in [0, 15]`.
 
 This mapping can be constructed from the attributes of HLO instructions or the
 mappings of unfused instructions can be composed to get indexing for a fusion.
@@ -594,7 +594,7 @@ This reshape can be represented as a composition of collapse shape of
 The output to input map:
 
 ```
-(d0, d1, d2) -> (d0 * 2 + d1 floordiv 2, d2 + (d1 mod 2) * 4) 
+(d0, d1, d2) -> (d0 * 2 + d1 floordiv 2, d2 + (d1 mod 2) * 4)
 domain:
 d0 in [0, 1]
 d1 in [0, 3]
@@ -873,7 +873,7 @@ f {
 }
 ```
 
-The output-to-input indexing maps for `p0` will be `(d0, d1) -> (d0, d1)` and 
+The output-to-input indexing maps for `p0` will be `(d0, d1) -> (d0, d1)` and
 `(d0, d1) -> (d1, d0)`. It means that to compute one element
 of the output we might need to read the input parameter twice.
 

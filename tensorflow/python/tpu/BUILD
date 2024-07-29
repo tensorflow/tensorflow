@@ -1049,12 +1049,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core/tpu/kernels:sparse_core_ops_utils",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "//tensorflow/python/lib/core:pybind11_status_headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 
@@ -1114,6 +1110,7 @@ tpu_py_strict_test(
     # copybara:uncomment disable_v4i = True,
     # copybara:uncomment disable_v5 = False,
     # copybara:uncomment disable_v5_grm = True,
+    # copybara:uncomment disable_v6e = True,
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
@@ -1134,6 +1131,7 @@ tpu_py_strict_test(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:init_ops_v2",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",

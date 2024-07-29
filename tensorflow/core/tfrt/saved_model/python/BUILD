@@ -20,6 +20,7 @@ package_group(
 # tf_py_strict_test(
 #     name = "saved_model_load_and_run_test_py",
 #     srcs = ["saved_model_load_and_run_test.py"],
+#     exec_properties = {"cpp_link.mem": "16g"},
 #     main = "saved_model_load_and_run_test.py",
 #     python_version = "PY3",
 #     srcs_version = "PY3",

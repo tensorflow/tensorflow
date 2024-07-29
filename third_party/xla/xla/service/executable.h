@@ -157,11 +157,14 @@ class ExecutionOutput {
         to_be_released_(std::move(to_be_released)) {}
   // TODO(b/170310047): remove this overload.
   ExecutionOutput(Shape on_host_shape, Shape on_device_shape,
-                  se::DeviceMemoryAllocator* allocator, int device_ordinal)
-      : result_(std::move(on_device_shape), allocator, device_ordinal) {}
+                  se::DeviceMemoryAllocator* allocator, int device_ordinal,
+                  int physical_device_ordinal = -1)
+      : result_(std::move(on_device_shape), allocator, device_ordinal,
+                physical_device_ordinal) {}
   ExecutionOutput(Shape on_device_shape, se::DeviceMemoryAllocator* allocator,
-                  int device_ordinal)
-      : result_(std::move(on_device_shape), allocator, device_ordinal) {}
+                  int device_ordinal, int physical_device_ordinal = -1)
+      : result_(std::move(on_device_shape), allocator, device_ordinal,
+                physical_device_ordinal) {}
   ExecutionOutput(ExecutionOutput&&) = default;
   ExecutionOutput& operator=(ExecutionOutput&&) = default;
 

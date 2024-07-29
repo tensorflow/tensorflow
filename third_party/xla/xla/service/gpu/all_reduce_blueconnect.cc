@@ -33,7 +33,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -66,18 +68,50 @@ struct DecomposedReplicaGroups {
   std::vector<ReplicaGroup> new_all_reduce_groups;
 };
 
+// Returns the global device id for the given replica id. Returns nullopt if
+// if the replica id can refer to multiple devices, or if the pass does not
+// support the CollectiveOpGroupMode.
+std::optional<GlobalDeviceId> TryConvertingReplicaIdToDeviceId(
+    int64_t replica_id, const DeviceAssignment& device_assignment,
+    CollectiveOpGroupMode collective_group_mode) {
+  if (collective_group_mode == CollectiveOpGroupMode::kCrossReplica) {
+    if (device_assignment.computation_count() != 1) {
+      // If there are multiple partitions, the replica_id may refer to multiple
+      // devices on different partitions.
+      return std::nullopt;
+    }
+    return GlobalDeviceId{device_assignment(replica_id, /*computation_id=*/0)};
+  } else if (collective_group_mode == CollectiveOpGroupMode::kFlattenedID) {
+    int partition_count = device_assignment.computation_count();
+    int64_t actual_replica_id = replica_id / partition_count;
+    int64_t partition_id = replica_id % partition_count;
+    return GlobalDeviceId{device_assignment(actual_replica_id, partition_id)};
+  }
+
+  // kCrossPartition and kCrossReplicaAndPartition are unsupported.
+  VLOG(1) << "Skip AllReduceBlueConnect because of unsupported "
+             "CollectiveOpGroupMode "
+          << CollectiveOpGroupModeToString(collective_group_mode);
+  return std::nullopt;
+}
+
 absl::StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
     const ReplicaGroup& replica_group,
-    const DeviceAssignment& device_assignment, size_t num_devices_per_host) {
+    const DeviceAssignment& device_assignment, size_t num_devices_per_host,
+    CollectiveOpGroupMode collective_group_mode) {
   int group_size = replica_group.replica_ids_size();
   TF_RET_CHECK(group_size > 0);
 
   absl::btree_map<int, std::vector<int64_t>> replica_ids_by_host;
   for (int64_t replica_id : replica_group.replica_ids()) {
-    int device_id = device_assignment(replica_id, /*computation_id=*/0);
-    TF_RET_CHECK(device_id >= 0);
+    std::optional<GlobalDeviceId> device_id = TryConvertingReplicaIdToDeviceId(
+        replica_id, device_assignment, collective_group_mode);
+    if (!device_id.has_value()) {
+      return {std::nullopt};
+    }
+    TF_RET_CHECK(*device_id >= 0);
     // We assume that devices are ordered by host.
-    int host_id = device_id / num_devices_per_host;
+    int host_id = device_id->value() / num_devices_per_host;
     replica_ids_by_host[host_id].push_back(replica_id);
   }
 
@@ -133,6 +167,11 @@ TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
     replica_groups = absl::MakeSpan(&all_replicas, 1);
   }
 
+  TF_ASSIGN_OR_RETURN(
+      CollectiveOpGroupMode collective_op_group_mode,
+      GetCollectiveOpGroupMode(all_reduce.channel_id().has_value(),
+                               all_reduce.use_global_device_ids()));
+
   std::vector<ReplicaGroup> scatter_gather_groups;
   std::vector<ReplicaGroup> new_all_reduce_groups;
 
@@ -141,7 +180,8 @@ TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
     TF_ASSIGN_OR_RETURN(
         std::optional<DecomposedReplicaGroups> decomposed_groups,
         TryDecomposeReplicaGroup(replica_group, device_assignment,
-                                 num_devices_per_host));
+                                 num_devices_per_host,
+                                 collective_op_group_mode));
 
     if (!decomposed_groups) return {std::nullopt};
 
@@ -233,11 +273,19 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
 
   Shape reduce_scatter_shape = ShapeUtil::MakeMaybeTupleShape(scattered_shapes);
 
+  int64_t next_channel_id = hlo_query::NextChannelId(*computation.parent());
+  auto get_channel_id = [&]() -> std::optional<int64_t> {
+    if (all_reduce->channel_id().has_value()) {
+      return next_channel_id++;
+    }
+    return std::nullopt;
+  };
+
   HloInstruction* reduce_scatter =
       computation.AddInstruction(HloInstruction::CreateReduceScatter(
           reduce_scatter_shape, flat_operands, all_reduce->to_apply(),
           CollectiveDeviceList(decomposed_groups->scatter_gather_groups),
-          /*constrain_layout=*/false, all_reduce->channel_id(),
+          /*constrain_layout=*/false, get_channel_id(),
           all_reduce->use_global_device_ids(),
           /*scatter_dimension=*/0));
 
@@ -255,7 +303,7 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
           GetOutputs(*new_all_reduce),
           /*all_gather_dimension=*/0,
           CollectiveDeviceList(decomposed_groups->scatter_gather_groups),
-          /*constrain_layout=*/false, all_reduce->channel_id(),
+          /*constrain_layout=*/false, get_channel_id(),
           all_reduce->use_global_device_ids()));
 
   // Bitcast back to the original shapes and replace all-reduce with decomposed

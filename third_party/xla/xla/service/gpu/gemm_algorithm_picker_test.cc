@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_rewriter.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/platform_util.h"
@@ -52,32 +53,123 @@ class GemmAlgorithmPickerTest : public HloTestBase,
     return debug_options;
   }
 
-  void SetUp() override {
-    const auto& gpu_cc = backend()
-                             .default_stream_executor()
-                             ->GetDeviceDescription()
-                             .gpu_compute_capability();
+  const se::DeviceDescription& device_desc() {
+    return backend().default_stream_executor()->GetDeviceDescription();
+  }
 
-    if (auto* procm = std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
-      if (GetDebugOptionsForTest().xla_gpu_enable_cublaslt() &&
-          !procm->has_hipblaslt()) {
-        GTEST_SKIP() << "No gpublas-lt support on this architecture!";
-      }
-    }
+  se::StreamExecutor* stream_exec() {
+    return backend().default_stream_executor();
+  }
+  const se::DeviceDescription& gpu_device_desc() {
+    return stream_exec()->GetDeviceDescription();
+  }
+  const se::GpuComputeCapability& gpu_comp() {
+    return gpu_device_desc().gpu_compute_capability();
+  }
+
+  void SetUp() override {
+    std::string_view name =
+        ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    // We need special handling for BlasGetVersion test.
+    bool blas_get_version = name.rfind("BlasGetVersion") == 0;
+
+    std::visit(
+        VariantVisitor{
+            [&](const se::CudaComputeCapability& cc) {
+              if (!blas_get_version && cc.IsAtLeastAmpere()) {
+                GTEST_SKIP()
+                    << "Skipping this test for Ampere+ as it is supported "
+                       "and recommended with the Nvidia Volta+ GPUs.";
+              }
+            },
+            [&](const se::RocmComputeCapability& cc) {
+              if (blas_get_version) {
+                auto version = std::stol(device_desc().runtime_version());
+                if (version < 60200) {
+                  GTEST_SKIP()
+                      << "This API is not available on ROCM 6.1 and below.";
+                }
+              } else if (GetDebugOptionsForTest().xla_gpu_enable_cublaslt() &&
+                         !cc.has_hipblaslt()) {
+                GTEST_SKIP() << "No gpublas-lt support on this architecture!";
+              }
+            }},
+        gpu_comp());
   }
 };
 
-TEST_P(GemmAlgorithmPickerTest, SetAlgorithm) {
-  auto comp = backend()
-                  .default_stream_executor()
-                  ->GetDeviceDescription()
-                  .cuda_compute_capability();
-  if (comp.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Skipping this test for Ampere+ as it is supported and "
-                    "recommended with "
-                    "the Nvidia Volta+ GPUs.";
+TEST_P(GemmAlgorithmPickerTest, BlasGetVersion) {
+  auto* blas = backend().default_stream_executor()->AsBlas();
+  ASSERT_TRUE(blas != nullptr);
+  std::string version;
+  ASSERT_TRUE(blas->GetVersion(&version).ok());
+  VLOG(0) << "Blas version: " << version;
+  ASSERT_TRUE(!version.empty());
+}
+
+TEST_P(GemmAlgorithmPickerTest, SkipAlgorithmsWithAccuracyCheck) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY main {
+  %arg0 = f32[100,100]{1,0} parameter(0)
+  %arg1 = f32[100,100]{1,0} parameter(1)
+  ROOT %dot = f32[100,100]{1,0} dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  auto module_cfg = GetModuleConfigForTest();
+  auto debug_opts = module_cfg.debug_options();
+  size_t num_left1 = 0, num_left2 = 0;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHlo, module_cfg));
+
+  {
+    // Run first with default settings (autotune level = 4), keep the number of
+    // algorithms left after autotuning
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040),
+                   module.get()));
+
+    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
+    GemmAlgorithmPicker gpicker(cfg);
+    // Note that, we do not care if the algorithm index has been changed:
+    // the thing matters is the # of algorithms left after sorting out.
+    TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(gpicker, module.get()));
+    num_left1 = gpicker.num_algorithms_left();
+    if (num_left1 < 2) {
+      GTEST_SKIP() << "Too few algorithms left after the first step";
+    }
   }
 
+  // Clear cache before the second run!
+  AutotunerUtil::ClearAutotuneResults();
+  {
+    // Run once again but now with autotune level 5 and embarassingly tight
+    // rtol which shall disqualify most of the algorithms.
+
+    // Note that, we have "two sources of truth" for GemmAlgorithmPicker: i.e.,
+    // debug_options are used to initialize both 'HloModuleConfig' and also
+    // 'AutotuneConfig'.
+    debug_opts.set_xla_gpu_autotune_gemm_rtol(1e-12);
+    debug_opts.set_xla_gpu_autotune_level(5);
+    module->mutable_config().set_debug_options(debug_opts);
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040),
+                   module.get()));
+
+    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
+    GemmAlgorithmPicker gpicker(cfg);
+    TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(gpicker, module.get()));
+    num_left2 = gpicker.num_algorithms_left();
+  }
+  // Assert that we have fewer algorithms left after the second run.
+  ASSERT_TRUE(num_left1 > num_left2);
+}
+
+TEST_P(GemmAlgorithmPickerTest, SetAlgorithm) {
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -91,22 +183,13 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto m,
                           ParseAndReturnVerifiedModule(kHlo, module_cfg));
 
-  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
-                          PlatformUtil::GetStreamExecutors(platform));
-  ASSERT_GT(executors.size(), 0);
-  se::StreamExecutor* stream_exec = executors[0];
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed,
-      RunHloPass(
-          GemmRewriter(
-              stream_exec->GetDeviceDescription().gpu_compute_capability(),
-              /*toolkit_version=*/12040),
-          m.get()));
+      RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040), m.get()));
   changed = false;
   DebugOptions opts;
-  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
@@ -128,11 +211,7 @@ ENTRY main {
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed,
-      RunHloPass(
-          GemmRewriter(
-              stream_exec->GetDeviceDescription().gpu_compute_capability(),
-              /*toolkit_version=*/12040),
-          m.get()));
+      RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040), m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
@@ -150,16 +229,6 @@ ENTRY main {
 }
 
 TEST_P(GemmAlgorithmPickerTest, GetAlgorithmWithoutDevice) {
-  auto comp = backend()
-                  .default_stream_executor()
-                  ->GetDeviceDescription()
-                  .cuda_compute_capability();
-  if (comp.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Skipping this test for Ampere+ as it is supported and "
-                    "recommended with "
-                    "the Nvidia Volta+ GPUs.";
-  }
-
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -171,24 +240,14 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       auto m, ParseAndReturnVerifiedModule(kHlo, GetModuleConfigForTest()));
 
-  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
-                          PlatformUtil::GetStreamExecutors(platform));
-  ASSERT_GT(executors.size(), 0);
-  se::StreamExecutor* stream_exec = executors[0];
-
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed,
-      RunHloPass(
-          GemmRewriter(
-              stream_exec->GetDeviceDescription().gpu_compute_capability(),
-              /*toolkit_version=*/12040),
-          m.get()));
+      RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040), m.get()));
   changed = false;
 
   DebugOptions opts;
-  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
 
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
@@ -211,17 +270,12 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo, module_cfg));
   changed = false;
 
-  DevicelessConfig deviceless_config{
-      stream_exec->GetDeviceDescription().model_str(),
-      stream_exec->GetDeviceDescription().cuda_compute_capability()};
+  DevicelessConfig deviceless_config{gpu_device_desc()};
   AutotuneConfig deviceless_cfg{deviceless_config, opts};
-  TF_ASSERT_OK_AND_ASSIGN(
-      changed,
-      RunHloPass(
-          GemmRewriter(
-              stream_exec->GetDeviceDescription().gpu_compute_capability(),
-              /*toolkit_version=*/12040),
-          m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(changed,
+                          RunHloPass(GemmRewriter(gpu_comp(),
+                                                  /*toolkit_version=*/12040),
+                                     m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmAlgorithmPicker(deviceless_cfg), m.get()))

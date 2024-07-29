@@ -18,6 +18,8 @@ limitations under the License.
 #include <iterator>
 
 #include "absl/strings/str_cat.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Value.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/shape_partition.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -49,6 +51,25 @@ IrFunction::IrFunction(const std::string& function_name,
       num_dynamic_loop_bounds_(num_dynamic_loop_bounds) {
   Initialize(function_name, linkage, module_config);
 }
+
+IrFunction::IrFunction(llvm::IRBuilder<>* b, llvm::Module* llvm_module,
+                       int64_t num_dynamic_loop_bounds,
+                       llvm::Function* function,
+                       llvm::Value* dynamic_loop_bounds_arg,
+                       llvm::BasicBlock* return_block)
+    : b_(b),
+      llvm_module_(llvm_module),
+      caller_insert_point_guard_(*b),
+      num_dynamic_loop_bounds_(num_dynamic_loop_bounds),
+      function_(function),
+      result_arg_(nullptr),
+      exec_run_options_arg_(nullptr),
+      parameters_arg_(nullptr),
+      buffer_table_arg_(nullptr),
+      dynamic_loop_bounds_arg_(dynamic_loop_bounds_arg),
+      profile_counters_arg_(nullptr),
+      status_arg_(nullptr),
+      return_block_(return_block) {};
 
 IrFunction::~IrFunction() {
   // Branch to function return.
@@ -83,9 +104,9 @@ void IrFunction::Initialize(const std::string& function_name,
   //   buffer_table: address of an array with pointers to temporary buffers and
   //     entry computation parameters (but not to constant buffers).
   //
-  // Therefore, the generated function's signature (FunctionType) is statically
-  // determined - parameter unpacking is done in code generated into the
-  // function, rather than by a prologue dictated by the platform ABI.
+  // Therefore, the generated function's signature (FunctionType) is
+  // statically determined - parameter unpacking is done in code generated
+  // into the function, rather than by a prologue dictated by the platform ABI.
   //
   //                      /--------------\
   //   retval ----------> | return value |
@@ -126,8 +147,8 @@ void IrFunction::Initialize(const std::string& function_name,
   //                     \---------------------------------------------/
 
   // Even though the type of params and buffer_table is void** in the host's
-  // view, in LLVM IR this is represented by i8*, similarly to void*. It's up to
-  // the code to use GEPs to unravel the indirection layers.
+  // view, in LLVM IR this is represented by i8*, similarly to void*. It's up
+  // to the code to use GEPs to unravel the indirection layers.
   llvm::FunctionType* function_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(llvm_module_->getContext()),
       /*Params=*/

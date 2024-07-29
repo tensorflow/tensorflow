@@ -163,6 +163,7 @@ class BufferAllocation {
   // color can reside in this allocation.
   LogicalBuffer::Color color() const { return color_; }
 
+  void set_color(LogicalBuffer::Color color) { color_ = color; }
   struct OffsetSize {
     int64_t offset = 0;
     int64_t size = 0;
@@ -579,7 +580,8 @@ class BufferAssignment {
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   void CombineTempAllocations(
-      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors);
+      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
+      std::optional<BufferValue::Color> temp_buffer_color);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
   absl::Status ComputeSummaryStats();
@@ -623,8 +625,8 @@ class BufferAssigner {
  public:
   using Colorer =
       std::function<absl::Status(HloAliasAnalysis*, const HloOrdering&)>;
-  using MustNotLiveOut =
-      std::function<bool(const HloInstruction*, const ShapeIndex&)>;
+  using MustNotLiveOut = std::function<bool(
+      const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
                                             std::vector<const HloComputation*>>;
 
@@ -665,7 +667,8 @@ class BufferAssigner {
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare = nullptr,
       std::optional<BufferAssignment::BufferIsolationOptions>
-          isolation_options = std::nullopt);
+          isolation_options = std::nullopt,
+      std::optional<BufferValue::Color> temp_buffer_color = std::nullopt);
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
@@ -687,8 +690,8 @@ class BufferAssigner {
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,
-      std::optional<BufferAssignment::BufferIsolationOptions>
-          isolation_options);
+      std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
+      std::optional<BufferValue::Color> temp_buffer_color);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is

@@ -23,6 +23,7 @@ limitations under the License.
 #include <sstream>
 #include <vector>
 
+#include "absl/base/log_severity.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -121,7 +122,8 @@ TEST(LoggingDeathTest, FailedChecks) {
 TEST(InternalLogString, Basic) {
   // Just make sure that this code compiles (we don't actually verify
   // the output)
-  internal::LogString(__FILE__, __LINE__, INFO, "Hello there");
+  internal::LogString(__FILE__, __LINE__, absl::LogSeverity::kInfo,
+                      "Hello there");
 }
 
 class TestSink : public TFLogSink {

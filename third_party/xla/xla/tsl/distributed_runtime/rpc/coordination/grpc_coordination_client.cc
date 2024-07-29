@@ -22,12 +22,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "grpcpp/channel.h"
-#include "grpcpp/completion_queue.h"
-#include "grpcpp/generic/generic_stub.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/completion_queue.h"
+#include "grpcpp/generic/generic_stub.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel.h"
@@ -57,6 +57,8 @@ using tensorflow::HeartbeatRequest;
 using tensorflow::HeartbeatResponse;
 using tensorflow::InsertKeyValueRequest;
 using tensorflow::InsertKeyValueResponse;
+using tensorflow::PollForErrorRequest;
+using tensorflow::PollForErrorResponse;
 using tensorflow::RegisterTaskRequest;
 using tensorflow::RegisterTaskResponse;
 using tensorflow::ReportErrorToServiceRequest;
@@ -265,6 +267,17 @@ class GrpcCoordinationClient : public CoordinationClient {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/CancelBarrier", *request,
         response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void PollForErrorAsync(CallOptions* call_opts,
+                         const PollForErrorRequest* request,
+                         PollForErrorResponse* response,
+                         StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/PollForError", *request,
+        response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }

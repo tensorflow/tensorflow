@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -178,8 +179,8 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   runtime::RewriteIRRuntimeFunctions(&module, fast_math_flags_);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
-  llvm::SmallVector<char, 0> stream_buffer;
-  llvm::raw_svector_ostream ostream(stream_buffer);
+  llvm::SmallVector<char, 0> mc_stream_buffer;
+  llvm::raw_svector_ostream ostream(mc_stream_buffer);
 
   VLOG(2) << "IR after optimizations";
 
@@ -193,20 +194,20 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   target_machine_->addPassesToEmitMC(codegen_passes, mc_context, ostream);
   codegen_passes.run(module);
 
-  std::unique_ptr<llvm::MemoryBuffer> memory_buffer(
-      new llvm::SmallVectorMemoryBuffer(std::move(stream_buffer)));
+  std::unique_ptr<llvm::MemoryBuffer> mc_memory_buffer(
+      new llvm::SmallVectorMemoryBuffer(std::move(mc_stream_buffer)));
 
   if (post_codegen_hook_) {
     llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
-        llvm::object::ObjectFile::createObjectFile(*memory_buffer);
+        llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);
     if (obj_file) {
       post_codegen_hook_(*obj_file.get());
     } else {
-      LOG(WARNING) << "Could convert memory buffer to object file!";
+      LOG(WARNING) << "Could not convert memory buffer to object file!";
     }
   }
 
-  return std::move(memory_buffer);
+  return std::move(mc_memory_buffer);
 }
 
 }  // namespace cpu

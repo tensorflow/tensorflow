@@ -23,11 +23,11 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import register_custom_opdefs
-from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics import metrics
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -492,10 +492,13 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     exported_error = metrics._gauge_conversion_errors.get_cell(
         'CONVERT_TF_TO_TFLITE_MODEL', 'CONVERT_SAVED_MODEL', 'tf.CustomAdd',
         'ERROR_NEEDS_CUSTOM_OPS').value()
-    self.assertEqual(
+    self.assertContainsSubsequence(
         exported_error,
-        "\'tf.CustomAdd\' op is neither a custom op nor a flex op\n"
-        'Error code: ERROR_NEEDS_CUSTOM_OPS')
+        "'tf.CustomAdd' op is neither a custom op nor a flex op\n",
+    )
+    self.assertContainsSubsequence(
+        exported_error, 'Error code: ERROR_NEEDS_CUSTOM_OPS'
+    )
 
   def test_unsupported_control_flow_v1(self):
     filename = resource_loader.get_path_to_datafile(

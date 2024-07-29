@@ -73,52 +73,16 @@ typedef struct TfLiteOperator TfLiteOperator;
 ///                     be `TfLiteBuiltinCustom`.
 /// \param version      Version of the op.  See
 ///                     https://www.tensorflow.org/lite/guide/ops_version
-///
-/// \return \a newly created TfLiteOperator on success, \a nullptr on failure
-///
-/// Deprecated: Use `TfLiteOperatorCreateWithData`
-TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreate(
-    TfLiteBuiltinOperator builtin_code, const char* custom_name, int version);
-
-/// Returns a new TfLiteOperator instance.
-///
-/// The returned TfLiteOperator instance represents a definition
-/// of an operator with the identity (builtin_code/custom_name and
-/// version) specified by the parameters, but with all callbacks initially
-/// unset.
-///
-/// Evaluation of any operation using this operator will be done using
-/// the "prepare" and "invoke" callbacks, which can be set using
-/// `TfLiteOperatorSetPrepare` and
-/// `TfLiteOperatorSetInvoke`, or for async execution
-/// the "prepare", "eval", and "wait" callbacks of the `TfLiteAsyncKernel`,
-/// which can be set using `TfLiteOperatorSetAsyncKernel`.
-/// If the relevant callbacks are not set, then such evaluation will result
-/// in an error status.  So normally any use of this function should be followed
-/// by appropriate calls to set those callbacks.
-///
-/// \note The caller retains ownership and should ensure that
-/// the lifetime of the `TfLiteOperator` must be at least as long as
-/// the lifetime of any `TfLiteInterpreter` or `tflite::Interpreter` that it is
-/// used in.
-///
-/// \param builtin_code Enumeration code specifying which builtin operator this
-///                     defines, or `TfLiteBuiltinCustom` to define a custom op.
-/// \param custom_name  Name of the custom op, or `nullptr` for a builtin op.
-///                     If `custom_name` is non-null, then `builtin_code` should
-///                     be `TfLiteBuiltinCustom`.
-/// \param version      Version of the op.  See
-///                     https://www.tensorflow.org/lite/guide/ops_version
 /// \param user_data    Opaque pointer passed to the operator's callbacks set
 ///                     with functions such as `TfLiteOperatorSetXXXWithData`.
 ///                     The user is expected to manage the memory pointed by
 ///                     this field and the lifetime of that memory should extend
-///                     at least from the call to `TfLiteOperatorCreateWithData`
+///                     at least from the call to `TfLiteOperatorCreate`
 ///                     to the invocation of the callback set with
 ///                     `TfLiteOperatorSetFreeWithData`.
 ///
 /// \return a newly created TfLiteOperator on success, or a nullptr on failure
-TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreateWithData(
+TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreate(
     TfLiteBuiltinOperator builtin_code, const char* custom_name, int version,
     void* user_data);
 
@@ -165,7 +129,7 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetInit(
 ///
 /// The callback is called to initialize the op from serialized data. The value
 /// passed in the `user_data` parameter is the value that was passed to
-/// `TfLiteOperatorCreateWithData`.  Please refer `init` of `TfLiteRegistration`
+/// `TfLiteOperatorCreate`.  Please refer `init` of `TfLiteRegistration`
 /// for the detail.
 ///
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOperatorSetInitWithData(
@@ -191,7 +155,7 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetFree(
 /// This callback is called to deallocate the data returned by the init
 /// callback. The value passed in the `data` parameter is the value that was
 /// returned by the `init` callback. The value passed in the `user_data`
-/// parameter is the value that was passed to `TfLiteOperatorCreateWithData`.
+/// parameter is the value that was passed to `TfLiteOperatorCreate`.
 /// Please refer `free` of `TfLiteRegistration` for the detail.
 ///
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOperatorSetFreeWithData(
@@ -214,7 +178,7 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetPrepare(
 ///
 /// The callback is called when the inputs of operator have been resized.  The
 /// value passed in the `user_data` parameter is the value that was passed to
-/// `TfLiteOperatorCreateWithData`.  Please refer `prepare` of
+/// `TfLiteOperatorCreate`.  Please refer `prepare` of
 /// `TfLiteRegistration` for the detail.
 ///
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOperatorSetPrepareWithData(

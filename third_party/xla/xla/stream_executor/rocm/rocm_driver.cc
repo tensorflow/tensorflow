@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -74,7 +75,6 @@ namespace stream_executor {
 namespace gpu {
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
-/* static */ int64_t CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 // Formats hipError_t to output prettified values into a log stream.
 // Error summaries taken from:
@@ -110,6 +110,31 @@ std::string ToString(hipError_t result) {
       OSTREAM_ROCM_ERROR(ContextAlreadyInUse)
       OSTREAM_ROCM_ERROR(PeerAccessUnsupported)
       OSTREAM_ROCM_ERROR(Unknown)  // Unknown internal error to ROCM.
+#if TF_ROCM_VERSION >= 60200
+      OSTREAM_ROCM_ERROR(LaunchTimeOut)
+      OSTREAM_ROCM_ERROR(PeerAccessAlreadyEnabled)
+      OSTREAM_ROCM_ERROR(PeerAccessNotEnabled)
+      OSTREAM_ROCM_ERROR(SetOnActiveProcess)
+      OSTREAM_ROCM_ERROR(ContextIsDestroyed)
+      OSTREAM_ROCM_ERROR(Assert)
+      OSTREAM_ROCM_ERROR(HostMemoryAlreadyRegistered)
+      OSTREAM_ROCM_ERROR(HostMemoryNotRegistered)
+      OSTREAM_ROCM_ERROR(LaunchFailure)
+      OSTREAM_ROCM_ERROR(CooperativeLaunchTooLarge)
+      OSTREAM_ROCM_ERROR(NotSupported)
+      OSTREAM_ROCM_ERROR(StreamCaptureUnsupported)
+      OSTREAM_ROCM_ERROR(StreamCaptureInvalidated)
+      OSTREAM_ROCM_ERROR(StreamCaptureMerge)
+      OSTREAM_ROCM_ERROR(StreamCaptureUnmatched)
+      OSTREAM_ROCM_ERROR(StreamCaptureUnjoined)
+      OSTREAM_ROCM_ERROR(StreamCaptureIsolation)
+      OSTREAM_ROCM_ERROR(StreamCaptureImplicit)
+      OSTREAM_ROCM_ERROR(CapturedEvent)
+      OSTREAM_ROCM_ERROR(StreamCaptureWrongThread)
+      OSTREAM_ROCM_ERROR(GraphExecUpdateFailure)
+      OSTREAM_ROCM_ERROR(RuntimeMemory)
+      OSTREAM_ROCM_ERROR(RuntimeOther)
+#endif  // TF_ROCM_VERSION >= 60200
     default:
       return absl::StrCat("hipError_t(", static_cast<int>(result), ")");
   }
@@ -155,17 +180,6 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
 }
 
 }  // namespace
-
-std::string MemorySpaceString(MemorySpace memory_space) {
-  switch (memory_space) {
-    case MemorySpace::kHost:
-      return "host";
-    case MemorySpace::kDevice:
-      return "device";
-    default:
-      LOG(FATAL) << "impossible memory space";
-  }
-}
 
 namespace {
 
@@ -266,7 +280,7 @@ std::string ROCMPointerToDeviceString(hipDeviceptr_t pointer) {
 std::string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
   auto value = GpuDriver::GetPointerMemorySpace(pointer);
   if (value.ok()) {
-    return MemorySpaceString(value.value());
+    return MemoryTypeString(value.value());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";
@@ -1106,19 +1120,22 @@ struct BitPatternToValue {
   VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z << " smem: " << shared_mem_bytes;
+          << " bdz: " << block_dim_z << " smem: " << shared_mem_bytes
+          << " func: " << (const void*)function;
 
+  auto res = hipSuccess;
+#if TF_ROCM_VERSION < 60200
   // for in-process kernel this function returns mangled kernel function name,
   // and null otherwise
   auto name = wrap::hipKernelNameRefByPtr((const void*)function, stream);
-
-  auto res = hipSuccess;
   if (name != nullptr) {
     res = wrap::hipLaunchKernel((const void*)function,
                                 dim3(grid_dim_x, grid_dim_y, grid_dim_z),
                                 dim3(block_dim_x, block_dim_y, block_dim_z),
                                 kernel_params, shared_mem_bytes, stream);
-  } else {
+  } else  // NOLINT(readability/braces)
+#endif    // TF_ROCM_VERSION < 60200
+  {
     res = wrap::hipModuleLaunchKernel(
         function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
         block_dim_z, shared_mem_bytes, stream, kernel_params, extra);
@@ -1350,16 +1367,32 @@ struct BitPatternToValue {
 /* static */ void* GpuDriver::UnifiedMemoryAllocate(GpuContext* context,
                                                     uint64_t bytes) {
   ScopedActivateContext activated{context};
-
-  LOG(ERROR)
-      << "Feature not supported on ROCm platform (UnifiedMemoryAllocate)";
-  return nullptr;
+  hipDeviceptr_t result = 0;
+  // "managed" memory is visible to both CPU and GPU.
+  hipError_t res = wrap::hipMallocManaged(&result, bytes, hipMemAttachGlobal);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to alloc " << bytes
+               << " bytes unified memory; result: " << ToString(res);
+    return nullptr;
+  }
+  void* ptr = reinterpret_cast<void*>(result);
+  VLOG(2) << "allocated " << ptr << " for context " << context->context()
+          << " of " << bytes << " bytes in unified memory";
+  return ptr;
 }
 
 /* static */ void GpuDriver::UnifiedMemoryDeallocate(GpuContext* context,
                                                      void* location) {
-  LOG(ERROR)
-      << "Feature not supported on ROCm platform (UnifiedMemoryDeallocate)";
+  ScopedActivateContext activation(context);
+  hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
+  hipError_t res = wrap::hipFree(pointer);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to free unified memory at " << location
+               << "; result: " << ToString(res);
+  } else {
+    VLOG(2) << "deallocated unified memory at " << location << " for context "
+            << context->context();
+  }
 }
 
 /* static */ void* GpuDriver::HostAllocate(GpuContext* context,
@@ -1761,7 +1794,7 @@ struct BitPatternToValue {
       "failed to query context for device pointer: ", ToString(result)));
 }
 
-/* static */ absl::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
+/* static */ absl::StatusOr<MemoryType> GpuDriver::GetPointerMemorySpace(
     hipDeviceptr_t pointer) {
   unsigned int value;
   hipError_t result = wrap::hipPointerGetAttribute(
@@ -1769,9 +1802,9 @@ struct BitPatternToValue {
   if (result == hipSuccess) {
     switch (value) {
       case hipMemoryTypeDevice:
-        return MemorySpace::kDevice;
+        return MemoryType::kDevice;
       case hipMemoryTypeHost:
-        return MemorySpace::kHost;
+        return MemoryType::kHost;
       default:
         return absl::Status{
             absl::StatusCode::kInternal,

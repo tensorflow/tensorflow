@@ -25,12 +25,12 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-// Converts a PjRt device attribute map into an IFRT attribute map.
-AttributeMap FromPjRtDeviceAttributeMap(
+// Converts a PjRt attribute map into an IFRT attribute map.
+AttributeMap FromPjRtAttributeMap(
     absl::flat_hash_map<std::string, xla::PjRtValueType> attributes);
 
-// Converts an IFRT attribute map into a PjRt device attribute map.
-absl::flat_hash_map<std::string, xla::PjRtValueType> ToPjRtDeviceAttributeMap(
+// Converts an IFRT attribute map into a PjRt attribute map.
+absl::flat_hash_map<std::string, xla::PjRtValueType> ToPjRtAttributeMap(
     AttributeMap attributes);
 
 }  // namespace ifrt

@@ -63,7 +63,9 @@ class Scanner {
     RANGLE,
   };
 
-  explicit Scanner(StringPiece source) : cur_(source) { RestartCapture(); }
+  explicit Scanner(absl::string_view source) : cur_(source) {
+    RestartCapture();
+  }
 
   // Consume the next character of the given class from input. If the next
   // character is not in the class, then GetResult will ultimately return false.
@@ -77,15 +79,15 @@ class Scanner {
 
   // Consume the next s.size() characters of the input, if they match <s>. If
   // they don't match <s>, this is a no-op.
-  Scanner& ZeroOrOneLiteral(StringPiece s) {
-    str_util::ConsumePrefix(&cur_, s);
+  Scanner& ZeroOrOneLiteral(absl::string_view s) {
+    absl::ConsumePrefix(&cur_, s);
     return *this;
   }
 
   // Consume the next s.size() characters of the input, if they match <s>. If
   // they don't match <s>, then GetResult will ultimately return false.
-  Scanner& OneLiteral(StringPiece s) {
-    if (!str_util::ConsumePrefix(&cur_, s)) {
+  Scanner& OneLiteral(absl::string_view s) {
+    if (!absl::ConsumePrefix(&cur_, s)) {
       error_ = true;
     }
     return *this;
@@ -161,8 +163,8 @@ class Scanner {
   // Returns true if the input string successfully matched. When true is
   // returned, the remaining string is returned in <remaining> and the captured
   // string returned in <capture>, if non-NULL.
-  bool GetResult(StringPiece* remaining = nullptr,
-                 StringPiece* capture = nullptr);
+  bool GetResult(absl::string_view* remaining = nullptr,
+                 absl::string_view* capture = nullptr);
 
  private:
   void ScanUntilImpl(char end_ch, bool escaped);
@@ -230,7 +232,7 @@ class Scanner {
     return false;
   }
 
-  StringPiece cur_;
+  absl::string_view cur_;
   const char* capture_start_ = nullptr;
   const char* capture_end_ = nullptr;
   bool error_ = false;

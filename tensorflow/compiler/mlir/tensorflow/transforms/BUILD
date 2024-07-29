@@ -264,6 +264,7 @@ cc_library(
         "tf_saved_model_freeze_variables.h",
     ],
     deps = [
+        ":tf_saved_model_freeze_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:resource_value_typed_analyzer",
@@ -271,11 +272,29 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tf_saved_model_freeze_utils",
+    srcs = [
+        "tf_saved_model_freeze_utils.cc",
+    ],
+    hdrs = [
+        "tf_saved_model_freeze_utils.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -323,6 +342,7 @@ cc_library(
     deps = [
         ":tensorflow_passes",
         ":tf_saved_model_asset_sinking_pass",
+        ":tf_saved_model_freeze_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:resource_value_typed_analyzer",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
@@ -927,7 +947,6 @@ cc_library(
         ":constant_fold_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
-        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:all_kernels",
@@ -957,7 +976,6 @@ cc_library(
     hdrs = ["tf_graph_optimization_pass.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",

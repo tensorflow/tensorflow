@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -129,8 +129,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
   bool IsAddressable() const override;
 
-  int local_hardware_id() const override;
-  PjRtLocalHardwareId local_hardware_id_typed() const override;
+  PjRtLocalHardwareId local_hardware_id() const override;
 
   absl::Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented(

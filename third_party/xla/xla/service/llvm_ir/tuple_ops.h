@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 
 // Utilities for emitting LLVM IR related to HLO tuples.
 

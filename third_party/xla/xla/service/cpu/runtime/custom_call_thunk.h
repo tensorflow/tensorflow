@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/ffi/call_frame.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/custom_call_status.h"
@@ -40,6 +44,7 @@ class CustomCallThunk final : public Thunk {
 
     std::vector<BufferAllocation::Slice> results_buffers;
     std::vector<Shape> results_shapes;
+    bool is_tuple_result;
   };
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
@@ -52,8 +57,9 @@ class CustomCallThunk final : public Thunk {
 
  private:
   CustomCallThunk(Info info, absl::string_view target_name,
-                  OpBuffers op_buffers, absl::string_view backend_config,
-                  CustomCallApiVersion api_version);
+                  OpBuffers op_buffers, CustomCallApiVersion api_version,
+                  absl::string_view backend_config,
+                  std::optional<ffi::CallFrame> call_frame);
 
   // Handles typed-FFI custom calls (API v4).
   tsl::AsyncValueRef<ExecuteEvent> CallTypedFFI(const ExecuteParams& params);
@@ -67,8 +73,9 @@ class CustomCallThunk final : public Thunk {
 
   std::string target_name_;
   OpBuffers op_buffers_;
-  std::string backend_config_;
   CustomCallApiVersion api_version_;
+  std::string backend_config_;
+  std::optional<ffi::CallFrame> call_frame_;
 };
 
 }  // namespace xla::cpu

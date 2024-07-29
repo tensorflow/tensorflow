@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/substitute.h"
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"

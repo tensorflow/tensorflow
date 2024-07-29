@@ -33,7 +33,7 @@ namespace builtin {
 namespace stablehlo_pad {
 namespace {
 
-static constexpr int kMaxDims = 6;
+static constexpr int kMaxDims = TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT;
 
 // Fills a buffer with the given data.
 //

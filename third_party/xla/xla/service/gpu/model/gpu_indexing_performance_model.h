@@ -23,12 +23,13 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
@@ -58,10 +59,15 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
       mlir::MLIRContext* mlir_context)
-      : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(device_info)),
+      : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
         shape_size_(shape_size),
+        cost_analysis_(
+            GpuHloCostAnalysis::Options{shape_size_,
+                                        /*per_second_rates=*/{},
+                                        /*count_multiple_input_accesses=*/true},
+            *device_info_),
         mlir_context_(mlir_context) {}
 
   EstimateRunTimeData EstimateRunTimeForFusion(
@@ -77,7 +83,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const HloInstruction* producer,
       absl::Span<const HloInstruction* const> fused_consumers = {});
 
-  EstimateRunTimeData EstimateRunTimeForTiledHloComputation(
+  absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,
       const TiledHloComputation& tiled_hlo_computation,
       const LaunchDimensions& launch_dimensions);
@@ -110,17 +116,18 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   absl::StatusOr<TiledRunTimeDataOrError> TryFindBestTilingForFusion(
       const HloFusionAdaptor& fusion_adaptor);
 
- private:
   // Returns an estimate how many FLOPs will be used to produce one element of
   // the output.
-  int64_t FlopsPerElement(const HloInstruction* instr) const;
+  int64_t FlopsPerElement(const HloInstruction* instr);
 
+ private:
   int64_t GetShapeSizeRecursive(const Shape& shape) const;
 
   const HloOpProfiles::HloOpProfile* hlo_op_profile_;
   const se::DeviceDescription* device_info_;
   HloFusionAnalysisCache* fusion_analysis_cache_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
+  GpuHloCostAnalysis cost_analysis_;
   mlir::MLIRContext* mlir_context_;
 };
 

@@ -71,6 +71,13 @@ absl::StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
   return logical_id.replica_id;
 }
 
+absl::StatusOr<int> DeviceAssignment::PartitionIdForDevice(
+    GlobalDeviceId device_id) const {
+  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
+                      LogicalIdForDevice(device_id));
+  return logical_id.computation_id;
+}
+
 absl::flat_hash_map<GlobalDeviceId, DeviceAssignment::LogicalID>
 DeviceAssignment::GetDeviceToLogicalIdMap() const {
   absl::flat_hash_map<GlobalDeviceId, DeviceAssignment::LogicalID>

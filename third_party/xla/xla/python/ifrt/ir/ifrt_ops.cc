@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -31,17 +32,17 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
@@ -236,8 +237,22 @@ mlir::LogicalResult VerifyIoAliases(mlir::Operation* op,
 }  // namespace
 
 mlir::LogicalResult ReshardOp::verify() {
-  return VerifySameGlobalShape(*this, "Input", getInput(), "Output",
-                               getOutput());
+  if (getInputs().empty()) {
+    return emitOpError() << "requires at least one input array";
+  }
+  if (getInputs().size() != getOutputs().size()) {
+    return emitOpError()
+           << "requires the same number of input and output arrays";
+  }
+  for (const auto [idx, pair] :
+       llvm::enumerate(llvm::zip(getInputs(), getOutputs()))) {
+    if (mlir::failed(VerifySameGlobalShape(
+            *this, absl::StrCat("input #", idx), std::get<0>(pair),
+            absl::StrCat("output #", idx), std::get<1>(pair)))) {
+      return mlir::failure();
+    }
+  }
+  return mlir::success();
 }
 
 mlir::LogicalResult AssembleOp::verify() {
@@ -328,7 +343,12 @@ mlir::LogicalResult CopyArraysOp::verify() {
       return emitOpError() << "requires input #" << idx << " and output #"
                            << idx << " to have the same shape and dtype";
     }
-    if (input_array.getShardingAttr() != output_array.getShardingAttr()) {
+    // If the sharding is specified, then it should be the same.
+    if (!mlir::isa<xla::ifrt::IfrtUnspecifiedShardingAttr>(
+            input_array.getShardingAttr()) &&
+        !mlir::isa<xla::ifrt::IfrtUnspecifiedShardingAttr>(
+            output_array.getShardingAttr()) &&
+        input_array.getShardingAttr() != output_array.getShardingAttr()) {
       return emitOpError() << "requires input #" << idx << " and output #"
                            << idx << " to have the same sharding";
     }

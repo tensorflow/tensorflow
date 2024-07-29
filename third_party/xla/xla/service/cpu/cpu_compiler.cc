@@ -60,14 +60,14 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Export.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -109,6 +109,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_layout_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
@@ -167,6 +168,7 @@ limitations under the License.
 #include "xla/service/sharding_remover.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/sort_simplifier.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/stochastic_convert_decomposer.h"
 #include "xla/service/sub_byte_normalization.h"
@@ -445,11 +447,14 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
-
-    spmd_pipeline.AddPass<ShardingPropagation>(
-        /*is_spmd=*/true, /*propagate_metadata=*/false,
-        module->config().allow_spmd_sharding_propagation_to_output(),
-        module->config().allow_spmd_sharding_propagation_to_parameters());
+    if (module->config().debug_options().xla_use_shardy()) {
+      spmd_pipeline.AddPass<sdy::ShardyXLA>();
+    } else {
+      spmd_pipeline.AddPass<ShardingPropagation>(
+          /*is_spmd=*/true, /*propagate_metadata=*/false,
+          module->config().allow_spmd_sharding_propagation_to_output(),
+          module->config().allow_spmd_sharding_propagation_to_parameters());
+    }
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
@@ -475,8 +480,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline);
 
-  pipeline.AddPass<OperandUpcaster>();
   pipeline.AddPass<ResultCaster>();
+  pipeline.AddPass<OperandUpcaster>();
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
@@ -1249,6 +1254,11 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
+    std::string ir_module_string;
+    if (embed_ir_in_executable) {
+      ir_module_string = llvm_ir::DumpToString(llvm_module.get());
+    }
+
     // JIT compile the LLVM IR module to in-memory machine code.
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
     cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
@@ -1264,6 +1274,14 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       }
     }
 
+    // Compile auxiliary comparator functions used by sort thunks.
+    for (const auto& comparator : ir_emitter2.comparators()) {
+      if (auto sym = (*jit)->FindCompiledSymbol(comparator.name); !sym) {
+        return Internal("Failed to find compiled symbol for comparator %s",
+                        comparator.name);
+      }
+    }
+
     // Create constant allocations from the buffer assignment.
     TF_ASSIGN_OR_RETURN(
         std::vector<CpuExecutable::ConstantAllocation> constants,
@@ -1276,6 +1294,13 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                               std::move(constants),
                               std::move(hlo_profile_printer_data),
                               std::move(hlo_profile_index_map)));
+
+    // Save object files to be able to export them to AOT compilation result.
+    cpu_executable->set_obj_files(std::move(obj_files));
+
+    if (embed_ir_in_executable) {
+      cpu_executable->set_ir_module_string(ir_module_string);
+    }
 
     return with_hlo_proto(std::move(cpu_executable));
   }
@@ -1623,16 +1648,17 @@ namespace {
 // result that can be saved on disk and shipped over the wire.
 class CpuExecutableAotCompilationResult : public AotCompilationResult {
  public:
-  CpuExecutableAotCompilationResult(const HloModule* hlo_module,
-                                    const BufferAssignment* buffer_assignment,
-                                    std::string_view function_name,
-                                    std::string_view obj_file) {
+  CpuExecutableAotCompilationResult(
+      const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
+      std::string_view function_name, std::string_view obj_file,
+      CompilationResultProto::ObjFileKind obj_file_kind) {
     *proto_.mutable_hlo_module()->mutable_hlo_module() = hlo_module->ToProto();
+    *proto_.mutable_hlo_module()->mutable_config() =
+        hlo_module->config().ToProto();
     *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
     proto_.set_entry_function_name(std::string(function_name));
     proto_.set_obj_file(std::string(obj_file));
-    *proto_.mutable_hlo_module()->mutable_config() =
-        hlo_module->config().ToProto();
+    proto_.set_obj_file_kind(obj_file_kind);
     module_ = hlo_module->Clone();
   }
 
@@ -1684,6 +1710,8 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
 
+  VLOG(2) << "Load XLA:CPU executable for module: " << module->name();
+
   // Recreate BufferAssignment from proto.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
@@ -1706,16 +1734,85 @@ CpuExecutableAotCompilationResult::LoadExecutable(
 
   // Create a named buffer from compiled object file.
   llvm::StringRef data(proto_.obj_file().data(), proto_.obj_file().size());
-  auto obj_file =
-      llvm::MemoryBuffer::getMemBuffer(data, proto_.entry_function_name());
 
-  cantFail((*jit)->AddObjFile(std::move(obj_file)));
+  // We might have an XLA:CPU executable that has only runtime thunks and
+  // doesn't have any corresponding object files.
+  if (data.empty()) {
+    VLOG(2) << "Loaded XLA:CPU executable does not have an object file";
+  } else {
+    VLOG(2) << "Load XLA:CPU executable object file with entry function: "
+            << proto_.entry_function_name();
+    cantFail((*jit)->AddObjFile(
+        llvm::MemoryBuffer::getMemBuffer(data, proto_.entry_function_name())));
+  }
 
-  TF_ASSIGN_OR_RETURN(
-      auto cpu_executable,
-      CpuExecutable::Create(std::move(*jit), std::move(buffer_assignment),
-                            std::move(module), proto_.entry_function_name(),
-                            nullptr, nullptr));
+  std::unique_ptr<CpuExecutable> cpu_executable;
+
+  if (proto_.obj_file_kind() == CompilationResultProto::KERNELS) {
+    // We emit thunks for the HLO module and ignore emitted LLVM IR as we
+    // already have it compiled to object file.
+    //
+    // See `CpuCompiler::CompileLegacyCpuExecutable` for the jit-compilation
+    // version that actually compiles emitted LLVM IR.
+    //
+    // TODO(ezhulenev): We should make it less wasteful and instead serialize
+    // Thunks directly into the proto. Today we have to emit LLVM IR to get
+    // required metadata to instantiate host kernel thunks.
+    auto llvm_context = std::make_unique<llvm::LLVMContext>();
+    auto llvm_module =
+        std::make_unique<llvm::Module>("__compute_module", *llvm_context);
+
+    LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
+
+    IrEmitter nested_ir_emitter(
+        nullptr, *module, *buffer_assignment, llvm_module.get(), {}, {},
+        ModuleComputationsTransitivelyContainCustomCall(*module),
+        &target_machine_features, /*emit_code_for_msan=*/false);
+
+    IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
+
+    ThunkEmitter thunk_emitter(ir_emitter2, *buffer_assignment,
+                               target_machine_features, module->config());
+    TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
+                        thunk_emitter.EmitEntryComputation(*module));
+
+    // Lookup all kernel functions by name in the loaded object file.
+    for (const auto& kernel : ir_emitter2.kernels()) {
+      if (auto sym = (*jit)->FindCompiledSymbol(kernel.name); !sym) {
+        return Internal("Failed to find compiled symbol for kernel %s",
+                        kernel.name);
+      }
+    }
+
+    for (const auto& comparator : ir_emitter2.comparators()) {
+      if (auto sym = (*jit)->FindCompiledSymbol(comparator.name); !sym) {
+        return Internal("Failed to find compiled symbol for comparator %s",
+                        comparator.name);
+      }
+    }
+
+    // Create constant allocations from the buffer assignment.
+    TF_ASSIGN_OR_RETURN(
+        std::vector<CpuExecutable::ConstantAllocation> constants,
+        CreateConstantAllocations(*buffer_assignment));
+
+    TF_ASSIGN_OR_RETURN(
+        cpu_executable,
+        CpuExecutable::Create(std::move(*jit), std::move(buffer_assignment),
+                              std::move(module), std::move(thunks),
+                              std::move(constants), nullptr, nullptr));
+
+  } else if (proto_.obj_file_kind() == CompilationResultProto::CLASSIC) {
+    // Create a "classic" CPU executable.
+    TF_ASSIGN_OR_RETURN(
+        cpu_executable,
+        CpuExecutable::Create(std::move(*jit), std::move(buffer_assignment),
+                              std::move(module), proto_.entry_function_name(),
+                              nullptr, nullptr));
+
+  } else {
+    return Internal("Unknown obj file kind");
+  }
 
   // Dump computation proto state and buffer assignment for
   // GetCompiledMemoryStats results.
@@ -1734,16 +1831,23 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
   if (!cpu_executable)
     return Internal("Could not downcast Executable to CpuExecutable");
 
-  if (cpu_executable->obj_files().size() != 1) {
-    return absl::InternalError(
-        absl::StrCat("Can't export CPU execuable, expected exactly one object "
-                     "file but got: ",
-                     cpu_executable->obj_files().size()));
+  if (cpu_executable->obj_files().size() > 1) {
+    return Internal(
+        "Can't export CPU executable %s, expected at most one object file but "
+        "got: %d",
+        cpu_executable->module().name(), cpu_executable->obj_files().size());
   }
+
+  std::string_view obj_file = cpu_executable->obj_files().empty()
+                                  ? std::string_view("")
+                                  : cpu_executable->obj_files()[0];
+
+  auto kind = cpu_executable->has_thunks() ? CompilationResultProto::KERNELS
+                                           : CompilationResultProto::CLASSIC;
 
   return {std::make_unique<CpuExecutableAotCompilationResult>(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
-      cpu_executable->module_name(), cpu_executable->obj_files()[0])};
+      cpu_executable->module_name(), obj_file, kind)};
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>

@@ -16,8 +16,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_generic.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/fully_connected.h"
 

@@ -15,20 +15,20 @@ limitations under the License.
 
 #include "xla/client/lib/qr.h"
 
-#include "absl/status/statusor.h"
+#include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/lib/constants.h"
 #include "xla/client/lib/matrix.h"
 #include "xla/client/xla_builder.h"
-#include "xla/literal.h"
+#include "xla/error_spec.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace {
 

@@ -107,6 +107,38 @@ them. The duplicated callee `FuncOp` will not be removed.
   let constructor = "CreateIfrtDuplicatedCalleeEliminationPass()";
 }
 
+def IfrtMergeReshardsPass :
+    Pass<"ifrt-merge-reshards", "mlir::func::FuncOp"> {
+  let summary = "Merge reshards for each (src, dst) pair into a single reshard.";
+  let description = [{
+Merges reshards from a source op which flow into the same destination op,
+ignoring control dependencies.
+
+E.g.
+
+```mlir
+%c:4, %ctrl_0  = ifrt.Call ...
+%r0, %ctrl_1 = ifrt.Reshard %c#0 ...
+%r1, %ctrl_2 = ifrt.Reshard %c#1 ...
+%d:4, %ctrl_3  = ifrt.Call (%r0, %r1)
+```
+
+will be replaced by:
+
+```mlir
+%c:4, %ctrl_0 = ifrt.Call ...
+%r:2, %ctrl_1 = ifrt.Reshard (%c#0, %c#1)
+%d:4, %ctrl_2 = ifrt.Call (%r#0, %r#1)
+```
+
+Currently this handles the case where the source is the Func BlockArgs or
+the outputs of a ifrt.Call, ifrt.CallLoadedExecutable, ifrt.Reshard,
+ifrt.CopyArrays, and ifrt.RemapArrays.
+  }];
+
+  let constructor = "CreateIfrtMergeReshardsPass()";
+}
+
 def IfrtVerifyDonationPass : Pass<"ifrt-verify-donation", "mlir::ModuleOp"> {
   let summary = "Verify that `!ifrt.array` are not donated more than once.";
   let description = [{

@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/python/ifrt/device.pb.h"
-#include "xla/python/ifrt/sharding_test_util.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
@@ -34,7 +34,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-class DeviceListTest : public test_util::ShardingTest {};
+class DeviceListTest : public test_util::DeviceTest {};
 
 TEST_P(DeviceListTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});
@@ -89,7 +89,7 @@ TEST_P(DeviceListTest, EqualityTest) {
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, DeviceListTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/2,
                              /*num_addressable_devices=*/2}));
 

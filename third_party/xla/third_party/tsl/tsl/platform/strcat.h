@@ -122,7 +122,8 @@ class AlphaNum {
   AlphaNum(Hex hex);  // NOLINT(runtime/explicit)
 
   AlphaNum(const char *c_str) : piece_(c_str) {}   // NOLINT(runtime/explicit)
-  AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
+  AlphaNum(const absl::string_view &pc)
+      : piece_(pc) {}                              // NOLINT(runtime/explicit)
   AlphaNum(const std::string &str)                 // NOLINT(runtime/explicit)
       : piece_(str) {}
   AlphaNum(const tstring &str)  // NOLINT(runtime/explicit)
@@ -131,12 +132,12 @@ class AlphaNum {
   AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
       : piece_(str) {}  // NOLINT(runtime/explicit)
 
-  StringPiece::size_type size() const { return piece_.size(); }
+  absl::string_view::size_type size() const { return piece_.size(); }
   const char *data() const { return piece_.data(); }
-  StringPiece Piece() const { return piece_; }
+  absl::string_view Piece() const { return piece_; }
 
  private:
-  StringPiece piece_;
+  absl::string_view piece_;
   char digits_[kFastToBufferSize];
 
   // Use ":" not ':'
@@ -181,8 +182,9 @@ std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
 namespace internal {
 
 // Do not call directly - this is not part of the public API.
-std::string CatPieces(std::initializer_list<StringPiece> pieces);
-void AppendPieces(std::string *dest, std::initializer_list<StringPiece> pieces);
+std::string CatPieces(std::initializer_list<absl::string_view> pieces);
+void AppendPieces(std::string *dest,
+                  std::initializer_list<absl::string_view> pieces);
 
 }  // namespace internal
 

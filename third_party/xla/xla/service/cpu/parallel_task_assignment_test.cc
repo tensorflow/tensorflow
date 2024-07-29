@@ -15,20 +15,27 @@ limitations under the License.
 
 #include "xla/service/cpu/parallel_task_assignment.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/target_machine_features_fake.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 class ParallelTaskAssignmentTest : public HloTestBase {
  protected:
-  const HloCostAnalysis::ShapeSizeFunction shape_size_func_ =
-      cpu::CpuExecutable::ShapeSizeBytes;
-
   // Use any value larger than 2 since we only test whether a module is
   // parallelized or not
   const int max_parallelism_ = 10;
@@ -45,7 +52,39 @@ class ParallelTaskAssignmentTest : public HloTestBase {
                                      &target_machine_features_)
         .Run(module);
   }
+
+  const HloCostAnalysis::ShapeSizeFunction shape_size_func_ =
+      cpu::CpuExecutable::ShapeSizeBytes;
 };
+
+TEST_F(ParallelTaskAssignmentTest, ReduceWindowParallelized) {
+  constexpr char hlo_string[] = R"(
+  HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY e {
+      p0 = f32[512,256] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT reduce-window = f32[16,256] reduce-window(p0, p1),
+          window={size=32x1 stride=32x1}, to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* reduce_window = FindInstruction(m.get(), HloOpcode::kReduceWindow);
+  TF_ASSERT_OK_AND_ASSIGN(auto backend_config,
+                          reduce_window->backend_config<cpu::BackendConfig>());
+  EXPECT_EQ(backend_config.outer_dimension_partitions_size(), 1);
+  EXPECT_EQ(backend_config.outer_dimension_partitions(0), 2);
+}
 
 TEST_F(ParallelTaskAssignmentTest, DotOperationNotParallelized) {
   const std::string hlo_string = R"(

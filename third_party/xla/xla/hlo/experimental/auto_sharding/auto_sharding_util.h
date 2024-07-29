@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 
@@ -53,6 +52,8 @@ inline constexpr absl::string_view kPipelineMarker = "xla_pipeline_marker";
 inline constexpr absl::string_view kIdentityMarker = "identity";
 inline constexpr absl::string_view kPipelineMarkerStartType = "start";
 inline constexpr absl::string_view kPipelineMarkerEndType = "end";
+
+inline constexpr int64_t kAutoShardingPointerSize = 8;
 
 inline bool IsSPMDFullToShardShapeCustomCall(const HloInstruction* ins) {
   return ins->IsCustomCall("SPMDFullToShardShape");
@@ -131,11 +132,11 @@ std::string ToString(const std::vector<T>& vector) {
   return absl::StrCat("[", absl::StrJoin(vector, ", "), "]");
 }
 
-template <typename T>
-std::string ToString(const StableHashMap<std::string, T>& map) {
+template <typename K, typename V>
+std::string ToString(const StableMap<K, V>& map) {
   std::string result;
-  for (const auto& v : map) {
-    result = absl::StrCat(result, "\n[", v.first, "->", v.second, "]");
+  for (const auto& [k, v] : map) {
+    result = absl::StrCat(result, " [", k, "->", v, "]");
   }
   return result;
 }
@@ -153,14 +154,6 @@ std::string ToString(const std::vector<std::vector<T>>& vector) {
 template <typename T>
 std::string ToString(absl::Span<T> span) {
   return absl::StrCat("[", absl::StrJoin(span, ", "), "]");
-}
-
-// Get the number of bytes of a shape.
-inline double GetBytes(const Shape& shape) {
-  if (shape.IsArray()) {
-    return ShapeUtil::ByteSizeOfElements(shape);
-  }
-  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/8);
 }
 
 // Return whether two shapes are equal in dimension.
@@ -291,23 +284,31 @@ inline HloInstruction* PassThroughCustomCallMarkerUser(
 
 // Return the users of an instruction and its alias,
 // excluding the final output tuple.
-inline StableHashSet<HloInstruction*> UsersWithAlias(
-    const HloInstruction* inst, const AliasMap& alias_map,
-    const HloInstruction* output) {
-  StableHashSet<HloInstruction*> users;
-
+inline InstructionSet UsersWithAlias(const HloInstruction* inst,
+                                     const AliasMap& alias_map,
+                                     const HloInstruction* output) {
+  InstructionSet users;
   for (HloInstruction* user : inst->users()) {
-    users.insert(PassThroughCustomCallMarkerUser(user, inst));
+    HloInstruction* pass_through_user =
+        PassThroughCustomCallMarkerUser(user, inst);
+    if (pass_through_user == output) {
+      continue;
+    }
+    users.insert(pass_through_user);
   }
 
   auto iter = alias_map.find(inst);
   if (iter != alias_map.end()) {
     for (HloInstruction* user : iter->second->users()) {
-      users.insert(PassThroughCustomCallMarkerUser(user, iter->second));
+      HloInstruction* pass_through_user =
+          PassThroughCustomCallMarkerUser(user, iter->second);
+      if (pass_through_user == output) {
+        continue;
+      }
+      users.insert(pass_through_user);
     }
   }
 
-  users.erase(output);
   return users;
 }
 
@@ -319,21 +320,21 @@ bool IsParameterConvert(const HloInstruction* inst);
 bool IsAlwaysReplicated(const HloInstruction* inst);
 
 // Try to reduce the boundary set to its common ancestor
-void TryReduceWithCommonAncestor(StableHashSet<HloInstruction*>& replicated_set,
-                                 StableHashSet<HloInstruction*>& boundary_set,
-                                 StableHashSet<HloInstruction*>& consumer_set,
+void TryReduceWithCommonAncestor(InstructionSet& replicated_set,
+                                 InstructionSet& boundary_set,
+                                 InstructionSet& consumer_set,
                                  const AliasMap& alias_map);
 
 // Return whether all users of an instruction is reduce.
 bool AllUsersAreReduce(const HloInstruction* inst);
 
-void UseAllReduceForGradAcc(StableHashSet<HloInstruction*>& replicated_set,
+void UseAllReduceForGradAcc(InstructionSet& replicated_set,
                             const HloInstruction* inst);
 
 void SetSharding(HloInstruction* to_split, const HloSharding& output_spec,
                  const HloInstruction* ref_inst,
                  const HloInstruction* shape_inst,
-                 StableHashSet<const HloInstruction*>& modified);
+                 ConstInstructionSet& modified);
 
 template <typename T>
 inline std::vector<int> Argsort(const std::vector<T>& scores) {
@@ -584,9 +585,22 @@ size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
     absl::Span<const int64_t> span, bool omit_last_dim = false);
 
-int64_t GetInstructionSize(const Shape& shape);
+// Computes bytes size of a shape recursively if it is sharded according to an
+// optionally provided sharding
+int64_t ByteSizeOfShapeWithSharding(const Shape& shape,
+                                    std::optional<HloSharding> sharding);
 
-int64_t GetShardedInstructionSize(
+// Computes bytes size of a shape recursively
+inline int64_t ByteSizeOfShape(const Shape& shape) {
+  return ByteSizeOfShapeWithSharding(shape, /*sharding=*/std::nullopt);
+}
+
+// Computes the byte size of a shape recursively if it is sharded across a given
+// number of devices per an optionally provided sharding. If the sharding is
+// provided, this function behaves the same as ByteSizeOfShapeWithSharding
+// above. If not, it will give a lower bound on the bytes size of the shape if
+// sharded across `num_devices` devices.
+int64_t ByteSizeOfShapeIfShardedAcrossDevices(
     const Shape& shape, int64_t num_devices,
     std::optional<HloSharding> sharding = std::nullopt);
 

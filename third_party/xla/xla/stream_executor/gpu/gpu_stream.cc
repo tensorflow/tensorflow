@@ -16,14 +16,18 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 #include <variant>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -31,9 +35,18 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
+#include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace stream_executor {
 namespace gpu {
+
+namespace {
+void InternalHostCallback(void* data) {
+  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
+  std::move (*callback)();
+  delete callback;
+}
+}  // namespace
 
 bool GpuStream::Init() {
   int priority = [&]() {
@@ -81,8 +94,14 @@ absl::Status GpuStream::Memcpy(DeviceMemoryBase* gpu_dst,
                                const DeviceMemoryBase& gpu_src, uint64_t size) {
   if (GpuDriver::AsynchronousMemcpyD2D(
           parent_->gpu_context(),
+<<<<<<< HEAD
           reinterpret_cast<GpuDevicePtr>(gpu_dst->opaque()),
           const_cast<GpuDevicePtr>(gpu_src.opaque()), size, gpu_stream())) {
+=======
+          reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_dst->opaque())),
+          reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_src.opaque())),
+          size, gpu_stream())) {
+>>>>>>> upstream/master
     return absl::OkStatus();
   }
 
@@ -104,7 +123,12 @@ absl::Status GpuStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                                uint64_t size) {
   bool ok = GpuDriver::AsynchronousMemcpyD2H(
       parent_->gpu_context(), host_dst,
+<<<<<<< HEAD
       const_cast<GpuDevicePtr>(gpu_src.opaque()), size, gpu_stream());
+=======
+      reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_src.opaque())), size,
+      gpu_stream());
+>>>>>>> upstream/master
   // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return
   // absl::Status.
   if (!ok) {
@@ -129,7 +153,7 @@ absl::Status GpuStream::WaitFor(Stream* other) {
 }
 
 absl::Status GpuStream::RecordEvent(Event* event) {
-  return static_cast<GpuEvent*>(event)->Record(this);
+  return static_cast<GpuEvent*>(event)->Record(gpu_stream_);
 }
 
 absl::Status GpuStream::WaitFor(Event* event) {
@@ -141,6 +165,21 @@ absl::Status GpuStream::WaitFor(Event* event) {
     return absl::InternalError(absl::StrFormat(
         "error recording waiting for event on stream %p", this));
   }
+}
+absl::Status GpuStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback) {
+  auto callback_ptr =
+      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
+        absl::Status s = std::move(cb)();
+        if (!s.ok()) {
+          LOG(WARNING) << "Host callback failed: " << s;
+        }
+      });
+  if (GpuDriver::AddStreamCallback(parent_->gpu_context(), gpu_stream(),
+                                   InternalHostCallback, callback_ptr)) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("Failed to host callback.");
 }
 
 void GpuStream::Destroy() {
@@ -157,6 +196,17 @@ void GpuStream::Destroy() {
 
 bool GpuStream::IsIdle() const {
   return GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_);
+}
+
+void GpuStream::set_name(absl::string_view name) {
+  name_ = name;
+  tsl::profiler::NameStream(
+      reinterpret_cast<tsl::profiler::StreamHandle>(gpu_stream()), name_);
+}
+
+absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+GpuStream::CreateEventBasedTimer(bool use_delay_kernel) {
+  return parent_->CreateEventBasedTimer(this, use_delay_kernel);
 }
 
 GpuStream* AsGpuStream(Stream* stream) {

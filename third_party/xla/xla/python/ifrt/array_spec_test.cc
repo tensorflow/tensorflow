@@ -20,18 +20,18 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
-class ArraySpecTest : public test_util::ShardingTest {};
+class ArraySpecTest : public test_util::DeviceTest {};
 
 TEST_P(ArraySpecTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});
@@ -64,7 +64,7 @@ TEST_P(ArraySpecTest, ToFromProto) {
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, ArraySpecTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/2,
                              /*num_addressable_devices=*/2}));
 

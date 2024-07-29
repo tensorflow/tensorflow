@@ -99,12 +99,16 @@ TEST(TopologyTest, BuildGpuTopology) {
   // Adds 2 devices to host 0 and 2 devices to host 1.
   DeviceProto* d0 = locals[0].add_devices();
   d0->set_local_device_ordinal(0);
+  d0->set_core_count(20);
   DeviceProto* d1 = locals[0].add_devices();
   d1->set_local_device_ordinal(1);
+  d1->set_core_count(20);
   DeviceProto* d2 = locals[1].add_devices();
   d2->set_local_device_ordinal(0);
+  d2->set_core_count(20);
   DeviceProto* d3 = locals[1].add_devices();
   d3->set_local_device_ordinal(1);
+  d3->set_core_count(20);
 
   GlobalTopologyProto global =
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
@@ -115,6 +119,7 @@ TEST(TopologyTest, BuildGpuTopology) {
   EXPECT_EQ(gpu_topology.num_slices(), 2);
   EXPECT_EQ(gpu_topology.num_hosts_per_slice(), 1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), 2);
+  EXPECT_EQ(gpu_topology.core_count_per_chip(), 20);
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {

@@ -16,7 +16,11 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/memory_info.h"
+#include "tensorflow/lite/profiling/time.h"
 
 namespace tflite {
 namespace profiling {

@@ -16,12 +16,15 @@ limitations under the License.
 #include "xla/service/float_normalization.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -752,6 +755,34 @@ TEST_F(FloatNormalizationTest, ConvertBeforeTuple) {
   EXPECT_EQ(
       computation->root_instruction()->shape().tuple_shapes(0).element_type(),
       F32);
+}
+
+TEST_F(FloatNormalizationTest, KeepEntryInputOutputAlias) {
+  const std::string hlo_text = R"(
+    HloModule m,
+      input_output_alias={ {}: (1, {}, must-alias) },
+      entry_computation_layout={(bf16[1,64], bf16[1,64])->bf16[1,64]}
+
+    ENTRY e {
+      arg_0 = bf16[1,64] parameter(0)
+      output_param = bf16[1,64] parameter(1)
+      constant = bf16[] constant(2)
+      broadcast = bf16[1,64] broadcast(constant), dimensions={}
+      ROOT multiply = bf16[1,64] multiply(arg_0, broadcast)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  EXPECT_TRUE(Normalize(module.get(), BF16));
+
+  HloInputOutputAliasConfig& alias_config = module->input_output_alias_config();
+  ASSERT_FALSE(alias_config.ParameterHasAlias(0, {}));
+  ASSERT_TRUE(alias_config.ParameterHasAlias(1, {}));
+  ASSERT_TRUE(alias_config.OutputHasAlias({}));
+  EXPECT_EQ(alias_config.GetAliasedParameter({})->parameter_number, 1);
+  EXPECT_EQ(alias_config.GetAliasedParameter({})->kind,
+            HloInputOutputAliasConfig::AliasKind::kMustAlias);
 }
 
 }  // namespace xla

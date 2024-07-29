@@ -33,8 +33,8 @@ namespace {
 TfLiteOperator* CreateDelegateKernelRegistration(
     SimpleOpaqueDelegateInterface* delegate) {
   TfLiteOperator* kernel_registration =
-      TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate, delegate->Name(),
-                                   /*version=*/1, /*user_data=*/nullptr);
+      TfLiteOperatorCreate(kTfLiteBuiltinDelegate, delegate->Name(),
+                           /*version=*/1, /*user_data=*/nullptr);
 
   TfLiteOperatorSetFreeWithData(
       kernel_registration,

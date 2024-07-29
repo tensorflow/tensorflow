@@ -56,8 +56,8 @@ TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
   MlirConcatenateFusion fusion(analysis);
 
   constexpr auto kIndexing = R"(
-    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    (bl_x * 128 + th_x) mod 400)
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
+      (bl_x * 128 + th_x)
     domain:
     th_x in [0, 127]
     th_y in [0, 0]
@@ -67,7 +67,7 @@ TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
     bl_z in [0, 0]
     chunk_id in [0, 0]
     unroll_id in [0, 0]
-    th_x + bl_x * 128 in [0, 399]
+    bl_x * 128 + th_x in [0, 399]
   )";
   auto thread_id_to_output_indexing_0 = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
@@ -102,9 +102,9 @@ TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-DAG: #[[MAP_1:.*]] = affine_map<(d0, d1) -> ((d1 * 128 + d0) mod 400)>
-    // CHECK-DAG: #[[MAP_2:.*]] = affine_map<(d0, d1) -> ((d1 * 128 + d0) mod 400 + 200)>
-    // CHECK-DAG: #[[MAP_3:.*]] = affine_map<(d0, d1) -> ((d1 * 128 + d0) mod 400 + 600)>
+    // CHECK-DAG: #[[MAP_1:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0)>
+    // CHECK-DAG: #[[MAP_2:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0 + 200)>
+    // CHECK-DAG: #[[MAP_3:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0 + 600)>
 
     // CHECK-LABEL: fused_computation
     // CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
@@ -235,6 +235,34 @@ TEST_F(MlirConcatenateFusionTest, EpilogueBitcast) {
       ROOT fusion = u32[1,1,3] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
     }
   )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirConcatenateFusionTest, Vectorization) {
+  auto kHloString = R"(
+    HloModule module
+
+    fused_computation {
+      param0 = f32[640002] parameter(0)
+      param1 = f32[640000] parameter(1)
+      ROOT concat = f32[1280002] concatenate(param0, param1), dimensions={0}
+    }
+    ENTRY main {
+      param0 = f32[640002] parameter(0)
+      param1 = f32[640000] parameter(1)
+      ROOT fusion = f32[1280002] fusion(param0, param1), calls=fused_computation, kind=kLoop
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-DAG: affine_map<(d0, d1) -> (d1 * 128 + d0)>
+    // CHECK-DAG: affine_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0)>
+    // CHECK-DAG: affine_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0 + 640002)>
+
+    // CHECK-LABEL: fused_computation
+    // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+    // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+    // CHECK-COUNT-2: scf.for %{{.*}} = %[[C0]] to %[[C2]]
+  )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 

@@ -47,6 +47,7 @@ if [ -f /usertools/cpu.bazelrc ]; then
 else
          yes "" | $PYTHON_BIN_PATH configure.py
 
+<<<<<<< HEAD
         # Run bazel test command. Double test timeouts to avoid flakes.
         # xla/mlir_hlo/tests/Dialect/gml_st tests disabled in 09/08/22 sync
         bazel test \
@@ -71,3 +72,20 @@ else
               -//tensorflow/lite/... \
               -//tensorflow/tools/toolchains/...
 fi 
+=======
+# Run bazel test command. Double test timeouts to avoid flakes.
+bazel test \
+      -k \
+      --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
+      --jobs=${N_BUILD_JOBS} \
+      --local_test_jobs=${N_BUILD_JOBS} \
+      --test_timeout 600,900,2400,7200 \
+      --build_tests_only \
+      --test_output=errors \
+      --test_sharding_strategy=disabled \
+      --test_size_filters=small,medium,large \
+      -- \
+      //tensorflow/... \
+      -//tensorflow/core/tpu/... \
+      -//tensorflow/lite/... \
+>>>>>>> upstream/master

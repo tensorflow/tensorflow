@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -414,6 +415,7 @@ bool InsertBeforeFirstCollectiveOp(
 }
 
 void CopyInstructionInfo(const HloInstruction* old_op, HloInstruction* new_op) {
+  new_op->SetAndSanitizeName(absl::StrCat(old_op->name(), ".clone"));
   new_op->set_metadata(old_op->metadata());
   new_op->add_frontend_attributes(old_op->frontend_attributes());
   new_op->CopyBackendConfigFrom(old_op);

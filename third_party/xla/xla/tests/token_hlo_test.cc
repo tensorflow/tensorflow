@@ -180,7 +180,7 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
   }
 }
 
-XLA_TEST_F(TokenHloTest, AddDependency) {
+XLA_TEST_F(TokenHloTest, AddDependencyOfParameter) {
   if (IsMlirLoweringEnabled()) {
     // This test generates invalid HLO. The after-all op only takes tokens.
     GTEST_SKIP() << "Invalid HLO unsupported by MLIR";
@@ -209,6 +209,40 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto p1 = LiteralUtil::CreateR0<float>(3.0);
   auto expected = LiteralUtil::CreateR0<float>(-156.0);
+  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
+}
+
+XLA_TEST_F(TokenHloTest, AddDependencyOfOperation) {
+  if (IsMlirLoweringEnabled()) {
+    // This test generates invalid HLO. The after-all op only takes tokens.
+    GTEST_SKIP() << "Invalid HLO unsupported by MLIR";
+  }
+  std::string module_string = R"(
+HloModule AddDependency, is_scheduled=true
+
+// Computes (p0 + 42) * ( -(p1 - 45))
+// where there is a dependency from the add to the negation using a token
+// with after-all and add-dependency instructions.
+ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+
+  %forty_two = f32[] constant(42.0)
+  %add = f32[] add(f32[] %p0, f32[] %forty_two)
+  %forty_five = f32[] constant(45.0)
+  %sub = f32[] subtract(f32[] %p1, f32[] %forty_five)
+  %token0 = token[] after-all(f32[] %add)
+  %sub_after_token = f32[] add-dependency(f32[] %sub, token[] %token0)
+  %neg = f32[] negate(f32[] %sub_after_token)
+  ROOT %product = f32[] multiply(f32[] %add, f32[] %neg)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
+  auto p0 = LiteralUtil::CreateR0<float>(10.0);
+  auto p1 = LiteralUtil::CreateR0<float>(3.0);
+  auto expected = LiteralUtil::CreateR0<float>(2184.0);
   EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
 }
 

@@ -49,7 +49,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
@@ -205,25 +205,6 @@ absl::Status Apply(Literal& literal, F&& literal_generator) {
       literal.shape().element_type());
 }
 
-constexpr absl::string_view kEvalErrorDetailUrl = "EvalErrorDetailUrl";
-
-// Use this class to represent the precise details of the error to enable
-// special treatment.
-enum class EvalErrorDetail : uint32_t {
-  // The evaluation result depends on dynamic values such as parameters and
-  // infeed. Therefore, the HLO's value cannot be statically evaluated.
-  kDynamicValueDependence = 0,
-};
-
-std::optional<EvalErrorDetail> ParseEvalErrorDetail(const absl::Status& error) {
-  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
-  if (!error_detail.has_value() && error_detail->empty()) {
-    return std::nullopt;
-  }
-  return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->Flatten().data()));
-}
-
 absl::Status MakeEvalErrorDueToParamOrInfeed(
     const HloInstruction& eval_instruction) {
   absl::Status error = absl::FailedPreconditionError(absl::StrCat(
@@ -231,11 +212,12 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
       ") since it depends on infeed or parameters to its parent computation (",
       eval_instruction.parent()->name(), ")."));
   std::string error_payload;
-  error_payload.resize(sizeof(EvalErrorDetail));
+  error_payload.resize(sizeof(internal::EvalErrorDetail));
   absl::little_endian::Store32(
       const_cast<char*>(error_payload.data()),
-      static_cast<uint32_t>(EvalErrorDetail::kDynamicValueDependence));
-  error.SetPayload(kEvalErrorDetailUrl, absl::Cord(error_payload));
+      static_cast<uint32_t>(
+          internal::EvalErrorDetail::kDynamicValueDependence));
+  error.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }
 
@@ -263,10 +245,11 @@ std::optional<DynamicOrStaticInteger> GetInstructionValueAsInteger(
     }
   }
 
-  std::optional<EvalErrorDetail> eval_error_detail =
-      ParseEvalErrorDetail(static_value.status());
+  std::optional<internal::EvalErrorDetail> eval_error_detail =
+      internal::ParseEvalErrorDetail(static_value.status());
   if (eval_error_detail.has_value() &&
-      *eval_error_detail == EvalErrorDetail::kDynamicValueDependence) {
+      *eval_error_detail ==
+          internal::EvalErrorDetail::kDynamicValueDependence) {
     return DynamicOrStaticInteger{std::nullopt};
   }
   return std::nullopt;
@@ -549,6 +532,21 @@ std::optional<DynamicOrStaticInteger> EvaluateWhileLoopParamInitValue(
 }
 
 }  // namespace
+
+namespace internal {
+
+constexpr absl::string_view kEvalErrorDetailUrl = "EvalErrorDetailUrl";
+
+std::optional<EvalErrorDetail> ParseEvalErrorDetail(const absl::Status& error) {
+  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
+  if (!error_detail.has_value() || error_detail->empty()) {
+    return std::nullopt;
+  }
+  return static_cast<EvalErrorDetail>(
+      absl::little_endian::Load32(error_detail->Flatten().data()));
+}
+
+}  // namespace internal
 
 std::optional<ParsedWhileLoop> HandleNoopLoopCondition(
     const ParamIndexAndValue& parameter_index_and_value,
@@ -4710,6 +4708,12 @@ std::unique_ptr<Array2D<int32_t>> HloEvaluator::MatmulArray2D(
     const Array2D<int32_t>& lhs, const Array2D<int32_t>& rhs) {
   return MatmulArray2DImpl<int32_t>(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
+}
+
+std::unique_ptr<Array2D<uint8_t>> HloEvaluator::MatmulArray2D(
+    const Array2D<uint8_t>& lhs, const Array2D<uint8_t>& rhs) {
+  return MatmulArray2DImpl<uint8_t>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulU8);
 }
 
 }  // namespace xla

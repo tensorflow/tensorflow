@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace ops {

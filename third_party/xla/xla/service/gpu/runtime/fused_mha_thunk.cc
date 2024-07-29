@@ -128,7 +128,7 @@ FusedMHABackwardThunk::FusedMHABackwardThunk(
     BufferAllocation::Slice mask, BufferAllocation::Slice d_bias,
     BufferAllocation::Slice fwd_output, BufferAllocation::Slice bias,
     BufferAllocation::Slice seqlen_q, BufferAllocation::Slice seqlen_k)
-    : Thunk(Kind::kFusedMHA, thunk_info),
+    : Thunk(Kind::kFusedMHABackward, thunk_info),
       bmm1_grad_gemm1_rhs_buffer_(bmm1_grad_gemm1_rhs),
       bmm1_grad_gemm2_rhs_buffer_(bmm1_grad_gemm2_rhs),
       bmm2_grad_gemm1_lhs_buffer_(bmm2_grad_gemm1_lhs),

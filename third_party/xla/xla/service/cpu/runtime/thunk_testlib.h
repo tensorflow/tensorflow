@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -37,6 +38,23 @@ class BufferUseThunk : public Thunk {
 
  private:
   BufferUse buffer_use_;
+};
+
+// A test-only thunk to create a Thunk with a specific resource use.
+class ResourceUseThunk : public Thunk {
+ public:
+  explicit ResourceUseThunk(ResourceUse resource_use)
+      : Thunk(Kind::kKernel, {"resource-use"}), resource_use_(resource_use) {}
+
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams&) final {
+    return absl::UnimplementedError("Unimplemented");
+  }
+
+  BufferUses buffer_uses() const final { return {}; }
+  ResourceUses resource_uses() const final { return {resource_use_}; }
+
+ private:
+  ResourceUse resource_use_;
 };
 
 }  // namespace xla::cpu

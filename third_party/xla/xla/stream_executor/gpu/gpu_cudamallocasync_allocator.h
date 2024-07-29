@@ -24,16 +24,10 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
+#include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
-#include "tsl/platform/mutex.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-
-#define TF_CUDA_MALLOC_ASYNC_SUPPORTED CUDA_VERSION >= 11020
-#endif  // GOOGLE_CUDA
 
 namespace stream_executor {
 
@@ -107,23 +101,11 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
   }
 
  private:
-  void PrintAllocatorStatisticsNoLock() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void PrintAllocatorStatisticsNoLock() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   StreamExecutor* stream_exec_;  // Not owned.
-
-  // cudaMallocAsync is stream aware. But TF StreamExecutor use only 1
-  // compute stream and already synchronize with the h2d, d2h and d2d
-  // stream. So we do not need to ask cudaMallocAsync to add extra
-  // synchronization.
-  // Not owned.
-  CUstream cuda_stream_;
-
-  // Not owned. The default pool of the associated GPU.
-  // If null, then the instanciation failed and the first allocation
-  // will return an error.
-  CUmemoryPool pool_;
-#endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  struct CudaState;
+  std::unique_ptr<CudaState> cuda_state_;
 
   // Just a counter for the number of time this class is instantiated.
   // Only useful for tests.
@@ -144,9 +126,9 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
 
   // Stats.
   // Structures mutable after construction
-  mutable tsl::mutex lock_;
-  std::unique_ptr<tsl::AllocatorStats> stats_ ABSL_PT_GUARDED_BY(lock_);
-  absl::flat_hash_map<const void*, size_t> size_map_ ABSL_GUARDED_BY(lock_);
+  mutable absl::Mutex mutex_;
+  std::unique_ptr<tsl::AllocatorStats> stats_ ABSL_PT_GUARDED_BY(mutex_);
+  absl::flat_hash_map<const void*, size_t> size_map_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace stream_executor

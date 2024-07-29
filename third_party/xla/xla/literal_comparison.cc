@@ -31,13 +31,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/error_spec.h"
+#include "xla/fp_util.h"
 #include "xla/index_util.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -255,18 +255,25 @@ class NearComparator {
     // from the 'actual' literal.
     int64_t linear_index;
 
+    int float_distance = -1;
+
     bool operator<(const Mismatch& other) const {
       return rel_error < other.rel_error;
     }
 
     std::string ToString(const Shape& shape) const {
-      return absl::StrFormat(
-          "actual %s, expected %s, index %s, rel error %8.3g, abs error %8.3g",
+      auto s = absl::StrFormat(
+          "actual %s, expected %s, index %s, rel error %8.3g, abs error "
+          "%8.3g",
           FpValueToString(actual), FpValueToString(expected),
           LiteralUtil::MultiIndexAsString(
               IndexUtil::LinearIndexToMultidimensionalIndex(shape,
                                                             linear_index)),
           rel_error, abs_error);
+      if (float_distance >= 0) {
+        StrAppendFormat(&s, ", float distance %d", float_distance);
+      }
+      return s;
     }
   };
 
@@ -340,12 +347,27 @@ class NearComparator {
     }
   }
 
+  template <typename T>
+  int CalculateFloatDistance(T expected, T actual) {
+    if (error_.low_precision_fp_error_spec.type ==
+        PrimitiveType::PRIMITIVE_TYPE_INVALID)
+      return -1;
+    return primitive_util::FloatingPointTypeSwitch<int>(
+        [&](const auto kType) -> int {
+          using NarrowNativeT = primitive_util::NativeTypeOf<kType>;
+          return CalculateDistanceInFloats(NarrowNativeT(expected),
+                                           NarrowNativeT(actual));
+        },
+        error_.low_precision_fp_error_spec.type);
+  }
+
   // Compares the two given elements from the expected and actual literals at
   // the given literal_index and keeps track of various mismatch statistics.
   template <typename T>
   void CompareValues(T expected, T actual, int64_t linear_index) {
     double abs_error;
     double rel_error;
+    int float_distance = -1;
     if (CompareEqual<T>(expected, actual, {linear_index})) {
       abs_error = 0;
       rel_error = 0;
@@ -387,6 +409,7 @@ class NearComparator {
       abs_error = std::numeric_limits<double>::infinity();
       rel_error = std::numeric_limits<double>::infinity();
     } else {
+      float_distance = CalculateFloatDistance<T>(expected, actual);
       abs_error = FpAbsoluteValue(actual - expected);
 
       // Avoid division by 0 even though it's well-defined because ubsan can be
@@ -397,8 +420,24 @@ class NearComparator {
         rel_error = std::numeric_limits<double>::infinity();
       }
     }
-    const bool is_abs_mismatch = abs_error > error_.abs;
-    const bool is_rel_mismatch = rel_error > error_.rel;
+    bool is_within_n_floats = false;
+    bool should_use_float_error_spec =
+        error_.low_precision_fp_error_spec.type !=
+        PrimitiveType::PRIMITIVE_TYPE_INVALID;
+    if (should_use_float_error_spec &&
+        error_.low_precision_fp_error_spec.within_n_values >= 0) {
+      is_within_n_floats =
+          float_distance <= error_.low_precision_fp_error_spec.within_n_values;
+    }
+
+    const bool is_abs_mismatch =
+        (should_use_float_error_spec && is_within_n_floats)
+            ? false
+            : (abs_error > error_.abs);
+    const bool is_rel_mismatch =
+        (should_use_float_error_spec && is_within_n_floats)
+            ? false
+            : (rel_error > error_.rel);
     const bool is_mismatch = is_abs_mismatch && is_rel_mismatch;
 
     // Update the error of the relative bucket only if the *absolute* error
@@ -423,8 +462,12 @@ class NearComparator {
     // Keep track of the kTopRelativeErrorCount relative error mismatches.
     if (top_rel_mismatches_.size() < kTopRelativeErrorCount ||
         rel_error > top_rel_mismatches_.begin()->rel_error) {
-      Mismatch mismatch = {actual, expected, rel_error, abs_error,
-                           linear_index};
+      Mismatch mismatch = {/*actual=*/actual,
+                           /*expected=*/expected,
+                           /*rel_error=*/rel_error,
+                           /*abs_error=*/abs_error,
+                           /*linear_index=*/linear_index,
+                           /*float_distance=*/float_distance};
       top_rel_mismatches_.insert(mismatch);
       if (top_rel_mismatches_.size() > kTopRelativeErrorCount) {
         top_rel_mismatches_.erase(top_rel_mismatches_.begin());
@@ -878,10 +921,12 @@ absl::Status EmitLiteralsInErrorMessage(const absl::Status& result,
 }  // namespace
 
 absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
-  VLOG(1) << "expected:";
-  XLA_VLOG_LINES(1, expected.ToString());
-  VLOG(1) << "actual:";
-  XLA_VLOG_LINES(1, actual.ToString());
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "expected:";
+    XLA_LOG_LINES(INFO, expected.ToString());
+    LOG(INFO) << "actual:";
+    XLA_LOG_LINES(INFO, actual.ToString());
+  }
   absl::Status result = EqualHelper(expected, actual, {}, nullptr);
   return EmitLiteralsInErrorMessage(result, expected, actual);
 }
@@ -889,10 +934,12 @@ absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
 absl::Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
                   const ErrorSpec& error, std::optional<bool> detailed_message,
                   const MiscompareCallback& miscompare_callback) {
-  VLOG(1) << "Expected literal:";
-  XLA_VLOG_LINES(1, expected.ToString());
-  VLOG(1) << "Actual literal:";
-  XLA_VLOG_LINES(1, actual.ToString());
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Expected literal:";
+    XLA_LOG_LINES(INFO, expected.ToString());
+    LOG(INFO) << "Actual literal:";
+    XLA_LOG_LINES(INFO, actual.ToString());
+  }
   absl::Status result = NearHelper(expected, actual, /*shape_index=*/{}, error,
                                    detailed_message, miscompare_callback);
   return EmitLiteralsInErrorMessage(result, expected, actual);

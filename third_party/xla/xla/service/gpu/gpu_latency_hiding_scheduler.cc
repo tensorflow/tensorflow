@@ -48,7 +48,8 @@ bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
-         hlo.IsEffectiveBitcast();
+         op == HloOpcode::kTuple || op == HloOpcode::kPartitionId ||
+         op == HloOpcode::kReplicaId || hlo.IsEffectiveBitcast();
 }
 
 bool IsAsyncComputeOp(const HloInstruction& hlo) {
@@ -89,6 +90,24 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
   return {resource, usage};
 }
 
+bool IsGpuAsyncStart(const HloInstruction& hlo) {
+  return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
+                                              /*include_send_recv=*/true) &&
+          !IsSyncCollective(&hlo)) ||
+         IsAsyncComputeOp(hlo);
+}
+
+bool IsGpuAsyncDone(const HloInstruction& hlo) {
+  return (hlo_query::IsAsyncCollectiveDoneOp(&hlo,
+                                             /*include_send_recv=*/true) &&
+          !IsSyncCollective(hlo.operand(0))) ||
+         IsAsyncComputeOp(hlo);
+}
+
+bool IsAsyncPair(const HloInstruction& from, const HloInstruction& target) {
+  return IsGpuAsyncStart(from) && IsGpuAsyncDone(target);
+}
+
 }  // namespace
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
@@ -116,25 +135,21 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
-// GpuAsyncTrackerBase implementations begin
+//===--------------------------------------------------------------------===//
+// GpuAsyncTrackerBase
+//===--------------------------------------------------------------------===//
 GpuAsyncTrackerBase::GpuAsyncTrackerBase(const SchedulerConfig& config,
                                          GetCanonicalAsyncOpFunc func)
     : AsyncTracker(config, func) {}
 
 bool GpuAsyncTrackerBase::IsSupportedAsyncDone(
     const HloInstruction& hlo) const {
-  return (hlo_query::IsAsyncCollectiveDoneOp(&hlo,
-                                             /*include_send_recv=*/true) &&
-          !IsSyncCollective(hlo.operand(0))) ||
-         IsAsyncComputeOp(hlo);
+  return IsGpuAsyncDone(hlo);
 }
 
 bool GpuAsyncTrackerBase::IsSupportedAsyncStart(
     const HloInstruction& hlo) const {
-  return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
-                                              /*include_send_recv=*/true) &&
-          !IsSyncCollective(&hlo)) ||
-         IsAsyncComputeOp(hlo);
+  return IsGpuAsyncStart(hlo);
 }
 
 void GpuAsyncTrackerBase::PostProcessScheduleGraph(
@@ -160,9 +175,10 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
     }
   }
 }
-// GpuAsyncTrackerBase implementations end
 
-// GpuAsyncTracker implementations begin
+//===--------------------------------------------------------------------===//
+// GpuAsyncTracker
+//===--------------------------------------------------------------------===//
 GpuAsyncTracker::GpuAsyncTracker(const SchedulerConfig& config)
     : GpuAsyncTrackerBase(config) {}
 
@@ -308,9 +324,9 @@ int64_t GpuAsyncTracker::GetNumResourcesPerInstruction(
   return num_resources - (found ? 1 : 0);
 }
 
-// GpuAsyncTracker implementations end
-
-// GpuLatencyEstimator implementations begin
+//===--------------------------------------------------------------------===//
+// GpuLatencyEstimator
+//===--------------------------------------------------------------------===//
 GpuLatencyEstimator::GpuLatencyEstimator(int64_t pointer_size,
                                          GetCanonicalAsyncOpFunc func)
     : ApproximateLatencyEstimator(func), pointer_size_(pointer_size) {}
@@ -368,7 +384,35 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
   // latency between each of them is always one unit.
   return ApproximateLatencyEstimator::kLowLatency;
 }
-// GpuLatencyEstimator implementations end
+
+//===--------------------------------------------------------------------===//
+// GPUProfileStatisticsAggregator
+//===--------------------------------------------------------------------===//
+
+void GPUProfileStatisticsAggregator::HandleMissingInstructionCost(
+    const HloInstruction& instruction) {
+  if (!IsNopInstruction(instruction) &&
+      instruction.opcode() != HloOpcode::kWhile) {
+    missing_instructions_.insert(&instruction);
+  }
+}
+
+void GPUProfileStatisticsAggregator::HandleFoundInstructionCost(
+    const HloInstruction& instruction) {
+  found_instructions_count_++;
+}
+
+void GPUProfileStatisticsAggregator::HandleMissingInstructionLatency(
+    const HloInstruction& from, const HloInstruction& to) {
+  if (IsAsyncPair(from, to)) {
+    missing_instructions_.insert(&from);
+  }
+}
+
+void GPUProfileStatisticsAggregator::HandleFoundInstructionLatency(
+    const HloInstruction& from, const HloInstruction& to) {
+  found_instructions_count_++;
+}
 
 }  // namespace gpu
 }  // namespace xla

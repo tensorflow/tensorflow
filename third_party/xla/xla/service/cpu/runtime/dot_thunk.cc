@@ -79,24 +79,6 @@ struct MatMulDims {
   bool rhs_canonical;
 };
 
-// Keep track of pending matrix multiplications and an event that signals
-// completion of Dot operation to the caller.
-struct ExecuteState {
-  explicit ExecuteState(int64_t batch_size)
-      : pending_matmuls(batch_size),
-        event(tsl::MakeConstructedAsyncValueRef<Thunk::ExecuteEvent>()) {}
-
-  void Notify() {
-    if (pending_matmuls.load(std::memory_order_relaxed) == 1 ||
-        pending_matmuls.fetch_sub(1, std::memory_order_relaxed) == 1) {
-      event.SetStateConcrete();
-    }
-  }
-
-  std::atomic<int64_t> pending_matmuls;
-  tsl::AsyncValueRef<Thunk::ExecuteEvent> event;
-};
-
 }  // namespace
 
 static MatMulDims GetMatMulDims(

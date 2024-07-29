@@ -34,6 +34,7 @@
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
@@ -53,8 +54,6 @@ class LoadedExecutable final
   LoadedExecutable(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper, uint64_t handle,
                    std::string name, int num_devices,
-                   std::vector<xla::ifrt::LoadedExecutable::LogicalDeviceIds>
-                       addressable_device_logical_device_ids,
                    std::vector<xla::ifrt::Device*> addressable_devices,
                    absl::StatusOr<std::optional<std::string>> fingerprint,
                    Future<> ready_future,
@@ -85,9 +84,7 @@ class LoadedExecutable final
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
-  absl::StatusOr<absl::flat_hash_map<std::string,
-                                     xla::ifrt::Executable::CostAnalysisValue>>
-  GetCostAnalysis() const override;
+  absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override;
 
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
@@ -97,8 +94,6 @@ class LoadedExecutable final
   Future<> Delete() override;
   bool IsDeleted() const override;
 
-  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const override;
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
 
   static char ID;  // NOLINT
@@ -129,8 +124,6 @@ class LoadedExecutable final
   const uint64_t handle_;
   const std::string name_;
   const int num_devices_;
-  const std::vector<xla::ifrt::LoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_device_ids_;
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
   const Future<> ready_future_;

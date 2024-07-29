@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -117,19 +117,31 @@ bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
 // For dynamic cases, we don't have info about the start indices, so we have to
 // be conservative by only accepting sliced shapes that have the product of all
 // non-sliced dimensions being a multiple of `kXlaAllocatedBufferAlignBytes`.
-bool IsAlignedSlice(const Shape& src_shape, const Shape& dst_shape,
-                    const HloSliceInstruction* slice) {
-  if (!IsContiguousSlice(src_shape, dst_shape)) return false;
+bool IsAlignedSlice(const HloInstruction* slice) {
+  DCHECK(slice->opcode() == HloOpcode::kSlice ||
+         slice->opcode() == HloOpcode::kDynamicSlice ||
+         slice->opcode() == HloOpcode::kDynamicUpdateSlice)
+      << "Unknown slice operation: " << slice->ToString();
 
-  auto strides = ShapeUtil::ByteStrides(dst_shape);
+  if (!IsContiguousSlice(*slice)) return false;
+
+  auto [full_shape, slice_shape] = [&] {
+    if (auto* dus = DynCast<HloDynamicUpdateSliceInstruction>(slice)) {
+      return std::make_pair(dus->shape(), dus->update()->shape());
+    }
+    return std::make_pair(slice->operand(0)->shape(), slice->shape());
+  }();
+
+  auto strides = ShapeUtil::ByteStrides(slice_shape);
   if (!strides.has_value()) return false;
 
-  for (auto dim : dst_shape.layout().minor_to_major()) {
-    if ((strides.value()[dim] % kXlaAllocatedBufferAlignBytes) == 0)
+  for (auto dim : slice_shape.layout().minor_to_major()) {
+    if ((strides.value()[dim] % kXlaAllocatedBufferAlignBytes) == 0) {
       return true;
-    if (dst_shape.dimensions(dim) < src_shape.dimensions(dim)) {
-      return (slice != nullptr &&
-              ((strides.value()[dim] * slice->slice_starts(dim)) %
+    }
+    if (slice_shape.dimensions(dim) < full_shape.dimensions(dim)) {
+      return (slice->opcode() == HloOpcode::kSlice &&
+              (((*strides)[dim] * slice->slice_starts(dim)) %
                    kXlaAllocatedBufferAlignBytes ==
                0));
     }
@@ -164,15 +176,14 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
     // empty: if the operand is a tuple, it might have different data flows
     // (i.e. 1 for each element).
     auto maybe_slice_instr =
-        HloFindIf({operand}, [&](const HloInstruction* cur) {
+        HloBfsFindIf({operand}, [&](const HloInstruction* cur) {
           // If the node is a match that has been processed, stop the traversal.
           if (processed_instrs.contains(cur)) return true;
 
           maybe_sliced_operand_path.push_back(const_cast<HloInstruction*>(cur));
 
           if (IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(cur)) {
-            if (IsAlignedSlice(cur->operand(0)->shape(), cur->shape(),
-                               DynCast<HloSliceInstruction>(cur))) {
+            if (IsAlignedSlice(cur)) {
               slice_found = true;
               return slice_found;
             }
@@ -212,7 +223,7 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr) {
   auto traverse_hlo_and_collect = [&](HloInstruction* start) {
     DefUseDataflowPath maybe_sliced_user_path;
     bool dus_found = false;
-    auto maybe_dus_instr = HloFindIf(
+    auto maybe_dus_instr = HloBfsFindIf(
         {start},
         [&](const HloInstruction* cur) {
           // If the node is a match that has been processed, stop the
@@ -221,8 +232,7 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr) {
           maybe_sliced_user_path.push_back(const_cast<HloInstruction*>(cur));
           if (const auto slice_instr =
                   DynCast<HloDynamicUpdateSliceInstruction>(cur)) {
-            if (IsAlignedSlice(slice_instr->shape(),
-                               slice_instr->update()->shape(), nullptr)) {
+            if (IsAlignedSlice(slice_instr)) {
               dus_found = true;
               return true;
             }

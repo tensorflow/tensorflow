@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/thunk.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
@@ -74,6 +77,10 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "replica-id";
     case Kind::kRngGetAndUpdateState:
       return "rng-get-and-update-state";
+    case Kind::kSort:
+      return "sort";
+    case Kind::kTopK:
+      return "topk";
     case Kind::kWhile:
       return "while";
   }
@@ -89,13 +96,19 @@ Thunk::CollectiveExecuteParams::Create(
           ? run_options->device_ordinal()
           : run_options->stream()->parent()->device_ordinal();
 
+  // Default implementation of a collectives interface that can execute
+  // collective operations within the same process.
+  static CollectivesInterface* in_process_collectives =
+      new runtime::InProcessCollectives();
+
   // If CPU executable run options are set, use the collectives interface
-  // provided by the executable run options. Otherwise, use the in-process
-  // collectives interface.
-  static auto* in_process_collectives = new runtime::InProcessCollectives();
+  // provided by the executable run options if it is set. Otherwise, use the
+  // in-process collectives interface.
+  const CpuExecutableRunOptions* cpu_run_options =
+      run_options->cpu_executable_run_options();
   CollectivesInterface* collectives =
-      run_options->cpu_executable_run_options()
-          ? run_options->cpu_executable_run_options()->collectives()
+      cpu_run_options && cpu_run_options->collectives()
+          ? cpu_run_options->collectives()
           : in_process_collectives;
 
   return CollectiveExecuteParams{run_options->run_id(), device_ordinal,
@@ -146,6 +159,29 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEvent() {
   return event->AsRef();
 }
 
+Thunk::ExecuteState::ExecuteState(int64_t num_tasks)
+    : pending_tasks(num_tasks),
+      event(tsl::MakeConstructedAsyncValueRef<Thunk::ExecuteEvent>()) {}
+
+Thunk::ExecuteState::~ExecuteState() {
+  auto cnt = pending_tasks.load(std::memory_order_acquire);
+  DCHECK_EQ(cnt, 0)
+      << "ExecuteState is destroyed before all tasks are completed";
+}
+
+void Thunk::ExecuteState::Notify() {
+  bool is_done = pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1;
+  if (ABSL_PREDICT_FALSE(is_done)) {
+    event.SetStateConcrete();
+  }
+}
+
+Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
+                                      int64_t split_threshold)
+    : lock_(std::make_shared<std::nullopt_t>(std::nullopt)),
+      max_workers_(max_workers),
+      split_threshold_(split_threshold) {}
+
 // Encodes thunk info into the TraceMe compatible format.
 std::string Thunk::TraceMeEncode() const {
   return tsl::profiler::TraceMeEncode(info_.op_name,
@@ -177,6 +213,15 @@ ThunkSequence::BufferUses ThunkSequence::buffer_uses() const {
     buffer_uses.insert(buffer_uses.end(), uses.begin(), uses.end());
   }
   return buffer_uses;
+}
+
+ThunkSequence::ResourceUses ThunkSequence::resource_uses() const {
+  ResourceUses resource_uses;
+  for (auto& thunk : *this) {
+    ResourceUses uses = thunk->resource_uses();
+    resource_uses.insert(resource_uses.end(), uses.begin(), uses.end());
+  }
+  return resource_uses;
 }
 
 }  // namespace xla::cpu

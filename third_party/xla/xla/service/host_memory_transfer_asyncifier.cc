@@ -80,15 +80,15 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
 
     // Everything is as expected. Replace this dynamic-slice with the async
     // equivalent.
-    VLOG(1) << "DynamicSlice \"" << dynamic_slice->name()
-            << "\" is slicing from host memory. Converting to async.";
     const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
     const Shape transfer_bytes_shape = ShapeUtil::MakeScalarShape(S32);
     TF_ASSIGN_OR_RETURN(
         HloInstruction * async_done,
         dynamic_slice->parent()->CreateAsyncInstructions(
             dynamic_slice, {context_shape, transfer_bytes_shape}));
-    (void)async_done;
+    VLOG(1) << "DynamicSlice \"" << dynamic_slice->ToString()
+            << "\" is slicing from host memory. Converting to async "
+            << async_done->ToString();
     MarkAsChanged();
     return absl::OkStatus();
   }
@@ -139,13 +139,13 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
 
     // Everything is as expected. Replace this dynamic-update-slice with the
     // async equivalent.
-    VLOG(1) << "DynamicUpdateSlice \"" << dynamic_update_slice->name()
-            << "\" is slicing into host memory space. Converting to async.";
     const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
     TF_ASSIGN_OR_RETURN(HloInstruction * async_done,
                         dynamic_update_slice->parent()->CreateAsyncInstructions(
                             dynamic_update_slice, {context_shape}));
-    (void)async_done;
+    VLOG(1) << "DynamicUpdateSlice \"" << dynamic_update_slice->ToString()
+            << "\" is slicing into host memory space. Converting to async "
+            << async_done->ToString();
     MarkAsChanged();
     return absl::OkStatus();
   }
@@ -176,14 +176,14 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
     }
 
     // Everything is as expected. Replace this copy with the async equivalent.
-    VLOG(1)
-        << "Copy \"" << copy->name()
-        << "\" is between device and host memory space. Converting to async.";
     const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
     TF_ASSIGN_OR_RETURN(
         HloInstruction * async_done,
         copy->parent()->CreateAsyncInstructions(copy, {context_shape}));
-    (void)async_done;
+    VLOG(1)
+        << "Copy \"" << copy->name()
+        << "\" is between device and host memory space. Converting to async "
+        << async_done->ToString();
     MarkAsChanged();
     return absl::OkStatus();
   }

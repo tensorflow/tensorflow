@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -42,6 +41,11 @@ class ConcatenateTest : public HloTestBase {
   }
 
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    auto opts = HloTestBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_mlir_emitter_level(0);
+    return opts;
+  }
   AffineMapPrinter printer_;
   mlir::MLIRContext mlir_context_;
 };
@@ -78,8 +82,8 @@ TEST_F(ConcatenateTest, ThreadIndexing) {
   ASSERT_NE(fusion, nullptr);
 
   constexpr auto kIndexing = R"(
-    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    (bl_x * 128 + th_x) mod 400)
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
+      (bl_x * 128 + th_x)
     domain:
     th_x in [0, 127]
     th_y in [0, 0]
@@ -89,7 +93,7 @@ TEST_F(ConcatenateTest, ThreadIndexing) {
     bl_z in [0, 0]
     chunk_id in [0, 0]
     unroll_id in [0, 0]
-    th_x + bl_x * 128 in [0, 399]
+    bl_x * 128 + th_x in [0, 399]
   )";
   EXPECT_THAT(
       fusion

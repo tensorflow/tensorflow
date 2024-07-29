@@ -53,6 +53,7 @@ do_external_licenses_check(){
 @com_github_grpc_grpc//src/compiler
 @platforms//os
 @ruy//
+@rules_python//
 @stablehlo//stablehlo/experimental
 EOF
 

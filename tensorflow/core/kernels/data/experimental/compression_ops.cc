@@ -29,6 +29,7 @@ CompressElementOp::CompressElementOp(OpKernelConstruction* ctx)
 
 void CompressElementOp::Compute(OpKernelContext* ctx) {
   std::vector<Tensor> components;
+  components.reserve(ctx->num_inputs());
   for (size_t i = 0; i < ctx->num_inputs(); ++i) {
     components.push_back(ctx->input(i));
   }

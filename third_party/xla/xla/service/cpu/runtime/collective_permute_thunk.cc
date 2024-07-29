@@ -48,16 +48,20 @@ namespace xla::cpu {
 absl::StatusOr<std::unique_ptr<CollectivePermuteThunk>>
 CollectivePermuteThunk::Create(
     Info info, OpParams op_params, OpBuffers op_buffers,
+    OpResources op_resources,
     absl::Span<const SourceTargetPair> source_target_pairs) {
   return absl::WrapUnique(new CollectivePermuteThunk(
-      std::move(info), op_params, std::move(op_buffers), source_target_pairs));
+      std::move(info), std::move(op_params), std::move(op_buffers),
+      std::move(op_resources), source_target_pairs));
 }
 
 CollectivePermuteThunk::CollectivePermuteThunk(
     Info info, OpParams op_params, OpBuffers op_buffers,
+    OpResources op_resources,
     absl::Span<const SourceTargetPair> source_target_pairs)
-    : CollectiveThunk(Kind::kCollectivePermute, info, op_params,
-                      std::move(op_buffers)),
+    : CollectiveThunk(Kind::kCollectivePermute, std::move(info),
+                      std::move(op_params), std::move(op_buffers),
+                      std::move(op_resources)),
       source_target_pairs_(source_target_pairs.begin(),
                            source_target_pairs.end()) {}
 

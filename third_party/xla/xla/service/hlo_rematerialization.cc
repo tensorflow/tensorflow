@@ -2352,11 +2352,11 @@ absl::StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
         // to the host and back. However, that check does not necessarily
         // guarantee that the compute is split in such a way that it will give
         // us enough compute to hide both copies in series. For example lets say
-        // that the copies take this long: | <-------------  Copies take this
-        // long
-        // -------------->| Lets say the two copies take the same amount of
-        // time: | <----- Copy to host -----> <---- Copy to device ----> |
-
+        // that the copies in total take this long:
+        // | <-------------  Copies take this long --------------> |
+        // Lets say the two copies take the same amount of time:
+        // | <----- Copy to host -----> <---- Copy to device ----> |
+        //
         // And you have a compute sequence that looks like this:
         // +-----------+ +-----------+   +-----------+ +-----------+
         // | Compute-1 | | Compute-2 |   | Compute-3 | | Compute-4 |
@@ -2367,7 +2367,7 @@ absl::StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
         //          Copy-done to host ^
         //        Copy-start to device ^
         //                                     Copy-done to device ^
-
+        //
         // However, if the compute sequence is not even, like this:
         // +-----------------------------------------+ +-----------+
         // |                Compute-1                | | Compute-2 |

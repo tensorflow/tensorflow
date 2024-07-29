@@ -27,12 +27,37 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
+
+TEST(CopyThunkTest, CopyEmptyShape) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  buffers.emplace_back(se::DeviceMemoryBase(nullptr, 0));
+  buffers.emplace_back(se::DeviceMemoryBase(nullptr, 0));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation src_alloc(/*index=*/0, /*size=*/100, /*color=*/0);
+  BufferAllocation dst_alloc(/*index=*/1, /*size=*/100, /*color=*/0);
+
+  BufferAllocation::Slice src_slice(&src_alloc, 0, 0);
+  BufferAllocation::Slice dst_slice(&dst_alloc, 0, 0);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {0, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      CopyThunk::Create({"copy"}, src_slice, shape, dst_slice, shape));
+
+  Thunk::ExecuteParams params = {nullptr, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
+}
 
 TEST(CopyThunkTest, CopySameShape) {
   std::vector<MaybeOwningDeviceMemory> buffers;
@@ -45,8 +70,8 @@ TEST(CopyThunkTest, CopySameShape) {
 
   BufferAllocations allocations(buffers);
 
-  BufferAllocation src_alloc(0, size_in_bytes, 0);
-  BufferAllocation dst_alloc(1, size_in_bytes, 0);
+  BufferAllocation src_alloc(/*index=*/0, size_in_bytes, /*color=*/0);
+  BufferAllocation dst_alloc(/*index=*/1, size_in_bytes, /*color=*/0);
 
   BufferAllocation::Slice src_slice(&src_alloc, 0, size_in_bytes);
   BufferAllocation::Slice dst_slice(&dst_alloc, 0, size_in_bytes);
@@ -77,8 +102,8 @@ TEST(CopyThunkTest, CopyTransposed) {
 
   BufferAllocations allocations(buffers);
 
-  BufferAllocation src_alloc(0, size_in_bytes, 0);
-  BufferAllocation dst_alloc(1, size_in_bytes, 0);
+  BufferAllocation src_alloc(/*index=*/0, size_in_bytes, /*color=*/0);
+  BufferAllocation dst_alloc(/*index=*/1, size_in_bytes, /*color=*/0);
 
   BufferAllocation::Slice src_slice(&src_alloc, 0, size_in_bytes);
   BufferAllocation::Slice dst_slice(&dst_alloc, 0, size_in_bytes);
@@ -99,6 +124,34 @@ TEST(CopyThunkTest, CopyTransposed) {
 
   std::vector<float> expected = {1.0, 3.0, 2.0, 4.0};
   EXPECT_EQ(expected, dst);
+}
+
+TEST(CopyThunkTest, CopyTransposedEmptyShape) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  buffers.emplace_back(se::DeviceMemoryBase(nullptr, 0));
+  buffers.emplace_back(se::DeviceMemoryBase(nullptr, 0));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation src_alloc(/*index=*/0, /*size=*/100, /*color=*/0);
+  BufferAllocation dst_alloc(/*index=*/1, /*size=*/100, /*color=*/0);
+
+  BufferAllocation::Slice src_slice(&src_alloc, 0, 0);
+  BufferAllocation::Slice dst_slice(&dst_alloc, 0, 0);
+
+  Shape src_shape = ShapeUtil::MakeShape(F32, {0, 2});
+  *src_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
+  Shape dst_shape = ShapeUtil::MakeShape(F32, {0, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      CopyThunk::Create({"copy"}, src_slice, src_shape, dst_slice, dst_shape));
+
+  Thunk::ExecuteParams params = {nullptr, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
 }
 
 }  // namespace

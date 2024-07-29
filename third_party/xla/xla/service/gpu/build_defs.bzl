@@ -5,10 +5,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load(
-    "//xla/tests:build_defs.bzl",
-    "prepare_gpu_backend_data",
-)
+load("//xla/tests:build_defs.bzl", "prepare_gpu_backend_data")
 
 # buildifier: disable=out-of-order-load
 # Internally this loads a macro, but in OSS this is a function
@@ -185,5 +182,5 @@ def gen_gpu_hlo_compile_tests(
                     hlo_path,
                 ] + xla_flags,
                 data = ["//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu", data_label],
-                tags = backend_tags[backend] + ["requires-mem:16g"] + tags,
+                tags = backend_tags[backend] + ["requires-mem:16g", "nozapfhahn"] + tags,
             )

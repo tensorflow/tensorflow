@@ -287,6 +287,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kTriangularSolve);
     CASE(kWhile);
     CASE(kFusedMHA);
+    CASE(kFusedMHABackward);
     CASE(kWaitForStreams);
     CASE(kCuDnn);
   }

@@ -40,8 +40,10 @@ limitations under the License.
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/profiling/telemetry/telemetry.h"
@@ -2513,6 +2515,24 @@ void Subgraph::MaybeReleaseDynamicTensors(const TfLiteNode& node,
       }
     }
   }
+}
+
+TfLiteStatus Subgraph::SetBufferHandleImpl(
+    TfLiteContext* context, TfLiteTensor* tensor,
+    TfLiteBufferHandle buffer_handle, TfLiteDelegate* delegate,
+    bool release_existing_buffer_handle) {
+  TF_LITE_ENSURE(context, tensor != nullptr);
+  TF_LITE_ENSURE(context,
+                 tensor->delegate == nullptr || tensor->delegate == delegate);
+  tensor->delegate = delegate;
+  if (release_existing_buffer_handle &&
+      tensor->buffer_handle != kTfLiteNullBufferHandle) {
+    TF_LITE_ENSURE_STATUS(TfLiteDelegateFreeBufferHandleInternal(
+        context, tensor->delegate, &(tensor->buffer_handle)));
+  }
+  tensor->buffer_handle = buffer_handle;
+
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

@@ -42,10 +42,14 @@ class ShapedBuffer {
   // both the on-host and on-device shape are required. The on-device shape
   // determines the number of device allocations (DeviceMemoryBase) held by the
   // ShapedBuffer.
-  ShapedBuffer(Shape on_device_shape, int device_ordinal);
+  // Specify `physical_device_ordinal` if multiple devices share the same
+  // physical device, e.g., virtual GPUs.
+  ShapedBuffer(Shape on_device_shape, int device_ordinal,
+               int physical_device_ordinal = -1);
 
   // TODO(b/170310047): remove this overload.
-  ShapedBuffer(Shape on_host_shape, Shape on_device_shape, int device_ordinal);
+  ShapedBuffer(Shape on_host_shape, Shape on_device_shape, int device_ordinal,
+               int physical_device_ordinal = -1);
 
   // Movable, but not copyable.
   ShapedBuffer(ShapedBuffer&& s);
@@ -68,6 +72,7 @@ class ShapedBuffer {
   const Shape& on_device_shape() const { return on_device_shape_; }
 
   int device_ordinal() const { return device_ordinal_; }
+  int physical_device_ordinal() const { return physical_device_ordinal_; }
 
   // Return the root buffer of the shape (shape index {}).
   const se::DeviceMemoryBase& root_buffer() const {
@@ -130,6 +135,7 @@ class ShapedBuffer {
 
   // The device the memory is allocated on.
   int device_ordinal_;
+  int physical_device_ordinal_;
 
   // The tree of device buffers. Its shape is on_device_shape().
   ShapeTree<se::DeviceMemoryBase> buffers_;
@@ -150,11 +156,13 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // Creates a ScopedShapedBuffer with null DeviceMemoryBases at each index.
   explicit ScopedShapedBuffer(Shape on_device_shape,
                               se::DeviceMemoryAllocator* allocator,
-                              int device_ordinal);
+                              int device_ordinal,
+                              int physical_device_ordinal = -1);
   // TODO(b/170310047): remove this overload.
   explicit ScopedShapedBuffer(Shape on_host_shape, Shape on_device_shape,
                               se::DeviceMemoryAllocator* allocator,
-                              int device_ordinal);
+                              int device_ordinal,
+                              int physical_device_ordinal = -1);
 
   // Create a ScopedShapedBuffer by taking over the memory from the incoming
   // ShapedBuffer.

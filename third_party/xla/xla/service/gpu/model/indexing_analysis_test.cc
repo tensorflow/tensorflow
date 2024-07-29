@@ -18,7 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -2651,6 +2651,35 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
                   domain:
                   d0 in [0, 999]
                   d1 in [0, 999]
+              )"));
+}
+
+TEST_F(IndexingAnalysisTest, BroadcastingElementwise) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = pred[] parameter(0)
+      p1 = f32[1000, 1000] parameter(1)
+      p2 = f32[1000, 1000] parameter(2)
+      ROOT select = f32[1000, 1000] select(p0, p1, p2)
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+
+  EXPECT_THAT(GetOutputToInputIndexing(root).ToString(), MatchIndexingString(R"(
+                  operand id = 0
+                    (d0, d1) -> ()
+                    domain:
+                    d0 in [0, 999]
+                    d1 in [0, 999]
+                  operand id = 1 (d0, d1) -> (d0, d1)
+                    domain:
+                    d0 in [0, 999]
+                    d1 in [0, 999]
+                  operand id = 2 (d0, d1) -> (d0, d1)
+                    domain:
+                    d0 in [0, 999]
+                    d1 in [0, 999]
               )"));
 }
 

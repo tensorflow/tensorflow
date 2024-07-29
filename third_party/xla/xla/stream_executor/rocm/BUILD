@@ -148,7 +148,6 @@ cc_library(
         ":rocm_driver",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_event_header",
-        "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
     ]),
 )
@@ -286,11 +285,13 @@ cc_library(
         ":hipblas_lt_header",
         ":rocblas_if_static",
         ":rocblas_wrapper",
+        ":rocm_complex_converters",
         ":rocm_executor",
         ":rocm_helpers",
         ":rocm_platform_id",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
+        "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_h",
@@ -299,7 +300,6 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "//xla/tsl/util:determinism_hdr_lib",
@@ -337,6 +337,7 @@ cc_library(
     deps = if_rocm_is_configured([
         # keep sorted
         ":hipfft_if_static",
+        ":rocm_complex_converters",
         ":rocm_platform_id",
         "//xla/stream_executor",
         "//xla/stream_executor:fft",
@@ -390,12 +391,12 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
@@ -548,12 +549,13 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "@com_google_absl//absl/status",
@@ -579,6 +581,7 @@ cc_library(
         # keep sorted
         "//xla:types",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/platform",
@@ -600,6 +603,7 @@ cc_library(
         ":hipblas_lt_header",
         ":rocblas_plugin",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
@@ -650,6 +654,14 @@ rocm_library(
 )
 
 cc_library(
+    name = "rocm_complex_converters",
+    hdrs = if_rocm_is_configured(["rocm_complex_converters.h"]),
+    deps = ["@com_google_absl//absl/log:check"] + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
+)
+
+cc_library(
     name = "all_runtime",
     copts = tsl_copts(),
     visibility = ["//visibility:public"],
@@ -680,7 +692,14 @@ cc_library(
     name = "stream_executor_rocm",
     deps = [
         ":rocm_rpath",
-        "//xla/stream_executor:stream_executor_bundle",
+        "//xla/stream_executor",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/host:host_platform_id",
+        "//xla/stream_executor/platform:dso_loader",
+        "//xla/stream_executor/rocm:rocm_platform_id",
     ] + if_static(
         [":all_runtime"],
     ),

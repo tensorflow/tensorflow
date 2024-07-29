@@ -80,7 +80,7 @@ class BufferComparatorTest : public testing::Test {
         ShapeUtil::MakeShape(
             primitive_util::NativeToPrimitiveType<ElementType>(),
             {static_cast<int64_t>(current.size())}),
-        HloModuleConfig(), tolerance);
+        tolerance);
     return comparator
         .CompareEqual(stream.get(), current_buffer.memory(),
                       expected_buffer.memory())
@@ -266,6 +266,16 @@ TEST_F(BufferComparatorTest, TestNumbers) {
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({11}, {12}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({12}, {11}));
 #endif  // GOOGLE_CUDA
+
+  // Rerunning tests with increased relative tolerance
+  const double tol = 0.001;
+  EXPECT_FALSE(CompareEqualFloatBuffers<Eigen::half>({0.9}, {1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<Eigen::half>({0.9}, {0.901}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<float>({10}, {10.1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<float>({10}, {10.01}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({100}, {101}, tol));
+  EXPECT_FALSE(CompareEqualFloatBuffers<double>({20}, {20.1}, tol));
+  EXPECT_TRUE(CompareEqualFloatBuffers<double>({20}, {20.01}, tol));
 }
 
 TEST_F(BufferComparatorTest, TestMultiple) {
@@ -389,8 +399,7 @@ TEST_F(BufferComparatorTest, BF16) {
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
   InitializeBuffer(stream.get(), BF16, &rng_state, rhs.memory());
 
-  BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}),
-                              HloModuleConfig());
+  BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}));
   EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs.memory(), rhs.memory())
                    .value());
 }

@@ -15,19 +15,25 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 
+#include <list>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "absl/types/span.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
+#include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/nvtx_utils.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/mem.h"
 #include "tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/profiler/utils/per_thread.h"
 
@@ -603,6 +609,47 @@ void SetCuMemHostUnregisterEventUponApiExit(
   VLOG(3) << "Cuda HostUnregister API exit." << " p=" << params->p;
 }
 
+struct GraphResourceCreationInfo {
+  uint32_t graph_id = 0;
+  uint32_t orig_graph_id = 0;
+};
+
+static GraphResourceCreationInfo &GetGraphResourceCreationInfo() {
+  static thread_local GraphResourceCreationInfo per_thread_graph_info;
+  return per_thread_graph_info;
+}
+
+// Currently used for cuGraphInstantiate*, cuGraphLaunch*, cuGraphCreate,
+// cuGraphClone.
+void SetCudaGraphEventUponApiExit(CuptiTracerEvent &event,
+                                  CuptiInterface *cupti_interface,
+                                  uint32_t device_id, CUpti_CallbackId cbid,
+                                  const CUpti_CallbackData *cbdata,
+                                  uint64_t start_time, uint64_t end_time) {
+  GraphResourceCreationInfo &graph_id_info = GetGraphResourceCreationInfo();
+  if (cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch ||
+      cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz) {
+    const auto *params =
+        static_cast<const cuGraphLaunch_params *>(cbdata->functionParams);
+    cupti_interface->GetGraphExecId(params->hGraph, &graph_id_info.graph_id);
+    graph_id_info.orig_graph_id = 0;
+  }
+
+  event.type = CuptiTracerEventType::CudaGraph;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.cuda_graph_info.cbid = cbid;
+  event.graph_id = graph_id_info.graph_id;
+  event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
+  VLOG(3) << "Observed CudaGraph API exit." << " name=" << cbdata->functionName;
+}
+
 void SetGenericEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
                                 CUpti_CallbackId cbid,
                                 const CUpti_CallbackData *cbdata,
@@ -718,6 +765,20 @@ static void SetCallbackEventUponApiExit(CuptiTracerEvent &event,
       SetCuMemsetEventUponApiExit(event, device_id, cbid, cbdata, start_tsc,
                                   end_tsc);
       break;
+#if CUDA_VERSION >= 11070  // CUDA 11.7
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphCreate:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphClone:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz:
+      SetCudaGraphEventUponApiExit(event, cupti_interface, device_id, cbid,
+                                   cbdata, start_tsc, end_tsc);
+      break;
+#endif  // CUDA_VERSION >= 11070
     default:
       SetGenericEventUponApiExit(event, device_id, cbid, cbdata, start_tsc,
                                  end_tsc);
@@ -743,14 +804,29 @@ class GuardedCallbackAnnotationsAndEvents {
     annotations_and_events_.Clear();
   }
 
+  void IncNumDroppedEvents() {
+    tsl::mutex_lock lock(mu_);
+    annotations_and_events_.IncNumDroppedEvents();
+  }
+
+  void Push(const CuptiTracer &tracer, CuptiTracerEvent &&event) {
+    tsl::mutex_lock lock(mu_);
+    // Some logic change as no cross thread string comparison should be
+    // made here. The max_annotation_string is used to limit per-thread
+    // annotation string count. And annotation string is not collected
+    // if total callback event count overflow.
+    bool too_many_annotations = tracer.TooManyAnnotationStrings(
+        annotations_and_events_.NumAnnotations());
+    event.annotation = annotations_and_events_.DedupAnnotation(
+        too_many_annotations ? absl::string_view() : event.annotation),
+    event.nvtx_range = annotations_and_events_.DedupNvtxRange(
+        too_many_annotations ? absl::string_view() : event.nvtx_range);
+    annotations_and_events_.event_queue().Push(std::move(event));
+  }
+
  private:
   tsl::mutex mu_;
   CallbackAnnotationsAndEvents annotations_and_events_ TF_GUARDED_BY(mu_);
-
-  friend absl::Status AddDriverApiCallbackEvent(
-      CuptiTracer *tracer, CuptiInterface *cupti_interface, int device_id,
-      uint64_t start_tsc, uint64_t end_tsc, CUpti_CallbackDomain domain,
-      CUpti_CallbackId cbid, const CUpti_CallbackData *cbdata);
 };
 
 using PerThreadCallbackAnnotationsAndEvents =
@@ -767,39 +843,20 @@ absl::Status AddDriverApiCallbackEvent(
     nvtx_range = NVTXRangeTracker::CurrentRange();
   }
 
-  // Thread under tracing try the lock, most of the time, it should get it
-  // immediately. Once it found the lock is occupied by others, it could treat
-  // the tracing could be stopped, just ignore adding more event.
   auto &guarded_annotations_and_events =
       PerThreadCallbackAnnotationsAndEvents::Get();
-  tsl::mutex_lock lock(guarded_annotations_and_events.mu_,
-                       std::try_to_lock_t());
-  if (!(bool)lock) return absl::OkStatus();
-  auto &annotations_and_events =
-      guarded_annotations_and_events.annotations_and_events_;
-
   if (tracer->TooManyCallbackEvents()) {
-    annotations_and_events.IncNumDroppedEvents();
+    guarded_annotations_and_events.IncNumDroppedEvents();
     return absl::OkStatus();
   }
   tracer->IncCallbackEventCount();
-
-  // Some logic change as no cross thread string comparison should be
-  // made here. The max_annotation_string is used to limit per-thread
-  // annotation string count. And annotation string is not collected
-  // if total callback event count overflow.
-  bool too_many_annotations =
-      tracer->TooManyAnnotationStrings(annotations_and_events.NumAnnotations());
-  annotation = annotations_and_events.DedupAnnotation(
-      too_many_annotations ? absl::string_view() : annotation),
-  nvtx_range = annotations_and_events.DedupNvtxRange(
-      too_many_annotations ? absl::string_view() : nvtx_range);
-  CuptiTracerEvent event{.annotation = annotation,
-                         .nvtx_range = nvtx_range,
-                         .correlation_id = cbdata->correlationId};
+  CuptiTracerEvent event{};
+  event.correlation_id = cbdata->correlationId;
+  event.annotation = annotation;
+  event.nvtx_range = nvtx_range;
   SetCallbackEventUponApiExit(event, cupti_interface, device_id, cbid, cbdata,
                               start_tsc, end_tsc);
-  annotations_and_events.event_queue().Push(std::move(event));
+  guarded_annotations_and_events.Push(*tracer, std::move(event));
   return absl::OkStatus();
 }
 
@@ -871,6 +928,17 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
   return absl::StrCat(tsl::port::Hostname(), ": ", error_message);
 }
 
+absl::Span<const uint32_t> GetCudaGraphTracingResourceCbids() {
+#if CUDA_VERSION >= 11070
+  static constexpr uint32_t res_cbids[] = {
+      CUPTI_CBID_RESOURCE_GRAPH_CREATED, CUPTI_CBID_RESOURCE_GRAPH_CLONED,
+      CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED};
+  return absl::MakeSpan(res_cbids);
+#else
+  return absl::Span<const uint32_t>();
+#endif
+}
+
 }  // namespace
 
 const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
@@ -907,6 +975,8 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "HostRegister";
     case CuptiTracerEventType::HostUnregister:
       return "HostUnregister";
+    case CuptiTracerEventType::CudaGraph:
+      return "CudaGraph";
     case CuptiTracerEventType::Unsupported:
       return "";
   }
@@ -962,10 +1032,21 @@ void CuptiTracer::Disable() {
   Finalize().IgnoreError();
   cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
 
+  collector_->SetTracingEndTimeNs(GetTimestamp());
+
+  // The callback API events must be processed before activity API buffers
+  // because the AnnotationMap is populated from the callback API events and
+  // queried by the activity API events.
   collector_->OnTracerCollectedCallbackData(
-      GatherCallbackAnnotationsAndEvents(),
-      option_.has_value() ? option_->required_callback_api_events : false);
-  collector_->OnTracerCachedActivityBuffers(std::move(activity_buffers_));
+      GatherCallbackAnnotationsAndEvents(/*stop_recording=*/true),
+      IsCallbackApiEventsRequired());
+
+  if (activity_buffers_) {
+    auto cached_buffers = activity_buffers_->PopCachedBuffers();
+    activity_buffers_.reset();
+    collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers));
+  }
+
   if (cupti_dropped_activity_event_count_ > 0) {
     collector_->OnEventsDropped("Activity Event dropped by Cupti Lib:",
                                 cupti_dropped_activity_event_count_);
@@ -982,6 +1063,42 @@ void CuptiTracer::Disable() {
   tsl::profiler::AnnotationStack::Enable(false);
 }
 
+absl::Status CuptiTracer::FlushEventsToCollector() {
+  if (!api_tracing_enabled_ && !activity_tracing_enabled_)
+    return absl::OkStatus();
+
+  // Need get the cached activity buffers first, but send to collector after
+  // the callback events are processed.
+  std::list<CuptiActivityBufferManager::ActivityBufferAndSize> cached_buffers;
+  if (activity_tracing_enabled_) {
+    cached_buffers = activity_buffers_->PopCachedBuffers();
+  }
+
+  if (api_tracing_enabled_) {
+    collector_->OnTracerCollectedCallbackData(
+        GatherCallbackAnnotationsAndEvents(/*stop_recording=*/false),
+        IsCallbackApiEventsRequired());
+  }
+
+  collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers));
+  return absl::OkStatus();
+}
+
+absl::Status CuptiTracer::SetActivityFlushPeriod(uint32_t period_ms) {
+  if (activity_tracing_enabled_) {
+    LOG(INFO) << "Set CUPTI activity flush period to " << period_ms << "ms.";
+    RETURN_IF_CUPTI_ERROR(cupti_interface_->SetActivityFlushPeriod(period_ms));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CuptiTracer::FlushActivityBuffers() {
+  // Not forced flush. Only flush completed activity buffers.
+  RETURN_IF_CUPTI_ERROR(cupti_interface_->ActivityFlushAll(0));
+  return absl::OkStatus();
+}
+
+// Need to trace graph ids from creation and instantiation.
 absl::Status CuptiTracer::EnableApiTracing() {
   if (api_tracing_enabled_) return absl::OkStatus();
 
@@ -994,6 +1111,12 @@ absl::Status CuptiTracer::EnableApiTracing() {
   RETURN_IF_CUPTI_ERROR(cupti_interface_->Subscribe(
       &subscriber_, (CUpti_CallbackFunc)ApiCallback, this));
   api_tracing_enabled_ = true;
+
+  absl::Span<const uint32_t> res_cbids = GetCudaGraphTracingResourceCbids();
+  for (auto cbid : res_cbids) {
+    RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableCallback(
+        1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_RESOURCE, cbid));
+  }
 
   if (!option_->cbids_selected.empty()) {
     for (auto cbid : option_->cbids_selected) {
@@ -1016,6 +1139,12 @@ absl::Status CuptiTracer::DisableApiTracing() {
   if (!api_tracing_enabled_) return absl::OkStatus();
 
   api_tracing_enabled_ = false;
+
+  absl::Span<const uint32_t> res_cbids = GetCudaGraphTracingResourceCbids();
+  for (auto cbid : res_cbids) {
+    RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableCallback(
+        0 /* DISABLE */, subscriber_, CUPTI_CB_DOMAIN_RESOURCE, cbid));
+  }
 
   if (!option_->cbids_selected.empty()) {
     for (auto cbid : option_->cbids_selected) {
@@ -1125,6 +1254,34 @@ absl::Status CuptiTracer::HandleNVTXCallback(CUpti_CallbackId cbid,
   return absl::OkStatus();
 }
 
+// Resource callback happens logically inside a driver API call's enter/exit.
+// Some per-thread data structure to record the graph ids.
+absl::Status CuptiTracer::HandleResourceCallback(
+    CUpti_CallbackId cbid, const CUpti_CallbackData *cbdata) {
+  auto *resource = reinterpret_cast<const CUpti_ResourceData *>(cbdata);
+  auto *graph_data =
+      reinterpret_cast<const CUpti_GraphData *>(resource->resourceDescriptor);
+  GraphResourceCreationInfo &graph_id_info = GetGraphResourceCreationInfo();
+  switch (cbid) {
+    case CUPTI_CBID_RESOURCE_GRAPH_CREATED:
+      cupti_interface_->GetGraphId(graph_data->graph, &graph_id_info.graph_id);
+      graph_id_info.orig_graph_id = 0;
+      break;
+    case CUPTI_CBID_RESOURCE_GRAPH_CLONED:
+      cupti_interface_->GetGraphId(graph_data->graph, &graph_id_info.graph_id);
+      cupti_interface_->GetGraphId(graph_data->originalGraph,
+                                   &graph_id_info.orig_graph_id);
+      break;
+    case CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED:
+      cupti_interface_->GetGraphExecId(graph_data->graphExec,
+                                       &graph_id_info.graph_id);
+      cupti_interface_->GetGraphId(graph_data->graph,
+                                   &graph_id_info.orig_graph_id);
+      break;
+  }
+  return absl::OkStatus();
+}
+
 absl::Status CuptiTracer::HandleDriverApiCallback(
     CUpti_CallbackId cbid, const CUpti_CallbackData *cbdata) {
   constexpr CUpti_CallbackDomain domain = CUPTI_CB_DOMAIN_DRIVER_API;
@@ -1164,6 +1321,8 @@ absl::Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
   if (domain == CUPTI_CB_DOMAIN_NVTX) return HandleNVTXCallback(cbid, cbdata);
   if (domain == CUPTI_CB_DOMAIN_DRIVER_API)
     return HandleDriverApiCallback(cbid, cbdata);
+  if (domain == CUPTI_CB_DOMAIN_RESOURCE)
+    return HandleResourceCallback(cbid, cbdata);
   return absl::OkStatus();
 }
 
@@ -1286,9 +1445,12 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
 }
 
 std::vector<CallbackAnnotationsAndEvents>
-CuptiTracer::GatherCallbackAnnotationsAndEvents() {
+CuptiTracer::GatherCallbackAnnotationsAndEvents(bool stop_recording) {
+  // Note that it is OK to call PerThread<T>'s StartRecording() multiple times
+  // without calling StopRecording().
   auto guarded_collection =
-      PerThreadCallbackAnnotationsAndEvents::StopRecording();
+      stop_recording ? PerThreadCallbackAnnotationsAndEvents::StopRecording()
+                     : PerThreadCallbackAnnotationsAndEvents::StartRecording();
   VLOG(3) << "Total grabbed per thread annotated events buffer: "
           << guarded_collection.size();
 

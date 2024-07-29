@@ -131,11 +131,20 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
 //
 // For example:
 //   device_assignment={{33, 34}, {44, 45}, {55, 56}}  3 replicas 2 partitions
-//   group_mode=CollectiveOpGroupMode::kCrossReplica
 //   replica_groups={{0}, {1, 2}}
+//   group_mode=CollectiveOpGroupMode::kCrossReplica
 //
-//   This functions returns {{33, 34}, {44, 45, 55, 56}}
-//   There are 2 subgroups of participating devices {33, 34}, {44, 45, 55, 56}.
+//   This functions returns {{33}, {34}, {44, 45}, {55, 56}}.
+//   Partition 0 has 2 subgroups of participating devices {33}, {44, 55} and
+//   partition 1 has 2 subgroups of participating devices {34}, {45, 56}.
+//
+// Another example:
+//   device_assignment={{33, 34}, {44, 45}, {55, 56}}  3 replicas 2 partitions
+//   replica_groups={{0}, {1, 2}, {3, 4, 5}}
+//   group_mode=CollectiveOpGroupMode::kFlattenedID
+//
+//   This functions returns {{33}, {34, 44}, {45, 55, 56}}. The replica_ids map
+//   into a flattened version of device_assignment.
 absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
@@ -173,6 +182,11 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
 // Returns true if the two replica group are Equal.
 bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
                         absl::Span<const ReplicaGroup> second);
+
+// Returns true if all subgroups in replica_groups are exclusively cross-module.
+bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
+                              bool use_global_ids, bool has_channel_id,
+                              const DeviceAssignment& device_assignment);
 
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.

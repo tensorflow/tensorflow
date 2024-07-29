@@ -55,22 +55,22 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Export.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi_api.h"
@@ -96,6 +96,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
+#include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_fused_mha_runner.h"
@@ -123,6 +124,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/fft_thunk.h"
 #include "xla/service/gpu/runtime/fused_mha_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/runtime/infeed_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
@@ -143,6 +145,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -167,12 +170,7 @@ limitations under the License.
 #include "tsl/protobuf/dnn.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
-#include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/runtime/cholesky_thunk.h"
 #include "xla/service/gpu/runtime/cub_sort_thunk.h"
 #include "xla/service/gpu/runtime/triangular_solve_thunk.h"
@@ -582,7 +580,9 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
 
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      std::move(thunk_sequence)));
+      std::move(thunk_sequence),
+      ir_emitter_context_->debug_options()
+          .xla_enable_command_buffers_during_profiling()));
 
   return absl::OkStatus();
 }
@@ -652,17 +652,13 @@ absl::Status IrEmitterUnnested::EmitGemmThunk(
     TF_ASSIGN_OR_RETURN(workspace, GetAllocationSliceForHlo(instr, {1}));
   }
 
-  bool deterministic_ops =
-      ir_emitter_context_->debug_options().xla_gpu_deterministic_ops() ||
-      ir_emitter_context_->debug_options()
-          .xla_gpu_exclude_nondeterministic_ops();
-
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(static_cast<const HloInstruction*>(instr)));
   auto thunk = std::make_unique<GemmThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(config), a, b,
-      c, workspace, deterministic_ops);
+      c, workspace,
+      RequireDeterminism(ir_emitter_context_->hlo_module().config()));
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -1138,6 +1134,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
+  bool force_deterministic = config.force_deterministic();
   GpufMHABackwardDescriptor descriptor = {
       kind,
       config,
@@ -1158,7 +1155,8 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
       fwd_output_shape,
       mask_shape,
       d_bias_shape,
-      bias_shape};
+      bias_shape,
+      force_deterministic};
 
   TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig fmha_backward_config,
                       GpufMHABackwardConfig::For(descriptor));
@@ -1421,20 +1419,22 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
 
   auto ffi_thunk = [&] {
     auto& called_computations = instr->called_computations();
-    return std::make_unique<CustomCallThunk>(
+    return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->bundle,
         std::move(operands), std::move(results), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&] {
-    return std::make_unique<CustomCallThunk>(
+    return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(instr),
         std::move(custom_call_target), std::move(operands), std::move(results),
         std::move(opaque));
   };
 
-  AddThunkToThunkSequence(found_ffi_handler ? ffi_thunk() : legacy_thunk());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CustomCallThunk> custom_call_thunk,
+                      found_ffi_handler ? ffi_thunk() : legacy_thunk());
+  AddThunkToThunkSequence(std::move(custom_call_thunk));
 
   return absl::OkStatus();
 }
@@ -1584,8 +1584,8 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
 
 absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     const HloCustomCallInstruction* instr) {
-#if !GOOGLE_CUDA
-  return absl::UnimplementedError("Triton support requires CUDA");
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+  return absl::UnimplementedError("Triton support requires CUDA or ROCm");
 #else
   auto generate = [this, &instr]() -> absl::StatusOr<KernelReuseCache::Entry> {
     mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
@@ -1602,8 +1602,15 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     auto triton_fn =
         triton_module->lookupSymbol<mlir::triton::FuncOp>(call.name);
     triton_fn.setName(kernel_name);
+    size_t arg_size = triton_fn.getNumArguments();
 
     HloModule* hlo_module = instr->GetModule();
+    // If emit_kernels if false (i.e., when deserializing an already compiled
+    // executable), we do not emit code, but we still need to run part of the
+    // compiler to figure out the size of the shared memory and the cluster
+    // dimensions for the thunk. We also must call the name uniqifier as if
+    // emitting code so that the future generated names remain in sync.
+    bool emit_kernels = ir_emitter_context_->emit_kernels();
 
     BlockLevelParameters block_level_parameters;
     block_level_parameters.num_stages = call.num_stages;
@@ -1613,16 +1620,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     TF_ASSIGN_OR_RETURN(
         auto result,
         CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
-                            ir_emitter_context_->cuda_compute_capability(),
+                            ir_emitter_context_->gpu_compute_capability(),
                             ir_emitter_context_->gpu_device_info(),
                             block_level_parameters, triton_module.get(),
-                            ir_emitter_context_->llvm_module(), mlir_context));
-
-    llvm::Function* impl_fn =
-        ir_emitter_context_->llvm_module()->getFunction(kernel_name);
-    TF_RET_CHECK(impl_fn);
-    impl_fn->setName(ir_emitter_context_->name_uniquer()->GetUniqueName(
-        kernel_name + "_impl"));
+                            ir_emitter_context_->llvm_module(), mlir_context,
+                            emit_kernels));
 
     TF_ASSIGN_OR_RETURN(
         auto kernel_arguments,
@@ -1633,33 +1635,44 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
         LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
                          se::ThreadDim(call.num_warps * 32));
 
-    llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
+    std::string sanitized_kernel_name =
+        GetSanitizedUniqueName(*ir_emitter_context_, kernel_name);
 
-    llvm::Function* kernel;
-    std::vector<llvm_ir::IrArray> inputs;
-    std::vector<llvm_ir::IrArray> outputs;
-    TF_ASSIGN_OR_RETURN(
-        std::tie(kernel, inputs, outputs),
-        BuildKernelPrototype(*ir_emitter_context_, kernel_name,
-                             kernel_arguments.args(), impl_fn->arg_size(),
-                             launch_dimensions, &builder));
+    if (emit_kernels) {
+      llvm::Function* impl_fn =
+          ir_emitter_context_->llvm_module()->getFunction(kernel_name);
+      TF_RET_CHECK(impl_fn);
+      impl_fn->setName(ir_emitter_context_->name_uniquer()->GetUniqueName(
+          kernel_name + "_impl"));
 
-    // Move function body into kernel prototype.
-    llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
-    prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
-      arg.replaceAllUsesWith(input.GetBasePointer());
+      llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
+
+      llvm::Function* kernel;
+      std::vector<llvm_ir::IrArray> inputs;
+      std::vector<llvm_ir::IrArray> outputs;
+      TF_ASSIGN_OR_RETURN(
+          std::tie(kernel, inputs, outputs),
+          BuildKernelPrototypeFromUniqueName(
+              *ir_emitter_context_, sanitized_kernel_name,
+              kernel_arguments.args(), arg_size, launch_dimensions, &builder));
+
+      // Move function body into kernel prototype.
+      llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
+      prototype_func->splice(prototype_func->begin(), impl_fn);
+      for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
+        arg.replaceAllUsesWith(input.GetBasePointer());
+      }
+      impl_fn->eraseFromParent();
+
+      for (auto& arg : prototype_func->args()) {
+        // Remove the alignment and aliasing attributes to avoid recompiling the
+        // kernel for each alignment/aliasing combination.
+        arg.removeAttr(llvm::Attribute::Alignment);
+        arg.removeAttr(llvm::Attribute::NoAlias);
+      }
     }
-    impl_fn->eraseFromParent();
 
-    for (auto& arg : prototype_func->args()) {
-      // Remove the alignment and aliasing attributes to avoid recompiling the
-      // kernel for each alignment/aliasing combination.
-      arg.removeAttr(llvm::Attribute::Alignment);
-      arg.removeAttr(llvm::Attribute::NoAlias);
-    }
-
-    return {{kernel->getName().str(), launch_dimensions, result.cluster_dim,
+    return {{sanitized_kernel_name, launch_dimensions, result.cluster_dim,
              result.shmem_bytes}};
   };
 
@@ -1727,14 +1740,14 @@ absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
   }
 #if GOOGLE_CUDA || TF_HIPBLASLT
   if (IsCublasLtMatmul(*wrapped)) {
-    auto status = EmitGemmThunk(custom_call);
+    auto status = EmitCublasLtMatmulThunk(custom_call);
     if (status.ok()) {
       thunk_sequence_.back()->set_execution_stream_id(execution_stream_id);
     }
     return status;
   }
   if (IsCublasLtMatmulF8(*wrapped)) {
-    auto status = EmitGemmThunk(custom_call);
+    auto status = EmitCublasLtMatmulThunkF8(custom_call);
     if (status.ok()) {
       thunk_sequence_.back()->set_execution_stream_id(execution_stream_id);
     }
@@ -1747,13 +1760,10 @@ absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
 
 absl::Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
     const std::string& op_name) {
-  if (ir_emitter_context_->debug_options().xla_gpu_deterministic_ops() ||
-      ir_emitter_context_->debug_options()
-          .xla_gpu_exclude_nondeterministic_ops()) {
+  if (RequireDeterminism(ir_emitter_context_->hlo_module().config())) {
     return Unimplemented(
         "HLO instruction %s does not have a deterministic implementation, "
-        "but run-to-run determinism is required by --xla_gpu_deterministic_ops "
-        "or --xla_gpu_exclude_nondeterministic_ops.",
+        "but run-to-run determinism is required.",
         op_name);
   }
   return absl::OkStatus();
@@ -2323,9 +2333,13 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   }
 
   if (should_use_nccl_thunk) {
+    auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(inst);
+    // The wrapper name is used when syntactic sugar is turned on.
+    if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
+      thunk_info.profile_annotation = async_start->name();
+    }
     auto thunk = std::make_unique<NcclThunkType>(
-        Thunk::ThunkInfo::WithProfileAnnotation(inst), NcclApi::Default(), inst,
-        /*buffers=*/std::move(buffers));
+        thunk_info, NcclApi::Default(), inst, /*buffers=*/std::move(buffers));
     GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();

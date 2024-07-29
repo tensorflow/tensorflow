@@ -41,10 +41,9 @@
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/host_callback.h"
-#include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -397,12 +396,13 @@ TEST_P(IfrtBackendHandlerTest, Init) {
     device_memories.push_back({&mock_memories[i]});
   }
 
-  using AttributeMap =
-      absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>;
-  std::vector<AttributeMap> device_attributes(mock_devices_.size());
+  std::vector<AttributeMap> device_attributes;
+  device_attributes.reserve(mock_devices_.size());
 
   for (int i = 0; i < mock_devices_.size(); ++i) {
-    device_attributes[i].insert({"name", absl::StrCat("device", i)});
+    AttributeMap::Map map;
+    map.insert({"name", AttributeMap::StringValue(absl::StrCat("device", i))});
+    device_attributes.push_back(AttributeMap(std::move(map)));
 
     MockDevice& mock_device = *mock_devices_[i];
     // TODO(b/314368788): Clean up PJRT device ID APIs.
@@ -418,48 +418,97 @@ TEST_P(IfrtBackendHandlerTest, Init) {
   auto request = NewIfrtRequest(NewOpId());
   request->mutable_init_request();
 
-  EXPECT_THAT(CallBackend(std::move(request)),
-              IsOkAndHolds(Pointee(
-                  Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
-                    init_response {
-                      session_id: 12345
-                      platform_name: "ifrt_backend"
-                      platform_version: "n/a"
-                      platform_id: 42
-                      process_index: 1
-                      runtime_type: "ifrt-service"
-                      devices {
-                        id: 0
-                        device_kind: "mock"
-                        default_memory_id: 0
-                        memory_ids: [ 0 ]
-                        attributes {
-                          key: "name"
-                          value { string_value: "device0" }
+  if (Version().protocol_version() <= 3) {
+    EXPECT_THAT(CallBackend(std::move(request)),
+                IsOkAndHolds(Pointee(
+                    Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
+                      init_response {
+                        session_id: 12345
+                        platform_name: "ifrt_backend"
+                        platform_version: "n/a"
+                        platform_id: 42
+                        process_index: 1
+                        runtime_type: "ifrt-service"
+                        devices {
+                          id: 0
+                          device_kind: "mock"
+                          default_memory_id: 0
+                          memory_ids: [ 0 ]
+                          deprecated_attributes {
+                            key: "name"
+                            value { string_value: "device0" }
+                          }
+                        }
+                        devices {
+                          id: 1
+                          device_kind: "mock"
+                          default_memory_id: 1
+                          memory_ids: [ 1 ]
+                          deprecated_attributes {
+                            key: "name"
+                            value { string_value: "device1" }
+                          }
+                        }
+                        memories {
+                          id: 0
+                          memory_space_kind: "mock"
+                          device_ids: [ 0 ]
+                        }
+                        memories {
+                          id: 1
+                          memory_space_kind: "mock"
+                          device_ids: [ 1 ]
                         }
                       }
-                      devices {
-                        id: 1
-                        device_kind: "mock"
-                        default_memory_id: 1
-                        memory_ids: [ 1 ]
-                        attributes {
-                          key: "name"
-                          value { string_value: "device1" }
+                    )pb"))))));
+  } else {
+    EXPECT_THAT(CallBackend(std::move(request)),
+                IsOkAndHolds(Pointee(
+                    Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
+                      init_response {
+                        session_id: 12345
+                        platform_name: "ifrt_backend"
+                        platform_version: "n/a"
+                        platform_id: 42
+                        process_index: 1
+                        runtime_type: "ifrt-service"
+                        devices {
+                          id: 0
+                          device_kind: "mock"
+                          default_memory_id: 0
+                          memory_ids: [ 0 ]
+                          attributes {
+                            attributes {
+                              key: "name"
+                              value { string_value: "device0" }
+                            }
+                          }
+                        }
+                        devices {
+                          id: 1
+                          device_kind: "mock"
+                          default_memory_id: 1
+                          memory_ids: [ 1 ]
+                          attributes {
+                            attributes {
+                              key: "name"
+                              value { string_value: "device1" }
+                            }
+                          }
+                        }
+                        memories {
+                          id: 0
+                          memory_space_kind: "mock"
+                          device_ids: [ 0 ]
+                        }
+                        memories {
+                          id: 1
+                          memory_space_kind: "mock"
+                          device_ids: [ 1 ]
                         }
                       }
-                      memories {
-                        id: 0
-                        memory_space_kind: "mock"
-                        device_ids: [ 0 ]
-                      }
-                      memories {
-                        id: 1
-                        memory_space_kind: "mock"
-                        device_ids: [ 1 ]
-                      }
-                    }
-                  )pb"))))));
+                    )pb"))))));
+  }
 }
 #endif
 
@@ -700,27 +749,70 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
 
 TEST_P(IfrtBackendHandlerTest, ReshardSuccess) {
   auto src_mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  auto resharded_mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*src_mock_array, Reshard(_, _))
-      .WillOnce(Return(std::move(resharded_mock_array)));
+  TF_ASSERT_OK_AND_ASSIGN(auto* device,
+                          mock_client_->LookupDevice(DeviceId(0)));
+  auto src_sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  ON_CALL(*src_mock_array, sharding()).WillByDefault(ReturnRef(*src_sharding));
   TF_ASSERT_OK_AND_ASSIGN(auto src_array_handle,
                           MakeTestArray(std::move(src_mock_array)));
+
+  auto copied_mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  EXPECT_CALL(*mock_client_, CopyArrays(_, _, _, _))
+      .WillOnce(Return(std::vector<tsl::RCReference<xla::ifrt::Array>>(
+          {copied_mock_array})));
 
   auto ifrt_request = NewIfrtRequest(NewOpId());
   auto* reshard_request = ifrt_request->mutable_reshard_request();
   reshard_request->set_array_handle(src_array_handle);
   reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  TF_ASSERT_OK_AND_ASSIGN(auto* device,
+  TF_ASSERT_OK_AND_ASSIGN(auto* new_device,
                           mock_client_->LookupDevice(DeviceId(1)));
   TF_ASSERT_OK_AND_ASSIGN(
       *ifrt_request->mutable_reshard_request()->mutable_sharding(),
-      SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
+      SingleDeviceSharding::Create(new_device, MemoryKind())->ToProto());
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
 
   EXPECT_THAT(tsl::StatusFromProto(response->response_metadata().status()),
               IsOk());
   EXPECT_NE(response->reshard_response().array_handle(), 0);
+}
+
+TEST_P(IfrtBackendHandlerTest, ReshardFailsWhenTheBackendFails) {
+  auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  TF_ASSERT_OK_AND_ASSIGN(auto* device,
+                          mock_client_->LookupDevice(DeviceId(1)));
+  auto sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  ON_CALL(*mock_array, sharding()).WillByDefault(ReturnRef(*sharding));
+  TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
+                          MakeTestArray(std::move(mock_array)));
+
+  EXPECT_CALL(*mock_client_, CopyArrays(_, _, _, _))
+      .WillOnce(Return(absl::UnknownError("injected error")));
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  auto* reshard_request = ifrt_request->mutable_reshard_request();
+  reshard_request->set_array_handle(array_handle);
+  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
+  TF_ASSERT_OK_AND_ASSIGN(auto* new_device,
+                          mock_client_->LookupDevice(DeviceId(1)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      *ifrt_request->mutable_reshard_request()->mutable_sharding(),
+      SingleDeviceSharding::Create(new_device, MemoryKind())->ToProto());
+
+  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
+              StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
+}
+
+TEST_P(IfrtBackendHandlerTest, ReshardFailsWithNonExistentArrayHandle) {
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  auto* reshard_request = ifrt_request->mutable_reshard_request();
+  reshard_request->set_array_handle(0);
+  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
+  reshard_request->mutable_sharding();
+
+  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_P(IfrtBackendHandlerTest, FullyReplicatedShardSuccess) {
@@ -772,38 +864,6 @@ TEST_P(IfrtBackendHandlerTest,
   fully_replicated_shard_request->set_array_handle(0);
   fully_replicated_shard_request->set_copy_semantics(
       proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-
-  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
-              StatusIs(absl::StatusCode::kNotFound));
-}
-
-TEST_P(IfrtBackendHandlerTest, ReshardFailsWhenTheBackendFails) {
-  auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array, Reshard(_, _))
-      .WillOnce(Return(absl::UnknownError("injected error")));
-  TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
-                          MakeTestArray(std::move(mock_array)));
-
-  auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* reshard_request = ifrt_request->mutable_reshard_request();
-  reshard_request->set_array_handle(array_handle);
-  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  TF_ASSERT_OK_AND_ASSIGN(auto* device,
-                          mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      *ifrt_request->mutable_reshard_request()->mutable_sharding(),
-      SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
-
-  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
-              StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
-}
-
-TEST_P(IfrtBackendHandlerTest, ReshardFailsWithNonExistentArrayHandle) {
-  auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* reshard_request = ifrt_request->mutable_reshard_request();
-  reshard_request->set_array_handle(0);
-  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  reshard_request->mutable_sharding();
 
   EXPECT_THAT(CallBackend(std::move(ifrt_request)),
               StatusIs(absl::StatusCode::kNotFound));
@@ -932,20 +992,14 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
     EXPECT_CALL(devices[i], Id()).WillOnce(Return(DeviceId(i)));
   }
 
-  std::vector<xla::ifrt::LoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids;
   std::vector<xla::ifrt::Device*> addressable_devices;
   for (int i = 0; i < 4; ++i) {
-    xla::ifrt::LoadedExecutable::LogicalDeviceIds id{i / 2, i % 2};
-    addressable_device_logical_ids.push_back(id);
     addressable_devices.push_back(&devices[i]);
   }
 
   auto executable = std::make_unique<MockLoadedExecutable>();
   EXPECT_CALL(*executable, name()).WillOnce(Return("executable_name"));
   EXPECT_CALL(*executable, num_devices()).WillOnce(Return(4));
-  EXPECT_CALL(*executable, addressable_device_logical_ids())
-      .WillOnce(Return(absl::MakeSpan(addressable_device_logical_ids)));
   EXPECT_CALL(*executable, addressable_devices())
       .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
@@ -957,10 +1011,6 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   EXPECT_THAT(response, Partially(EquivToProto(R"pb(
                 name: "executable_name"
                 num_devices: 4
-                addressable_device_logical_ids { replica: 0 partition: 0 }
-                addressable_device_logical_ids { replica: 0 partition: 1 }
-                addressable_device_logical_ids { replica: 1 partition: 0 }
-                addressable_device_logical_ids { replica: 1 partition: 1 }
                 addressable_device_ids: [ 0, 1, 2, 3 ]
                 fingerprint_value: "fingerprint"
               )pb")));

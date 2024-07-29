@@ -21,10 +21,10 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
-#include "grpcpp/create_channel.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
+#include "grpcpp/create_channel.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel_common.h"
 #include "xla/tsl/util/device_name_utils.h"
 #include "tsl/lib/gtl/map_util.h"

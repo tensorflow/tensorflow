@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <cassert>
 
+#include "absl/status/status.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LogicalResult.h"
-#include "absl/status/status.h"
 #include "tsl/platform/logging.h"
 
 namespace tsl {

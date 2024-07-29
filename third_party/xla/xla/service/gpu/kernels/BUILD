@@ -5,6 +5,7 @@ load(
     "if_cuda_is_configured",
     "if_cuda_newer_than",
 )
+load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -109,6 +110,7 @@ xla_test(
     tags = ["no_rocm"],
     deps = [
         ":custom_kernel_fusion_pattern",
+        ":cutlass_gemm_custom_kernel",
         ":cutlass_gemm_fusion",
         "//xla:array",
         "//xla:array2d",
@@ -182,13 +184,13 @@ xla_test(
         "//xla/stream_executor:device_memory_handle",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/gpu:gpu_init",
-        "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/host:host_platform",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
@@ -291,7 +293,7 @@ xla_test(
     ],
 )
 
-cc_binary(
+xla_cc_binary(
     name = "cutlass_gemm_custom_kernel_benchmarks",
     testonly = 1,
     srcs = if_cuda_is_configured(["cutlass_gemm_custom_kernel_benchmarks.cc"]),

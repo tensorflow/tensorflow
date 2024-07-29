@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
@@ -55,7 +57,7 @@ namespace xla {
 namespace spmd {
 namespace {
 
-using DimMap = StableHashMap</*tensor dim*/ int, /* mesh dim*/ int>;
+using DimMap = StableMap</*tensor dim*/ int, /* mesh dim*/ int>;
 using MeshDims = absl::Span<const int64_t>;
 
 struct Enumeration {
@@ -166,11 +168,45 @@ class HandlerBase {
     }
   }
 
+  // Given a set of tensor dims, and a set of mesh dims, enumerates all mappings
+  // where a subset of all tensor dims is mapped to a subset of mesh dims, such
+  // that each tensor dim is mapped to at most mesh dim, and no two tensor dims
+  // are mapped to the same mesh dim.
+  // TODO(b/226977360): We might need to generalize this to also allow cases
+  // where a tensor dim can be mapped to multiple mesh dims.
+  void EnumerateGeneral(std::function<void(const DimMap&)> split_func,
+                        int tensor_rank, int current_tensor_dim,
+                        const absl::flat_hash_set<int>& unassigned_mesh_dims,
+                        const DimMap& current_dim_map) {
+    if (current_tensor_dim == tensor_rank) {
+      split_func(current_dim_map);
+      return;
+    }
+    // current_tensor_dim is unsharded
+    EnumerateGeneral(split_func, tensor_rank, current_tensor_dim + 1,
+                     unassigned_mesh_dims, current_dim_map);
+    // current_tensor_dim is sharded across one of the remaining mesh dims
+    for (int mesh_dim : unassigned_mesh_dims) {
+      DimMap updated_dim_map = current_dim_map;
+      updated_dim_map[current_tensor_dim] = mesh_dim;
+      absl::flat_hash_set<int> updated_unassigned_mesh_dims =
+          unassigned_mesh_dims;
+      updated_unassigned_mesh_dims.erase(
+          updated_unassigned_mesh_dims.find(mesh_dim));
+      EnumerateGeneral(split_func, tensor_rank, current_tensor_dim + 1,
+                       updated_unassigned_mesh_dims, updated_dim_map);
+    }
+  }
+
   // Enumerates *half* of the combinations (if inner & outer dims are the same).
   void EnumerateHalf(std::function<void(const Enumeration&)> split_func,
                      size_t num_outer_dims = 2, size_t num_inner_dims = 2) {
     Enumerate(split_func, num_outer_dims, num_inner_dims, true);
   }
+
+  // Sorts strategies in the increasing order of their memory costs. Anecdotal
+  // experience suggests that such a sorted list of strategies works better
+  void SortStrategies();
 
   std::unique_ptr<StrategyGroup>& strategy_group_;
   StrategyMap& strategy_map_;
@@ -212,33 +248,11 @@ class DotHandler : public HandlerBase {
 
   ~DotHandler() override = default;
 
-  void SplitLhsSpaceRhsSpace();
+  std::string GenerateNameForDotSharding(const DimMap& output_dim_map,
+                                         const DimMap& lhs_dim_map);
 
-  void SplitLhsSpaceOnly();
-
-  void SplitRhsSpaceOnly();
-
-  void SplitLhsSpaceBothContract();
-
-  void SplitRhsSpaceBothContract();
-
-  void SplitOneBatchDim();
-
-  void SplitTwoBatchDims();
-
-  void SplitBatchDimLhsSpace();
-
-  void SplitBatchDimRhsSpace();
-
-  void SplitBatchDimBothContract();
-
-  void SplitBothContractTwoDims();
-
-  void RecomputeSplitBothContract();
-
-  void Add1DDataParallel();
-
-  void Add1DBatchSplit();
+  void GenerateDotShardingStrategiesFromOutputSharding(
+      const DimMap& output_dim_map);
 
   void AppendAllGatherWindowedEinsumStrategyForOperand(
       int operand_num, const std::string& name, const DimMap& lhs_dim_map,
@@ -256,10 +270,13 @@ class DotHandler : public HandlerBase {
   bool is_dot_;
   int64_t space_base_dim_;
   tsl::protobuf::RepeatedField<int64_t> lhs_space_dims_, rhs_space_dims_;
+  tsl::protobuf::RepeatedField<int64_t> out_lhs_space_dims_,
+      out_rhs_space_dims_;
   tsl::protobuf::RepeatedField<int64_t> lhs_con_dims_;
   tsl::protobuf::RepeatedField<int64_t> rhs_con_dims_;
   tsl::protobuf::RepeatedField<int64_t> lhs_batch_dims_;
   tsl::protobuf::RepeatedField<int64_t> rhs_batch_dims_;
+  std::vector<int64_t> out_batch_dims_;
 };
 
 class ConvHandler : public HandlerBase {
@@ -284,6 +301,9 @@ class ConvHandler : public HandlerBase {
   void Add1DDataParallel();
 
   void SplitDepthwise(bool forward);
+
+  void GenerateConvolutionShardingStrategiesFromOutputSharding(
+      const DimMap& output_dim_map);
 
   absl::Status RegisterStrategies();
 
@@ -319,7 +339,8 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
       output_spec,
       compute_cost,
       communication_cost,
-      GetBytes(ins_->shape()) / output_spec.NumTiles(),
+      static_cast<double>(
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec)),
       communication_resharding_costs,
       memory_resharding_costs,
       {input_specs.begin(), input_specs.end()},
@@ -438,6 +459,17 @@ std::optional<HloSharding> HandlerBase::GetShardingFromUser(
   return ins_clone->sharding();
 }
 
+void HandlerBase::SortStrategies() {
+  absl::c_sort(strategy_group_->strategies,
+               [](const ShardingStrategy& s1, const ShardingStrategy& s2) {
+                 if (s1.memory_cost == s2.memory_cost) {
+                   return s1.name < s2.name;
+                 } else {
+                   return s1.memory_cost < s2.memory_cost;
+                 }
+               });
+}
+
 /************** DotHandler function definitions **************/
 
 DotHandler::DotHandler(std::unique_ptr<StrategyGroup>& strategy_group,
@@ -457,9 +489,18 @@ DotHandler::DotHandler(std::unique_ptr<StrategyGroup>& strategy_group,
       lhs_con_dims_(ins->dot_dimension_numbers().lhs_contracting_dimensions()),
       rhs_con_dims_(ins->dot_dimension_numbers().rhs_contracting_dimensions()),
       lhs_batch_dims_(ins->dot_dimension_numbers().lhs_batch_dimensions()),
-      rhs_batch_dims_(ins->dot_dimension_numbers().rhs_batch_dimensions()) {
+      rhs_batch_dims_(ins->dot_dimension_numbers().rhs_batch_dimensions()),
+      out_batch_dims_(
+          ins->dot_dimension_numbers().rhs_batch_dimensions().size()) {
   std::tie(lhs_space_dims_, rhs_space_dims_) =
       GetSpaceDims(lhs_->shape(), rhs_->shape(), ins->dot_dimension_numbers());
+  for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
+    out_lhs_space_dims_.Add(space_base_dim_ + i);
+  }
+  for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
+    out_rhs_space_dims_.Add(space_base_dim_ + lhs_space_dims_.size() + i);
+  }
+  std::iota(out_batch_dims_.begin(), out_batch_dims_.end(), 0);
   CHECK_EQ(lhs_con_dims_.size(), rhs_con_dims_.size());
   CHECK_EQ(lhs_batch_dims_.size(), rhs_batch_dims_.size());
 }
@@ -483,6 +524,7 @@ DotHandler::DotHandler(
   for (auto dim_idx : conv_as_dot_dims.batch_dims) {
     if (dim_idx.lhs >= 0) lhs_batch_dims_.Add(dim_idx.lhs);
     if (dim_idx.rhs >= 0) rhs_batch_dims_.Add(dim_idx.rhs);
+    if (dim_idx.output >= 0) out_batch_dims_.push_back(dim_idx.output);
   }
 
   for (auto dim_idx : conv_as_dot_dims.contracting_dims) {
@@ -492,359 +534,207 @@ DotHandler::DotHandler(
 
   for (auto dim_idx : conv_as_dot_dims.lhs_non_contracting_dims) {
     if (dim_idx.lhs >= 0) lhs_space_dims_.Add(dim_idx.lhs);
+    if (dim_idx.output >= 0) out_lhs_space_dims_.Add(dim_idx.output);
   }
 
   for (auto dim_idx : conv_as_dot_dims.rhs_non_contracting_dims) {
     if (dim_idx.rhs >= 0) rhs_space_dims_.Add(dim_idx.rhs);
+    if (dim_idx.output >= 0) out_rhs_space_dims_.Add(dim_idx.output);
   }
 }
 
-void DotHandler::SplitLhsSpaceRhsSpace() {
-  auto func = [this](const Enumeration& e) {
-    const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[0]}};
-    const DimMap rhs_dim_map = {{rhs_space_dims_[e.j], e.mesh_dims[1]}};
-    std::string name =
-        absl::StrFormat("SS = SR x RS @ {%s}", absl::StrJoin(e.mesh_dims, ","));
+std::string DotHandler::GenerateNameForDotSharding(const DimMap& output_dim_map,
+                                                   const DimMap& lhs_dim_map) {
+  std::string name;
 
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{
-          {space_base_dim_ + e.i, e.mesh_dims[0]},
-          {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) + e.j,
-           e.mesh_dims[1]}};
+  auto append_shardings_for_dims = [&name](absl::Span<const int64_t> out_dims,
+                                           const DimMap& dim_map,
+                                           absl::string_view identifier) {
+    for (size_t i = 0; i < out_dims.size(); ++i) {
+      int output_batch_dim = out_dims[i];
+      int mesh_dim = -1;
+      auto it = dim_map.find(output_batch_dim);
+      if (it != dim_map.end() && it->second >= 0) {
+        mesh_dim = it->second;
+      }
+      absl::StrAppend(&name, identifier, mesh_dim);
     }
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_);
   };
-  Enumerate(func, lhs_space_dims_.size(), rhs_space_dims_.size());
+
+  // Output batch dims
+  append_shardings_for_dims(out_batch_dims_, output_dim_map,
+                            /*identifier=*/"b");
+  // LHS space dims
+  append_shardings_for_dims(out_lhs_space_dims_, output_dim_map,
+                            /*identifier=*/"ls");
+  // RHS space dims
+  append_shardings_for_dims(out_rhs_space_dims_, output_dim_map,
+                            /*identifier=*/"rs");
+  // Contraction dims
+  append_shardings_for_dims(lhs_con_dims_, lhs_dim_map,
+                            /*identifier=*/"r");
+
+  bool contraction_dim_sharded = false;
+  for (size_t i = 0; i < lhs_con_dims_.size(); ++i) {
+    if (auto it = lhs_dim_map.find(lhs_con_dims_[i]);
+        it != lhs_dim_map.end() && it->second >= 0) {
+      contraction_dim_sharded =
+          contraction_dim_sharded || (device_mesh_.dim(it->second) > 1);
+    }
+  }
+
+  if (contraction_dim_sharded) {
+    absl::StrAppend(&name, "|allreduce");
+  }
+  return name;
 }
 
-void DotHandler::SplitLhsSpaceOnly() {
-  auto func = [this](const Enumeration& e) {
-    const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[0]},
-                                {lhs_space_dims_[e.j], e.mesh_dims[1]}};
-    std::string name = absl::StrFormat("SSR = SSR x RR @ {%s}",
-                                       absl::StrJoin(e.mesh_dims, ","));
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{{space_base_dim_ + e.i, e.mesh_dims[0]},
-                           {space_base_dim_ + e.j, e.mesh_dims[1]}};
+bool IsFullyReplicatedSharding(const DimMap& dim_map,
+                               const Array<int64_t>& device_mesh) {
+  if (dim_map.empty()) {
+    return true;
+  }
+  for (const auto& [_, mesh_dim] : dim_map) {
+    if (device_mesh.dim(mesh_dim) > 1) {
+      return false;
     }
-    MaybeAppend(name, lhs_dim_map, {}, out_dim_map, device_mesh_);
-  };
-  EnumerateHalf(func, lhs_space_dims_.size(), lhs_space_dims_.size());
+  }
+  return true;
 }
 
-void DotHandler::SplitRhsSpaceOnly() {
-  auto func = [this](const Enumeration& e) {
-    const DimMap rhs_dim_map = {{rhs_space_dims_[e.i], e.mesh_dims[0]},
-                                {rhs_space_dims_[e.j], e.mesh_dims[1]}};
-    std::string name = absl::StrFormat("RSS = RR x RSS @ {%s}",
-                                       absl::StrJoin(e.mesh_dims, ","));
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{
-          {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) + e.i,
-           e.mesh_dims[0]},
-          {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) + e.j,
-           e.mesh_dims[1]}};
-    }
-    MaybeAppend(name, {}, rhs_dim_map, out_dim_map, device_mesh_);
-  };
-  EnumerateHalf(func, rhs_space_dims_.size(), rhs_space_dims_.size());
+bool IsFullyReplicatedStrategy(const DimMap& output_dim_map,
+                               const DimMap& lhs_dim_map,
+                               const DimMap& rhs_dim_map,
+                               const Array<int64_t>& device_mesh) {
+  return IsFullyReplicatedSharding(output_dim_map, device_mesh) &&
+         IsFullyReplicatedSharding(lhs_dim_map, device_mesh) &&
+         IsFullyReplicatedSharding(rhs_dim_map, device_mesh);
 }
 
-void DotHandler::SplitLhsSpaceBothContract() {
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
-        device_mesh_.dim(e.mesh_dims[1]) <= 1)
-      return;
-    std::string name =
-        absl::StrFormat("SR = SS x SR @ {%s} (allreduce @ %d)",
-                        absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[1]);
-    const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[0]},
-                                {lhs_con_dims_[e.j], e.mesh_dims[1]}};
-    const DimMap rhs_dim_map = {{rhs_con_dims_[e.j], e.mesh_dims[1]}};
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{{space_base_dim_ + e.i, e.mesh_dims[0]}};
-    }
-
-    auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-      return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
-    };
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
-                communication_cost_fn);
-  };
-  Enumerate(func, lhs_space_dims_.size(), lhs_con_dims_.size());
+bool IsFullySharded(const DimMap& dim_map, int num_mesh_dims) {
+  return dim_map.size() >= num_mesh_dims;
 }
 
-void DotHandler::SplitRhsSpaceBothContract() {
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1) return;
-    std::string name =
-        absl::StrFormat("RS = RS x SS @ {%s} (allreduce @ %d)",
-                        absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[0]);
-    const DimMap rhs_dim_map = {{rhs_space_dims_[e.i], e.mesh_dims[1]},
-                                {rhs_con_dims_[e.j], e.mesh_dims[0]}};
-    const DimMap lhs_dim_map = {{lhs_con_dims_[e.j], e.mesh_dims[0]}};
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{
-          {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) + e.i,
-           e.mesh_dims[1]}};
-    }
-    auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-      return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
-    };
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
-                communication_cost_fn);
-  };
-  Enumerate(func, rhs_space_dims_.size(), lhs_con_dims_.size());
-}
+void DotHandler::GenerateDotShardingStrategiesFromOutputSharding(
+    const DimMap& output_dim_map) {
+  DimMap lhs_dim_map, rhs_dim_map;
+  absl::flat_hash_set<int> used_mesh_dims;
 
-void DotHandler::SplitOneBatchDim() {
-  if (absl::c_count_if(device_mesh_.dimensions(),
-                       [](int64_t size) { return size > 1; }) != 1) {
+  // Propagate shardings for batch dimensions
+  for (size_t i = 0; i < out_batch_dims_.size(); ++i) {
+    int output_batch_dim = out_batch_dims_[i];
+    int lhs_batch_dim = lhs_batch_dims_[i];
+    int rhs_batch_dim = rhs_batch_dims_[i];
+    auto it = output_dim_map.find(output_batch_dim);
+    if (it != output_dim_map.end() && it->second >= 0) {
+      int mesh_dim = it->second;
+      used_mesh_dims.insert(mesh_dim);
+      lhs_dim_map[lhs_batch_dim] = mesh_dim;
+      rhs_dim_map[rhs_batch_dim] = mesh_dim;
+    }
+  }
+
+  // Propagate shardings for spatial dimensions
+  // - LHS space dims
+  for (size_t i = 0; i < lhs_space_dims_.size(); ++i) {
+    int lhs_space_dim = lhs_space_dims_[i];
+    int output_space_dim = out_lhs_space_dims_[i];
+    auto it = output_dim_map.find(output_space_dim);
+    if (it != output_dim_map.end() && it->second >= 0) {
+      int mesh_dim = it->second;
+      used_mesh_dims.insert(mesh_dim);
+      lhs_dim_map[lhs_space_dim] = mesh_dim;
+    }
+  }
+
+  // - RHS space dims
+  for (size_t i = 0; i < rhs_space_dims_.size(); ++i) {
+    int rhs_space_dim = rhs_space_dims_[i];
+    int output_space_dim = out_rhs_space_dims_[i];
+    auto it = output_dim_map.find(output_space_dim);
+    if (it != output_dim_map.end() && it->second >= 0) {
+      int mesh_dim = it->second;
+      used_mesh_dims.insert(mesh_dim);
+      rhs_dim_map[rhs_space_dim] = mesh_dim;
+    }
+  }
+
+  // Skip fully the replicated strategy here as we add that outside of
+  // HandleDot in auto_sharding_strategy.
+  // TODO(b/348372403): Consolidate the generation of all dot strategies
+  // (including replicated strategies) in one place.
+  if (!IsFullyReplicatedStrategy(output_dim_map, lhs_dim_map, rhs_dim_map,
+                                 device_mesh_) &&
+      // This second condition is added to ensure parity with the older strategy
+      // generation code. Removing it will only increase the search space.
+      IsFullySharded(output_dim_map, device_mesh_.num_dimensions())) {
+    MaybeAppend(GenerateNameForDotSharding(output_dim_map, lhs_dim_map),
+                lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+  }
+
+  // Generate shardings for contraction dimensions
+  if (used_mesh_dims.size() == device_mesh_.num_dimensions()) {
     return;
   }
-  auto func = [this](const Enumeration& e) {
-    const DimMap lhs_dim_map = {{lhs_batch_dims_[e.i], e.j}};
-    const DimMap rhs_dim_map = {{rhs_batch_dims_[e.i], e.j}};
-    std::string name = absl::StrFormat("Sb_%d = Sb x Sb @ {%d}", e.i, e.j);
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{{e.i, e.j}};
-    }
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_);
-  };
-  Enumerate(func, lhs_batch_dims_.size(), device_mesh_.num_dimensions());
-}
 
-void DotHandler::SplitTwoBatchDims() {
-  if (lhs_batch_dims_.size() != 2) return;
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
-        device_mesh_.dim(e.mesh_dims[1]) <= 1)
-      return;
-    const DimMap lhs_dim_map = {{lhs_batch_dims_[0], e.mesh_dims[0]},
-                                {lhs_batch_dims_[1], e.mesh_dims[1]}};
-    const DimMap rhs_dim_map = {{rhs_batch_dims_[0], e.mesh_dims[0]},
-                                {rhs_batch_dims_[1], e.mesh_dims[1]}};
-    std::string name =
-        absl::StrFormat("Sb = Sb x Sb @ {%s}", absl::StrJoin(e.mesh_dims, ","));
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{{0, e.mesh_dims[0]}, {1, e.mesh_dims[1]}};
-    }
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_);
-  };
-  EnumerateHalf(func, lhs_batch_dims_.size(), lhs_batch_dims_.size());
-}
-
-void DotHandler::SplitBatchDimLhsSpace() {
-  if (lhs_batch_dims_.empty()) return;
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
-        device_mesh_.dim(e.mesh_dims[1]) <= 1)
-      return;
-    std::string name = absl::StrFormat("SbSi = SbSi x SbR @ {%s}",
-                                       absl::StrJoin(e.mesh_dims, ","));
-    const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[1]},
-                                {lhs_batch_dims_[e.j], e.mesh_dims[0]}};
-    const DimMap rhs_dim_map = {{rhs_batch_dims_[e.j], e.mesh_dims[0]}};
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{{e.j, e.mesh_dims[0]},
-                           {space_base_dim_ + e.i, e.mesh_dims[1]}};
-    }
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_);
-  };
-  Enumerate(func, lhs_space_dims_.size(), lhs_batch_dims_.size());
-}
-
-void DotHandler::SplitBatchDimRhsSpace() {
-  if (lhs_batch_dims_.empty()) return;
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
-        device_mesh_.dim(e.mesh_dims[1]) <= 1)
-      return;
-    std::string name = absl::StrFormat("SbSj = SbR x SbSj @ {%s}",
-                                       absl::StrJoin(e.mesh_dims, ","));
-    const DimMap rhs_dim_map = {{rhs_space_dims_[e.i], e.mesh_dims[1]},
-                                {rhs_batch_dims_[e.j], e.mesh_dims[0]}};
-    const DimMap lhs_dim_map = {{lhs_batch_dims_[e.j], e.mesh_dims[0]}};
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{
-          {e.j, e.mesh_dims[0]},
-          {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) + e.i,
-           e.mesh_dims[1]}};
-    }
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_);
-  };
-  Enumerate(func, rhs_space_dims_.size(), lhs_batch_dims_.size());
-}
-
-void DotHandler::SplitBatchDimBothContract() {
-  if (lhs_batch_dims_.empty()) return;
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
-        device_mesh_.dim(e.mesh_dims[1]) <= 1)
-      return;
-    std::string name =
-        absl::StrFormat("SbR = SbSk x SbSk @ {%s} (allreduce @ %d}",
-                        absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[1]);
-    const DimMap lhs_dim_map = {{lhs_con_dims_[e.i], e.mesh_dims[1]},
-                                {lhs_batch_dims_[e.j], e.mesh_dims[0]}};
-    const DimMap rhs_dim_map = {{rhs_con_dims_[e.i], e.mesh_dims[1]},
-                                {rhs_batch_dims_[e.j], e.mesh_dims[0]}};
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{{e.j, e.mesh_dims[0]}};
-    }
-    auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-      return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
-    };
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
-                communication_cost_fn);
-  };
-  Enumerate(func, lhs_con_dims_.size(), lhs_batch_dims_.size());
-}
-
-void DotHandler::SplitBothContractTwoDims() {
-  if (lhs_con_dims_.size() < 2 || rhs_con_dims_.size() < 2) return;
-  auto func = [this](const Enumeration& e) {
-    // Applies when there are more than one contracting dimension.
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
-        device_mesh_.dim(e.mesh_dims[1]) <= 1)
-      return;
-    std::string name = absl::StrFormat("RR = SS x SS @ {%s} (allreduce @ {%s}}",
-                                       absl::StrJoin(e.mesh_dims, ","),
-                                       absl::StrJoin(e.mesh_dims, ", "));
-    const DimMap lhs_dim_map = {{lhs_con_dims_[e.i], e.mesh_dims[0]},
-                                {lhs_con_dims_[e.j], e.mesh_dims[1]}};
-    const DimMap rhs_dim_map = {{rhs_con_dims_[e.i], e.mesh_dims[0]},
-                                {rhs_con_dims_[e.j], e.mesh_dims[1]}};
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{};
-    }
-    auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-      return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0],
-                                        e.mesh_dims[1]);
-    };
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
-                communication_cost_fn);
-  };
-  EnumerateHalf(func, lhs_con_dims_.size(), lhs_con_dims_.size());
-}
-
-void DotHandler::RecomputeSplitBothContract() {
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
-        device_mesh_.dim(e.mesh_dims[1]) <= 1)
-      return;
-    if (!option_.allow_recompute_heavy_op) {
-      return;
-    }
-    std::string name = absl::StrFormat("RR = RS x SR @ {%d} (allreduce @ %d)",
-                                       e.mesh_dims[0], e.mesh_dims[0]);
-    const DimMap lhs_dim_map = {{lhs_con_dims_[e.i], e.mesh_dims[0]}};
-    const DimMap rhs_dim_map = {{rhs_con_dims_[e.i], e.mesh_dims[0]}};
-    std::optional<DimMap> out_dim_map = std::nullopt;
-    if (is_dot_) {
-      out_dim_map = DimMap{};
-    }
-    double compute_cost = GetDotConvReplicationPenalty(
-                              ins_, instruction_id_, /* window */ 10,
-                              instruction_sequence_, hlo_cost_analysis_) /
-                          device_mesh_.dim(e.mesh_dims[0]);
-    auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-      return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
-    };
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_,
-                compute_cost, communication_cost_fn);
-  };
-  Enumerate(func, lhs_con_dims_.size(), 1);
-}
-
-void DotHandler::Add1DDataParallel() {
-  if (device_mesh_.dim(0) > 1 &&
-      absl::c_count_if(device_mesh_.dimensions(),
-                       [](int64_t size) { return size > 1; }) > 1) {
-    int mesh_dim = 0;
-    int64_t num_devices = device_mesh_1d_.dim(mesh_dim);
-
-    // Si = Si x R @ 0
-    for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
-      const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dim}};
-      if (lhs_->shape().dimensions(lhs_space_dims_[i]) < num_devices) {
-        continue;
-      }
-      if (option_.only_allow_divisible_intermediate &&
-          !IsDivisible(lhs_->shape().dimensions(lhs_space_dims_[i]),
-                       num_devices)) {
-        continue;
-      }
-      std::string name = absl::StrFormat("Si = Si x R @ %d", mesh_dim);
-      std::optional<DimMap> out_dim_map = std::nullopt;
-      if (is_dot_) {
-        out_dim_map = DimMap{{space_base_dim_ + i, mesh_dim}};
-      }
-      MaybeAppend(name, lhs_dim_map, {}, out_dim_map, device_mesh_1d_);
-    }
-
-    // R = Sk x Sk @ (allreduce @ 0)
-    for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
-      const DimMap lhs_dim_map = {{lhs_con_dims_[i], mesh_dim}};
-      const DimMap rhs_dim_map = {{rhs_con_dims_[i], mesh_dim}};
-      if (lhs_->shape().dimensions(lhs_con_dims_[i]) < num_devices) {
-        continue;
-      }
-      if (option_.only_allow_divisible_intermediate &&
-          !IsDivisible(lhs_->shape().dimensions(lhs_con_dims_[i]),
-                       num_devices)) {
-        continue;
-      }
-      std::string name = absl::StrFormat("R = Sk x Sk @ %d (allreduce @ %d)",
-                                         mesh_dim, mesh_dim);
-      std::optional<DimMap> out_dim_map = std::nullopt;
-      if (is_dot_) {
-        out_dim_map = DimMap{};
-      }
-      auto communication_cost_fn = [this,
-                                    mesh_dim](const HloSharding& output_spec) {
-        double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-        return cluster_env_.AllReduceCost(memory_cost, mesh_dim);
-      };
-      MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_1d_,
-                  0, communication_cost_fn);
+  absl::flat_hash_set<int> unused_mesh_dims;
+  for (size_t i = 0; i < device_mesh_.num_dimensions(); ++i) {
+    if (!used_mesh_dims.contains(i) && device_mesh_.dim(i) > 1) {
+      unused_mesh_dims.insert(i);
     }
   }
-}
 
-void DotHandler::Add1DBatchSplit() {
-  if (device_mesh_.dim(0) > 1 &&
-      absl::c_count_if(device_mesh_.dimensions(),
-                       [](int64_t size) { return size > 1; }) > 1) {
-    int mesh_dim = 0;
-    for (int64_t i = 0; i < lhs_batch_dims_.size(); ++i) {
-      const DimMap lhs_dim_map = {{lhs_batch_dims_[i], mesh_dim}};
-      const DimMap rhs_dim_map = {{rhs_batch_dims_[i], mesh_dim}};
-      std::string name =
-          absl::StrFormat("Sb_%d = Sb x Sb @ {%d} 1d", i, mesh_dim);
-      std::optional<DimMap> out_dim_map = std::nullopt;
-      if (is_dot_) {
-        out_dim_map = DimMap{{i, mesh_dim}};
-      }
-      MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_1d_);
-    }
+  if (unused_mesh_dims.empty()) {
+    return;
   }
+
+  std::vector<int> reduction_dims(lhs_con_dims_.size());
+  std::iota(reduction_dims.begin(), reduction_dims.end(), 0);
+
+  auto split_func = [&](const DimMap& reduction_dim_map) {
+    if (reduction_dim_map.empty()) {
+      return;
+    }
+
+    DimMap lhs_dim_map_with_contractions = lhs_dim_map;
+    DimMap rhs_dim_map_with_contractions = rhs_dim_map;
+    for (const auto& [reducton_dim_index, mesh_dim] : reduction_dim_map) {
+      lhs_dim_map_with_contractions
+          [lhs_con_dims_[reduction_dims[reducton_dim_index]]] = mesh_dim;
+      rhs_dim_map_with_contractions
+          [rhs_con_dims_[reduction_dims[reducton_dim_index]]] = mesh_dim;
+    }
+    // Skip fully the replicated strategy here as we add that outside of
+    // HandleDot in auto_sharding_strategy.
+    // TODO: Fix the above
+    if (IsFullyReplicatedStrategy(output_dim_map, lhs_dim_map_with_contractions,
+                                  rhs_dim_map_with_contractions,
+                                  device_mesh_)) {
+      return;
+    }
+    CHECK(!lhs_dim_map_with_contractions.empty());
+    CHECK(!rhs_dim_map_with_contractions.empty());
+
+    auto communication_cost_fn = [&](const HloSharding& output_sharding) {
+      double memory_cost =
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_sharding);
+      double total_cost = 0;
+      for (const auto& [_, mesh_dim] : reduction_dim_map) {
+        total_cost += cluster_env_.AllReduceCost(memory_cost, mesh_dim);
+      }
+      return total_cost;
+    };
+
+    MaybeAppend(GenerateNameForDotSharding(output_dim_map,
+                                           lhs_dim_map_with_contractions),
+                lhs_dim_map_with_contractions, rhs_dim_map_with_contractions,
+                output_dim_map, device_mesh_,
+                /*compute_cost=*/0, communication_cost_fn);
+  };
+
+  EnumerateGeneral(split_func, reduction_dims.size(),
+                   /*current_tensor_dim=*/0, unused_mesh_dims,
+                   /*current_dim_map=*/{});
 }
 
 void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
@@ -950,91 +840,18 @@ void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
 }
 
 absl::Status DotHandler::RegisterStrategies() {
-  // SS = SR x RS
-  // Split lhs space dim and rhs space dim.
-  SplitLhsSpaceRhsSpace();
-
-  // SSR = SSR x RR
-  // Split lhs space dims only if it has more than 1 space dims.
-  if (lhs_space_dims_.size() > 1) {
-    SplitLhsSpaceOnly();
+  absl::flat_hash_set<int> all_mesh_dims;
+  for (int i = 0; i < device_mesh_.num_dimensions(); ++i) {
+    all_mesh_dims.insert(i);
   }
-  // RSS = RR x RSS
-  // Split rhs space dims only if it has more than 1 space dims.
-  if (rhs_space_dims_.size() > 1) {
-    SplitRhsSpaceOnly();
-  }
-
-  // SR = SS x SR
-  // Split lhs space dim and both contracting dims.
-  SplitLhsSpaceBothContract();
-
-  // RS = RS x SS
-  // Split rhs space dim and both contracting dims.
-  SplitRhsSpaceBothContract();
-
-  // RR = SS x SS
-  // Split two contracting dims on lhs and rhs.
-  SplitBothContractTwoDims();
-
-  // RR = RS x SR
-  // This is a special case where we allow splitting only one dim in the
-  // multi-dimensional mesh case. This allows some recomputation
-  // (e.g., the dense layer in the LM_head of BERT).
-  RecomputeSplitBothContract();
-
-  // Add 1d data parallel in multi-dimensional mesh
-  if (option_.allow_mixed_mesh_shape) {
-    Add1DDataParallel();
-  }
-
-  if (option_.batch_matmul_always_split_batch && !lhs_batch_dims_.empty() &&
-      cluster_env_.non_zero_mesh_dims_.size() > 1) {
-    // If there is a batch dim and the device mesh is multi-dimensional,
-    // always split on batch dim. Clear all old strategies.
-    strategy_group_->strategies.clear();
-  }
-
-  // Sb = Sb x Sb
-  // Split one batch dim. Only used for 1d mesh
-  SplitOneBatchDim();
-
-  // SbSi = SbSi x SbR
-  // Split batch dim and lhs space dim
-  SplitBatchDimLhsSpace();
-
-  // SbSj = SbR x SbSj
-  // Split batch dim and rhs space dim
-  SplitBatchDimRhsSpace();
-
-  // SbSj = SbR x SbSj
-  // Split batch dim and contracting dim
-  SplitBatchDimBothContract();
-
-  if (option_.batch_matmul_always_split_batch && lhs_batch_dims_.size() == 2 &&
-      absl::c_count_if(device_mesh_.dimensions(),
-                       [](int64_t size) { return size > 1; }) > 1) {
-    // If there are two batch dims, always split on these two dims.
-    // Clear all old strategies.
-    strategy_group_->strategies.clear();
-  }
-
-  // Sb = Sb x Sb
-  // Split batch dims.
-  SplitTwoBatchDims();
-
-  if (option_.allow_mixed_mesh_shape) {
-    Add1DBatchSplit();
-  }
-
-  // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
-  // and only keep the data parallel strategies.
-  if (option_.force_batch_dim_to_mesh_dim >= 0 &&
-      batch_map_.contains(GetBatchDimMapKey(ins_))) {
-    TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategy_group_,
-                                      cluster_env_, batch_map_, option_));
-  }
-
+  EnumerateGeneral(
+      /*split_func=*/
+      [&](const DimMap& output_dim_map) {
+        GenerateDotShardingStrategiesFromOutputSharding(output_dim_map);
+      },
+      ins_->shape().rank(), /*current_tensor_dim=*/0, all_mesh_dims,
+      /*current_dim_map=*/{});
+  SortStrategies();
   return absl::OkStatus();
 }
 
@@ -1061,6 +878,73 @@ ConvHandler::ConvHandler(std::unique_ptr<StrategyGroup>& strategy_group,
   out_out_channel_dim_ = conv_dnums_.output_feature_dimension();
 }
 
+void ConvHandler::GenerateConvolutionShardingStrategiesFromOutputSharding(
+    const DimMap& output_dim_map) {
+  DimMap lhs_dim_map;
+  DimMap rhs_dim_map;
+  absl::flat_hash_set<int> used_mesh_dims;
+  std::string name;
+
+  // Propagate batch dim sharding
+  auto it = output_dim_map.find(out_batch_dim_);
+  if (it != output_dim_map.end() && device_mesh_.dim(it->second) > 1) {
+    int mesh_dim = it->second;
+    lhs_dim_map[lhs_batch_dim_] = mesh_dim;
+    used_mesh_dims.insert(mesh_dim);
+    absl::StrAppend(&name, "b", mesh_dim);
+  } else {
+    absl::StrAppend(&name, "b-1");
+  }
+
+  // Propagate out channel dim sharding
+  it = output_dim_map.find(out_out_channel_dim_);
+  if (it != output_dim_map.end() && device_mesh_.dim(it->second) > 1) {
+    int mesh_dim = it->second;
+    lhs_dim_map[rhs_out_channel_dim_] = mesh_dim;
+    used_mesh_dims.insert(mesh_dim);
+    absl::StrAppend(&name, "oc", mesh_dim);
+  } else {
+    absl::StrAppend(&name, "oc-1");
+  }
+
+  MaybeAppend(name, lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+
+  // Generate shardings for contraction dimensions
+  if (used_mesh_dims.size() == device_mesh_.num_dimensions()) {
+    return;
+  }
+
+  absl::flat_hash_set<int> unused_mesh_dims;
+  for (size_t i = 0; i < device_mesh_.num_dimensions(); ++i) {
+    if (!used_mesh_dims.contains(i) && device_mesh_.dim(i) > 1) {
+      unused_mesh_dims.insert(i);
+    }
+  }
+
+  if (unused_mesh_dims.empty()) {
+    return;
+  }
+
+  for (int64_t mesh_dim : unused_mesh_dims) {
+    DimMap lhs_dim_map_with_contractions = lhs_dim_map;
+    DimMap rhs_dim_map_with_contractions = rhs_dim_map;
+
+    lhs_dim_map_with_contractions[lhs_in_channel_dim_] = mesh_dim;
+    rhs_dim_map_with_contractions[rhs_in_channel_dim_] = mesh_dim;
+    absl::StrAppend(&name, "ic", mesh_dim, "@allreduce");
+
+    auto communication_cost_fn = [&](const HloSharding& output_sharding) {
+      return cluster_env_.AllReduceCost(
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_sharding),
+          mesh_dim);
+    };
+
+    MaybeAppend(name, lhs_dim_map_with_contractions,
+                rhs_dim_map_with_contractions, output_dim_map, device_mesh_,
+                /*compute_cost=*/0, communication_cost_fn);
+  }
+}
+
 absl::Status ConvHandler::RegisterStrategies() {
   // For 1D sharding
   if ((ins_->feature_group_count() ==
@@ -1081,22 +965,16 @@ absl::Status ConvHandler::RegisterStrategies() {
     SplitDepthwise(false);
   }
 
-  // SS = SR x RS
-  // Split lhs batch dim and rhs out_channel dim.
-  SplitLhsBatchRhsOutchannel();
-
-  // SR = SS x SR
-  // Split lhs batch dim and both in_channel dims.
-  SplitLhsBatchBothInchannel();
-
-  // RS = RS x SS
-  // Split rhs out_channel dim and both in_channel dims.
-  SplitRhsOutchannelBothInchannel();
-
-  // Add 1d data parallel in multi-dimensional mesh
-  if (option_.allow_mixed_mesh_shape) {
-    Add1DDataParallel();
+  absl::flat_hash_set<int> all_mesh_dims;
+  for (int i = 0; i < device_mesh_.num_dimensions(); ++i) {
+    all_mesh_dims.insert(i);
   }
+  EnumerateGeneral(
+      [&](const DimMap& output_dim_map) {
+        GenerateConvolutionShardingStrategiesFromOutputSharding(output_dim_map);
+      },
+      2, /*current_tensor_dim=*/0, all_mesh_dims,
+      /*current_dim_map=*/{});
 
   // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
   // and only keep the data parallel strategies.
@@ -1106,111 +984,45 @@ absl::Status ConvHandler::RegisterStrategies() {
                                       cluster_env_, batch_map_, option_));
   }
 
+  SortStrategies();
   return absl::OkStatus();
 }
 
-void ConvHandler::SplitLhsBatchRhsOutchannel() {
-  auto func = [this](const Enumeration& e) {
-    const DimMap lhs_dim_map = {{lhs_batch_dim_, e.mesh_dims[0]}};
-    const DimMap rhs_dim_map = {{rhs_out_channel_dim_, e.mesh_dims[1]}};
-    std::string name =
-        absl::StrFormat("SS = SR x RS @ {%s}", absl::StrJoin(e.mesh_dims, ","));
-    const DimMap out_dim_map = {{out_batch_dim_, e.mesh_dims[0]},
-                                {out_out_channel_dim_, e.mesh_dims[1]}};
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_);
-  };
-  EnumerateHalf(func);
-}
-
-void ConvHandler::SplitLhsBatchBothInchannel() {
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
-        device_mesh_.dim(e.mesh_dims[1]) <= 1)
-      return;
-    const DimMap lhs_dim_map = {{lhs_batch_dim_, e.mesh_dims[0]},
-                                {lhs_in_channel_dim_, e.mesh_dims[1]}};
-    const DimMap rhs_dim_map = {{rhs_in_channel_dim_, e.mesh_dims[1]}};
-    std::string name =
-        absl::StrFormat("SR = SS x SR @ {%s} (allreduce @ %d)",
-                        absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[1]);
-    const DimMap out_dim_map = {{out_batch_dim_, e.mesh_dims[0]}};
-    auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-      return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
-    };
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
-                communication_cost_fn);
-  };
-  EnumerateHalf(func);
-}
-
-void ConvHandler::SplitRhsOutchannelBothInchannel() {
-  auto func = [this](const Enumeration& e) {
-    if (device_mesh_.dim(e.mesh_dims[0]) <= 1) return;
-    const DimMap lhs_dim_map = {{lhs_in_channel_dim_, e.mesh_dims[0]}};
-    const DimMap rhs_dim_map = {{rhs_in_channel_dim_, e.mesh_dims[0]},
-                                {rhs_out_channel_dim_, e.mesh_dims[1]}};
-    std::string name =
-        absl::StrFormat("RS = RS x SS @ {%s} (allreduce @ %d)",
-                        absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[0]);
-    const DimMap out_dim_map = {{out_out_channel_dim_, e.mesh_dims[1]}};
-    auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-      return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
-    };
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
-                communication_cost_fn);
-  };
-  EnumerateHalf(func);
-}
-
-void ConvHandler::Add1DDataParallel() {
-  if (device_mesh_.dim(0) > 1 &&
-      absl::c_count_if(device_mesh_.dimensions(),
-                       [](int64_t size) { return size > 1; }) > 1) {
-    int mesh_dim = 0;
-    int64_t num_devices = device_mesh_1d_.dim(mesh_dim);
-
-    // Si = Si x R @ 0
-    if (lhs_->shape().dimensions(lhs_batch_dim_) % num_devices == 0) {
-      const DimMap lhs_dim_map = {{lhs_batch_dim_, mesh_dim}};
-      std::string name = absl::StrFormat("Si = Si x R @ 0");
-      const DimMap out_dim_map = {{out_batch_dim_, mesh_dim}};
-      MaybeAppend(name, lhs_dim_map, {}, out_dim_map, device_mesh_1d_);
-    }
-
-    // R = Sk x Sk @ (allreduce @ 0)
-    if (lhs_->shape().dimensions(lhs_in_channel_dim_) % num_devices == 0 &&
-        rhs_->shape().dimensions(rhs_in_channel_dim_) % num_devices == 0) {
-      const DimMap lhs_dim_map = {{lhs_in_channel_dim_, mesh_dim}};
-      const DimMap rhs_dim_map = {{rhs_in_channel_dim_, mesh_dim}};
-      std::string name = absl::StrFormat("R = Sk x Sk @ %d (allreduce @ %d)",
-                                         mesh_dim, mesh_dim);
-      const DimMap out_dim_map = {};
-      auto communication_cost_fn = [this](const HloSharding& output_spec) {
-        double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-        return cluster_env_.AllReduceCost(memory_cost, 0) +
-               cluster_env_.AllReduceCost(memory_cost, 1);
-      };
-      MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_1d_,
-                  0, communication_cost_fn);
-    }
-  }
-}
-
 void ConvHandler::SplitDepthwise(bool forward) {
-  auto func = [this, forward](const Enumeration& e) {
-    const DimMap lhs_dim_map = {
-        {lhs_batch_dim_, e.mesh_dims[forward ? 0 : 1]},
-        {lhs_in_channel_dim_, e.mesh_dims[forward ? 1 : 0]}};
-    const DimMap rhs_dim_map = {{rhs_out_channel_dim_, e.mesh_dims[1]}};
-    std::string name =
-        absl::StrFormat("SS = SS x RS @ {%s}", absl::StrJoin(e.mesh_dims, ","));
-    const DimMap out_dim_map = {{out_batch_dim_, e.mesh_dims[0]},
-                                {out_out_channel_dim_, e.mesh_dims[1]}};
-    MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_);
-  };
-  EnumerateHalf(func);
+  std::function<void(const DimMap&)> split_func =
+      [&](const DimMap& output_dim_map) {
+        int out_batch_mesh_dim = -1;
+        int out_out_channel_mesh_dim = -1;
+        if (auto it = output_dim_map.find(out_batch_dim_);
+            it != output_dim_map.end()) {
+          out_batch_mesh_dim = it->second;
+        }
+        if (auto it = output_dim_map.find(out_out_channel_dim_);
+            it != output_dim_map.end()) {
+          out_out_channel_mesh_dim = it->second;
+        }
+        if (out_batch_mesh_dim == -1 || out_out_channel_mesh_dim == -1) {
+          return;
+        }
+
+        DimMap lhs_dim_map, rhs_dim_map;
+        lhs_dim_map[lhs_batch_dim_] =
+            forward ? out_batch_mesh_dim : out_out_channel_mesh_dim;
+        lhs_dim_map[lhs_in_channel_dim_] =
+            forward ? out_out_channel_mesh_dim : out_batch_mesh_dim;
+
+        rhs_dim_map[rhs_out_channel_dim_] = out_out_channel_mesh_dim;
+
+        MaybeAppend(absl::StrCat("b", out_batch_mesh_dim, "oc",
+                                 out_out_channel_mesh_dim, "@depthwise"),
+                    lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+      };
+  absl::flat_hash_set<int> all_mesh_dims;
+  for (int i = 0; i < device_mesh_.num_dimensions(); ++i) {
+    all_mesh_dims.insert(i);
+  }
+  EnumerateGeneral(split_func, 2, /*current_tensor_dim=*/0, all_mesh_dims,
+                   /*current_dim_map=*/{});
 }
 
 }  // namespace
@@ -1265,7 +1077,6 @@ absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
                         batch_map, option, call_graph);
     TF_RETURN_IF_ERROR(handler.RegisterStrategies());
   }
-
   return absl::OkStatus();
 }
 

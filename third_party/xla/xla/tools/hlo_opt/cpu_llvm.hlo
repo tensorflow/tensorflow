@@ -8,7 +8,7 @@ add {
  ROOT out = s8[] add(a, b)
 }
 
-// CHECK: i8
+// CHECK: reduce
 ENTRY e {
  p1 = s8[1048576] parameter(0)
  i = s8[] constant(0)

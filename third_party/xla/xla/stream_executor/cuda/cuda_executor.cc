@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <ios>
 #include <memory>
 #include <optional>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -62,12 +64,14 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_runtime.h"
+#include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -104,6 +108,18 @@ bool FLAGS_prefer_cubin_to_ptx = true;
 namespace stream_executor {
 namespace gpu {
 
+namespace {
+
+bool ShouldLaunchDelayKernel() {
+  // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
+  static bool value = [] {
+    const char* blocking = std::getenv("CUDA_LAUNCH_BLOCKING");
+    return !blocking || std::string_view{blocking} != "1";
+  }();
+  return value;
+}
+
+}  // namespace
 static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<GpuEvent*>(event);
@@ -147,20 +163,14 @@ absl::Status GpuExecutor::Init() {
   return absl::OkStatus();
 }
 
-// Returns the path to the running executable.
-// N.B. Derived from //knowledge/smalltalk/background_kb.cc
-// Arg: strip_exe: if true, remove the name of the executable itself from the
-//                 returned string. Example: calling this from /usr/bin/foo
-//                 would return /usr/bin.
-static std::string GetBinaryDir(bool strip_exe) {
-  std::string exe_path = tsl::Env::Default()->GetExecutablePath();
-  if (strip_exe) {
-    // The exe is the last component of the path, so remove one component.
-    std::vector<std::string> components = absl::StrSplit(exe_path, '/');
-    components.pop_back();
-    return absl::StrJoin(components, "/");
-  }
-  return exe_path;
+absl::StatusOr<bool> GpuExecutor::DelayKernelIsSupported(GpuStream* stream) {
+  // Check the assumption that this device supports unified addressing,
+  // otherwise skip the delay kernel
+  TF_ASSIGN_OR_RETURN(int status,
+                      GpuDriver::GetDeviceAttribute(
+                          CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING, device_));
+
+  return static_cast<bool>(status);
 }
 
 absl::Status GpuExecutor::LoadModuleFromCuBin(const char* cubin,
@@ -279,6 +289,32 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   kernel->set_name(*kernel_name);
   kernel->set_args_packing(spec.kernel_args_packing());
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+GpuExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
+  GpuSemaphore semaphore{};
+  if (!use_delay_kernel) {
+    LOG(WARNING)
+        << "Skipping the delay kernel, measurement accuracy will be reduced";
+  }
+
+  if (use_delay_kernel && ShouldLaunchDelayKernel()) {
+    TF_ASSIGN_OR_RETURN(bool is_supported, DelayKernelIsSupported(stream));
+
+    if (is_supported) {
+      TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(stream));
+    } else {
+      LOG(WARNING) << "Skipping the delay kernel as it's not supported, "
+                      "measurement accuracy will be reduced.";
+    }
+  }
+  TF_ASSIGN_OR_RETURN(auto start_event, CreateGpuEvent(/*allow_timing=*/true));
+  TF_ASSIGN_OR_RETURN(auto stop_event, CreateGpuEvent(/*allow_timing=*/true));
+  TF_RETURN_IF_ERROR(start_event->Record(stream->gpu_stream()));
+  return std::make_unique<GpuTimer>(gpu_context(), std::move(start_event),
+                                    std::move(stop_event), stream,
+                                    std::move(semaphore));
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -465,20 +501,6 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   const GpuKernel* cuda_kernel = AsGpuKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsGpuFunctionHandle();
 
-  // Only perform/print the occupancy check once.  Even just checking to see
-  // whether we've done an occupancy check on this kernel before isn't free
-  // (because we have to synchronize), so we only do this at -v 2+.
-  if (VLOG_IS_ON(2)) {
-    absl::MutexLock lock(&launched_kernels_mu_);
-    if (!launched_kernels_.count(cufunc)) {
-      VlogOccupancyInfo(stream->parent()->GetDeviceDescription(), kernel,
-                        thread_dims, block_dims);
-      // TODO(rspringer): Remove elements from launched_kernels_...if we ever
-      // expose a kernel/module deallocation method.
-      launched_kernels_.insert(cufunc);
-    }
-  }
-
   if (cuda_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
     TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
         cufunc, cuda_kernel->GetGpuCacheConfig()));
@@ -547,82 +569,6 @@ absl::Status GpuExecutor::Submit(Stream* stream,
   return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
 }
 
-// This is a non-essential operation; if there's a failure, proceed without
-// logging an error. It's nearly certain that in case of failures, we'd never
-// get here in the first place; these are very low-impact routines.
-void GpuExecutor::VlogOccupancyInfo(const DeviceDescription& device_description,
-                                    const Kernel& kernel,
-                                    const ThreadDim& thread_dims,
-                                    const BlockDim& block_dims) {
-  VLOG(2) << "Computing kernel occupancy for kernel "
-          << kernel.demangled_name();
-  VLOG(2) << "Thread dimensions (" << thread_dims.x << ", " << thread_dims.y
-          << ", " << thread_dims.z << ")";
-
-  auto regs_per_thread = kernel.metadata().registers_per_thread();
-  auto smem_per_block = kernel.metadata().shared_memory_bytes();
-
-  if (!regs_per_thread && !smem_per_block) {
-    return;
-  }
-
-  const GpuKernel* cuda_kernel = AsGpuKernel(&kernel);
-  CUfunction cufunc = cuda_kernel->AsGpuFunctionHandle();
-
-  int blocks_per_sm = CalculateOccupancy(device_description, *regs_per_thread,
-                                         *smem_per_block, thread_dims, cufunc);
-  VLOG(2) << "Resident blocks per SM is " << blocks_per_sm;
-
-  int suggested_threads =
-      CompareOccupancy(&blocks_per_sm, device_description, *regs_per_thread,
-                       *smem_per_block, thread_dims, cufunc);
-  if (suggested_threads != 0) {
-    VLOG(2) << "The cuda occupancy calculator recommends using "
-            << suggested_threads
-            << " threads per block to achieve an occupancy of " << blocks_per_sm
-            << " blocks per SM.";
-  }
-}
-
-// Compute and return maximum blocks per core (occupancy) based on the
-// device description, some kernel characteristics and the number of threads per
-// block.  If unable to compute occupancy, zero is returned.
-int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
-                                    uint64_t registers_per_thread,
-                                    uint64_t shared_memory_per_block,
-                                    const ThreadDim& thread_dims,
-                                    CUfunction func) {
-  int suggested_blocks = 0;
-  int suggested_threads = 0;
-  CUresult err = cuOccupancyMaxPotentialBlockSize(
-      &suggested_blocks, &suggested_threads, func, nullptr,
-      shared_memory_per_block, 0);
-  CHECK_EQ(err, CUDA_SUCCESS);
-  return suggested_blocks;
-}
-
-// Compute and return the suggested thread count to achieve ideal occupancy.
-// If the provided thread dimensions match this number, zero is returned.
-int GpuExecutor::CompareOccupancy(int* initial_blocks,
-                                  const DeviceDescription& device_description,
-                                  uint64_t registers_per_thread,
-                                  uint64_t shared_memory_per_block,
-                                  const ThreadDim& thread_dims,
-                                  CUfunction func) {
-  int suggested_blocks = 0;
-  int suggested_threads = 0;
-  CUresult err = cuOccupancyMaxPotentialBlockSize(
-      &suggested_blocks, &suggested_threads, func, nullptr,
-      shared_memory_per_block, 0);
-  CHECK_EQ(err, CUDA_SUCCESS);
-  if (suggested_blocks > *initial_blocks) {
-    *initial_blocks = suggested_blocks;
-    return suggested_threads;
-  } else {
-    return 0;
-  }
-}
-
 DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space == 1) {
     auto result = GpuCollectives::CollectiveMemoryAllocate(context_, size);
@@ -679,25 +625,6 @@ absl::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
   return GpuDriver::AsynchronousMemsetUint8(context_, AsCudaDevicePtr(location),
                                             pattern, size,
                                             AsGpuStreamValue(stream));
-}
-
-bool GpuExecutor::HostCallback(Stream* stream,
-                               absl::AnyInvocable<absl::Status() &&> callback) {
-  auto callback_ptr =
-      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
-        absl::Status s = std::move(cb)();
-        if (!s.ok()) {
-          LOG(WARNING) << "Host callback failed: " << s;
-        }
-      });
-  return GpuDriver::AddStreamCallback(context_, AsGpuStreamValue(stream),
-                                      InternalHostCallback, callback_ptr);
-}
-
-/* static */ void GpuExecutor::InternalHostCallback(void* data) {
-  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
-  std::move (*callback)();
-  delete callback;
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
@@ -834,10 +761,15 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
-  auto gpu_event = std::make_unique<CudaEvent>(this);
-  TF_RETURN_IF_ERROR(gpu_event->Init());
+absl::StatusOr<std::unique_ptr<GpuEvent>> GpuExecutor::CreateGpuEvent(
+    bool allow_timing) {
+  auto gpu_event = std::make_unique<CudaEvent>(gpu_context());
+  TF_RETURN_IF_ERROR(gpu_event->Init(allow_timing));
   return std::move(gpu_event);
+}
+
+absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
+  return CreateGpuEvent(/*allow_timing=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(

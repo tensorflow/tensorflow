@@ -27,27 +27,31 @@ include "xla/python/ifrt/ir/ifrt_interfaces.td"
 class Ifrt_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ifrt_Dialect, mnemonic, traits>;
 
-def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
-  let summary = "Reshards a host tensor or device array";
+def Ifrt_ReshardOp
+    : Ifrt_Op<"Reshard", [AttrSizedOperandSegments, NestedInIfrtFunc]> {
+  let summary = "Reshards a sequence of host tensors or device arrays";
   let description = [{
-    Copies the host tensor or device array to a new sharding.
+    Copies the host tensors or device arrays to a new sharding.
 
-    The input and output must have the same global shape.
+    The corresponding output of each input must have the same global shape
+    as the input.
 
-    The input and output are allowed to have the same sharding and devices. In
-    this case, this ReshardOp will have no transfer across devices.
+    An input and its corresponding output are allowed to have the same sharding
+    and devices. In this case, this ReshardOp will have no transfer across
+    devices.
   }];
 
   let arguments = (ins
-    Ifrt_ArrayType:$input,
+    Variadic<Ifrt_ArrayType>:$inputs,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$donated,
     Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
-    Ifrt_ArrayType:$output);
+    Variadic<Ifrt_ArrayType>:$outputs,
+    Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    `(` $input `)` oilist(`after` $control_inputs) attr-dict
-    `:` functional-type($input, $output)
+    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($inputs, $outputs)
   }];
 
   let hasVerifier = 1;

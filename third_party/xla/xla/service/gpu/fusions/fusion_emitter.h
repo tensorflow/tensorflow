@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
@@ -134,6 +134,20 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilder<>* builder);
+absl::StatusOr<
+    std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
+               std::vector<llvm_ir::IrArray> /*outputs*/>>
+BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& unique_name,
+                                   absl::Span<const KernelArgument> arguments,
+                                   size_t num_inputs,
+                                   const LaunchDimensions& launch_dimensions,
+                                   llvm::IRBuilder<>* builder);
+
+// Compute the kernel name. The opcode string may contain "-" which cannot be
+// in a PTX function name, so sanitize the name before uniquifying it.
+std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& suggested_name);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

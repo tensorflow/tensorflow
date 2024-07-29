@@ -18,7 +18,9 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/Hashing.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/AttributeSupport.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 
 namespace mlir {

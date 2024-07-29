@@ -143,6 +143,7 @@ cc_library(
         ":sharding_param",
         "//xla/python/ifrt",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CallOpInterfaces",  # buildcleaner: keep
         "@llvm-project//mlir:FuncDialect",

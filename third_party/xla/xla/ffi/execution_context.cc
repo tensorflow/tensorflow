@@ -15,57 +15,21 @@ limitations under the License.
 
 #include "xla/ffi/execution_context.h"
 
-#include <atomic>
-#include <cstdint>
 #include <memory>
-#include <string>
-#include <string_view>
 #include <utility>
 
-#include "absl/base/attributes.h"
-#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
 
 namespace xla::ffi {
-
-ABSL_CONST_INIT absl::Mutex type_registry_mutex(absl::kConstInit);
-
-using TypeRegistry = absl::flat_hash_map<std::string, ExecutionContext::TypeId>;
-static TypeRegistry& StaticTypeRegistry() {
-  static auto* registry = new TypeRegistry();
-  return *registry;
-}
-
-ExecutionContext::TypeId ExecutionContext::GetNextTypeId() {
-  static auto* counter = new std::atomic<int64_t>(1);
-  return TypeId(counter->fetch_add(1));
-}
 
 ExecutionContext::UserData::UserData(void* data, Deleter<void> deleter)
     : data_(data), deleter_(std::move(deleter)) {}
 
 ExecutionContext::UserData::~UserData() {
   if (deleter_) deleter_(data_);
-}
-
-absl::StatusOr<ExecutionContext::TypeId>
-ExecutionContext::RegisterExternalTypeId(std::string_view name) {
-  absl::MutexLock lock(&type_registry_mutex);
-  auto& registry = StaticTypeRegistry();
-
-  // Try to emplace with type id zero and fill it with real type id only if we
-  // successfully acquired an entry for a given name.
-  auto emplaced = registry.emplace(name, TypeId(0));
-  if (!emplaced.second) {
-    return absl::AlreadyExistsError(
-        absl::StrCat("Type id ", emplaced.first->second.value(),
-                     " already registered for type name ", name));
-  }
-  return emplaced.first->second = GetNextTypeId();
 }
 
 absl::Status ExecutionContext::Insert(TypeId type_id, void* data,

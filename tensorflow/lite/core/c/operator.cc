@@ -24,25 +24,19 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 
 TfLiteOperator* TfLiteOperatorCreate(TfLiteBuiltinOperator builtin_code,
-                                     const char* custom_name, int version) {
-  return TfLiteOperatorCreateWithData(builtin_code, custom_name, version,
-                                      /*user_data=*/nullptr);
-}
-
-TfLiteOperator* TfLiteOperatorCreateWithData(TfLiteBuiltinOperator builtin_code,
-                                             const char* custom_name,
-                                             int version, void* user_data) {
-  return new TfLiteOperator{.custom_name = custom_name,
-                            .version = version,
-                            .init = nullptr,
-                            .free = nullptr,
-                            .prepare = nullptr,
-                            .invoke = nullptr,
-                            .async_kernel = nullptr,
-                            .builtin_code = builtin_code,
-                            .node_index = -1,
-                            .inplace_operator = kTfLiteInplaceOpNone,
-                            .user_data = user_data};
+                                     const char* custom_name, int version,
+                                     void* user_data) {
+  return new TfLiteOperator{/*custom_name=*/custom_name,
+                            /*version=*/version,
+                            /*init=*/nullptr,
+                            /*free=*/nullptr,
+                            /*prepare=*/nullptr,
+                            /*invoke=*/nullptr,
+                            /*async_kernel=*/nullptr,
+                            /*builtin_code=*/builtin_code,
+                            /*node_index=*/-1,
+                            /*inplace_operator=*/kTfLiteInplaceOpNone,
+                            /*user_data=*/user_data};
 }
 
 void TfLiteOperatorDelete(TfLiteOperator* reg) { delete reg; }

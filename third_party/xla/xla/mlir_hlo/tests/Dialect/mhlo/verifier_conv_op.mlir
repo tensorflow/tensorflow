@@ -278,7 +278,7 @@ func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
 
 func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
-  // expected-error@+1 {{expects batch_group_count to be a positive number, got 0.}}
+  // expected-error@+5 {{op attribute 'batch_group_count' failed to satisfy constraint: 64-bit signless integer attribute whose value is positive}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1, 1]],
@@ -296,7 +296,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
 
 func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
-  // expected-error@+1 {{expects feature_group_count to be a positive number, got 0.}}
+  // expected-error@+5 {{op attribute 'feature_group_count' failed to satisfy constraint: 64-bit signless integer attribute whose value is positive}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1, 1]],

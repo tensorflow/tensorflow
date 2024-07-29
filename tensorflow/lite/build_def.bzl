@@ -181,13 +181,22 @@ def tflite_linkopts_no_undefined():
         }),
     )
 
+def tflite_pagesize_linkopts():
+    """Defines linker flags for setting the page size."""
+    return select({
+        clean_dep("//tensorflow:android_arm64"): [
+            "-Wl,-z,max-page-size=16384",
+        ],
+        "//conditions:default": [],
+    })
+
 def tflite_linkopts():
     """Defines linker flags for linking TFLite binary."""
-    return tflite_linkopts_unstripped() + tflite_symbol_opts()
+    return tflite_linkopts_unstripped() + tflite_symbol_opts() + tflite_pagesize_linkopts()
 
 def tflite_jni_linkopts():
     """Defines linker flags for linking TFLite binary with JNI."""
-    return tflite_jni_linkopts_unstripped() + tflite_symbol_opts()
+    return tflite_jni_linkopts_unstripped() + tflite_symbol_opts() + tflite_pagesize_linkopts()
 
 def tflite_jni_binary(
         name,

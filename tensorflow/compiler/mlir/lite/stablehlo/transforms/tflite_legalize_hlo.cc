@@ -15,6 +15,7 @@ limitations under the License.
 
 // The kept headers are provided for the included file `passes.h.inc`.
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -30,8 +31,11 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/gather.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
@@ -43,8 +47,6 @@ namespace mlir {
 namespace odml {
 namespace {
 
-// This file is generated from `passes.td` and provides the implementation base
-// class.
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
@@ -56,85 +58,39 @@ class LegalizeHloToTfLitePass
   void runOnOperation() override;
 };
 
-class ConvertReduceOpToTFLiteArgmax
-    : public ConvertReduceOpToArgMinMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
-                                        TFL::ReduceAnyOp, true> {
- public:
-  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
-
-  bool IsValueInitValue(const DenseElementsAttr& attr) const override {
-    auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
-      return false;
-    if (mlir::isa<FloatType>(element_type)) {
-      auto value = *attr.value_begin<APFloat>();
-      return value.isNegative() && value.isInfinity();
-    } else if (element_type.isInteger(1)) {
-      auto value = *attr.value_begin<APInt>();
-      return value.isZero();
-    } else {
-      auto value = *attr.value_begin<APInt>();
-      return element_type.isUnsignedInteger() ? value.isMinValue()
-                                              : value.isMinSignedValue();
-    }
-  }
-};
-
-class ConvertReduceOpToTFLiteArgmin
-    : public ConvertReduceOpToArgMinMax<TFL::ReduceMinOp, TFL::ArgMinOp,
-                                        TFL::ReduceAllOp, false> {
- public:
-  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
-
-  bool IsValueInitValue(const DenseElementsAttr& attr) const override {
-    auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
-      return false;
-    if (mlir::isa<FloatType>(element_type)) {
-      auto value = *attr.value_begin<APFloat>();
-      return !value.isNegative() && value.isInfinity();
-    } else if (element_type.isInteger(1)) {
-      auto value = *attr.value_begin<APInt>();
-      return value.isZero();
-    } else {
-      auto value = *attr.value_begin<APInt>();
-      return element_type.isUnsignedInteger() ? value.isMaxValue()
-                                              : value.isMaxSignedValue();
-    }
-  }
-};
+std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
+  return !op.getType().getElementType().isF32();
+}
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
-  MLIRContext& context = getContext();
-  RewritePatternSet patterns(&getContext());
-  // Add new conversion patterns here.
-  PopulateLegalizeHloToTFLitePatterns(&patterns, &context);
+  MLIRContext* context = &getContext();
 
-  ConversionTarget target(context);
+  RewritePatternSet patterns(context);
+  patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp>(context);
+  populateWithGenerated(patterns);
+
+  ConversionTarget target(*context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
-  target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
-  // Converted MHLO ops should be marked illegal here.
-  // TODO: b/304003568 - Add TF_TransposeOp folding logic to tflite.
+  target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
+
+  PopulatePadPatterns(context, patterns, target);
+  PopulateReducePatterns(context, patterns, target);
+  PopulateGatherPatterns(context, patterns, target);
+  PopulateConvPatterns(context, patterns, target);
+
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
     getOperation().emitError("mhlo to TFLite legalization failed.");
     signalPassFailure();
   }
 }
+
 }  // namespace
 
-void PopulateLegalizeHloToTFLitePatterns(RewritePatternSet* patterns,
-                                         MLIRContext* context) {
-  patterns->add<odml::ConvertCustomCallOp>(context);
-  populateWithGenerated(*patterns);
-
-  patterns->add<ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax>(
-      context);
-}
 
 // Creates an instance of the pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass() {
