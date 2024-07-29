@@ -934,6 +934,8 @@ absl::Status RunCollectiveOptimizationPasses(
   // Remove dead computations left over after ar/rs promotion.
   collectives_pipeline.AddPass<HloDCE>();
 
+  // Moves collectives' subsequent quantization before the collective to
+  // minimize data transfers.
   collectives_pipeline.AddPass<CollectiveQuantizer>();
   // Remove dead computations after collective quantization.
   collectives_pipeline.AddPass<HloDCE>();
