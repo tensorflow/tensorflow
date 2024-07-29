@@ -67,7 +67,7 @@ string FileSystem::TranslateName(const string& name) const {
   if (name.empty()) return name;
 
   // Otherwise, properly separate the URI components and clean the path one
-  StringPiece scheme, host, path;
+  absl::string_view scheme, host, path;
   this->ParseURI(name, &scheme, &host, &path);
 
   // If `path` becomes empty, return `/` (`file://` should be `/`), not `.`.
@@ -195,9 +195,9 @@ absl::Status FileSystem::DeleteRecursively(const string& dirname,
 
 absl::Status FileSystem::RecursivelyCreateDir(const string& dirname,
                                               TransactionToken* token) {
-  StringPiece scheme, host, remaining_dir;
+  absl::string_view scheme, host, remaining_dir;
   this->ParseURI(dirname, &scheme, &host, &remaining_dir);
-  std::vector<StringPiece> sub_dirs;
+  std::vector<absl::string_view> sub_dirs;
   while (!remaining_dir.empty()) {
     std::string current_entry = this->CreateURI(scheme, host, remaining_dir);
     absl::Status exists_status = FileExists(current_entry);
@@ -218,7 +218,7 @@ absl::Status FileSystem::RecursivelyCreateDir(const string& dirname,
       return exists_status;
     }
     // Basename returns "" for / ending dirs.
-    if (!str_util::EndsWith(remaining_dir, "/")) {
+    if (!absl::EndsWith(remaining_dir, "/")) {
       sub_dirs.push_back(this->Basename(remaining_dir));
     }
     remaining_dir = this->Dirname(remaining_dir);
@@ -229,7 +229,7 @@ absl::Status FileSystem::RecursivelyCreateDir(const string& dirname,
 
   // Now create the directories.
   string built_path(remaining_dir);
-  for (const StringPiece sub_dir : sub_dirs) {
+  for (const absl::string_view sub_dir : sub_dirs) {
     built_path = this->JoinPath(built_path, sub_dir);
     absl::Status status = CreateDir(this->CreateURI(scheme, host, built_path));
     if (!status.ok() && status.code() != absl::StatusCode::kAlreadyExists) {
@@ -246,10 +246,11 @@ absl::Status FileSystem::CopyFile(const string& src, const string& target,
 
 char FileSystem::Separator() const { return '/'; }
 
-string FileSystem::JoinPathImpl(std::initializer_list<StringPiece> paths) {
+string FileSystem::JoinPathImpl(
+    std::initializer_list<absl::string_view> paths) {
   string result;
 
-  for (StringPiece path : paths) {
+  for (absl::string_view path : paths) {
     if (path.empty()) continue;
 
     if (result.empty()) {
@@ -275,9 +276,9 @@ string FileSystem::JoinPathImpl(std::initializer_list<StringPiece> paths) {
   return result;
 }
 
-std::pair<StringPiece, StringPiece> FileSystem::SplitPath(
-    StringPiece uri) const {
-  StringPiece scheme, host, path;
+std::pair<absl::string_view, absl::string_view> FileSystem::SplitPath(
+    absl::string_view uri) const {
+  absl::string_view scheme, host, path;
   ParseURI(uri, &scheme, &host, &path);
 
   // We have 3 cases of results from `ParseURI`:
@@ -305,7 +306,7 @@ std::pair<StringPiece, StringPiece> FileSystem::SplitPath(
 
   // Case 1 above
   if (path.empty()) {
-    return std::make_pair(StringPiece(), StringPiece());
+    return std::make_pair(absl::string_view(), absl::string_view());
   }
 
   size_t pos = path.rfind(this->Separator());
@@ -325,54 +326,54 @@ std::pair<StringPiece, StringPiece> FileSystem::SplitPath(
 #endif
 
   // Handle the case with no SEP in 'path'.
-  if (pos == StringPiece::npos) {
+  if (pos == absl::string_view::npos) {
     if (host.empty()) {
       // Case 3 above, `uri` and `path` point to the same thing
       // We are returning all of the `path` as basename here.
-      return std::make_pair(StringPiece(), path);
+      return std::make_pair(absl::string_view(), path);
     }
 
     // Safe to do this arithmetic here, we are in case 2 above
-    return std::make_pair(StringPiece(uri.data(), host.end() - uri.begin()),
-                          path);
+    return std::make_pair(
+        absl::string_view(uri.data(), host.end() - uri.begin()), path);
   }
 
   // Handle the case with a single leading '/' in 'path'.
   if (pos == 0) {
     return std::make_pair(
-        StringPiece(uri.data(), path.begin() + 1 - uri.begin()),
-        StringPiece(path.data() + 1, path.size() - 1));
+        absl::string_view(uri.data(), path.begin() + 1 - uri.begin()),
+        absl::string_view(path.data() + 1, path.size() - 1));
   }
 
   return std::make_pair(
-      StringPiece(uri.data(), path.begin() + pos - uri.begin()),
-      StringPiece(path.data() + pos + 1, path.size() - (pos + 1)));
+      absl::string_view(uri.data(), path.begin() + pos - uri.begin()),
+      absl::string_view(path.data() + pos + 1, path.size() - (pos + 1)));
 }
 
-bool FileSystem::IsAbsolutePath(StringPiece path) const {
+bool FileSystem::IsAbsolutePath(absl::string_view path) const {
   return !path.empty() && path[0] == '/';
 }
 
-StringPiece FileSystem::Dirname(StringPiece path) const {
+absl::string_view FileSystem::Dirname(absl::string_view path) const {
   return this->SplitPath(path).first;
 }
 
-StringPiece FileSystem::Basename(StringPiece path) const {
+absl::string_view FileSystem::Basename(absl::string_view path) const {
   return this->SplitPath(path).second;
 }
 
-StringPiece FileSystem::Extension(StringPiece path) const {
-  StringPiece basename = this->Basename(path);
+absl::string_view FileSystem::Extension(absl::string_view path) const {
+  absl::string_view basename = this->Basename(path);
 
   size_t pos = basename.rfind('.');
-  if (pos == StringPiece::npos) {
-    return StringPiece(path.data() + path.size(), 0);
+  if (pos == absl::string_view::npos) {
+    return absl::string_view(path.data() + path.size(), 0);
   } else {
-    return StringPiece(path.data() + pos + 1, path.size() - (pos + 1));
+    return absl::string_view(path.data() + pos + 1, path.size() - (pos + 1));
   }
 }
 
-string FileSystem::CleanPath(StringPiece unclean_path) const {
+string FileSystem::CleanPath(absl::string_view unclean_path) const {
   string path(unclean_path);
   const char* src = path.c_str();
   string::iterator dst = path.begin();
@@ -453,8 +454,9 @@ string FileSystem::CleanPath(StringPiece unclean_path) const {
   return path;
 }
 
-void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
-                          StringPiece* host, StringPiece* path) const {
+void FileSystem::ParseURI(absl::string_view remaining,
+                          absl::string_view* scheme, absl::string_view* host,
+                          absl::string_view* path) const {
   // 0. Parse scheme
   // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*
   // TODO(keveman): Allow "+" and "-" in the scheme.
@@ -466,8 +468,8 @@ void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
            .OneLiteral("://")
            .GetResult(&remaining, scheme)) {
     // If there's no scheme, assume the entire string is a path.
-    *scheme = StringPiece();
-    *host = StringPiece();
+    *scheme = absl::string_view();
+    *host = absl::string_view();
     *path = remaining;
     return;
   }
@@ -476,7 +478,7 @@ void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
   if (!strings::Scanner(remaining).ScanUntil('/').GetResult(&remaining, host)) {
     // No path, so the rest of the URI is the host.
     *host = remaining;
-    *path = StringPiece();
+    *path = absl::string_view();
     return;
   }
 
@@ -484,8 +486,8 @@ void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
   *path = remaining;
 }
 
-string FileSystem::CreateURI(StringPiece scheme, StringPiece host,
-                             StringPiece path) const {
+string FileSystem::CreateURI(absl::string_view scheme, absl::string_view host,
+                             absl::string_view path) const {
   if (scheme.empty()) {
     return string(path);
   }

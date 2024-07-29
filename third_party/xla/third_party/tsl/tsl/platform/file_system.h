@@ -410,25 +410,26 @@ class FileSystem {
   /// \brief Split a path to its basename and dirname.
   ///
   /// Helper function for Basename and Dirname.
-  std::pair<StringPiece, StringPiece> SplitPath(StringPiece uri) const;
+  std::pair<absl::string_view, absl::string_view> SplitPath(
+      absl::string_view uri) const;
 
   /// \brief returns the final file name in the given path.
   ///
   /// Returns the part of the path after the final "/".  If there is no
   /// "/" in the path, the result is the same as the input.
-  virtual StringPiece Basename(StringPiece path) const;
+  virtual absl::string_view Basename(absl::string_view path) const;
 
   /// \brief Returns the part of the path before the final "/".
   ///
   /// If there is a single leading "/" in the path, the result will be the
   /// leading "/".  If there is no "/" in the path, the result is the empty
   /// prefix of the input.
-  StringPiece Dirname(StringPiece path) const;
+  absl::string_view Dirname(absl::string_view path) const;
 
   /// \brief Returns the part of the basename of path after the final ".".
   ///
   /// If there is no "." in the basename, the result is empty.
-  StringPiece Extension(StringPiece path) const;
+  absl::string_view Extension(absl::string_view path) const;
 
   /// \brief Clean duplicate and trailing, "/"s, and resolve ".." and ".".
   ///
@@ -436,16 +437,16 @@ class FileSystem {
   /// invoke any system calls (getcwd(2)) in order to resolve relative
   /// paths with respect to the actual working directory.  That is, this is
   /// purely string manipulation, completely independent of process state.
-  std::string CleanPath(StringPiece path) const;
+  std::string CleanPath(absl::string_view path) const;
 
   /// \brief Creates a URI from a scheme, host, and path.
   ///
   /// If the scheme is empty, we just return the path.
-  std::string CreateURI(StringPiece scheme, StringPiece host,
-                        StringPiece path) const;
+  std::string CreateURI(absl::string_view scheme, absl::string_view host,
+                        absl::string_view path) const;
 
   /// \brief Return true if path is absolute.
-  bool IsAbsolutePath(tsl::StringPiece path) const;
+  bool IsAbsolutePath(absl::string_view path) const;
 
 #ifndef SWIG  // variadic templates
   /// \brief Join multiple paths together.
@@ -469,7 +470,7 @@ class FileSystem {
   }
 #endif /* SWIG */
 
-  std::string JoinPathImpl(std::initializer_list<tsl::StringPiece> paths);
+  std::string JoinPathImpl(std::initializer_list<absl::string_view> paths);
 
   /// \brief Populates the scheme, host, and path from a URI.
   ///
@@ -481,8 +482,8 @@ class FileSystem {
   ///  passed string is assumed to be a path
   /// - If the URI omits the path (e.g. file://host), then the path is left
   /// empty.
-  void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
-                StringPiece* path) const;
+  void ParseURI(absl::string_view remaining, absl::string_view* scheme,
+                absl::string_view* host, absl::string_view* path) const;
 
   // Transaction related API
 
@@ -710,7 +711,7 @@ class WrappedFileSystem : public FileSystem {
 
   char Separator() const override { return fs_->Separator(); }
 
-  StringPiece Basename(StringPiece path) const override {
+  absl::string_view Basename(absl::string_view path) const override {
     return fs_->Basename(path);
   }
 
@@ -761,7 +762,7 @@ class RandomAccessFile {
   ///
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
-  virtual absl::Status Name(StringPiece* result) const {
+  virtual absl::Status Name(absl::string_view* result) const {
     return errors::Unimplemented("This filesystem does not support Name()");
   }
 
@@ -780,7 +781,7 @@ class RandomAccessFile {
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
-  virtual absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+  virtual absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                             char* scratch) const = 0;
 
 #if defined(TF_CORD_SUPPORT)
@@ -807,12 +808,12 @@ class WritableFile {
   virtual ~WritableFile() = default;
 
   /// \brief Append 'data' to the file.
-  virtual absl::Status Append(StringPiece data) = 0;
+  virtual absl::Status Append(absl::string_view data) = 0;
 
 #if defined(TF_CORD_SUPPORT)
   // \brief Append 'data' to the file.
   virtual absl::Status Append(const absl::Cord& cord) {
-    for (StringPiece chunk : cord.Chunks()) {
+    for (absl::string_view chunk : cord.Chunks()) {
       TF_RETURN_IF_ERROR(Append(chunk));
     }
     return absl::OkStatus();
@@ -844,7 +845,7 @@ class WritableFile {
   ///
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
-  virtual absl::Status Name(StringPiece* result) const {
+  virtual absl::Status Name(absl::string_view* result) const {
     return errors::Unimplemented("This filesystem does not support Name()");
   }
 
