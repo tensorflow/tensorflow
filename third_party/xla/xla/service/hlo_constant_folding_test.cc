@@ -303,6 +303,26 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
               GmockMatch(m::Pad(m::Constant(), m::Constant())));
 }
 
+TEST_F(HloConstantFoldingTest, DoesNotFoldPadBroadcast) {
+  const char* const kConstantFoldPadBroadcast = R"(
+  HloModule ConstantFoldLargePad
+
+  ENTRY r {
+    a = f32[] constant(239)
+    broadcast_a = f32[4] broadcast(a), dimensions={}
+    b = f32[] constant(42)
+    ROOT pad = f32[8] pad(f32[4] broadcast_a, f32[] b), padding=4_0
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kConstantFoldPadBroadcast));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Pad(m::Broadcast(), m::Constant())));
+}
+
 TEST_F(HloConstantFoldingTest, DoesNotFoldSlicesWithLargeOperand) {
   const char* const kModuleStr = R"(
   HloModule test
