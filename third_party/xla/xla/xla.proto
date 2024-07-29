@@ -476,7 +476,7 @@ message DebugOptions {
 
   // Enables address computation fusion to optimize dynamic-slice and
   // dynamic-update-slice operations around library calls.
-  bool xla_gpu_enable_address_computation_fusion = 105;
+  bool xla_gpu_enable_dynamic_slice_fusion = 105;
 
   reserved 233;  // was xla_gpu_enable_gpu2_runtime
   reserved 234;  // was xla_gpu_enable_gpu2_hal

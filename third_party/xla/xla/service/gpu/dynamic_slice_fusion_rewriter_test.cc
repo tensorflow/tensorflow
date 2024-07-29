@@ -942,7 +942,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
       xla::ProgramShape(computation.proto().host_program_shape()),
       /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
@@ -990,7 +990,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
       xla::ProgramShape(computation.proto().host_program_shape()),
       /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
@@ -1050,7 +1050,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
       xla::ProgramShape(computation.proto().host_program_shape()),
       /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
@@ -1122,7 +1122,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
       xla::ProgramShape(computation.proto().host_program_shape()),
       /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
@@ -1183,7 +1183,7 @@ TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
       xla::ProgramShape(computation.proto().host_program_shape()),
       /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
