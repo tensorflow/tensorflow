@@ -24,6 +24,8 @@ toc:
       path: /xla/custom_call
     - title: Persisted autotuning
       path: /xla/persisted_autotuning
+    - title: Determinism
+      path: /xla/determinism
     - title: XLA Tooling
       path: /xla/tools
     - title: Using LSP autocompletion
