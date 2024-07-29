@@ -79,7 +79,7 @@ absl::Status DecodeThreeChars(const char* codes, char* result) {
 }  // namespace
 
 template <typename T>
-absl::Status Base64Decode(StringPiece data, T* decoded) {
+absl::Status Base64Decode(absl::string_view data, T* decoded) {
   if (decoded == nullptr) {
     return errors::Internal("'decoded' cannot be nullptr.");
   }
@@ -142,12 +142,13 @@ absl::Status Base64Decode(StringPiece data, T* decoded) {
 }
 
 template <typename T>
-absl::Status Base64Encode(StringPiece source, T* encoded) {
+absl::Status Base64Encode(absl::string_view source, T* encoded) {
   return Base64Encode(source, false, encoded);
 }
 
 template <typename T>
-absl::Status Base64Encode(StringPiece source, bool with_padding, T* encoded) {
+absl::Status Base64Encode(absl::string_view source, bool with_padding,
+                          T* encoded) {
   const char* const base64_chars = kBase64UrlSafeChars;
   if (encoded == nullptr) {
     return errors::Internal("'encoded' cannot be nullptr.");
