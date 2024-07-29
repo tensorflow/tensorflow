@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 // Performs IR cleanup and canonicalization in preparation for Resource Op
 // Lifting pass. It does several things:
