@@ -93,6 +93,7 @@ py_strict_test(
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python:pywrap_tflite",
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/framework:dtypes",
