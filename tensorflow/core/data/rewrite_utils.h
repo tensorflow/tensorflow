@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_REWRITE_UTILS_H_
 #define TENSORFLOW_CORE_DATA_REWRITE_UTILS_H_
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/refcount.h"
 
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.

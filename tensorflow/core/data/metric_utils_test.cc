@@ -20,10 +20,9 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/monitoring/cell_reader.h"
-#include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/lib/monitoring/test_utils.h"
 
 namespace tensorflow {
 namespace data {
