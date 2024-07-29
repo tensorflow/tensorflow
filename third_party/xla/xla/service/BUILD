@@ -501,6 +501,7 @@ xla_cc_test(
         ":hlo_parser",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest",
