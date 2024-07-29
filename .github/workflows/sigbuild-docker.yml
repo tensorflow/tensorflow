@@ -61,6 +61,14 @@ jobs:
           username: _json_key
           password: ${{ secrets.GCP_CREDS }}
       -
+        name: Login to AR
+        # Once this is verified, removed gcr.io actions.
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: us-central1-docker.pkg.dev
+          username: _json_key
+          password: ${{ secrets.GCP_CREDS }}
+      -
         name: Grab the upcoming TF version to tag this container
         run: |
           # [[:digit:]] searches for numbers and \+ joins them together
@@ -87,6 +95,8 @@ jobs:
             tensorflow/build:${{ steps.tf-version.outputs.TF_VERSION }}-${{ matrix.python-version }}
             gcr.io/tensorflow-sigs/build:latest-${{ matrix.python-version }}
             gcr.io/tensorflow-sigs/build:${{ steps.tf-version.outputs.TF_VERSION }}-${{ matrix.python-version }}
+            us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build:latest-${{ matrix.python-version }}
+            us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build:${{ steps.tf-version.outputs.TF_VERSION }}-${{ matrix.python-version }}
           cache-from: type=registry,ref=tensorflow/build:latest-${{ matrix.python-version }}
           cache-to: type=inline
       -
