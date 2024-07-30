@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
-const tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
+tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
   return thread_pool_;
 }
 

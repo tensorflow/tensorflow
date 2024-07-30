@@ -161,7 +161,7 @@ IfrtServingExecutable::Create(
     int64_t program_id, absl::string_view model_name,
     absl::string_view signature_name, mlir::OwningOpRef<mlir::ModuleOp> module,
     std::shared_ptr<xla::ifrt::Client> client,
-    const tsl::thread::ThreadPool* thread_pool,
+    tsl::thread::ThreadPool* thread_pool,
     IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
     const IfrtRestoreTensorRegistry* ifrt_restore,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
@@ -600,14 +600,15 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   auto status = execution_result.status.Await();
   TF_RETURN_IF_ERROR(status);
 
-  std::vector<tensorflow::Tensor> outputs;
-
   if (executable_bundle->compile_metadata.retvals().size() !=
       execution_result.outputs.size()) {
     return absl::InternalError(absl::StrCat(
         "Expect ", executable_bundle->compile_metadata.retvals().size(),
         " but got ", execution_result.outputs.size(), " outputs"));
   }
+
+  std::vector<xla::ifrt::Future<tensorflow::Tensor>> output_futures;
+  output_futures.reserve(execution_result.outputs.size());
   for (int i = 0; i < execution_result.outputs.size(); ++i) {
     tensorflow::TensorShape tensor_shape;
     const tsl::RCReference<xla::ifrt::Array>& array_for_copy =
@@ -621,13 +622,17 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
     TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(
                                                metadata_retval.sharding()));
-    TF_ASSIGN_OR_RETURN(
-        tensorflow::Tensor tensor,
-        MakeTensorFromArray(*ifrt_client_, *array_for_copy, hlo_sharding,
-                            device_list, thread_pool_));
-    outputs.push_back(std::move(tensor));
+    output_futures.push_back(MakeTensorFromArray(*ifrt_client_, *array_for_copy,
+                                                 hlo_sharding, device_list,
+                                                 thread_pool_));
   }
 
+  std::vector<tensorflow::Tensor> outputs;
+  outputs.reserve(output_futures.size());
+  for (auto& output_future : output_futures) {
+    TF_ASSIGN_OR_RETURN(auto tensor, output_future.Await());
+    outputs.push_back(std::move(tensor));
+  }
   return outputs;
 }
 

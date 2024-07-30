@@ -65,7 +65,7 @@ class IfrtServingExecutable {
       absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
-      const tsl::thread::ThreadPool* thread_pool,
+      tsl::thread::ThreadPool* thread_pool,
       IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       const IfrtRestoreTensorRegistry* ifrt_restore,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
@@ -136,7 +136,7 @@ class IfrtServingExecutable {
       absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
-      const tsl::thread::ThreadPool* thread_pool,
+      tsl::thread::ThreadPool* thread_pool,
       IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       const IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
@@ -173,7 +173,7 @@ class IfrtServingExecutable {
   tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
-  const tsl::thread::ThreadPool& thread_pool_;
+  tsl::thread::ThreadPool& thread_pool_;
 
   IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
   const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry_;
