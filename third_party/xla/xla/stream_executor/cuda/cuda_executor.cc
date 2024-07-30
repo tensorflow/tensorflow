@@ -569,19 +569,6 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   return absl::InternalError("Unsupported kernel arguments type");
 }
 
-absl::Status GpuExecutor::Submit(Stream* stream,
-                                 const CommandBuffer& command_buffer) {
-  if (command_buffer.mode() != CommandBuffer::Mode::kPrimary) {
-    return absl::InvalidArgumentError(
-        "Can't submit non-primary command buffer for execution");
-  }
-
-  auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
-  VLOG(3) << "Launch command buffer executable graph " << exec
-          << " on a stream: " << stream;
-  return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
-}
-
 DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space == 1) {
     auto result = GpuCollectives::CollectiveMemoryAllocate(context_, size);

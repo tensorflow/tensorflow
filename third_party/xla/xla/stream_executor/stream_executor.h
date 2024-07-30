@@ -156,12 +156,6 @@ class StreamExecutor {
     return absl::UnimplementedError("Not Implemented");
   }
 
-  // Submits command buffer for execution to the underlying platform driver.
-  virtual absl::Status Submit(Stream* stream,
-                              const CommandBuffer& command_buffer) {
-    return absl::UnimplementedError("Not Implemented");
-  }
-
   // Releases any state associated with the previously loaded kernel.
   virtual void UnloadKernel(const Kernel* kernel) {}
 

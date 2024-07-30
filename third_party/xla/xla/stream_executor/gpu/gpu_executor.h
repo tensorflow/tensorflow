@@ -148,9 +148,6 @@ class GpuExecutor : public StreamExecutorCommon {
                       const ClusterDim& cluster_dims, const Kernel& kernel,
                       const KernelArgs& args) override;
 
-  absl::Status Submit(Stream* stream,
-                      const CommandBuffer& command_buffer) override;
-
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
   void Deallocate(DeviceMemoryBase* mem) override;

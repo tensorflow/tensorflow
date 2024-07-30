@@ -1073,4 +1073,15 @@ GpuCommandBuffer::barriers(ExecutionScopeId id) const {
   return {};
 }
 
+absl::Status GpuCommandBuffer::Submit(Stream* stream) {
+  if (mode_ != CommandBuffer::Mode::kPrimary) {
+    return absl::InvalidArgumentError(
+        "Can't submit non-primary command buffer for execution");
+  }
+
+  VLOG(3) << "Launch command buffer executable graph " << exec_
+          << " on a stream: " << stream;
+  return GpuDriver::GraphLaunch(exec_, AsGpuStreamValue(stream));
+}
+
 }  // namespace stream_executor::gpu

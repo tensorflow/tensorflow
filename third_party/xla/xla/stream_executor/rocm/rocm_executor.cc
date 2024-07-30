@@ -384,19 +384,6 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   return Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
-absl::Status GpuExecutor::Submit(Stream* stream,
-                                 const CommandBuffer& command_buffer) {
-  if (command_buffer.mode() != CommandBuffer::Mode::kPrimary) {
-    return absl::InvalidArgumentError(
-        "Can't submit non-primary command buffer for execution");
-  }
-
-  auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
-  VLOG(3) << "Launch command buffer execuable graph " << exec
-          << " on a stream: " << stream;
-  return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
-}
-
 absl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
                                      ModuleHandle* module_handle) {
   // In GpuExecutor we store the pointer to the  HSACO binary  as

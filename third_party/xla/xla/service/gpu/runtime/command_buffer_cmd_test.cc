@@ -235,7 +235,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -306,7 +306,7 @@ TEST(CommandBufferCmdTest, BarrierCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy data back to host, correct executor order should populate all buffers
   // with expected value.
@@ -384,7 +384,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
