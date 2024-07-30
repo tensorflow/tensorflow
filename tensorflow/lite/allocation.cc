@@ -81,14 +81,16 @@ bool FileCopyAllocation::valid() const { return copied_buffer_ != nullptr; }
 MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
                                    ErrorReporter* error_reporter)
     : Allocation(error_reporter, Allocation::Type::kMemory) {
-#ifdef __arm__
+#if defined(__arm__) || defined(__x86_64__)
   if ((reinterpret_cast<uintptr_t>(ptr) & 0x3) != 0) {
     // The flatbuffer schema has alignment requirements of up to 16 bytes to
     // guarantee that data can be correctly accesses by various backends.
     // Therefore, model pointer should also be 16-bytes aligned to preserve this
     // requirement. But this condition only checks 4-bytes alignment which is
-    // the mininum requirement to prevent SIGBUS fault on 32bit ARM. Some models
-    // could require 8 or 16 bytes alignment which is not checked yet.
+    // the minimum requirement to prevent SIGBUS fault on 32bit ARM. It's also
+    // required for some x86_64 depending on a certain compiler options.
+    // Some models could require 8 or 16 bytes alignment which is not checked
+    // yet.
     //
     // Note that 64-bit ARM may also suffer a performance impact, but no crash -
     // that case is not checked.
@@ -98,7 +100,7 @@ MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
     buffer_size_bytes_ = 0;
     return;
   }
-#endif  // __arm__
+#endif  // defined(__arm__) || defined(__x86_64__)
 
   buffer_ = ptr;
   buffer_size_bytes_ = num_bytes;
