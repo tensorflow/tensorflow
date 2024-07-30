@@ -95,3 +95,14 @@ cc_library(
     copts = ["-fexceptions"],
     deps = [":gloo"],
 )
+
+cc_library(
+    name = "transport_uv",
+    srcs = glob(["gloo/transport/uv/*.cc"]),
+    hdrs = glob(["gloo/transport/uv/*.h"]),
+    copts = ["-fexceptions"],
+    deps = [
+        ":gloo",
+        "@uv",
+    ],
+)
