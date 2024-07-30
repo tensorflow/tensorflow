@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardings.h"
@@ -38,7 +39,11 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
   // `createSdyRoundTripExportShardingsPass` and make use of
   // `createSdyRoundTripImportShardingsPass` to import them.
   pm.addPass(createSdyRoundTripExportOpsPass());
+  // Preserve the SDY shardings for `createExportMhloShardingsPass` so that
+  // we have both `mhlo.sharding`s and hidden `sdy.sharding`s on the module. We
+  // want to have `mhlo.sharding`s for Pathways to read from.
   pm.addPass(createSdyRoundTripExportShardingsPass());
+  pm.addPass(createExportMhloShardingsPass());
 }
 
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm) {
