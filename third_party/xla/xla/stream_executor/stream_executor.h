@@ -207,7 +207,7 @@ class StreamExecutor {
       uint64_t size) = 0;
 
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  virtual void HostMemoryDeallocate(void* mem) = 0;
+  virtual void HostMemoryDeallocate(void* mem, uint64_t size) = 0;
 
   // Returns the memory space of the given pointer.
   virtual absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) {

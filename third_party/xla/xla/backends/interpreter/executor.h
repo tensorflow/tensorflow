@@ -103,7 +103,7 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
       uint64_t size) override {
     return std::make_unique<HostMemoryAllocation>(new char[size], size, this);
   }
-  void HostMemoryDeallocate(void *mem) override {
+  void HostMemoryDeallocate(void *mem, uint64_t size) override {
     delete[] static_cast<char *>(mem);
   }
 

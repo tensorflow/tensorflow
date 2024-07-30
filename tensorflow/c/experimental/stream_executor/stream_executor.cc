@@ -228,7 +228,7 @@ class CStreamExecutor : public StreamExecutorCommon {
     return std::make_unique<HostMemoryAllocation>(buffer, size, this);
   }
 
-  void HostMemoryDeallocate(void* mem) override {
+  void HostMemoryDeallocate(void* mem, uint64_t size) override {
     stream_executor_->host_memory_deallocate(&device_, mem);
   }
 
