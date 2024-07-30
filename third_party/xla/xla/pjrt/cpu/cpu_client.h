@@ -261,6 +261,8 @@ class TfrtCpuClient final : public PjRtClient {
                 size_t num_threads, bool asynchronous);
   ~TfrtCpuClient() override;
 
+  void ShutDown() override;
+
   int process_index() const override { return process_index_; }
 
   int device_count() const override { return devices_.size(); }

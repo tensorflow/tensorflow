@@ -65,6 +65,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
 
   ~Client() override;
 
+  void ShutDown() override {}
+
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,

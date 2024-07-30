@@ -139,6 +139,9 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
         return delegated_->MakeTuple(values);
       });
 
+  ON_CALL(*this, ShutDown).WillByDefault([this]() {
+    return delegated_->ShutDown();
+  });
   ON_CALL(*this, runtime_type).WillByDefault([this]() {
     return delegated_->runtime_type();
   });

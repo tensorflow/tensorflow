@@ -502,6 +502,10 @@ class PjRtClient {
 
   virtual ~PjRtClient() = default;
 
+  // A shut down method that will be called before the process terminates to
+  // properly clean up resources owned by the client.
+  virtual void ShutDown() = 0;
+
   // Return the process index of this client. Always 0 in single-process
   // settings.
   virtual int process_index() const = 0;

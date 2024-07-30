@@ -64,6 +64,11 @@ class PyClient {
   explicit PyClient(std::shared_ptr<ifrt::Client> ifrt_client);
   virtual ~PyClient();
 
+  void ShutDown() {
+    nanobind::gil_scoped_release gil_release;
+    ifrt_client_->ShutDown();
+  }
+
   ifrt::Client* ifrt_client() const { return ifrt_client_.get(); }
   const std::shared_ptr<ifrt::Client>& shared_ptr_ifrt_client() const {
     return ifrt_client_;

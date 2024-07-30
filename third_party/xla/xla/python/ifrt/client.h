@@ -90,6 +90,10 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // by default.
   using HostBufferSemantics = ::xla::PjRtClient::HostBufferSemantics;
 
+  // A shut down method that will be called before the process terminates to
+  // properly clean up resources owned by the client.
+  virtual void ShutDown() = 0;
+
   // Creates a new array from a host buffer.
   //
   // `data` points to the backing array of the host buffer. Caution:

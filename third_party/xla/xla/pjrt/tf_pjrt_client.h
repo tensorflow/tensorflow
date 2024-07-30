@@ -212,6 +212,7 @@ class TfPjRtClient : public PjRtClient {
       std::unique_ptr<PjRtClient> wrapped);
   explicit TfPjRtClient(std::unique_ptr<PjRtClient> wrapped);
   ~TfPjRtClient() override;
+  void ShutDown() override { wrapped_->ShutDown(); }
   int process_index() const override { return wrapped_->process_index(); }
   int device_count() const override { return wrapped_->device_count(); }
   int addressable_device_count() const override {

@@ -468,6 +468,11 @@ TfrtCpuClient::TfrtCpuClient(
 
 TfrtCpuClient::~TfrtCpuClient() { LOG(INFO) << "TfrtCpuClient destroyed."; }
 
+void TfrtCpuClient::ShutDown() {
+  LOG(INFO) << "Shutting down TfrtCpuClient";
+  pjrt_client_thread_pool_.reset();
+}
+
 absl::StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(
     xla::PjRtGlobalDeviceId global_device_id) const {
   auto it = id_to_device_.find(global_device_id);
