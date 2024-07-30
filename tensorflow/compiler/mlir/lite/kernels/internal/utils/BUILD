@@ -9,20 +9,18 @@ package(
     licenses = ["notice"],
 )
 
-# LINT.IfChange(common)
+# LINT.IfChange(sparsity_format_converter)
+
 cc_library(
-    name = "tflite_common",
-    srcs = [],
-    hdrs = [
-        "builtin_op_data.h",
-        "dimension_type.h",
-    ],
+    name = "sparsity_format_converter",
+    srcs = ["sparsity_format_converter.cc"],
+    hdrs = ["sparsity_format_converter.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    visibility = [
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:__pkg__",
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
+        "@eigen_archive//:eigen3",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
-# LINT.ThenChange(//tensorflow/lite/core/c:common)
+
+# LINT.ThenChange(//tensorflow/lite/kernels/internal/utils/BUILD)
