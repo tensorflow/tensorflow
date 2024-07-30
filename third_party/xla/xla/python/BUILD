@@ -18,6 +18,7 @@ load(
     "//xla/tsl:tsl.bzl",
     "if_cuda_or_rocm",
     "if_google",
+    "if_oss",
     "internal_visibility",
 )
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
@@ -1400,7 +1401,10 @@ tsl_pybind_extension(
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
     ] + select({
         # gloo transport only builds on linux
-        "//xla/tsl:macos": [],
+        "//xla/tsl:macos": [
+            "//xla/pjrt/cpu:gloo_collectives",
+            "//xla/pjrt/cpu:gloo_kv_store",
+        ] + if_oss(["@gloo//:transport_uv"]),
         "//xla/tsl:windows": [],
         "//conditions:default": [
             "//xla/pjrt/cpu:gloo_collectives",
