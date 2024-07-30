@@ -180,6 +180,7 @@ limitations under the License.
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_invariant_code_motion.h"
 #include "xla/service/while_loop_simplifier.h"
+#include "xla/service/while_loop_trip_count_annotator.h"
 #include "xla/service/zero_sized_hlo_elimination.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -684,6 +685,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<OptimizationBarrierExpander>();
   pipeline.AddPass<TupleSimplifier>();
+
+  // Annotate while loops with statically known trip counts, so that at run time
+  // we can avoid running the loop condition computations.
+  pipeline.AddPass<WhileLoopTripCountAnnotator>();
 
   // Layout assignment uses alias analysis, which requires the call graph to be
   // flattened.

@@ -327,6 +327,7 @@ cc_library(
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_invariant_code_motion",
         "//xla/service:while_loop_simplifier",
+        "//xla/service:while_loop_trip_count_annotator",
         "//xla/service:zero_sized_hlo_elimination",
         "//xla/service/cpu/runtime:thunk",
         "//xla/service/llvm_ir:llvm_command_line_options",

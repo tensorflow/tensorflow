@@ -3982,7 +3982,9 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   std::vector<std::vector<int64_t>> partial_mesh_shapes;
   if (option_.solve_nd_sharding_iteratively) {
     // Generate partial mesh shapes to optimize iteratively.
-    partial_mesh_shapes = spmd::DecomposeMeshShapes(option_.device_mesh_shape);
+    partial_mesh_shapes = spmd::DecomposeMeshShapes(option_.device_mesh_shape,
+                                                    option_.device_mesh_alpha,
+                                                    option_.device_mesh_beta);
   } else {
     partial_mesh_shapes = {option_.device_mesh_shape};
   }

@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_WHILE_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_WHILE_THUNK_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "xla/service/buffer_assignment.h"
@@ -37,7 +39,8 @@ class WhileThunk final : public Thunk {
  public:
   static absl::StatusOr<std::unique_ptr<WhileThunk>> Create(
       Info info, BufferAllocation::Slice cond_buffer,
-      ThunkSequence cond_sequence, ThunkSequence body_sequence);
+      ThunkSequence cond_sequence, ThunkSequence body_sequence,
+      std::optional<int64_t> trip_count = std::nullopt);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
@@ -46,19 +49,36 @@ class WhileThunk final : public Thunk {
 
  private:
   WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
-             ThunkExecutor cond_executor, ThunkExecutor body_executor);
+             ThunkExecutor cond_executor, ThunkExecutor body_executor,
+             std::optional<int64_t> trip_count);
+
+  tsl::AsyncValueRef<ExecuteEvent> ExecuteForLoop(const ExecuteParams& params,
+                                                  int64_t trip_count);
+
+  tsl::AsyncValueRef<ExecuteEvent> ExecuteWhileLoop(const ExecuteParams& params,
+                                                    bool* condition);
 
   // If `cond` or `body` thunk sequence return unavailable async values, then
   // we execute the while loop asynchronously by chaining `Execute` calls via
   // `AndThen` callbacks. This execution mode adds significant overheads, so we
   // try to avoid it when possible and run everything in the caller thread.
-  tsl::AsyncValueRef<ExecuteEvent> ExecuteAsync(
+
+  tsl::AsyncValueRef<ExecuteEvent> ExecuteAsyncForLoop(
+      const ExecuteParams& params, tsl::AsyncValueRef<ExecuteEvent> dependency,
+      int64_t loop_counter, int64_t trip_count);
+
+  tsl::AsyncValueRef<ExecuteEvent> ExecuteAsyncWhileLoop(
       const ExecuteParams& params, tsl::AsyncValueRef<ExecuteEvent> dependency,
       bool* condition);
 
   BufferAllocation::Slice cond_buffer_;
   ThunkExecutor cond_executor_;
   ThunkExecutor body_executor_;
+
+  // Statically known trip count. If available, WhileThunk::Execute will not
+  // execute `cond_executor_` and simply call `body_executor_` `trip_count`
+  // times (effectively converting while loop into a for loop).
+  std::optional<int64_t> trip_count_;
 };
 
 }  // namespace xla::cpu

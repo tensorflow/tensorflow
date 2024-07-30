@@ -1,0 +1,15 @@
+diff --git i/third_party/llvm/workspace.bzl w/third_party/llvm/workspace.bzl
+index f5dd4fd..7cf4fb8 100644
+--- i/third_party/llvm/workspace.bzl
++++ w/third_party/llvm/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "0e6f64cd5e5a06bd78542d5541a762154546ced3"
+-    LLVM_SHA256 = "d3b426b13175ac771a05a0908e11391be46913fc1ab7c459ae906b07b77474c0"
++    LLVM_COMMIT = "fcd6bd5587cc376cd8f43b60d1c7d61fdfe0f535"
++    LLVM_SHA256 = "99867d87e9eb4dd94c3356a4622c79b2e75bd5a7e4fc7da4fdee51f8db831162"
+ 
+     tf_http_archive(
+         name = name,
