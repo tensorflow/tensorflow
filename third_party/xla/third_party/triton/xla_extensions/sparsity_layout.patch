@@ -1,5 +1,3 @@
-diff --git a/lib/Conversion/TritonToTritonGPU/TritonGPUConversion.cpp b/lib/Conversion/TritonToTritonGPU/TritonGPUConversion.cpp
-index 34fb89954..a0172e107 100644
 --- a/lib/Conversion/TritonToTritonGPU/TritonGPUConversion.cpp
 +++ b/lib/Conversion/TritonToTritonGPU/TritonGPUConversion.cpp
 @@ -57,8 +57,9 @@ TritonGPUTypeConverter::TritonGPUTypeConverter(MLIRContext *context,
@@ -27,8 +25,6 @@ index 34fb89954..a0172e107 100644
      llvm_unreachable("Source rematerialization should not happen in Triton -> "
                       "TritonGPU Conversion");
      return std::nullopt;
-diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-index df3d3b042..e38c184f6 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
 @@ -2867,13 +2867,13 @@ struct CanonicalizeConvertFromConvert

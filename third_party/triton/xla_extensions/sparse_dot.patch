@@ -21,8 +21,6 @@ index 04ba95196..192d8fab4 100644
  def TTG_SharedMemorySpace : AttrDef<TritonGPU_Dialect, "SharedMemorySpace"> {
    let mnemonic = "shared_memory";
    let description = [{
-diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
-index a87e1c44a..456a4f224 100644
 --- a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
 +++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
 @@ -7,6 +7,7 @@ include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
@@ -53,8 +51,6 @@ index a87e1c44a..456a4f224 100644
 +}
 +
  #endif
-diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-index 012786dae..6043b764a 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
 @@ -498,6 +498,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
@@ -177,8 +173,6 @@ index 012786dae..6043b764a 100644
  } // namespace gpu
  } // namespace triton
  } // namespace mlir
-diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-index eb26ffe3b..ba87d671e 100644
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 @@ -39,8 +39,8 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
@@ -261,8 +255,6 @@ index eb26ffe3b..ba87d671e 100644
  } // namespace gpu
  } // namespace triton
  } // namespace mlir
-diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
-index d74e0a224..4e45f7c4c 100644
 --- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
 @@ -51,6 +51,10 @@ struct LoadInfo {
@@ -344,8 +336,6 @@ index d74e0a224..4e45f7c4c 100644
            if (auto dotEnc = dyn_cast<ttg::NvidiaMmaEncodingAttr>(
                    dot.getResult().getType().getEncoding())) {
              auto loadTy = cast<RankedTensorType>(op->getResultTypes()[0]);
-diff --git a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
-index 8c1f18e45..c39110d12 100644
 --- a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
 @@ -38,6 +38,10 @@ public:
@@ -390,8 +380,6 @@ index 8c1f18e45..c39110d12 100644
  };
  
  } // namespace gpu
-diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
-index fb0e7f6fd..37795c20c 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 @@ -44,7 +44,7 @@ public:
@@ -412,8 +400,6 @@ index fb0e7f6fd..37795c20c 100644
        return false;
      // reach convertlayout
      if (op && isa<ttg::LocalAllocOp>(op) &&
-diff --git a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
-index 7affd8840..52aa2c131 100644
 --- a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
 +++ b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
 @@ -87,6 +87,15 @@ def NVGPU_WGMMAOp : NVGPU_Op<"wgmma", []> {
@@ -432,8 +418,6 @@ index 7affd8840..52aa2c131 100644
  def NVGPU_FenceAsyncSharedOp : NVGPU_Op<"fence_async_shared", []> {
    let arguments = (ins BoolAttr:$bCluster);
    let assemblyFormat = "attr-dict";
-diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
-index baed96a29..e9d7f5859 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
 @@ -88,8 +88,8 @@ int64_t getSwizzlingFromLayout(const SharedEncodingAttr &layout,
@@ -447,8 +431,6 @@ index baed96a29..e9d7f5859 100644
    // Create descriptor based on the format described in the spec:
    // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-shared-memory-layout-matrix-descriptor
    union WGMMADescriptor {
-diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
-index f2742218e..4cb1fae93 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
 @@ -68,6 +68,7 @@ public:
