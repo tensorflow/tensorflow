@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -2468,6 +2469,60 @@ absl::Status HloFunctionImporter::ConvertShapeToMlirLayout(
     return absl::OkStatus();
   }
   return Internal("Couldn't convert layout.");
+}
+
+// std::string FrontendAttributesToString(
+//     const FrontendAttributes& frontend_attributes) {
+//   std::vector<std::pair<std::string, std::string>> sorted_attributes(
+//       frontend_attributes.map().begin(), frontend_attributes.map().end());
+//   absl::c_sort(sorted_attributes);
+//   const auto formatter = [](std::string* out,
+//                             const std::pair<std::string, std::string>& item)
+//                             {
+//     if (LexesAsJsonDict(item.second)) {
+//       absl::StrAppend(out, item.first, "=", item.second);
+//     } else {
+//       absl::StrAppend(out, item.first, "=\"", item.second, "\"");
+//     }
+//   };
+//   return absl::StrFormat("{%s}",
+//                          absl::StrJoin(sorted_attributes, ",", formatter));
+// }
+
+mlir::Attribute ConvertInputOutputAlias(const HloInputOutputAliasConfig& alias,
+                                        mlir::Builder* builder) {
+  llvm::SmallVector<mlir::Attribute> element_attrs;
+  alias.ForEachAlias([&](const ShapeIndex& output_index,
+                         const HloInputOutputAliasConfig::Alias& alias) {
+    std::string kindToString;
+    switch (alias.kind) {
+      case HloInputOutputAliasConfig::AliasKind::kMayAlias:
+        kindToString = "may_alias";
+        break;
+      case HloInputOutputAliasConfig::AliasKind::kMustAlias:
+        kindToString = "must_alias";
+        break;
+      default:
+        kindToString = "undefined_alias";
+    }
+    mlir::NamedAttribute alias_named_attributes[3] = {
+        builder->getNamedAttr(
+            "parameter_index",
+            builder->getDenseI64ArrayAttr(ArrayRef<int64_t>(
+                alias.parameter_index.begin(), alias.parameter_index.end()))),
+        builder->getNamedAttr("parameter_number", builder->getI64IntegerAttr(
+                                                      alias.parameter_number)),
+        builder->getNamedAttr("kind", builder->getStringAttr(kindToString))};
+
+    mlir::NamedAttribute named_attributes[2] = {
+        builder->getNamedAttr("output_index",
+                              builder->getDenseI64ArrayAttr(ArrayRef<int64_t>(
+                                  output_index.begin(), output_index.end()))),
+        builder->getNamedAttr(
+            "alias", builder->getDictionaryAttr(alias_named_attributes))};
+    element_attrs.push_back(builder->getDictionaryAttr(named_attributes));
+  });
+  return builder->getArrayAttr(element_attrs);
 }
 
 mlir::Attribute ConvertSharding(const HloSharding& sharding,
