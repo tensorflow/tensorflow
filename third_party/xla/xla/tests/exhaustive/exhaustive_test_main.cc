@@ -20,15 +20,6 @@ limitations under the License.
 
 #include "tsl/platform/test.h"
 
-namespace xla {
-namespace exhaustive_op_test {
-
-static int eup_version = 0;
-int GetEupVersion() { return eup_version; }
-
-}  // namespace exhaustive_op_test
-}  // namespace xla
-
 GTEST_API_ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
-#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -44,8 +43,7 @@ limitations under the License.
 
 namespace xla {
 namespace exhaustive_op_test {
-
-extern int GetEupVersion();
+namespace {
 
 using Eigen::half;
 
@@ -195,26 +193,8 @@ class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
       public ::testing::WithParamInterface<std::pair<int64_t, int64_t>> {
  public:
- public:
-  Exhaustive32BitOrLessUnaryTest()
-      : eup_version_(xla::exhaustive_op_test::GetEupVersion()) {}
-
- public:
   // Sets error parameters appropriately for testing tan.
   void SetParamsForTan();
-
-  bool IsGpu(const std::string& platform) const { return platform == "CUDA"; }
-  bool IsCpu(const std::string& platform) const { return platform == "Host"; }
-  bool IsTpu(const std::string& platform) const {
-    return !IsGpu(platform) && !IsCpu(platform);
-  }
-  int EupVersion() const { return eup_version_; }
-  bool IsPreV5Tpu(const std::string& platform) const {
-    return IsTpu(platform) && eup_version_ < 2;
-  }
-  bool IsPreV6Tpu(const std::string& platform) const {
-    return IsTpu(platform) && eup_version_ < 3;
-  }
 
  protected:
   using typename ExhaustiveUnaryTest<T>::NativeT;
@@ -248,8 +228,6 @@ class Exhaustive32BitOrLessUnaryTest
           this->ConvertAndReplaceKnownIncorrectValueWith(input_val, 0);
     }
   }
-
-  const int eup_version_;
 };
 
 using ExhaustiveF32UnaryTest = Exhaustive32BitOrLessUnaryTest<F32>;
@@ -740,5 +718,6 @@ INSTANTIATE_TEST_SUITE_P(BF16, ExhaustiveBF16UnaryTest,
                          ::testing::Values(std::make_pair(0, 1 << 16)));
 #endif
 
+}  // namespace
 }  // namespace exhaustive_op_test
 }  // namespace xla

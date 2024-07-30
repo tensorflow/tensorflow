@@ -40,6 +40,10 @@ limitations under the License.
 namespace xla {
 namespace exhaustive_op_test {
 
+int eup_version = 0;
+
+int GetEupVersion() { return eup_version; }
+
 bool IsSubnormalReal(xla::complex64 value) { return IsSubnormal(value.real()); }
 
 bool IsSubnormalReal(xla::complex128 value) {

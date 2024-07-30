@@ -55,9 +55,14 @@ limitations under the License.
 namespace xla {
 namespace exhaustive_op_test {
 
+// Access this through GetEupVersion.
+extern int eup_version;
+
+// Get the TPU EUP version (if it was provided).
+int GetEupVersion();
+
 // Determines if the real component of the complex number is subnormal (either
 // sign).
-// Determines if the real component of the complex number is subnormal.
 //
 // See also IsSubnormal to check if either component is subnormal.
 bool IsSubnormalReal(xla::complex64);
@@ -246,7 +251,9 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   using OutputRangeCheck = std::function<bool(NativeInputs, NativeT)>;
 
   explicit ExhaustiveOpTestBase()
-      : ty_(T), platform_(client_->platform()->Name()) {
+      : ty_(T),
+        platform_(client_->platform()->Name()),
+        eup_version_(xla::exhaustive_op_test::GetEupVersion()) {
     SetFastMathDisabled(true);
 
     // Run all HLO passes.  In particular, constant folding is disabled by
@@ -365,6 +372,20 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   }
 
   const std::string& Platform() { return platform_; }
+
+  bool IsGpu(const std::string& platform) const { return platform == "CUDA"; }
+  bool IsCpu(const std::string& platform) const { return platform == "Host"; }
+  bool IsTpu(const std::string& platform) const {
+    return !IsGpu(platform) && !IsCpu(platform);
+  }
+
+  int EupVersion() const { return eup_version_; }
+  bool IsPreV5Tpu(const std::string& platform) const {
+    return IsTpu(platform) && eup_version_ < 2;
+  }
+  bool IsPreV6Tpu(const std::string& platform) const {
+    return IsTpu(platform) && eup_version_ < 3;
+  }
 
   // Returns the number of elements in each input literal.
   virtual int64_t GetInputSize() = 0;
@@ -590,9 +611,12 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // The platform under test.
   const std::string platform_;
 
-  // Testing will ignore inputs for which known_incorrect_fn_ returns true. The
-  // argument to the function is the raw bits for the data being test, zero
-  // extended to 64 bits if the data type is less than 64 bits.
+  // Version of the EUP for a TPU target. Only relevant for TPU platforms.
+  const int eup_version_;
+
+  // Testing will ignore inputs for which known_incorrect_fn_ returns true.
+  // The argument to the function is the raw bits for the data being test,
+  // zero extended to 64 bits if the data type is less than 64 bits.
   std::function<bool(int64_t)> known_incorrect_fn_;
 
   // If true, allows denormals to be flushed to non-sign-preserving 0.
