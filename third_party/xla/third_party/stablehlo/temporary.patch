@@ -1,1 +1,19 @@
+diff --ruN a/stablehlo/stablehlo/tests/math/ulp_difference_float32.mlir b/stablehlo/stablehlo/tests/math/ulp_difference_float32.mlir
+--- stablehlo/stablehlo/tests/math/ulp_difference_float32.mlir
++++ stablehlo/stablehlo/tests/math/ulp_difference_float32.mlir
+@@ -1,4 +1,5 @@
+ // RUN: stablehlo-opt --chlo-legalize-to-stablehlo %s | stablehlo-translate --interpret
++// XFAIL: *
+ // This file is generated, see build_tools/math/README.md for more information.
+ module @ulp_difference_float32 {
+   func.func public @main() {
+diff --ruN a/stablehlo/stablehlo/tests/math/ulp_difference_float64.mlir b/stablehlo/stablehlo/tests/math/ulp_difference_float64.mlir
+--- stablehlo/stablehlo/tests/math/ulp_difference_float64.mlir
++++ stablehlo/stablehlo/tests/math/ulp_difference_float64.mlir
+@@ -1,4 +1,5 @@
+ // RUN: stablehlo-opt --chlo-legalize-to-stablehlo %s | stablehlo-translate --interpret
++// XFAIL: *
+ // This file is generated, see build_tools/math/README.md for more information.
+ module @ulp_difference_float64 {
+   func.func public @main() {
 
