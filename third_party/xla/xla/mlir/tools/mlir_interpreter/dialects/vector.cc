@@ -230,7 +230,7 @@ InterpreterValue MaskImpl(mlir::Operation* op, ArrayRef<int64_t> mask_sizes) {
 }
 
 InterpreterValue ConstantMask(InterpreterState&, vector::ConstantMaskOp mask) {
-  return MaskImpl(mask, ExtractVector<int64_t>(mask.getMaskDimSizes()));
+  return MaskImpl(mask, mask.getMaskDimSizes());
 }
 
 // TODO(jreiffers): Support masked contractions.
