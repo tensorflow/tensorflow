@@ -348,6 +348,22 @@ std::string StringifyNum(const std::array<NativeT, N>& inputs) {
 }
 
 template <typename ErrorGenerator>
+void PrintSkipped(int64_t* skipped, const ErrorGenerator& err_generator) {
+  // We send some fixed amount of skipped messages to the log. The remainder we
+  // squelch unless we're at vlog level 2.
+  constexpr int64_t kMaxMismatchesLoggedToErr = 1000;
+
+  (*skipped)++;
+  if (*skipped < kMaxMismatchesLoggedToErr || VLOG_IS_ON(2)) {
+    LOG(WARNING) << err_generator();
+  } else if (*skipped == kMaxMismatchesLoggedToErr) {
+    LOG(WARNING) << "Not printing any more skipped messages; pass "
+                    "--vmodule=exhaustive_op_test=2 to see "
+                    "all of them.";
+  }
+}
+
+template <typename ErrorGenerator>
 void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
   // We send a few mismatches to gunit so they show up nicely in test logs.
   // Then we send more to LOG(ERROR).  The remainder we squelch unless we're
@@ -366,6 +382,7 @@ void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
                   "all of them.";
   }
 }
+
 }  // namespace
 
 template <PrimitiveType T, size_t N>
@@ -400,6 +417,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
 
   absl::Span<const NativeT> result_arr = result_literal.data<NativeT>();
 
+  int64_t skipped = 0;
   int64_t mismatches = 0;
 
   for (int64_t i = 0; i < result_arr.size(); ++i) {
@@ -415,6 +433,16 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     NativeT expected =
         static_cast<NativeT>(CallOperation(evaluate_op, inputs_ref_ty));
     ErrorSpec error_spec = CallErrorSpec(error_spec_gen, inputs);
+
+    if (error_spec.skip_comparison) {
+      PrintSkipped(&skipped, [&] {
+        return absl::StrFormat(
+            "skipping tolerance check for input %s due to "
+            "ErrorSpec::skip_comparison",
+            StringifyNum<NativeT, ComponentIntegralNativeT, N>(inputs));
+      });
+      continue;
+    }
 
     if (check_valid_range != nullptr && !check_valid_range(inputs, actual)) {
       PrintMismatch(&mismatches, [&] {

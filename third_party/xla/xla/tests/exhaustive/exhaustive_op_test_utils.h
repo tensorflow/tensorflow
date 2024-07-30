@@ -140,6 +140,10 @@ struct ErrorSpec {
   // spec; this only covers the case when both `expected` and `actual` are
   // equal to 0.
   bool strict_signed_zeros = false;
+  // If true, this will skip comparing the output of the test to the expected
+  // value. This should be used only as a last resort, since it is effectively
+  // turning off the test for a specific input value set.
+  bool skip_comparison = false;
 };
 
 // Representations of the reference function passed in by the user.
@@ -617,6 +621,9 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // Testing will ignore inputs for which known_incorrect_fn_ returns true.
   // The argument to the function is the raw bits for the data being test,
   // zero extended to 64 bits if the data type is less than 64 bits.
+  //
+  // DEPRECATED: Please see ErrorSpec::skip_comparison for an easier framework
+  // to skip nearness checks for certain unary or binary inputs.
   std::function<bool(int64_t)> known_incorrect_fn_;
 
   // If true, allows denormals to be flushed to non-sign-preserving 0.
