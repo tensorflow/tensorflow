@@ -1359,6 +1359,7 @@ xla_cc_test(
         ":runtime_matmul_acl",
         ":runtime_single_threaded_matmul",
         "//xla:array2d",
+        "//xla:executable_run_options",
         "//xla:types",
         "//xla/client:local_client",
         "//xla/service:custom_call_status_internal",
