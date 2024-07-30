@@ -45,12 +45,26 @@ bool IsSubnormalReal(xla::complex128 value) {
   return IsSubnormal(value.real());
 }
 
+bool IsMinNormalReal(xla::complex64 value) { return IsMinNormal(value.real()); }
+
+bool IsMinNormalReal(xla::complex128 value) {
+  return IsMinNormal(value.real());
+}
+
 bool IsSubnormalImaginary(xla::complex64 value) {
   return IsSubnormal(value.imag());
 }
 
 bool IsSubnormalImaginary(xla::complex128 value) {
   return IsSubnormal(value.imag());
+}
+
+bool IsMinNormalImaginary(xla::complex64 value) {
+  return IsMinNormal(value.imag());
+}
+
+bool IsMinPositiveImaginary(xla::complex128 value) {
+  return IsMinNormal(value.imag());
 }
 
 // For f64, f32, f16, and bf16, we need 17, 9, 5, and 4 decimal places of

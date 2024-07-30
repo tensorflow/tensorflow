@@ -55,19 +55,38 @@ limitations under the License.
 namespace xla {
 namespace exhaustive_op_test {
 
+// Determines if the real component of the complex number is subnormal (either
+// sign).
 // Determines if the real component of the complex number is subnormal.
 //
 // See also IsSubnormal to check if either component is subnormal.
 bool IsSubnormalReal(xla::complex64);
 bool IsSubnormalReal(xla::complex128);
 
-// Determines if the imaginary component of the complex number is subnormal.
+// Determines if the real component of the complex number is the minimum
+// normal floating point value (either sign).
+//
+// See also IsMinPositive to check if either component is the minimum normal
+// floating point value.
+bool IsMinNormalReal(xla::complex64);
+bool IsMinNormalReal(xla::complex128);
+
+// Determines if the imaginary component of the complex number is subnormal
+// (either sign).
 //
 // See also IsSubnormal to check if either component is subnormal.
 bool IsSubnormalImaginary(xla::complex64);
 bool IsSubnormalImaginary(xla::complex128);
 
-// Determines if the NativeT is subnormal.
+// Determines if the imaginary component of the complex number is the minimum
+// normal floating point value (either sign).
+//
+// See also IsMinPositive to check if either component is the minimum normal
+// floating point value.
+bool IsMinNormalImaginary(xla::complex64);
+bool IsMinNormalImaginary(xla::complex128);
+
+// Determines if the NativeT is subnormal (either sign).
 //
 // For complex numbers, this will return true if either real or imaginary
 // component is subnormal. See IsSubnormalReal and IsSubnormalImaginary if you
@@ -80,6 +99,32 @@ bool IsSubnormal(NativeT value) {
   } else {
     return std::fpclassify(value) == FP_SUBNORMAL;
   }
+}
+
+// Determines if the NativeT is the minimum normal floating point value
+// (either sign).
+//
+// For complex numbers, this will return true if either real or imaginary
+// component is the minimum normal floating point value. See IsMinPositiveReal
+// and IsMinPositiveImaginary if you only care about one component.
+template <typename NativeT>
+bool IsMinNormal(NativeT value) {
+  if constexpr (std::is_same_v<NativeT, xla::complex64> ||
+                std::is_same_v<NativeT, xla::complex128>) {
+    return IsMinNormalReal(value) || IsMinNormalImaginary(value);
+  } else {
+    return std::abs(value) == std::numeric_limits<NativeT>::min();
+  }
+}
+
+// Determines if the NativeT is subnormal or the minimum normal floating point
+// value (either sign).
+//
+// For complex numbers, this will return true if either real or imaginary
+// component is subnormal or the minimum normal floating point value.
+template <typename NativeT>
+bool IsSubnormalOrMinNormal(NativeT value) {
+  return IsSubnormal(value) || IsMinNormal(value);
 }
 
 struct ErrorSpec {
