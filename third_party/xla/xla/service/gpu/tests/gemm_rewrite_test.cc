@@ -48,8 +48,8 @@ limitations under the License.
 #include "xla/test.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA

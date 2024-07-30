@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

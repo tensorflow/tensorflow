@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/threadpool.h"

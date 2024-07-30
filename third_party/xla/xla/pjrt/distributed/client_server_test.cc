@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"

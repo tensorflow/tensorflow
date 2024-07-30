@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 

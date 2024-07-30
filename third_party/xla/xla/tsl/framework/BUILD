@@ -462,8 +462,8 @@ tsl_cc_test(
     deps = [
         ":device_id_impl",
         ":device_id_utils",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/util:device_name_utils",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",

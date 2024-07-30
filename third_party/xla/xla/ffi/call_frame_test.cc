@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 

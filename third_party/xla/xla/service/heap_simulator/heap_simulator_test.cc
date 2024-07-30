@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/status_macros.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 

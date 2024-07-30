@@ -49,7 +49,7 @@ xla_cc_test(
         "//xla/service:hlo_parser",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

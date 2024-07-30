@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

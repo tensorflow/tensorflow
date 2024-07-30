@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/shape_util.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"

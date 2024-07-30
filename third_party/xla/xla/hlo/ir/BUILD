@@ -136,9 +136,9 @@ xla_cc_test(
     deps = [
         ":backend_config",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
