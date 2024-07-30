@@ -49,8 +49,10 @@ namespace mlir::odml {
 //      if rank == 4: tfl.conv_2D
 // else:
 //   tfl.transpose_conv TODO: b/352954597 - Add support.
-void PopulateConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
-                          ConversionTarget& target);
+void PopulateLegalizeConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
+                                  ConversionTarget& target);
+
+void PopulatePrepareConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
 
 }  // namespace mlir::odml
 

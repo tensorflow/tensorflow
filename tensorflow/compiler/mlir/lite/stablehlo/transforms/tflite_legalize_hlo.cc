@@ -80,7 +80,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulatePadPatterns(context, patterns, target);
   PopulateReducePatterns(context, patterns, target);
   PopulateGatherPatterns(context, patterns, target);
-  PopulateConvPatterns(context, patterns, target);
+  PopulateLegalizeConvPatterns(context, patterns, target);
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
