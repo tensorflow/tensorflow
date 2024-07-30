@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AffineExpr.h"
@@ -43,8 +44,8 @@ using mlir::AffineExpr;
 using mlir::ArrayRef;
 using mlir::AsmParser;
 using mlir::AsmPrinter;
-using mlir::failed;
 using mlir::failure;
+using mlir::success;
 
 ParseResult ParseInterval(AsmParser& parser, Interval& interval) {
   // ParseResult converts to `true` if parsing failed.
@@ -54,60 +55,73 @@ ParseResult ParseInterval(AsmParser& parser, Interval& interval) {
 }
 
 void PrintDimVars(AsmPrinter& p, ArrayRef<DimVar> dim_vars) {
-  for (int i = 0; i < dim_vars.size(); ++i) {
-    p << "d" << i << " in " << dim_vars[i].bounds << "\n";
-  }
+  int index = 0;
+  llvm::interleaveComma(dim_vars, p, [&](const DimVar& dim_var) {
+    p << "d" << index++ << " in " << dim_var.bounds;
+  });
 }
 
-mlir::FailureOr<SmallVector<DimVar>> ParseDimVars(
-    AsmParser& parser, ArrayRef<std::string> dim_names) {
-  SmallVector<DimVar> dim_vars;
-  for (const auto& dim_name : dim_names) {
+ParseResult ParseDimVars(AsmParser& parser, ArrayRef<std::string> dim_names,
+                         SmallVector<DimVar>& dim_vars) {
+  dim_vars.reserve(dim_names.size());
+  for (const auto& [index, dim_name] : llvm::enumerate(dim_names)) {
     if (parser.parseKeyword(dim_name) || parser.parseKeyword("in") ||
         ParseInterval(parser, dim_vars.emplace_back().bounds)) {
       return failure();
     }
+    if (index < dim_names.size() - 1 && parser.parseComma()) {
+      return failure();
+    }
   }
-  return dim_vars;
+  return success();
 }
 
 void PrintRangeVars(AsmPrinter& p, ArrayRef<RangeVar> range_vars) {
-  for (int i = 0; i < range_vars.size(); ++i) {
-    p << "s" << i << " in " << range_vars[i].range << "\n";
-  }
+  int index = 0;
+  llvm::interleaveComma(range_vars, p, [&](const RangeVar& range_var) {
+    p << "s" << index++ << " in " << range_var.range;
+  });
 }
 
-mlir::FailureOr<SmallVector<RangeVar>> ParseRangeVars(
-    AsmParser& parser, ArrayRef<std::string> range_symbol_names) {
-  SmallVector<RangeVar> range_vars;
-  for (const auto& range_symbol_name : range_symbol_names) {
+ParseResult ParseRangeVars(AsmParser& parser,
+                           ArrayRef<std::string> range_symbol_names,
+                           SmallVector<RangeVar>& range_vars) {
+  range_vars.reserve(range_symbol_names.size());
+  for (const auto& [index, range_symbol_name] :
+       llvm::enumerate(range_symbol_names)) {
     if (parser.parseKeyword(range_symbol_name) || parser.parseKeyword("in") ||
         ParseInterval(parser, range_vars.emplace_back().range)) {
       return failure();
     }
+    if (index < range_symbol_names.size() - 1 && parser.parseComma()) {
+      return failure();
+    }
   }
-  return range_vars;
+  return success();
 }
 
 void PrintConstraints(AsmPrinter& p,
                       ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
-  for (const auto& [constrained_expression, range] : constraints) {
-    p << constrained_expression << " in " << range << "\n";
-  }
+  llvm::interleaveComma(constraints, p, [&](const auto& constraint) {
+    p << constraint.first << " in " << constraint.second;
+  });
 }
 
-mlir::FailureOr<SmallVector<std::pair<AffineExpr, Interval>>> ParseConstraints(
+ParseResult ParseConstraints(
     AsmParser& parser,
-    ArrayRef<std::pair<llvm::StringRef, AffineExpr>> symbolSet) {
-  SmallVector<std::pair<AffineExpr, Interval>> constraints;
-  while (failed(parser.parseOptionalGreater())) {
+    ArrayRef<std::pair<llvm::StringRef, AffineExpr>> symbolSet,
+    SmallVector<std::pair<AffineExpr, Interval>>& constraints) {
+  // In order for there to be any constraints, there must be at least 1 symbol
+  // or dimension meaning there will be commas for as long as there are
+  // constraints left.
+  while (succeeded(parser.parseOptionalComma())) {
     auto& constraint = constraints.emplace_back();
     if (parser.parseAffineExpr(symbolSet, constraint.first) ||
         parser.parseKeyword("in") || ParseInterval(parser, constraint.second)) {
       return failure();
     }
   }
-  return constraints;
+  return success();
 }
 
 mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
@@ -131,35 +145,55 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
     symbolSet.push_back(
         {symbol_strings[i], mlir::getAffineSymbolExpr(i, parser.getContext())});
   }
-
-  if (parser.parseKeyword("domain") || parser.parseColon()) {
-    return {};
-  }
-  auto maybe_dim_vars = ParseDimVars(parser, dim_strings);
-  if (failed(maybe_dim_vars)) {
-    return {};
+  if (map.getNumDims() + map.getNumSymbols() > 0) {
+    if (parser.parseComma() || parser.parseKeyword("domain") ||
+        parser.parseColon()) {
+      return {};
+    }
   }
 
-  auto maybe_range_vars = ParseRangeVars(parser, symbol_strings);
-  if (failed(maybe_range_vars)) {
-    return {};
+  SmallVector<DimVar> dim_vars;
+  if (map.getNumDims() > 0) {
+    if (ParseDimVars(parser, dim_strings, dim_vars)) {
+      return {};
+    }
   }
 
-  auto maybe_constraints = ParseConstraints(parser, symbolSet);
-  if (failed(maybe_constraints)) {
+  SmallVector<RangeVar> range_vars;
+  if (map.getNumSymbols() > 0) {
+    if (!dim_vars.empty() && parser.parseComma()) {
+      return {};
+    }
+    if (ParseRangeVars(parser, symbol_strings, range_vars)) {
+      return {};
+    }
+  }
+
+  SmallVector<std::pair<AffineExpr, Interval>> constraints;
+  if (ParseConstraints(parser, symbolSet, constraints) ||
+      parser.parseGreater()) {
     return {};
   }
-  // ParseConstraints consumes the > to know when to stop.
-  return IndexingMapAttr::get(parser.getContext(), map, *maybe_dim_vars,
-                              *maybe_range_vars, *maybe_constraints);
+  return IndexingMapAttr::get(parser.getContext(), map, dim_vars, range_vars,
+                              constraints);
 }
 
 void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
-  printer << "<\n";
+  printer << "<";
   printer.printStrippedAttrOrType(getMap());
-  printer << "\ndomain:\n";
+  if (getDimVars().size() + getRangeVars().size() + getConstraints().size() >
+      0) {
+    printer << ", domain: ";
+  }
   PrintDimVars(printer, getDimVars());
+  if (!getDimVars().empty() &&
+      getRangeVars().size() + getConstraints().size() > 0) {
+    printer << ", ";
+  }
   PrintRangeVars(printer, getRangeVars());
+  if (!getRangeVars().empty() && !getConstraints().empty()) {
+    printer << ", ";
+  }
   PrintConstraints(printer, getConstraints());
   printer << ">";
 }
