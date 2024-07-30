@@ -81,13 +81,13 @@ int ComputeMaxUnrollFactor(int64_t num_elements) {
 std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
     const HloFusionAdaptor& fusion, int64_t out_rank) {
   auto roots = fusion.GetRoots();
-  const auto is_row_major = [](auto instr) {
+  const auto is_row_major = [](const HloInstruction* instr) {
     // Only tested when the inputs are row-major. So only enable that case.
     // Maybe it would work if only the inner dimensions is contiguous.
-    return LayoutUtil::IsMonotonicWithDim0Major(instr.shape().layout());
+    return LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout());
   };
   bool row_vectorized = roots.size() == 1 && !roots[0].shape().IsTuple() &&
-                        is_row_major(roots[0]);
+                        is_row_major(&roots[0].instruction());
   if (!row_vectorized) {
     return {false, 0};
   }
@@ -136,15 +136,17 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
             row_vectorized = false;
             return TraversalResult::kInterrupt;
         }
-      },
-      [&](auto argument) {
-        if (argument.shape().rank() == out_rank) {
-          ++num_big_inputs;
-        }
-        if (!is_row_major(argument)) {
-          row_vectorized = false;
-        }
       });
+  if (row_vectorized) {
+    for (const HloInstruction* argument : fusion.GetParameters()) {
+      if (argument->shape().rank() == out_rank) {
+        ++num_big_inputs;
+      }
+      if (!is_row_major(argument)) {
+        row_vectorized = false;
+      }
+    };
+  }
   // Trigger only when there is a row broadcasting.
   return std::make_pair(row_vectorized && some_row_broadcasting,
                         num_big_inputs);
