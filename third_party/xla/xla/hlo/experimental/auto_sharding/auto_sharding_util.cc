@@ -2079,26 +2079,32 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
 }
 
 std::vector<std::vector<int64_t>> DecomposeMeshShapes(
-    std::vector<int64_t> mesh_shape) {
+    const std::vector<int64_t>& mesh_shape,
+    const std::vector<double>& mesh_alpha,
+    const std::vector<double>& mesh_beta) {
   // Get the ranking order based on the size of each value.
   std::vector<int64_t> ranking_order;
   std::vector<std::vector<int64_t>> partial_mesh_shapes;
-  std::vector<std::pair<int64_t, size_t>> pairs(mesh_shape.size());
+  std::vector<std::tuple<double, double, int64_t, size_t>> tuples(
+      mesh_shape.size());
   for (size_t i = 0; i < mesh_shape.size(); i++) {
-    pairs[i] = {mesh_shape[i], i};
+    // Here we prioritize the throughput term (beta) over the latency term
+    // (alpha), assuming that collectives are more often throughput-bound. This
+    // is currently somewhat of an arbitrary choice and can be changed.
+    tuples[i] = {mesh_beta[i], mesh_alpha[i], mesh_shape[i], i};
   }
   // For vector of size 3, the sorted indices happen to be the same as their
   // rankings. mesh_shapes over 3 elements are not supported by AutoSharding.
-  std::sort(pairs.begin(), pairs.end(),
-            std::greater<std::pair<int64_t, size_t>>());
+  std::sort(tuples.begin(), tuples.end(),
+            std::greater<std::tuple<double, double, int64_t, size_t>>());
 
   std::vector<int64_t> partial_mesh_shape(mesh_shape.size(), 1);
   // Starts from the largest dimension of mesh_shape.
-  for (size_t i = 0; i < pairs.size(); i++) {
-    if (pairs[i].first == 1) {
-      break;
+  for (size_t i = 0; i < tuples.size(); i++) {
+    if (std::get<2>(tuples[i]) == 1) {
+      continue;
     }
-    partial_mesh_shape[pairs[i].second] = pairs[i].first;
+    partial_mesh_shape[std::get<3>(tuples[i])] = std::get<2>(tuples[i]);
     // Needs to copy partial_mesh_shape.
     partial_mesh_shapes.push_back(partial_mesh_shape);
   }
