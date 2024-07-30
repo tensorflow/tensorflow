@@ -34,7 +34,11 @@ class GpuKernelTilingTest : public GpuCodegenTest {
   // Most tests in this file want to skip layout assignment, but a few need it
   // enabled.
   HloModuleConfig ConfigWithLayoutAssignment() {
-    return GetModuleConfigForTest();
+    HloModuleConfig config;
+    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_mlir_emitter_level(3);
+    config.set_debug_options(debug_options);
+    return config;
   }
 
   HloModuleConfig ConfigWithoutLayoutAssignment() {
@@ -42,6 +46,7 @@ class GpuKernelTilingTest : public GpuCodegenTest {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     // Disable layout_assignment to use the preassigned layouts.
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
+    debug_options.set_xla_gpu_mlir_emitter_level(3);
     config.set_debug_options(debug_options);
     return config;
   }
@@ -635,6 +640,8 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
   }
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
+  auto &debug_options = hlo_module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK: %llvm.amdgcn.kernel.input_reduce_fusion.lds.t = type { [4 x [2 x float]] }
 ; CHECK: @llvm.amdgcn.kernel.input_reduce_fusion.lds = internal addrspace(3) global %llvm.amdgcn.kernel.input_reduce_fusion.lds.t poison
