@@ -1035,7 +1035,9 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
           auto constant_dus_operand = get_constant_operand(dus_operand);
           if (constant_ds_operand != constant_dus_operand ||
               (!constant_ds_operand && ds_operand != dus_operand)) {
-            return "DUS and DS index mismatch";
+            if (!ShapeUtil::IsEffectiveScalar(producer->shape())) {
+              return "DUS and DS index mismatch";
+            }
           }
         }
         VLOG(4) << "DUS and DS index match";
