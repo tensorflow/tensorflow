@@ -150,6 +150,32 @@ def tf_xla_py_test(
 def tf_xla_py_strict_test(**kwargs):
     tf_xla_py_test(test_rule = py_strict_test, **kwargs)
 
+# LINT.IfChange(combine_tests)
+def tf_xla_combined_py_test(
+        name = "",  # @unused
+        package = None,  # @unused
+        test_files = [],
+        **kwargs):
+    """Generates tf_xla_py_test targets, one per file in test_files.
+
+    Args:
+      name: Name of the target.
+      package: Unused
+      test_files: The test files to be tested.
+      **kwargs: keyword arguments passed onto the tf_xla_py_test rule.
+    """
+
+    for test_file in test_files:
+        test_name = test_file[:-3]
+        tf_xla_py_test(
+            test_rule = py_strict_test,
+            name = test_name,
+            srcs = [test_file],
+            **kwargs
+        )
+
+# LINT.ThenChange()
+
 def generate_backend_suites(backends = []):
     """Generates per-backend test_suites that run all tests for a backend."""
     if not backends:

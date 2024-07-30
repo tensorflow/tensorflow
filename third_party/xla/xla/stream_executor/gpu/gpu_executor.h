@@ -30,6 +30,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -223,8 +224,7 @@ class GpuExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override;
+      std::optional<std::variant<StreamPriority, int>> priority) override;
 
   absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
       CommandBuffer::Mode mode) override;

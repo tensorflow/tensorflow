@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -405,8 +407,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override {
+      std::optional<std::variant<StreamPriority, int>> priority) override {
     auto stream = std::make_unique<CStream>(&device_, stream_executor_, this);
     TF_RETURN_IF_ERROR(stream->Create());
     return std::move(stream);

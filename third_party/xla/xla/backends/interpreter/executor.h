@@ -151,8 +151,7 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override {
+      std::optional<std::variant<StreamPriority, int>> priority) override {
     return std::make_unique<InterpreterStream>(this);
   }
 

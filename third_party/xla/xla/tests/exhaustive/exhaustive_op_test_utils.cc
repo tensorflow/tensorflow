@@ -375,17 +375,21 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     OutputRangeCheck check_valid_range) {
   // Cache for when all components are subnormal testing values.
   std::vector<NativeRefT> pure_subnormal_cache;
-  // Since we take the cross product of all possible test values, and each
-  // component has kNumSubnormalSubstitutionValues possible test values, then
-  // the total number of different cache locations are
-  // kNumSubnormalSubstitutionValues raised to the num_components.
-  // num_components = N for the reals, and 2*N for the complex.
-  int64_t max_cache_size =
-      pow(kNumSubnormalSubstitutionValues, N * (kIsComplex ? 2 : 1));
-  pure_subnormal_cache.reserve(max_cache_size);
-  for (int i = 0; i < max_cache_size; ++i) {
-    pure_subnormal_cache.push_back(CallOperation(
-        evaluate_op, FromCacheLocation<kIsComplex, NativeRefT, N>(i)));
+  // TODO(b/353790524): Subnormal cache does not seem to work properly with
+  // more than 1 input.
+  if constexpr (N == 1) {
+    // Since we take the cross product of all possible test values, and each
+    // component has kNumSubnormalSubstitutionValues possible test values, then
+    // the total number of different cache locations are
+    // kNumSubnormalSubstitutionValues raised to the num_components.
+    // num_components = N for the reals, and 2*N for the complex.
+    int64_t max_cache_size =
+        pow(kNumSubnormalSubstitutionValues, N * (kIsComplex ? 2 : 1));
+    pure_subnormal_cache.reserve(max_cache_size);
+    for (int i = 0; i < max_cache_size; ++i) {
+      pure_subnormal_cache.push_back(CallOperation(
+          evaluate_op, FromCacheLocation<kIsComplex, NativeRefT, N>(i)));
+    }
   }
 
   NativeInputsList inputs_arr;
@@ -450,13 +454,19 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
 
     for (NativeRefInputs test_value : subnormal_test_inputs) {
       NativeRefT result;
-      int cache_loc =
-          GetCacheLocation<kIsComplex, typename NativeRefInputs::value_type, N>(
-              test_value);
-      if (cache_loc == kInvalidCacheIndex) {
-        result = CallOperation(evaluate_op, test_value);
+      // TODO(b/353790524): Subnormal cache does not seem to work properly with
+      // more than 1 input.
+      if constexpr (N == 1) {
+        int cache_loc =
+            GetCacheLocation<kIsComplex, typename NativeRefInputs::value_type,
+                             N>(test_value);
+        if (cache_loc == kInvalidCacheIndex) {
+          result = CallOperation(evaluate_op, test_value);
+        } else {
+          result = pure_subnormal_cache[cache_loc];
+        }
       } else {
-        result = pure_subnormal_cache[cache_loc];
+        result = result = CallOperation(evaluate_op, test_value);
       }
 
       if (IsClose(result, static_cast<NativeRefT>(actual), error_spec)) {
