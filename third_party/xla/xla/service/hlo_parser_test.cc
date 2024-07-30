@@ -1392,6 +1392,21 @@ ENTRY %test (p: f32[100]) -> u32[100] {
 
 )"
 },
+
+{
+"OriginalValue",
+R"(HloModule test, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->((f32[], f32[3]{0}), f32[2,3]{1,0})}
+
+ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3]) {
+  %v1 = f32[] parameter(0), original_value={{"v1"}}
+  %v2 = f32[3]{0} parameter(1), original_value={{"v2"}}
+  %tuple = (f32[], f32[3]{0}) tuple(f32[] %v1, f32[3]{0} %v2), original_value={({"v1"}, {"v2"})}
+  %v3 = f32[2,3]{1,0} parameter(2), original_value={{"v3"}}
+  ROOT %nested_tuple = ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple((f32[], f32[3]{0}) %tuple, f32[2,3]{1,0} %v3), original_value={(({"v1"}, {"v2"}), {"v3"})}
+}
+
+)"
+},
 });
   // clang-format on
 }
@@ -5358,6 +5373,21 @@ TEST_F(HloParserTest, ReplicaIdWithLayout) {
                    .layout()
                    .tiles()
                    .empty());
+}
+
+TEST_F(HloParserTest, OriginalValueWithoutShape) {
+  const std::string hlo_string = R"(HloModule test
+
+ENTRY %test {
+  %a = f32[2,10]{1,0} parameter(0), original_value={{"a"}}
+  ROOT %v = abs(%a), original_value={{"v"}}
+}
+
+
+)";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                                     HasSubstr("expects instruction shape")));
 }
 
 }  // namespace
