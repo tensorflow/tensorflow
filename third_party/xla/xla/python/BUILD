@@ -1301,13 +1301,6 @@ tsl_pybind_extension(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_google(
-        [],
-        select({
-            ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
-            "//conditions:default": [],
-        }),
-    ),
     features = ["-use_header_modules"],
     linkopts = select({
         ":use_jax_cuda_pip_rpaths": [
@@ -1426,11 +1419,6 @@ tsl_pybind_extension(
     }) + if_google(
         [],
         select({
-            ":gpu_enabled": [
-                ":gpu_support",
-            ],
-            "//conditions:default": [],
-        }) + select({
             ":link_gpu_plugin": [
                 ":gpu_plugin_deps",
             ],
