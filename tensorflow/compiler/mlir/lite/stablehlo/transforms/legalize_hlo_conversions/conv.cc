@@ -73,7 +73,10 @@ bool IsWindowReversalSupported(const ConvData& data) {
 bool IsConvLegal(mhlo::ConvolutionOp op) {
   const ConvData data(op);
 
-  return !IsBatchGroupSupported(data) || !IsStandardConv(data) ||
+  const bool supported_conv_type =
+      IsStandardConv(data) || IsDepthwiseConv(data);
+
+  return !supported_conv_type || !IsBatchGroupSupported(data) ||
          !IsInputDilationSupported(data) || !AreShapesSupported(data) ||
          !IsTFLNativeLayout(data) || !IsPaddingSupported(data) ||
          !IsWindowReversalSupported(data);
@@ -107,7 +110,8 @@ LogicalResult LegalizeConv2D::matchAndRewrite(
   // Parse mhlo.convolution attrs into cc types.
   const ConvData data(op);
 
-  if (IsConvLegal(op) || data.InputLayout().Rank() != 4) {
+  if (IsConvLegal(op) || !IsStandardConv(data) ||
+      data.InputLayout().Rank() != 4) {
     return failure();
   }
 
@@ -151,6 +155,74 @@ LogicalResult LegalizeConv2D::matchAndRewrite(
   return success();
 }
 
+class LegalizeConvDepthwise : public OpConversionPattern<mhlo::ConvolutionOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+LogicalResult LegalizeConvDepthwise::matchAndRewrite(
+    mhlo::ConvolutionOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  // Parse mhlo.convolution attrs into cc types.
+  const ConvData data(op);
+
+  if (IsConvLegal(op) || !IsDepthwiseConv(data)) {
+    return failure();
+  }
+
+  //
+  // dilations
+  //===-------
+
+  const auto& kernel_dilations = data.KernelDilations();
+  auto tfl_h_dilation = rewriter.getI32IntegerAttr(kernel_dilations[0]);
+  auto tfl_w_dilation = rewriter.getI32IntegerAttr(kernel_dilations[1]);
+
+  //
+  // strides
+  //===-----
+
+  const auto& window_strides = data.Strides();
+  auto tfl_h_stride = rewriter.getI32IntegerAttr(window_strides[0]);
+  auto tfl_w_stride = rewriter.getI32IntegerAttr(window_strides[1]);
+
+  //
+  // padding
+  //===-----
+
+  // Explicit and same padding should be handeled in upstream "prepare" phase.
+  // Same padding will be fused in downstream "optimize" phase on tfl dialect.
+  auto tfl_padding = rewriter.getStringAttr("VALID");
+
+  //
+  // depth multiplier
+  //===-----
+
+  const int64_t out_channels =
+      data.OutputLayout().SpecialDim2(data.OutputShape());
+  const int64_t in_channels = data.InputLayout().SpecialDim2(data.InputShape());
+  const int32_t depth_multiplier = out_channels / in_channels;
+  auto depth_multipler_attr = rewriter.getI32IntegerAttr(depth_multiplier);
+
+  //
+  // build tfl
+  //===-------
+
+  auto bias = BuildEmptyBias(rewriter, op->getLoc(), data);
+
+  auto tfl_faf_none = rewriter.getStringAttr("NONE");
+
+  rewriter.replaceOpWithNewOp<TFL::DepthwiseConv2DOp>(
+      op, op.getResult().getType(), op.getLhs(), op.getRhs(), bias,
+      tfl_h_dilation, tfl_w_dilation, tfl_faf_none, tfl_padding, tfl_h_stride,
+      tfl_w_stride, depth_multipler_attr);
+
+  return success();
+}
+
 class LegalizeConv3D : public OpConversionPattern<mhlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -165,7 +237,8 @@ LogicalResult LegalizeConv3D::matchAndRewrite(
   // Parse mhlo.convolution attrs into cc types.
   const ConvData data(op);
 
-  if (IsConvLegal(op) || data.InputLayout().Rank() != 5) {
+  if (IsConvLegal(op) || !IsStandardConv(data) ||
+      data.InputLayout().Rank() != 5) {
     return failure();
   }
 
@@ -215,7 +288,7 @@ LogicalResult LegalizeConv3D::matchAndRewrite(
 
 void PopulateConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                           ConversionTarget& target) {
-  patterns.add<LegalizeConv2D, LegalizeConv3D>(ctx);
+  patterns.add<LegalizeConv2D, LegalizeConv3D, LegalizeConvDepthwise>(ctx);
   target.addDynamicallyLegalOp<mhlo::ConvolutionOp>(IsConvLegal);
 }
 }  // namespace mlir::odml

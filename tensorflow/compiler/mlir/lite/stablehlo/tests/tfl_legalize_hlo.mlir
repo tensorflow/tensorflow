@@ -826,23 +826,83 @@ func.func @conv2d_nhwc_ohwi_nhwc_dynamic_batch(%input: tensor<?x256x256x3xf32>, 
 
 // -----
 
-// TODO: b/351437662 - Add support for depthwise conv.
-// CHECK-LABEL: depthwise_conv2d_nhwc_ohwi_nhwc
-func.func @depthwise_conv2d_nhwc_ohwi_nhwc(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3312x3x3x1xf32>) -> tensor<1x8x8x3312xf32> {
+// CHECK-LABEL: depthwise_conv2d_nhwc_ihwo_nhwc
+func.func @depthwise_conv2d_nhwc_ihwo_nhwc(%arg0: tensor<1x10x10x207xf32>, %arg1: tensor<1x3x3x207xf32>) -> tensor<1x8x8x207xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]>,
     feature_group_count = 207 : i64,
     lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<1> : tensor<2x2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<1x8x8x207xf32>, tensor<3312x3x3x1xf32>) -> tensor<1x8x8x3312xf32>
-  func.return %0 : tensor<1x8x8x3312xf32>
+  } : (tensor<1x10x10x207xf32>, tensor<1x3x3x207xf32>) -> tensor<1x8x8x207xf32>
+  func.return %0 : tensor<1x8x8x207xf32>
 }
 
-// CHECK-NOT: tfl
+// CHECK: %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x10x10x207xf32>, tensor<1x3x3x207xf32>, tensor<207xf32>) -> tensor<1x8x8x207xf32>
+// CHECK: return %0
+
+// -----
+
+// CHECK-LABEL: depthwise_conv2d_nhwc_ihwo_nhwc_strided
+func.func @depthwise_conv2d_nhwc_ihwo_nhwc_strided(%arg0: tensor<1x10x10x207xf32>, %arg1: tensor<1x3x3x207xf32>) -> tensor<1x4x4x207xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]>,
+    feature_group_count = 207 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<2> : tensor<2xi64>
+  } : (tensor<1x10x10x207xf32>, tensor<1x3x3x207xf32>) -> tensor<1x4x4x207xf32>
+  func.return %0 : tensor<1x4x4x207xf32>
+}
+
+// CHECK: %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<1x10x10x207xf32>, tensor<1x3x3x207xf32>, tensor<207xf32>) -> tensor<1x4x4x207xf32>
+// CHECK: return %0
+
+// -----
+
+// CHECK-LABEL: depthwise_conv2d_nhwc_ihwo_nhwc_dilated
+func.func @depthwise_conv2d_nhwc_ihwo_nhwc_dilated(%arg0: tensor<1x10x10x207xf32>, %arg1: tensor<1x3x3x207xf32>) -> tensor<1x6x6x207xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]>,
+    feature_group_count = 207 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    rhs_dilation = dense<2> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x10x10x207xf32>, tensor<1x3x3x207xf32>) -> tensor<1x6x6x207xf32>
+  func.return %0 : tensor<1x6x6x207xf32>
+}
+
+// CHECK: %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 2 : i32, dilation_w_factor = 2 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x10x10x207xf32>, tensor<1x3x3x207xf32>, tensor<207xf32>) -> tensor<1x6x6x207xf32>
+// CHECK: return %0
+
+// -----
+
+// CHECK-LABEL: depthwise_conv2d_nhwc_ihwo_nhwc_non_trivial_depth_multiplier
+func.func @depthwise_conv2d_nhwc_ihwo_nhwc_non_trivial_depth_multiplier(%arg0: tensor<1x10x10x207xf32>, %arg1: tensor<1x3x3x3519xf32>) -> tensor<1x6x6x3519xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]>,
+    feature_group_count = 207 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    rhs_dilation = dense<2> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x10x10x207xf32>, tensor<1x3x3x3519xf32>) -> tensor<1x6x6x3519xf32>
+  func.return %0 : tensor<1x6x6x3519xf32>
+}
+
+// CHECK: %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst) <{depth_multiplier = 17 : i32, dilation_h_factor = 2 : i32, dilation_w_factor = 2 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x10x10x207xf32>, tensor<1x3x3x3519xf32>, tensor<3519xf32>) -> tensor<1x6x6x3519xf32>
+// CHECK: return %0
 
 // -----
 
@@ -881,48 +941,6 @@ func.func @conv2d_to_resize_nhwc_hwoi_nhwc(%arg0: tensor<1x56x624x16xf32>, %arg1
   } : (tensor<1x56x624x16xf32>, tensor<16x1x257x1xf32>) -> tensor<1x56x904x16xf32>
   func.return %0 : tensor<1x56x904x16xf32>
 }
-
-// CHECK-NOT: tfl
-
-// -----
-
-// TODO: b/351437662 - Add support for feature groups.
-// CHECK-LABEL: group_conv2d_nhwc_ohwi_nhwc
-func.func @group_conv2d_nhwc_ohwi_nhwc(%arg0: tensor<1x14x14x2240xf32>, %arg1: tensor<2240x3x3x112xf32>) -> tensor<1x7x7x2240xf32> {
-  %0 = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
-    feature_group_count = 20 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<1> : tensor<2x2xi64>,
-    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_reversal = dense<false> : tensor<2xi1>,
-    window_strides = dense<2> : tensor<2xi64>
-  } : (tensor<1x14x14x2240xf32>, tensor<2240x3x3x112xf32>) -> tensor<1x7x7x2240xf32>
-  func.return %0 : tensor<1x7x7x2240xf32>
-}
-
-// CHECK-NOT: tfl
-
-// -----
-
-// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_trivial_in_channels
-func.func @conv2d_nhwc_ohwi_nhwc_trivial_in_channels(%input: tensor<1x256x256x1xf32>, %filter: tensor<2x1x1x1xf32>) -> tensor<1x256x256x2xf32> {
-  %0 = mhlo.convolution(%input, %filter)
-    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
-    window = {stride = [1, 1], pad = [[0, 0], [0, 0]]} {
-    batch_group_count = 1 : i64,
-    feature_group_count = 1 : i64,
-    window_strides = dense<1> : tensor<2xi64>,
-    padding = dense<0> : tensor<2x2xi64>,
-    rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
-    lhs_dilation = dense<[1, 1]> : tensor<2xi64>
-  } : (tensor<1x256x256x1xf32>, tensor<2x1x1x1xf32>) -> tensor<1x256x256x2xf32>
-  func.return %0 : tensor<1x256x256x2xf32>
-}
-
-// NOTE: This case is depthwise.
 
 // CHECK-NOT: tfl
 
