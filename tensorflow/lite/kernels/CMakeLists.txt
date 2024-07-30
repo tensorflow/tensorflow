@@ -90,6 +90,8 @@ set(TEST_FRAMEWORK_SRC
   ${DELEGATE_PROVIDERS}
   ${TFLITE_SOURCE_DIR}/tools/optimize/model_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/tools/optimize/operator_property.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/tools/optimize/quantization_utils.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/kernels/internal/runtime_shape.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/quantization_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc

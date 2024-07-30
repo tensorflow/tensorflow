@@ -22,6 +22,7 @@ cc_library(
     name = "runtime_shape",
     srcs = ["runtime_shape.cc"],
     hdrs = ["runtime_shape.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [":compatibility_macros"],
 )
 

@@ -16,19 +16,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <iostream>
+#include <limits>
 #include <memory>
-#include <string>
+#include <type_traits>
+#include <vector>
 
-#include "absl/memory/memory.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
-#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"

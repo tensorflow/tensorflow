@@ -15,10 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZATION_UTILS_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZATION_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
-#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
