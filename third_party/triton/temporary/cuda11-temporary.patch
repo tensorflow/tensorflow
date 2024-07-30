@@ -2,10 +2,9 @@
 # patches. It is only here temporarily to be included in the openxla version,
 # but it will be removed during the next triton integration.
 
-diff --git a/third_party/nvidia/backend/cuda_utils.cc b/third_party/nvidia/backend/cuda_utils.cc
---- a/third_party/nvidia/backend/cuda_utils.cc
-+++ b/third_party/nvidia/backend/cuda_utils.cc
-@@ -587,6 +587,8 @@ static PyObject *loadBinary(PyObject *se
+--- a/third_party/nvidia/backend/driver.c
++++ b/third_party/nvidia/backend/driver.c
+@@ -154,6 +154,8 @@ static PyObject *loadBinary(PyObject *se
  typedef CUresult (*cuOccupancyMaxActiveClusters_t)(
      int *numClusters, CUfunction func, const CUlaunchConfig *config);
  
@@ -14,7 +13,7 @@ diff --git a/third_party/nvidia/backend/cuda_utils.cc b/third_party/nvidia/backe
  typedef CUresult (*cuTensorMapEncodeTiled_t)(
      CUtensorMap *tensorMap, CUtensorMapDataType tensorDataType,
      cuuint32_t tensorRank, void *globalAddress, const cuuint64_t *globalDim,
-@@ -594,6 +596,7 @@ typedef CUresult (*cuTensorMapEncodeTile
+@@ -161,6 +161,7 @@ typedef CUresult (*cuTensorMapEncodeTile
      const cuuint32_t *elementStrides, CUtensorMapInterleave interleave,
      CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
      CUtensorMapFloatOOBfill oobFill);
@@ -22,7 +21,7 @@ diff --git a/third_party/nvidia/backend/cuda_utils.cc b/third_party/nvidia/backe
  
  #define defineGetFunctionHandle(name, symbolName)                              \
    static symbolName##_t name() {                                               \
-@@ -620,8 +623,11 @@ typedef CUresult (*cuTensorMapEncodeTile
+@@ -187,8 +187,11 @@ typedef CUresult (*cuTensorMapEncodeTile
  defineGetFunctionHandle(getCuOccupancyMaxActiveClustersHandle,
                          cuOccupancyMaxActiveClusters);
  
