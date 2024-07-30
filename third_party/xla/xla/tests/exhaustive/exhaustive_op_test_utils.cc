@@ -35,6 +35,7 @@ limitations under the License.
 #include "Eigen/Core"
 #include "xla/literal.h"
 #include "xla/types.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace exhaustive_op_test {

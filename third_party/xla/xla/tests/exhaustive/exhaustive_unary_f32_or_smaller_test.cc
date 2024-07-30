@@ -23,7 +23,6 @@ limitations under the License.
 #include <cstdlib>
 #include <limits>
 #include <string>
-#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -635,76 +634,93 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(RoundNearestEven, {
   fesetround(curr_direction);
 })
 
+// Can be thought of as an absolute error of `<=
+// |std::numeric_limits<Native>::min()|`.
 template <typename NativeT>
-double reciprocal_abs_error(NativeT val) {
-  double abs_err = 0.0;
+double ReciprocalCpuGpuAbsError(NativeT val) {
+  float output = 1.0f / static_cast<float>(val);
 
-  // For subnormals, we need to set absolute error to the smallest positive
-  // representable value due to hardware implementations that truncate
-  // subnormals to zero.
-  bool is_subnormal_output =
-      std::numeric_limits<NativeT>::denorm_min() <= std::abs(1 / val) &&
-      std::abs(1 / val) <= std::numeric_limits<NativeT>::min();
-  if (is_subnormal_output) {
-    abs_err = std::numeric_limits<NativeT>::min();
+  if (IsSubnormal(output)) {
+    return std::numeric_limits<float>::min();
   }
 
-  return abs_err;
+  return 0.0;
+}
+
+// Can be thought of as an absolute error of `<=
+// |std::numeric_limits<Native>::min()|`.
+template <typename NativeT>
+double ReciprocalTpuAbsError(NativeT val) {
+  float output = 1.0f / static_cast<float>(val);
+
+  // TPU seems to flush subnormals or minimum normal to 0. We set the error to
+  // the minimum normal in these cases.
+  if (IsSubnormalOrMinNormal(output)) {
+    return std::numeric_limits<float>::min();
+  }
+
+  return 0.0;
 }
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Reciprocal, {
   ErrorSpecGen error_spec_gen =
-      +[](NativeT) { return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0}; };
+      +[](NativeT) { return ErrorSpec{.strict_signed_zeros = true}; };
   if (IsCpu(platform_)) {
     error_spec_gen = +[](NativeT val) {
-      return ErrorSpec{.abs_err = reciprocal_abs_error(val), .rel_err = 0.0};
+      return ErrorSpec{.abs_err = ReciprocalCpuGpuAbsError(val),
+                       .strict_signed_zeros = true};
     };
   }
   if (IsGpu(platform_)) {
     error_spec_gen = +[](NativeT val) {
       NativeT eps = std::numeric_limits<NativeT>::epsilon();
-      return ErrorSpec{.abs_err = reciprocal_abs_error(val), .rel_err = eps};
+      return ErrorSpec{.abs_err = ReciprocalCpuGpuAbsError(val),
+                       .rel_err = eps,
+                       .strict_signed_zeros = true};
     };
   }
   if (IsTpu(platform_)) {
     error_spec_gen = +[](NativeT val) {
-      auto abs_err = reciprocal_abs_error(val);
-      if constexpr (std::is_same<NativeT, xla::bfloat16>()) {
-        return ErrorSpec{.abs_err = abs_err, .rel_err = 0.0};
-      } else if constexpr (std::is_same<NativeT, xla::half>()) {
-        // N.B.: Does not require absolute error.
-        return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0};
-      } else if constexpr (std::is_same<NativeT, float>()) {
+      if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+        return ErrorSpec{.abs_err = ReciprocalTpuAbsError(val),
+                         .strict_signed_zeros = true};
+      } else if constexpr (std::is_same_v<NativeT, xla::half>) {
+        return ErrorSpec{.strict_signed_zeros = true};
+      } else if constexpr (std::is_same_v<NativeT, float>) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
-        return ErrorSpec{.abs_err = abs_err, .rel_err = eps};
+        return ErrorSpec{.abs_err = ReciprocalTpuAbsError(val),
+                         .rel_err = eps,
+                         .strict_signed_zeros = true};
       }
     };
   }
   if (IsPreV6Tpu(platform_)) {
     error_spec_gen = +[](NativeT val) {
-      auto abs_err = reciprocal_abs_error(val);
-      if constexpr (std::is_same<NativeT, xla::bfloat16>()) {
-        return ErrorSpec{.abs_err = abs_err, .rel_err = 0.0};
-      } else if constexpr (std::is_same<NativeT, xla::half>()) {
-        // N.B.: Does not require absolute error.
-        return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0};
-      } else if constexpr (std::is_same<NativeT, float>()) {
+      if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+        return ErrorSpec{.abs_err = ReciprocalTpuAbsError(val),
+                         .strict_signed_zeros = true};
+      } else if constexpr (std::is_same_v<NativeT, xla::half>) {
+        return ErrorSpec{.strict_signed_zeros = true};
+      } else if constexpr (std::is_same_v<NativeT, float>) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
-        return ErrorSpec{.abs_err = abs_err, .rel_err = 34 * eps};
+        return ErrorSpec{.abs_err = ReciprocalTpuAbsError(val),
+                         .rel_err = 34 * eps,
+                         .strict_signed_zeros = true};
       }
     };
   }
   if (IsPreV5Tpu(platform_)) {
     error_spec_gen = +[](NativeT val) {
-      auto abs_err = reciprocal_abs_error(val);
-      if constexpr (std::is_same<NativeT, xla::bfloat16>()) {
-        return ErrorSpec{.abs_err = abs_err, .rel_err = 0.0};
-      } else if constexpr (std::is_same<NativeT, xla::half>()) {
-        // N.B.: Does not require absolute error.
-        return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0};
-      } else if constexpr (std::is_same<NativeT, float>()) {
+      if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+        return ErrorSpec{.abs_err = ReciprocalTpuAbsError(val),
+                         .strict_signed_zeros = true};
+      } else if constexpr (std::is_same_v<NativeT, xla::half>) {
+        return ErrorSpec{.strict_signed_zeros = true};
+      } else if constexpr (std::is_same_v<NativeT, float>) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
-        return ErrorSpec{.abs_err = abs_err, .rel_err = 136 * eps};
+        return ErrorSpec{.abs_err = ReciprocalTpuAbsError(val),
+                         .rel_err = 136 * eps,
+                         .strict_signed_zeros = true};
       }
     };
   }
