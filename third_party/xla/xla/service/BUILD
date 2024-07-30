@@ -1029,6 +1029,29 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "fuzzy_matcher",
+    hdrs = ["fuzzy_matcher.h"],
+    deps = [
+        ":pattern_matcher",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
+xla_cc_test(
+    name = "fuzzy_matcher_test",
+    srcs = ["fuzzy_matcher_test.cc"],
+    deps = [
+        ":fuzzy_matcher",
+        ":pattern_matcher",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 xla_cc_test(
     name = "hlo_dfs_reachability_test",
     srcs = ["hlo_dfs_reachability_test.cc"],
