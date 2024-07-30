@@ -27,12 +27,12 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-TEST(BatchStatsTest, GlobalBatchStatsAlwaysReturnsTheSameInstance) {
-  ASSERT_EQ(&GlobalBatchStats(), &GlobalBatchStats());
+TEST(BatchStatsTest, GlobalBatchStatsRegistryAlwaysReturnsTheSameInstance) {
+  ASSERT_EQ(&GlobalBatchStatsRegistry(), &GlobalBatchStatsRegistry());
 }
 
 TEST(BatchStatsTest, BasicOperation) {
-  BatchStats stats;
+  BatchStatsRegistry stats;
   stats.model(/* model_name= */ "m", /* op_name= */ "o")
       .batch_size(1)
       .tpu_cost()
@@ -45,7 +45,7 @@ TEST(BatchStatsTest, BasicOperation) {
 }
 
 TEST(BatchStatsTest, ModelBatchStatsAreUniqueForEachModel) {
-  BatchStats stats;
+  BatchStatsRegistry stats;
   ASSERT_NE(&stats.model(/* model_name= */ "m", /* op_name= */ "o"),
             &stats.model(/* model_name= */ "m", /* op_name= */ "o2"));
 }
@@ -79,7 +79,7 @@ TEST(BatchStatsTest, ProcessedSizeIsCorrect) {
 }
 
 TEST(BatchStatsTest, ModelOpNamesAreCorrect) {
-  BatchStats stats;
+  BatchStatsRegistry stats;
 
   // Register a cost for model "m" and op "o".
   stats.model(/* model_name= */ "m", /* op_name= */ "o")

@@ -1241,16 +1241,12 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
                      absl::StrCat(cost_type, kNoSmearSuffix),
                      total_cost / processed_size * batch.size());
 
+    // Register batch stats for in-process use.
     if (cost_type == kTpuCostName) {
-      // Get the model stats object for the current model name and op name.
-      ModelBatchStats& model_stats = GlobalBatchStats().model(
+      ModelBatchStats& model_stats = GlobalBatchStatsRegistry().model(
           /* model_name= */ model_name, /* op_name= */ op_name);
-
-      // Register TPU cost for in-process use.
       model_stats.batch_size(processed_size).tpu_cost().Register(total_cost);
-
-      // Register cumulative size of processed non-padding jobs for in-process
-      // use.
+      // batch.size() is the size of the original batch before padding.
       model_stats.RegisterProcessedSize(batch.size());
     }
 

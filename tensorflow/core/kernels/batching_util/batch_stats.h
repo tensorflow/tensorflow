@@ -23,11 +23,11 @@ limitations under the License.
 // The classes defined here are not supposed to be instantiated by the user.
 // Instead, this file provides a single entry point:
 //
-//   BatchStats& GlobalBatchStats();
+//   BatchStatsRegistry& GlobalBatchStatsRegistry();
 //
 // For example, to register batch cost, do:
 //
-//   GlobalBatchStats()
+//   GlobalBatchStatsRegistry()
 //       .model(/* model_name= */ "m", /* op_name= */ "o")
 //       .batch_size(4)
 //       .tpu_cost
@@ -36,7 +36,7 @@ limitations under the License.
 // To get the mean cost later, do:
 //
 //   std::optional<absl::Duration> cost =
-//       .GlobalBatchStats()
+//       .GlobalBatchStatsRegistry()
 //           .model(/* model_name= */ "m", /* op_name= */ "o")
 //           .batch_size(4)
 //           .tpu_cost
@@ -58,8 +58,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/node_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/thread_annotations.h"
@@ -189,7 +189,7 @@ class ModelBatchStats {
 // Tracks batch statistics for all models.
 //
 // Thread-safe.
-class BatchStats {
+class BatchStatsRegistry {
  public:
   // Returns a reference to ModelBatchStats for the provided model_name and
   // op_name.
@@ -236,8 +236,8 @@ class BatchStats {
 // Returns the global instance of BatchStats, to use used for all production
 // purposes (one should only instantiate individual classes from this file to
 // test them).
-inline BatchStats& GlobalBatchStats() {
-  static BatchStats* instance = new BatchStats();
+inline BatchStatsRegistry& GlobalBatchStatsRegistry() {
+  static BatchStatsRegistry* instance = new BatchStatsRegistry();
   return *instance;
 }
 

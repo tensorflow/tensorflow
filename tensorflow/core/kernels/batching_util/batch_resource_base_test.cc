@@ -331,7 +331,7 @@ TEST(SplitBatchCostsAndRecordMetricsTest, UpdatesGlobalBatchStats) {
       /* model_name= */ kModelName, /* op_name= */ "op_name",
       batch_cost_measurements, /* processed_size= */ 17, batch);
 
-  EXPECT_EQ(GlobalBatchStats()
+  EXPECT_EQ(GlobalBatchStatsRegistry()
                 .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
                 .batch_size(17)
                 .tpu_cost()
@@ -365,7 +365,7 @@ TEST(SplitBatchCostsAndRecordMetricsTest, GlobalBatchStatsProcessedSize) {
 
   // Get the original cumulative processed size.
   int original_cumulative_processed_size =
-      GlobalBatchStats()
+      GlobalBatchStatsRegistry()
           .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
           .cumulative_processed_size();
 
@@ -377,7 +377,7 @@ TEST(SplitBatchCostsAndRecordMetricsTest, GlobalBatchStatsProcessedSize) {
   // that even though the batch size is 17, there is only one non-padding task,
   // so the cumulative processed size should be
   // original_cumulative_processed_size + 1.
-  EXPECT_EQ(GlobalBatchStats()
+  EXPECT_EQ(GlobalBatchStatsRegistry()
                 .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
                 .cumulative_processed_size(),
             original_cumulative_processed_size + 1);
@@ -394,7 +394,7 @@ TEST(SplitBatchCostsAndRecordMetricsTest, GlobalBatchStatsProcessedSize) {
       batch_cost_measurements, /* processed_size= */ 8, batch2);
 
   // Expect the cumulative processed size to be updated correctly.
-  EXPECT_EQ(GlobalBatchStats()
+  EXPECT_EQ(GlobalBatchStatsRegistry()
                 .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
                 .cumulative_processed_size(),
             original_cumulative_processed_size + 4);
