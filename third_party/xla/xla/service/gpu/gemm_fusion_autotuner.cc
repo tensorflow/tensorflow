@@ -1176,10 +1176,13 @@ absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
   TF_RETURN_IF_ERROR(key_value_store.Set(
       absl::StrFormat("%s_%d_%d", kKeyPrefix, module_id, shard_index),
       results_str));
+  VLOG(2) << "Rank " << shard_index << ": published results";
   for (int i = 0; i < shard_count; ++i) {
     if (i == shard_index) {
       continue;
     }
+    VLOG(2) << "Rank " << shard_index << ": waiting for results from rank " << i
+            << " / " << shard_count;
     TF_ASSIGN_OR_RETURN(
         std::string autotune_results_str,
         key_value_store.Get(
