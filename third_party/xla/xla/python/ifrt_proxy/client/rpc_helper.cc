@@ -24,13 +24,11 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
-#if defined(PLATFORM_GOOGLE)
-#include "absl/types/source_location.h"
-#endif
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "tsl/platform/status_to_from_proto.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -39,19 +37,26 @@ namespace proxy {
 // DoRpc is a templated function that implements the logic of all RPC-wrapping
 // functions of `RpcHelper`, such as `RpcHelper::MakeArrayFromHostBuffer()`.
 template <typename Req, typename Resp>
-Future<std::shared_ptr<Resp>> DoRpc(ClientSession* session,
-                                    RequestMetadata metadata,
-                                    void (IfrtRequest::*set_req)(Req*),
-                                    Resp* (IfrtResponse::*get_resp)(),
-                                    bool (IfrtResponse::*has_resp)() const,
-                                    std::unique_ptr<Req> req) {
+Future<std::shared_ptr<Resp>> DoRpc(
+    ClientSession* session, RequestMetadata metadata,
+    void (IfrtRequest::*set_req)(Req*), Resp* (IfrtResponse::*get_resp)(),
+    bool (IfrtResponse::*has_resp)() const, std::unique_ptr<Req> req,
+    const char* profiling_sync_name, const char* profiling_async_name) {
   auto ifrt_req = std::make_unique<IfrtRequest>();
   *ifrt_req->mutable_request_metadata() = metadata;
   (ifrt_req.get()->*set_req)(req.release());
 
+  tsl::profiler::TraceMe blocking_traceme(
+      profiling_sync_name, /*level=*/tsl::profiler::TraceMeLevel::kInfo);
+  auto async_traceme = std::make_shared<tsl::profiler::TraceMe>(
+      profiling_async_name,
+      /*level=*/tsl::profiler::TraceMeLevel::kInfo);
+
   auto promise = Future<std::shared_ptr<Resp>>::CreatePromise();
-  auto on_ready = [promise, has_resp, get_resp](
+  auto on_ready = [promise, has_resp, get_resp,
+                   async_traceme = std::move(async_traceme)](
                       absl::StatusOr<std::shared_ptr<IfrtResponse>> r) mutable {
+    async_traceme->Stop();
     if (!r.ok()) {
       LOG_EVERY_N_SEC(ERROR, 10)
           << "Connection to IFRT proxy server was terminated: " << r.status();
@@ -127,13 +132,14 @@ void RpcHelper::Disconnect() {
 // TODO(b/266635130): Remove this preprocessor macro. Preprocessor macros
 // go against the style guide, but are convenient as we are introducing more
 // RPCs and are making changes to the exact signature of the DoRpc function.
-#define RPC(METHOD, PROPERTY)                                               \
-  RpcHelper::ResponseFuture<METHOD##Response> RpcHelper::METHOD(            \
-      std::unique_ptr<METHOD##Request> req) {                               \
-    return DoRpc(session_.get(), ManufactureRequestMetadata(),              \
-                 &IfrtRequest::set_allocated_##PROPERTY##_request,          \
-                 &IfrtResponse::mutable_##PROPERTY##_response,              \
-                 &IfrtResponse::has_##PROPERTY##_response, std::move(req)); \
+#define RPC(METHOD, PROPERTY)                                              \
+  RpcHelper::ResponseFuture<METHOD##Response> RpcHelper::METHOD(           \
+      std::unique_ptr<METHOD##Request> req) {                              \
+    return DoRpc(session_.get(), ManufactureRequestMetadata(),             \
+                 &IfrtRequest::set_allocated_##PROPERTY##_request,         \
+                 &IfrtResponse::mutable_##PROPERTY##_response,             \
+                 &IfrtResponse::has_##PROPERTY##_response, std::move(req), \
+                 "" #PROPERTY "", "" #PROPERTY "_background");             \
   }
 
 RPC(Init, init);
