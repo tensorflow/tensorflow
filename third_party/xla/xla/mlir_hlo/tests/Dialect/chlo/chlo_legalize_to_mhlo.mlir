@@ -2802,7 +2802,7 @@ func.func @tan_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<16x16xf32>)
 func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
   // CHECK-HIGH-LEVEL: mhlo.topk
-  // CHECK: %values, %indices = mhlo.topk(%arg0, k = 8, largest = true) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  // CHECK: %values, %indices = mhlo.topk(%arg0, k = 8) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
   %1:2 = chlo.top_k(%arg, k=8) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
   func.return %1#0, %1#1 : tensor<16x8xf32>, tensor<16x8xi32>
 }
@@ -2814,7 +2814,7 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 // CHECK-SAME: -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
 func.func @dyn_top_k(%arg0: tensor<?x5x?xi1>) -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
   // CHECK-HIGH-LEVEL: mhlo.topk
-  // CHECK: %values, %indices = mhlo.topk(%arg0, k = 2, largest = true) : tensor<?x5x?xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
+  // CHECK: %values, %indices = mhlo.topk(%arg0, k = 2) : tensor<?x5x?xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
   %values, %indices = chlo.top_k(%arg0, k = 2) : tensor<?x5x?xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
   return %values, %indices : tensor<?x5x2xi1>, tensor<?x5x2xi32>
 }
