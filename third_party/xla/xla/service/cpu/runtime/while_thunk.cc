@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/stream_executor/device_memory.h"
@@ -75,12 +76,6 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsync(
         return cond_executor_.Execute(params);
       });
 
-      // Immediately forward error to the caller.
-      if (ABSL_PREDICT_FALSE(cond_event.IsError())) {
-        event.SetError(cond_event.GetError());
-        return;
-      }
-
       // If we don't know yet wether we should execute the next iteration or
       // not, attach `AndThen` continuation to the `cond_event`.
       if (!cond_event.IsAvailable()) {
@@ -89,9 +84,15 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsync(
         return;
       }
 
+      // Immediately forward error to the caller.
+      if (ABSL_PREDICT_FALSE(cond_event.IsError())) {
+        event.SetError(cond_event.GetError());
+        return;
+      }
+
       // At this point `*condition` should have been updated and we may continue
       // executing the while loop in the current thread.
-      DCHECK(cond_event.IsAvailable());
+      DCHECK(cond_event.IsConcrete());
     }
 
     // Successfully completed while loop iterations.
@@ -111,19 +112,19 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> WhileThunk::Execute(
     const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
-  TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase cond_data,
-      params.buffer_allocations->GetDeviceAddress(cond_buffer_));
+  const BufferAllocations* allocations = params.buffer_allocations;
+
+  se::DeviceMemoryBase cond_data;
+  if (ShouldCheckBufferSlices()) {
+    TF_ASSIGN_OR_RETURN(cond_data, allocations->GetDeviceAddress(cond_buffer_));
+  } else {
+    cond_data = allocations->GetDeviceAddressUnchecked(cond_buffer_);
+  }
 
   bool* condition = reinterpret_cast<bool*>(cond_data.opaque());
 
   // Execute `cond` thunk sequence to initialize the loop condition.
   auto init_event = cond_executor_.Execute(params);
-
-  // Immediately forward error to the caller.
-  if (ABSL_PREDICT_FALSE(init_event.IsError())) {
-    return init_event.GetError();
-  }
 
   // If we don't know if we should continue or not, switch to async execution
   // mode using `init_event` as a dependency.
@@ -131,16 +132,18 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> WhileThunk::Execute(
     return ExecuteAsync(params, std::move(init_event), condition);
   }
 
+  // Immediately forward error to the caller.
+  if (ABSL_PREDICT_FALSE(init_event.IsError())) {
+    return init_event.GetError();
+  }
+
+  DCHECK(init_event.IsConcrete());
+
   while (*condition) {
     auto body_event = body_executor_.Execute(params);
     auto cond_event = body_event.FlatMap([this, &params](ExecuteEvent) {
       return cond_executor_.Execute(params);
     });
-
-    // Immediately forward error to the caller.
-    if (ABSL_PREDICT_FALSE(cond_event.IsError())) {
-      return cond_event.GetError();
-    }
 
     // If we don't know if we should continue or not, switch to async execution
     // mode using `cond_event` as a dependency.
@@ -148,9 +151,14 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> WhileThunk::Execute(
       return ExecuteAsync(params, std::move(cond_event), condition);
     }
 
+    // Immediately forward error to the caller.
+    if (ABSL_PREDICT_FALSE(cond_event.IsError())) {
+      return cond_event.GetError();
+    }
+
     // At this point `*condition` should have been updated and we may continue
     // executing the while loop in the current thread.
-    DCHECK(cond_event.IsAvailable());
+    DCHECK(cond_event.IsConcrete());
   }
 
   // Successfully completed while loop iterations.

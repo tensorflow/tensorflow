@@ -349,7 +349,7 @@ void ThunkExecutor::ProcessOutEdges(
     ExecuteState::Node& out_node = state->nodes[out_edge];
 
     int64_t cnt = out_node.counter.fetch_sub(1, std::memory_order_release);
-    CHECK_GE(cnt, 1) << "Node counter can't drop below 0";  // Crash Ok
+    DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";
     if (cnt == 1) ready_queue.push_back(out_edge);
   }
 
@@ -367,7 +367,7 @@ void ThunkExecutor::ProcessOutEdges(
     if (ABSL_PREDICT_FALSE(state->abort.load(std::memory_order_relaxed))) {
       auto take_error = [&] {
         absl::MutexLock lock(&state->abort_mutex);
-        CHECK(!state->abort_status.ok())  // Crash Ok
+        DCHECK(!state->abort_status.ok())
             << "Abort status must be set if execution is aborted";
         return std::move(state->abort_status);
       };

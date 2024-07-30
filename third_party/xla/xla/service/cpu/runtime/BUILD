@@ -923,6 +923,7 @@ cc_library(
     srcs = ["while_thunk.cc"],
     hdrs = ["while_thunk.h"],
     deps = [
+        ":buffer_allocations",
         ":thunk",
         ":thunk_executor",
         "//xla/runtime:buffer_use",

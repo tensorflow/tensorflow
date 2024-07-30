@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/thunk_executor.h"
 
-#define EIGEN_USE_THREADS
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -31,7 +29,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
@@ -47,6 +44,10 @@ limitations under the License.
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 #include "tsl/platform/threadpool.h"
+
+#define EIGEN_USE_THREADS
+
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 namespace {
