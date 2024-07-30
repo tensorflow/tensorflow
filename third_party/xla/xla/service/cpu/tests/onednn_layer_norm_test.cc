@@ -219,7 +219,7 @@ TEST_F(LayerNormTest, LayerNormTest2_F16) {
     ROOT add_0 = f32[] add(Arg_0, Arg_1)
   }
   ENTRY main {
-    Arg_2= f16[2,4,8] parameter(0), sharding={replicated}
+    Arg_2 = f16[2,4,8] parameter(0), sharding={replicated}
     convert_0 = f32[2,4,8] convert(Arg_2)
     constant_0 = f32[] constant(0)
     convert_1 = f32[] convert(constant_0)
@@ -241,7 +241,7 @@ TEST_F(LayerNormTest, LayerNormTest2_F16) {
     constant_3 = s32[] constant(8)
     convert_6 = f32[] convert(constant_3)
     broadcast_2 = f32[2,4] broadcast(convert_6), dimensions={}
-    divide_1= f32[2,4] divide(reduce_1, broadcast_2)
+    divide_1 = f32[2,4] divide(reduce_1, broadcast_2)
     convert_7 = f16[2,4] convert(divide_1)
     reshape_2 = f16[2,4,1] reshape(convert_7)
     rsqrt_0 = f16[2,4,1] rsqrt(reshape_2)
@@ -249,13 +249,13 @@ TEST_F(LayerNormTest, LayerNormTest2_F16) {
     broadcast_3 = f16[2,4,8] broadcast(reshape_3), dimensions={0,1}
     constant_4 = f16[8] constant({1,1,1,1,1,1,1,1})
     broadcast_4 = f16[2,4,8] broadcast(constant_4), dimensions={2}
-    multiply_1 = f16[2,4,8] multiply(broadcast3, broadcast_4)
+    multiply_1 = f16[2,4,8] multiply(broadcast_3, broadcast_4)
     multiply_2 = f16[2,4,8] multiply(multiply_1, Arg_2)
     constant_5 = f16[8] constant({1,1,1,1,1,1,1,1})
     broadcast_5 = f16[2,4,8] broadcast(constant_5), dimensions={2}
     reshape_4 = f16[2,4] reshape(reshape_0)
-    broadcast_5 = f16[2,4,8] broadcast(reshape_4), dimensions={0,1}
-    multiply_3 = f16[2,4,8] multiply(multiply_1, broadcast_5)
+    broadcast_6 = f16[2,4,8] broadcast(reshape_4), dimensions={0,1}
+    multiply_3 = f16[2,4,8] multiply(multiply_1, broadcast_6)
     subtract_1 = f16[2,4,8] subtract(broadcast_5, multiply_3)
     ROOT add_1 = f16[2,4,8] add(multiply_2, subtract_1)
   }
