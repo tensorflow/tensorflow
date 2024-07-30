@@ -53,6 +53,8 @@ class HloInstructionAdaptor {
 
   friend bool operator==(const HloInstructionAdaptor& lhs,
                          const HloInstructionAdaptor& rhs);
+  friend bool operator!=(const HloInstructionAdaptor& lhs,
+                         const HloInstructionAdaptor& rhs);
   template <typename H>
   friend H AbslHashValue(H h, const HloInstructionAdaptor& m);
 

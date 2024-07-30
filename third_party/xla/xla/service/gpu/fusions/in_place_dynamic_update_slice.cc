@@ -41,7 +41,7 @@ constexpr int kDUSUpdateIndex = 1;
 }  // namespace
 
 LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
-  const auto& update_shape = dus_ops_.front()->operand(1)->shape();
+  const auto& update_shape = dus_ops_.front().GetOperand(1).shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }
 
@@ -55,7 +55,7 @@ InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
   auto launch_dims = launch_dimensions();
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =
-      dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
+      dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
   return GetDefaultThreadIdIndexingMap(launch_dims, /*unroll_factor=*/1,
                                        update_shape, mlir_context);
 }
@@ -72,7 +72,7 @@ absl::Status InPlaceDynamicUpdateSliceFusion::EmitKernel(
   // This condition should be enforced explicitly in the
   // 'CanEmitFusedDynamicUpdateSliceInPlaceForGpu' matcher.
   for (auto [op, output] : llvm::zip(dus_ops_, outputs)) {
-    output = output.CastToShape(op->shape(), builder);
+    output = output.CastToShape(op.shape(), builder);
   }
 
   auto* fused_computation = fusion.fused_instructions_computation();
@@ -93,7 +93,7 @@ absl::Status InPlaceDynamicUpdateSliceFusion::EmitKernel(
   dus_and_output_array.reserve(dus_ops_.size());
 
   for (auto [op, output] : llvm::zip(dus_ops_, outputs)) {
-    dus_and_output_array.push_back(std::make_pair(op, output));
+    dus_and_output_array.push_back(std::make_pair(&op.instruction(), output));
   }
 
   return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(

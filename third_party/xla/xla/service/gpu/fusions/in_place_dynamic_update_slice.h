@@ -78,7 +78,7 @@ class InPlaceDynamicUpdateSliceFusion : public KernelFusionEmitterBase {
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* indexing_context) const override;
+      mlir::MLIRContext* mlir_context) const override;
 
  protected:
   absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
@@ -89,7 +89,7 @@ class InPlaceDynamicUpdateSliceFusion : public KernelFusionEmitterBase {
                           llvm::IRBuilder<>* builder) const override;
 
   const HloFusionAnalysis& analysis_;
-  std::vector<const HloInstruction*> dus_ops_;
+  std::vector<HloInstructionAdaptor> dus_ops_;
 };
 
 }  // namespace gpu
