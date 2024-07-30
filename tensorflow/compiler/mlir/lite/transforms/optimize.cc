@@ -173,6 +173,12 @@ bool HasSameStridedShape(TFL::Conv2DOp op, ArrayRef<int64_t> pre_pad_shape) {
       llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();
   auto kernel_shape =
       llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
+  if (conv_in_shape.size() != kernel_shape.size()) {
+    return false;
+  }
+  if (conv_in_shape.size() < 3) {
+    return false;
+  }
 
   const int64_t h_pad = conv_in_shape[1] - pre_pad_shape[1];
   const bool h_strided =
