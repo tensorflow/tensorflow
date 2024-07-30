@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/statusor.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
