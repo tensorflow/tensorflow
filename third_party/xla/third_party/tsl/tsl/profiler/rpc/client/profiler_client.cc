@@ -17,10 +17,10 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
-#include "grpcpp/grpcpp.h"
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "grpcpp/grpcpp.h"  // IWYU pragma: keep
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
