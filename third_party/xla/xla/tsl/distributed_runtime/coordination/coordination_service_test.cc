@@ -1169,9 +1169,15 @@ TEST_F(CoordinationBarrierTest, BarrierByNonClusterTask) {
 TEST_F(CoordinationBarrierTest, BarrierTimeout) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(1);
-  absl::Status barrier_status_0;
-  absl::Notification n_0;
+  absl::Status barrier_status_0, barrier_status_1;
+  absl::Notification n_0, n_1;
 
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{}, [&barrier_status_1, &n_1](absl::Status s) {
+        barrier_status_1 = s;
+        n_1.Notify();
+      });
   GetCoordinationService()->BarrierAsync(
       barrier_id, timeout, GetTask(0),
       /*participating_tasks=*/{}, [&barrier_status_0, &n_0](absl::Status s) {
@@ -1181,13 +1187,18 @@ TEST_F(CoordinationBarrierTest, BarrierTimeout) {
 
   // Block until user-specified timeout.
   n_0.WaitForNotification();
+  n_1.WaitForNotification();
+
+  // All barrier calls should fail with the same error.
+  EXPECT_EQ(barrier_status_0, barrier_status_1);
   EXPECT_TRUE(absl::IsDeadlineExceeded(barrier_status_0));
   EXPECT_FALSE(
       absl::StrContains(barrier_status_0.message(), GetTaskName(GetTask(0))));
   EXPECT_TRUE(
-      absl::StrContains(barrier_status_0.message(), GetTaskName(GetTask(1))));
-  EXPECT_TRUE(
-      absl::StrContains(barrier_status_0.message(), GetTaskName(GetTask(2))));
+      absl::StrContains(barrier_status_0.message(),
+                        GetTaskName(GetTask(1))));  // First task at barrier.
+  EXPECT_TRUE(absl::StrContains(barrier_status_0.message(),
+                                GetTaskName(GetTask(2))));  // Timed-out task.
 }
 
 TEST_F(CoordinationBarrierTest, BarrierReturnsPreviousError) {

@@ -179,6 +179,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                         CoordinatedTaskEqual>
         tasks_at_barrier;
     std::vector<StatusCallback> done_callbacks;
+    // Specifies the task that initiated the barrier (the first task to call the
+    // barrier).
+    CoordinatedTask initiating_task;
   };
   void PassBarrier(std::string_view barrier_id, absl::Status result,
                    BarrierState* barrier)
@@ -532,10 +535,27 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
                   }
                 }
               }
+              std::string error_message = absl::StrFormat(
+                  "Barrier timed out. This usually happens because a task "
+                  "triggered the barrier unexpectedly early, or some tasks are "
+                  "too slow. Please look at the other task logs to debug "
+                  "further. Barrier_id: %s. The first task at the barrier: "
+                  "%s. ",
+                  barrier_id, GetTaskName(barrier->initiating_task));
+              if (pending_task_count > kPendingTaskLogLimit) {
+                absl::StrAppend(&error_message,
+                                "Too many tasks have timed out. The first ",
+                                kPendingTaskLogLimit,
+                                " timed out task names:\n", pending_tasks);
+              } else {
+                absl::StrAppend(
+                    &error_message,
+                    "Total Number of tasks already at the barrier: ",
+                    barrier->tasks_at_barrier.size() - pending_task_count,
+                    ". Timed out task names:\n%s", pending_tasks);
+              }
               const absl::Status error = MakeCoordinationError(
-                  absl::DeadlineExceededError(absl::StrCat(
-                      "Barrier timed out. Barrier_id: ", barrier_id,
-                      ". Timed out task names:\n", pending_tasks)));
+                  absl::DeadlineExceededError(error_message));
               PassBarrier(barrier_id, error, barrier);
             }
           }
@@ -1248,6 +1268,7 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
   if (inserted) {
     // Initialize barrier state.
     barrier->passed = false;
+    barrier->initiating_task = task;
     // Assume barrier is for entire cluster if no tasks are specified.
     if (participating_tasks.empty()) {
       for (const auto& task_state : cluster_state_) {
