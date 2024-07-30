@@ -17,9 +17,14 @@ limitations under the License.
 
 #include <string>
 
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {

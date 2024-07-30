@@ -45,6 +45,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir {

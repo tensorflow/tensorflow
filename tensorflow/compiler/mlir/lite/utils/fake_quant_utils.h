@@ -21,12 +21,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 
 namespace mlir {
