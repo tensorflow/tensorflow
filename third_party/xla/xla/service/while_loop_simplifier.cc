@@ -954,8 +954,8 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   // inline the call.
   const auto& attrs = while_op->frontend_attributes().map();
   bool skip_trip_count_one_simplification =
-      attrs.contains("skip-simplify-while-loops/trip-count-one") &&
-      (attrs.at("skip-simplify-while-loops/trip-count-one") == "true");
+      attrs.contains("skip-simplify-while-loops_trip-count-one") &&
+      (attrs.at("skip-simplify-while-loops_trip-count-one") == "true");
   if (trip_count && *trip_count == 1 && !skip_trip_count_one_simplification) {
     // Do not simplify the loop away when there is a side-effectful op,
     // otherwise the infeed op may not inherit the data dependency from
