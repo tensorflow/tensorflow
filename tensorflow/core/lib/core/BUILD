@@ -226,6 +226,7 @@ filegroup(
     srcs = [
         "status_test_util.h",
         "@local_tsl//tsl/lib/core:legacy_lib_core_status_test_util_header",
+        "@local_xla//xla/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
