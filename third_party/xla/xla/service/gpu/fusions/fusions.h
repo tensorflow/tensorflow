@@ -73,8 +73,9 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
       : FusionInfo(analysis) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override {
-    // Optimistically assume all DUS fusions are in-place.
-    return true;
+    auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+        analysis().fusion(), /*get_allocation_slice=*/{});
+    return ret.value_or(false);
   }
 
   std::optional<std::unique_ptr<FusionInterface>> GetCopyFusion()

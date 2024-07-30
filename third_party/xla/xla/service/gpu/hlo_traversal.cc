@@ -500,6 +500,11 @@ bool operator==(const HloInstructionAdaptor& lhs,
          lhs.instruction_->unique_id() == rhs.instruction_->unique_id();
 }
 
+bool operator!=(const HloInstructionAdaptor& lhs,
+                const HloInstructionAdaptor& rhs) {
+  return !(lhs == rhs);
+}
+
 namespace {
 void HloBfsTraversal(
     absl::Span<const HloInstructionAdaptor> roots,

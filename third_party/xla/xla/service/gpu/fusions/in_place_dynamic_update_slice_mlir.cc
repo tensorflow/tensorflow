@@ -68,7 +68,7 @@ constexpr int kDUSUpdateIndex = 1;
 LaunchDimensions MlirInPlaceDynamicUpdateSliceFusion::launch_dimensions()
     const {
   const auto& update_shape =
-      dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
+      dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }
 
@@ -83,7 +83,7 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
   auto launch_dims = launch_dimensions();
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =
-      dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
+      dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
   return GetDefaultThreadIdIndexingMap(launch_dims, /*unroll_factor=*/1,
                                        update_shape, indexing_context);
 }
@@ -98,7 +98,7 @@ MlirInPlaceDynamicUpdateSliceFusion::GetEpilogues(
        llvm::zip(dus_ops_, analysis_.fusion_roots())) {
     epilogues.push_back(
         mlir_converter::EpilogueSpecification::FromIdentityIndexing(
-            dus_op, &root.instruction(), mlir_context));
+            &dus_op.instruction(), &root.instruction(), mlir_context));
   }
   return epilogues;
 }
@@ -133,7 +133,8 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
         llvm::SmallVector<Value> results;
         for (auto [instr, root, output] :
              llvm::zip(dus_ops_, analysis_.fusion_roots(), output_tensors)) {
-          const auto* dus_instr = Cast<HloDynamicUpdateSliceInstruction>(instr);
+          const auto* dus_instr =
+              Cast<HloDynamicUpdateSliceInstruction>(&instr.instruction());
           const auto& update_shape = dus_instr->update()->shape();
           SmallVector<Value> update_indices;
           auto start_indices = ProvideParameterRange(

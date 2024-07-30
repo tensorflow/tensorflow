@@ -95,11 +95,11 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-      instr_,
+      analysis().fusion(),
       [this](const HloInstruction* instruction, const ShapeIndex& index) {
         return GetAllocationSlice(*buffer_assignment_, instruction, index);
       },
-      analysis().fusion_roots());
+      instr_);
   return ret.ok() && *ret;
 }
 
