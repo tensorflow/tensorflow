@@ -26,7 +26,9 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 
 #if GOOGLE_CUDA
+#if defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE)
 #include <dlfcn.h>
+#endif
 
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
 // Below is a list of function pointers to be used

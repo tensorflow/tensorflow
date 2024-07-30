@@ -478,7 +478,8 @@ absl::Status ExecuteThunks(
   // only in presence of collective cliques which means that we have collective
   // operations in the XLA operations that tend to cause deadlocks.
   if (!collective_cliques.empty()) {
-    TF_RETURN_IF_ERROR(RendezvousAfterInitialization(run_options));
+    TF_RETURN_IF_ERROR(
+        RendezvousAfterInitialization(run_options, debug_options));
   }
 
   // Prepare parameters for thunks execution.
@@ -511,7 +512,8 @@ bool operator==(const InitializationKey& a, const InitializationKey& b) {
 }  // namespace
 
 absl::Status RendezvousAfterInitialization(
-    const ServiceExecutableRunOptions* run_options) {
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options) {
   // Thunk initialization can allocate new control data structures on device
   // that can lead to deadlocks if other replicas are executing concurrently
   // (i.e. this happens if we try to instantiate CUDA graph when other replica
@@ -563,8 +565,14 @@ absl::Status RendezvousAfterInitialization(
       run_options->device_ordinal(),
       run_options->run_options().run_id().ToInt());
 
-  RendezvousSingle(rendezvous_name, rendezvous_key, num_local_participants,
-                   absl::Seconds(10), absl::Seconds(30));
+  RendezvousSingle(
+      rendezvous_name, rendezvous_key, num_local_participants,
+      absl::Seconds(debug_options
+                        ? debug_options->xla_gpu_executable_warn_stuck_timeout()
+                        : 10),
+      absl::Seconds(debug_options
+                        ? debug_options->xla_gpu_executable_terminate_timeout()
+                        : 30));
 
   return absl::OkStatus();
 }

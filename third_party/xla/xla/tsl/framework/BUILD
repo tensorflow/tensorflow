@@ -16,7 +16,7 @@ load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
@@ -358,7 +358,10 @@ cc_library(
     hdrs = [
         "cancellation.h",
     ],
-    copts = ["-Wno-thread-safety-precise"],
+    copts = if_windows(
+        [],
+        ["-Wno-thread-safety-precise"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/memory",

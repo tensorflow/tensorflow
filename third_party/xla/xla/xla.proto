@@ -875,7 +875,11 @@ message DebugOptions {
   // TODO(b/355487968): Remove this option when validation complete.
   bool xla_enable_command_buffers_during_profiling = 317;
 
-  // Next id: 318
+  // Timeouts for RendezvousSingle stuck warning and termination.
+  int32 xla_gpu_executable_warn_stuck_timeout = 318;
+  int32 xla_gpu_executable_terminate_timeout = 319;
+
+  // Next id: 320
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
