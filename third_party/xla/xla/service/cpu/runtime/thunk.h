@@ -292,6 +292,14 @@ class Thunk {
     return OkEvent()->AsRef();
   }
 
+  static bool IsOkExecuteEvent(tsl::AsyncValuePtr<ExecuteEvent> event) {
+    return event == OkEvent()->AsPtr();
+  }
+
+  static bool IsOkExecuteEvent(const tsl::AsyncValueRef<ExecuteEvent>& event) {
+    return IsOkExecuteEvent(event.AsPtr());
+  }
+
   // Thunk execution must be asynchronous and never block the caller thread,
   // especially waiting for work submitted into the `intra_op_threadpool`,
   // because thunks themselves are executed on the same thread pool.
