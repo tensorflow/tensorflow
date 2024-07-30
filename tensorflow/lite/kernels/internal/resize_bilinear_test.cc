@@ -55,7 +55,7 @@ void TestOneResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   FillRandom(&input_data, min_amplitude, max_amplitude);
 
   RuntimeShape output_size_dims({1, 1, 1, 2});
-  std::vector<int32> output_size_data = {output_height, output_width};
+  std::vector<int32_t> output_size_data = {output_height, output_width};
 
   reference_ops::ResizeBilinear(op_params, input_dims_inference,
                                 input_data.data(), output_size_dims,
@@ -66,7 +66,7 @@ void TestOneResizeBilinear(const tflite::ResizeBilinearParams& op_params,
       output_size_data.data(), output_dims_inference, output_data.data());
 
   bool strict_match = false;
-  if (std::is_same<T, uint8>::value && ((depth % 8) == 0) &&
+  if (std::is_same<T, uint8_t>::value && ((depth % 8) == 0) &&
       ((input_width * 8) == output_width) &&
       ((input_height * 8) == output_height)) {
     strict_match = true;
@@ -111,9 +111,9 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8) {
     const int output_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
     const int output_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
 
-    TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
-                                 input_height, output_width, output_height,
-                                 0.025);
+    TestOneResizeBilinear<uint8_t>(op_params, batch, depth, input_width,
+                                   input_height, output_width, output_height,
+                                   0.025);
   }
 }
 
@@ -136,9 +136,9 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8_2x2) {
       // versions.
       error_threshold = 1e-3;
     }
-    TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
-                                 input_height, output_width, output_height,
-                                 error_threshold);
+    TestOneResizeBilinear<uint8_t>(op_params, batch, depth, input_width,
+                                   input_height, output_width, output_height,
+                                   error_threshold);
   }
 }
 
@@ -217,7 +217,7 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCentersFloat_3x3to2x2) {
   std::vector<float> output_data(output_buffer_size, 3);
 
   RuntimeShape output_size_dims({1, 1, 1, 2});
-  std::vector<int32> output_size_data = {2, 2};
+  std::vector<int32_t> output_size_data = {2, 2};
 
   tflite::ResizeBilinearParams op_params;
   op_params.align_corners = false;
@@ -261,7 +261,7 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCentersFloat_2x2to4x4) {
   std::vector<float> output_data(output_buffer_size, 3);
 
   RuntimeShape output_size_dims({1, 1, 1, 2});
-  std::vector<int32> output_size_data = {4, 4};
+  std::vector<int32_t> output_size_data = {4, 4};
 
   tflite::ResizeBilinearParams op_params;
   op_params.align_corners = false;
@@ -312,7 +312,7 @@ void TestResizeBilinearHalfPixelCenters_2x2to4x6() {
   std::vector<T> output_data(output_buffer_size, 3);
 
   RuntimeShape output_size_dims({1, 1, 1, 2});
-  std::vector<int32> output_size_data = {4, 6};
+  std::vector<int32_t> output_size_data = {4, 6};
 
   tflite::ResizeBilinearParams op_params;
   op_params.align_corners = false;
@@ -394,9 +394,9 @@ TEST_P(ResizeBilinearImplX8ChannelTest, TestResizeBilinearX8ChannelUint8) {
     const int output_width = input_width * scale_factor;
     const int output_height = input_height * scale_factor;
 
-    TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
-                                 input_height, output_width, output_height,
-                                 0.025);
+    TestOneResizeBilinear<uint8_t>(op_params, batch, depth, input_width,
+                                   input_height, output_width, output_height,
+                                   0.025);
   }
 }
 
@@ -418,9 +418,9 @@ TEST_P(ResizeBilinearImplX8ChannelTest, TestResizeBilinearX8ChannelInt8) {
     const int output_width = input_width * scale_factor;
     const int output_height = input_height * scale_factor;
 
-    TestOneResizeBilinear<int8>(op_params, batch, depth, input_width,
-                                input_height, output_width, output_height,
-                                0.025);
+    TestOneResizeBilinear<int8_t>(op_params, batch, depth, input_width,
+                                  input_height, output_width, output_height,
+                                  0.025);
   }
 }
 

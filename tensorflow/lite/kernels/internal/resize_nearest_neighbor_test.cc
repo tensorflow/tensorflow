@@ -28,7 +28,7 @@ namespace {
 template <typename T>
 void TestReferenceResizeNearestNeighbor(
     const RuntimeShape& input_shape, const std::vector<T>& input_data,
-    const std::vector<int32>& output_size_data,
+    const std::vector<int32_t>& output_size_data,
     const RuntimeShape& output_shape,
     const std::vector<T>& expected_output_data, bool align_corners = false,
     bool half_pixel_centers = false) {
@@ -48,7 +48,7 @@ void TestReferenceResizeNearestNeighbor(
 TEST(ResizeNearestNeighborReference, Test2x2To1x1) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<float> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {1, 1};
+  std::vector<int32_t> output_size_data = {1, 1};
   RuntimeShape output_shape = {1, 1, 1, 1};
   std::vector<float> output_data = {1};
 
@@ -59,7 +59,7 @@ TEST(ResizeNearestNeighborReference, Test2x2To1x1) {
 TEST(ResizeNearestNeighborReference, Test2x2To1x1_AlignCorners) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<float> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {1, 1};
+  std::vector<int32_t> output_size_data = {1, 1};
   RuntimeShape output_shape = {1, 1, 1, 1};
   std::vector<float> output_data = {1};
 
@@ -71,7 +71,7 @@ TEST(ResizeNearestNeighborReference, Test2x2To1x1_AlignCorners) {
 TEST(ResizeNearestNeighborReference, Test2x2To1x1_HalfPixelCenters) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<float> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {1, 1};
+  std::vector<int32_t> output_size_data = {1, 1};
   RuntimeShape output_shape = {1, 1, 1, 1};
   std::vector<float> output_data = {4};
 
@@ -82,10 +82,10 @@ TEST(ResizeNearestNeighborReference, Test2x2To1x1_HalfPixelCenters) {
 
 TEST(ResizeNearestNeighborReference, Test2x2To3x3) {
   RuntimeShape input_shape = {1, 2, 2, 1};
-  std::vector<uint8> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<uint8_t> input_data = {1, 2, 3, 4};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {1, 3, 3, 1};
-  std::vector<uint8> output_data = {1, 1, 2, 1, 1, 2, 3, 3, 4};
+  std::vector<uint8_t> output_data = {1, 1, 2, 1, 1, 2, 3, 3, 4};
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data);
@@ -94,7 +94,7 @@ TEST(ResizeNearestNeighborReference, Test2x2To3x3) {
 TEST(ResizeNearestNeighborReference, Test2x2To3x3Int16) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<int16_t> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {1, 3, 3, 1};
   std::vector<int16_t> output_data = {1, 1, 2, 1, 1, 2, 3, 3, 4};
 
@@ -104,10 +104,10 @@ TEST(ResizeNearestNeighborReference, Test2x2To3x3Int16) {
 
 TEST(ResizeNearestNeighborReference, Test2x2To3x3_AlignCorners) {
   RuntimeShape input_shape = {1, 2, 2, 1};
-  std::vector<uint8> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<uint8_t> input_data = {1, 2, 3, 4};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {1, 3, 3, 1};
-  std::vector<uint8> output_data = {1, 2, 2, 3, 4, 4, 3, 4, 4};
+  std::vector<uint8_t> output_data = {1, 2, 2, 3, 4, 4, 3, 4, 4};
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data,
@@ -116,10 +116,10 @@ TEST(ResizeNearestNeighborReference, Test2x2To3x3_AlignCorners) {
 
 TEST(ResizeNearestNeighborReference, Test2x2To3x3_HalfPixelCenters) {
   RuntimeShape input_shape = {1, 2, 2, 1};
-  std::vector<uint8> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<uint8_t> input_data = {1, 2, 3, 4};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {1, 3, 3, 1};
-  std::vector<uint8> output_data = {1, 2, 2, 3, 4, 4, 3, 4, 4};
+  std::vector<uint8_t> output_data = {1, 2, 2, 3, 4, 4, 3, 4, 4};
 
   TestReferenceResizeNearestNeighbor(
       input_shape, input_data, output_size_data, output_shape, output_data,
@@ -129,7 +129,7 @@ TEST(ResizeNearestNeighborReference, Test2x2To3x3_HalfPixelCenters) {
 TEST(ResizeNearestNeighborReference, Test3x3To2x2) {
   RuntimeShape input_shape = {1, 3, 3, 1};
   std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
-  std::vector<int32> output_size_data = {2, 2};
+  std::vector<int32_t> output_size_data = {2, 2};
   RuntimeShape output_shape = {1, 2, 2, 1};
   std::vector<float> output_data = {1, 2, 4, 5};
 
@@ -140,7 +140,7 @@ TEST(ResizeNearestNeighborReference, Test3x3To2x2) {
 TEST(ResizeNearestNeighborReference, Test3x3To2x2_AlignCorners) {
   RuntimeShape input_shape = {1, 3, 3, 1};
   std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
-  std::vector<int32> output_size_data = {2, 2};
+  std::vector<int32_t> output_size_data = {2, 2};
   RuntimeShape output_shape = {1, 2, 2, 1};
   std::vector<float> output_data = {1, 3, 7, 9};
 
@@ -152,7 +152,7 @@ TEST(ResizeNearestNeighborReference, Test3x3To2x2_AlignCorners) {
 TEST(ResizeNearestNeighborReference, Test3x3To2x2_HalfPixelCenters) {
   RuntimeShape input_shape = {1, 3, 3, 1};
   std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
-  std::vector<int32> output_size_data = {2, 2};
+  std::vector<int32_t> output_size_data = {2, 2};
   RuntimeShape output_shape = {1, 2, 2, 1};
   std::vector<float> output_data = {1, 3, 7, 9};
 
@@ -163,10 +163,10 @@ TEST(ResizeNearestNeighborReference, Test3x3To2x2_HalfPixelCenters) {
 
 TEST(ResizeNearestNeighborReference, Test2x2To2x5) {
   RuntimeShape input_shape = {1, 2, 2, 1};
-  std::vector<uint8> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {2, 5};
+  std::vector<uint8_t> input_data = {1, 2, 3, 4};
+  std::vector<int32_t> output_size_data = {2, 5};
   RuntimeShape output_shape = {1, 2, 5, 1};
-  std::vector<uint8> output_data = {1, 1, 1, 2, 2, 3, 3, 3, 4, 4};
+  std::vector<uint8_t> output_data = {1, 1, 1, 2, 2, 3, 3, 3, 4, 4};
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data);
@@ -174,10 +174,10 @@ TEST(ResizeNearestNeighborReference, Test2x2To2x5) {
 
 TEST(ResizeNearestNeighborReference, Test2x2To2x5_HalfPixelCenters) {
   RuntimeShape input_shape = {1, 2, 2, 1};
-  std::vector<uint8> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {2, 5};
+  std::vector<uint8_t> input_data = {1, 2, 3, 4};
+  std::vector<int32_t> output_size_data = {2, 5};
   RuntimeShape output_shape = {1, 2, 5, 1};
-  std::vector<uint8> output_data = {1, 1, 2, 2, 2, 3, 3, 4, 4, 4};
+  std::vector<uint8_t> output_data = {1, 1, 2, 2, 2, 3, 3, 4, 4, 4};
 
   TestReferenceResizeNearestNeighbor(
       input_shape, input_data, output_size_data, output_shape, output_data,
@@ -186,11 +186,11 @@ TEST(ResizeNearestNeighborReference, Test2x2To2x5_HalfPixelCenters) {
 
 TEST(ResizeNearestNeighborReference, Test4x4To3x3) {
   RuntimeShape input_shape = {1, 4, 4, 1};
-  std::vector<uint8> input_data = {1, 2,  3,  4,  5,  6,  7,  8,
-                                   9, 10, 11, 12, 13, 14, 15, 16};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<uint8_t> input_data = {1, 2,  3,  4,  5,  6,  7,  8,
+                                     9, 10, 11, 12, 13, 14, 15, 16};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {1, 3, 3, 1};
-  std::vector<uint8> output_data = {1, 2, 3, 5, 6, 7, 9, 10, 11};
+  std::vector<uint8_t> output_data = {1, 2, 3, 5, 6, 7, 9, 10, 11};
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data);
@@ -198,11 +198,11 @@ TEST(ResizeNearestNeighborReference, Test4x4To3x3) {
 
 TEST(ResizeNearestNeighborReference, Test4x4To3x3_AlignCorners) {
   RuntimeShape input_shape = {1, 4, 4, 1};
-  std::vector<uint8> input_data = {1, 2,  3,  4,  5,  6,  7,  8,
-                                   9, 10, 11, 12, 13, 14, 15, 16};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<uint8_t> input_data = {1, 2,  3,  4,  5,  6,  7,  8,
+                                     9, 10, 11, 12, 13, 14, 15, 16};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {1, 3, 3, 1};
-  std::vector<uint8> output_data = {1, 3, 4, 9, 11, 12, 13, 15, 16};
+  std::vector<uint8_t> output_data = {1, 3, 4, 9, 11, 12, 13, 15, 16};
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data,
@@ -211,11 +211,11 @@ TEST(ResizeNearestNeighborReference, Test4x4To3x3_AlignCorners) {
 
 TEST(ResizeNearestNeighborReference, Test4x4To3x3_HalfPixelCenters) {
   RuntimeShape input_shape = {1, 4, 4, 1};
-  std::vector<uint8> input_data = {1, 2,  3,  4,  5,  6,  7,  8,
-                                   9, 10, 11, 12, 13, 14, 15, 16};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<uint8_t> input_data = {1, 2,  3,  4,  5,  6,  7,  8,
+                                     9, 10, 11, 12, 13, 14, 15, 16};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {1, 3, 3, 1};
-  std::vector<uint8> output_data = {1, 3, 4, 9, 11, 12, 13, 15, 16};
+  std::vector<uint8_t> output_data = {1, 3, 4, 9, 11, 12, 13, 15, 16};
 
   TestReferenceResizeNearestNeighbor(
       input_shape, input_data, output_size_data, output_shape, output_data,
@@ -225,7 +225,7 @@ TEST(ResizeNearestNeighborReference, Test4x4To3x3_HalfPixelCenters) {
 TEST(ResizeNearestNeighborReference, Test2x2To5x2) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<float> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {5, 2};
+  std::vector<int32_t> output_size_data = {5, 2};
   RuntimeShape output_shape = {1, 5, 2, 1};
   std::vector<float> output_data = {1, 2, 1, 2, 1, 2, 3, 4, 3, 4};
 
@@ -236,7 +236,7 @@ TEST(ResizeNearestNeighborReference, Test2x2To5x2) {
 TEST(ResizeNearestNeighborReference, Test2x2To5x2_HalfPixelCenters) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<float> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {5, 2};
+  std::vector<int32_t> output_size_data = {5, 2};
   RuntimeShape output_shape = {1, 5, 2, 1};
   std::vector<float> output_data = {1, 2, 1, 2, 3, 4, 3, 4, 3, 4};
 
@@ -249,7 +249,7 @@ TEST(ResizeNearestNeighborReference,
      Test2x2To5x2_HalfPixelCenters_AlignCorners) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<float> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {5, 2};
+  std::vector<int32_t> output_size_data = {5, 2};
   RuntimeShape output_shape = {1, 5, 2, 1};
   std::vector<float> output_data = {2, 2, 2, 2, 4, 4, 4, 4, 4, 4};
 
@@ -260,11 +260,11 @@ TEST(ResizeNearestNeighborReference,
 
 TEST(ResizeNearestNeighborReference, Test2x2To4x4) {
   RuntimeShape input_shape = {1, 2, 2, 1};
-  std::vector<uint8> input_data = {1, 2, 3, 4};
-  std::vector<int32> output_size_data = {4, 4};
+  std::vector<uint8_t> input_data = {1, 2, 3, 4};
+  std::vector<int32_t> output_size_data = {4, 4};
   RuntimeShape output_shape = {1, 4, 4, 1};
-  std::vector<uint8> output_data = {1, 1, 2, 2, 1, 1, 2, 2,
-                                    3, 3, 4, 4, 3, 3, 4, 4};
+  std::vector<uint8_t> output_data = {1, 1, 2, 2, 1, 1, 2, 2,
+                                      3, 3, 4, 4, 3, 3, 4, 4};
 
   TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
                                      output_shape, output_data);
@@ -279,7 +279,7 @@ TEST(ResizeNearestNeighborReference, Test2x2x2x2To2x3x3x2) {
   RuntimeShape input_shape = {2, 2, 2, 2};
   std::vector<float> input_data = {1, 1, 2, 2, 3, 3, 4, 4,
                                    5, 5, 6, 6, 7, 7, 8, 8};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {2, 3, 3, 2};
   // Output:
   //  [ [ 1, 1 ], [ 1, 1 ], [ 2, 2 ],
@@ -300,7 +300,7 @@ TEST(ResizeNearestNeighborReference, Test2x2x2x2To2x3x3x2_AlignCorners) {
   RuntimeShape input_shape = {2, 2, 2, 2};
   std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8,
                                    1, 2, 3, 4, 5, 6, 7, 8};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {2, 3, 3, 2};
   std::vector<float> output_data = {
       1, 2, 3, 4, 3, 4, 5, 6, 7, 8, 7, 8, 5, 6, 7, 8, 7, 8,
@@ -316,7 +316,7 @@ TEST(ResizeNearestNeighborReference, Test2x2x2x2To2x3x3x2_HalfPixelCenters) {
   RuntimeShape input_shape = {2, 2, 2, 2};
   std::vector<float> input_data = {1, 1, 2, 2, 3, 3, 4, 4,
                                    5, 5, 6, 6, 7, 7, 8, 8};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {2, 3, 3, 2};
   std::vector<float> output_data = {1, 1, 2, 2, 2, 2, 3, 3, 4, 4, 4, 4,
                                     3, 3, 4, 4, 4, 4, 5, 5, 6, 6, 6, 6,
@@ -332,7 +332,7 @@ TEST(ResizeNearestNeighborReference,
   RuntimeShape input_shape = {2, 2, 2, 2};
   std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8,
                                    1, 2, 3, 4, 5, 6, 7, 8};
-  std::vector<int32> output_size_data = {3, 3};
+  std::vector<int32_t> output_size_data = {3, 3};
   RuntimeShape output_shape = {2, 3, 3, 2};
   std::vector<float> output_data = {1, 2, 3, 4, 3, 4, 5, 6, 7, 8, 7, 8,
                                     5, 6, 7, 8, 7, 8, 1, 2, 3, 4, 3, 4,
@@ -351,14 +351,14 @@ void TestOptimizedResizeNearestNeighbor(int batch, int depth, int input_width,
   RuntimeShape input_shape({batch, input_height, input_width, depth});
   RuntimeShape output_shape({batch, output_height, output_width, depth});
 
-  std::vector<uint8> input_data(input_shape.FlatSize(), 0);
-  FillRandom(&input_data, static_cast<uint8>(0), static_cast<uint8>(255));
+  std::vector<uint8_t> input_data(input_shape.FlatSize(), 0);
+  FillRandom(&input_data, static_cast<uint8_t>(0), static_cast<uint8_t>(255));
 
-  std::vector<uint8> reference_output_data(output_shape.FlatSize(), 0);
+  std::vector<uint8_t> reference_output_data(output_shape.FlatSize(), 0);
   // Initialize the output data with something other than zero, so we can catch
   // issue with kernels failing to initialize the output.
-  std::vector<uint8> output_data(output_shape.FlatSize(), 3);
-  std::vector<int32> output_size_data = {output_height, output_width};
+  std::vector<uint8_t> output_data(output_shape.FlatSize(), 3);
+  std::vector<int32_t> output_size_data = {output_height, output_width};
 
   ResizeNearestNeighborParams op_params{/*align_corners=*/false,
                                         /*half_pixel_centers=*/false};
@@ -412,22 +412,22 @@ bool is_valid_scale(int input_width, int input_height, int output_width,
   const float width_scale_float =
       static_cast<float>(input_width) / output_width;
 
-  int32 height_scale_int = (input_height << 16) / output_height + 1;
-  int32 width_scale_int = (input_width << 16) / output_width + 1;
+  int32_t height_scale_int = (input_height << 16) / output_height + 1;
+  int32_t width_scale_int = (input_width << 16) / output_width + 1;
 
   for (int y = 0; y < output_height; ++y) {
-    int32 in_y_float =
-        std::min(static_cast<int32>(std::floor(y * height_scale_float)),
+    int32_t in_y_float =
+        std::min(static_cast<int32_t>(std::floor(y * height_scale_float)),
                  input_height - 1);
-    int32 in_y_int = std::min((y * height_scale_int) >> 16, input_height - 1);
+    int32_t in_y_int = std::min((y * height_scale_int) >> 16, input_height - 1);
     if (in_y_int != in_y_float) {
       return false;
     }
     for (int x = 0; x < output_width; ++x) {
-      int32 in_x_float =
-          std::min(static_cast<int32>(std::floor(x * width_scale_float)),
+      int32_t in_x_float =
+          std::min(static_cast<int32_t>(std::floor(x * width_scale_float)),
                    input_width - 1);
-      int32 in_x_int = std::min((x * width_scale_int) >> 16, input_width - 1);
+      int32_t in_x_int = std::min((x * width_scale_int) >> 16, input_width - 1);
       if (in_x_int != in_x_float) {
         return false;
       }
