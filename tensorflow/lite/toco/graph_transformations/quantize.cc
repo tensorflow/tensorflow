@@ -47,6 +47,7 @@ bool SupportsQuantization(Model* model, const Operator& op) {
   static const std::set<OperatorType> supported_ops{
       OperatorType::kAdd,
       OperatorType::kArgMax,
+      OperatorType::kArgMin,
       OperatorType::kAveragePool,
       OperatorType::kBatchToSpaceND,
       OperatorType::kConcatenation,

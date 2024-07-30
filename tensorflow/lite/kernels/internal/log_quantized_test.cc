@@ -53,23 +53,24 @@ class LogQuantizedTest : public ::testing::Test {
 };
 
 // input_integer_bits <= 30.  output_integer_bits > 0.
-inline int32 LogPositiveValuesViaFloat(int32 input_val, int input_integer_bits,
-                                       int output_integer_bits) {
+inline int32_t LogPositiveValuesViaFloat(int32_t input_val,
+                                         int input_integer_bits,
+                                         int output_integer_bits) {
   const double float_log_sum_of_exps = std::log(
       static_cast<double>(input_val) * 0.5 / (1 << (30 - input_integer_bits)));
   static constexpr double min_int =
-      static_cast<double>(std::numeric_limits<int32>::min());
+      static_cast<double>(std::numeric_limits<int32_t>::min());
   static constexpr double max_int =
-      static_cast<double>(std::numeric_limits<int32>::max());
+      static_cast<double>(std::numeric_limits<int32_t>::max());
   double double_result = tflite::TfLiteRound(float_log_sum_of_exps *
                                              (1 << (31 - output_integer_bits)));
   return static_cast<std::int32_t>(
       std::min(max_int, std::max(min_int, double_result)));
 }
 
-void CheckOutputData(const std::vector<int32>& test_output,
-                     const std::vector<int32>& reference_output,
-                     const std::vector<int32>& test_input,
+void CheckOutputData(const std::vector<int32_t>& test_output,
+                     const std::vector<int32_t>& reference_output,
+                     const std::vector<int32_t>& test_input,
                      const string& check_label, int input_integer_bits,
                      int output_integer_bits, int tolerance) {
   // In the special case of small input, specifically raw value of 5, a rounding
@@ -107,8 +108,8 @@ void CheckOutputData(const std::vector<int32>& test_output,
   }
 }
 
-void RightShiftVector(const std::vector<int32>& shifts,
-                      std::vector<int32>* vec) {
+void RightShiftVector(const std::vector<int32_t>& shifts,
+                      std::vector<int32_t>* vec) {
   const int n = vec->size();
   ASSERT_EQ(n, shifts.size());
   for (int i = 0; i < n; ++i) {
@@ -117,15 +118,15 @@ void RightShiftVector(const std::vector<int32>& shifts,
 }
 
 template <int OutputIntegerBits, int InputIntegerBits>
-void RunSingleTest(const std::vector<int32>& test_input,
+void RunSingleTest(const std::vector<int32_t>& test_input,
                    const string& check_label, int tolerance) {
   const int n = test_input.size();
-  std::vector<int32> float_gen_output(n, 0);
-  std::vector<int32> quantized_output(n, 0);
+  std::vector<int32_t> float_gen_output(n, 0);
+  std::vector<int32_t> quantized_output(n, 0);
 
   // Workaround the stupid things that intelligent humans do.
   // Consequence of __builtin_clz(0u) may equal 31 instead of 32.
-  std::vector<int32> fudged_input(n, 0);
+  std::vector<int32_t> fudged_input(n, 0);
   for (int i = 0; i < n; ++i) {
     fudged_input[i] = std::max(test_input[i], 2);
   }
@@ -134,7 +135,7 @@ void RunSingleTest(const std::vector<int32>& test_input,
     quantized_output[i] =
         tflite::log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
                                                             InputIntegerBits>(
-            gemmlowp::FixedPoint<int32, InputIntegerBits>::FromRaw(
+            gemmlowp::FixedPoint<int32_t, InputIntegerBits>::FromRaw(
                 fudged_input[i]))
             .raw();
     float_gen_output[i] = LogPositiveValuesViaFloat(
@@ -151,8 +152,9 @@ void RunSingleTest(const std::vector<int32>& test_input,
 }
 
 template <int OutputIntegerBits>
-void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
-                   const string& check_label, int tolerance) {
+void RunSingleTest(const std::vector<int32_t>& test_input,
+                   int input_integer_bits, const string& check_label,
+                   int tolerance) {
 #define INPUT_CASE(K)                                                   \
   case K:                                                               \
     return RunSingleTest<OutputIntegerBits, K>(test_input, check_label, \
@@ -195,9 +197,9 @@ void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
 #undef INPUT_CASE
 }
 
-void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
-                   int output_integer_bits, const string& check_label,
-                   int tolerance) {
+void RunSingleTest(const std::vector<int32_t>& test_input,
+                   int input_integer_bits, int output_integer_bits,
+                   const string& check_label, int tolerance) {
 #define OUTPUT_CASE(K)                                                   \
   case K:                                                                \
     return RunSingleTest<K>(test_input, input_integer_bits, check_label, \
@@ -248,9 +250,9 @@ void RunUniformTest(int test_size, int input_integer_bits,
   test_data[0] = 2;
   test_data[1] = 3;
   test_data[2] = 4;
-  test_data[3] = std::numeric_limits<int32>::max() - 2;
-  test_data[4] = std::numeric_limits<int32>::max() - 1;
-  test_data[5] = std::numeric_limits<int32>::max();
+  test_data[3] = std::numeric_limits<int32_t>::max() - 2;
+  test_data[4] = std::numeric_limits<int32_t>::max() - 1;
+  test_data[5] = std::numeric_limits<int32_t>::max();
 
   RunSingleTest(test_data, input_integer_bits, output_integer_bits,
                 check_label + " / uniform test", tolerance);

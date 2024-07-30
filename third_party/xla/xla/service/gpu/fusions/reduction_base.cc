@@ -183,11 +183,12 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
   }
 
   absl::flat_hash_set<HloInstructionAdaptor> instructions;
-
+  for (const HloInstruction* operand : analysis.fusion().GetParameters()) {
+    instructions.insert(HloInstructionAdaptor{*operand, &analysis.fusion()});
+  }
   auto visit = [&](absl::Span<const HloInstructionAdaptor> roots) {
     HloBfsConsumersFirstTraversal(
-        roots, analysis.fusion(),
-        [&](HloInstructionAdaptor consumer) {
+        roots, analysis.fusion(), [&](HloInstructionAdaptor consumer) {
           auto& consumer_reachable = reachable_outputs[consumer];
           for (auto producer : consumer.GetOperands()) {
             reachable_outputs[producer].insert(consumer_reachable.begin(),
@@ -195,8 +196,7 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
           }
           instructions.insert(consumer);
           return TraversalResult::kAdvance;
-        },
-        [&](HloInstructionAdaptor argument) { instructions.insert(argument); });
+        });
   };
 
   // The legacy emitter grouping is buggy: it does not visit instructions in the
