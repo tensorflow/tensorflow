@@ -136,7 +136,7 @@ float GpuPerformanceWithCollectiveModel::GetNvlinkBw(
 }
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::InitNvml() {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA && defined(PLATFORM_POSIX)
   void* libhandle = dlopen("libnvidia-ml.so.1", RTLD_NOW);
   CHECK(libhandle != nullptr) << "Failed to open libnvidia-ml.so.1";
 

@@ -358,7 +358,10 @@ cc_library(
     hdrs = [
         "cancellation.h",
     ],
-    copts = ["-Wno-thread-safety-precise"],
+    copts = select({
+        "@local_xla//xla/tsl:windows": [],
+        "//conditions:default": ["-Wno-thread-safety-precise"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/memory",

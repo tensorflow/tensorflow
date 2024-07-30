@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_single_threaded_conv2d.h"
 
+#include <optional>
+
 #include "absl/base/dynamic_annotations.h"
 #include "xla/service/cpu/runtime/conv_impl.h"
 
@@ -35,7 +37,7 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
       kernel_filters, output_rows, output_cols, row_stride, col_stride,
       padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count);
+      feature_group_count, std::nullopt);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
@@ -55,5 +57,5 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
       kernel_filters, output_rows, output_cols, row_stride, col_stride,
       padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count);
+      feature_group_count, std::nullopt);
 }
