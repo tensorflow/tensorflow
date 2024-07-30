@@ -186,6 +186,25 @@ bool HasSameStridedShape(TFL::Conv2DOp op, ArrayRef<int64_t> pre_pad_shape) {
   return h_strided && w_strided;
 }
 
+bool HasSameStridedShape(TFL::DepthwiseConv2DOp op,
+                         ArrayRef<int64_t> pre_pad_shape) {
+  auto conv_in_shape =
+      llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();
+  auto kernel_shape =
+      llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
+
+  const int64_t h_pad = conv_in_shape[1] - pre_pad_shape[1];
+  const bool h_strided =
+      HasSameStridedDim(pre_pad_shape[1], op.getDilationHFactor(),
+                        op.getStrideH(), kernel_shape[1], h_pad);
+
+  const int64_t w_pad = conv_in_shape[2] - pre_pad_shape[2];
+  const bool w_strided =
+      HasSameStridedDim(pre_pad_shape[2], op.getDilationWFactor(),
+                        op.getStrideW(), kernel_shape[2], w_pad);
+  return h_strided && w_strided;
+}
+
 bool HasSameStridedShape(TFL::Conv3DOp op, ArrayRef<int64_t> pre_pad_shape) {
   auto conv_in_shape =
       llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();

@@ -215,6 +215,84 @@ func.func @conv2d_nchw_ohwi_nhwc_padded_dilated_lhs(%input: tensor<1x64x64x256xf
 
 // -----
 
+// CHECK-LABEL: depthwise_conv2d_nhwc_ohwi_nhwc
+func.func @depthwise_conv2d_nhwc_ohwi_nhwc(%arg0: tensor<1x10x10x207xf32>, %arg1: tensor<3312x3x3x1xf32>) -> tensor<1x8x8x3312xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
+    feature_group_count = 207 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x10x10x207xf32>, tensor<3312x3x3x1xf32>) -> tensor<1x8x8x3312xf32>
+  func.return %0 : tensor<1x8x8x3312xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [3, 1, 2, 0]
+// CHECK:      mhlo.convolution(%arg0, %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]
+// CHECK-NOT:  transpose
+
+// -----
+
+
+// CHECK-LABEL: depthwise_conv2d_nchw_ihwo_nhwc
+func.func @depthwise_conv2d_nchw_ihwo_nhwc(%arg0: tensor<1x207x10x10xf32>, %arg1: tensor<1x3x3x3312xf32>) -> tensor<1x8x8x3312xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, f, 0, 1]x[i, 0, 1, o]->[b, 0, 1, f]>,
+    feature_group_count = 207 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x207x10x10xf32>, tensor<1x3x3x3312xf32>) -> tensor<1x8x8x3312xf32>
+  func.return %0 : tensor<1x8x8x3312xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      mhlo.convolution(%[[TRANSPOSED_INPUT]], %arg1)
+// CHECK-SAME: [b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]
+// CHECK-NOT:  transpose
+
+// -----
+
+// CHECK-LABEL: depthwise_conv2d_nchw_ihwo_nhwc_padded
+func.func @depthwise_conv2d_nchw_ihwo_nhwc_padded(%arg0: tensor<1x207x8x8xf32>, %arg1: tensor<1x3x3x3312xf32>) -> tensor<1x8x8x3312xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, f, 0, 1]x[i, 0, 1, o]->[b, 0, 1, f]>,
+    feature_group_count = 207 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<1> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x207x8x8xf32>, tensor<1x3x3x3312xf32>) -> tensor<1x8x8x3312xf32>
+  func.return %0 : tensor<1x8x8x3312xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      %[[PADDED_LHS:.*]] = "mhlo.pad"(%[[TRANSPOSED_INPUT]]
+// CHECK-SAME: edge_padding_high = dense<[0, 1, 1, 0]>
+// CHECK-SAME: edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME: interior_padding = dense<0>
+// CHECK:      mhlo.convolution(%[[PADDED_LHS]], %arg1)
+// CHECK-SAME: [b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]
+// CHECK-SAME: pad =
+// CHECK-SAME: [0, 0], [0, 0]
+
+// -----
+
 // 1D
 //=--
 
@@ -440,6 +518,7 @@ func.func @conv3d_ncdhw_dhwio_ndhwc_padded(%arg0: tensor<1x207x6x6x30xf32>, %arg
 // CHECK-SAME: pad =
 // CHECK-SAME: [0, 0], [0, 0], [0, 0]
 // CHECK-SAME: (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<1x6x6x1x16xf32>
+
 // -----
 
 //===----------------------------------------------------------------------===//
@@ -456,11 +535,11 @@ func.func @pad_2d(%arg0: tensor<3x3xf32>, %arg1: tensor<f32>) -> tensor<4x3xf32>
   func.return %0 : tensor<4x3xf32>
 }
 
-// CHECK: mhlo.slice
+// CHECK:      mhlo.slice
 // CHECK-SAME: limit_indices = dense<3>
 // CHECK-SAME: start_indices = dense<[0, 1]>
 // CHECK-SAME: (tensor<3x3xf32>) -> tensor<3x2xf32>
-// CHECK: mhlo.pad
+// CHECK:      mhlo.pad
 // CHECK-SAME: edge_padding_high = dense<1>
 // CHECK-SAME: edge_padding_low = dense<0>
 // CHECK-SAME: (tensor<3x2xf32>, tensor<f32>) -> tensor<4x3xf32>
@@ -477,11 +556,11 @@ func.func @pad_2d_negative(%arg0: tensor<3x3xf32>, %arg1: tensor<f32>) -> tensor
   func.return %0 : tensor<1x2xf32>
 }
 
-// CHECK: mhlo.slice
+// CHECK:      mhlo.slice
 // CHECK-SAME: limit_indices = dense<[2, 3]>
 // CHECK-SAME: start_indices = dense<1>
 // CHECK-SAME: (tensor<3x3xf32>) -> tensor<1x2xf32>
-// CHECK-NOT: mhlo.pad
+// CHECK-NOT:  mhlo.pad
 
 // -----
 
@@ -495,11 +574,11 @@ func.func @pad_3d_mixed(%arg0: tensor<3x3x3xf32>, %arg1: tensor<f32>) -> tensor<
   func.return %0 : tensor<3x3x3xf32>
 }
 
-// CHECK: mhlo.slice
+// CHECK:      mhlo.slice
 // CHECK-SAME: limit_indices = dense<[3, 2, 3]>
 // CHECK-SAME: start_indices = dense<[1, 0, 0]>
 // CHECK-SAME: (tensor<3x3x3xf32>) -> tensor<2x2x3xf32>
-// CHECK: mhlo.pad
+// CHECK:      mhlo.pad
 // CHECK-SAME: edge_padding_high = dense<[1, 0, 0]>
 // CHECK-SAME: edge_padding_low = dense<[0, 1, 0]>
 // CHECK-SAME: (tensor<2x2x3xf32>, tensor<f32>) -> tensor<3x3x3xf32>

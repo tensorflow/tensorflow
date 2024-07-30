@@ -1667,6 +1667,10 @@ def IsSameStridedShape2D : Constraint<CPred<
   "HasSameStridedShape($0.getDefiningOp<TFL::Conv2DOp>(),"
     "$1.getType().cast<ShapedType>().getShape())">>;
 
+def IsSameStridedShapeDepthwise : Constraint<CPred<
+  "HasSameStridedShape($0.getDefiningOp<TFL::DepthwiseConv2DOp>(),"
+    "$1.getType().cast<ShapedType>().getShape())">>;
+
 def IsSameStridedShape3D : Constraint<CPred<
   "HasSameStridedShape($0.getDefiningOp<TFL::Conv3DOp>(),"
     "$1.getType().cast<ShapedType>().getShape())">>;
@@ -1678,61 +1682,93 @@ def IsValidPadding : Constraint<CPred<"$0.str() == \"VALID\"">>;
 // ceil(in_dim_i / stride_i) == out_dim_i
 // and 0 <= (pad_i_hi - pad_i_lo) <= 1 for all spatial dims i.
 
-def FuseSamePaddingConv2D : Pat<(TFL_Conv2DOp:$conv_out
-                                  (TFL_PadOp $input, (Arith_ConstantOp $paddings)),
-                                  $filter,
-                                  $bias,
-                                  $h_dilate,
-                                  $w_dilate,
-                                  $faf,
-                                  $padding,
-                                  $stride_h,
-                                  $stride_w
-                                ), (TFL_Conv2DOp
-                                  $input,
-                                  $filter,
-                                  $bias,
-                                  $h_dilate,
-                                  $w_dilate,
-                                  $faf,
-                                  TFL_PAD_Same,
-                                  $stride_h,
-                                  $stride_w
-                                ),
-                                [(HasStaticDim<1> $input),
-                                 (HasStaticDim<2> $input),
-                                 (IsBalancedPaddingArray<1, 3> $paddings),
-                                 (IsValidPadding $padding),
-                                 (IsSameStridedShape2D $conv_out, $input)]>;
+def FuseSamePaddingConv2D : Pat<
+  (TFL_Conv2DOp:$conv_out
+    (TFL_PadOp $input, (Arith_ConstantOp $paddings)),
+    $filter,
+    $bias,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    $padding,
+    $stride_h,
+    $stride_w
+  ), (TFL_Conv2DOp
+    $input,
+    $filter,
+    $bias,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    TFL_PAD_Same,
+    $stride_h,
+    $stride_w
+  ),
+  [(HasStaticDim<1> $input),
+    (HasStaticDim<2> $input),
+    (IsBalancedPaddingArray<1, 3> $paddings),
+    (IsValidPadding $padding),
+    (IsSameStridedShape2D $conv_out, $input)]>;
 
-def FuseSamePaddingConv3D : Pat<(TFL_Conv3DOp:$conv_out
-                                  (TFL_PadOp $input, (Arith_ConstantOp $paddings)),
-                                  $filter,
-                                  $bias,
-                                  $d_dilate,
-                                  $h_dilate,
-                                  $w_dilate,
-                                  $faf,
-                                  $padding,
-                                  $stride_d,
-                                  $stride_h,
-                                  $stride_w
-                                ), (TFL_Conv3DOp
-                                  $input,
-                                  $filter,
-                                  $bias,
-                                  $d_dilate,
-                                  $h_dilate,
-                                  $w_dilate,
-                                  $faf,
-                                  TFL_PAD_Same,
-                                  $stride_d,
-                                  $stride_h,
-                                  $stride_w
-                                ),
-                                [(HasStaticDim<1> $input),
-                                 (HasStaticDim<2> $input),
-                                 (HasStaticDim<3> $input),
-                                 (IsBalancedPaddingArray<1, 4> $paddings),
-                                 (IsValidPadding $padding),
-                                 (IsSameStridedShape3D $conv_out, $input)]>;
+def FuseSamePaddingDepthwiseConv : Pat<
+  (TFL_DepthwiseConv2DOp:$conv_out
+    (TFL_PadOp $input, (Arith_ConstantOp $paddings)),
+    $filter,
+    $bias,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    $padding,
+    $stride_h,
+    $stride_w,
+    $depth
+  ), (TFL_DepthwiseConv2DOp
+    $input,
+    $filter,
+    $bias,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    TFL_PAD_Same,
+    $stride_h,
+    $stride_w,
+    $depth
+  ),
+  [(HasStaticDim<1> $input),
+    (HasStaticDim<2> $input),
+    (IsBalancedPaddingArray<1, 3> $paddings),
+    (IsValidPadding $padding),
+    (IsSameStridedShapeDepthwise $conv_out, $input)]>;
+
+def FuseSamePaddingConv3D : Pat<
+  (TFL_Conv3DOp:$conv_out
+    (TFL_PadOp $input, (Arith_ConstantOp $paddings)),
+    $filter,
+    $bias,
+    $d_dilate,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    $padding,
+    $stride_d,
+    $stride_h,
+    $stride_w
+  ), (TFL_Conv3DOp
+    $input,
+    $filter,
+    $bias,
+    $d_dilate,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    TFL_PAD_Same,
+    $stride_d,
+    $stride_h,
+    $stride_w
+  ),
+  [(HasStaticDim<1> $input),
+    (HasStaticDim<2> $input),
+    (HasStaticDim<3> $input),
+    (IsBalancedPaddingArray<1, 4> $paddings),
+    (IsValidPadding $padding),
+    (IsSameStridedShape3D $conv_out, $input)]>;

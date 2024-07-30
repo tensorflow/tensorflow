@@ -171,7 +171,11 @@ class ConvData {
   mlir::Type element_type_;
 };
 
-inline bool ValidStandardConvOutFeatureDims(const ConvData& data) {
+inline bool HasSupportedRank(const ConvData& data) {
+  return data.InputLayout().Rank() == 4 || data.InputLayout().Rank() == 5;
+}
+
+inline bool HasSupportedOutFeatureDims(const ConvData& data) {
   const int64_t kernel_out_features =
       data.KernelLayout().SpecialDim2(data.KernelShape());
   const int64_t out_features =
@@ -179,7 +183,15 @@ inline bool ValidStandardConvOutFeatureDims(const ConvData& data) {
   return kernel_out_features == out_features;
 }
 
-inline bool ValidStandardConvInFeatureDims(const ConvData& data) {
+inline bool IsNonTrivialConv(const ConvData& data) {
+  return llvm::all_of(data.InputDilations(), [](auto d) { return d == 1; });
+}
+
+//
+// Standard conv predicates
+//=-----
+
+inline bool HasStandardConvInFeatureDims(const ConvData& data) {
   // kernel_in_features * feature_groups = input_features by definition.
   const int64_t input_features =
       data.InputLayout().SpecialDim2(data.InputShape());
@@ -192,28 +204,42 @@ inline bool ValidStandardConvInFeatureDims(const ConvData& data) {
   return !trivial_kernel_in_features && (!is_grouped_conv || rank == 4);
 }
 
-inline bool HasStandardFeatureGroup(const ConvData& data) {
-  return ValidStandardConvInFeatureDims(data) &&
-         ValidStandardConvOutFeatureDims(data);
+inline bool IsStandardConv(const ConvData& data) {
+  return HasSupportedRank(data) && IsNonTrivialConv(data) &&
+         HasStandardConvInFeatureDims(data) && HasSupportedOutFeatureDims(data);
 }
 
 // Does this convolution map to a standard conv_2d or conv_3d
-// (not depthwise or tranpose conv).
-inline bool IsStandardConv(const ConvData& data) {
-  const int64_t rank = data.InputLayout().Rank();
-  if (rank != 4 && rank != 5) {
-    return false;
-  }
-  const bool trivial_lhs_dilate =
-      llvm::all_of(data.InputDilations(), [](auto d) { return d == 1; });
-
-  return trivial_lhs_dilate && HasStandardFeatureGroup(data);
-}
-
+// (not depthwise or tranpose conv)?
 inline bool IsStandardConv(mhlo::ConvolutionOp op) {
   const ConvData data(op);
   return IsStandardConv(data);
 }
+
+//
+// Depthwise conv predicates
+//=-----
+
+inline bool IsDepthwiseConv(const ConvData& data) {
+  const bool valid_rank = data.InputLayout().Rank() == 4;
+  if (!valid_rank || !HasSupportedOutFeatureDims(data) ||
+      !IsNonTrivialConv(data)) {
+    return false;
+  }
+  const int64_t in_channel_dim =
+      data.InputLayout().SpecialDim2(data.InputShape());
+  return data.FeatureGroupCount() == in_channel_dim;
+}
+
+// Does this convolution map to depthwise conv?
+inline bool IsDepthwiseConv(mhlo::ConvolutionOp op) {
+  const ConvData data(op);
+  return IsDepthwiseConv(data);
+}
+
+//
+// Tfl native layouts
+//=-----
 
 inline int64_t DnumRank(mhlo::ConvDimensionNumbersAttr dnums) {
   return dnums.getInputSpatialDimensions().size() + 2;
@@ -229,7 +255,7 @@ inline Layout GetTFLNativeInputOrOutputLayout(
   return GetTFLNativeInputOrOutputLayout((DnumRank(dnums)));
 }
 
-inline Layout GetTFLNativeKernelLayout(int64_t rank) {
+inline Layout GetTFLNativeStandardConvKernelLayout(int64_t rank) {
   if (rank != 5) {
     auto spatials = llvm::to_vector(llvm::seq<int64_t>(1, rank - 1));
     return Layout(rank - 1, 0, spatials);
@@ -238,18 +264,37 @@ inline Layout GetTFLNativeKernelLayout(int64_t rank) {
   return Layout(rank - 2, rank - 1, spatials);
 }
 
-inline Layout GetTFLNativeKernelLayout(mhlo::ConvDimensionNumbersAttr dnums) {
-  return GetTFLNativeKernelLayout(DnumRank(dnums));
+inline Layout GetTFLNativeDepthwiseConvKernelLayout() {
+  return Layout(0, 3, {1, 2});
+}
+
+inline Layout GetTFLNativeStandardConvKernelLayout(
+    mhlo::ConvDimensionNumbersAttr dnums) {
+  return GetTFLNativeStandardConvKernelLayout(DnumRank(dnums));
 }
 
 inline bool IsTFLNativeLayout(const ConvData& data) {
-  const auto rank = data.InputLayout().Rank();
+  const int64_t rank = data.KernelLayout().Rank();
   const auto native_io_layout = GetTFLNativeInputOrOutputLayout(rank);
-  const auto native_kernel_layout = GetTFLNativeKernelLayout(rank);
+
+  std::optional<Layout> native_kernel_layout = std::nullopt;
+  if (IsDepthwiseConv(data)) {
+    native_kernel_layout = GetTFLNativeDepthwiseConvKernelLayout();
+  } else if (IsStandardConv(data)) {
+    native_kernel_layout = GetTFLNativeStandardConvKernelLayout(rank);
+  }
+  if (!native_kernel_layout.has_value()) {
+    return false;
+  }
+
   return data.InputLayout() == native_io_layout &&
-         data.KernelLayout() == native_kernel_layout &&
+         data.KernelLayout() == *native_kernel_layout &&
          data.OutputLayout() == native_io_layout;
 }
+
+//
+// ConvDimensionNumbers utils
+//=-----
 
 inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithInputLayout(
     OpBuilder& b, mhlo::ConvDimensionNumbersAttr dnums, const Layout& layout) {
