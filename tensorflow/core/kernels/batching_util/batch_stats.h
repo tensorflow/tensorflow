@@ -206,14 +206,12 @@ class ModelBatchStats {
   // RegisterQuerySize for more details.
   std::atomic<int64_t> cumulative_processed_size_ = 0;
 
-  // The number of batch threads assigned to this model. Set to -1 if there is
-  // no batch thread count information for this model.
-  std::atomic<int64_t> num_batch_threads_ = -1;
+  // The number of batch threads assigned to this model.
+  std::atomic<int64_t> num_batch_threads_ = kNumBatchThreadsUnknown;
 
   // The timeout in microseconds for this model (after which the current batch
-  // is sent to be processed by the TPU). Set to -1 if there is no batch
-  // timeout information for this model.
-  std::atomic<int64_t> batch_timeout_micros_ = -1;
+  // is sent to be processed by the TPU).
+  std::atomic<int64_t> batch_timeout_micros_ = kBatchTimeoutMicrosUnknown;
 };
 
 // Tracks batch statistics for all models.
