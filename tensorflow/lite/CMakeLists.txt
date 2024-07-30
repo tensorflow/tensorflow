@@ -681,8 +681,6 @@ set(_ALL_TFLITE_SRCS
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )
 add_library(tensorflow-lite

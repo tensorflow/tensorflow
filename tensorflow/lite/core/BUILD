@@ -49,10 +49,7 @@ cc_library(
     deps = [
         ":cc_api_stable",
         ":signature_runner",
-        "//tensorflow/compiler/mlir/lite/core:macros",
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
-        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
@@ -123,7 +120,6 @@ cc_library(
         ":cc_api_stable",
         ":model_builder",
         ":signature_runner",
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
@@ -139,6 +135,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
@@ -177,10 +174,7 @@ cc_library(
         ":model_builder",
         ":signature_runner",
         ":subgraph",
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
-        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
-        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
@@ -259,7 +253,6 @@ cc_library(
     deps = [
         ":cc_api_stable",
         ":signature_runner",
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
@@ -275,6 +268,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -292,14 +286,22 @@ cc_library(
 
 cc_library(
     name = "model_builder",
+    srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = internal_visibility_allowlist(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
+        ":macros",
+        "//tensorflow/compiler/mlir/lite/core:macros",
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite:string",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
     ],
     alwayslink = 1,
 )
@@ -334,7 +336,6 @@ cc_test(
     deps = [
         ":framework",
         ":signature_runner",
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite:model_builder",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/testing:util",
@@ -365,7 +366,6 @@ cc_test(
     ],
     tags = [
         "no_windows",  # TODO(b/194459105): the test is flaky.
-        "noasan",
         "tflite_not_portable",
         "tflite_smoke_test",
     ],
