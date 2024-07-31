@@ -390,6 +390,7 @@ bool CopyAllocation::operator==(const Allocation& other) const {
 void CopyAllocation::set_copy_start_schedule_after(
     int64_t copy_start_schedule_after) {
   copy_start_schedule_after_ = copy_start_schedule_after;
+  set_start_time(ExclusiveToInclusiveStartTime(copy_start_schedule_after));
 }
 
 void CopyAllocation::set_copy_done_schedule_before(

@@ -24,10 +24,12 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
@@ -43,16 +45,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/buffer_value_containers.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/memory_space_assignment/repacking.h"
-#include "xla/service/tuple_points_to_analysis.h"
+#include "xla/service/logical_buffer.h"
 
 namespace xla {
 
@@ -364,6 +361,8 @@ struct BufferIntervalTreeNode {
   BufferIntervalTreeNode* right;
   // parent
   BufferIntervalTreeNode* parent;
+
+  std::string ToString() const;
 };
 
 // An interval tree that can query buffers overlapping in time.
@@ -383,7 +382,48 @@ class BufferIntervalTree {
 
   BufferIntervalTreeNode* GetRoot() { return root_; }
 
+  // Returns a compact 2D view of memory usage over time.
+  // X axis is time, Y axis is memory.
+  //
+  // Say there are 3 buffers in the heap:
+  // - Buffer 1: memory block [0, 16), time interval [15, 25]
+  // - Buffer 2: memory block [16, 48), time interval [15, 19]
+  // - Buffer 3: memory block [32, 64), time interval [20, 22]
+  //
+  // NodesOverlappingInTimeToAsciiArt(/*start=*/18, /*end=*/23,
+  // /*group_size=*/3) returns:
+  //
+  // Memory map for time: [18,23], memory_block_size: 16, group_size: 3
+  //
+  //  ..# ##. 64
+  //  ### ##. 48
+  //  ##. ... 32
+  //  ### ### 16
+  //  890 123
+  //
+  // Explanation:
+  //
+  // The functions decides a memory block size of 16 would be most compact to
+  // display all the buffers.
+  // '#' indicates used and '.' indicates free memory.
+  //
+  // ..# ##. 64      "64" indicates memory block [48,64)
+  // ### ##. 48      "48" indicates memory block [32,48)
+  // ##. ... 32      "32" indicates memory block [16,32)
+  // ### ### 16      "16" indicates memory block [0,16)
+  // 890 123
+  //
+  // "890 123" indicate the last digits of time instants 18, 19, 20, 21, 22, 23.
+  // Only the last digit is shown for compactness.
+  // `group_size=3` inserts spaces after every 3 columns (time instants).
+  // All the memory blocks beyond 64 are free for time interval [18,23].
+  std::string NodesOverlappingInTimeToAsciiArt(int64_t start, int64_t end,
+                                               int64_t group_size = 0) const;
+
  private:
+  std::vector<const BufferIntervalTreeNode*> NodesOverlappingInTime(
+      int64_t start, int64_t end) const;
+
   BufferIntervalTreeNode* root_ = nullptr;
   std::list<BufferIntervalTreeNode> node_storage_;
 };
