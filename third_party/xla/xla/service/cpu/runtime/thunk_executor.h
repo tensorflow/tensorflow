@@ -36,6 +36,17 @@ limitations under the License.
 
 namespace xla::cpu {
 
+namespace internal {
+// Clang does not allow defining a nested struct with member initializer, as
+// a workaround we define a struct in internal namespace and create an alias.
+struct ThunkExecutorOptions {
+  // If all thunks in a sequence use buffers of size less than or equal to
+  // `execute_sequential_buffer_threshold`, we mark execution as sequential, as
+  // concurrency overheads will likely dominate the overall execution time.
+  size_t execute_sequential_buffer_threshold = 512;
+};
+}  // namespace internal
+
 // A dataflow-style (run when ready) executor for a ThunkSequence that depends
 // on buffer uses to build a DAG defining execution order. At run time executes
 // thunks concurrently in a given thread pool.
@@ -44,6 +55,7 @@ class ThunkExecutor {
   using BufferUses = Thunk::BufferUses;
   using ResourceUses = Thunk::ResourceUses;
   using ExecuteEvent = Thunk::ExecuteEvent;
+  using Options = internal::ThunkExecutorOptions;
 
   // Nodes identified by their index in the captured ThunkSequence.
   using NodeId = int64_t;
@@ -53,7 +65,8 @@ class ThunkExecutor {
   ThunkExecutor(ThunkExecutor&&) = default;
   ThunkExecutor& operator=(ThunkExecutor&&) = default;
 
-  static absl::StatusOr<ThunkExecutor> Create(ThunkSequence thunk_sequence);
+  static absl::StatusOr<ThunkExecutor> Create(
+      ThunkSequence thunk_sequence, const Options& options = Options());
 
   // NodeDef defines an execution order for all thunks in a sequence.
   struct NodeDef {
@@ -123,7 +136,8 @@ class ThunkExecutor {
     absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
   };
 
-  ThunkExecutor(ThunkSequence thunk_sequence, std::vector<NodeDef> nodes_defs);
+  ThunkExecutor(ThunkSequence thunk_sequence, std::vector<NodeDef> nodes_defs,
+                const Options& options);
 
   // Executes thunks sequentially starting from the first thunk in the sequence.
   tsl::AsyncValueRef<ExecuteEvent> ExecuteSequential(
@@ -157,6 +171,8 @@ class ThunkExecutor {
   int64_t TransitiveReduction();
 
   ThunkSequence thunk_sequence_;
+  Options options_;
+
   std::vector<NodeDef> nodes_defs_;
 
   std::vector<NodeId> source_;
