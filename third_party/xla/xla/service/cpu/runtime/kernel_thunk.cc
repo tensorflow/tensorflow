@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 
+#include <cstddef>
+
 #define EIGEN_USE_THREADS
 
 #include <atomic>
@@ -25,6 +27,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -32,7 +35,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "llvm/ADT/SmallVector.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
@@ -78,7 +80,19 @@ KernelThunk::KernelThunk(
       thread_dim_(thread_dim),
       min_alignment_(min_alignment),
       call_once_(thread_dim_ == se::ThreadDim()),
-      kernel_ptr_(nullptr) {}
+      kernel_ptr_(nullptr) {
+  // Initialize kernel arguments with null pointers and known buffer sizes.
+  // We'll use them as a template to resolve buffer addresses at run time.
+  kernel_args_.reserve(num_kernel_args_);
+  for (const BufferAllocation::Slice& buffer : arguments_buffers_) {
+    kernel_args_.emplace_back(
+        SE_HOST_KernelArg{nullptr, static_cast<size_t>(buffer.size())});
+  }
+  for (const BufferAllocation::Slice& buffer : results_buffers_) {
+    kernel_args_.emplace_back(
+        SE_HOST_KernelArg{nullptr, static_cast<size_t>(buffer.size())});
+  }
+}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
     const ExecuteParams& params) {
@@ -90,31 +104,28 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
       kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
       thread_dim_.ToString());
 
-  // We use `llvm::SmallVector` instead of `absl::InlinedVector` because
-  // it allows to resize a vector without zero-initializing storage.
-  llvm::SmallVector<SE_HOST_KernelArg, 8> kernel_args;
-  kernel_args.resize_for_overwrite(num_kernel_args_);
-
+  absl::InlinedVector<SE_HOST_KernelArg, 8> kernel_args = kernel_args_;
   SE_HOST_KernelArg* kernel_args_ptr = kernel_args.data();
+
   const BufferAllocations* allocations = params.buffer_allocations;
 
   for (BufferAllocation::Slice& buffer : arguments_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
       TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
-      *kernel_args_ptr++ = SE_HOST_KernelArg{mem.opaque(), mem.size()};
+      kernel_args_ptr++->data = mem.opaque();
     } else {
       auto mem = allocations->GetDeviceAddressUnchecked(buffer);
-      *kernel_args_ptr++ = SE_HOST_KernelArg{mem.opaque(), mem.size()};
+      kernel_args_ptr++->data = mem.opaque();
     }
   }
 
   for (BufferAllocation::Slice& buffer : results_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
       TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
-      *kernel_args_ptr++ = SE_HOST_KernelArg{mem.opaque(), mem.size()};
+      kernel_args_ptr++->data = mem.opaque();
     } else {
       auto mem = allocations->GetDeviceAddressUnchecked(buffer);
-      *kernel_args_ptr++ = SE_HOST_KernelArg{mem.opaque(), mem.size()};
+      kernel_args_ptr++->data = mem.opaque();
     }
   }
 
