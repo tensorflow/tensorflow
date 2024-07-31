@@ -1107,7 +1107,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       collective_op_types_to_string(
           debug_options->xla_gpu_disable_async_collectives()),
       "This disables a certain set of async collectives and turn them into"
-      " synchornous ones. By default, this is empty which indicates enabling"
+      " synchronous ones. By default, this is empty which indicates enabling"
       " async execution for all collectives. A sample usage is: "
       " --xla_gpu_disable_async_collectives=ALLREDUCE,REDUCESCATTER"));
   flag_list->push_back(tsl::Flag(
@@ -1204,7 +1204,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_fmha),
       debug_options->xla_gpu_enable_cudnn_fmha(),
       "Use the cuDNN Fused Attention runtime fusion when possible. Note "
-      "that dropout support and the developement of this feature as a whole is "
+      "that dropout support and the development of this feature as a whole is "
       "in progress. Attention with dropout may cause results to diverge with "
       "and without this  flag turned on."));
   flag_list->push_back(tsl::Flag(
@@ -1240,7 +1240,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 setter_for_legacy_command_buffer_custom_call_targets, "",
                 "Comma-separated list of custom call targets with legacy "
                 "registry API (non FFI API), whose targets supports lowering "
-                "to command buffer custom command, i.e, custom call target "
+                "to command buffer custom command, i.e., custom call target "
                 "supports cuda-graph capturing for CUDA devices."));
 
   flag_list->push_back(tsl::Flag(
@@ -1765,7 +1765,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int64_setter_for(&DebugOptions::set_xla_gpu_gemm_rewrite_size_threshold),
       debug_options->xla_gpu_gemm_rewrite_size_threshold(),
       "Threshold until which elemental dot emitter is preferred for GEMMs "
-      "(minumum combined number of elements of both matrices "
+      "(minimum combined number of elements of both matrices "
       "in non-batch dimensions to be considered for a rewrite)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_use_memcpy_local_p2p",

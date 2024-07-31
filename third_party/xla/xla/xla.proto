@@ -749,7 +749,7 @@ message DebugOptions {
   // are counted.
   reserved 282;  // was xla_gpu_skip_mlir_kernels
 
-  // Threshold to rewrite matmul to cuBLAS or Triton (minumum combined number of
+  // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
   // rewrite).
   int64 xla_gpu_gemm_rewrite_size_threshold = 283;
@@ -835,7 +835,7 @@ message DebugOptions {
 
   // Custom call targets with legacy registry API (non FFI API),
   // that support recording to command buffer custom command,
-  // i.e, custom call target supports cuda-graph capturing for CUDA devices.
+  // i.e., custom call target supports cuda-graph capturing for CUDA devices.
   // This flag is read if CUSTOM_CALL command type is recorded into
   // command buffer.
   repeated string legacy_command_buffer_custom_call_targets = 314;
