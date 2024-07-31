@@ -603,12 +603,12 @@ class Array {
       std::fill(data.get(), data.get() + size, init);
     }
 
-    OwnedBuffer(OwnedBuffer&& other)
+    OwnedBuffer(OwnedBuffer&& other) noexcept
         : data(std::move(other.data)), size(other.size) {
       other.size = 0;
     }
 
-    OwnedBuffer& operator=(OwnedBuffer&& other) {
+    OwnedBuffer& operator=(OwnedBuffer&& other) noexcept {
       data = std::move(other.data);
       size = other.size;
       other.size = 0;
