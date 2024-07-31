@@ -150,13 +150,13 @@ Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
       allocator(allocator),
       ffi_execution_context(ffi_execution_context) {}
 
-tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEvent() {
-  static tsl::AsyncValueOwningRef<ExecuteEvent>* event = [] {
+const tsl::AsyncValueOwningRef<Thunk::ExecuteEvent>* Thunk::OkEvent() {
+  static tsl::AsyncValueOwningRef<ExecuteEvent>* owner = [] {
     auto* storage = new tsl::internal::AsyncValueStorage<ExecuteEvent>();
     return new tsl::AsyncValueOwningRef<ExecuteEvent>(
         tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(*storage));
   }();
-  return event->AsRef();
+  return owner;
 }
 
 Thunk::ExecuteState::ExecuteState(int64_t num_tasks)

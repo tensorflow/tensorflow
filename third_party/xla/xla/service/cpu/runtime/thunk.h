@@ -288,7 +288,9 @@ class Thunk {
 
   // Returns non-reference-counted async value ref for thunks executed in the
   // caller thread to avoid reference counting overhead.
-  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent();
+  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent() {
+    return OkEvent()->AsRef();
+  }
 
   // Thunk execution must be asynchronous and never block the caller thread,
   // especially waiting for work submitted into the `intra_op_threadpool`,
@@ -329,6 +331,8 @@ class Thunk {
   }
 
  private:
+  static const tsl::AsyncValueOwningRef<Thunk::ExecuteEvent>* OkEvent();
+
   Kind kind_;
   Info info_;
 };

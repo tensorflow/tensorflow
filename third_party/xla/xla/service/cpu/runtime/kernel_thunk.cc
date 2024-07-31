@@ -140,7 +140,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
   // initialization stage.
-  se::host::HostKernel* kernel = kernel_ptr_.load();
+  se::host::HostKernel* kernel = kernel_ptr_.load(std::memory_order_relaxed);
 
   // Because thunks are owned by a parent CpuExecutable, we can safely assume
   // that kernel pointer will not change after we find it the first time.
