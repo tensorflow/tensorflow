@@ -436,7 +436,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
 
   // Use a large prime number to fragment the accesses.
   constexpr int host_buffer_size = 10069;
-  static std::vector<T>* host_buffer = [] {
+  static std::vector<T>* host_buffer = [&] {
     auto* ret = new std::vector<T>(host_buffer_size);
     // Default-seeded random numbers.
     std::mt19937 gen;

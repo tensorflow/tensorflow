@@ -186,18 +186,18 @@ void AddGraphTraceActivityEvent(CuptiEventCollectorDelegate &collector,
   AnnotationMap::AnnotationInfo info = collector.annotation_map.LookUp(
       graph_trace->deviceId, graph_trace->correlationId);
   collector.receive(CuptiTracerEvent{
-      .type = CuptiTracerEventType::CudaGraph,
-      .source = CuptiTracerEventSource::Activity,
-      .name = absl::StrCat("CudaGraphExec:", graph_trace->graphId),
-      .annotation = info.annotation,
-      .nvtx_range = info.nvtx_range,
-      .start_time_ns = graph_trace->start,
-      .end_time_ns = graph_trace->end,
-      .device_id = graph_trace->deviceId,
-      .correlation_id = graph_trace->correlationId,
-      .context_id = graph_trace->contextId,
-      .stream_id = graph_trace->streamId,
-      .graph_id = graph_trace->graphId,
+      /* .type = */ CuptiTracerEventType::CudaGraph,
+      /* .source = */ CuptiTracerEventSource::Activity,
+      /* .name = */ absl::StrCat("CudaGraphExec:", graph_trace->graphId),
+      /* .annotation = */ info.annotation,
+      /* .nvtx_range = */ info.nvtx_range,
+      /* .start_time_ns = */ graph_trace->start,
+      /* .end_time_ns = */ graph_trace->end,
+      /* .device_id = */ graph_trace->deviceId,
+      /* .correlation_id = */ graph_trace->correlationId,
+      /* .context_id = */ graph_trace->contextId,
+      /* .stream_id = */ graph_trace->streamId,
+      /* .graph_id = */ graph_trace->graphId,
   });
 }
 

@@ -108,6 +108,8 @@ namespace gpu {
 
 #if !defined(PLATFORM_WINDOWS)
 static const char *kDriverVersionPath = "/proc/driver/nvidia/version";
+#else
+static const char *kDriverVersionPath = "NO NVIDIA DRIVER VERSION FILE";
 #endif
 
 // -- class Diagnostician

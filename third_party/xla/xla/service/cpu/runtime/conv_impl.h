@@ -41,7 +41,7 @@ void EigenConv2DImpl(
     Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
     Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
     Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
-    std::optional<std::function<void()>> done_callback = std::nullopt) {
+    std::optional<std::function<void()>> done_callback) {
   const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
                          Eigen::Aligned>
       input(lhs, input_batch, input_x, input_y, input_channels);
@@ -129,7 +129,7 @@ void EigenConv3DImpl(
     Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,
     Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,
     Eigen::Index feature_group_count,
-    std::optional<std::function<void()>> done_callback = std::nullopt) {
+    std::optional<std::function<void()>> done_callback) {
   using ConstTType =
       Eigen::TensorMap<Eigen::Tensor<const ScalarType, 5, Eigen::RowMajor>,
                        Eigen::Aligned>;
@@ -223,7 +223,7 @@ void EigenConv3DImpl(
       Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
       Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
       Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
-      std::optional<std::function<void()>> done_callback = std::nullopt)
+      std::optional<std::function<void()>> done_callback)
 
 CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
@@ -249,7 +249,7 @@ CONV2D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
       Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
       Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
       Eigen::Index feature_group_count,                                        \
-      std::optional<std::function<void()>> done_callback = std::nullopt)
+      std::optional<std::function<void()>> done_callback)
 
 CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);

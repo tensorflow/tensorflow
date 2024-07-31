@@ -3854,6 +3854,7 @@ XlaOp XlaBuilder::AllToAllArray(
 
     if (is_unbounded) {
       std::vector<XlaOp> new_dimensions;
+      new_dimensions.reserve(operand_shape->rank());
       for (int64_t i = 0; i < operand_shape->rank(); ++i) {
         new_dimensions.push_back(GetR1DimensionSizeOrConstant(operand, i));
       }
