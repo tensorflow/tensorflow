@@ -58,12 +58,6 @@ class GpuStream : public StreamCommon {
     parent()->DeallocateStream(this);
   }
 
-  // Returns a pointer to a platform specific stream associated with this object
-  // if it exists, or nullptr otherwise. This is available via Stream public API
-  // as Stream::PlatformSpecificHandle, and should not be accessed directly
-  // outside of a StreamExecutor package.
-  void* platform_specific_stream() const { return gpu_stream_; }
-
   // Explicitly initialize the CUDA resources associated with this stream.
   bool Init();
 

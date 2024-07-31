@@ -499,7 +499,7 @@ void GpuExecutor::DeallocateStream(Stream* stream) {
   }
   GpuStream* rocm_stream = AsGpuStream(stream);
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  alive_gpu_streams_.erase(rocm_stream->platform_specific_stream());
+  alive_gpu_streams_.erase(rocm_stream->gpu_stream());
   if (!rocm_stream->IsIdle()) {
     LOG(ERROR) << "Deallocating stream with pending work";
   }
@@ -642,20 +642,20 @@ absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
 
 absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  auto gpu_stream = std::make_unique<GpuStream>(this);
+  auto stream = std::make_unique<GpuStream>(this);
   if (priority.has_value()) {
     if (std::holds_alternative<StreamPriority>(*priority)) {
-      gpu_stream->SetPriority(std::get<StreamPriority>(*priority));
+      stream->SetPriority(std::get<StreamPriority>(*priority));
     } else {
-      gpu_stream->SetPriority(std::get<int>(*priority));
+      stream->SetPriority(std::get<int>(*priority));
     }
   }
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  bool init_worked = gpu_stream->Init();
+  bool init_worked = stream->Init();
   if (init_worked) {
-    auto platform_specific_stream = gpu_stream->platform_specific_stream();
-    alive_gpu_streams_[platform_specific_stream] = gpu_stream.get();
-    return std::move(gpu_stream);
+    auto gpu_stream = stream->gpu_stream();
+    alive_gpu_streams_[gpu_stream] = stream.get();
+    return std::move(stream);
   } else {
     return absl::InvalidArgumentError("Failed to initialize GPU stream");
   }
