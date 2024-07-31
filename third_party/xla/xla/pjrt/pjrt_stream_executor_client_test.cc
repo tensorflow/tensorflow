@@ -46,10 +46,8 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
-  se::StreamExecutorConfig config;
-  config.ordinal = 0;
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                      platform->GetExecutor(config));
+                      platform->ExecutorForDevice(0));
   auto device_state = std::make_unique<LocalDeviceState>(
       executor, local_client, LocalDeviceState::kSynchronous,
       /*max_inflight_computations=*/32,
