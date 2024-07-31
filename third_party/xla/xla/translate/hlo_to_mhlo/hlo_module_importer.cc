@@ -122,6 +122,10 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
         ConvertSharding(hlo_module.spmd_output_sharding(), &builder_));
   }
 
+  module->setAttr("mhlo.input_output_alias",
+                  ConvertInputOutputAlias(
+                      hlo_module.input_output_alias_config(), &builder_));
+
   if (hlo_module.has_spmd_parameters_shardings()) {
     llvm::SmallVector<mlir::Attribute> parameter_shardings;
     parameter_shardings.reserve(hlo_module.spmd_parameters_shardings().size());

@@ -3736,6 +3736,13 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     *hlo_module.mutable_spmd_output_sharding() =
         *xla::ConvertSharding(spmd_output_sharding.getValue());
   }
+  if (auto input_output_alias =
+          module->getAttrOfType<mlir::ArrayAttr>("mhlo.input_output_alias")) {
+    if (std::optional<xla::HloInputOutputAliasProto> input_output_alias_proto =
+            xla::ConvertInputOutputAlias(input_output_alias.getValue())) {
+      *hlo_module.mutable_input_output_alias() = *input_output_alias_proto;
+    }
+  }
   if (auto spmd_parameters_sharding = module->getAttrOfType<mlir::ArrayAttr>(
           "mhlo.spmd_parameters_shardings")) {
     for (const auto& sharding : spmd_parameters_sharding.getValue()) {

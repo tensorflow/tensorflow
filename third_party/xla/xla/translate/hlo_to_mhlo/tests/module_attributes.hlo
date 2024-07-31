@@ -5,6 +5,18 @@
 # FLATTEN-CHECK-LABEL: module @main attributes {
 hlo_module       {
   name: "main"
+  input_output_alias {
+    entries {
+      output_shape_index: 0
+      parameter_number: 0
+      kind: MAY_ALIAS
+    }
+    entries {
+      output_shape_index: 1
+      parameter_number: 1
+      kind: MAY_ALIAS
+    }
+  }
   entry_computation_name: "main.5"
   computations {
     name: "main.5"
@@ -217,6 +229,7 @@ hlo_module       {
       value: "attr_value"
     }
   }
+# CHECK-SAME: mhlo.input_output_alias = [{alias = {kind = "may_alias", parameter_index = array<i64>, parameter_number = 0 : i64}, output_index = array<i64: 0>}, {alias = {kind = "may_alias", parameter_index = array<i64>, parameter_number = 1 : i64}, output_index = array<i64: 1>}]
 # CHECK-SAME: mhlo.is_dynamic = true
   is_dynamic: true
 # CHECK-SAME: mhlo.use_auto_spmd_partitioning = true
