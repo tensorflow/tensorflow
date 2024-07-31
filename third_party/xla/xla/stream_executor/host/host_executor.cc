@@ -137,16 +137,6 @@ absl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
   return absl::OkStatus();
 }
 
-absl::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                  uint8 pattern, uint64_t size) {
-  void* gpu_mem = location->opaque();
-  // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
-  // with the HostExecutor.
-  AsHostStream(stream)->EnqueueTask(
-      [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return absl::OkStatus();
-}
-
 absl::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                              const void* host_src,
                                              uint64_t size) {

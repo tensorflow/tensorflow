@@ -86,7 +86,10 @@ absl::Status GpuStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
       size % 4 == 0) {
     return Memset32(location, 0x0, size);
   } else {
-    return parent_->Memset(this, location, 0x0, size);
+    return GpuDriver::AsynchronousMemsetUint8(
+        parent_->gpu_context(),
+        reinterpret_cast<GpuDevicePtr>(location->opaque()), 0x0, size,
+        gpu_stream());
   }
 }
 

@@ -658,16 +658,6 @@ absl::Status GpuExecutor::SynchronousMemcpy(void* host_dst,
                                          AsCudaDevicePtr(gpu_src), size);
 }
 
-absl::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                 uint8_t pattern, uint64_t size) {
-  VLOG(2) << "enqueueing memset8 operation onto stream " << stream
-          << " at location " << location << " with size " << size
-          << " and pattern " << std::hex << pattern;
-  return GpuDriver::AsynchronousMemsetUint8(context_, AsCudaDevicePtr(location),
-                                            pattern, size,
-                                            AsGpuStreamValue(stream));
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);

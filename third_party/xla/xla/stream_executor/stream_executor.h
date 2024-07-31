@@ -235,14 +235,6 @@ class StreamExecutor {
     return SynchronousMemcpy(host_dst, device_src, size);
   }
 
-  // Enqueues an operation onto stream to set 8-bit patterns starting at
-  // location, for byte count given by size.  Returns whether the operation was
-  // successfully enqueued onto the stream.
-  virtual absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
-                              uint8_t pattern, uint64_t size) {
-    return absl::InternalError("Not implemented");
-  }
-
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
 
