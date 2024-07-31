@@ -11,7 +11,7 @@ package_group(
     packages = [
         "//learning/deepmind/partir/compiler/shardonnay/...",
         "//third_party/openxla/shardy/tools/...",
-        "//xla/service/spmd/shardy/...",
+        "//xla/...",
     ],
 )
 
