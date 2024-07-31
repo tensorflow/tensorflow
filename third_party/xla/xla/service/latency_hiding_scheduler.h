@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 #define XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -132,6 +131,7 @@ struct SchedulerConfig {
   bool force_send_recv_to_use_same_resource = false;
   bool use_real_cost_model = false;
   bool aggressive_scheduling_policies = false;
+  bool prioritize_async_depth_over_stall = false;
   bool enable_release_start_policy = false;
   bool resource_sharing = false;
   bool resource_serializing = false;
