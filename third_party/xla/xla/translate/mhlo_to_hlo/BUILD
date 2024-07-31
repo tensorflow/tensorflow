@@ -23,7 +23,6 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
