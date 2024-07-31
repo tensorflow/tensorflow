@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/sharding_propagation.h"
 
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/transforms/hlo_constant_splitter.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/protobuf_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
@@ -12068,6 +12071,43 @@ ENTRY %elementwise {
       op::Sharding(
           "{{devices=[2,2,2,1]<=[8]}, {devices=[1,2,2,1,2]<=[2,4]T(1,0) "
           "last_tile_dim_replicate}}"));
+}
+
+TEST_F(ShardingPropagationTest, GetShardingFromUserkCall) {
+  const absl::string_view hlo_string = R"(
+  HloModule GetShardingFromUserkCall
+
+  called_computation {
+    p0 = bf16[20,2,68096,8512] parameter(0), sharding={devices=[1,1,16,64]<=[64,16]T(1,0)}
+    %add_called_comp = bf16[20,2,68096,8512] add(p0, p0)
+    ROOT tuple = (bf16[20,2,68096,8512]) tuple(add_called_comp)
+  }
+
+  ENTRY main {
+    %param0 = bf16[20,2,68096,8512] parameter(0)
+    %add = bf16[20,2,68096,8512] add(param0, param0)
+    ROOT %call = (bf16[20,2,68096,8512]) call(add), to_apply=%called_computation, sharding={{devices=[1,1,16,64]<=[64,16]T(1,0)}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* instruction =
+      module->entry_computation()->GetInstructionWithName("add");
+  ASSERT_NE(instruction, nullptr);
+  HloInstruction* user =
+      module->entry_computation()->GetInstructionWithName("call");
+  ASSERT_NE(user, nullptr);
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  auto sharding_helper = std::make_unique<CustomCallShardingHelper>();
+  std::optional<HloSharding> user_sharding =
+      ShardingPropagation::GetShardingFromUser(
+          /*instruction=*/*instruction, /*user=*/*user, /*aggressiveness=*/3,
+          /*is_spmd=*/true, /*call_graph=*/*call_graph, sharding_helper.get());
+  ASSERT_TRUE(user_sharding.has_value());
+  absl::StatusOr<HloSharding> expected_sharding =
+      ParseSharding("{devices=[1,1,16,64]<=[64,16]T(1,0)}");
+  ASSERT_OK(expected_sharding);
+  EXPECT_THAT(user_sharding.value(), expected_sharding.value());
 }
 
 }  // namespace

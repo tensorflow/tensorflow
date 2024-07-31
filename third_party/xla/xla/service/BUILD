@@ -842,6 +842,7 @@ xla_cc_test(
         "sharding_propagation_test.cc",
     ],
     deps = [
+        ":call_graph",
         ":hlo_dce",
         ":hlo_parser",
         ":sharding_propagation",

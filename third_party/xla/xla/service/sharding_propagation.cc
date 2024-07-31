@@ -1970,6 +1970,17 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       return std::nullopt;
     }
+    case HloOpcode::kCall: {
+      int32_t instruction_operand_index = user.operand_index(&instruction);
+      CHECK(user.has_to_apply());
+      HloComputation* to_apply_comp = user.to_apply();
+      if (to_apply_comp->parameter_instruction(instruction_operand_index)
+              ->has_sharding()) {
+        return to_apply_comp->parameter_instruction(instruction_operand_index)
+            ->sharding();
+      }
+      return std::nullopt;
+    }
     default: {
       // If the user output shape is compatible with the current instruction
       // shape excluding element type and the current instruction is supported
