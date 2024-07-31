@@ -3746,8 +3746,9 @@ bool ConvolutionVisitor::DoesConvolutionFeedUnpropagatableOp(
     }
 
     int64_t depth_to_use = depth;
-    // When we see a convolution, we reduce the depth to look further for.
-    if (user->opcode() == HloOpcode::kConvolution) {
+    // When we see a convolution/dot, we reduce the depth to look further for.
+    if (user->opcode() == HloOpcode::kConvolution ||
+        user->opcode() == HloOpcode::kDot) {
       depth_to_use--;
     }
 
