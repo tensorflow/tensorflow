@@ -195,19 +195,9 @@ absl::StatusOr<void*> GetHipblasltDsoHandle() {
   return GetDsoHandle("hipblaslt", "");
 }
 
-<<<<<<< HEAD
-#if (TF_ROCM_VERSION >= 60000)
-#define HIP_SO_VERSION "6"
-#else
-#define HIP_SO_VERSION "5"
-#endif
-
-absl::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", HIP_SO_VERSION); }
-=======
 absl::StatusOr<void*> GetHipDsoHandle() {
   return GetDsoHandle("amdhip64", GetHipVersion());
 }
->>>>>>> upstream/master
 
 }  // namespace DsoLoader
 

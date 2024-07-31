@@ -115,10 +115,6 @@ class HloCostAnalysisCosts : public BaseCosts {
   float ComputeSeconds(const HloInstruction& instruction) override;
 
  private:
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
   const HloCostAnalysis& hlo_cost_analysis_;
 };
 

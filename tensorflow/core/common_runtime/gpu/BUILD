@@ -390,12 +390,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-<<<<<<< HEAD
-        "//tensorflow/core/platform:test",
-        "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
-=======
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
->>>>>>> upstream/master
         "@local_xla//xla/tests:test_macros_header",
     ],
 )

@@ -360,15 +360,11 @@ xla_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
     backends = ["gpu"],
-<<<<<<< HEAD
     tags = [
         "no_rocm", #TODO(rocm): TEMP, sync 24-06-03
-    ],
-=======
-    tags = if_google([
+    ] + if_google([
         "config-cuda-only",
     ]),
->>>>>>> upstream/master
     deps = [
         ":pjrt_c_api_ffi_extension_hdrs",
         ":pjrt_c_api_gpu",

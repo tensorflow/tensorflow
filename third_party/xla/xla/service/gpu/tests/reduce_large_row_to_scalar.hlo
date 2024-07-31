@@ -532,16 +532,6 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_298:.*]] = alloca %[[VAL_299:.*]], align 8
 // CHECK:         %[[VAL_300:.*]] = load %[[VAL_299]], ptr %[[VAL_301:.*]], align 1
 // CHECK:         %[[VAL_302:.*]] = load %[[VAL_299]], ptr %[[VAL_303:.*]], align 1
-<<<<<<< HEAD
-// CHECK:         %[[VAL_304:.*]] = extractvalue %[[VAL_299]] %[[VAL_300]], 0
-// CHECK:         %[[VAL_305:.*]] = extractvalue %[[VAL_299]] %[[VAL_302]], 0
-// CHECK:         %[[VAL_306:.*]] = fadd double %[[VAL_304]], %[[VAL_305]]
-// CHECK:         %[[VAL_307:.*]] = extractvalue %[[VAL_299]] %[[VAL_300]], 1
-// CHECK:         %[[VAL_308:.*]] = extractvalue %[[VAL_299]] %[[VAL_302]], 1
-// CHECK:         %[[VAL_309:.*]] = fadd double %[[VAL_307]], %[[VAL_308]]
-// CHECK:         %[[VAL_310:.*]] = insertvalue %[[VAL_299]] zeroinitializer, double %[[VAL_306]], 0
-// CHECK:         %[[VAL_311:.*]] = insertvalue %[[VAL_299]] %[[VAL_310]], double %[[VAL_309]], 1
-=======
 // CHECK-GCN:     %[[VAL_304:.*]] = extractvalue %[[VAL_299]] %[[VAL_302]], 1
 // CHECK-GCN:     %[[VAL_305:.*]] = extractvalue %[[VAL_299]] %[[VAL_300]], 1
 // CHECK-PTX:     %[[VAL_304:.*]] = extractvalue %[[VAL_299]] %[[VAL_300]], 0
@@ -558,7 +548,6 @@ ENTRY reduce.1 {
 // CHECK-GCN:     %[[VAL_311:.*]] = insertvalue %[[VAL_299]] %[[VAL_310]], double %[[VAL_306]], 1
 // CHECK-PTX:     %[[VAL_310:.*]] = insertvalue %[[VAL_299]] zeroinitializer, double %[[VAL_306]], 0
 // CHECK-PTX:     %[[VAL_311:.*]] = insertvalue %[[VAL_299]] %[[VAL_310]], double %[[VAL_309]], 1
->>>>>>> upstream/master
 // CHECK:         store %[[VAL_299]] %[[VAL_311]], ptr{{.*}} %[[VAL_298]], align 1
 // CHECK:         %[[VAL_312:.*]] = load %[[VAL_299]], ptr{{.*}} %[[VAL_298]], align 1
 // CHECK:         store %[[VAL_299]] %[[VAL_312]], ptr %[[VAL_313:.*]], align 1

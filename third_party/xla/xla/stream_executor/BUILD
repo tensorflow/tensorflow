@@ -706,49 +706,6 @@ cc_library(
 )
 #===--------------------------------------------------------------------------------------------===#
 
-<<<<<<< HEAD
-# TODO(ezhulenev): This should be merged into regular `stream_executor` target and `stream.cc` moved
-# into its own target, however today we have problems with backward references when we try to link
-# everything together. See: https://lld.llvm.org/ELF/warn_backrefs.html.
-cc_library(
-    name = "stream_executor_pimpl",
-    tags = ["avoid_dep"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":blas",  # build_cleaner: keep
-        ":command_buffer",  # build_cleaner: keep
-        ":dnn",  # build_cleaner: keep
-        ":fft",
-        ":host_memory_allocation",  # build_cleaner: keep
-        ":kernel_spec",
-        ":platform",
-        ":stream_common",
-        ":stream_executor_common",
-        ":stream_executor_h",
-        "//xla/tsl/util:env_var",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:thread_annotations",
-    ],
-    alwayslink = True,
-)
-
-=======
->>>>>>> upstream/master
 # We have a separate `stream_executor_impl` target because in open source we are building multiple
 # shared libraries and then link them together (this is an implementation detail of Tensorflow
 # framework), and we take extra care not to define symbols in multiple objects. Otherwise we can
