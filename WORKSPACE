@@ -64,3 +64,44 @@ tf_workspace1()
 load("@//tensorflow:workspace0.bzl", "tf_workspace0")
 
 tf_workspace0()
+
+# Define CUDA path
+new_local_repository(
+    name = "cuda",
+    path = "/usr/local/cuda-12.2",
+    build_file_content = """
+cc_library(
+    name = "cuda",
+    includes = ["include"],
+    linkopts = ["-Llib64"],
+    deps = [],
+)
+"""
+)
+
+# Define cuDNN path
+new_local_repository(
+    name = "cudnn",
+    path = "/usr/local/cuda-12.2-cudnn",
+    build_file_content = """
+cc_library(
+    name = "cudnn",
+    includes = ["include"],
+    linkopts = ["-Llib64"],
+    deps = [],
+)
+"""
+)
+
+# Ensure CUDA and cuDNN are linked properly in build configuration
+load("@cuda//:cuda.BUILD", "cuda_cc_library")
+load("@cudnn//:cudnn.BUILD", "cudnn_cc_library")
+
+cc_library(
+    name = "tensorflow_cuda",
+    srcs = glob(["tensorflow/core/kernels/cuda/*.cc"]),
+    deps = [
+        "@cuda//:cuda",
+        "@cudnn//:cudnn",
+    ],
+)
