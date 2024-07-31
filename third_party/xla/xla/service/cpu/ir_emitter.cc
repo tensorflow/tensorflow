@@ -2643,6 +2643,22 @@ absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 }
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+
+// Emits operands alloca vector for oneDNN custom calls.
+std::vector<StackAlloca> IrEmitter::EmitOneDnnOperandsAlloca(
+    HloInstruction* custom_call, llvm::Value*& args_val, int& arg_indx) {
+  std::vector<StackAlloca> operands_stack_alloca;
+  const int num_operands = custom_call->operand_count();
+  operands_stack_alloca.reserve(num_operands);
+  for (int i = 0; i < num_operands; ++i) {
+    llvm_ir::IrArray ir_array(GetIrArrayFor(custom_call->operand(i)));
+    StackAlloca stack_alloca = GetAllocaAndEmitMemrefInfo(*b(), ir_array);
+    args_val = b()->CreateInsertValue(args_val, stack_alloca.value, arg_indx++);
+    operands_stack_alloca.push_back(std::move(stack_alloca));
+  }
+  return operands_stack_alloca;
+}
+
 absl::Status IrEmitter::HandleOneDnnMatMulCalls(
     HloInstruction* custom_call, std::string runtime_symbol_name) {
   // We would like to emit LLVM IR for the following function call
@@ -2684,7 +2700,6 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   args_val = b()->CreateInsertValue(args_val, run_opts_val, arg_indx++);
 
   // Insert OneDnnMatMulConfig.
-
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   auto backend_config = typed_custom_call->backend_config<BackendConfig>();
   OneDnnMatMulConfig matmul_config;
@@ -2696,17 +2711,8 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   args_val = b()->CreateInsertValue(args_val, matmul_config_val, arg_indx++);
 
   // Insert operands.
-  std::vector<StackAlloca> operands_stack_alloca;
-  operands_stack_alloca.reserve(num_operands);
-  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
-                    [this](HloInstruction* instr) {
-                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
-                      return GetAllocaAndEmitMemrefInfo(*b(), ir_array);
-                    });
-  for (int i = 0; i < num_operands; ++i) {
-    args_val = b()->CreateInsertValue(args_val, operands_stack_alloca[i].value,
-                                      arg_indx++);
-  }
+  auto operands_stack_alloca =
+      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
   TF_RET_CHECK(nargs == arg_indx)
       << "Number of arguments don't equal the last argument index.";
 
@@ -2812,17 +2818,8 @@ absl::Status IrEmitter::HandleOneDnnConvolution(HloInstruction* custom_call) {
       b()->CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config));
   args_val = b()->CreateInsertValue(args_val, conv_config_val, arg_indx++);
 
-  std::vector<StackAlloca> operands_stack_alloca;
-  operands_stack_alloca.reserve(num_operands);
-  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
-                    [this](HloInstruction* instr) {
-                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
-                      return GetAllocaAndEmitMemrefInfo(*b(), ir_array);
-                    });
-  for (int i = 0; i < num_operands; ++i) {
-    args_val = b()->CreateInsertValue(args_val, operands_stack_alloca[i].value,
-                                      arg_indx++);
-  }
+  auto operands_stack_alloca =
+      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
   TF_RET_CHECK(nargs == arg_indx)
       << "Number of arguments don't equal the last argument index.";
 
@@ -2891,17 +2888,10 @@ absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   args_val = b()->CreateInsertValue(args_val, ln_config_val, arg_indx++);
 
   // Insert operands.
-  std::vector<StackAlloca> operands_stack_alloca;
-  operands_stack_alloca.reserve(num_operands);
-  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
-                    [this](HloInstruction* instr) {
-                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
-                      return GetAllocaAndEmitMemrefInfo(*b(), ir_array);
-                    });
-  for (int i = 0; i < num_operands; ++i) {
-    args_val = b()->CreateInsertValue(args_val, operands_stack_alloca[i].value,
-                                      arg_indx++);
-  }
+  auto operands_stack_alloca =
+      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
+  TF_RET_CHECK(nargs == arg_indx)
+      << "Number of arguments don't equal the last argument index.";
 
   llvm::Value* args_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "layernorm.args", b());

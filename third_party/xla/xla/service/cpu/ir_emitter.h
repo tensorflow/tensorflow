@@ -59,6 +59,10 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/xla_data.pb.h"
 
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "xla/service/cpu/onednn_memory_util.h"
+#endif
+
 namespace xla {
 namespace cpu {
 
@@ -320,6 +324,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);
   absl::Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  std::vector<StackAlloca> EmitOneDnnOperandsAlloca(HloInstruction* custom_call,
+                                                    llvm::Value*& args_val,
+                                                    int& arg_indx);
   absl::Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
                                        std::string runtime_symbol_name);
   absl::Status HandleOneDnnSoftmax(HloInstruction* hlo);

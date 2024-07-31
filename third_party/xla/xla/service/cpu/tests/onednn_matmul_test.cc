@@ -1541,7 +1541,7 @@ TEST_F(MatmulTest, ConsecutiveBinaryAdd) {
 
 TEST_F(MatmulTest, BroadcastedAddAfterFusion) {
   const char* matmul_module_str = R"(
-  HloModule matmul.nonscalar.test.1
+  HloModule matmul.nonscalar.test
   ENTRY matmul.nonscalar.test.f32 {
     arg.0 = f32[16,400,500] parameter(0)
     arg.1 = f32[16,500,3] parameter(1)
