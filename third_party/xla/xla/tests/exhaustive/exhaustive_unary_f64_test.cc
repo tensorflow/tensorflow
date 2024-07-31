@@ -34,6 +34,7 @@ limitations under the License.
 
 namespace xla {
 namespace exhaustive_op_test {
+namespace {
 
 // Exhaustive test for unary operations for double.
 //
@@ -146,5 +147,6 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<double>(
         4000000000ull, 16000000)));
 
+}  // namespace
 }  // namespace exhaustive_op_test
 }  // namespace xla

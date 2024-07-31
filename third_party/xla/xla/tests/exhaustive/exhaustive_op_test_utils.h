@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/bit_cast.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tests/client_library_test_base.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -60,6 +62,12 @@ extern int eup_version;
 
 // Get the TPU EUP version (if it was provided).
 int GetEupVersion();
+
+// Return if the user specified dumping all tested values with their expected
+// and actual results.
+bool ShouldDumpValues();
+
+void AddExhaustiveFlags(std::vector<tsl::Flag>& flag_list);
 
 // Determines if the real component of the complex number is subnormal (either
 // sign).
@@ -257,7 +265,8 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   explicit ExhaustiveOpTestBase()
       : ty_(T),
         platform_(client_->platform()->Name()),
-        eup_version_(xla::exhaustive_op_test::GetEupVersion()) {
+        eup_version_(xla::exhaustive_op_test::GetEupVersion()),
+        should_dump_values_(xla::exhaustive_op_test::ShouldDumpValues()) {
     SetFastMathDisabled(true);
 
     // Run all HLO passes.  In particular, constant folding is disabled by
@@ -295,6 +304,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
     TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
                             RunComputationHelper(comp, input_literals));
+
     ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen,
                check_valid_range);
   }
@@ -634,6 +644,9 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   //
   // XLA:GPU preserves denormal signs, but other backends don't.
   bool relaxed_denormal_signs_ = platform_ != "CUDA";
+
+  // Indicates if files of the expected and actual values should be dumped.
+  bool should_dump_values_ = false;
 };
 
 // Represents a set of 64 bit chunks by representing the starting bit chunk,

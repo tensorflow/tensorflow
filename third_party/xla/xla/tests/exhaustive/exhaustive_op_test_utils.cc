@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -30,11 +31,17 @@ limitations under the License.
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/literal.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/file_system.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -43,6 +50,17 @@ namespace exhaustive_op_test {
 int eup_version = 0;
 
 int GetEupVersion() { return eup_version; }
+
+bool dump_values = false;
+
+bool ShouldDumpValues() { return dump_values; }
+
+void AddExhaustiveFlags(std::vector<tsl::Flag>& flag_list) {
+  flag_list.push_back(
+      tsl::Flag("dump_values", &xla::exhaustive_op_test::dump_values,
+                "Include to dump files of the expected and actual results "
+                "(default false)."));
+}
 
 bool IsSubnormalReal(xla::complex64 value) { return IsSubnormal(value.real()); }
 
@@ -409,6 +427,30 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     }
   }
 
+  // Dump file for the test. This is unused unless this->should_dump_values is
+  // true.
+  std::unique_ptr<tsl::WritableFile> dump_file;
+  if (should_dump_values_) {
+    auto* env = tsl::Env::Default();
+
+    std::string cleaned_suite_name =
+        absl::StrReplaceAll(SuiteName(), {{"/", "__"}});
+    std::string cleaned_test_name =
+        absl::StrReplaceAll(TestName(), {{"/", "__"}});
+    std::string dump_filename = absl::StrFormat(
+        "%s_%s_dump.txt", cleaned_suite_name, cleaned_test_name);
+
+    std::string outdir;
+    if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+      dump_filename = tsl::io::JoinPath(outdir, dump_filename);
+    }
+
+    TF_EXPECT_OK(env->NewWritableFile(dump_filename, &dump_file));
+    TF_EXPECT_OK(
+        dump_file->Append("input values -> actual output {expected output}\n"
+                          "-----------------------------------------------\n"));
+  }
+
   NativeInputsList inputs_arr;
   for (int i = 0; i < N; ++i) {
     const Literal& literal = input_literals[i];
@@ -432,6 +474,22 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     NativeT actual = result_arr[i];
     NativeT expected =
         static_cast<NativeT>(CallOperation(evaluate_op, inputs_ref_ty));
+
+    // Dump input, actual, and expected values _before_ we do error checking to
+    // avoid the continues.
+    if (should_dump_values_) {
+      std::string result_string;
+      absl::StrAppend(
+          &result_string,
+          StringifyNum<NativeT, ComponentIntegralNativeT, N>(inputs), " -> ",
+          StringifyNum<NativeT, ComponentIntegralNativeT>(actual));
+      absl::StrAppend(&result_string, " {",
+                      StringifyNum<NativeT, ComponentIntegralNativeT>(expected),
+                      "}");
+      absl::StrAppend(&result_string, "\n");
+      TF_EXPECT_OK(dump_file->Append(result_string));
+    }
+
     ErrorSpec error_spec = CallErrorSpec(error_spec_gen, inputs);
 
     if (error_spec.skip_comparison) {
@@ -535,6 +593,10 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     PrintMismatch(&mismatches, [mismatch] { return mismatch; });
   }
   EXPECT_EQ(mismatches, 0);
+
+  if (should_dump_values_) {
+    TF_EXPECT_OK(dump_file->Close());
+  }
 }
 
 template class ExhaustiveOpTestBase<C128, 1>;
