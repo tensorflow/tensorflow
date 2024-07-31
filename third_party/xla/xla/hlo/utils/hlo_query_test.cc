@@ -40,6 +40,14 @@ int CountInstructions(Hlo& module, HloOpcode opcode) {
   return counter;
 }
 
+constexpr absl::string_view kBasicHloString = R"(
+HloModule test
+ENTRY main {
+  zero = f32[] constant(0)
+  five = f32[] constant(5)
+  ROOT out = f32[] add(zero, five)
+})";
+
 TEST_F(HloQueryTest,
        GetInstructionWithOpCodeReturnsMatchingInstructionForModule) {
   constexpr absl::string_view kHloString = R"(
@@ -130,6 +138,73 @@ TEST_F(HloQueryTest, GetUniqueGteTest) {
   EXPECT_NE(gte1, nullptr);
   HloInstruction* gte2 = hlo_query::GetUniqueGteInstruction(param, /*index=*/1);
   EXPECT_EQ(gte2, nullptr);
+}
+
+TEST_F(HloQueryTest, FindComputationTest) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kBasicHloString));
+  EXPECT_NE(hlo_query::FindComputation(module.get(), "main"), nullptr);
+  EXPECT_EQ(hlo_query::FindComputation(module.get(), "foo"), nullptr);
+}
+
+TEST_F(HloQueryTest, FindInstructionUsingNameTest) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kBasicHloString));
+  EXPECT_NE(hlo_query::FindInstruction(module.get(), "zero"), nullptr);
+  EXPECT_NE(hlo_query::FindInstruction(module.get(), "five"), nullptr);
+  EXPECT_NE(hlo_query::FindInstruction(module.get(), "out"), nullptr);
+  EXPECT_EQ(hlo_query::FindInstruction(module.get(), "foo"), nullptr);
+}
+
+TEST_F(HloQueryTest, FindInstructionUsingOpcodeTest) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kBasicHloString));
+  EXPECT_NE(hlo_query::FindInstruction(module.get(),
+                                       StringToHloOpcode("add").value()),
+            nullptr);
+  EXPECT_NE(hlo_query::FindInstruction(module.get(),
+                                       StringToHloOpcode("constant").value()),
+            nullptr);
+  EXPECT_EQ(hlo_query::FindInstruction(module.get(),
+                                       StringToHloOpcode("select").value()),
+            nullptr);
+}
+
+TEST_F(HloQueryTest, FindInstructionUsingNameAndOpcodeTest) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kBasicHloString));
+  auto main = hlo_query::FindComputation(module.get(), "main");
+  EXPECT_NE(main, nullptr);
+  auto find_zero = hlo_query::FindInstruction(main, "zero", "constant");
+  auto find_five = hlo_query::FindInstruction(main, "five", "constant");
+  auto find_out = hlo_query::FindInstruction(main, "out", "add");
+  EXPECT_NE(find_zero.first, nullptr);
+  EXPECT_NE(find_five.first, nullptr);
+  EXPECT_NE(find_out.first, nullptr);
+  EXPECT_EQ(find_zero.second, 0);
+  EXPECT_EQ(find_five.second, 1);
+  EXPECT_EQ(find_out.second, 2);
+}
+
+TEST_F(HloQueryTest, FindInstructionDoesNotExistTest) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kBasicHloString));
+  auto main = hlo_query::FindComputation(module.get(), "main");
+  EXPECT_NE(main, nullptr);
+  auto find_beef = hlo_query::FindInstruction(main, "dead", "beef");
+  auto find_nothing = hlo_query::FindInstruction(main, "", "");
+  EXPECT_EQ(find_beef.first, nullptr);
+  EXPECT_EQ(find_beef.second, -1);
+  EXPECT_EQ(find_nothing.first, nullptr);
+  EXPECT_EQ(find_nothing.second, -1);
+}
+
+TEST_F(HloQueryTest, IsBeforeInComputationTest) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kBasicHloString));
+  auto main = hlo_query::FindComputation(module.get(), "main");
+  EXPECT_TRUE(hlo_query::IsBeforeInComputation(main, "zero", "five"));
+  EXPECT_TRUE(hlo_query::IsBeforeInComputation(main, "five", "out"));
 }
 
 }  // namespace

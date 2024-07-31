@@ -4771,6 +4771,7 @@ xla_cc_test(
     deps = [
         ":execution_stream_assignment",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service/gpu/runtime:thunk",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/status",

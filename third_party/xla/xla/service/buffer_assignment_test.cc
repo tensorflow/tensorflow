@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
@@ -52,6 +53,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+using hlo_query::FindComputation;
+using hlo_query::FindInstruction;
 namespace {
 
 using memory_space_assignment::PresetAssignments;

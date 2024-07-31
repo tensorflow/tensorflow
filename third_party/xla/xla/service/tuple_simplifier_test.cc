@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
@@ -30,6 +31,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+using hlo_query::FindComputation;
+using hlo_query::FindInstruction;
 namespace {
 
 namespace op = xla::testing::opcode_matchers;

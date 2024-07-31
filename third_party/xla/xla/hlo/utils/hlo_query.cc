@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -269,22 +271,72 @@ HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
   return gte;
 }
 
-bool IsBeforeInComputation(const HloComputation* computation,
-                           absl::string_view inst1, absl::string_view inst2) {
-  int index1 = -1;
-  int index2 = -1;
+HloComputation* FindComputation(HloModule* module, absl::string_view name) {
+  auto computations = module->computations();
+  auto it = absl::c_find_if(
+      computations, [&](HloComputation* c) { return c->name() == name; });
+  if (it == computations.end()) {
+    return nullptr;
+  }
+  return *it;
+}
+
+std::pair<HloInstruction*, int> FindInstruction(
+    const HloComputation* computation, absl::string_view name,
+    absl::string_view opcode) {
   int current_index = 0;
+  absl::StatusOr<HloOpcode> opcode_enum = StringToHloOpcode(opcode);
   for (auto instruction : computation->instructions()) {
-    if (instruction->name() == inst1) {
-      index1 = current_index;
-    }
-    if (instruction->name() == inst2) {
-      index2 = current_index;
+    // check both opcode and enum if they are provided
+    // otherwise check only one of them
+    if (!name.empty() && opcode_enum.ok()) {
+      if (instruction->name() == name &&
+          instruction->opcode() == opcode_enum.value()) {
+        return {instruction, current_index};
+        break;
+      }
+    } else if (!name.empty()) {
+      if (instruction->name() == name) {
+        return {instruction, current_index};
+        break;
+      }
+    } else if (opcode_enum.ok()) {
+      if (instruction->opcode() == opcode_enum.value()) {
+        return {instruction, current_index};
+        break;
+      }
+    } else {
+      break;
     }
     current_index++;
   }
-  current_index++;
-  return index1 < index2;
+  return {nullptr, -1};
+}
+
+HloInstruction* FindInstruction(HloModule* module, absl::string_view name) {
+  for (const HloComputation* c : module->computations()) {
+    auto it = FindInstruction(c, name, "").first;
+    if (it != nullptr) {
+      return it;
+    }
+  }
+  return nullptr;
+}
+
+HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode) {
+  for (const HloComputation* c : module->computations()) {
+    auto it = FindInstruction(c, "", HloOpcodeString(opcode)).first;
+    if (it != nullptr) {
+      return it;
+    }
+  }
+  return nullptr;
+}
+
+bool IsBeforeInComputation(const HloComputation* computation,
+                           absl::string_view inst1, absl::string_view inst2) {
+  return FindInstruction(computation, inst1, "").second <
+         FindInstruction(computation, inst2, "").second;
 }
 }  // namespace hlo_query
 }  // namespace xla

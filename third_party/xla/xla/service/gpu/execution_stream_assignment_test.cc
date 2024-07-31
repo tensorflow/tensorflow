@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
@@ -39,6 +40,8 @@ using AsyncExecutionStreamIds =
     ::xla::gpu::ExecutionStreamAssignment::AsyncExecutionStreamIds;
 
 namespace xla::gpu {
+using hlo_query::FindComputation;
+using hlo_query::FindInstruction;
 namespace {
 
 class ExecutionStreamAssignmentTest : public HloTestBase {

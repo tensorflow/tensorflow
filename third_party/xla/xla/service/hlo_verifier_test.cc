@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
@@ -51,6 +52,8 @@ limitations under the License.
 #include "tsl/platform/test.h"
 
 namespace xla {
+using hlo_query::FindComputation;
+using hlo_query::FindInstruction;
 namespace {
 
 using ::testing::HasSubstr;

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_UTILS_HLO_QUERY_H_
 
 #include <cstdint>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -153,7 +154,19 @@ bool HasX64TransformedHostTransfer(const HloModule& module);
 HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
                                         int64_t index);
 
-// TODO: b/356153995 - refactor hlo_test_base
+// Gets the computation from the given module with the given name.
+HloComputation* FindComputation(HloModule* module, absl::string_view name);
+// Gets the first instruction from the given module with the given name.
+HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
+// Gets the first instruction from the given module with the given opcode.
+HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
+// Gets the instruction from the given computation by name or by opcode; the
+// function returns the pointer and the index of the instruction if it exists.
+// Otherwise it returns {nullptr, -1}.
+std::pair<HloInstruction*, int> FindInstruction(
+    const HloComputation* computation, absl::string_view name,
+    absl::string_view opcode);
+
 // Check that one instruction comes before another one for a given computation.
 // The function returns true if the first instruction comes before the second
 // one, and false otherwise. This is useful for partial checks on the

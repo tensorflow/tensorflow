@@ -1011,43 +1011,6 @@ HloTestBase::RunAndCompareTwoModulesInternal(
                                   reference_preprocessor);
 }
 
-HloComputation* HloTestBase::FindComputation(HloModule* module,
-                                             absl::string_view name) {
-  auto computations = module->computations();
-  auto it = absl::c_find_if(
-      computations, [&](HloComputation* c) { return c->name() == name; });
-  if (it == computations.end()) {
-    return nullptr;
-  }
-  return *it;
-}
-
-HloInstruction* HloTestBase::FindInstruction(HloModule* module,
-                                             absl::string_view name) {
-  for (const HloComputation* c : module->computations()) {
-    auto instructions = c->instructions();
-    auto it = absl::c_find_if(
-        instructions, [&](HloInstruction* i) { return i->name() == name; });
-    if (it != instructions.end()) {
-      return *it;
-    }
-  }
-  return nullptr;
-}
-
-HloInstruction* HloTestBase::FindInstruction(HloModule* module,
-                                             HloOpcode opcode) {
-  for (const HloComputation* c : module->computations()) {
-    auto instructions = c->instructions();
-    auto it = absl::c_find_if(
-        instructions, [&](HloInstruction* i) { return i->opcode() == opcode; });
-    if (it != instructions.end()) {
-      return *it;
-    }
-  }
-  return nullptr;
-}
-
 std::vector<HloInstruction*> HloTestBase::FindInstructions(HloModule* module,
                                                            HloOpcode opcode) {
   std::vector<HloInstruction*> instructions;
