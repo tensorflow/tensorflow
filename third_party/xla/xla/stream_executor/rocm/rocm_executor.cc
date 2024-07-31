@@ -642,7 +642,8 @@ absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
 
 absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  auto stream = std::make_unique<GpuStream>(this);
+  TF_ASSIGN_OR_RETURN(auto event, CreateGpuEvent(/*allow_timing=*/false));
+  auto stream = std::make_unique<GpuStream>(this, std::move(event));
   if (priority.has_value()) {
     if (std::holds_alternative<StreamPriority>(*priority)) {
       stream->SetPriority(std::get<StreamPriority>(*priority));

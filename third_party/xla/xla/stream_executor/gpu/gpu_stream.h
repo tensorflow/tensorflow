@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <variant>
 
 #include "absl/functional/any_invocable.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
@@ -46,11 +48,11 @@ class GpuExecutor;
 // Thread-safe post-initialization.
 class GpuStream : public StreamCommon {
  public:
-  explicit GpuStream(GpuExecutor* parent)
+  GpuStream(GpuExecutor* parent, std::unique_ptr<GpuEvent> completed_event)
       : StreamCommon(parent),
         parent_(parent),
         gpu_stream_(nullptr),
-        completed_event_(nullptr) {}
+        completed_event_(std::move(completed_event)) {}
 
   // Note: teardown is handled by a parent's call to DeallocateStream.
   ~GpuStream() override {
@@ -80,7 +82,7 @@ class GpuStream : public StreamCommon {
   // Retrieves an event which indicates that all work enqueued into the stream
   // has completed. Ownership of the event is not transferred to the caller, the
   // event is owned by this stream.
-  GpuEventHandle* completed_event() { return &completed_event_; }
+  GpuEvent* completed_event() { return completed_event_.get(); }
 
   // Returns the GpuStreamHandle value for passing to the CUDA API.
   //
@@ -114,9 +116,7 @@ class GpuStream : public StreamCommon {
   GpuExecutor* parent_;         // Executor that spawned this stream.
   GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.
   std::variant<StreamPriority, int> stream_priority_;
-
-  // Event that indicates this stream has completed.
-  GpuEventHandle completed_event_ = nullptr;
+  std::unique_ptr<GpuEvent> completed_event_;
 };
 
 // Helper functions to simplify extremely common flows.

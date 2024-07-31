@@ -309,6 +309,7 @@ gpu_only_cc_library(
     name = "gpu_stream_header",
     hdrs = ["gpu_stream.h"],
     deps = [
+        ":gpu_event_header",
         ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor:device_memory",
