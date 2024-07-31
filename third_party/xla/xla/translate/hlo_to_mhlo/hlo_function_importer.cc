@@ -27,7 +27,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -52,24 +55,20 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/LogicalResult.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/translate/hlo_to_mhlo/attribute_importer.h"
@@ -329,52 +328,6 @@ static bool IsNestedTupleInData(Type type) {
   return false;
 }
 
-static bool HasCustomLayout(const Shape& shape) {
-  if (shape.IsTuple()) {
-    return llvm::any_of(shape.tuple_shapes(), HasCustomLayout);
-  }
-  return shape.has_layout() && !shape.layout().minor_to_major().empty() &&
-         shape.layout() != LayoutUtil::GetDefaultLayoutForShape(shape);
-}
-
-static std::pair<mlir::Attribute, mlir::ArrayAttr> GetLayoutAttribute(
-    mlir::Builder& b, const Shape& shape,
-    std::optional<const Layout> maybe_layout = std::nullopt) {
-  if (shape.IsTuple()) {
-    llvm::SmallVector<mlir::Attribute> element_attrs;
-    llvm::SmallVector<mlir::Attribute> tile_attrs;
-    for (const auto& tuple_shape : shape.tuple_shapes()) {
-      // TODO here we do not disect the layout of a tuple into sublayouts.
-      // Presently ShapeLayout cannot represent an explicit layout for a tuple
-      // type so this should never occur. However, if this function were to
-      // be used in another context where this assumption were to be lifted.
-      // users should be aware of this limitation which will use the default
-      // layout for tuple subshapes.
-      std::pair<mlir::Attribute, mlir::Attribute> inner =
-          GetLayoutAttribute(b, tuple_shape);
-      element_attrs.push_back(inner.first);
-      tile_attrs.push_back(inner.second);
-    }
-    return std::make_pair((mlir::Attribute)b.getArrayAttr(element_attrs),
-                          b.getArrayAttr(tile_attrs));
-  }
-
-  Layout layout = maybe_layout.value_or(
-      shape.has_layout() ? shape.layout()
-                         : LayoutUtil::GetDefaultLayoutForShape(shape));
-
-  llvm::SmallVector<mlir::Attribute> vec_of_tiles;
-  for (const Tile& tile : layout.tiles()) {
-    llvm::SmallVector<int64_t> tile_vec = {tile.dimensions().begin(),
-                                           tile.dimensions().end()};
-    vec_of_tiles.push_back(b.getIndexTensorAttr(tile_vec));
-  }
-  llvm::SmallVector<int64_t> layout_vec = {layout.minor_to_major().begin(),
-                                           layout.minor_to_major().end()};
-  return std::make_pair(b.getIndexTensorAttr(layout_vec),
-                        b.getArrayAttr(vec_of_tiles));
-}
-
 mlir::Attribute GetFrontendAttributes(mlir::Builder& b,
                                       const FrontendAttributes& attributes) {
   llvm::SmallVector<mlir::NamedAttribute> attrs;
@@ -606,48 +559,6 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   if (computation.execution_thread() != "main") {
     function->setAttr("execution_thread",
                       builder_->getStringAttr(computation.execution_thread()));
-  }
-
-  // The MLIR CPU pipeline assumes default layouts throughout the program. At
-  // the boundaries, this may not be the case, so layout information needs to
-  // be propagated to adapt the data layouts.
-  if (computation.IsEntryComputation()) {
-    const auto& computation_layout =
-        computation.parent()->entry_computation_layout();
-    if (computation_layout.LayoutIsSet() &&
-        !computation_layout.result_layout().shape().IsTuple()) {
-      if (HasCustomLayout(computation_layout.result_layout().shape())) {
-        std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
-            GetLayoutAttribute(*builder_,
-                               computation_layout.result_layout().shape(),
-                               computation_layout.result_layout().layout());
-        function->setAttr("xla_entry_computation_result_layout",
-                          layout_attrs.first);
-        function->setAttr("xla_entry_computation_result_tiles",
-                          layout_attrs.second);
-      }
-      if (llvm::any_of(computation_layout.parameter_layouts(),
-                       [](const ShapeLayout& shape) {
-                         return HasCustomLayout(shape.shape());
-                       })) {
-        llvm::SmallVector<mlir::Attribute> parameter_layouts;
-        llvm::SmallVector<mlir::Attribute> parameter_tiles;
-        for (auto& layout : computation_layout.parameter_layouts()) {
-          std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
-              GetLayoutAttribute(
-                  *builder_, layout.shape(),
-                  (layout.LayoutIsSet() && !layout.shape().IsTuple())
-                      ? std::optional<Layout>(layout.layout())
-                      : std::nullopt);
-          parameter_layouts.push_back(layout_attrs.first);
-          parameter_tiles.push_back(layout_attrs.second);
-        }
-        function->setAttr("xla_entry_computation_parameter_layouts",
-                          builder_->getArrayAttr(parameter_layouts));
-        function->setAttr("xla_entry_computation_parameter_tiles",
-                          builder_->getArrayAttr(parameter_tiles));
-      }
-    }
   }
 
   symbol_table_.insert(function);
