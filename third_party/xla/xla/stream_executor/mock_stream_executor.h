@@ -78,7 +78,6 @@ class MockStreamExecutor : public StreamExecutor {
                const BlockDim& block_dims, const ClusterDim& cluster_dims,
                const Kernel& k, const KernelArgs& args),
               (override));
-  MOCK_METHOD(void, UnloadKernel, (const Kernel* kernel), (override));
   MOCK_METHOD(DeviceMemoryBase, Allocate, (uint64_t size, int64_t memory_space),
               (override));
   MOCK_METHOD(void, Deallocate, (DeviceMemoryBase * mem), (override));

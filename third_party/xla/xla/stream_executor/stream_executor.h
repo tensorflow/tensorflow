@@ -158,9 +158,6 @@ class StreamExecutor {
     return absl::UnimplementedError("Not Implemented");
   }
 
-  // Releases any state associated with the previously loaded kernel.
-  virtual void UnloadKernel(const Kernel* kernel) {}
-
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,
   // nullptr is returned.

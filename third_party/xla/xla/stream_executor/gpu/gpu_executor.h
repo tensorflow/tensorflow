@@ -128,8 +128,8 @@ class GpuExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const MultiKernelLoaderSpec& spec) override;
 
-  // (supported on CUDA only)
-  void UnloadKernel(const Kernel* kernel) override;
+  // Releases any state associated with the previously loaded kernel.
+  void UnloadKernel(const Kernel* kernel);
   absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                           ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
