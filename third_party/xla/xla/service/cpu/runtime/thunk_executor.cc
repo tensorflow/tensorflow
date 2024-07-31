@@ -168,6 +168,11 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
     Thunk& thunk = *thunk_sequence_[i];
     auto execute_event = thunk.Execute(params);
 
+    // Fast path for thunks executed inline and returned OkExecuteEvent.
+    if (ABSL_PREDICT_TRUE(Thunk::IsOkExecuteEvent(execute_event))) {
+      continue;
+    }
+
     // If thunk execution is not completed yet, attach a continuation to
     // resume sequential execution starting from the next thunk.
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
@@ -199,6 +204,11 @@ void ThunkExecutor::ResumeExecuteSequential(
   for (int64_t i = index; i < thunk_sequence_.size(); ++i) {
     Thunk& thunk = *thunk_sequence_[i];
     auto execute_event = thunk.Execute(params);
+
+    // Fast path for thunks executed inline and returned OkExecuteEvent.
+    if (ABSL_PREDICT_TRUE(Thunk::IsOkExecuteEvent(execute_event))) {
+      continue;
+    }
 
     // If thunk execution is not completed yet, attach a continuation to
     // resume sequential execution starting from the next thunk.
