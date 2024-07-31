@@ -273,7 +273,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::LoadKernel(
     TF_ASSIGN_OR_RETURN(
         GpuFunctionHandle function,
         GpuRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
-    *cuda_kernel->gpu_function_ptr() = function;
+    cuda_kernel->set_gpu_function(function);
 
   } else {
     return absl::InternalError("No method of loading CUDA kernel provided");
@@ -283,14 +283,14 @@ absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::LoadKernel(
   // from a module, as CUDA runtime did that automatically for us.
   if (!spec.has_in_process_symbol()) {
     VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-    TF_RETURN_IF_ERROR(
-        GpuDriver::GetModuleFunction(context_, module, kernel_name->c_str(),
-                                     cuda_kernel->gpu_function_ptr()));
+    GpuFunctionHandle function;
+    TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
+        context_, module, kernel_name->c_str(), &function));
+    cuda_kernel->set_gpu_function(function);
   }
 
   // Update CUDA kernel properties after it was loaded in the CUDA context.
   cuda_kernel->set_name(*kernel_name);
-  cuda_kernel->set_gpu_context(context_);
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the CUDA API.
@@ -482,12 +482,12 @@ absl::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
                                             KernelMetadata* kernel_metadata) {
   int value;
   TF_RETURN_IF_ERROR(GpuDriver::FuncGetAttribute(
-      CU_FUNC_ATTRIBUTE_NUM_REGS, *cuda_kernel->gpu_function_ptr(), &value));
+      CU_FUNC_ATTRIBUTE_NUM_REGS, cuda_kernel->gpu_function(), &value));
   kernel_metadata->set_registers_per_thread(value);
 
   TF_RETURN_IF_ERROR(
       GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                  *cuda_kernel->gpu_function_ptr(), &value));
+                                  cuda_kernel->gpu_function(), &value));
   kernel_metadata->set_shared_memory_bytes(value);
   return absl::OkStatus();
 }
@@ -512,7 +512,7 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                  const Kernel& kernel, const KernelArgs& args) {
   CUstream custream = AsGpuStreamValue(stream);
   const GpuKernel* cuda_kernel = AsGpuKernel(&kernel);
-  CUfunction cufunc = cuda_kernel->AsGpuFunctionHandle();
+  CUfunction cufunc = cuda_kernel->gpu_function();
 
   if (cuda_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
     TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(

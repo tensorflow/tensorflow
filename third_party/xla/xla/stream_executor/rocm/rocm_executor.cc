@@ -284,10 +284,10 @@ absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::LoadKernel(
     TF_ASSIGN_OR_RETURN(
         GpuFunctionHandle function,
         GpuRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
-    *rocm_kernel->gpu_function_ptr() = function;
+    rocm_kernel->set_gpu_function(function);
 #else
-    *rocm_kernel->gpu_function_ptr() =
-        static_cast<hipFunction_t>(spec.in_process_symbol().symbol());
+    rocm_kernel->set_gpu_function(
+        static_cast<hipFunction_t>(spec.in_process_symbol().symbol()));
 #endif  // TF_ROCM_VERSION >= 60200
 
   } else {
@@ -298,9 +298,10 @@ absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::LoadKernel(
   // from a module, as ROCm runtime did that automatically for us.
   if (!spec.has_in_process_symbol()) {
     VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-    TF_RETURN_IF_ERROR(
-        GpuDriver::GetModuleFunction(context_, module, kernel_name->c_str(),
-                                     rocm_kernel->gpu_function_ptr()));
+    GpuFunctionHandle function;
+    TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
+        context_, module, kernel_name->c_str(), &function));
+    rocm_kernel->set_gpu_function(function);
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -322,12 +323,12 @@ absl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
                                             KernelMetadata* kernel_metadata) {
   int value = 0;
   TF_RETURN_IF_ERROR(GpuDriver::FuncGetAttribute(
-      HIP_FUNC_ATTRIBUTE_NUM_REGS, *rocm_kernel->gpu_function_ptr(), &value));
+      HIP_FUNC_ATTRIBUTE_NUM_REGS, rocm_kernel->gpu_function(), &value));
   kernel_metadata->set_registers_per_thread(value);
 
   TF_RETURN_IF_ERROR(
       GpuDriver::FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                  *rocm_kernel->gpu_function_ptr(), &value));
+                                  rocm_kernel->gpu_function(), &value));
   kernel_metadata->set_shared_memory_bytes(value);
   return absl::OkStatus();
 }
@@ -337,7 +338,7 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                  const Kernel& kernel, const KernelArgs& args) {
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);
   const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
-  hipFunction_t hipfunc = rocm_kernel->AsGpuFunctionHandle();
+  hipFunction_t hipfunc = rocm_kernel->gpu_function();
 
   if (rocm_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
     TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(

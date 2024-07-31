@@ -340,7 +340,7 @@ absl::StatusOr<GpuGraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
 
   TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
       &barrier_handle, graph_, dependencies, "noop",
-      AsGpuKernel(&**noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
+      AsGpuKernel(&**noop)->gpu_function(), 1, 1, 1, 1, 1, 1, 0,
       /*kernel_params=*/nullptr, /*extra=*/nullptr));
 #else
   TF_RETURN_IF_ERROR(
@@ -524,7 +524,7 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
            packed_args.number_of_arguments());
 
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
-  GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
+  GpuFunctionHandle gpu_func = gpu_kernel->gpu_function();
 
   void** kernel_params =
       const_cast<void**>(packed_args.argument_addresses().data());
