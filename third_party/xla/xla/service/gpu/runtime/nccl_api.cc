@@ -451,6 +451,7 @@ absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
   TF_RETURN_IF_ERROR(GroupEnd());
 
   std::vector<OwnedNcclComm> split_comms;
+  split_comms.reserve(split_comms_handles.size());
   for (size_t i = 0; i < split_comms_handles.size(); ++i) {
     split_comms.emplace_back(Cast(split_comms_handles[i]),
                              NcclCommDeleter{this});
