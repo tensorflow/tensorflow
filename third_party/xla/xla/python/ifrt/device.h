@@ -116,9 +116,9 @@ class DeviceList {
   explicit DeviceList(Devices devices);
 
   DeviceList(const DeviceList& other);
-  DeviceList(DeviceList&& other);
+  DeviceList(DeviceList&& other) noexcept;
   DeviceList& operator=(const DeviceList& other);
-  DeviceList& operator=(DeviceList&& other);
+  DeviceList& operator=(DeviceList&& other) noexcept;
 
   // Function that matches the semantics of `Client::LookupDevice()`.
   using LookupDeviceFunc = absl::FunctionRef<absl::StatusOr<Device*>(DeviceId)>;
