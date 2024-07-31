@@ -16,17 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_KERNEL_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_KERNEL_THUNK_H_
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -39,36 +41,64 @@ limitations under the License.
 
 namespace xla::cpu {
 
-// Launches compiled host kernel on the caller thread.
-class KernelThunk final : public Thunk {
+// Forward declare thunk defined below.
+class KernelThunk;
+
+namespace internal {
+
+// If the number of kernel parameters (arguments and results) is unknown at
+// compile time, we use this value to indicate that the parameter is dynamic.
+inline constexpr int64_t kDynamicKernelParameter = -1;
+
+// A base template for a KernelThunk that can be specialized for a statically
+// known number of arguments and results. We go extra mile here to optimize
+// host kernel dispatching on the hot execution path to minimize the XLA runtime
+// overheads for the smallest HLO modules.
+template <int64_t num_arguments = kDynamicKernelParameter,
+          int64_t num_results = kDynamicKernelParameter>
+class KernelThunk : public Thunk {
  public:
-  static absl::StatusOr<std::unique_ptr<KernelThunk>> Create(
-      Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
-      absl::Span<const BufferAllocation::Slice> results_buffers,
-      std::string kernel_name, se::ThreadDim thread_dim,
-      std::optional<uint64_t> min_alignment = std::nullopt);
-
-  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
-
   BufferUses buffer_uses() const final;
 
+ protected:
+  tsl::AsyncValueRef<ExecuteEvent> ExecuteInternal(const ExecuteParams& params);
+
  private:
+  friend class ::xla::cpu::KernelThunk;
+
+  static constexpr bool IsDynamic(size_t n) {
+    return n == kDynamicKernelParameter;
+  }
+
+  static constexpr size_t Size(int64_t size) {
+    return std::max<size_t>(size, 0);
+  }
+
+  // If we know the number of arguments and results at compile time, we use
+  // std::array with a fixed size, which allows compiler to automatically unroll
+  // all the loops on a hot path.
+
+  using ArgumentsBuffers = std::conditional_t<
+      IsDynamic(num_arguments), std::vector<BufferAllocation::Slice>,
+      std::array<BufferAllocation::Slice, Size(num_arguments)>>;
+
+  using ResultsBuffers = std::conditional_t<
+      IsDynamic(num_results), std::vector<BufferAllocation::Slice>,
+      std::array<BufferAllocation::Slice, Size(num_results)>>;
+
+  using KernelArgs = std::conditional_t<
+      IsDynamic(num_arguments) || IsDynamic(num_results),
+      absl::InlinedVector<SE_HOST_KernelArg, 8>,
+      std::array<SE_HOST_KernelArg, Size(num_arguments + num_results)>>;
+
   KernelThunk(Info info,
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
               absl::Span<const BufferAllocation::Slice> results_buffers,
               std::string kernel_name, se::ThreadDim thread_dim,
               std::optional<uint64_t> min_alignment);
 
-  // Checks that all buffers are aligned to the minimum alignment. We codegen
-  // with the assumption that all buffers are aligned, and if they are not, we
-  // will crash with a segmentation fault, or worse, produce incorrect results.
-  absl::Status CheckBufferAlignment(
-      absl::Span<const SE_HOST_KernelArg> kernel_args);
-
-  void VlogKernelArgs(absl::Span<const SE_HOST_KernelArg> kernel_args);
-
-  std::vector<BufferAllocation::Slice> arguments_buffers_;
-  std::vector<BufferAllocation::Slice> results_buffers_;
+  ArgumentsBuffers arguments_buffers_;
+  ResultsBuffers results_buffers_;
 
   size_t num_kernel_args_;
 
@@ -88,7 +118,41 @@ class KernelThunk final : public Thunk {
 
   // Pre-initialized kernel arguments that are updated with memory addresses
   // before the kernel launch.
-  absl::InlinedVector<SE_HOST_KernelArg, 8> kernel_args_;
+  KernelArgs kernel_args_;
+};
+
+}  // namespace internal
+
+// Kernel thunk specialization for a small kernel with a statically known number
+// of arguments and results.
+template <int64_t num_arguments, int64_t num_results>
+class SmallKernelThunk final
+    : public internal::KernelThunk<num_arguments, num_results> {
+  using Base = internal::KernelThunk<num_arguments, num_results>;
+
+ public:
+  using Base::Base;
+
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(
+      const Thunk::ExecuteParams& params) final;
+};
+
+// Kernel thunk specialization for dynamic number of arguments and results.
+class KernelThunk final : public internal::KernelThunk<> {
+  using Base = internal::KernelThunk<>;
+
+ public:
+  using Base::Base;
+
+  static absl::StatusOr<std::unique_ptr<Thunk>> Create(
+      Thunk::Info info,
+      absl::Span<const BufferAllocation::Slice> arguments_buffers,
+      absl::Span<const BufferAllocation::Slice> results_buffers,
+      std::string kernel_name, se::ThreadDim thread_dim,
+      std::optional<uint64_t> min_alignment = std::nullopt);
+
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(
+      const Thunk::ExecuteParams& params) final;
 };
 
 }  // namespace xla::cpu
