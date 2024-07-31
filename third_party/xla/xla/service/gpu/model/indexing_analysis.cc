@@ -346,6 +346,7 @@ HloInstructionIndexing ComputeOutputToInputDynamicUpdateSliceOpIndexing(
 
   // operand: (d0, ... d_{N-1}) -> (d0, ... d_{N-1})
   std::vector<AffineExpr> identity;
+  identity.reserve(rank);
   for (int64_t dim = 0; dim < rank; ++dim) {
     identity.push_back(getAffineDimExpr(dim, mlir_context));
   }
