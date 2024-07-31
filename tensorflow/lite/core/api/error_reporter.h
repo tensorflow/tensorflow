@@ -15,6 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_API_ERROR_REPORTER_H_
 #define TENSORFLOW_LITE_CORE_API_ERROR_REPORTER_H_
 
-#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_CORE_API_ERROR_REPORTER_H_
