@@ -36,6 +36,12 @@ namespace cpu {
 
 class MatmulTest : public HloTestBase {
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_use_thunk_runtime(false);
+    return debug_options;
+  }
+
   const char* fused_matmul_bias_ = R"(
     ; CHECK:     custom_call_target="__onednn$matmul",
     ; CHECK:       backend_config={
@@ -225,7 +231,7 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion1) {
 TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion2) {
   const char* matmul_module_str = R"(
   HloModule matmul.biasadd.test.f32
-  
+
   ENTRY matmul.biasadd.test.f32 {
     arg0.1 = f32[400,300] parameter(0), parameter_replication={false}
     reshape.2 = f32[400,300] reshape(arg0.1)
@@ -1128,7 +1134,7 @@ TEST_F(MatmulTest, SIGMOIDTestF32) {
       const.0 = f32[32]{0} constant(5)
       bcast.0 = f32[32,32,4,32] broadcast(const.0), dimensions={3}
       add.0 = f32[32,32,4,32] add(onednn.matmul.0, bcast.0)
-      
+
       const.1 = f32[] constant(1)
       bcast.1 = f32[32,32,4,32] broadcast(const.1), dimensions={}
       negate.0 = f32[32,32,4,32] negate(add.0)
@@ -1149,7 +1155,7 @@ TEST_F(MatmulTest, SIGMOIDTestBF16) {
   }
   const char* matmul_module_str = R"(
     HloModule matmul.bias.sigmoid.test.bf16
-                                                                      
+
     ENTRY matmul.bias.sigmoid.test.bf16 {
       arg.0 = f32[32,32,4,16] parameter(0), parameter_replication={false}
       convert.0 = bf16[32,32,4,16] convert(arg.0)
@@ -1180,7 +1186,7 @@ TEST_F(MatmulTest, SIGMOIDTestF16) {
   }
   const char* matmul_module_str = R"(
     HloModule matmul.bias.sigmoid.test.f16
-                                                                      
+
     ENTRY matmul.bias.sigmoid.test.f16 {
       arg.0 = f32[32,32,4,16] parameter(0), parameter_replication={false}
       convert.0 = f16[32,32,4,16] convert(arg.0)
@@ -1230,7 +1236,7 @@ TEST_F(MatmulTest, SimpleTestBF16Gemv2) {
 
   const char* matmul_module_str = R"(
   HloModule matmul.test.bf16
-  
+
   ENTRY matmul.test.bf16 {
     arg.0 = bf16[100,300,300] parameter(0)
     arg.1 = bf16[300] parameter(1)
