@@ -122,6 +122,9 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
   return ThunkExecutor(std::move(thunk_sequence), std::move(defs), options);
 }
 
+ThunkExecutor::ExecuteState::Node::Node(const NodeDef& node_def)
+    : counter(node_def.in_edges.size()), out_edges(&node_def.out_edges) {}
+
 ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
                                           Thunk::TaskRunner* runner)
     : executor(executor),
@@ -133,11 +136,9 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
   DCHECK(runner == nullptr || static_cast<bool>(*runner))
       << "`runner` must be nullptr or a valid TaskRunner";
 
-  Node* node = nodes.data();
+  NodeStorage* node = nodes.data();
   for (const NodeDef& node_def : executor->nodes_defs()) {
-    node->counter.store(node_def.in_edges.size(), std::memory_order_release);
-    node->out_edges = &node_def.out_edges;
-    ++node;
+    new (node++) Node(node_def);
   }
 }
 
@@ -271,7 +272,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
 
   for (int64_t i = 0; i < ready_queue.size(); ++i) {
     NodeId id = ready_queue[i];
-    ExecuteState::Node& node = state->nodes[id];
+    ExecuteState::Node& node = state->node(id);
 
     int64_t cnt = node.counter.load(std::memory_order_acquire);
     DCHECK_EQ(cnt, 0) << "Node counter must be 0";  // Crash Ok
@@ -375,7 +376,7 @@ void ThunkExecutor::ProcessOutEdges(
 
   // Append ready nodes to the back of the ready queue.
   for (NodeId out_edge : *node.out_edges) {
-    ExecuteState::Node& out_node = state->nodes[out_edge];
+    ExecuteState::Node& out_node = state->node(out_edge);
 
     int64_t cnt = out_node.counter.fetch_sub(1, std::memory_order_release);
     DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";

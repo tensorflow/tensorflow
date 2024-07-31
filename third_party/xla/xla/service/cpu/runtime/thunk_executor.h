@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <new>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -113,16 +114,27 @@ class ThunkExecutor {
     // At run time NodeDef instantiated as a Node with an atomic counter that
     // drops to zero when all `in_edges` are ready.
     struct Node {
+      explicit Node(const NodeDef& node_def);
+
       alignas(kAtomicAlignment) std::atomic<int64_t> counter;
       const std::vector<NodeId>* out_edges;
     };
 
+    static_assert(std::is_trivially_destructible_v<Node>,
+                  "Node must be trivially destructible");
+
+    // We use indirection via NodeStorage to be able to allocate uninitialized
+    // memory and do not pay the cost of default initializing all nodes.
+    using NodeStorage = std::aligned_storage_t<sizeof(Node), alignof(Node)>;
+
     ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
+
+    Node& node(NodeId id) { return *reinterpret_cast<Node*>(&nodes[id]); }
 
     ThunkExecutor* executor;
     Thunk::TaskRunner* runner;
 
-    absl::FixedArray<Node> nodes;
+    absl::FixedArray<NodeStorage> nodes;
     tsl::AsyncValueRef<ExecuteEvent> execute_event;
 
     // Once the number of pending sink nodes drops to zero, the execution is
