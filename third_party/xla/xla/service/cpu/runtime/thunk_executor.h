@@ -144,7 +144,8 @@ class ThunkExecutor {
       const Thunk::ExecuteParams& params);
 
   // Resumes sequential thunk execution starting from the given index.
-  void ResumeExecuteSequential(int64_t index,
+  using ThunkIterator = typename ThunkSequence::iterator;
+  void ResumeExecuteSequential(ThunkIterator it,
                                const Thunk::ExecuteParams& params,
                                tsl::AsyncValueRef<ExecuteEvent> event);
 
@@ -172,6 +173,8 @@ class ThunkExecutor {
 
   ThunkSequence thunk_sequence_;
   Options options_;
+
+  int64_t num_thunks_;
 
   std::vector<NodeDef> nodes_defs_;
 
