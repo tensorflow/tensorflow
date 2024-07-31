@@ -654,18 +654,18 @@ TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 fusion1 {
-  p0 = f32[3333,3333] parameter(0)
-  s = f32[3333,3333] sine(p0)
-  p1 = f32[3333,3333] parameter(1)
-  c = f32[3333,3333] cosine(p1)
-  ROOT dot = f32[3333,3333] dot(s, c),
+  p0 = f32[333,333] parameter(0)
+  s = f32[333,333] sine(p0)
+  p1 = f32[333,333] parameter(1)
+  c = f32[333,333] cosine(p1)
+  ROOT dot = f32[333,333] dot(s, c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY e {
-  p0 = f32[3333,3333] parameter(0)
-  p1 = f32[3333,3333] parameter(1)
-  ROOT rr = f32[3333,3333] fusion(p0, p1), kind=kCustom, calls=fusion1,
+  p0 = f32[333,333] parameter(0)
+  p1 = f32[333,333] parameter(1)
+  ROOT rr = f32[333,333] fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
 })",
                                                        config));
