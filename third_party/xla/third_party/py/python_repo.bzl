@@ -14,6 +14,7 @@ def _python_repository_impl(ctx):
     ctx.file("BUILD", "")
     wheel_name = ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = ctx.os.environ.get("WHEEL_COLLAB", False)
+    output_path = ctx.os.environ.get("OUTPUT_PATH", None)
 
     requirements = None
     for i in range(0, len(ctx.attr.requirements_locks)):
@@ -62,12 +63,14 @@ TF_PYTHON_VERSION = "{version}"
 HERMETIC_PYTHON_VERSION = "{version}"
 WHEEL_NAME = "{wheel_name}"
 WHEEL_COLLAB = "{wheel_collab}"
+OUTPUT_PATH = "{output_path}"
 REQUIREMENTS = "{requirements}"
 REQUIREMENTS_WITH_LOCAL_WHEELS = "{requirements_with_local_wheels}"
 """.format(
             version = version,
             wheel_name = wheel_name,
             wheel_collab = wheel_collab,
+            output_path = output_path,
             requirements = str(requirements),
             requirements_with_local_wheels = requirements_with_local_wheels,
         ),
@@ -200,6 +203,7 @@ python_repository = repository_rule(
         "HERMETIC_PYTHON_VERSION",
         "WHEEL_NAME",
         "WHEEL_COLLAB",
+        "OUTPUT_PATH",
     ],
     local = True,
 )
