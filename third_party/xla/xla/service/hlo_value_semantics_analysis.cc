@@ -1757,6 +1757,7 @@ absl::Status HloValueSemanticsPropagation::HandleConditional(
       [&](const ShapeIndex& index,
           const HloValueSemantics* semantics) -> absl::Status {
         std::vector<HloValueSemantics> semantics_vector;
+        semantics_vector.reserve(semantics_tree_vec.size());
         for (size_t i = 0; i < semantics_tree_vec.size(); ++i) {
           semantics_vector.push_back(
               *(semantics_tree_vec[i].find(index)->second));

@@ -1914,6 +1914,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           std::vector<HloInstruction*> async_wrapped_operands;
           std::vector<Shape> async_wrapped_operand_shapes;
           Shape async_wrapped_root_shape;
+          async_wrapped_operand_shapes.reserve(operands.size());
           for (const HloInstruction* operand : operands) {
             async_wrapped_operand_shapes.push_back(operand->shape());
           }
