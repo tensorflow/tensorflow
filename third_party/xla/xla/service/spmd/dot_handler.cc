@@ -68,41 +68,8 @@ using hlo_sharding_util::GroupedSharding;
 }  // namespace
 
 absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
-  DotConvolutionDimsInfo mapping;
-  const auto& dnums = hlo->dot_dimension_numbers();
-  int64_t next_output_dim = 0;
-  for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); ++i) {
-    mapping.batch_dims.emplace_back();
-    mapping.batch_dims.back().lhs = dnums.lhs_batch_dimensions(i);
-    mapping.batch_dims.back().rhs = dnums.rhs_batch_dimensions(i);
-    mapping.batch_dims.back().output = next_output_dim++;
-  }
-  for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
-    mapping.contracting_dims.emplace_back();
-    mapping.contracting_dims.back().lhs = dnums.lhs_contracting_dimensions(i);
-    mapping.contracting_dims.back().rhs = dnums.rhs_contracting_dimensions(i);
-    mapping.contracting_dims.back().output = -1;
-  }
-  for (int64_t i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
-    if (absl::c_linear_search(dnums.lhs_batch_dimensions(), i) ||
-        absl::c_linear_search(dnums.lhs_contracting_dimensions(), i)) {
-      continue;
-    }
-    mapping.lhs_non_contracting_dims.emplace_back();
-    mapping.lhs_non_contracting_dims.back().lhs = i;
-    mapping.lhs_non_contracting_dims.back().rhs = -1;
-    mapping.lhs_non_contracting_dims.back().output = next_output_dim++;
-  }
-  for (int64_t i = 0; i < hlo->operand(1)->shape().rank(); ++i) {
-    if (absl::c_linear_search(dnums.rhs_batch_dimensions(), i) ||
-        absl::c_linear_search(dnums.rhs_contracting_dimensions(), i)) {
-      continue;
-    }
-    mapping.rhs_non_contracting_dims.emplace_back();
-    mapping.rhs_non_contracting_dims.back().lhs = -1;
-    mapping.rhs_non_contracting_dims.back().rhs = i;
-    mapping.rhs_non_contracting_dims.back().output = next_output_dim++;
-  }
+  DotConvolutionDimsInfo mapping =
+      dot_as_convolution_util::ParseDotGeneralFromDot(hlo);
 
   HloDotInstruction* dot = Cast<HloDotInstruction>(hlo);
   std::vector<SparsityDescriptor> sparsity(dot->sparsity().begin(),
@@ -3031,6 +2998,9 @@ DotConvolutionDimsInfo ConvertDimNumsWithFeatureGroupCount(
     const DotConvolutionDimsInfo& dims_mapping, HloInstruction* original_hlo) {
   const auto& dnums = original_hlo->convolution_dimension_numbers();
   DotConvolutionDimsInfo new_dims_mapping;
+  new_dims_mapping.lhs_shape_rank = dims_mapping.lhs_shape_rank;
+  new_dims_mapping.rhs_shape_rank = dims_mapping.rhs_shape_rank;
+  new_dims_mapping.output_shape_rank = dims_mapping.output_shape_rank;
   new_dims_mapping.batch_dims = dims_mapping.batch_dims;
   new_dims_mapping.conv_spatial_dims = dims_mapping.conv_spatial_dims;
   // Append batch dims.
@@ -3060,6 +3030,9 @@ DotConvolutionDimsInfo ConvertDimNumsWithBatchGroupCount(
     const DotConvolutionDimsInfo& dims_mapping, HloInstruction* original_hlo) {
   const auto& dnums = original_hlo->convolution_dimension_numbers();
   DotConvolutionDimsInfo new_dims_mapping;
+  new_dims_mapping.lhs_shape_rank = dims_mapping.lhs_shape_rank;
+  new_dims_mapping.rhs_shape_rank = dims_mapping.rhs_shape_rank;
+  new_dims_mapping.output_shape_rank = dims_mapping.output_shape_rank;
   new_dims_mapping.batch_dims = dims_mapping.batch_dims;
   new_dims_mapping.conv_spatial_dims = dims_mapping.conv_spatial_dims;
   new_dims_mapping.contracting_dims = dims_mapping.contracting_dims;

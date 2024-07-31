@@ -41,16 +41,17 @@ namespace utils {
 
 namespace {
 
+// LINT.IfChange(QuantizationUtilsConstants)
 const int8_t kMinQuantizedValue8bit = -127;
 const int8_t kMaxQuantizedValue8bit = 127;
-
 const int8_t kMinQuantizedValue4bit = -7;
 const int8_t kMaxQuantizedValue4bit = 7;
-
 // The maximum number of dimensions supported in per-channel quantization.
 constexpr int kPerChannelMaxDim = 4;
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:QuantizationUtilsConstants)
 }  // namespace
 
+// LINT.IfChange(NumElements)
 TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
   *num_elements = 1;
   for (const int64_t dim : tensor.shape) {
@@ -61,6 +62,7 @@ TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
   }
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:NumElements)
 
 // Nudge min and max so that floating point 0 falls exactly on a quantized
 // value, returning the nudges scale and zero_point.
@@ -141,6 +143,7 @@ void FillSingleMinMax(const float* const input, const uint64_t input_size,
   quantization_params->max.assign(1, *minmax.second);
 }
 
+// LINT.IfChange(FillPerChannelMinMax)
 TfLiteStatus FillPerChannelMinMax(const float* const input,
                                   const std::vector<int32_t>& dimension,
                                   int32_t channel_dim_index,
@@ -204,6 +207,7 @@ TfLiteStatus FillPerChannelMinMax(const float* const input,
   }
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:FillPerChannelMinMax)
 
 // Populates the scales vector based on max and min values of quant_params
 TfLiteStatus GetSymmetricScalesFromMaxMin(QuantizationParametersT* quant_params,
@@ -302,6 +306,7 @@ TfLiteStatus AdjustWeightsForBiasScale(QuantizationParametersT* quant_params,
   return kTfLiteOk;
 }
 
+// LINT.IfChange(SymmetricPerChannelQuantization)
 // Per-channel quantize a tensor at the given index and fills both scales and
 // quantized values.
 TfLiteStatus SymmetricPerChannelQuantization(TensorT* tensor,
@@ -345,6 +350,7 @@ TfLiteStatus SymmetricPerChannelQuantization(TensorT* tensor,
                                     channel_dim_index, output_value);
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:SymmetricPerChannelQuantization)
 
 std::vector<int16_t> SymmetricQuantizeFloatsToInt16(const float* data,
                                                     uint64_t num_elements,
@@ -383,6 +389,7 @@ TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
                                error_reporter);
 }
 
+// LINT.IfChange(SymmetricPerChannelQuantizeValues)
 void SymmetricPerChannelQuantizeValues(const float* const input,
                                        const std::vector<float>& scales_inv,
                                        const std::vector<int32_t>& dimension,
@@ -419,6 +426,7 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
     }
   }
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:SymmetricPerChannelQuantizeValues)
 
 // Quantize the tensor using the max and min values recorded in its quantization
 // parameters. Applies per-layer quantization.
@@ -472,6 +480,7 @@ TfLiteStatus SymmetricQuantizeTensorFromMinMax(ModelT* model, TensorT* tensor,
   return kTfLiteOk;
 }
 
+// LINT.IfChange(SymmetricQuantizeTensor)
 TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   if (model == nullptr || tensor == nullptr) {
     TFLITE_LOG(TFLITE_LOG_ERROR, "No tensor to quantize.");
@@ -510,7 +519,9 @@ TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
 
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:SymmetricQuantizeTensor)
 
+// LINT.IfChange(QuantizeTensorFloat16)
 TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
   if (model == nullptr || tensor == nullptr) {
     TFLITE_LOG(TFLITE_LOG_ERROR, "No tensor to quantize.");
@@ -553,7 +564,9 @@ TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
 
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:QuantizeTensorFloat16)
 
+// LINT.IfChange(AddQuantizationParams)
 TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
                                    const std::vector<int64_t>& zero_point,
                                    int quantized_dimension,
@@ -581,7 +594,9 @@ TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
   tensor->type = output_type;
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:AddQuantizationParams)
 
+// LINT.IfChange(SymmetricQuantizeTensorPerChannel)
 TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                                int32_t channel_dim_index,
                                                ErrorReporter* error_reporter) {
@@ -621,6 +636,7 @@ TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                uint8_buffer, buffer_size, TensorType_INT8,
                                model, tensor, error_reporter);
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:SymmetricQuantizeTensorPerChannel)
 
 template <class BiasType>
 std::vector<BiasType> SymmetricBiasQuantize(const float* data,

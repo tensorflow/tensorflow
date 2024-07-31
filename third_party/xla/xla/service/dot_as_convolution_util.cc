@@ -129,6 +129,9 @@ bool SpatialIsContracting(int64_t lhs_spatial_size, int64_t rhs_spatial_size,
     }
   }
 
+  dims.lhs_shape_rank = conv->operand(0)->shape().rank();
+  dims.rhs_shape_rank = conv->operand(1)->shape().rank();
+  dims.output_shape_rank = conv->shape().rank();
   return dims;
 }
 
@@ -224,6 +227,10 @@ DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
       dnums.rhs_non_contracting_dims.back().spatial_dim = -1;
     }
   }
+
+  dnums.lhs_shape_rank = dot->operand(0)->shape().rank();
+  dnums.rhs_shape_rank = dot->operand(1)->shape().rank();
+  dnums.output_shape_rank = dot->shape().rank();
   return dnums;
 }
 
