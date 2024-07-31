@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -84,6 +85,10 @@ class KernelThunk final : public Thunk {
   absl::Mutex mutex_;
   std::optional<se::host::HostKernel> kernel_ ABSL_GUARDED_BY(mutex_);
   std::atomic<se::host::HostKernel*> kernel_ptr_;  // pointer to `kernel_`
+
+  // Pre-initialized kernel arguments that are updated with memory addresses
+  // before the kernel launch.
+  absl::InlinedVector<SE_HOST_KernelArg, 8> kernel_args_;
 };
 
 }  // namespace xla::cpu
