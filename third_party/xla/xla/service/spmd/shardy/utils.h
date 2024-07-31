@@ -37,15 +37,19 @@ mlir::DictionaryAttr getFrontendAttrs(mlir::Operation* op);
 mlir::DictionaryAttr getFuncArgFrontendAttrs(mlir::func::FuncOp funcOp,
                                              unsigned int index);
 
-// Add `name` into the frontend attributes of `op` with value `value`. Note that
-// `value` will be turned into a `StringAttr`.
-void addFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
-                          mlir::Attribute value);
+// Add `name` into the frontend attributes of `op` with value `value` if it
+// doesn't already exist - if it does exist, do nothing. Note that `value` will
+// be turned into a `StringAttr`. Returns true if the attribute was added, false
+// if it already existed.
+bool tryAddFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
+                             mlir::Attribute value);
 
 // Add `name` into the argument at `argNum`'s frontend attributes of `funcOp`
-// with value `value`. Note that `value` will be turned into a `StringAttr`.
-void addFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
-                          mlir::Attribute value, int64_t argNum);
+// with value `value` if it doesn't already exist - if it does exist,
+// do nothing. Note that `value` will be turned into a `StringAttr`.
+// Returns true if the attribute was added, false if it already existed.
+bool tryAddFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
+                             mlir::Attribute value, int64_t argNum);
 
 // Remove `attributeName` from the frontend attributes of `op`.
 void removeFrontendAttribute(mlir::Operation* op,

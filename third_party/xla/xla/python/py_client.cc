@@ -452,9 +452,9 @@ PyClient::CompileIfrtProgram(
     xla::sdy::addSdyRoundTripExportPipeline(pm);
     // TODO(bartchr): remove setting `kPythonIntegrationComplete` in follow-up
     // now that both JAX and PartIR are integrated with Shardy.
-    xla::sdy::addFrontendAttribute(*module,
-                                   xla::sdy::kPythonIntegrationComplete,
-                                   mlir::StringAttr::get(&context, "t"));
+    xla::sdy::tryAddFrontendAttribute(*module,
+                                      xla::sdy::kPythonIntegrationComplete,
+                                      mlir::StringAttr::get(&context, "t"));
     TF_RETURN_IF_ERROR(
         tsl::StatusScopedDiagnosticHandler(&context).consumeStatus(
             pm.run(*module)));

@@ -415,9 +415,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.
-  removeFrontendAttributes(
-      hloModule,
-      {kUseTupleArgs, kPythonIntegrationComplete, kMeshesRoundTripAttr});
+  removeFrontendAttributes(hloModule, {kUseTupleArgs, kMeshesRoundTripAttr});
 
   return true;
 }

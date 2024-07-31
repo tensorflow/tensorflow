@@ -1688,7 +1688,7 @@ TEST(XlaBuilderTest, ComplexSetFrontendAttributes) {
   ExpectInstructionsAttributesMatch(*module, expected);
 }
 
-TEST(XlaBuilderTest, AddFrontendAttribute) {
+TEST(XlaBuilderTest, tryAddFrontendAttribute) {
   XlaBuilder b(TestName());
 
   ConstantR0(&b, 0);

@@ -79,7 +79,7 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 void saveOpShardingPerValueAttr(Operation* op,
                                 TensorShardingPerValueAttr shardingPerValueAttr,
                                 OpBuilder& builder) {
-  addFrontendAttribute(op, kShardingRoundTripAttr, shardingPerValueAttr);
+  tryAddFrontendAttribute(op, kShardingRoundTripAttr, shardingPerValueAttr);
 }
 
 // Converts the shardings from `kShardingAttr` into
@@ -88,7 +88,8 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
     if (auto oldSharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
-      addFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding, argNum);
+      tryAddFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding,
+                              argNum);
     }
   }
 
@@ -154,8 +155,8 @@ class SdyRoundTripExportShardingsPass
     for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
       mhloMeshes.emplace_back(meshOp.getSymNameAttr(), meshOp.getMeshAttr());
     }
-    addFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
-                         DictionaryAttr::get(context, mhloMeshes));
+    tryAddFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
+                            DictionaryAttr::get(context, mhloMeshes));
   }
 
   StringRef getArgument() const override {

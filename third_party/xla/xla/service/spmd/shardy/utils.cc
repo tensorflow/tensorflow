@@ -86,8 +86,8 @@ SmallVector<NamedAttribute> getExistingFrontendAttributes(
   return dictEntries;
 }
 
-void addFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
-                          StringRef name, Attribute value) {
+void tryAddFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
+                             StringRef name, Attribute value) {
   mlir::OpBuilder builder(value.getContext());
   existingAttributes.emplace_back(NamedAttribute(
       builder.getStringAttr(name), getStringAttribute(value, builder)));
@@ -119,20 +119,29 @@ void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
 
 }  // namespace
 
-void addFrontendAttribute(Operation* op, StringRef name, Attribute value) {
+bool tryAddFrontendAttribute(Operation* op, StringRef name, Attribute value) {
+  DictionaryAttr frontendAttributes = getFrontendAttrs(op);
+  if (frontendAttributes && frontendAttributes.contains(name)) {
+    return false;
+  }
   SmallVector<NamedAttribute> existingAttributes =
-      getExistingFrontendAttributes(getFrontendAttrs(op), "");
-  addFrontendAttribute(existingAttributes, name, value);
+      getExistingFrontendAttributes(frontendAttributes, "");
+  tryAddFrontendAttribute(existingAttributes, name, value);
   setFrontendAttrs(op, existingAttributes);
+  return true;
 }
 
-void addFrontendAttribute(FuncOp funcOp, StringRef name, Attribute value,
-                          int64_t argNum) {
+bool tryAddFrontendAttribute(FuncOp funcOp, StringRef name, Attribute value,
+                             int64_t argNum) {
+  DictionaryAttr frontendAttributes = getFuncArgFrontendAttrs(funcOp, argNum);
+  if (frontendAttributes && frontendAttributes.contains(name)) {
+    return false;
+  }
   SmallVector<NamedAttribute> existingAttributes =
-      getExistingFrontendAttributes(getFuncArgFrontendAttrs(funcOp, argNum),
-                                    "");
-  addFrontendAttribute(existingAttributes, name, value);
+      getExistingFrontendAttributes(frontendAttributes, "");
+  tryAddFrontendAttribute(existingAttributes, name, value);
   setFuncArgFrontendAttrs(funcOp, argNum, existingAttributes);
+  return true;
 }
 
 void removeFrontendAttribute(Operation* op, StringRef attributeName) {

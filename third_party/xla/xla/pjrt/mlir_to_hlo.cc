@@ -102,8 +102,8 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
   if (use_tuple_args && use_shardy) {
     // Shardy can't handle tuple args when round-tripping. So delay using
     // tuples until after Shardy is run.
-    sdy::addFrontendAttribute(module, sdy::kUseTupleArgs,
-                              mlir::StringAttr::get(context, "t"));
+    sdy::tryAddFrontendAttribute(module, sdy::kUseTupleArgs,
+                                 mlir::StringAttr::get(context, "t"));
     use_tuple_args = false;
   }
 
