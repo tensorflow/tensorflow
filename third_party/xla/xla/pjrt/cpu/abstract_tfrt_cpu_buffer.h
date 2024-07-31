@@ -62,8 +62,8 @@ class MarkEventReadyOnExit {
 
   MarkEventReadyOnExit(const MarkEventReadyOnExit&) = delete;
   MarkEventReadyOnExit& operator=(const MarkEventReadyOnExit&) = delete;
-  MarkEventReadyOnExit(MarkEventReadyOnExit&&) = default;
-  MarkEventReadyOnExit& operator=(MarkEventReadyOnExit&&) = default;
+  MarkEventReadyOnExit(MarkEventReadyOnExit&&) noexcept = default;
+  MarkEventReadyOnExit& operator=(MarkEventReadyOnExit&&) noexcept = default;
 
   ~MarkEventReadyOnExit() {
     if (event_) event_.SetStateConcrete();
@@ -163,7 +163,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
     DonationTransaction(const DonationTransaction&) = delete;
     DonationTransaction& operator=(const DonationTransaction&) = delete;
     DonationTransaction(DonationTransaction&&) = default;
-    DonationTransaction& operator=(DonationTransaction&& other) {
+    DonationTransaction& operator=(DonationTransaction&& other) noexcept {
       Abort();
 
       buffer_ = other.buffer_;
