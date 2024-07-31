@@ -346,6 +346,40 @@ ENTRY %elementwise {
             op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}")));
 }
 
+TEST_F(AutoShardingTest, IotaPartiallyReplicatedShardingTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY %elementwise {
+  iota1 = s32[11,1026]{1,0} iota(), iota_dimension=1
+  param1 = s32[11,1026]{1,0} parameter(0), sharding={devices=[1,16,16]<=[16,16]T(1,0) last_tile_dim_replicate}
+  copy1 = s32[11,1026]{1,0} copy(iota1)
+  ROOT add1 = s32[11,1026]{1,0} add(copy1, param1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      AutoSharding(
+          /* option */ {
+              .enable = true,
+              .preserve_shardings =
+                  AutoShardingOption::PreserveShardingsType::kKeepAllShardings,
+              .only_allow_divisible_input_output = false,
+              .device_mesh_shape = {16, 16},
+              .device_mesh_alpha = {1.0, 1.0},
+              .device_mesh_beta = {0.01, 1.0}})
+          .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* iota = FindInstruction(module.get(), "iota1");
+  ASSERT_NE(iota, nullptr);
+  EXPECT_THAT(
+      iota, op::Sharding(
+                "{devices=[1,16,16]<=[16,16]T(1,0) last_tile_dim_replicate}"));
+}
+
 TEST_F(AutoShardingTest, SliceMixedUserShardingTest) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
