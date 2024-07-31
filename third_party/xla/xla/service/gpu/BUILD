@@ -3190,6 +3190,7 @@ cc_library(
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",
         ":gpu_layout_assignment",
+        ":gpu_name_canonicalizer",
         ":gpu_p2p_pipeliner",
         ":gpu_reduce_scatter_creator",
         ":gpu_sanitize_constant_names",
@@ -6159,6 +6160,35 @@ xla_cc_test(
     srcs = ["scheduling_instruction_annotator_test.cc"],
     deps = [
         ":scheduling_instruction_annotator",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "gpu_name_canonicalizer",
+    srcs = ["gpu_name_canonicalizer.cc"],
+    hdrs = ["gpu_name_canonicalizer.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_name_canonicalizer_test",
+    srcs = ["gpu_name_canonicalizer_test.cc"],
+    deps = [
+        ":gpu_name_canonicalizer",
         "//xla/hlo/ir:hlo",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",

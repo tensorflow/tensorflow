@@ -72,6 +72,40 @@ TEST_F(SchedulingInstructionAnnotatorTest,
   EXPECT_TRUE(filecheck_matches);
 }
 
+TEST_F(SchedulingInstructionAnnotatorTest, SkipsAnnotatingConstants) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule module, is_scheduled=true
+
+    ENTRY entry {
+      p0 = f32[1] parameter(0)
+      c1 = f32[1] constant(42)
+      ROOT add0 = f32[1] add(p0,c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  SchedulingInstructionAnnotator pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+
+  ASSERT_TRUE(changed);
+  constexpr absl::string_view kExpected = R"(
+// CHECK:       %[[P0:.+]] = {{.*}} parameter(0)
+// CHECK-SAME:  scheduling_name="[[P0]]"
+// CHECK-NEXT:  %[[C1:.+]] = f32[1]
+// CHECK-NOT:   scheduling_name
+// CHECK-SAME:  constant({42})
+// CHECK:       %[[ADD0:.+]] = {{.*}} add(%[[P0]], %[[C1]])
+// CHECK-SAME:  scheduling_name="[[ADD0]]"
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matches,
+      RunFileCheck(
+          module->ToString(HloPrintOptions().set_print_operand_shape(false)),
+          kExpected));
+  EXPECT_TRUE(filecheck_matches);
+}
+
 TEST_F(SchedulingInstructionAnnotatorTest,
        DoesNotAnnotateAllInstructionsWithTheirRespectiveNames) {
   constexpr absl::string_view kHloString = R"(

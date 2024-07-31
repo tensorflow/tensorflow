@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -35,6 +36,12 @@ absl::StatusOr<bool> AnnotateSchedulingInstructionNames(
   bool changed = false;
   for (HloInstruction* inst : computation.instructions()) {
     if (!inst->metadata().scheduling_name().empty()) {
+      continue;
+    }
+    // We skip constants as we might have to sanitize them in order to satisfy
+    // LLVM backend. I.e. we allow `GpuSanitizeConstantNames` pass to run post
+    // scheduling.
+    if (inst->opcode() == HloOpcode::kConstant) {
       continue;
     }
     inst->set_metadata_scheduling_name(std::string(inst->name()));
