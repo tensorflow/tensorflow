@@ -51,6 +51,64 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "grid",
+    srcs = ["grid.cc"],
+    hdrs = ["grid.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "ifrt_device_utils",
+    srcs = ["ifrt_device_utils.cc"],
+    hdrs = ["ifrt_device_utils.h"],
+    deps = [
+        ":grid",
+        ":ifrt_config_proto_cc",
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:attribute_map",
+        "@local_xla//xla/service:computation_placer_hdr",
+    ],
+)
+
+tf_cc_test(
+    name = "ifrt_device_utils_test",
+    srcs = [
+        "ifrt_device_utils_test.cc",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        ":ifrt_device_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:attribute_map",
+        "@local_xla//xla/python/ifrt:mock",
+        "@local_xla//xla/service:computation_placer_hdr",
+    ],
+)
+
+cc_library(
     name = "ifrt_serving_executable",
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
