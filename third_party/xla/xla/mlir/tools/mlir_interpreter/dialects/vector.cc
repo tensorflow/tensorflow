@@ -634,7 +634,7 @@ InterpreterValue Shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
   auto& result_view = result.View();
   result_view.is_vector = true;
 
-  auto mask = ExtractVector<int64_t>(shuffle.getMask());
+  auto mask = shuffle.getMask();
   bool is_zero_dim = v0.View().Rank() == 0;
   int64_t size0 = is_zero_dim ? 1 : v0.View().sizes[0];
   for (auto [dst_index, src_index] : llvm::enumerate(mask)) {
