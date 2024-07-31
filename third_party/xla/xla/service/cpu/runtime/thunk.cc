@@ -85,6 +85,10 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "while";
   }
 }
+Thunk::Thunk(Kind kind, Info info)
+    : kind_(kind),
+      info_(std::move(info)),
+      ok_event_(OkExecuteEventSingleton()) {}
 
 absl::StatusOr<Thunk::CollectiveExecuteParams>
 Thunk::CollectiveExecuteParams::Create(
@@ -150,13 +154,13 @@ Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
       allocator(allocator),
       ffi_execution_context(ffi_execution_context) {}
 
-const tsl::AsyncValueOwningRef<Thunk::ExecuteEvent>* Thunk::OkEvent() {
-  static tsl::AsyncValueOwningRef<ExecuteEvent>* owner = [] {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEventSingleton() {
+  static tsl::AsyncValueOwningRef<ExecuteEvent>* singleton = [] {
     auto* storage = new tsl::internal::AsyncValueStorage<ExecuteEvent>();
     return new tsl::AsyncValueOwningRef<ExecuteEvent>(
         tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(*storage));
   }();
-  return owner;
+  return singleton->AsRef();
 }
 
 Thunk::ExecuteState::ExecuteState(int64_t num_tasks)

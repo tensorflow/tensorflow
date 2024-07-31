@@ -34,8 +34,8 @@ class ThunkExecuteStateTestHelper : public Thunk {
   }
 };
 
-TEST(ThunkTest, OkExecuteEvent) {
-  auto event = Thunk::OkExecuteEvent();
+TEST(ThunkTest, OkExecuteEventSingleton) {
+  auto event = Thunk::OkExecuteEventSingleton();
   ASSERT_TRUE(event.IsConcrete());
 }
 

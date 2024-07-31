@@ -144,7 +144,7 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
     const Thunk::ExecuteParams& params) {
   // Short-circuit execution of trivial thunk sequences.
   if (ABSL_PREDICT_FALSE(thunk_sequence_.empty())) {
-    return Thunk::OkExecuteEvent();
+    return Thunk::OkExecuteEventSingleton();
   }
   if (ABSL_PREDICT_FALSE(thunk_sequence_.size() == 1)) {
     return thunk_sequence_[0]->Execute(params);
@@ -181,7 +181,7 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
     auto execute_event = thunk.Execute(params);
 
     // Fast path for thunks executed inline and returned OkExecuteEvent.
-    if (ABSL_PREDICT_TRUE(Thunk::IsOkExecuteEvent(execute_event))) {
+    if (ABSL_PREDICT_TRUE(thunk.IsOkExecuteEvent(execute_event))) {
       continue;
     }
 
@@ -207,7 +207,7 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
 
   // If we got to the end of the sequence it means that all thunks have
   // succeeded.
-  return Thunk::OkExecuteEvent();
+  return Thunk::OkExecuteEventSingleton();
 }
 
 void ThunkExecutor::ResumeExecuteSequential(
@@ -218,7 +218,7 @@ void ThunkExecutor::ResumeExecuteSequential(
     auto execute_event = thunk.Execute(params);
 
     // Fast path for thunks executed inline and returned OkExecuteEvent.
-    if (ABSL_PREDICT_TRUE(Thunk::IsOkExecuteEvent(execute_event))) {
+    if (ABSL_PREDICT_TRUE(thunk.IsOkExecuteEvent(execute_event))) {
       continue;
     }
 
@@ -281,7 +281,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
     Thunk& thunk = *state->executor->thunk_sequence_[id];
     tsl::AsyncValueRef<ExecuteEvent> execute_event =
         ABSL_PREDICT_FALSE(state->abort.load(std::memory_order_relaxed))
-            ? Thunk::OkExecuteEvent()
+            ? Thunk::OkExecuteEventSingleton()
             : thunk.Execute(params);
 
     if (ABSL_PREDICT_TRUE(execute_event.IsAvailable())) {

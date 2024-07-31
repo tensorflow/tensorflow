@@ -110,7 +110,7 @@ class Thunk {
   using Task = std::function<void()>;
   using TaskRunner = absl::AnyInvocable<void(Task)>;
 
-  Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}
+  Thunk(Kind kind, Info info);
 
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
@@ -286,18 +286,20 @@ class Thunk {
   // An execute event that becomes ready when all tasks are completed.
   using ExecuteEvent = tsl::Chain;
 
-  // Returns non-reference-counted async value ref for thunks executed in the
-  // caller thread to avoid reference counting overhead.
-  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent() {
-    return OkEvent()->AsRef();
+  // Returns non-reference-counted async value ref in constructed state.
+  // Returned async value is a per-process singleton stored in a storage with a
+  // static duration, and can be safely compared using pointer equality.
+  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEventSingleton();
+
+  // Returns `OkExecuteEventSingleton()` cached by this thunk instance.
+  tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent() const { return ok_event_; }
+
+  bool IsOkExecuteEvent(const tsl::AsyncValueRef<ExecuteEvent>& event) const {
+    return event == ok_event_;
   }
 
-  static bool IsOkExecuteEvent(tsl::AsyncValuePtr<ExecuteEvent> event) {
-    return event == OkEvent()->AsPtr();
-  }
-
-  static bool IsOkExecuteEvent(const tsl::AsyncValueRef<ExecuteEvent>& event) {
-    return IsOkExecuteEvent(event.AsPtr());
+  bool IsOkExecuteEvent(tsl::AsyncValuePtr<ExecuteEvent> event) const {
+    return event == ok_event_.AsPtr();
   }
 
   // Thunk execution must be asynchronous and never block the caller thread,
@@ -339,10 +341,10 @@ class Thunk {
   }
 
  private:
-  static const tsl::AsyncValueOwningRef<Thunk::ExecuteEvent>* OkEvent();
-
   Kind kind_;
   Info info_;
+
+  tsl::AsyncValueRef<ExecuteEvent> ok_event_;
 };
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
