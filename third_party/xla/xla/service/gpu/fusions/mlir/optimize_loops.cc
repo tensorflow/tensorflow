@@ -317,8 +317,7 @@ class OptimizeLoopsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateOptimizeLoopsPass() {
+std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass() {
   return std::make_unique<OptimizeLoopsPass>();
 }
 

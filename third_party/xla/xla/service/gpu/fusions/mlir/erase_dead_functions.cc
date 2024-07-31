@@ -77,8 +77,7 @@ class EraseDeadFunctionsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateEraseDeadFunctionsPass() {
+std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass() {
   return std::make_unique<EraseDeadFunctionsPass>();
 }
 

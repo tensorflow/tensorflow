@@ -349,8 +349,7 @@ class VectorizeLoadsAndStoresPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateVectorizeLoadsAndStoresPass() {
+std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass() {
   return std::make_unique<VectorizeLoadsAndStoresPass>();
 }
 

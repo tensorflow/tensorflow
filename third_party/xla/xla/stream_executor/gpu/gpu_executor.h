@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
@@ -67,7 +68,6 @@ class StreamExecutor;
 
 namespace gpu {
 
-class GpuEvent;
 class GpuKernel;
 class GpuCommandBuffer;
 class GpuStream;
@@ -229,7 +229,9 @@ class GpuExecutor : public StreamExecutorCommon {
 
   dnn::DnnSupport* AsDnn() override;
 
-  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
+    return CreateGpuEvent(/*allow_timing=*/false);
+  };
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override;

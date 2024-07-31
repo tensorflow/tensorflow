@@ -97,8 +97,7 @@ void UnswitchLoopsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateUnswitchLoopsPass() {
+std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass() {
   return std::make_unique<UnswitchLoopsPass>();
 }
 

@@ -209,6 +209,7 @@ gpu_only_cc_library(
     deps = [
         ":gpu_collectives_header",
         ":gpu_driver_header",
+        ":gpu_event_header",
         ":gpu_types_header",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",

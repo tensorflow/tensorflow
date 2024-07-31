@@ -108,8 +108,7 @@ void MergePointersToSameSlicePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateMergePointersToSameSlicePass() {
+std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass() {
   return std::make_unique<MergePointersToSameSlicePass>();
 }
 
