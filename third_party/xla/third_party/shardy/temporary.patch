@@ -1,15 +1,174 @@
-diff --git i/third_party/llvm/workspace.bzl w/third_party/llvm/workspace.bzl
-index 76a13a4..9345d8d 100644
---- i/third_party/llvm/workspace.bzl
-+++ w/third_party/llvm/workspace.bzl
+diff --git a/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.cc b/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.cc
+index db58e2c..e08a1a2 100644
+--- a/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.cc
+@@ -23,6 +23,7 @@ limitations under the License.
+ #include "mlir/IR/Value.h"
+ #include "mlir/Support/LLVM.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
++#include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_projection.h"
+ 
+ namespace mlir {
+@@ -45,8 +46,9 @@ UpdateTensorShardings AggressiveFactorPropagation::propagateFactorShardings(
+     ShardingProjection& projection, PropagationDirection direction,
+     ArrayRef<int64_t> factorSizes, MeshAttr mesh, Operation* op,
+     bool conservativePropagation) const {
+-  UpdateTensorShardings result(projection.getNumOperands(),
+-                               projection.getNumResults());
++  UpdateTensorShardings result{
++      .updateOperands = BitVector(projection.getNumOperands()),
++      .updateResults = BitVector(projection.getNumResults())};
+   if (direction == PropagationDirection::NONE) {
+     return result;
+   }
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
+index 812dc73..975267e 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
+@@ -34,6 +34,7 @@ limitations under the License.
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
+ #include "shardy/dialect/sdy/transforms/common/macros.h"
++#include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_projection.h"
+ 
+ namespace mlir {
+@@ -387,8 +388,9 @@ UpdateTensorShardings BasicFactorPropagation::propagateFactorShardings(
+     ShardingProjection& projection, PropagationDirection direction,
+     ArrayRef<int64_t> factorSizes, MeshAttr mesh, Operation* op,
+     bool conservativePropagation) const {
+-  UpdateTensorShardings result(projection.getNumOperands(),
+-                               projection.getNumResults());
++  UpdateTensorShardings result{
++      .updateOperands = BitVector(projection.getNumOperands()),
++      .updateResults = BitVector(projection.getNumResults())};
+ 
+   // We propagate each factor separately.
+   for (auto [factorIndex, factorSize] : llvm::enumerate(factorSizes)) {
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+index eff74a3..2947c3d 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+@@ -611,9 +611,9 @@ LogicalResult BasicPropagationPassImpl::propagate(
+   // Note that we only need a single iteration (and another to confirm
+   // convergence), since we make sure ops whose sharding changes are
+   // added back to the worklist.
+-  GreedyRewriteConfig config;
+-  config.useTopDownTraversal = true;
+-  config.enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Disabled;
++  GreedyRewriteConfig config{
++      .useTopDownTraversal = true,
++      .enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Disabled};
+   if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns),
+                                           config))) {
+     return failure();
+diff --git a/shardy/dialect/sdy/transforms/propagation/factor_propagation.h b/shardy/dialect/sdy/transforms/propagation/factor_propagation.h
+index 99a41f9..d22982a 100644
+--- a/shardy/dialect/sdy/transforms/propagation/factor_propagation.h
++++ b/shardy/dialect/sdy/transforms/propagation/factor_propagation.h
+@@ -26,6 +26,12 @@ limitations under the License.
+ namespace mlir {
+ namespace sdy {
+ 
++// A struct that specifies which operands and results are updated.
++struct UpdateTensorShardings {
++  BitVector updateOperands;
++  BitVector updateResults;
++};
++
+ // An interface for propagating factor shardings.
+ class FactorPropagation {
+  public:
+diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc b/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
+index 0348ae2..0076ab7 100644
+--- a/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
++++ b/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
+@@ -152,9 +152,10 @@ TensorShardingAttr TensorFactorShardings::createTensorShardingAttr(
+                                  replicatedAxes);
+ }
+ 
+-UpdateTensorShardings ShardingProjection::updateSharding(
++UpdateShardings ShardingProjection::updateSharding(
+     int64_t factorIndex, ArrayRef<AxisRefAttr> newAxes) {
+-  UpdateTensorShardings result(getNumOperands(), getNumResults());
++  UpdateShardings result{.updateOperands = BitVector(getNumOperands()),
++                         .updateResults = BitVector(getNumResults())};
+   for (auto [i, tensor] : llvm::enumerate(operands)) {
+     result.updateOperands[i] = tensor.updateShardingAxes(factorIndex, newAxes);
+   }
+@@ -186,10 +187,10 @@ std::optional<AxisRefInfo> getAxisRefInfo(ArrayRef<AxisRefAttr> axes,
+   }
+   AxisRefAttr axisRef = axes[axisIndex];
+   SubAxisInfoAttr splitInfo = axisRef.getSubAxisInfo();
+-  return AxisRefInfo{/* .size = */ axisRef.getSize(mesh),
+-                     /* .splitPreSize = */ splitInfo
+-                         ? std::make_optional(splitInfo.getPreSize())
+-                         : std::nullopt};
++  return AxisRefInfo{
++      .size = axisRef.getSize(mesh),
++      .splitPreSize = splitInfo ? std::make_optional(splitInfo.getPreSize())
++                                : std::nullopt};
+ }
+ 
+ // Adds all remaining axes in `allAxes`, starting from
+diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_projection.h b/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
+index 4b64d21..17748b1 100644
+--- a/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
++++ b/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
+@@ -94,14 +94,10 @@ struct TensorFactorShardings {
+                                               MeshAttr mesh) const;
+ };
+ 
+-// A struct that specifies which operands and results are updated.
+-struct UpdateTensorShardings {
++// Holds two BitVectors indicating which tensors have new shardings.
++struct UpdateShardings {
+   BitVector updateOperands;
+   BitVector updateResults;
+-
+-  UpdateTensorShardings(int64_t numOperands, int64_t numResults)
+-      : updateOperands(BitVector(numOperands)),
+-        updateResults(BitVector(numResults)) {}
+ };
+ 
+ // The sharding projection holds information about how factors (rather than
+@@ -169,8 +165,8 @@ class ShardingProjection {
+   // Updates the shardings of all tensors that are associated with
+   // `factorIndex` to be `newAxes` for that factor. Returns two BitVectors
+   // indicating whether the operands and results have been updated.
+-  UpdateTensorShardings updateSharding(int64_t factorIndex,
+-                                       ArrayRef<AxisRefAttr> newAxes);
++  UpdateShardings updateSharding(int64_t factorIndex,
++                                 ArrayRef<AxisRefAttr> newAxes);
+ 
+   // Builds a `ShardingProjection` for the given operand and result shardings,
+   // w.r.t. the given `shardingRule`.
+diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_projection_test.cc b/shardy/dialect/sdy/transforms/propagation/sharding_projection_test.cc
+index 0d1f311..64d60bd 100644
+--- a/shardy/dialect/sdy/transforms/propagation/sharding_projection_test.cc
++++ b/shardy/dialect/sdy/transforms/propagation/sharding_projection_test.cc
+@@ -585,7 +585,7 @@ TEST_F(ShardingProjectionUpdateShardingTest, DotGeneralSimple) {
+   // - The RHS is not mapped to factor 0, so it will be skipped.
+   // - The result is mapped to factor 0. The old sharding axes ["a", "b":(1)2]
+   //   are smaller than the new one, so the sharding axes are updated.
+-  UpdateTensorShardings ifUpdated = projection.updateSharding(
++  UpdateShardings ifUpdated = projection.updateSharding(
+       /*factorIndex=*/0, {createAxis("a"), createAxis("b")});
+   EXPECT_THAT(toSetBitsVector(ifUpdated.updateOperands), IsEmpty());
+   EXPECT_THAT(toSetBitsVector(ifUpdated.updateResults), ElementsAre(0));
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index 9345d8d..823baec 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "51681409aeb081c8dfe241e0d8e8c71f8bf0a4f4"
--    LLVM_SHA256 = "347cc44fc5bba17b2a6ac26a253803434790a2996b77e8b6fbbeee9b8a367ec8"
-+    LLVM_COMMIT = "d92a484e6f5c9063d82ca79405bb3557d88ad575"
-+    LLVM_SHA256 = "0e6cce920f7344248ed747443fc16c316faf398e33f6a7f9f11f41ede861f824"
+-    LLVM_COMMIT = "d92a484e6f5c9063d82ca79405bb3557d88ad575"
+-    LLVM_SHA256 = "0e6cce920f7344248ed747443fc16c316faf398e33f6a7f9f11f41ede861f824"
++    LLVM_COMMIT = "aa07282a25c3d6df04af9a4d34874cc433c9c68a"
++    LLVM_SHA256 = "9692acc18f29ac1a3c69feeb00df99093d757b64ea251f8b14481c93b7810d86"
  
      tf_http_archive(
          name = name,
