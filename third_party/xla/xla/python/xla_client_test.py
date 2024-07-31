@@ -2990,6 +2990,49 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       for frame, _ in traceback.walk_tb(python_tb):
         _ = frame.f_locals  # should not crash
 
+    def testTracebackFromFrames(self):
+      def FooFn(x):
+        return x + 1
+
+      def BarFn(y):
+        y = y + 1
+        y = y + 2
+        return y * 2
+
+      frame_foo = xla_client.Frame(
+          __file__,
+          FooFn.__code__.co_name,
+          FooFn.__code__.co_firstlineno,
+          FooFn.__code__.co_firstlineno + 1,
+      )
+      frame_bar = xla_client.Frame(
+          __file__,
+          BarFn.__code__.co_name,
+          BarFn.__code__.co_firstlineno,
+          BarFn.__code__.co_firstlineno + 2,
+      )
+      frames = [frame_foo, frame_bar]
+      tb = xla_client.Traceback.traceback_from_frames(frames)
+
+      with self.subTest("WalkDoesNotError"):
+        for frame, _ in traceback.walk_tb(tb):
+          _ = frame.f_locals  # should not crash
+
+      with self.subTest("TracebackCorrectness"):
+        tb_string = traceback.format_tb(tb)
+        # The traceback should have the format:
+        # File <this file>, line N in BarFn
+        #   y = y + 2
+        # File <this file>, line N in FooFn
+        #   return x + 1
+        self.assertLen(tb_string, len(frames))
+        bar_frame = tb_string[0].split("\n")
+        self.assertEndsWith(bar_frame[0], "BarFn")
+        self.assertEqual(bar_frame[1].strip(), "y = y + 2")
+        foo_frame = tb_string[1].split("\n")
+        self.assertEndsWith(foo_frame[0], "FooFn")
+        self.assertEqual(foo_frame[1].strip(), "return x + 1")
+
   tests.append(TracebackTest)
 
   class ClientTest(ComputationTest):
