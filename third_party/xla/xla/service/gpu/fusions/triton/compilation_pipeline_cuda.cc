@@ -93,6 +93,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm.addPass(CreateSparseRemoveLayoutConversionPass());
   pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
   pm.addPass(mt::gpu::createTritonGPUReorderInstructions());
   pm.addPass(mlir::createCSEPass());

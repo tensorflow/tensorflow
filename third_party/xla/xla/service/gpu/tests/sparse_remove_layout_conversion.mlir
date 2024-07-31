@@ -1,4 +1,4 @@
-// RUN: triton-opt %s -split-input-file -tritongpu-reduce-data-duplication | FileCheck %s
+// RUN: xla-opt %s --sparse-remove-layout-conversion | FileCheck %s
 
 #blocked = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
 #mma = #triton_gpu.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [2, 2], instrShape = [16, 8]}>
