@@ -3325,6 +3325,7 @@ void AnnotateShardingWithSimpleHeuristic(
 
       if (heuristic == "shard-largest") {
         std::vector<int64_t> lengths;
+        lengths.reserve(inst->shape().rank());
         for (int64_t i = 0; i < inst->shape().rank(); ++i) {
           lengths.push_back(inst->shape().dimensions(i));
         }

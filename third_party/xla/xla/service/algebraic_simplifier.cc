@@ -7359,6 +7359,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     if (multi_output_reduce) {
       std::vector<HloInstruction*> broadcast_inits;
       int64_t inputs = reduce->input_count();
+      broadcast_inits.reserve(inputs);
       for (int64_t i = 0; i < inputs; ++i) {
         broadcast_inits.push_back(reduce->init_values()[i]->AddInstruction(
             HloInstruction::CreateBroadcast(reduce->shape().tuple_shapes(i),
@@ -7404,6 +7405,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     if (multi_output_reduce) {
       std::vector<HloInstruction*> reshaped_args;
       int64_t inputs = reduce->input_count();
+      reshaped_args.reserve(inputs);
       for (int64_t i = 0; i < inputs; ++i) {
         reshaped_args.push_back(
             reduce->AddInstruction(HloInstruction::CreateReshape(
@@ -7930,6 +7932,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   if (ShapeUtil::IsZeroElementArray(*input_shapes[0]) ||
       ShapeUtil::IsZeroElementArray(*output_shapes[0])) {
     std::vector<HloInstruction*> broadcast_inits;
+    broadcast_inits.reserve(input_count);
     for (int64_t i = 0; i < input_count; ++i) {
       broadcast_inits.push_back(
           hlo->AddInstruction(HloInstruction::CreateBroadcast(

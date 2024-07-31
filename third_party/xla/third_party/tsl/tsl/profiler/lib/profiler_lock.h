@@ -46,9 +46,9 @@ class ProfilerLock {
   ProfilerLock& operator=(const ProfilerLock&) = delete;
 
   // Movable.
-  ProfilerLock(ProfilerLock&& other)
+  ProfilerLock(ProfilerLock&& other) noexcept
       : active_(std::exchange(other.active_, false)) {}
-  ProfilerLock& operator=(ProfilerLock&& other) {
+  ProfilerLock& operator=(ProfilerLock&& other) noexcept {
     active_ = std::exchange(other.active_, false);
     return *this;
   }
