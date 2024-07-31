@@ -1051,8 +1051,7 @@ Status CompileGraphToXlaHlo(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
     bool unconditionally_use_set_output_shapes, const Graph& graph,
     llvm::ArrayRef<std::string> control_rets,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
-    mlir::MLIRContext* context) {
+    const FunctionLibraryDefinition& flib_def, mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
   RegisterDialects(registry);
   context->appendDialectRegistry(registry);
@@ -1070,6 +1069,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
   // do it optionally.
   config.unconditionally_use_set_output_shapes =
       unconditionally_use_set_output_shapes;
+  GraphDebugInfo debug_info;
   return ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
 }
 
@@ -1078,12 +1078,10 @@ Status BuildHloFromGraph(
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
     std::vector<xla::XlaOp>& returns, bool unconditionally_use_output_shapes,
     llvm::ArrayRef<XlaArgument> args, llvm::ArrayRef<std::string> control_rets,
-    llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def,
-    const GraphDebugInfo& debug_info) {
-  TF_ASSIGN_OR_RETURN(
-      mlir::OwningOpRef<mlir::ModuleOp> module,
-      GraphToModule(unconditionally_use_output_shapes, graph, control_rets,
-                    flib_def, debug_info, &mlir_context));
+    llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def) {
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      GraphToModule(unconditionally_use_output_shapes, graph,
+                                    control_rets, flib_def, &mlir_context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
                             device_type);
 }
