@@ -41,8 +41,10 @@ limitations under the License.
 namespace xla::cpu {
 
 ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
-                             std::vector<NodeDef> nodes_defs)
+                             std::vector<NodeDef> nodes_defs,
+                             const ThunkExecutor::Options& options)
     : thunk_sequence_(std::move(thunk_sequence)),
+      options_(options),
       nodes_defs_(std::move(nodes_defs)),
       is_sequential_(true) {
   for (NodeId i = 0; i < nodes_defs_.size(); ++i) {
@@ -66,11 +68,21 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
     is_sequential_ &= (absl::c_count(nodes_defs_[i].in_edges, i - 1) != 0);
   }
 
+  // Maybe mark execution as sequential if all thunks use small buffers.
+  auto uses_small_buffers = [&](const std::unique_ptr<Thunk>& thunk) {
+    return absl::c_all_of(thunk->buffer_uses(), [&](const BufferUse& use) {
+      return use.slice().size() <= options.execute_sequential_buffer_threshold;
+    });
+  };
+
+  bool small_buffers = absl::c_all_of(thunk_sequence_, uses_small_buffers);
+  is_sequential_ |= small_buffers;
+
   VLOG(2) << absl::StreamFormat(
       "Constructed ThunkExecutor with %d nodes: #source_nodes=%d "
-      "#sink_nodes=%d, #erased_edges=%d, is_sequential=%v",
+      "#sink_nodes=%d, #erased_edges=%d, is_sequential=%v, small_buffers=%v",
       nodes_defs_.size(), source_.size(), sink_.size(), num_erased_edges,
-      is_sequential_);
+      is_sequential_, small_buffers);
 
   // Sanity check that all vectors are empty or all vectors are non-empty.
   DCHECK((!source_.empty() && !sink_.empty() && !thunk_sequence_.empty()) ||
@@ -78,7 +90,7 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
 }
 
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
-    ThunkSequence thunk_sequence) {
+    ThunkSequence thunk_sequence, const ThunkExecutor::Options& options) {
   std::vector<NodeDef> defs(thunk_sequence.size());
 
   std::vector<BufferUse::ReadWriteSet> buffer_rwsets(thunk_sequence.size());
@@ -106,7 +118,7 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
     }
   }
 
-  return ThunkExecutor(std::move(thunk_sequence), std::move(defs));
+  return ThunkExecutor(std::move(thunk_sequence), std::move(defs), options);
 }
 
 ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
