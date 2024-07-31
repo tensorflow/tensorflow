@@ -116,12 +116,10 @@ void AddVariableFreezingFromGlobalTensorsPasses(
   pass_manager->addPass(
       mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
 
-  if (!pass_config.disable_variable_freezing) {
-    // This pass 'freezes' immutable global tensors and inlines them as tf
-    // constant ops.
-    pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
-        /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
-  }
+  // This pass 'freezes' immutable global tensors and inlines them as tf
+  // constant ops.
+  pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+      /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
 
   pass_manager->addPass(mlir::TFL::CreateUnfreezeMutableGlobalTensorsPass());
 }

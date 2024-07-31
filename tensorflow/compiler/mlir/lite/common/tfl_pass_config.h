@@ -57,10 +57,6 @@ struct PassConfig {
   // Whether to enable TFLite variables or not, this will allow
   // mutable variables and produce ReadVariable/AssignVariable ops in TFLite.
   bool enable_tflite_variables = false;
-  // Whether to disable the variable freezing pass or not.
-  // By default we freeze all variables and disallow mutable variables. When
-  // 'enable_tflite_variables' is true then we allow mutable variable only.
-  bool disable_variable_freezing = false;
   // Whether to unfold large splat constant tensors and replace them with
   // fill operation.
   bool unfold_large_splat_constant = false;
@@ -118,8 +114,6 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nruntime_verification: " << pass_config.runtime_verification
             << "\nenable_tflite_variables: "
             << pass_config.enable_tflite_variables
-            << "\ndisable_variable_freezing: "
-            << pass_config.disable_variable_freezing
             << "\nunfold_large_splat_constant: "
             << pass_config.unfold_large_splat_constant
             << "\nguarantee_all_funcs_one_use: "
