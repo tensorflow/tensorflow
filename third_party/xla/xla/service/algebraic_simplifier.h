@@ -487,6 +487,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   static bool IsNonNegative(const HloInstruction* hlo,
                             const AlgebraicSimplifierOptions& options);
 
+  // Check if the opcode of a given instruction is a non-decreasing function
+  // asymptotically satisfying |f(x)| <= |x|
+  static bool IsNondecreasingSublinear(const HloInstruction* hlo);
+
   // Modify the layout dimensions of result_shape, so that it becomes the
   // re-shaped result of applying bitcast to the original_shape, by using
   // dim_map to re-shape layout dimensions of original_shape. Returns the

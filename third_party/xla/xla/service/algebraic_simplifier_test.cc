@@ -11779,5 +11779,24 @@ TEST_F(AlgebraicSimplifierTest, ReduceBroadcastScalarToBroadcastMultiply) {
   EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kMultiply);
 }
 
+TEST_F(AlgebraicSimplifierTest, SinkCbrtThroughMax) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = bf16[17,96,120] parameter(0)
+        b = bf16[17,96,120] parameter(1)
+        cbrt_a = bf16[17,96,120] cbrt(a)
+        cbrt_b = bf16[17,96,120] cbrt(b)
+        ROOT max = bf16[17,96,120] maximum(cbrt_a, cbrt_b)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, GmockMatch(m::Cbrt(m::Maximum(m::Parameter(0), m::Parameter(1)))));
+}
+
 }  // namespace
 }  // namespace xla
