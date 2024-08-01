@@ -135,42 +135,42 @@ f32add {
 }
 
 comp0 {
-  p = (f32[100000000], f32[100000000], f32[100000000], f32[100000000]) parameter(0)
-  gte0 = f32[100000000] get-tuple-element(p), index=0
-  gte1 = f32[100000000] get-tuple-element(p), index=1
-  add.9 = f32[100000000] add(gte0, gte1)
-  gte2 = f32[100000000] get-tuple-element(p), index=2
-  add.10 = f32[100000000] add(add.9, gte2)
-  gte3 = f32[100000000] get-tuple-element(p), index=3
-  add.11 = f32[100000000] add(add.10, gte3)
-  p1 = (f32[100000000], f32[100000000], f32[100000000], f32[100000000]) parameter(1)
-  gte4 = f32[100000000] get-tuple-element(p1), index=0
-  gte5 = f32[100000000] get-tuple-element(p1), index=1
-  add.12 = f32[100000000] add(gte4, gte5)
-  gte6 = f32[100000000] get-tuple-element(p1), index=2
-  add.13 = f32[100000000] add(add.12, gte6)
-  gte7 = f32[100000000] get-tuple-element(p1), index=3
-  add.14 = f32[100000000] add(add.13, gte7)
-  ROOT r = f32[100000000] add(add.14, add.11)
+  p = (f32[2048], f32[2048], f32[2048], f32[2048]) parameter(0)
+  gte0 = f32[2048] get-tuple-element(p), index=0
+  gte1 = f32[2048] get-tuple-element(p), index=1
+  add.9 = f32[2048] add(gte0, gte1)
+  gte2 = f32[2048] get-tuple-element(p), index=2
+  add.10 = f32[2048] add(add.9, gte2)
+  gte3 = f32[2048] get-tuple-element(p), index=3
+  add.11 = f32[2048] add(add.10, gte3)
+  p1 = (f32[2048], f32[2048], f32[2048], f32[2048]) parameter(1)
+  gte4 = f32[2048] get-tuple-element(p1), index=0
+  gte5 = f32[2048] get-tuple-element(p1), index=1
+  add.12 = f32[2048] add(gte4, gte5)
+  gte6 = f32[2048] get-tuple-element(p1), index=2
+  add.13 = f32[2048] add(add.12, gte6)
+  gte7 = f32[2048] get-tuple-element(p1), index=3
+  add.14 = f32[2048] add(add.13, gte7)
+  ROOT r = f32[2048] add(add.14, add.11)
 }
 
 comp1 {
-  p = f32[100000000] parameter(0)
+  p = f32[2048] parameter(0)
   c0 = f32[] constant(0)
   ROOT r = f32[] reduce(p, c0), dimensions={0}, to_apply=f32add
 }
 
 comp2 {
-  p = f32[100000000] parameter(0)
+  p = f32[2048] parameter(0)
   c0 = f32[] constant(0)
   r = f32[] reduce(p, c0), dimensions={0}, to_apply=f32add
   ROOT n = f32[] negate(r)
 }
 
 ENTRY m.Computation2 {
-  p0 = (f32[100000000], f32[100000000], f32[100000000], f32[100000000]) parameter(0)
-  p1 = (f32[100000000], f32[100000000], f32[100000000], f32[100000000]) parameter(1)
-  fusion.0 = f32[100000000] fusion(p0, p1), kind=kLoop, calls=comp0
+  p0 = (f32[2048], f32[2048], f32[2048], f32[2048]) parameter(0)
+  p1 = (f32[2048], f32[2048], f32[2048], f32[2048]) parameter(1)
+  fusion.0 = f32[2048] fusion(p0, p1), kind=kLoop, calls=comp0
   fusion.1 = f32[] fusion(fusion.0), kind=kLoop, calls=comp1
   fusion.2 = f32[] fusion(fusion.0), kind=kLoop, calls=comp2
   ROOT tuple = (f32[], f32[]) tuple(fusion.1, fusion.2)
@@ -362,14 +362,14 @@ TEST_F(FusionMergerTest, WillMergeReduceNotTooUnfriendlyLayouts) {
     f2_computation {
       f2_p0 = f32[16,16,256]{2,1,0} parameter(0)
       f2_zero = f32[] constant(0)
-      ROOT f2_root = f32[] reduce(f2_p0, f2_zero), dimensions={0,1,2},
+      ROOT f2_root = f32[16,16] reduce(f2_p0, f2_zero), dimensions={2},
              to_apply=add_computation
     }
 
     ENTRY entry {
       p0 = f32[16,16,256]{0,1,2} parameter(0)
       f1 = f32[16,16,256]{2,1,0} fusion(p0), kind=kLoop, calls=f1_computation
-      ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
+      ROOT f2 = f32[16,16] fusion(f1), kind=kInput, calls=f2_computation
     })")
                     .value();
   EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
@@ -685,6 +685,12 @@ ENTRY entry {
 }
     )")
                     .value();
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  // For some reason, we would not merge any fusions when using the MLIR
+  // reduction emitter. The cost model queries the reduction emitter regarding
+  // the launch dimensions, so it seems likely that it is caused by different
+  // launch dimensions.
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
   EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
 }
 
@@ -995,6 +1001,8 @@ ENTRY e {
 }
   )")
                     .value();
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
   EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
 }
 

@@ -674,16 +674,16 @@ add {
 }
 
 fused_computation.0 {
-  p0 = f32[4,28672,32] parameter(0)
-  tanh = f32[4,28672,32] tanh(p0)
+  p0 = f32[4,256,32] parameter(0)
+  tanh = f32[4,256,32] tanh(p0)
   c1 = f32[] constant(72)
-  broadcast = f32[4,28672,32] broadcast(c1), dimensions={}
-  ROOT mul = f32[4,28672,32] multiply(tanh, broadcast)
+  broadcast = f32[4,256, 32] broadcast(c1), dimensions={}
+  ROOT mul = f32[4,256,32] multiply(tanh, broadcast)
 }
 
 ENTRY fusion {
-  p0 = f32[4,28672,32] parameter(0)
-  fusion = f32[4,28672,32] fusion(p0), kind=kLoop, calls=fused_computation.0
+  p0 = f32[4,256,32] parameter(0)
+  fusion = f32[4,256,32] fusion(p0), kind=kLoop, calls=fused_computation.0
   c0 = f32[] constant(0)
   ROOT reduce = f32[4,32] reduce(fusion, c0), to_apply=add, dimensions={1}
 })";
