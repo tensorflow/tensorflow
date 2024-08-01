@@ -44,6 +44,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
+        "//learning/brain/mobile/shim:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
