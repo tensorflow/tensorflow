@@ -8282,6 +8282,65 @@ TEST_F(MemorySpaceAssignmentTest, HoistCopyStart) {
   }
 }
 
+TEST_F(MemorySpaceAssignmentTest, WindowPrefetch) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+%fused_computation {
+  %p0 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(0)
+  %p1 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(1)
+  %p2 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(2)
+  %add0 = bf16[64,8]{1,0:T(8,128)(2,1)} add(%p0, %p1)
+  ROOT %add1 = bf16[64,8]{1,0:T(8,128)(2,1)} add(%add0, %p2)
+}
+
+entry {
+  %p0 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(0)
+  %p1 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(1)
+  %p2 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(2)
+  ROOT fusion = bf16[64,8]{1,0:T(8,128)(2,1)} fusion(bf16[64,8]{1,0:T(8,128)(2,1)} %p0, bf16[64,8]{1,0:T(8,128)(2,1)} %p1, bf16[64,8]{1,0:T(8,128)(2,1)} %p2), kind=kLoop, calls=%fused_computation
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Get info about window prefetch buffers, such as which operands they
+  // correspond to and their sizes.
+  auto window_prefetch_detail_fn = [&](const HloInstruction* instruction) {
+    WindowPrefetchDetail window_prefetch_detail;
+    const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+    if (instruction == fusion) {
+      for (int i = 0; i < 3; ++i) {
+        auto* operand = window_prefetch_detail.add_windows();
+        operand->set_operand(i);
+        operand->set_size(32);
+      }
+    }
+    return window_prefetch_detail;
+  };
+
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_window_prefetch = true;
+  options.window_prefetch_detail_fn = window_prefetch_detail_fn;
+  AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
+                    /*min_prefetch_interval=*/0);
+  const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  // The fusion instruction should have 5 operands: the 3 original operands
+  // plus 2 window prefetch buffers.
+  EXPECT_EQ(fusion->operand_count(), 5);
+
+  // The root of the fusion should be a WindowPrefetchBuffer. The first operand
+  // should be the original root, and the second and third operands should be
+  // the window prefetch buffers.
+  HloInstruction* root = fusion->fused_expression_root();
+  EXPECT_TRUE(root->IsCustomCall("WindowPrefetchBuffer"));
+  EXPECT_EQ(root->operand_count(), 3);
+  EXPECT_EQ(root->operand(1), fusion->fused_parameter(3));
+  EXPECT_EQ(root->operand(2), fusion->fused_parameter(4));
+  VLOG(2) << "module: " << module->ToString();
+}
+
 using AsynchronousCopyOrderingTest = ::testing::Test;
 
 TEST_F(AsynchronousCopyOrderingTest, Simple) {
