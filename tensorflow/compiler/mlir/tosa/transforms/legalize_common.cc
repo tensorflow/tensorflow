@@ -528,24 +528,8 @@ std::optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
   }
 
-  // Need to reshape the condition.
-  SmallVector<int64_t> new_cond_dims(
-      result_type.getRank() - condition_type.getRank(), 1);
-
-  for (int i = 0; i < condition_type.getRank(); i++) {
-    new_cond_dims.push_back(condition_type.getShape()[i]);
-  }
-
-  auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-      rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(new_cond_dims,
-                                           condition_type.getElementType()),
-      condition_value,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(new_cond_dims)));
-
   return CreateOpAndInfer<tosa::SelectOp>(rewriter, op->getLoc(), result_type,
-                                          reshape_op, x_value, y_value)
+                                          condition_value, x_value, y_value)
       .getResult();
 }
 
@@ -629,17 +613,15 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     Value op2_rescale_rhs = removeZeroPointAndCastToInt32(
         rewriter, op, input_rhs_val, input_rhs_qtype.getZeroPoint());
 
-    auto op3_mul_op1_op2 = CreateOpAndInfer<tosa::MulOp>(
-        rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs,
-        rewriter.getI8IntegerAttr(0));
+    auto op3_mul_op1_op2 = CreateMulOpAndInfer(
+        rewriter, op, rescale_type, op1_rescale_lhs, op2_rescale_rhs);
     return buildRescale(rewriter, op, output_type, op3_mul_op1_op2.getResult(),
                         output_rescale_scale, 0, output_qtype.getZeroPoint(),
                         true, scale32);
   }
 
-  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                       input_lhs_val, input_rhs_val,
-                                       rewriter.getI8IntegerAttr(0))
+  return CreateMulOpAndInfer(rewriter, op, output_type, input_lhs_val,
+                             input_rhs_val)
       .getResult();
 }
 
@@ -718,13 +700,12 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 
       auto sub_op = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), rescale_type, x_scaled, y_scaled);
-      auto mul_op = CreateOpAndInfer<tosa::MulOp>(
-          rewriter, op->getLoc(), rescale_type, sub_op.getResult(),
-          sub_op.getResult(), rewriter.getI8IntegerAttr(0));
+      auto mul_op = CreateMulOpAndInfer(rewriter, op, rescale_type,
+                                        sub_op.getResult(), sub_op.getResult());
 
       // Convert the operator back to the original type
-      return buildRescaleFromInt32(rewriter, op, result_type, mul_op,
-                                   output_rescale_scale,
+      return buildRescaleFromInt32(rewriter, op, result_type,
+                                   mul_op.getResult(), output_rescale_scale,
                                    result_qtype.getZeroPoint());
     }
 
@@ -736,9 +717,8 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
   // This will cover FP32/FP16/INT32 legalization
   auto sub_op =
       CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), result_type, x, y);
-  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_type,
-                                       sub_op.getResult(), sub_op.getResult(),
-                                       rewriter.getI8IntegerAttr(0))
+  return CreateMulOpAndInfer(rewriter, op, result_type, sub_op.getResult(),
+                             sub_op.getResult())
       .getResult();
 }
 
@@ -758,9 +738,11 @@ std::optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
   }
 
+  auto rank = input_type.getRank();
+
   auto add_op = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), result_type, input,
-      getTosaConstTensorSingleF32(rewriter, op, 0.5));
+      getTosaConstTensorSingleF32(rewriter, op, 0.5, rank));
 
   return CreateOpAndInfer<tosa::FloorOp>(rewriter, op->getLoc(), result_type,
                                          add_op.getResult())
@@ -1509,14 +1491,16 @@ std::optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
   }
 
+  auto rank = output_type.getRank();
+
   int32_t input_rank = output_type.getShape().size();
   SmallVector<int64_t> bcast_shape(input_rank, 1);
 
   // Can't directly create size=1, rank=rank(input) tensor because
   // it will be optimized out.  Instead, create rank0 tensor and reshape later.
-  Value one_const_op = getTosaConstTensorSingleF32(rewriter, op, 1.0);
+  Value one_const_op = getTosaConstTensorSingleF32(rewriter, op, 1.0, rank);
 
-  Value zero_const_op = getTosaConstTensorSingleF32(rewriter, op, 0.0);
+  Value zero_const_op = getTosaConstTensorSingleF32(rewriter, op, 0.0, rank);
 
   auto a1_exp_in_op = CreateOpAndInfer<tosa::ExpOp>(
       rewriter, op->getLoc(), output_type, features_value);
@@ -1659,25 +1643,25 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       auto op7_lshift_op5 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
           op5_table_op4_bits_31_24.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 17));
+          getTosaConstTensorSingleI32(rewriter, op, 17, input_rank));
 
       // For the 2nd group of 8-bit, we need to >> 7 AND << 16 ==> << 9
       auto op8_lshift_op6 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
           op6_table_op4_bits_23_16.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 9));
+          getTosaConstTensorSingleI32(rewriter, op, 9, input_rank));
 
       // For the 3rd 8-bit, we need to >> 7 AND << 8 ==> << 1
       auto op9_lshift_op7 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
           op7_table_op4_bits_15_8.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 1));
+          getTosaConstTensorSingleI32(rewriter, op, 1, input_rank));
 
       // For the last 8-bit, we only need to >> 7
       auto op10_rshift_op8 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
           op8_table_op4_bits_7_0.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 7), true);
+          getTosaConstTensorSingleI32(rewriter, op, 7, input_rank), true);
 
       // Add together all the 8-bit groups
       // Add [1+2]
@@ -1699,7 +1683,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       auto op14_rshift_op13_12 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
           op13_add_op12_op10.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 12), true);
+          getTosaConstTensorSingleI32(rewriter, op, 12, input_rank), true);
 
       auto op15_reducesum_op14 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type,
@@ -1715,7 +1699,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // minus one to get headroom
       auto op17_sub_op16 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type, op16_clz_op15.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 1));
+          getTosaConstTensorSingleI32(rewriter, op, 1, input_rank));
 
       // Left shift to get s1.30 format
       auto op18_lshift_op15_op17 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
@@ -1728,18 +1712,19 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // We need to operate in s2.29 since 48/17 is > 2.0
       // Reference: gemmlowp/fixedpoint/fixedpoint.h
       Value half_denominator = op18_lshift_op15_op17.getResult();
-      Value four = getTosaConstTensorSingleI32(rewriter, op, 4);
-      Value F2_one = getTosaConstTensorSingleI32(rewriter, op, (1U << 29));
+      Value four = getTosaConstTensorSingleI32(rewriter, op, 4, input_rank);
+      Value F2_one =
+          getTosaConstTensorSingleI32(rewriter, op, (1U << 29), input_rank);
       Value constant_48_over_17 =
-          getTosaConstTensorSingleI32(rewriter, op, 1515870810);
+          getTosaConstTensorSingleI32(rewriter, op, 1515870810, input_rank);
       Value constant_neg_32_over_17 =
-          getTosaConstTensorSingleI32(rewriter, op, -1010580540);
+          getTosaConstTensorSingleI32(rewriter, op, -1010580540, input_rank);
 
       // F2 x = constant_48_over_17 + half_denominator *
       // constant_neg_32_over_17;
-      auto op19_mul_half_denominator = CreateOpAndInfer<tosa::MulOp>(
-          rewriter, op->getLoc(), int32_rsum_type, half_denominator,
-          constant_neg_32_over_17, 31);
+      auto op19_mul_half_denominator =
+          CreateMulOpAndInfer(rewriter, op, int32_rsum_type, half_denominator,
+                              constant_neg_32_over_17, 31);
 
       auto op20_add_op19 = CreateOpAndInfer<tosa::AddOp>(
           rewriter, op->getLoc(), int32_rsum_type,
@@ -1750,9 +1735,8 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       for (int i = 0; i < 3; i++) {
         // half_denominator_times_x =
         // SaturatingRoundingDoublingHighMul(half_denominator, x)
-        auto op21_mul_x_half_denominator = CreateOpAndInfer<tosa::MulOp>(
-            rewriter, op->getLoc(), int32_rsum_type, nr_x, half_denominator,
-            31);
+        auto op21_mul_x_half_denominator = CreateMulOpAndInfer(
+            rewriter, op, int32_rsum_type, nr_x, half_denominator, 31);
 
         // F2 one_minus_half_denominator_times_x = F2::One() -
         // half_denominator_times_x
@@ -1762,14 +1746,13 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
         // SaturatingRoundingDoublingHighMul(x,
         // one_minus_half_denominator_times_x)
-        auto op23_mul_x_op22 = CreateOpAndInfer<tosa::MulOp>(
-            rewriter, op->getLoc(), int32_rsum_type, nr_x,
-            op22_sub_one_op21.getResult(), 31);
+        auto op23_mul_x_op22 =
+            CreateMulOpAndInfer(rewriter, op, int32_rsum_type, nr_x,
+                                op22_sub_one_op21.getResult(), 31);
 
         // x + Rescale<2>(x * one_minus_half_denominator_times_x)
-        auto op24_mul_op23_four = CreateOpAndInfer<tosa::MulOp>(
-            rewriter, op->getLoc(), int32_rsum_type,
-            op23_mul_x_op22.getResult(), four, 0);
+        auto op24_mul_op23_four = CreateMulOpAndInfer(
+            rewriter, op, int32_rsum_type, op23_mul_x_op22.getResult(), four);
 
         auto op25_add_x_op24 = CreateOpAndInfer<tosa::AddOp>(
             rewriter, op->getLoc(), int32_rsum_type, nr_x,
@@ -1781,9 +1764,9 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Step 6. multiply exp(x) with 1 / sum(exp(x))
       // combined with Rescale<0>(ExactMulByPot<-1>(x))
       // so shift 30 instead of 31
-      auto op26_mul_op13_x = CreateOpAndInfer<tosa::MulOp>(
-          rewriter, op->getLoc(), int32_logits_type,
-          op13_add_op12_op10.getResult(), nr_x, 31 - 1);
+      auto op26_mul_op13_x =
+          CreateMulOpAndInfer(rewriter, op, int32_logits_type,
+                              op13_add_op12_op10.getResult(), nr_x, 31 - 1);
 
       // Right shift amount is
       // num_bits_over_unit + 31 - (sizeof(OutputT) * 8 =
@@ -1791,7 +1774,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // (12 + 31 - 8) - headroom_plus_one
       auto op27_sub_op16 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          getTosaConstTensorSingleI32(rewriter, op, 12 + 31 - 8),
+          getTosaConstTensorSingleI32(rewriter, op, 12 + 31 - 8, input_rank),
           op16_clz_op15.getResult());
 
       auto op28_rshift_op26_op27 =
@@ -1833,7 +1816,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           /*double_round=*/true, /*scale32=*/true);
       auto op5_add_op4 = CreateOpAndInfer<tosa::AddOp>(
           rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
-          getTosaConstTensorSingleI32(rewriter, op, 32767));
+          getTosaConstTensorSingleI32(rewriter, op, 32767, input_rank));
 
       auto op6_cast_op5 = CreateOpAndInfer<tosa::CastOp>(
           rewriter, op->getLoc(), int16_logits_type, op5_add_op4.getResult());
@@ -1850,7 +1833,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // 7 bits should be all 0.
       auto op8_rshift_op7 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_logits_type, op7_table_op6.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 7), true);
+          getTosaConstTensorSingleI32(rewriter, op, 7, input_rank), true);
 
       // Step 4. get sum(exp()). output 16.15
       auto op9_reducesum_op8 = CreateOpAndInfer<tosa::ReduceSumOp>(
@@ -1865,7 +1848,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op11_sub_op10 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type, op10_clz_op9.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 1));
+          getTosaConstTensorSingleI32(rewriter, op, 1, input_rank));
 
       // Left shift to get  1.30 format
       auto op12_lshift_op9_op11 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
@@ -1876,17 +1859,17 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       auto op13_sub_op12 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
           op12_lshift_op9_op11.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, (1u << 30)));
+          getTosaConstTensorSingleI32(rewriter, op, (1u << 30), input_rank));
 
       // Right shift 14 bits to get output range [0, 65535]
       auto op14_rshift_op13 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_rsum_type, op13_sub_op12.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 14), true);
+          getTosaConstTensorSingleI32(rewriter, op, 14, input_rank), true);
 
       // Remap input to [-32768, 32767] for LUT input
       auto op15_add_op14 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type, op14_rshift_op13.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 32768));
+          getTosaConstTensorSingleI32(rewriter, op, 32768, input_rank));
       auto op16_cast_op15 = CreateOpAndInfer<tosa::CastOp>(
           rewriter, op->getLoc(), int16_rsum_type, op15_add_op14.getResult());
 
@@ -1906,17 +1889,16 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Right shift 7 bits back to 0.15
       auto op18_rshift_op17 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_rsum_type, op17_table_op16.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 7), true);
+          getTosaConstTensorSingleI32(rewriter, op, 7, input_rank), true);
 
       // Step 6. multiply exp(max-x) with 1 / sum(exp(max-x))
       // lhs: 0.15, rhs: 0.15, output: 0.30
-      auto op19_mul_op18_op8 = CreateOpAndInfer<tosa::MulOp>(
-          rewriter, op->getLoc(), int32_logits_type, op18_rshift_op17,
-          op8_rshift_op7, 0);
+      auto op19_mul_op18_op8 = CreateMulOpAndInfer(
+          rewriter, op, int32_logits_type, op18_rshift_op17, op8_rshift_op7);
 
       auto op20_sub_op10 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          getTosaConstTensorSingleI32(rewriter, op, 31),
+          getTosaConstTensorSingleI32(rewriter, op, 31, input_rank),
           op10_clz_op9.getResult());
 
       // Apply the clz back, we get 0.15 output
@@ -1973,9 +1955,9 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     auto denominator = CreateOpAndInfer<tosa::ReciprocalOp>(
         rewriter, op->getLoc(), reducesum.getType(), reducesum.getResult());
 
-    return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                         exp_norm_logits.getResult(),
-                                         denominator.getResult(), 0)
+    return CreateMulOpAndInfer(rewriter, op, output_type,
+                               exp_norm_logits.getResult(),
+                               denominator.getResult())
         .getResult();
   }
 }
@@ -2031,9 +2013,9 @@ std::optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(), op2_reducesum_op1.getType(),
       op2_reducesum_op1.getResult());
 
-  auto op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), output_type, op1_exp_in.getResult(),
-      op3_reciprocal_op2.getResult(), 0);
+  auto op4_mul_op1_op3 =
+      CreateMulOpAndInfer(rewriter, op, output_type, op1_exp_in.getResult(),
+                          op3_reciprocal_op2.getResult());
 
   return CreateOpAndInfer<tosa::LogOp>(rewriter, op->getLoc(), output_type,
                                        op4_mul_op1_op3.getResult())
@@ -2725,9 +2707,8 @@ std::optional<Value> convertFloorDivOp(PatternRewriter& rewriter, Operation* op,
 
   auto a1_reciprocal_rhs_op = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), rhs_value.getType(), rhs_value);
-  auto a2_mul_lhs_a1_op = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), output_type, lhs_value,
-      a1_reciprocal_rhs_op.getResult(), 0);
+  auto a2_mul_lhs_a1_op = CreateMulOpAndInfer(
+      rewriter, op, output_type, lhs_value, a1_reciprocal_rhs_op.getResult());
   return CreateOpAndInfer<tosa::FloorOp>(rewriter, op->getLoc(), output_type,
                                          a2_mul_lhs_a1_op.getResult())
       .getResult();
@@ -2752,9 +2733,8 @@ std::optional<Value> convertFloorModOp(PatternRewriter& rewriter, Operation* op,
 
   auto a1_reciprocal_rhs_op = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), rhs_value.getType(), rhs_value);
-  auto a2_mul_lhs_a1_op = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), output_type, lhs_value,
-      a1_reciprocal_rhs_op.getResult(), 0);
+  auto a2_mul_lhs_a1_op = CreateMulOpAndInfer(
+      rewriter, op, output_type, lhs_value, a1_reciprocal_rhs_op.getResult());
   auto a3_floor_a2_op = CreateOpAndInfer<tosa::FloorOp>(
       rewriter, op->getLoc(), output_type, a2_mul_lhs_a1_op.getResult());
   return CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), output_type,
@@ -3282,9 +3262,10 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
 
   if (!input_is_qtype) {
     double div_scale = 1.0 / static_cast<double>(num_elems_on_reduced_axis);
-    Value div_const = getTosaConstTensorSingleF32(rewriter, op, div_scale);
-    return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                         val.value(), div_const, 0)
+    Value div_const = getTosaConstTensorSingleF32(rewriter, op, div_scale,
+                                                  output_type.getRank());
+    return CreateMulOpAndInfer(rewriter, op, output_type, val.value(),
+                               div_const)
         .getResult();
   }
 
@@ -3546,9 +3527,13 @@ std::optional<Value> convertQuantizeOp(PatternRewriter& rewriter, Operation* op,
   }
 
   ShapedType output_fp_type = output_type.clone(rewriter.getF32Type());
-  Value result = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), output_fp_type, input_value,
-      getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale)), 0);
+
+  auto rank = input_type.getRank();
+
+  Value result =
+      CreateMulOpAndInfer(rewriter, op, output_fp_type, input_value,
+                          getTosaConstTensorSingleF32(
+                              rewriter, op, static_cast<float>(scale), rank));
 
   if (zeropoint != 0) {
     // cast to i32 to add zeropoint
@@ -3556,7 +3541,7 @@ std::optional<Value> convertQuantizeOp(PatternRewriter& rewriter, Operation* op,
     Value cast_i32 = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
                                                     output_i32_type, result);
 
-    Value zp_val = getTosaConstTensorSingleI32(rewriter, op, zeropoint);
+    Value zp_val = getTosaConstTensorSingleI32(rewriter, op, zeropoint, rank);
 
     result = CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(),
                                            output_i32_type, cast_i32, zp_val);
@@ -3583,24 +3568,26 @@ std::optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
   if (!mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType()))
     return std::nullopt;
 
+  auto input_rank = input_type.getRank();
+
   std::optional<Value> zp_val;
   if (zeropoint.size() == 1) {
-    zp_val = getTosaConstTensorSingleF32(rewriter, op,
-                                         static_cast<float>(zeropoint[0]));
+    zp_val = getTosaConstTensorSingleF32(
+        rewriter, op, static_cast<float>(zeropoint[0]), input_rank);
   } else {
     SmallVector<int64_t> shape;
-    shape.resize(input_type.getRank(), 1);
+    shape.resize(input_rank, 1);
     shape[dim] = zeropoint.size();
     zp_val = getConstTensor(rewriter, op, zeropoint, shape);
   }
 
   std::optional<Value> scale_val;
   if (scale.size() == 1) {
-    scale_val =
-        getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale[0]));
+    scale_val = getTosaConstTensorSingleF32(
+        rewriter, op, static_cast<float>(scale[0]), input_rank);
   } else {
     SmallVector<int64_t> shape;
-    shape.resize(input_type.getRank(), 1);
+    shape.resize(input_rank, 1);
     shape[dim] = scale.size();
     scale_val = getConstTensor(rewriter, op, scale, shape);
   }
@@ -3609,14 +3596,15 @@ std::optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
 
   auto op1_cast_in = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
                                                     output_type, input_value);
+  Value op1_cast_in_value = op1_cast_in.getResult();
+  Value zp_value = zp_val.value();
+  auto op2_sub_op1 = CreateOpAndInfer<tosa::SubOp>(
+      rewriter, op->getLoc(), output_type, op1_cast_in_value, zp_value);
 
-  auto op2_sub_op1 =
-      CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), output_type,
-                                    op1_cast_in.getResult(), zp_val.value());
-
-  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                       op2_sub_op1.getResult(),
-                                       scale_val.value(), 0)
+  Value op2_sub_op1_value = op2_sub_op1.getResult();
+  Value scale_value = scale_val.value();
+  return CreateMulOpAndInfer(rewriter, op, output_type, op2_sub_op1_value,
+                             scale_value)
       .getResult();
 }
 
@@ -3648,13 +3636,14 @@ std::optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
   float nudged_min, nudged_max, nudged_scale;
   tensorflow_nudge(min, max, qmin, qmax, &nudged_min, &nudged_max,
                    &nudged_scale);
-
-  Value cst_min = getTosaConstTensorSingleF32(rewriter, op, nudged_min);
-  Value cst_max = getTosaConstTensorSingleF32(rewriter, op, nudged_max);
-  Value cst_scale = getTosaConstTensorSingleF32(rewriter, op, nudged_scale);
+  auto rank = input_type.getRank();
+  Value cst_min = getTosaConstTensorSingleF32(rewriter, op, nudged_min, rank);
+  Value cst_max = getTosaConstTensorSingleF32(rewriter, op, nudged_max, rank);
+  Value cst_scale =
+      getTosaConstTensorSingleF32(rewriter, op, nudged_scale, rank);
   Value cst_inv_scale =
-      getTosaConstTensorSingleF32(rewriter, op, 1.0f / nudged_scale);
-  Value cst_half = getTosaConstTensorSingleF32(rewriter, op, 0.5f);
+      getTosaConstTensorSingleF32(rewriter, op, 1.0f / nudged_scale, rank);
+  Value cst_half = getTosaConstTensorSingleF32(rewriter, op, 0.5f, rank);
 
   // This code originates from
   // tensorflow/core/kernels/fake_quant_ops_functor.h.
@@ -3667,9 +3656,8 @@ std::optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
   auto op3_sub_op2 = CreateOpAndInfer<tosa::SubOp>(
       rewriter, op->getLoc(), output_type, op2_max_op1.getResult(), cst_min);
 
-  auto op4_mul_op3 =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                    op3_sub_op2.getResult(), cst_inv_scale, 0);
+  auto op4_mul_op3 = CreateMulOpAndInfer(
+      rewriter, op, output_type, op3_sub_op2.getResult(), cst_inv_scale);
 
   auto op5_add_op4 = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), output_type, op4_mul_op3.getResult(), cst_half);
@@ -3677,9 +3665,8 @@ std::optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
   auto op6_floor_op5 = CreateOpAndInfer<tosa::FloorOp>(
       rewriter, op->getLoc(), output_type, op5_add_op4.getResult());
 
-  auto op7_mul_op6 =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                    op6_floor_op5.getResult(), cst_scale, 0);
+  auto op7_mul_op6 = CreateMulOpAndInfer(rewriter, op, output_type,
+                                         op6_floor_op5.getResult(), cst_scale);
 
   return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
                                        op7_mul_op6.getResult(), cst_min)
@@ -4429,11 +4416,12 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
   if (!flattened_coeff_value) return std::nullopt;
 
   // Multiply the coefficients by the coordinates
-  auto flattened_indices_mul_op = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(indices_matrix_shape,
-                                           indices_type.getElementType()),
-      indices_matrix_reshape_op.getResult(), flattened_coeff_value.value(), 0);
+  Value mul_x = indices_matrix_reshape_op.getResult();
+  Value mul_y = flattened_coeff_value.value();
+  RankedTensorType mul_type = tensorflow::GetTypeFromTFTensorShape(
+      indices_matrix_shape, indices_type.getElementType());
+  auto flattened_indices_mul_op =
+      CreateMulOpAndInfer(rewriter, op, mul_type, mul_x, mul_y);
 
   // Sum up the products of the coefficients and coordinates
   auto flattened_indices_reduce_op = CreateOpAndInfer<tosa::ReduceSumOp>(
@@ -4629,16 +4617,17 @@ std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
 
   // TOSA greater and select can both broadcast, so simply create a tensor with
   // one element.
+  auto rank = output_type.getRank();
   Value pos_one, neg_one, zero;
   ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
   if (mlir::isa<FloatType>(output_elem_type)) {
-    pos_one = getTosaConstTensorSingleF32(rewriter, op, 1.0f);
-    neg_one = getTosaConstTensorSingleF32(rewriter, op, -1.0f);
-    zero = getTosaConstTensorSingleF32(rewriter, op, 0.0f);
+    pos_one = getTosaConstTensorSingleF32(rewriter, op, 1.0f, rank);
+    neg_one = getTosaConstTensorSingleF32(rewriter, op, -1.0f, rank);
+    zero = getTosaConstTensorSingleF32(rewriter, op, 0.0f, rank);
   } else {
-    pos_one = getTosaConstTensorScalarInt(builder, output_elem_type, 1);
-    neg_one = getTosaConstTensorScalarInt(builder, output_elem_type, -1);
-    zero = getTosaConstTensorScalarInt(builder, output_elem_type, 0);
+    pos_one = getTosaConstTensorScalarInt(builder, output_elem_type, 1, rank);
+    neg_one = getTosaConstTensorScalarInt(builder, output_elem_type, -1, rank);
+    zero = getTosaConstTensorScalarInt(builder, output_elem_type, 0, rank);
   }
 
   ShapedType const_type = output_type.clone(rewriter.getIntegerType(1));

@@ -918,9 +918,9 @@ func.func @test_right_shift(%arg0: tensor<4x4xi32>, %arg1: tensor<1x1xi32>) -> t
 // -----
 
 // CHECK-LABEL: @test_one_hot
-// CHECK-SAME:      %[[ARG0_0:.*]]: tensor<4x4xi32>, %[[ARG1_0:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>
-// CHECK:         %[[CST1:.*]] = tosa.const_shape {value = dense<[16, 1, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
-// CHECK:         %[[CST2:.*]] = tosa.const_shape {value = dense<[16, 2, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-SAME:    %[[ARG0_0:.*]]: tensor<4x4xi32>, %[[ARG1_0:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>
+// CHECK-DAG:     %[[CST1:.*]] = tosa.const_shape {value = dense<[16, 1, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG:     %[[CST2:.*]] = tosa.const_shape {value = dense<[16, 2, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
 // CHECK:         %[[RESHAPE_0:.*]] = tosa.reshape %[[ARG1_0]] {new_shape = array<i64: 1, 1, 1>}
 // CHECK:         %[[TILE:.*]] = tosa.tile %[[RESHAPE_0]], %[[CST1]]
 // CHECK:         %[[RESHAPE_1:.*]] = tosa.reshape %[[ARG2]] {new_shape = array<i64: 1, 1, 1>}
