@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -273,6 +274,66 @@ TEST(ThunkExecutorTest, FifoReadyQueueTest) {
   EXPECT_EQ(half2.Size(), 2);
   EXPECT_EQ(half2.Pop(), 4);
   EXPECT_EQ(half2.Pop(), 5);
+}
+
+TEST(ThunkExecutorTest, SortedReadyQueueTest) {
+  std::vector<ThunkExecutor::NodeDef> nodes_defs(16);
+  for (size_t i = 0; i < nodes_defs.size(); ++i) {
+    nodes_defs[i].priority = i;
+  }
+
+  ThunkExecutor::SortedReadyQueue queue(nodes_defs);
+  // Check basic queue properties.
+  EXPECT_TRUE(queue.Empty());
+  EXPECT_EQ(queue.Size(), 0);
+
+  queue.Push(1);
+  queue.Push(3);
+  queue.Push(2);
+
+  EXPECT_EQ(queue.Pop(), 3);
+  EXPECT_EQ(queue.Pop(), 2);
+  EXPECT_EQ(queue.Pop(), 1);
+
+  EXPECT_TRUE(queue.Empty());
+  EXPECT_EQ(queue.Size(), 0);
+
+  // Prepare queue for PopHalf test case.
+  queue.Push(2);
+  queue.Push(1);
+  queue.Push(3);
+
+  // Pop half of the queue.
+  ThunkExecutor::SortedReadyQueue half0 = queue.PopHalf();
+  EXPECT_EQ(half0.Size(), 2);
+  EXPECT_EQ(half0.Pop(), 2);
+  EXPECT_EQ(half0.Pop(), 1);
+
+  // Check that the rest is still in the queue.
+  EXPECT_EQ(queue.Size(), 1);
+
+  // Pop the rest of the queue.
+  ThunkExecutor::SortedReadyQueue half1 = queue.PopHalf();
+  EXPECT_EQ(half1.Size(), 1);
+  EXPECT_EQ(half1.Pop(), 3);
+
+  // Check that all nodes were returned from PopHalf.
+  EXPECT_EQ(queue.Size(), 0);
+
+  // Add 5 elements to test Pop followed by PopHalf.
+  queue.Push(4);
+  queue.Push(3);
+  queue.Push(5);
+  queue.Push(1);
+  queue.Push(2);
+
+  EXPECT_EQ(queue.Pop(), 5);
+
+  // Check that PopHalf returns 2 last nodes.
+  ThunkExecutor::SortedReadyQueue half2 = queue.PopHalf();
+  EXPECT_EQ(half2.Size(), 2);
+  EXPECT_EQ(half2.Pop(), 2);
+  EXPECT_EQ(half2.Pop(), 1);
 }
 
 TEST(ThunkExecutorTest, DependencyOrdering) {
@@ -620,6 +681,48 @@ static void BM_FifoReadyQueuePushPopHalf(benchmark::State& state) {
   }
 }
 
+static void BM_SortedReadyQueuePushPop(benchmark::State& state) {
+  std::vector<ThunkExecutor::NodeDef> nodes_defs(16);
+  for (size_t i = 0; i < nodes_defs.size(); ++i) {
+    nodes_defs[i].priority = i;
+  }
+
+  std::default_random_engine rng;
+  absl::c_shuffle(nodes_defs, rng);
+
+  ThunkExecutor::SortedReadyQueue queue(nodes_defs);
+  const size_t num_push_pop = state.range(0);
+
+  for (auto _ : state) {
+    for (int i = 0; i < num_push_pop; ++i) {
+      queue.Push(i);
+    }
+    for (int i = 0; i < num_push_pop; ++i) {
+      benchmark::DoNotOptimize(queue.Pop());
+    }
+  }
+}
+
+static void BM_SortedReadyQueuePushPopHalf(benchmark::State& state) {
+  std::vector<ThunkExecutor::NodeDef> nodes_defs(16);
+  for (size_t i = 0; i < nodes_defs.size(); ++i) {
+    nodes_defs[i].priority = i;
+  }
+
+  std::default_random_engine rng;
+  absl::c_shuffle(nodes_defs, rng);
+
+  ThunkExecutor::SortedReadyQueue queue(nodes_defs);
+  const size_t num_push_pop = state.range(0);
+
+  for (auto _ : state) {
+    for (int i = 0; i < num_push_pop; ++i) {
+      queue.Push(i);
+    }
+    benchmark::DoNotOptimize(queue.PopHalf());
+  }
+}
+
 #define BENCHMARK_READY_QUEUE(name) \
   BENCHMARK(name)                   \
       ->MeasureProcessCPUTime()     \
@@ -631,6 +734,8 @@ static void BM_FifoReadyQueuePushPopHalf(benchmark::State& state) {
 
 BENCHMARK_READY_QUEUE(BM_FifoReadyQueuePushPop);
 BENCHMARK_READY_QUEUE(BM_FifoReadyQueuePushPopHalf);
+BENCHMARK_READY_QUEUE(BM_SortedReadyQueuePushPop);
+BENCHMARK_READY_QUEUE(BM_SortedReadyQueuePushPopHalf);
 
 static void BM_SequentialThunkExecutor(benchmark::State& state) {
   const size_t num_thunks = state.range(0);

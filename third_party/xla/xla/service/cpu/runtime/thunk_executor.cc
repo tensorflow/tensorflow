@@ -506,8 +506,8 @@ std::string ThunkExecutor::ToString() const {
 }
 
 ABSL_ATTRIBUTE_ALWAYS_INLINE ThunkExecutor::FifoReadyQueue::FifoReadyQueue(
-    absl::Span<const NodeId> nodes)
-    : queue_(nodes.begin(), nodes.end()) {}
+    absl::Span<const NodeId> ready_nodes)
+    : queue_(ready_nodes.begin(), ready_nodes.end()) {}
 
 void ThunkExecutor::FifoReadyQueue::Push(NodeId id) { queue_.push_back(id); }
 
@@ -531,5 +531,44 @@ size_t ThunkExecutor::FifoReadyQueue::Size() const {
 bool ThunkExecutor::FifoReadyQueue::Empty() const {
   return head_ == queue_.size();
 }
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE ThunkExecutor::SortedReadyQueue::SortedReadyQueue(
+    absl::Span<const NodeDef> nodes_defs)
+    : nodes_defs_(nodes_defs) {}
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE ThunkExecutor::SortedReadyQueue::SortedReadyQueue(
+    absl::Span<const NodeDef> nodes_defs, absl::Span<const NodeId> ready_nodes)
+    : nodes_defs_(nodes_defs), queue_(ready_nodes.begin(), ready_nodes.end()) {}
+
+void ThunkExecutor::SortedReadyQueue::Push(NodeId id) {
+  auto compare_priority = [&](NodeId a, NodeId b) {
+    return nodes_defs_[a].priority < nodes_defs_[b].priority;
+  };
+  queue_.insert(absl::c_upper_bound(queue_, id, compare_priority), id);
+}
+
+ThunkExecutor::NodeId ThunkExecutor::SortedReadyQueue::Pop() {
+  DCHECK(!Empty()) << "Queue must not be empty";
+  NodeId id = queue_.back();
+  queue_.pop_back();
+  return id;
+}
+
+ThunkExecutor::SortedReadyQueue ThunkExecutor::SortedReadyQueue::PopHalf() {
+  DCHECK(!Empty()) << "Queue must not be empty";
+  // Queue is sorted by priority using `<` comparison operator, and the highest
+  // priority nodes are at the end of the queue. To be consistent with FIFO
+  // ready queue rounding `mid` index down, we round it up, to return the ready
+  // queue of the same size as FIFO queue.
+  auto mid = (queue_.size() + 1) / 2;
+  SortedReadyQueue popped(
+      nodes_defs_, absl::MakeConstSpan(queue_.begin(), queue_.begin() + mid));
+  queue_.erase(queue_.begin(), queue_.begin() + mid);
+  return popped;
+}
+
+size_t ThunkExecutor::SortedReadyQueue::Size() const { return queue_.size(); }
+
+bool ThunkExecutor::SortedReadyQueue::Empty() const { return queue_.empty(); }
 
 }  // namespace xla::cpu

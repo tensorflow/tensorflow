@@ -102,7 +102,7 @@ class ThunkExecutor {
   class FifoReadyQueue {
    public:
     FifoReadyQueue() = default;
-    explicit FifoReadyQueue(absl::Span<const NodeId> nodes);
+    explicit FifoReadyQueue(absl::Span<const NodeId> ready_nodes);
 
     void Push(NodeId id);
 
@@ -115,6 +115,26 @@ class ThunkExecutor {
    private:
     absl::InlinedVector<NodeId, 8> queue_;
     size_t head_ = 0;
+  };
+
+  // A ready queue that executes nodes sorted by NodeDef priority.
+  class SortedReadyQueue {
+   public:
+    explicit SortedReadyQueue(absl::Span<const NodeDef> nodes_defs);
+    SortedReadyQueue(absl::Span<const NodeDef> nodes_defs,
+                     absl::Span<const NodeId> ready_nodes);
+
+    void Push(NodeId id);
+
+    NodeId Pop();
+    SortedReadyQueue PopHalf();
+
+    size_t Size() const;
+    bool Empty() const;
+
+   private:
+    absl::Span<const NodeDef> nodes_defs_;
+    absl::InlinedVector<NodeId, 8> queue_;
   };
 
  private:

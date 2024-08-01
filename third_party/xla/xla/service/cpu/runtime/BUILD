@@ -160,6 +160,7 @@ xla_cc_test(
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
