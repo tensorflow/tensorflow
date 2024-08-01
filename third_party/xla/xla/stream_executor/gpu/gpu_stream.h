@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 
@@ -48,36 +49,27 @@ class GpuExecutor;
 // Thread-safe post-initialization.
 class GpuStream : public StreamCommon {
  public:
-  GpuStream(GpuExecutor* parent, std::unique_ptr<GpuEvent> completed_event)
+  GpuStream(GpuExecutor* parent, std::unique_ptr<GpuEvent> completed_event,
+            std::optional<std::variant<StreamPriority, int>> priority)
       : StreamCommon(parent),
         parent_(parent),
         gpu_stream_(nullptr),
-        completed_event_(std::move(completed_event)) {}
-
-  // Note: teardown is handled by a parent's call to DeallocateStream.
-  ~GpuStream() override {
-    BlockHostUntilDone().IgnoreError();
-    parent()->DeallocateStream(this);
+        completed_event_(std::move(completed_event)) {
+    if (priority.has_value()) {
+      stream_priority_ = priority.value();
+    }
   }
 
-  // Explicitly initialize the CUDA resources associated with this stream.
-  bool Init();
+  // Note: teardown is handled by a parent's call to DeallocateStream.
+  ~GpuStream() override;
 
-  // Sets the priority of this stream.
-  void SetPriority(StreamPriority priority) { stream_priority_ = priority; }
-  void SetPriority(int priority) { stream_priority_ = priority; }
+  // Explicitly initialize the CUDA resources associated with this stream.
+  absl::Status Init();
 
   std::variant<StreamPriority, int> priority() const override {
     return stream_priority_;
   }
   PlatformSpecificHandle platform_specific_handle() const override;
-
-  // Explicitly destroy the CUDA resources associated with this stream, used by
-  // StreamExecutor::DeallocateStream().
-  void Destroy();
-
-  // Returns true if no work is pending or executing on the stream.
-  bool IsIdle() const;
 
   // Retrieves an event which indicates that all work enqueued into the stream
   // has completed. Ownership of the event is not transferred to the caller, the

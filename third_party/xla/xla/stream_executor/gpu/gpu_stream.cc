@@ -48,7 +48,7 @@ void InternalHostCallback(void* data) {
 }
 }  // namespace
 
-bool GpuStream::Init() {
+absl::Status GpuStream::Init() {
   int priority = [&]() {
     if (std::holds_alternative<int>(stream_priority_)) {
       return std::get<int>(stream_priority_);
@@ -58,9 +58,9 @@ bool GpuStream::Init() {
   }();
   if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_,
                                priority)) {
-    return false;
+    return absl::InternalError("Failed to CreateStream");
   }
-  return true;
+  return absl::OkStatus();
 }
 
 Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
@@ -172,13 +172,16 @@ absl::Status GpuStream::DoHostCallbackWithStatus(
   return absl::InternalError("Failed to host callback.");
 }
 
-void GpuStream::Destroy() {
+GpuStream::~GpuStream() {
+  BlockHostUntilDone().IgnoreError();
+  parent()->DeallocateStream(this);
+
+  if (!GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_)) {
+    LOG(ERROR) << "Deallocating stream with pending work";
+  }
+
   completed_event_.reset();
   GpuDriver::DestroyStream(parent_->gpu_context(), &gpu_stream_);
-}
-
-bool GpuStream::IsIdle() const {
-  return GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_);
 }
 
 void GpuStream::set_name(absl::string_view name) {
