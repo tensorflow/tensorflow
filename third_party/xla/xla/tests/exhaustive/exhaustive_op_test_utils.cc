@@ -90,6 +90,54 @@ bool IsMinPositiveImaginary(xla::complex128 value) {
   return IsMinNormal(value.imag());
 }
 
+/*static*/ ErrorSpec::Builder builder() { return ErrorSpecBuilder(); }
+
+ErrorSpecBuilder& ErrorSpecBuilder::abs_err(double abs_err) & {
+  spec_.abs_err = abs_err;
+  return *this;
+}
+
+ErrorSpecBuilder& ErrorSpecBuilder::rel_err(double rel_err) & {
+  spec_.rel_err = rel_err;
+  return *this;
+}
+
+ErrorSpecBuilder& ErrorSpecBuilder::strict_signed_zeros(
+    bool strict_signed_zeros) & {
+  spec_.strict_signed_zeros = strict_signed_zeros;
+  return *this;
+}
+
+ErrorSpecBuilder& ErrorSpecBuilder::skip_comparison(bool skip_comparison) & {
+  spec_.skip_comparison = skip_comparison;
+  return *this;
+}
+
+ErrorSpecBuilder&& ErrorSpecBuilder::abs_err(double abs_err) && {
+  spec_.abs_err = abs_err;
+  return std::move(*this);
+}
+
+ErrorSpecBuilder&& ErrorSpecBuilder::rel_err(double rel_err) && {
+  spec_.rel_err = rel_err;
+  return std::move(*this);
+}
+
+ErrorSpecBuilder&& ErrorSpecBuilder::strict_signed_zeros(
+    bool strict_signed_zeros) && {
+  spec_.strict_signed_zeros = strict_signed_zeros;
+  return std::move(*this);
+}
+
+ErrorSpecBuilder&& ErrorSpecBuilder::skip_comparison(bool skip_comparison) && {
+  spec_.skip_comparison = skip_comparison;
+  return std::move(*this);
+}
+
+ErrorSpecBuilder::operator ErrorSpec() && { return std::move(*this).build(); }
+
+ErrorSpec ErrorSpecBuilder::build() && { return spec_; }
+
 // For f64, f32, f16, and bf16, we need 17, 9, 5, and 4 decimal places of
 // precision to be guaranteed that we're printing the full number.
 //

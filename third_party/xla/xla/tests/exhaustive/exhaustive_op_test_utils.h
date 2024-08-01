@@ -140,9 +140,13 @@ bool IsSubnormalOrMinNormal(NativeT value) {
   return IsSubnormal(value) || IsMinNormal(value);
 }
 
+class ErrorSpecBuilder;
+
 struct ErrorSpec {
-  double abs_err = 0;
-  double rel_err = 0;
+  using Builder = ErrorSpecBuilder;
+
+  double abs_err = 0.0;
+  double rel_err = 0.0;
   // If true, will consider -0 not near to +0 and vice versa.  Note that
   // +epsilon may still be considered close to -0, depending on the error
   // spec; this only covers the case when both `expected` and `actual` are
@@ -152,6 +156,33 @@ struct ErrorSpec {
   // value. This should be used only as a last resort, since it is effectively
   // turning off the test for a specific input value set.
   bool skip_comparison = false;
+};
+
+// Builder pattern to construct an ErrorSpec without a proliferation of
+// constructors or requiring extensive argument name comments.
+//
+// You can use an lvalue or rvalue to call the setter functions, but you can
+// only build (explicitly or implicitly) using an rvalue from std::move.
+class ErrorSpecBuilder {
+ public:
+  ErrorSpecBuilder() : spec_() {}
+
+  ErrorSpecBuilder& abs_err(double abs_err) &;
+  ErrorSpecBuilder& rel_err(double rel_err) &;
+  ErrorSpecBuilder& strict_signed_zeros(bool strict_signed_zeros = true) &;
+  ErrorSpecBuilder& skip_comparison(bool skip_comparison = true) &;
+
+  ErrorSpecBuilder&& abs_err(double abs_err) &&;
+  ErrorSpecBuilder&& rel_err(double rel_err) &&;
+  ErrorSpecBuilder&& strict_signed_zeros(bool strict_signed_zeros = true) &&;
+  ErrorSpecBuilder&& skip_comparison(bool skip_comparison = true) &&;
+
+  ErrorSpec build() &&;
+
+  explicit operator ErrorSpec() &&;
+
+ private:
+  ErrorSpec spec_;
 };
 
 // Representations of the reference function passed in by the user.
@@ -1089,7 +1120,7 @@ inline ErrorSpec DefaultSpecGenerator<C128, 1>(complex128) {
       kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
   double rtol = kDefaultRelativeToleranceSlackFactor *
                 std::numeric_limits<double>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1097,7 +1128,7 @@ inline ErrorSpec DefaultSpecGenerator<C64, 1>(complex64) {
   double atol =
       kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
   double rtol = 40 * std::numeric_limits<float>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1106,7 +1137,7 @@ inline ErrorSpec DefaultSpecGenerator<F64, 1>(double) {
       kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
   double rtol = kDefaultRelativeToleranceSlackFactor *
                 std::numeric_limits<double>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1115,7 +1146,7 @@ inline ErrorSpec DefaultSpecGenerator<F32, 1>(float) {
       kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
   double rtol = kDefaultRelativeToleranceSlackFactor *
                 std::numeric_limits<float>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1124,7 +1155,7 @@ inline ErrorSpec DefaultSpecGenerator<F16, 1>(Eigen::half) {
                 std::numeric_limits<Eigen::half>::min();
   // epsilon for FP16 is quite large, so a slack factor of 5 suffices.
   double rtol = 5 * std::numeric_limits<Eigen::half>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1133,7 +1164,7 @@ inline ErrorSpec DefaultSpecGenerator<BF16, 1>(bfloat16) {
                 std::numeric_limits<bfloat16>::min();
   // epsilon for BF16 is quite large, so a slack factor of 2 suffices.
   double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1142,7 +1173,7 @@ inline ErrorSpec DefaultSpecGenerator<F64, 2>(double, double) {
       kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
   double rtol = kDefaultRelativeToleranceSlackFactor *
                 std::numeric_limits<double>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1151,7 +1182,7 @@ inline ErrorSpec DefaultSpecGenerator<F32, 2>(float, float) {
       kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
   double rtol = kDefaultRelativeToleranceSlackFactor *
                 std::numeric_limits<float>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1160,7 +1191,7 @@ inline ErrorSpec DefaultSpecGenerator<F16, 2>(Eigen::half, Eigen::half) {
                 std::numeric_limits<Eigen::half>::min();
   // epsilon for FP16 is quite large, so a slack factor of 5 suffices.
   double rtol = 5 * std::numeric_limits<Eigen::half>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <>
@@ -1169,7 +1200,7 @@ inline ErrorSpec DefaultSpecGenerator<BF16, 2>(bfloat16, bfloat16) {
                 std::numeric_limits<bfloat16>::min();
   // epsilon for BF16 is quite large, so a slack factor of 5 suffices.
   double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
-  return ErrorSpec{atol, rtol};
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
 }
 
 template <PrimitiveType T, size_t N>
