@@ -665,9 +665,10 @@ Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
   return b.createOrFold<mlir::affine::AffineApplyOp>(expr, args);
 }
 
-SmallVector<Value, 3> ApplyIndexing(const IndexingMap& map, ValueRange dims,
+SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
                                     ValueRange symbols,
                                     ImplicitLocOpBuilder& b) {
+  map.ClearConstraints();
   SmallVector<Value, 3> results;
   for (unsigned int i = 0; i < map.GetAffineMap().getNumResults(); ++i) {
     SmallVector<Value, 1> result;

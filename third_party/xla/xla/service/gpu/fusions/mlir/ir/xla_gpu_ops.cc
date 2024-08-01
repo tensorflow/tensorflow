@@ -124,9 +124,6 @@ void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
                             ValueRange operands, IndexingMap indexing_map) {
   SmallVector<Type, 2> result_types(indexing_map.GetAffineMap().getNumResults(),
                                     builder.getIndexType());
-  // ApplyIndexingOp cannot have any constraints. It may be better to enforce
-  // callers to do this, but for now this follows the previous behavior.
-  indexing_map.ClearConstraints();
   IndexingMapAttr indexing_map_attr =
       IndexingMapAttr::get(builder.getContext(), indexing_map);
   build(builder, result, result_types, operands, indexing_map_attr);

@@ -94,7 +94,7 @@ mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
                             mlir::ImplicitLocOpBuilder& b);
 
 // Creates an `apply_indexing` op for the given map.
-llvm::SmallVector<mlir::Value, 3> ApplyIndexing(const IndexingMap& map,
+llvm::SmallVector<mlir::Value, 3> ApplyIndexing(IndexingMap map,
                                                 mlir::ValueRange dims,
                                                 mlir::ValueRange symbols,
                                                 mlir::ImplicitLocOpBuilder& b);
