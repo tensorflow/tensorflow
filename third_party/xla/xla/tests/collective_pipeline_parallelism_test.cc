@@ -250,7 +250,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch4Replica4) {
   // Check pipeline output for last replica.
   // The combined effect of the pipeline is to scale the input data by 24.0.
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0;
-  Literal expected_output = LiteralUtil::CreateFingerprintMatixR2(
+  Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, kExpectedFactor);
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
                                            ErrorSpec{1e-5, 1e-5}));
