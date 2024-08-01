@@ -1899,7 +1899,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
         has_reshape_operand(lhs) ? lhs.hlo()->operand(0) : lhs.hlo();
     auto rhs_operand =
         has_reshape_operand(rhs) ? rhs.hlo()->operand(0) : rhs.hlo();
-    for (auto loop : *windowed_dot_general_loops) {
+    for (const auto& loop : *windowed_dot_general_loops) {
       if (loop.while_loop->while_body()->name().find(
               "windowed_dot_general_body_ag") == 0) {
         auto cm_lhs = loop.while_loop->operand(0)->operand(0);
