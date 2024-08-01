@@ -77,7 +77,6 @@ class CollectiveThunk : public Thunk {
                   OpBuffers op_buffers, OpResources op_resources);
 
   const OpParams& op_params() const { return op_params_; }
-  const OpBuffers& op_buffers() const { return op_buffers_; }
 
   // Resolves operation's device memory from the buffers and buffer allocations.
   absl::StatusOr<OpDeviceMemory> GetOpDeviceMemory(const ExecuteParams& params);
@@ -109,13 +108,11 @@ class CollectiveThunk : public Thunk {
   absl::Span<const BufferAllocation::Slice> source_buffers() const;
 
   const Shape& source_shape(int64_t index) const;
-  absl::Span<const Shape> source_shapes() const;
 
   const BufferAllocation::Slice& destination_buffer(int64_t index) const;
   absl::Span<const BufferAllocation::Slice> destination_buffers() const;
 
   const Shape& destination_shape(int64_t index) const;
-  absl::Span<const Shape> destination_shapes() const;
 
  private:
   OpParams op_params_;
