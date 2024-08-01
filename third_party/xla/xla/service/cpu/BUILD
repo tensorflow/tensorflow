@@ -664,6 +664,28 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "ir_emitter_test",
+    srcs = ["ir_emitter_test.cc"],
+    deps = [
+        ":ir_emitter",
+        ":ir_function",
+        ":target_machine_features_fake",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_ordering",
+        "//xla/service:hlo_parser",
+        "//xla/service:logical_buffer",
+        "//xla/tests:hlo_test_base",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
     name = "ir_emitter2_test",
     srcs = ["ir_emitter2_test.cc"],
     deps = [
