@@ -4041,20 +4041,21 @@ absl::Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
 
   // Shardings for the body parameter, body root, and cond parameter must be
-  // the same, and the condition root must be replicated so that all partitions
-  // follow the same control flow.
+  // the same.
   hlo->while_condition()->parameter_instruction(0)->set_sharding(sharding);
   hlo->while_body()->parameter_instruction(0)->set_sharding(sharding);
-  const HloSharding& cond_root_sharding =
-      hlo->while_condition()->root_instruction()->sharding();
-  TF_RETURN_IF_ERROR(partitioner_
-                         ->PartitionComputation(hlo->while_condition(),
-                                                cond_root_sharding.IsManual()
-                                                    ? cond_root_sharding
-                                                    : HloSharding::Replicate(),
-                                                next_channel_id_, logger_,
-                                                call_graph_)
-                         .status());
+
+  // The condition root must be replicated so that all partitions follow the
+  // same control flow.
+  HloInstruction* cond_root = hlo->while_condition()->root_instruction();
+  const HloSharding cond_root_sharding =
+      hlo_sharding_util::ReplicateAllDataDims(cond_root->sharding());
+  cond_root->set_sharding(cond_root_sharding);
+  TF_RETURN_IF_ERROR(
+      partitioner_
+          ->PartitionComputation(hlo->while_condition(), cond_root_sharding,
+                                 next_channel_id_, logger_, call_graph_)
+          .status());
   TF_RETURN_IF_ERROR(partitioner_
                          ->PartitionComputation(hlo->while_body(), sharding,
                                                 next_channel_id_, logger_,
