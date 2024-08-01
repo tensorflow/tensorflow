@@ -66,7 +66,7 @@ elif [ "$PYTHON_VERSION" = "3.12" ]; then
     wget --no-check-certificate https://ftp.openssl.org/source/openssl-1.1.1k.tar.gz && tar xvf openssl-1.1.1k.tar.gz && cd openssl-1.1.1k &&
         ./config --prefix=/usr --openssldir=/etc/ssl --libdir=lib no-shared zlib-dynamic && make && make install
 
-    wget https://www.python.org/ftp/python/3.12.3/Python-3.12.3.tgz && tar xvf Python-3.12.3.tgz && cd Python-3.12*/ &&
+    wget https://www.python.org/ftp/python/3.12.4/Python-3.12.4.tgz && tar xvf Python-3.12.4.tgz && cd Python-3.12*/ &&
         sed -i 's/PKG_CONFIG openssl /PKG_CONFIG openssl11 /g' configure && ./configure --enable-optimizations && make altinstall
     ln -sf /usr/local/bin/python3.12 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.12 /usr/bin/pip3
     ln -sf /usr/local/lib/python3.12 /usr/lib/tf_python

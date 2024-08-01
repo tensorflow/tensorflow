@@ -29,6 +29,7 @@ function build_python_from_src() {
         [python3.9]='3.9.12'
         [python3.10]='3.10.9'
         [python3.11]='3.11.2'
+        [python3.12]='3.12.4'
     )
     local _ver=${python_map[$VERSION]}
     wget https://www.python.org/ftp/python/${_ver}/Python-${_ver}.tgz
