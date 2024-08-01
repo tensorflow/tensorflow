@@ -214,8 +214,7 @@ std::optional<llvm::SmallVector<mlir::Value>> GetVectorBaseIndices(
 
   llvm::SmallVector<mlir::Value> ret = indices;
   ret.back() =
-      b.create<ApplyIndexingOp>(operands, map, apply_indexing.getLowerBounds(),
-                                apply_indexing.getUpperBounds())
+      b.create<ApplyIndexingOp>(operands, apply_indexing.getIndexingMap())
           ->getResult(0);
   return ret;
 }

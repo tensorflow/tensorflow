@@ -254,16 +254,10 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
     OpBuilder<(ins "mlir::ValueRange":$operands, "mlir::AffineMap":$affine_map,
                "llvm::ArrayRef<DimVar>":$dim_vars,
                "llvm::ArrayRef<RangeVar>":$range_vars)>,
-    OpBuilder<(ins "mlir::ValueRange":$operands,
-                   "mlir::AffineMap":$affine_map,
-                   "llvm::ArrayRef<int64_t>":$lower_bounds,
-                   "llvm::ArrayRef<int64_t>":$upper_bounds)>,
   ];
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from affine_map and the bounds.
     xla::gpu::IndexingMap getIndexingMap();
-    llvm::SmallVector<int64_t> getLowerBounds();
-    llvm::SmallVector<int64_t> getUpperBounds();
     // Extracts the affine map from the attribute.
     mlir::AffineMap getAffineMap() { return getIndexingMapAttr().getMap(); }
   }];

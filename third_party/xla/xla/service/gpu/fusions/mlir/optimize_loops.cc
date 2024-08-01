@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -191,9 +192,10 @@ struct PipelineLoad : mlir::OpRewritePattern<Op> {
     auto plus_one_map = mlir::AffineMap::get(
         1, 0, mlir::getAffineDimExpr(0, this->getContext()) + 1);
     b.setInsertionPoint(next_value);
+    IndexingMap indexing_map(plus_one_map, {DimVar{0, ub.getSExtValue() - 1}},
+                             /*range_vars=*/{}, /*rt_vars=*/{});
     auto induction_plus_one =
-        b.create<ApplyIndexingOp>(new_for.getInductionVar(), plus_one_map, 0,
-                                  ub.getSExtValue() - 1)
+        b.create<ApplyIndexingOp>(new_for.getInductionVar(), indexing_map)
             ->getResult(0);
 
     // Create the new apply_indexing ops outside the if, to improve CSE.

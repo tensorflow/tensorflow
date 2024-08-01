@@ -140,28 +140,6 @@ void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
   build(builder, result, operands, indexing_map);
 }
 
-void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
-                            ValueRange operands, AffineMap affine_map,
-                            ArrayRef<int64_t> lower_bounds,
-                            ArrayRef<int64_t> upper_bounds) {
-  unsigned num_dimensions = affine_map.getNumDims();
-  std::vector<DimVar> dim_vars;
-  dim_vars.reserve(num_dimensions);
-  for (unsigned id = 0; id < num_dimensions; ++id) {
-    dim_vars.push_back(DimVar{Interval{lower_bounds[id], upper_bounds[id]}});
-  }
-  unsigned num_symbols = affine_map.getNumSymbols();
-  std::vector<RangeVar> range_vars;
-  range_vars.reserve(num_symbols);
-  for (unsigned id = num_dimensions; id < num_symbols + num_dimensions; ++id) {
-    range_vars.push_back(
-        RangeVar{Interval{lower_bounds[id], upper_bounds[id]}});
-  }
-  IndexingMap indexing_map(affine_map, std::move(dim_vars),
-                           std::move(range_vars), /*rt_vars=*/{});
-  build(builder, result, operands, indexing_map);
-}
-
 // Parses a comma-separated list of operands, ex: %d1, %d2.
 mlir::ParseResult parseOperands(
     mlir::OpAsmParser& parser,
@@ -240,30 +218,6 @@ LogicalResult ApplyIndexingOp::verify() {
     return emitOpError("apply indexing op cannot have any constraints");
   }
   return success();
-}
-
-llvm::SmallVector<int64_t> ApplyIndexingOp::getLowerBounds() {
-  SmallVector<int64_t> lower_bounds;
-  lower_bounds.reserve(getNumOperands());
-  for (const auto& dim_var : getIndexingMapAttr().getDimVars()) {
-    lower_bounds.push_back(dim_var.bounds.lower);
-  }
-  for (const auto& range_var : getIndexingMapAttr().getRangeVars()) {
-    lower_bounds.push_back(range_var.range.lower);
-  }
-  return lower_bounds;
-}
-
-llvm::SmallVector<int64_t> ApplyIndexingOp::getUpperBounds() {
-  SmallVector<int64_t> upper_bounds;
-  upper_bounds.reserve(getNumOperands());
-  for (const auto& dim_var : getIndexingMapAttr().getDimVars()) {
-    upper_bounds.push_back(dim_var.bounds.upper);
-  }
-  for (const auto& range_var : getIndexingMapAttr().getRangeVars()) {
-    upper_bounds.push_back(range_var.range.upper);
-  }
-  return upper_bounds;
 }
 
 IndexingMap ApplyIndexingOp::getIndexingMap() {
@@ -418,7 +372,8 @@ struct FoldApplyIndexingOperands
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
-    AffineMap affine_map = indexing_op.getAffineMap();
+    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    AffineMap affine_map = indexing_map.GetAffineMap();
 
     MLIRContext* ctx = affine_map.getContext();
     unsigned num_operands = indexing_op->getNumOperands();
@@ -428,8 +383,6 @@ struct FoldApplyIndexingOperands
     SmallVector<std::optional<int64_t>> constant_values(num_operands,
                                                         std::nullopt);
     int num_constants = 0;
-    SmallVector<int64_t> dim_id_map(num_dims, -1);
-    SmallVector<int64_t> symbol_id_map(num_symbols, -1);
     for (auto& operand : indexing_op->getOpOperands()) {
       if (auto constant =
               operand.get().getDefiningOp<arith::ConstantIndexOp>()) {
@@ -448,15 +401,15 @@ struct FoldApplyIndexingOperands
     unsigned new_num_operands = indexing_op->getNumOperands() - num_constants;
     SmallVector<Value, 4> new_operands;
     new_operands.reserve(new_num_operands);
-    SmallVector<int64_t, 4> new_lbs, new_ubs;
-    new_lbs.reserve(new_num_operands);
-    new_ubs.reserve(new_num_operands);
+    SmallVector<DimVar, 2> new_dim_vars;
+    new_dim_vars.reserve(num_dims);
+    SmallVector<RangeVar, 2> new_range_vars;
+    new_range_vars.reserve(num_symbols);
 
     unsigned new_num_dims = 0;
     unsigned new_num_symbols = 0;
-    for (auto [operand, constant_value, lb, ub] : llvm::zip(
-             indexing_op->getOpOperands(), constant_values,
-             indexing_op.getLowerBounds(), indexing_op.getUpperBounds())) {
+    for (auto [operand, constant_value] :
+         llvm::zip(indexing_op->getOpOperands(), constant_values)) {
       unsigned operand_id = operand.getOperandNumber();
       if (constant_value.has_value()) {
         if (operand_id < num_dims) {
@@ -467,22 +420,23 @@ struct FoldApplyIndexingOperands
               getAffineConstantExpr(*constant_value, ctx));
         }
       } else {
+        new_operands.push_back(operand.get());
         if (operand_id < num_dims) {
           dim_replacements.push_back(getAffineDimExpr(new_num_dims++, ctx));
+          new_dim_vars.push_back(indexing_map.GetDimVars(operand_id));
         } else {
           symbol_replacements.push_back(
               getAffineSymbolExpr(new_num_symbols++, ctx));
+          new_range_vars.push_back(
+              indexing_map.GetRangeVar(operand_id - num_dims));
         }
-        new_operands.push_back(operand.get());
-        new_lbs.push_back(lb);
-        new_ubs.push_back(ub);
       }
     }
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
         indexing_op, new_operands,
         affine_map.replaceDimsAndSymbols(dim_replacements, symbol_replacements,
                                          new_num_dims, new_num_symbols),
-        new_lbs, new_ubs);
+        new_dim_vars, new_range_vars);
     return success();
   }
 };
