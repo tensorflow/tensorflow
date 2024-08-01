@@ -31,6 +31,7 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kCall:
     case HloOpcode::kConstant:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:

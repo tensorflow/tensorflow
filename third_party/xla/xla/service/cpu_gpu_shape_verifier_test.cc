@@ -65,9 +65,14 @@ TEST_F(CpuGpuShapeVerifierTest, Int4SupportedInstruction) {
   const char* const hlo_string = R"(
   HloModule Module
 
-  ENTRY main {
+  bcast {
     p0 = u4[] parameter(0)
     ROOT out = u4[3, 3] broadcast(p0), dimensions={}
+  }
+
+  ENTRY main {
+    p0 = u4[] parameter(0)
+    ROOT out = u4[3, 3] call(p0), to_apply=bcast
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
