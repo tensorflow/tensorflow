@@ -465,9 +465,9 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   auto reciprocal_op = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), y.getType(), y);
 
-  auto mul_op = CreateMulOpAndInfer(
-      rewriter, op, output_type, tf_div_op.getX(),
-      reciprocal_op.getResult());
+  auto mul_op = CreateMulOpAndInfer(rewriter, op, output_type, x,
+                                    reciprocal_op.getResult());
+
   rewriter.replaceOp(op, {mul_op.getResult()});
 
   return success();
