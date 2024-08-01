@@ -72,6 +72,7 @@ class ThunkExecutor {
   // NodeDef defines an execution order for all thunks in a sequence.
   struct NodeDef {
     NodeId id = kInvalidNodeId;
+    int64_t priority = 0;
     std::vector<NodeId> in_edges;
     std::vector<NodeId> out_edges;
   };
@@ -177,11 +178,11 @@ class ThunkExecutor {
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
                        ExecuteState::Node& node, ReadyQueue& ready_queue);
 
-  // Runs a transitive reduction on the NodeDef graph to remove redundant edges.
-  // Returns the number of removed edges.
+  // Runs a transitive reduction on the NodeDef graph to remove redundant edges,
+  // and updates nodes priorities. Returns the number of removed edges.
   //
   // See: https://en.wikipedia.org/wiki/Transitive_reduction
-  int64_t TransitiveReduction();
+  int64_t RunTransitiveReductionAndUpdatePriorities();
 
   ThunkSequence thunk_sequence_;
   Options options_;

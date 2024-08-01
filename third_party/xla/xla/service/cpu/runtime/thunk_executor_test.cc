@@ -237,6 +237,10 @@ TEST(ThunkExecutorTest, DependencyOrdering) {
   EXPECT_FALSE(executor.is_sequential());
   EXPECT_THAT(executor.source(), ElementsAre(0, 1));
   EXPECT_THAT(executor.sink(), ElementsAre(2));
+
+  EXPECT_EQ(executor.node_def(0).priority, 1);
+  EXPECT_EQ(executor.node_def(1).priority, 1);
+  EXPECT_EQ(executor.node_def(2).priority, 0);
 }
 
 TEST(ThunkExecutorTest, SequentialOrdering) {
@@ -255,6 +259,10 @@ TEST(ThunkExecutorTest, SequentialOrdering) {
   EXPECT_TRUE(executor.is_sequential());
   EXPECT_THAT(executor.source(), ElementsAre(0));
   EXPECT_THAT(executor.sink(), ElementsAre(2));
+
+  EXPECT_EQ(executor.node_def(0).priority, 2);
+  EXPECT_EQ(executor.node_def(1).priority, 1);
+  EXPECT_EQ(executor.node_def(2).priority, 0);
 }
 
 TEST(ThunkExecutorTest, ResourceOrdering) {
@@ -278,6 +286,9 @@ TEST(ThunkExecutorTest, ResourceOrdering) {
   EXPECT_TRUE(executor.is_sequential());
   EXPECT_THAT(executor.source(), ElementsAre(0));
   EXPECT_THAT(executor.sink(), ElementsAre(1));
+
+  EXPECT_EQ(executor.node_def(0).priority, 1);
+  EXPECT_EQ(executor.node_def(1).priority, 0);
 }
 
 TEST(ThunkExecutorTest, TransitiveReduction) {
@@ -300,6 +311,10 @@ TEST(ThunkExecutorTest, TransitiveReduction) {
   EXPECT_THAT(executor.node_def(1).in_edges, ElementsAre(0));
   EXPECT_THAT(executor.node_def(1).out_edges, ElementsAre(2));
   EXPECT_THAT(executor.node_def(2).in_edges, ElementsAre(1));
+
+  EXPECT_EQ(executor.node_def(0).priority, 2);
+  EXPECT_EQ(executor.node_def(1).priority, 1);
+  EXPECT_EQ(executor.node_def(2).priority, 0);
 }
 
 TEST(ThunkExecutorTest, Execute) {

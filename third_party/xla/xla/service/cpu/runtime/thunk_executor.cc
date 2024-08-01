@@ -61,7 +61,7 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
   }
 
   // Erase redundant edges between nodes.
-  int64_t num_erased_edges = TransitiveReduction();
+  int64_t num_erased_edges = RunTransitiveReductionAndUpdatePriorities();
 
   // Check if constructed execution DAG is sequential: every node depends on the
   // completion of the previous node.
@@ -431,7 +431,7 @@ static int64_t EraseEdge(ThunkExecutor::NodeDef& from,
   return 0;
 }
 
-int64_t ThunkExecutor::TransitiveReduction() {
+int64_t ThunkExecutor::RunTransitiveReductionAndUpdatePriorities() {
   int64_t num_erased_edges = 0;
 
   // Keep workspace for DFS traversal between iterations.
@@ -454,11 +454,11 @@ int64_t ThunkExecutor::TransitiveReduction() {
     stack.clear();
     visited.assign(nodes_defs_.size(), false);
 
-    // Initialize stack with nodes reachable via immediate out nodes. We don't
-    // need to add source node and immediate out nodes to the visited set
-    // because graph is acyclic and we don't visit them again.
+    // Initialize stack with nodes reachable via immediate out nodes. We mark
+    // immediate out nodes as visited to correctly compute node priority below.
     for (int64_t out_id : source_node.out_edges) {
       NodeDef& out_node = nodes_defs_[out_id];
+      visited[out_id] = true;
       for (int64_t start_id : out_node.out_edges) add_to_stack(start_id);
     }
 
@@ -472,6 +472,9 @@ int64_t ThunkExecutor::TransitiveReduction() {
 
       for (int64_t out_id : node.out_edges) add_to_stack(out_id);
     }
+
+    // Set node priority to the number of visited nodes in the DFS traversal.
+    source_node.priority = absl::c_count(visited, true);
   }
 
   return num_erased_edges;
@@ -495,11 +498,12 @@ std::string ThunkExecutor::ToString() const {
     const Thunk& thunk = *thunk_sequence_[i];
     bool is_source = absl::c_find(source_, i) != source_.end();
     bool is_sink = absl::c_find(sink_, i) != sink_.end();
-    absl::StrAppendFormat(
-        &str,
-        "\n thunk #%05d: op_name=%s, dependencies=[%s], source=%v, sink=%v", i,
-        thunk.info().op_name, absl::StrJoin(in_edges[i], ", "), is_source,
-        is_sink);
+    absl::StrAppendFormat(&str,
+                          "\n thunk #%05d: op_name=%s, dependencies=[%s], "
+                          "source=%v, sink=%v, priority=%d",
+                          i, thunk.info().op_name,
+                          absl::StrJoin(in_edges[i], ", "), is_source, is_sink,
+                          nodes_defs_[i].priority);
   }
 
   return str;
