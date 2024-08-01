@@ -12124,5 +12124,36 @@ ENTRY %elementwise {
           "last_tile_dim_replicate}}"));
 }
 
+TEST_F(ShardingPropagationTest, CallPropagation) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+called_computation {
+  p0 = bf16[20,2,68096,8512] parameter(0)
+  %add_called_comp = bf16[20,2,68096,8512] add(p0, p0)
+  ROOT tuple = (bf16[20,2,68096,8512]) tuple(add_called_comp)
+}
+
+ENTRY main {
+  %param0 = bf16[20,2,68096,8512] parameter(0)
+  %add = bf16[20,2,68096,8512] add(param0, param0)
+  ROOT %call = (bf16[20,2,68096,8512]) call(add), to_apply=%called_computation, sharding={{devices=[1,1,16,64]<=[64,16]T(1,0)}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_THAT(add, op::Sharding("{devices=[1,1,16,64]<=[64,16]T(1,0)}"));
+}
+
 }  // namespace
 }  // namespace xla
