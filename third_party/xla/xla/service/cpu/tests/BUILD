@@ -361,6 +361,7 @@ xla_cc_test(
     name = "onednn_matmul_test",
     srcs = ["onednn_matmul_test.cc"],
     copts = tsl_copts(),
+    shard_count = 4,
     tags = [
         "no_oss",
         "notap",
