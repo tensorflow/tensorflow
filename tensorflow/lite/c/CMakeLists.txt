@@ -78,6 +78,8 @@ add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
 if (TFLITE_C_BUILD_SHARED_LIBS)
   if (WIN32)
     target_compile_definitions(tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)
+    # Undefine inherited TFL_STATIC_LIBRARY_BUILD to make sure the symbols are exported
+    target_compile_options(tensorflowlite_c PRIVATE /UTFL_STATIC_LIBRARY_BUILD)
   elseif (APPLE)
     target_link_options(tensorflowlite_c PRIVATE "-Wl,-exported_symbols_list,${TFLITE_SOURCE_DIR}/c/exported_symbols.lds")
   else ()
