@@ -18,11 +18,9 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <utility>
-#include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
@@ -52,33 +50,13 @@ class ExecutorCache {
   // has been created), or a NOT_FOUND status.
   absl::StatusOr<StreamExecutor*> Get(const StreamExecutorConfig& config);
 
-  // Destroys all Executors and clears the cache.
-  // Performs no synchronization with the executors - undefined behavior may
-  // occur if any executors are active!
-  void DestroyAllExecutors();
-
  private:
-  // Each Entry contains zero or more cached executors for a device ordinal.
-  struct Entry {
-    ~Entry();
-
-    // Mutex that guards the contents of each entry. The 'mutex_' of the
-    // ExecutorCache class protects both the 'cache_' and the existence of each
-    // Entry, but not the Entry's contents. 'configurations_mutex' protects the
-    // contents of the entry after 'mutex_' has been dropped.
-    absl::Mutex configurations_mutex;
-
-    // Vector of cached {config, executor} pairs.
-    std::vector<
-        std::pair<StreamExecutorConfig, std::unique_ptr<StreamExecutor>>>
-        configurations ABSL_GUARDED_BY(configurations_mutex);
-  };
-
-  // Maps ordinal number to a list of cached executors for that ordinal.
-  // We key off of ordinal (instead of just looking up all fields in the
-  // StreamExecutorConfig) for a slight improvement in lookup time.
+  // Protects cache_.
   absl::Mutex mutex_;
-  absl::node_hash_map<int, Entry> cache_ ABSL_GUARDED_BY(mutex_);
+
+  // Maps ordinal number to a cached executor for that ordinal.
+  absl::flat_hash_map<int, std::unique_ptr<StreamExecutor>> cache_
+      ABSL_GUARDED_BY(mutex_);
 
   ExecutorCache(const ExecutorCache&) = delete;
   void operator=(const ExecutorCache&) = delete;

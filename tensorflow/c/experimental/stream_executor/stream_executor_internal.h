@@ -102,8 +102,6 @@ class CPlatform : public Platform {
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
-  void DestroyAllExecutors() { executor_cache_.DestroyAllExecutors(); }
-
  private:
   SP_Platform platform_;
   void (*destroy_platform_)(SP_Platform*);
