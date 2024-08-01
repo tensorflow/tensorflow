@@ -98,6 +98,25 @@ class ThunkExecutor {
 
   bool is_sequential() const { return is_sequential_; }
 
+  // A ready queue that executes nodes in FIFO order.
+  class FifoReadyQueue {
+   public:
+    FifoReadyQueue() = default;
+    explicit FifoReadyQueue(absl::Span<const NodeId> nodes);
+
+    void Push(NodeId id);
+
+    NodeId Pop();
+    FifoReadyQueue PopHalf();
+
+    size_t Size() const;
+    bool Empty() const;
+
+   private:
+    absl::InlinedVector<NodeId, 8> queue_;
+    size_t head_ = 0;
+  };
+
  private:
   // Align all atomic counters to a cache line boundary to avoid false
   // sharing between multiple worker threads.
@@ -107,8 +126,6 @@ class ThunkExecutor {
 #else
       64;
 #endif
-
-  using ReadyQueue = absl::InlinedVector<NodeId, 8>;
 
   // A struct to keep the state of a running ThunkExecutor.
   struct ExecuteState {
@@ -163,17 +180,20 @@ class ThunkExecutor {
                                tsl::AsyncValueRef<ExecuteEvent> event);
 
   // Executes nodes in the ready queue with given thunk parameters.
+  template <typename ReadyQueue>
   void Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
                ReadyQueue ready_queue, Thunk::ExecuteSession::Lock lock);
 
   // Splits ready queue starting from `start_index` into ThunkExecutor tasks and
   // offloads them to the task runner.
+  template <typename ReadyQueue>
   void SplitReadyQueue(ExecuteState* state, const Thunk::ExecuteParams& params,
-                       int64_t start_index, ReadyQueue& ready_queue);
+                       ReadyQueue& ready_queue, int64_t split_threshold);
 
   // Processes out edges of a completed `node` and updates `ready_queue` with
   // nodes that are ready to execute. If `event` is in error state, aborts the
   // execution and records the error status to forward it to the caller.
+  template <typename ReadyQueue>
   void ProcessOutEdges(ExecuteState* state,
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
                        ExecuteState::Node& node, ReadyQueue& ready_queue);

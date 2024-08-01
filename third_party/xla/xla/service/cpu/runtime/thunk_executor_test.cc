@@ -218,6 +218,63 @@ static ThunkExecutor::Options OptionsForTest() {
   return ThunkExecutor::Options{/*execute_sequential_buffer_threshold=*/0};
 }
 
+TEST(ThunkExecutorTest, FifoReadyQueueTest) {
+  ThunkExecutor::FifoReadyQueue queue;
+
+  // Check basic queue properties.
+  EXPECT_TRUE(queue.Empty());
+  EXPECT_EQ(queue.Size(), 0);
+
+  queue.Push(1);
+  queue.Push(2);
+  queue.Push(3);
+
+  EXPECT_EQ(queue.Size(), 3);
+
+  EXPECT_EQ(queue.Pop(), 1);
+  EXPECT_EQ(queue.Pop(), 2);
+  EXPECT_EQ(queue.Pop(), 3);
+
+  EXPECT_TRUE(queue.Empty());
+  EXPECT_EQ(queue.Size(), 0);
+
+  // Prepare queue for PopHalf test case.
+  queue.Push(1);
+  queue.Push(2);
+  queue.Push(3);
+
+  // Pop half of the queue.
+  ThunkExecutor::FifoReadyQueue half0 = queue.PopHalf();
+  EXPECT_EQ(half0.Size(), 2);
+  EXPECT_EQ(half0.Pop(), 2);
+  EXPECT_EQ(half0.Pop(), 3);
+
+  // Check that the rest is still in the queue.
+  EXPECT_EQ(queue.Size(), 1);
+
+  // Pop the rest of the queue.
+  ThunkExecutor::FifoReadyQueue half1 = queue.PopHalf();
+  EXPECT_EQ(half1.Size(), 1);
+
+  // Check that all nodes were returned from PopHalf.
+  EXPECT_EQ(queue.Size(), 0);
+
+  // Add 5 elements to test Pop followed by PopHalf.
+  queue.Push(1);
+  queue.Push(2);
+  queue.Push(3);
+  queue.Push(4);
+  queue.Push(5);
+
+  EXPECT_EQ(queue.Pop(), 1);
+
+  // Check that PopHalf returns 2 last nodes.
+  ThunkExecutor::FifoReadyQueue half2 = queue.PopHalf();
+  EXPECT_EQ(half2.Size(), 2);
+  EXPECT_EQ(half2.Pop(), 4);
+  EXPECT_EQ(half2.Pop(), 5);
+}
+
 TEST(ThunkExecutorTest, DependencyOrdering) {
   BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
 
@@ -348,7 +405,7 @@ TEST(ThunkExecutorTest, Execute) {
   Thunk::ExecuteParams params = {nullptr, &allocations};
   params.task_runner = &task_runner;
   params.session =
-      Thunk::ExecuteSession(/*max_workers=*/8, /*split_threshold=*/1);
+      Thunk::ExecuteSession(/*max_workers=*/8, /*split_threshold=*/0);
 
   auto execute_event = executor.Execute(params);
 
@@ -536,6 +593,44 @@ INSTANTIATE_TEST_SUITE_P(
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
+
+static void BM_FifoReadyQueuePushPop(benchmark::State& state) {
+  ThunkExecutor::FifoReadyQueue queue;
+  const size_t num_push_pop = state.range(0);
+
+  for (auto _ : state) {
+    for (int i = 0; i < num_push_pop; ++i) {
+      queue.Push(i);
+    }
+    for (int i = 0; i < num_push_pop; ++i) {
+      benchmark::DoNotOptimize(queue.Pop());
+    }
+  }
+}
+
+static void BM_FifoReadyQueuePushPopHalf(benchmark::State& state) {
+  ThunkExecutor::FifoReadyQueue queue;
+  const size_t num_push_pop = state.range(0);
+
+  for (auto _ : state) {
+    for (int i = 0; i < num_push_pop; ++i) {
+      queue.Push(i);
+    }
+    benchmark::DoNotOptimize(queue.PopHalf());
+  }
+}
+
+#define BENCHMARK_READY_QUEUE(name) \
+  BENCHMARK(name)                   \
+      ->MeasureProcessCPUTime()     \
+      ->Arg(1)                      \
+      ->Arg(2)                      \
+      ->Arg(4)                      \
+      ->Arg(8)                      \
+      ->Arg(16)
+
+BENCHMARK_READY_QUEUE(BM_FifoReadyQueuePushPop);
+BENCHMARK_READY_QUEUE(BM_FifoReadyQueuePushPopHalf);
 
 static void BM_SequentialThunkExecutor(benchmark::State& state) {
   const size_t num_thunks = state.range(0);
