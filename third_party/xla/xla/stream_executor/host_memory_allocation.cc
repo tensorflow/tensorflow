@@ -27,7 +27,7 @@ HostMemoryAllocation::HostMemoryAllocation(void* ptr, uint64_t size,
 
 HostMemoryAllocation::~HostMemoryAllocation() {
   if (ptr_ != nullptr && executor_ != nullptr) {
-    executor_->HostMemoryDeallocate(ptr_, size_);
+    executor_->HostMemoryDeallocate(ptr_);
   }
 }
 

@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
-#include "tsl/platform/numa.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -113,8 +112,7 @@ class GpuExecutor : public StreamExecutorCommon {
         device_ordinal_(device_ordinal),
         cc_major_(0),
         cc_minor_(0),
-        version_(0),
-        numa_node_(tsl::port::kNUMANoAffinity) {}
+        version_(0) {}
 
   // See the corresponding StreamExecutor methods for method comments on the
   // following overrides.
@@ -169,10 +167,23 @@ class GpuExecutor : public StreamExecutorCommon {
     return GpuCollectives::CollectiveMemoryDeallocate(context_, location);
   }
 
+  // CUDA allocation/registration functions are necessary because the driver
+  // internally sets up buffers for DMA operations (and page locks them).
+  // There's no external interface for us to otherwise control these DMA
+  // settings.
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
-      uint64_t size) override;
+      uint64_t size) override {
+    auto* buffer = GpuDriver::HostAllocate(context_, size);
+    if (buffer == nullptr && size > 0) {
+      return absl::InternalError(
+          absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+    }
+    return std::make_unique<HostMemoryAllocation>(buffer, size, this);
+  }
 
-  void HostMemoryDeallocate(void* location, uint64_t size) override;
+  void HostMemoryDeallocate(void* location) override {
+    return GpuDriver::HostDeallocate(context_, location);
+  }
 
   absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override {
     return GpuDriver::GetPointerMemorySpace(
@@ -368,9 +379,6 @@ class GpuExecutor : public StreamExecutorCommon {
 
   // GPU ISA version for device_.
   int version_;
-
-  // NUMA node for device_.
-  int numa_node_;
 
   // Type erased XLA specific state attached to GpuExecutor.
   Object xla_state_;
