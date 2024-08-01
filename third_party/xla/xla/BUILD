@@ -1312,6 +1312,33 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "sort_json",
+    srcs = ["sort_json.cc"],
+    hdrs = ["sort_json.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "sort_json_test",
+    srcs = ["sort_json_test.cc"],
+    deps = [
+        ":sort_json",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 # Needed to workaround https://github.com/bazelbuild/bazel/issues/21519
 alias(
     name = "bazel_issue_21519",
