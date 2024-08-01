@@ -139,7 +139,8 @@ ifrt.CopyArrays, and ifrt.RemapArrays.
   let constructor = "CreateIfrtMergeReshardsPass()";
 }
 
-def IfrtVerifyDonationPass : Pass<"ifrt-verify-donation", "mlir::ModuleOp"> {
+def IfrtVerifyDonationPass :
+    Pass<"ifrt-verify-donation", "mlir::func::FuncOp"> {
   let summary = "Verify that `!ifrt.array` are not donated more than once.";
   let description = [{
 Verifiy that no `!ifrt.array` is donated more than once, and that all

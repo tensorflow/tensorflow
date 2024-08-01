@@ -238,7 +238,6 @@ module @reshard_with_already_donated_array_error {
   }
 }
 
-
 // -----
 
 !array0 = !ifrt.array<tensor<2xi32>,
@@ -253,6 +252,24 @@ module @copy_arrays_with_already_donated_array_error {
     // expected-error @+1 {{'ifrt.CopyArrays' op input #0 of op}}
     %1, %ctrl_1 = ifrt.CopyArrays(%arg0) : (!array0) -> !array1
     return %0, %1 : !array0, !array1
+  }
+
+  func.func private @identity(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    return %arg0 : tensor<2xi32>
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2xi32>,
+                     #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
+module @copy_arrays_with_already_donated_array_error {
+  func.func @main(%arg0: !array {ifrt.donated}) -> (!array, !array)
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @identity(%arg0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    // expected-error @+1 {{'func.return' op result #1 of op at}}
+    return %0, %arg0 : !array, !array
   }
 
   func.func private @identity(%arg0: tensor<2xi32>) -> tensor<2xi32> {

@@ -16,10 +16,10 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
@@ -63,10 +63,15 @@ class IfrtVerifyDonationPass
 };
 
 void IfrtVerifyDonationPass::runOnOperation() {
-  mlir::ModuleOp module_op = getOperation();
+  mlir::func::FuncOp func_op = getOperation();
+  // We only need to run this pass on IFRT functions.
+  if (!func_op->hasAttr(kIfrtFunctionAttrName) &&
+      !func_op->hasAttr(kIfrtReshardFunctionAttrName)) {
+    return;
+  }
   llvm::DenseMap<mlir::Value, mlir::Operation*> donated_value_to_op;
-  mlir::WalkResult result = module_op.walk([&](mlir::Operation* op)
-                                               -> mlir::WalkResult {
+  mlir::WalkResult result = func_op.walk([&](mlir::Operation* op)
+                                             -> mlir::WalkResult {
     auto result =
         llvm::TypeSwitch<mlir::Operation*, mlir::LogicalResult>(op)
             .Case<xla::ifrt::CallOp, xla::ifrt::CallLoadedExecutableOp>(
@@ -136,6 +141,20 @@ void IfrtVerifyDonationPass::runOnOperation() {
               }
               return mlir::success();
             })
+            .Case<mlir::func::ReturnOp>([&](mlir::func::ReturnOp return_op) {
+              for (const auto& [idx, result] :
+                   llvm::enumerate(return_op.getOperands())) {
+                auto donated_it = donated_value_to_op.find(result);
+                if (donated_it != donated_value_to_op.end()) {
+                  return_op.emitOpError()
+                      << "result #" << idx << " of op at " << return_op.getLoc()
+                      << " was already donated to the op at "
+                      << donated_it->second->getLoc();
+                  return mlir::failure();
+                }
+              }
+              return mlir::success();
+            })
             .Default(mlir::success());
 
     if (mlir::failed(result)) {
@@ -151,7 +170,7 @@ void IfrtVerifyDonationPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateIfrtVerifyDonationPass() {
   return std::make_unique<IfrtVerifyDonationPass>();
 }
