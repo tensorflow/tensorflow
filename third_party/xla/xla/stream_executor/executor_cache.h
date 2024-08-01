@@ -74,11 +74,13 @@ class ExecutorCache {
         configurations ABSL_GUARDED_BY(configurations_mutex);
   };
 
-  // Maps ordinal number to a list of cached executors for that ordinal.
-  // We key off of ordinal (instead of just looking up all fields in the
-  // StreamExecutorConfig) for a slight improvement in lookup time.
+  // Maps ordinal and stream_id to a list of cached executors for that ordinal
+  // and stream_id. We key off of the ordinal-stream pair (instead of just
+  // looking up all fields in the StreamExecutorConfig) for a slight improvement
+  // in lookup time.
   absl::Mutex mutex_;
-  absl::node_hash_map<int, Entry> cache_ ABSL_GUARDED_BY(mutex_);
+  absl::node_hash_map<std::pair<int, int>, Entry> cache_
+      ABSL_GUARDED_BY(mutex_);
 
   ExecutorCache(const ExecutorCache&) = delete;
   void operator=(const ExecutorCache&) = delete;

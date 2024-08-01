@@ -27,13 +27,21 @@ namespace tensorflow {
 // Utility method for getting the associated executor given a TfDeviceId.
 class DeviceIdUtil {
  public:
-  static absl::StatusOr<stream_executor::StreamExecutor*> ExecutorForTfDeviceId(
-      const tsl::DeviceType& type, stream_executor::Platform* device_manager,
-      tsl::TfDeviceId tf_device_id) {
+  static absl::StatusOr<stream_executor::StreamExecutor*>
+  ExecutorForTfDeviceIdAndStream(const tsl::DeviceType& type,
+                                 stream_executor::Platform* device_manager,
+                                 tsl::TfDeviceId tf_device_id, int stream_id) {
     tsl::PlatformDeviceId platform_device_id;
     TF_RETURN_IF_ERROR(tsl::DeviceIdManager::TfToPlatformDeviceId(
         type, tf_device_id, &platform_device_id));
-    return device_manager->ExecutorForDevice(platform_device_id.value());
+    return device_manager->ExecutorForDeviceAndStream(
+        platform_device_id.value(), stream_id);
+  }
+  static absl::StatusOr<stream_executor::StreamExecutor*> ExecutorForTfDeviceId(
+      const tsl::DeviceType& type, stream_executor::Platform* device_manager,
+      tsl::TfDeviceId tf_device_id) {
+    return ExecutorForTfDeviceIdAndStream(type, device_manager, tf_device_id,
+                                          0);
   }
 };
 
