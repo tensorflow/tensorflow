@@ -358,7 +358,7 @@ bool SupportSpatialPartitioning(
       computation_map.find(instruction->parent()) == computation_map.end() &&
       !(is_entry_root && allow_spmd_sharding_propagation_to_output)) {
     // We don't support sharding the root instruction of a computation yet,
-    // unless the computation is a while body.
+    // unless the computation is in computation_map.
     return false;
   }
 
@@ -2954,8 +2954,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
     }
   }
 
-  // Populate computation_map in order to associate while bodies to their
-  // while instructions.
+  // Populate computation_map in order to associate while bodies and conditions
+  // to their while instructions.
   for (auto computation : module->computations(execution_threads)) {
     for (auto instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile ||
@@ -2982,6 +2982,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         }
         if (instruction->opcode() == HloOpcode::kWhile) {
           computation_map[instruction->while_body()] = instruction;
+          computation_map[instruction->while_condition()] = instruction;
         } else {
           for (HloComputation* c : instruction->called_computations()) {
             computation_map[c] = instruction;

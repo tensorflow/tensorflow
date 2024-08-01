@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -100,11 +102,37 @@ MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
   }
 #endif  // __arm__
 
+// `android_local_test` doesn't support zipalign b/356640509 so we need this
+// workaround to keep our clients working.
+// TODO: b/356413060 - Remove the workaround once b/356640509 is fixed.
+#if defined(__x86_64__) && defined(UNDEFINED_BEHAVIOR_SANITIZER)
+  if ((reinterpret_cast<uintptr_t>(ptr) & 0x3) != 0) {
+    aligned_ptr_ = ::aligned_alloc(4, num_bytes);
+    if (aligned_ptr_ == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter, "Failed to allocate aligned buffer");
+      buffer_ = nullptr;
+      buffer_size_bytes_ = 0;
+      return;
+    }
+    memcpy(aligned_ptr_, ptr, num_bytes);
+    buffer_ = aligned_ptr_;
+  } else {
+    buffer_ = ptr;
+  }
+#else   // defined(__x86_64__) && defined(UNDEFINED_BEHAVIOR_SANITIZER)
   buffer_ = ptr;
+#endif  // defined(__x86_64__) && defined(UNDEFINED_BEHAVIOR_SANITIZER)
+
   buffer_size_bytes_ = num_bytes;
 }
 
-MemoryAllocation::~MemoryAllocation() {}
+MemoryAllocation::~MemoryAllocation() {
+#if defined(__x86_64__) && defined(UNDEFINED_BEHAVIOR_SANITIZER)
+  if (aligned_ptr_) {
+    free(aligned_ptr_);
+  }
+#endif
+}
 
 const void* MemoryAllocation::base() const { return buffer_; }
 

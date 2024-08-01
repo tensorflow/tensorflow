@@ -2757,6 +2757,60 @@ ENTRY %entry {
   }
 }
 
+TEST_F(ShardingPropagationTest, PropagateShardingInWhileCondition) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], f32[]) parameter(0)
+  %count.cond = u32[] get-tuple-element(%vars.cond), index=0
+  %limit = u32[] constant(10)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %vars = (u32[], f32[]) parameter(0)
+  %count = u32[] get-tuple-element(%vars), index=0
+  %acc = f32[] get-tuple-element(%vars), index=1
+
+  %one = u32[] constant(1)
+  %count.1 = u32[] add(u32[] %count, u32[] %one)
+  %acc.1 = f32[] add(f32[] %acc, f32[] %acc)
+  ROOT %tuple = (u32[], f32[]) tuple(%count.1, %acc.1)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+  %zero = u32[] constant(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+  %init = (u32[], f32[]) tuple(%zero, %p0)
+  ROOT %while = (u32[], f32[]) while(%init), body=%body, condition=%cond
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, /*propagate_metadata=*/false,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloSharding single_sharding =
+      ParseSharding("{devices=[2,2]<=[4] last_tile_dims={manual, replicated}}")
+          .value();
+  HloSharding tuple_sharding = HloSharding::SingleTuple(
+      module->entry_computation()->root_instruction()->shape(),
+      single_sharding);
+
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      EXPECT_TRUE(instruction->has_sharding());
+      EXPECT_EQ(instruction->sharding(), instruction->shape().IsTuple()
+                                             ? tuple_sharding
+                                             : single_sharding);
+    }
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, WhileGetShardingFromRecvInBody) {
   const char* const hlo_string = R"(
 HloModule module

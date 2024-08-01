@@ -4474,6 +4474,36 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
 }
 
+TEST_P(SpmdPartitioningTest, WhilePartialManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+LoopCond {
+  x = s32[] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+  const = s32[] constant(5), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+  ROOT lt = pred[] compare(x, const), direction=LT, sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+}
+
+Inc {
+  x = s32[] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+  const = s32[] constant(1), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+  ROOT add = s32[] add(x, const), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+}
+
+ENTRY entry {
+  zero = s32[] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+  ROOT while = s32[] while(zero), body=Inc, condition=LoopCond, sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto zero = AllOf(op::Parameter(0), op::Shape("s32[]"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
+}
+
 TEST_P(SpmdPartitioningTest, TestWhileFrontendAttributes) {
   absl::string_view hlo_string = R"(
 HloModule module
