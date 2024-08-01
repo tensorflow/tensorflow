@@ -2562,7 +2562,8 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
   };
   std::optional<GroupedSharding> other_grouped =
       try_sharding_for_other_operand(other.sharding());
-  if (!other_grouped && !other.sharding().IsReplicated()) {
+  if (!other_grouped && !other.sharding().IsReplicated() &&
+      dims_mapping.conv_spatial_dims.empty()) {
     const HloSharding expected_other_sharding =
         hlo_sharding_util::InferDotOperandSharding(
             &output_sharding, &matching.sharding(), lhs_matching ? 1 : 0,
@@ -2570,9 +2571,9 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
     // Try the expected sharding since it is no worse than the last resort
     // (replicated sharding).
     other_grouped = try_sharding_for_other_operand(expected_other_sharding);
-    if (!other_grouped) {
-      other = other.Replicate();
-    }
+  }
+  if (!other_grouped) {
+    other = other.Replicate();
   }
 
   matching = matching.Reshard(UngroupSharding(matching_grouped));
