@@ -35,7 +35,8 @@ if [[ -n $2 ]]; then
         DISTRO=$2
     else
         echo "Distro not supported"
-	esc
+        echo "Supported distros are:\n focal\n jammy\n el7\n el8"
+	exit 1
     fi
 fi
 
