@@ -50,8 +50,6 @@ namespace spmd {
 
 inline constexpr absl::string_view kPipelineMarker = "xla_pipeline_marker";
 inline constexpr absl::string_view kIdentityMarker = "identity";
-inline constexpr absl::string_view kPipelineMarkerStartType = "start";
-inline constexpr absl::string_view kPipelineMarkerEndType = "end";
 
 inline constexpr int64_t kAutoShardingPointerSize = 8;
 
@@ -356,10 +354,6 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
                                             const xla::CallGraph& call_graph,
                                             int64_t num_devices);
 
-// Return whether the instruction is an activation from another pipeline stage.
-bool IsActivationFromAnotherStage(const HloInstruction* inst,
-                                  const InstructionBatchDimMap& batch_dim_map);
-
 // Depth analysis (breadth first search) that compute the depth of each
 // instruction. We also assign a much larger distance to heavy operators (e.g.,
 // dot, convolution).
@@ -463,41 +457,6 @@ absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                          const HloSharding& dst_sharding,
                                          const Array<int64_t>& device_mesh,
                                          ReshardingCache* resharding_cache);
-
-/*
- * Gradient accumulation
- */
-// Find all instructions that compute gradients in gradient accumulation.
-// This is done by using the hint from pipeline_marker (gradient marker).
-inline std::vector<const HloInstruction*> GetGradientComputationInstructions(
-    const std::vector<HloInstruction*>& instructions) {
-  std::vector<const HloInstruction*> ret;
-
-  for (size_t i = 0; i < instructions.size(); ++i) {
-    const HloInstruction* ins = instructions[i];
-    if (ins->IsCustomCall(kPipelineMarker) &&
-        (absl::StrContains(ins->metadata().op_name(), "compute_grad") ||
-         absl::StrContains(ins->metadata().op_name(), "backward")) &&
-        ins->metadata().op_type() == kPipelineMarkerEndType) {
-      const HloInstruction* tuple = ins->operand(0);
-      for (size_t j = 0; j < tuple->operand_count(); ++j) {
-        const HloInstruction* add = tuple->operand(j);
-        while (add->opcode() == HloOpcode::kAdd) {
-          ret.push_back(add->operand(0));
-          ret.push_back(add->operand(1));
-
-          if (add->operand(0)->opcode() == HloOpcode::kAdd) {
-            add = add->operand(0);
-          } else {
-            add = add->operand(1);
-          }
-        }
-      }
-    }
-  }
-
-  return ret;
-}
 
 // Gets the mapping vector from dim_from to dim_to.
 // Example: GetDimensionMapping([2], 3) = [0, 1, -1]

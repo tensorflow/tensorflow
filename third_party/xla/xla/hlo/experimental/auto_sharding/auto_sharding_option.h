@@ -119,11 +119,6 @@ struct AutoShardingOption {
   // If true, allow adding 1d strategies in 2d logical mesh.
   bool allow_mixed_mesh_shape = true;
 
-  // The number of micro batches if gradient accumulation is used.
-  // If this is not 1, the cost of all-reduce for gradient synchronization
-  // is divided by this number.
-  int grad_acc_num_micro_batches = 1;
-
   // If true, N-D sharding (e.g., N maybe be 2 or 3) will be solved in N
   // iterations, where one iteration chooses one tensor dimension to shard. If
   // false, solve N-D sharding directly, i.e., generating all possible sharding

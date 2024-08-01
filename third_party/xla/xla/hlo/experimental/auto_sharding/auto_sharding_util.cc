@@ -109,26 +109,6 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
   return inferred_sharding;
 }
 
-// Return whether the instruction is an activation from another pipeline stage.
-bool IsActivationFromAnotherStage(const HloInstruction* ins,
-                                  const InstructionBatchDimMap& batch_dim_map) {
-  if (!(ins->opcode() == HloOpcode::kParameter &&
-        batch_dim_map.contains(GetBatchDimMapKey(ins)))) {
-    return false;
-  }
-
-  for (const HloInstruction* user : ins->users()) {
-    if (!(user->opcode() == HloOpcode::kTuple && user->users().size() == 1 &&
-          user->users().front()->IsCustomCall(kPipelineMarker) &&
-          absl::StrContains(user->users().front()->metadata().op_type(),
-                            "start"))) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
 // independently on each dimension.
 // The sharding can successfully propagate if the operation only happens
@@ -193,11 +173,6 @@ InstructionDepthMap BuildInstructionDepthMap(
     degree_dict[inst] = inst->unique_operands().size();
     if (degree_dict[inst] == 0) {
       depth_map[inst] = 0;
-
-      // Add some initial depth for activations from other pipeline stages.
-      if (IsActivationFromAnotherStage(inst, batch_dim_map)) {
-        depth_map[inst] = 20;
-      }
 
       current_frontier.push_back(inst);
       collected++;

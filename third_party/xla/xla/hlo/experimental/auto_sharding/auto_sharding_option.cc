@@ -82,8 +82,6 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("allow_recompute_heavy_op: ", allow_recompute_heavy_op));
   lines.push_back(
       absl::StrCat("allow_mixed_mesh_shape: ", allow_mixed_mesh_shape));
-  lines.push_back(
-      absl::StrCat("grad_acc_num_micro_batches: ", grad_acc_num_micro_batches));
   lines.push_back(absl::StrCat("solve_nd_sharding_iteratively: ",
                                solve_nd_sharding_iteratively));
   lines.push_back(
