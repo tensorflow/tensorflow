@@ -200,7 +200,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
   // initialization stage.
-  se::host::HostKernel* kernel = kernel_ptr_.load(std::memory_order_relaxed);
+  se::host::HostKernel* kernel = kernel_ptr_.load(std::memory_order_acquire);
 
   // Because thunks are owned by a parent CpuExecutable, we can safely assume
   // that kernel pointer will not change after we find it the first time.
@@ -209,8 +209,10 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
                         params.function_registry->FindKernel(kernel_name_));
 
     absl::MutexLock lock(&mutex_);
-    kernel_.emplace(num_kernel_args_, kernel_fn, nullptr);
-    kernel_ptr_.store(kernel = &kernel_.value());
+    if ((kernel = kernel_ptr_.load(std::memory_order_relaxed)) == nullptr) {
+      kernel = &kernel_.emplace(num_kernel_args_, kernel_fn, nullptr);
+      kernel_ptr_.store(kernel, std::memory_order_release);
+    }
   }
 
   // Use a fast path if kernel called just once.
