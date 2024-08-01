@@ -50,7 +50,10 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
     result = u32[] add(infeed.data, replica_id)
     outfeed = token[] outfeed(result, infeed.token), outfeed_shape=u32[]
   })";
+
   const int kNumReplicas = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
+
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
   std::unique_ptr<HloModule> module =
