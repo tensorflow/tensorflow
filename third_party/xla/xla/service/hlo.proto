@@ -575,6 +575,12 @@ message HloModuleProto {
   // Uses AutoSharding pass or not.
   bool use_auto_spmd_partitioning = 16;
 
+  // True if the root of this module is extracted from a megacore fusion.
+  bool in_megacore_fusion = 20;
+
+  // True if the root of this module is extracted from a continuation fusion.
+  bool in_continuation_fusion = 21;
+
   // The type of optimization profile in use for module-level optimizations.
   enum ProfileType {
     INVALID = 0;

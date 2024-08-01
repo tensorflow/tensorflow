@@ -16,6 +16,7 @@ lit_test_suite(
             "dynamic.mlir",
             "export-with-layouts.mlir",
             "export.mlir",
+            "export_async.mlir",
             "export_and_check_layouts.mlir",
             "export_large_constants.mlir",
             "export_replicas.mlir",
