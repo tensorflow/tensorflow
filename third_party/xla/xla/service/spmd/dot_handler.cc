@@ -2542,19 +2542,39 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
       matching.sharding() != UngroupSharding(matching_grouped)) {
     return nullptr;
   }
+
+  auto try_sharding_for_other_operand = [&](const HloSharding& sharding) {
+    PartitionedHlo other_reshard = other.Reshard(sharding);
+    std::optional<GroupedSharding> grouped_sharding =
+        GetNonContractingPartitionGroupedShardingForOtherOperand(
+            lhs_matching, output_base_shape, other_reshard.hlo()->shape(),
+            other_contracting_partitions, other_non_contracting_partitions,
+            matching_contracting_partitions,
+            output_other_non_contracting_partitions, other_reshard.sharding(),
+            output_sharding, partitioned_non_contracting_dims,
+            lhs_matching ? dims_mapping.rhs_non_contracting_dims
+                         : dims_mapping.lhs_non_contracting_dims,
+            dims_mapping.contracting_dims);
+    if (grouped_sharding) {
+      other = other_reshard;
+    }
+    return grouped_sharding;
+  };
   std::optional<GroupedSharding> other_grouped =
-      GetNonContractingPartitionGroupedShardingForOtherOperand(
-          lhs_matching, output_base_shape, other.hlo()->shape(),
-          other_contracting_partitions, other_non_contracting_partitions,
-          matching_contracting_partitions,
-          output_other_non_contracting_partitions, other.sharding(),
-          output_sharding, partitioned_non_contracting_dims,
-          lhs_matching ? dims_mapping.rhs_non_contracting_dims
-                       : dims_mapping.lhs_non_contracting_dims,
-          dims_mapping.contracting_dims);
-  if (!other_grouped) {
-    other = other.Replicate();
+      try_sharding_for_other_operand(other.sharding());
+  if (!other_grouped && !other.sharding().IsReplicated()) {
+    const HloSharding expected_other_sharding =
+        hlo_sharding_util::InferDotOperandSharding(
+            &output_sharding, &matching.sharding(), lhs_matching ? 1 : 0,
+            dims_mapping, true, true);
+    // Try the expected sharding since it is no worse than the last resort
+    // (replicated sharding).
+    other_grouped = try_sharding_for_other_operand(expected_other_sharding);
+    if (!other_grouped) {
+      other = other.Replicate();
+    }
   }
+
   matching = matching.Reshard(UngroupSharding(matching_grouped));
   auto per_group_partitioner_state = CreatePerGroupPartitioningState(
       matching.state(), matching_grouped.device_groups, b);
@@ -2573,7 +2593,7 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
     partially_replicated_other = other.hlo();
     top_level_sharding_to_reset.emplace_back(other.hlo(), other.sharding());
     partially_replicated_other->set_sharding(other_grouped->sharding);
-  } else if (!other.sharding().IsReplicated()) {
+  } else if (other_grouped && !other.sharding().IsReplicated()) {
     HloSharding target_sharding = UngroupSharding(*other_grouped);
     GroupedSharding target_group_sharding =
         hlo_sharding_util::GroupShardingOnDims(target_sharding,
@@ -2597,18 +2617,16 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
         partially_replicated_other, partially_replicated_other->sharding());
     partially_replicated_other->set_sharding(other_grouped->sharding);
   }
+
   auto other_p = PartitionedHlo(partially_replicated_other, other.base_shape(),
                                 per_group_partitioner_state);
-  TF_ASSIGN_OR_RETURN(
-      auto dot,
-      PartitionDot(lhs_matching ? matching_p : other_p,
-                   lhs_matching ? other_p : matching_p,
-                   GetPerGroupBaseShape(output_grouped, output_base_shape),
-                   output_grouped.sharding, dims_mapping,
-                   num_partitions / matching_grouped.device_groups.size(),
-                   create_sharded_dot, conv_window, module, original_hlo,
-                   options, b, windowed_dot_general_loops, visitor));
-  return dot;
+  return PartitionDot(lhs_matching ? matching_p : other_p,
+                      lhs_matching ? other_p : matching_p,
+                      GetPerGroupBaseShape(output_grouped, output_base_shape),
+                      output_grouped.sharding, dims_mapping,
+                      num_partitions / matching_grouped.device_groups.size(),
+                      create_sharded_dot, conv_window, module, original_hlo,
+                      options, b, windowed_dot_general_loops, visitor);
 }
 
 std::pair<HloSharding, HloSharding>
