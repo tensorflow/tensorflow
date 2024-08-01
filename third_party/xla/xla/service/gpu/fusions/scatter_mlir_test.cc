@@ -187,8 +187,8 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[$MAP0:.*]] = affine_map<(d0) -> (d0 floordiv 2)>
-    // CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0 mod 2)>
+    // CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 2)
+    // CHECK: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 2)
 
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>
