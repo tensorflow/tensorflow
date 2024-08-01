@@ -2037,8 +2037,7 @@ bool InferDynamicUpdateSliceShardingFromOperand0(
 }
 
 bool ShardingPropagation::InferShardingFromShardGroup(
-    HloInstruction* instruction, const ComputationMap& computation_map,
-    int64_t aggressiveness,
+    HloInstruction* instruction, int64_t aggressiveness,
     const absl::flat_hash_set<HloInstruction*>& shard_group) {
   if (!CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness)) {
     return false;
@@ -3134,8 +3133,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
               continue;
             }
             already_inferred_from_shard_group.insert(instruction);
-            if (InferShardingFromShardGroup(instruction, computation_map,
-                                            aggressiveness, shard_group)) {
+            if (InferShardingFromShardGroup(instruction, aggressiveness,
+                                            shard_group)) {
               ++inferred_from_shard_group_counter;
               any_changed = true;
               VLOG(2) << "Add sharding (shard group): "
