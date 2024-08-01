@@ -32,28 +32,18 @@ limitations under the License.
 #include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
 
+namespace xla {
+namespace {
+
 // Tests cross-GPU operations.
 //
 // Several tests requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
-
-// TODO: Move this to hlo_test_base.h
-#define SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(x)                     \
-  if (num_devices_ < x) {                                         \
-    GTEST_SKIP() << "Test requires at least " << x << " devices"; \
-  }
-
-namespace xla {
-namespace {
-
 class CollectivePipelineParallelismTest : public HloTestBase {
  public:
-  CollectivePipelineParallelismTest() : num_devices_(backend().device_count()) {
-    VLOG(1) << "Running with " << num_devices_ << " devices";
+  CollectivePipelineParallelismTest() {
+    VLOG(1) << "Running with " << num_devices() << " devices";
   }
-
- protected:
-  const int64_t num_devices_;
 };
 
 XLA_TEST_F(CollectivePipelineParallelismTest,
