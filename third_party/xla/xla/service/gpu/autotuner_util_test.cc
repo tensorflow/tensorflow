@@ -110,11 +110,11 @@ results {
     return str;
   }
 
-  static std::unique_ptr<stream_executor::StreamExecutor> NewStreamExecutor() {
+  static stream_executor::StreamExecutor* NewStreamExecutor() {
     stream_executor::Platform* platform =
         stream_executor::PlatformManager::PlatformWithName("Host").value();
     stream_executor::StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetUncachedExecutor(config).value();
+    return platform->GetExecutor(config).value();
   }
 
   absl::Status PopulateResultCache() {
@@ -211,11 +211,10 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
           ->MakeNonfusionComputations(absl::flat_hash_set<absl::string_view>());
   EXPECT_THAT(computations, Not(IsEmpty()));
   const HloInstruction* instruction = *computations[0]->instructions().begin();
-  std::unique_ptr<stream_executor::StreamExecutor> executor =
-      NewStreamExecutor();
+  stream_executor::StreamExecutor* executor = NewStreamExecutor();
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
-  AutotuneConfig config(DeviceConfig{executor.get()}, options);
+  AutotuneConfig config(DeviceConfig{executor}, options);
   EXPECT_THAT(
       AutotunerUtil::Autotune(instruction, config,
                               [&] { return AutotuneResult(); }),
@@ -234,12 +233,11 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
           ->MakeNonfusionComputations(absl::flat_hash_set<absl::string_view>());
   EXPECT_THAT(computations, Not(IsEmpty()));
   const HloInstruction* instruction = *computations[0]->instructions().begin();
-  std::unique_ptr<stream_executor::StreamExecutor> executor =
-      NewStreamExecutor();
+  stream_executor::StreamExecutor* executor = NewStreamExecutor();
 
   {
     // By default, JIT autotuning is OK.
-    AutotuneConfig config(DeviceConfig{executor.get()}, DebugOptions());
+    AutotuneConfig config(DeviceConfig{executor}, DebugOptions());
     TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
                    return AutotuneResult();
                  }).status());
@@ -249,7 +247,7 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
 
-  AutotuneConfig config(DeviceConfig{executor.get()}, options);
+  AutotuneConfig config(DeviceConfig{executor}, options);
   // Even though JIT autotuning is disabled, there is no cache miss when running
   // autotuning for the same entry, so no error should be raised either.
   TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
@@ -286,8 +284,7 @@ class FileBasedCacheTest : public AutotunerUtilTest {
                                        std::string(filepath), content));
   }
 
-  std::unique_ptr<stream_executor::StreamExecutor> executor_ =
-      NewStreamExecutor();
+  stream_executor::StreamExecutor* executor_ = NewStreamExecutor();
   std::unique_ptr<HloModule> module_ =
       ParseAndReturnVerifiedModule(kHloText).value();
   const HloInstruction* dot_ = hlo_query::GetFirstInstructionWithOpcode(
@@ -299,7 +296,7 @@ class FileBasedCacheTest : public AutotunerUtilTest {
     CHECK_OK(default_env->CreateDir(cache_dir));
     return cache_dir;
   }();
-  AutotuneConfig config_ = AutotuneConfig(DeviceConfig{executor_.get()}, [&] {
+  AutotuneConfig config_ = AutotuneConfig(DeviceConfig{executor_}, [&] {
     DebugOptions options;
     options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir_);
     return options;

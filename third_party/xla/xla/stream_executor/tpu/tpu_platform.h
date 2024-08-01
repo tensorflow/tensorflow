@@ -91,10 +91,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   absl::StatusOr<::stream_executor::StreamExecutor*> GetExecutor(
       const ::stream_executor::StreamExecutorConfig& config) override;
 
-  absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
-  GetUncachedExecutor(
-      const ::stream_executor::StreamExecutorConfig& config) override;
-
   StreamMap* stream_map() { return &stream_map_; }
 
   void InsertEvent(stream_executor::Event* key, SE_Event* val);
@@ -118,6 +114,12 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   absl::Mutex& mutex() { return event_map_mu_; }
 
  private:
+  // Returns a device constructed with the options specified in "config" without
+  // looking in or storing to the Platform's executor cache.
+  // Ownership IS transferred to the caller.
+  absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
+  GetUncachedExecutor(const ::stream_executor::StreamExecutorConfig& config);
+
   mutable SE_Platform* platform_;
   std::string name_;
   stream_executor::ExecutorCache executor_cache_;

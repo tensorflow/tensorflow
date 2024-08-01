@@ -25,10 +25,10 @@ limitations under the License.
 
 namespace stream_executor {
 
-static absl::StatusOr<std::unique_ptr<StreamExecutor>> NewStreamExecutor() {
+static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
   StreamExecutorConfig config(/*ordinal=*/0);
   TF_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
-  TF_ASSIGN_OR_RETURN(auto stream_exec, platform->GetUncachedExecutor(config));
+  TF_ASSIGN_OR_RETURN(auto stream_exec, platform->GetExecutor(config));
   return stream_exec;
 }
 

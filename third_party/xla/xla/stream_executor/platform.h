@@ -118,12 +118,6 @@ class Platform {
   // Ownership of the executor is NOT transferred to the caller.
   virtual absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) = 0;
-
-  // Returns a device constructed with the options specified in "config" without
-  // looking in or storing to the Platform's executor cache.
-  // Ownership IS transferred to the caller.
-  virtual absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) = 0;
 };
 
 }  // namespace stream_executor

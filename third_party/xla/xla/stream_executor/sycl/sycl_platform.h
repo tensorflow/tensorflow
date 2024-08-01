@@ -58,10 +58,13 @@ class SyclPlatform : public Platform {
   absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
 
+ private:
+  // Returns a device constructed with the options specified in "config" without
+  // looking in or storing to the Platform's executor cache.
+  // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
- private:
   // This platform's name.
   std::string name_;
 
