@@ -220,7 +220,7 @@ static ThunkExecutor::Options OptionsForTest() {
 }
 
 TEST(ThunkExecutorTest, FifoReadyQueueTest) {
-  ThunkExecutor::FifoReadyQueue queue;
+  ThunkExecutor::FifoReadyQueue queue({});
 
   // Check basic queue properties.
   EXPECT_TRUE(queue.Empty());
@@ -282,7 +282,7 @@ TEST(ThunkExecutorTest, SortedReadyQueueTest) {
     nodes_defs[i].priority = i;
   }
 
-  ThunkExecutor::SortedReadyQueue queue(nodes_defs);
+  ThunkExecutor::SortedReadyQueue queue(nodes_defs, {});
   // Check basic queue properties.
   EXPECT_TRUE(queue.Empty());
   EXPECT_EQ(queue.Size(), 0);
@@ -566,11 +566,11 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks,
 // and optionally uses a thread pool to execute thunk executor tasks.
 class ThunkExecutorStressTest
     : public testing::TestWithParam<
-          std::tuple<int32_t, bool, bool, SharedResourceUse, bool>> {
+          std::tuple<int32_t, bool, bool, SharedResourceUse, bool, bool>> {
  public:
   void SetUp() override {
     auto& [num_thunks, use_task_runner, use_device, shared_resource_use,
-           inject_errors] = GetParam();
+           inject_errors, use_sorted_ready_queue] = GetParam();
 
     use_task_runner_ = use_task_runner;
     use_device_ = use_device;
@@ -610,16 +610,21 @@ class ThunkExecutorStressTest
 
 TEST_P(ThunkExecutorStressTest, Execute) {
   auto [num_thunks, use_task_runner, use_device, shared_resource_use,
-        inject_errors] = GetParam();
+        inject_errors, use_sorted_ready_queue] = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GeneratedThunkSequence> g,
       GenerateThunkSequence(/*num_elements=*/1024, num_thunks,
                             shared_resource_use, inject_errors));
 
+  ThunkExecutor::Options executor_options = {
+      /*execute_sequential_buffer_threshold=*/0,
+      /*use_sorted_ready_queue=*/use_sorted_ready_queue,
+  };
+
   TF_ASSERT_OK_AND_ASSIGN(
       ThunkExecutor executor,
-      ThunkExecutor::Create(std::move(g->sequence), OptionsForTest()));
+      ThunkExecutor::Create(std::move(g->sequence), executor_options));
 
   BufferAllocations allocations(g->buffers);
   Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, device(),
@@ -649,14 +654,15 @@ INSTANTIATE_TEST_SUITE_P(
                      testing::Values(SharedResourceUse::kNo,
                                      SharedResourceUse::kAll,
                                      SharedResourceUse::kRandom),
-                     /*inject_errors=*/testing::Bool()));
+                     /*inject_errors=*/testing::Bool(),
+                     /*use_sorted_ready_queue=*/testing::Bool()));
 
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
 static void BM_FifoReadyQueuePushPop(benchmark::State& state) {
-  ThunkExecutor::FifoReadyQueue queue;
+  ThunkExecutor::FifoReadyQueue queue({});
   const size_t num_push_pop = state.range(0);
 
   for (auto _ : state) {
@@ -670,7 +676,7 @@ static void BM_FifoReadyQueuePushPop(benchmark::State& state) {
 }
 
 static void BM_FifoReadyQueuePushPopHalf(benchmark::State& state) {
-  ThunkExecutor::FifoReadyQueue queue;
+  ThunkExecutor::FifoReadyQueue queue({});
   const size_t num_push_pop = state.range(0);
 
   for (auto _ : state) {
@@ -690,7 +696,7 @@ static void BM_SortedReadyQueuePushPop(benchmark::State& state) {
   std::default_random_engine rng;
   absl::c_shuffle(nodes_defs, rng);
 
-  ThunkExecutor::SortedReadyQueue queue(nodes_defs);
+  ThunkExecutor::SortedReadyQueue queue(nodes_defs, {});
   const size_t num_push_pop = state.range(0);
 
   for (auto _ : state) {
@@ -712,7 +718,7 @@ static void BM_SortedReadyQueuePushPopHalf(benchmark::State& state) {
   std::default_random_engine rng;
   absl::c_shuffle(nodes_defs, rng);
 
-  ThunkExecutor::SortedReadyQueue queue(nodes_defs);
+  ThunkExecutor::SortedReadyQueue queue(nodes_defs, {});
   const size_t num_push_pop = state.range(0);
 
   for (auto _ : state) {

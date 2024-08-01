@@ -45,6 +45,10 @@ struct ThunkExecutorOptions {
   // `execute_sequential_buffer_threshold`, we mark execution as sequential, as
   // concurrency overheads will likely dominate the overall execution time.
   size_t execute_sequential_buffer_threshold = 512;
+
+  // Use sorted ready queue to execute nodes according to their priority. By
+  // default we use FIFO ready queue.
+  bool use_sorted_ready_queue = false;
 };
 }  // namespace internal
 
@@ -101,7 +105,6 @@ class ThunkExecutor {
   // A ready queue that executes nodes in FIFO order.
   class FifoReadyQueue {
    public:
-    FifoReadyQueue() = default;
     explicit FifoReadyQueue(absl::Span<const NodeId> ready_nodes);
 
     void Push(NodeId id);
@@ -112,6 +115,8 @@ class ThunkExecutor {
     size_t Size() const;
     bool Empty() const;
 
+    FifoReadyQueue CreateEmptyReadyQueue() const;
+
    private:
     absl::InlinedVector<NodeId, 8> queue_;
     size_t head_ = 0;
@@ -120,7 +125,6 @@ class ThunkExecutor {
   // A ready queue that executes nodes sorted by NodeDef priority.
   class SortedReadyQueue {
    public:
-    explicit SortedReadyQueue(absl::Span<const NodeDef> nodes_defs);
     SortedReadyQueue(absl::Span<const NodeDef> nodes_defs,
                      absl::Span<const NodeId> ready_nodes);
 
@@ -131,6 +135,8 @@ class ThunkExecutor {
 
     size_t Size() const;
     bool Empty() const;
+
+    SortedReadyQueue CreateEmptyReadyQueue() const;
 
    private:
     absl::Span<const NodeDef> nodes_defs_;

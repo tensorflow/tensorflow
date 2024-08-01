@@ -161,8 +161,14 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
 
   // Create async execution state on heap and kick-off execution.
   auto state = std::make_unique<ExecuteState>(this, params.task_runner);
-  Execute(state.get(), params, FifoReadyQueue(source_),
-          /*lock=*/params.session.Join());
+
+  if (options_.use_sorted_ready_queue) {
+    Execute(state.get(), params, SortedReadyQueue(nodes_defs_, source_),
+            /*lock=*/params.session.Join());
+  } else {
+    Execute(state.get(), params, FifoReadyQueue(source_),
+            /*lock=*/params.session.Join());
+  }
 
   // If execution already completed (all kernels executed in the caller thread),
   // immediately return the result to avoid wasteful reference counting below.
@@ -309,8 +315,8 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // the same execute session.
       execute_event.AndThen([&params, &node, state,
                              execute_event = execute_event.AsPtr(),
+                             ready_queue = ready_queue.CreateEmptyReadyQueue(),
                              lock = params.session.Join()]() mutable {
-        ReadyQueue ready_queue;
         state->executor->ProcessOutEdges(state, execute_event, node,
                                          ready_queue);
         // If ready queue is empty it might mean that we have completed an
@@ -532,9 +538,10 @@ bool ThunkExecutor::FifoReadyQueue::Empty() const {
   return head_ == queue_.size();
 }
 
-ABSL_ATTRIBUTE_ALWAYS_INLINE ThunkExecutor::SortedReadyQueue::SortedReadyQueue(
-    absl::Span<const NodeDef> nodes_defs)
-    : nodes_defs_(nodes_defs) {}
+ThunkExecutor::FifoReadyQueue
+ThunkExecutor::FifoReadyQueue::CreateEmptyReadyQueue() const {
+  return FifoReadyQueue(absl::Span<const NodeId>());
+}
 
 ABSL_ATTRIBUTE_ALWAYS_INLINE ThunkExecutor::SortedReadyQueue::SortedReadyQueue(
     absl::Span<const NodeDef> nodes_defs, absl::Span<const NodeId> ready_nodes)
@@ -570,5 +577,10 @@ ThunkExecutor::SortedReadyQueue ThunkExecutor::SortedReadyQueue::PopHalf() {
 size_t ThunkExecutor::SortedReadyQueue::Size() const { return queue_.size(); }
 
 bool ThunkExecutor::SortedReadyQueue::Empty() const { return queue_.empty(); }
+
+ThunkExecutor::SortedReadyQueue
+ThunkExecutor::SortedReadyQueue::CreateEmptyReadyQueue() const {
+  return SortedReadyQueue(nodes_defs_, absl::Span<const NodeId>());
+}
 
 }  // namespace xla::cpu
