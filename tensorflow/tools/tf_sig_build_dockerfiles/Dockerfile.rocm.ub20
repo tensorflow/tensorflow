@@ -18,7 +18,7 @@ ENV ROCM_PATH=${ROCM_PATH}
 COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
 COPY setup.rocm.sh /setup.rocm.sh
 COPY devel.packages.rocm.txt /devel.packages.rocm.txt
-RUN /setup.rocm.sh $ROCM_VERSION
+RUN /setup.rocm.sh $ROCM_VERSION focal
 
 # Install various tools.
 # - bats: bash unit testing framework

@@ -50,6 +50,7 @@ else
 source ~/.bashrc
 VERSION=$1
 REQUIREMENTS=$2
+PY_VERSION="python${VERSION}"
 
 # Add deadsnakes repo for Python installation
 DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update
@@ -59,18 +60,18 @@ add-apt-repository -y 'ppa:deadsnakes/ppa'
 
 # Install Python packages for this container's version
 cat >pythons.txt <<EOF
-$VERSION
-$VERSION-dev
-$VERSION-venv
-$VERSION-distutils
+$PY_VERSION
+$PY_VERSION-dev
+$PY_VERSION-venv
+$PY_VERSION-distutils
 EOF
 /setup.packages.sh pythons.txt
 
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc
-ln -sf /usr/bin/$VERSION /usr/bin/python3
-ln -sf /usr/bin/$VERSION /usr/bin/python
-ln -sf /usr/lib/$VERSION /usr/lib/tf_python
+ln -sf /usr/bin/$PY_VERSION /usr/bin/python3
+ln -sf /usr/bin/$PY_VERSION /usr/bin/python
+ln -sf /usr/lib/$PY_VERSION /usr/lib/tf_python
 
 fi # end of conditional check of various distros
 
@@ -78,8 +79,8 @@ fi # end of conditional check of various distros
 # Python 3.10 include headers fix:
 # sysconfig.get_path('include') incorrectly points to /usr/local/include/python
 # map /usr/include/python3.10 to /usr/local/include/python3.10
-if [[ ! -f "/usr/local/include/$VERSION" ]]; then
-  ln -sf /usr/include/$VERSION /usr/local/include/$VERSION
+if [[ ! -f "/usr/local/include/$PY_VERSION" ]]; then
+  ln -sf /usr/include/$PY_VERSION /usr/local/include/$PY_VERSION
 fi
 
 # Install pip
