@@ -26,7 +26,7 @@ ARG CUSTOM_INSTALL
 ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
 ENV ROCM_PATH=${ROCM_PATH}
 COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
-COPY setup.rocm.el8.sh /setup.rocm.el8.sh
+COPY setup.rocm.sh /setup.rocm.sh
 COPY devel.packages.rocm.el8.txt /devel.packages.rocm.el8.txt
 RUN /setup.rocm.sh $ROCM_VERSION el8
 

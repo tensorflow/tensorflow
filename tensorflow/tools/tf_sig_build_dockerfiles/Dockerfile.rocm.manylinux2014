@@ -18,7 +18,7 @@ ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
 ENV ROCM_PATH=${ROCM_PATH}
 COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
 COPY setup.packages.rocm.cs7.sh /setup.packages.rocm.cs7.sh
-COPY setup.rocm.cs7.sh /setup.rocm.cs7.sh
+COPY setup.rocm.sh /setup.rocm.sh
 COPY devel.packages.rocm.cs7.txt /devel.packages.rocm.cs7.txt
 RUN /setup.rocm.sh $ROCM_VERSION el7
 
