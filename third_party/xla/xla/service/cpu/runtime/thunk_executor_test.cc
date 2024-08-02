@@ -276,13 +276,13 @@ TEST(ThunkExecutorTest, FifoReadyQueueTest) {
   EXPECT_EQ(half2.Pop(), 5);
 }
 
-TEST(ThunkExecutorTest, SortedReadyQueueTest) {
+TEST(ThunkExecutorTest, PriorityReadyQueueTest) {
   std::vector<ThunkExecutor::NodeDef> nodes_defs(16);
   for (size_t i = 0; i < nodes_defs.size(); ++i) {
     nodes_defs[i].priority = i;
   }
 
-  ThunkExecutor::SortedReadyQueue queue(nodes_defs, {});
+  ThunkExecutor::PriorityReadyQueue queue(nodes_defs, {});
   // Check basic queue properties.
   EXPECT_TRUE(queue.Empty());
   EXPECT_EQ(queue.Size(), 0);
@@ -304,7 +304,7 @@ TEST(ThunkExecutorTest, SortedReadyQueueTest) {
   queue.Push(3);
 
   // Pop half of the queue.
-  ThunkExecutor::SortedReadyQueue half0 = queue.PopHalf();
+  ThunkExecutor::PriorityReadyQueue half0 = queue.PopHalf();
   EXPECT_EQ(half0.Size(), 2);
   EXPECT_EQ(half0.Pop(), 2);
   EXPECT_EQ(half0.Pop(), 1);
@@ -313,7 +313,7 @@ TEST(ThunkExecutorTest, SortedReadyQueueTest) {
   EXPECT_EQ(queue.Size(), 1);
 
   // Pop the rest of the queue.
-  ThunkExecutor::SortedReadyQueue half1 = queue.PopHalf();
+  ThunkExecutor::PriorityReadyQueue half1 = queue.PopHalf();
   EXPECT_EQ(half1.Size(), 1);
   EXPECT_EQ(half1.Pop(), 3);
 
@@ -330,7 +330,7 @@ TEST(ThunkExecutorTest, SortedReadyQueueTest) {
   EXPECT_EQ(queue.Pop(), 5);
 
   // Check that PopHalf returns 2 last nodes.
-  ThunkExecutor::SortedReadyQueue half2 = queue.PopHalf();
+  ThunkExecutor::PriorityReadyQueue half2 = queue.PopHalf();
   EXPECT_EQ(half2.Size(), 2);
   EXPECT_EQ(half2.Pop(), 2);
   EXPECT_EQ(half2.Pop(), 1);
@@ -570,7 +570,7 @@ class ThunkExecutorStressTest
  public:
   void SetUp() override {
     auto& [num_thunks, use_task_runner, use_device, shared_resource_use,
-           inject_errors, use_sorted_ready_queue] = GetParam();
+           inject_errors, use_priority_ready_queue] = GetParam();
 
     use_task_runner_ = use_task_runner;
     use_device_ = use_device;
@@ -610,7 +610,7 @@ class ThunkExecutorStressTest
 
 TEST_P(ThunkExecutorStressTest, Execute) {
   auto [num_thunks, use_task_runner, use_device, shared_resource_use,
-        inject_errors, use_sorted_ready_queue] = GetParam();
+        inject_errors, use_priority_ready_queue] = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GeneratedThunkSequence> g,
@@ -619,7 +619,7 @@ TEST_P(ThunkExecutorStressTest, Execute) {
 
   ThunkExecutor::Options executor_options = {
       /*execute_sequential_buffer_threshold=*/0,
-      /*use_sorted_ready_queue=*/use_sorted_ready_queue,
+      /*use_priority_ready_queue=*/use_priority_ready_queue,
   };
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -655,7 +655,7 @@ INSTANTIATE_TEST_SUITE_P(
                                      SharedResourceUse::kAll,
                                      SharedResourceUse::kRandom),
                      /*inject_errors=*/testing::Bool(),
-                     /*use_sorted_ready_queue=*/testing::Bool()));
+                     /*use_priority_ready_queue=*/testing::Bool()));
 
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
@@ -687,7 +687,7 @@ static void BM_FifoReadyQueuePushPopHalf(benchmark::State& state) {
   }
 }
 
-static void BM_SortedReadyQueuePushPop(benchmark::State& state) {
+static void BM_PriorityReadyQueuePushPop(benchmark::State& state) {
   std::vector<ThunkExecutor::NodeDef> nodes_defs(16);
   for (size_t i = 0; i < nodes_defs.size(); ++i) {
     nodes_defs[i].priority = i;
@@ -696,7 +696,7 @@ static void BM_SortedReadyQueuePushPop(benchmark::State& state) {
   std::default_random_engine rng;
   absl::c_shuffle(nodes_defs, rng);
 
-  ThunkExecutor::SortedReadyQueue queue(nodes_defs, {});
+  ThunkExecutor::PriorityReadyQueue queue(nodes_defs, {});
   const size_t num_push_pop = state.range(0);
 
   for (auto _ : state) {
@@ -709,7 +709,7 @@ static void BM_SortedReadyQueuePushPop(benchmark::State& state) {
   }
 }
 
-static void BM_SortedReadyQueuePushPopHalf(benchmark::State& state) {
+static void BM_PriorityReadyQueuePushPopHalf(benchmark::State& state) {
   std::vector<ThunkExecutor::NodeDef> nodes_defs(16);
   for (size_t i = 0; i < nodes_defs.size(); ++i) {
     nodes_defs[i].priority = i;
@@ -718,7 +718,7 @@ static void BM_SortedReadyQueuePushPopHalf(benchmark::State& state) {
   std::default_random_engine rng;
   absl::c_shuffle(nodes_defs, rng);
 
-  ThunkExecutor::SortedReadyQueue queue(nodes_defs, {});
+  ThunkExecutor::PriorityReadyQueue queue(nodes_defs, {});
   const size_t num_push_pop = state.range(0);
 
   for (auto _ : state) {
@@ -740,8 +740,8 @@ static void BM_SortedReadyQueuePushPopHalf(benchmark::State& state) {
 
 BENCHMARK_READY_QUEUE(BM_FifoReadyQueuePushPop);
 BENCHMARK_READY_QUEUE(BM_FifoReadyQueuePushPopHalf);
-BENCHMARK_READY_QUEUE(BM_SortedReadyQueuePushPop);
-BENCHMARK_READY_QUEUE(BM_SortedReadyQueuePushPopHalf);
+BENCHMARK_READY_QUEUE(BM_PriorityReadyQueuePushPop);
+BENCHMARK_READY_QUEUE(BM_PriorityReadyQueuePushPopHalf);
 
 static void BM_SequentialThunkExecutor(benchmark::State& state) {
   const size_t num_thunks = state.range(0);

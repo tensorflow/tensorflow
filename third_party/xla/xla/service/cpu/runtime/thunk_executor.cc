@@ -162,8 +162,8 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   // Create async execution state on heap and kick-off execution.
   auto state = std::make_unique<ExecuteState>(this, params.task_runner);
 
-  if (options_.use_sorted_ready_queue) {
-    Execute(state.get(), params, SortedReadyQueue(nodes_defs_, source_),
+  if (options_.use_priority_ready_queue) {
+    Execute(state.get(), params, PriorityReadyQueue(nodes_defs_, source_),
             /*lock=*/params.session.Join());
   } else {
     Execute(state.get(), params, FifoReadyQueue(source_),
@@ -543,44 +543,46 @@ ThunkExecutor::FifoReadyQueue::CreateEmptyReadyQueue() const {
   return FifoReadyQueue(absl::Span<const NodeId>());
 }
 
-ABSL_ATTRIBUTE_ALWAYS_INLINE ThunkExecutor::SortedReadyQueue::SortedReadyQueue(
+ABSL_ATTRIBUTE_ALWAYS_INLINE
+ThunkExecutor::PriorityReadyQueue::PriorityReadyQueue(
     absl::Span<const NodeDef> nodes_defs, absl::Span<const NodeId> ready_nodes)
-    : nodes_defs_(nodes_defs), queue_(ready_nodes.begin(), ready_nodes.end()) {}
+    : nodes_defs_(nodes_defs),
+      queue_(ready_nodes.begin(), ready_nodes.end(), Compare{nodes_defs}) {}
 
-void ThunkExecutor::SortedReadyQueue::Push(NodeId id) {
-  auto compare_priority = [&](NodeId a, NodeId b) {
-    return nodes_defs_[a].priority < nodes_defs_[b].priority;
-  };
-  queue_.insert(absl::c_upper_bound(queue_, id, compare_priority), id);
-}
+void ThunkExecutor::PriorityReadyQueue::Push(NodeId id) { queue_.push(id); }
 
-ThunkExecutor::NodeId ThunkExecutor::SortedReadyQueue::Pop() {
+ThunkExecutor::NodeId ThunkExecutor::PriorityReadyQueue::Pop() {
   DCHECK(!Empty()) << "Queue must not be empty";
-  NodeId id = queue_.back();
-  queue_.pop_back();
+  NodeId id = queue_.top();
+  queue_.pop();
   return id;
 }
 
-ThunkExecutor::SortedReadyQueue ThunkExecutor::SortedReadyQueue::PopHalf() {
+ThunkExecutor::PriorityReadyQueue ThunkExecutor::PriorityReadyQueue::PopHalf() {
   DCHECK(!Empty()) << "Queue must not be empty";
-  // Queue is sorted by priority using `<` comparison operator, and the highest
-  // priority nodes are at the end of the queue. To be consistent with FIFO
-  // ready queue rounding `mid` index down, we round it up, to return the ready
-  // queue of the same size as FIFO queue.
-  auto mid = (queue_.size() + 1) / 2;
-  SortedReadyQueue popped(
-      nodes_defs_, absl::MakeConstSpan(queue_.begin(), queue_.begin() + mid));
-  queue_.erase(queue_.begin(), queue_.begin() + mid);
+  int64_t keep_top_nodes = queue_.size() / 2;
+
+  // First pop nodes with highest priority from the queue.
+  PriorityReadyQueue popped(nodes_defs_, {});
+  while (keep_top_nodes-- > 0) {
+    popped.queue_.push(queue_.top());
+    queue_.pop();
+  }
+
+  // Swap popped nodes with remaining nodes, to return to the caller nodes with
+  // smaller priorities, and keep higher priority nodes in the queue.
+  popped.queue_.swap(queue_);
+
   return popped;
 }
 
-size_t ThunkExecutor::SortedReadyQueue::Size() const { return queue_.size(); }
+size_t ThunkExecutor::PriorityReadyQueue::Size() const { return queue_.size(); }
 
-bool ThunkExecutor::SortedReadyQueue::Empty() const { return queue_.empty(); }
+bool ThunkExecutor::PriorityReadyQueue::Empty() const { return queue_.empty(); }
 
-ThunkExecutor::SortedReadyQueue
-ThunkExecutor::SortedReadyQueue::CreateEmptyReadyQueue() const {
-  return SortedReadyQueue(nodes_defs_, absl::Span<const NodeId>());
+ThunkExecutor::PriorityReadyQueue
+ThunkExecutor::PriorityReadyQueue::CreateEmptyReadyQueue() const {
+  return PriorityReadyQueue(nodes_defs_, {});
 }
 
 }  // namespace xla::cpu

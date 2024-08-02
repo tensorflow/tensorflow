@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <new>
+#include <queue>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -46,9 +47,9 @@ struct ThunkExecutorOptions {
   // concurrency overheads will likely dominate the overall execution time.
   size_t execute_sequential_buffer_threshold = 512;
 
-  // Use sorted ready queue to execute nodes according to their priority. By
+  // Use priority ready queue to execute nodes according to their priority. By
   // default we use FIFO ready queue.
-  bool use_sorted_ready_queue = false;
+  bool use_priority_ready_queue = false;
 };
 }  // namespace internal
 
@@ -123,24 +124,34 @@ class ThunkExecutor {
   };
 
   // A ready queue that executes nodes sorted by NodeDef priority.
-  class SortedReadyQueue {
+  class PriorityReadyQueue {
    public:
-    SortedReadyQueue(absl::Span<const NodeDef> nodes_defs,
-                     absl::Span<const NodeId> ready_nodes);
+    PriorityReadyQueue(absl::Span<const NodeDef> nodes_defs,
+                       absl::Span<const NodeId> ready_nodes);
 
     void Push(NodeId id);
 
     NodeId Pop();
-    SortedReadyQueue PopHalf();
+    PriorityReadyQueue PopHalf();
 
     size_t Size() const;
     bool Empty() const;
 
-    SortedReadyQueue CreateEmptyReadyQueue() const;
+    PriorityReadyQueue CreateEmptyReadyQueue() const;
 
    private:
+    struct Compare {
+      bool operator()(NodeId a, NodeId b) const {
+        return nodes_defs[a].priority < nodes_defs[b].priority;
+      }
+      absl::Span<const NodeDef> nodes_defs;
+    };
+
+    using InlinedPriorityQueue =
+        std::priority_queue<NodeId, absl::InlinedVector<NodeId, 8>, Compare>;
+
     absl::Span<const NodeDef> nodes_defs_;
-    absl::InlinedVector<NodeId, 8> queue_;
+    InlinedPriorityQueue queue_;
   };
 
  private:
