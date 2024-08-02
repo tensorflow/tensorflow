@@ -20,9 +20,9 @@
                             d0 + s0 in [1, 10]
                             >
 
-func.func private @indexing_map_attr(tensor<32xf64, #map>)
+func.func private @indexing_map_attr(!xla_gpu.indexed_vector<64x64x32xf64, #map>)
 // CHECK-LABEL: @indexing_map_attr
-// CHECK: tensor<32xf64, #[[$INDEX_MAP]]>
+// CHECK: !xla_gpu.indexed_vector<64x64x32xf64, #[[$INDEX_MAP]]>
 
 // -----
 
@@ -49,9 +49,9 @@ func.func private @indexing_map_attr(tensor<32xf64, #map>)
                             d0 + s0 in [1, 10],
                             d1 + s1 + s2 in [1, 32]
                             >
-func.func private @more_range_vars(tensor<32xf64, #map>)
+func.func private @more_range_vars(!xla_gpu.indexed_vector<100x32xf64, #map>)
 // CHECK-LABEL: @more_range_vars
-// CHECK: tensor<32xf64, #[[$INDEX_MAP]]>
+// CHECK: !xla_gpu.indexed_vector<100x32xf64, #[[$INDEX_MAP]]>
 
 // -----
 
@@ -66,9 +66,9 @@ func.func private @more_range_vars(tensor<32xf64, #map>)
                             d0 in [0, 100],
                             s0 in [-3, -1]
                             >
-func.func private @indexing_map_small(tensor<100xf64, #map>)
+func.func private @indexing_map_small(!xla_gpu.indexed_vector<100xf64, #map>)
 // CHECK-LABEL: @indexing_map_small
-// CHECK: tensor<100xf64, #[[$INDEX_MAP]]>
+// CHECK: !xla_gpu.indexed_vector<100xf64, #[[$INDEX_MAP]]>
 
 // -----
 
@@ -87,9 +87,9 @@ func.func private @indexing_map_small(tensor<100xf64, #map>)
                             d2 in [10, 12],
                             s0 in [0, 32]
                             >
-func.func private @no_constraints(tensor<32xf64, #map>)
+func.func private @no_constraints(!xla_gpu.indexed_vector<32xf64, #map>)
 // CHECK-LABEL: @no_constraints
-// CHECK: tensor<32xf64, #[[$INDEX_MAP]]>
+// CHECK: !xla_gpu.indexed_vector<32xf64, #[[$INDEX_MAP]]>
 
 // -----
 
@@ -104,9 +104,9 @@ func.func private @no_constraints(tensor<32xf64, #map>)
                             s0 in [3, 5],
                             s0 mod 2 in [0, 1]
                             >
-func.func private @no_dimensions(tensor<100xf64, #map>)
+func.func private @no_dimensions(!xla_gpu.indexed_vector<100xf64, #map>)
 // CHECK-LABEL: @no_dimensions
-// CHECK: tensor<100xf64, #[[$INDEX_MAP]]>
+// CHECK: !xla_gpu.indexed_vector<100xf64, #[[$INDEX_MAP]]>
 
 // -----
 
@@ -121,9 +121,9 @@ func.func private @no_dimensions(tensor<100xf64, #map>)
                             d0 in [3, 5],
                             d0 mod 2 in [0, 1]
                             >
-func.func private @no_symbols(tensor<100xf64, #map>)
+func.func private @no_symbols(!xla_gpu.indexed_vector<100xf64, #map>)
 // CHECK-LABEL: @no_symbols
-// CHECK: tensor<100xf64, #[[$INDEX_MAP]]>
+// CHECK: !xla_gpu.indexed_vector<100xf64, #[[$INDEX_MAP]]>
 
 // -----
 
@@ -131,6 +131,6 @@ func.func private @no_symbols(tensor<100xf64, #map>)
 // CHECK-SAME: () -> ()
 // CHECK-SAME: >
 #map = #xla_gpu.indexing_map<() -> ()>
-func.func private @empty(tensor<100xf64, #map>)
+func.func private @empty(!xla_gpu.indexed_vector<100xf64, #map>)
 // CHECK-LABEL: @empty
-// CHECK: tensor<100xf64, #[[$INDEX_MAP]]>
+// CHECK: !xla_gpu.indexed_vector<100xf64, #[[$INDEX_MAP]]>

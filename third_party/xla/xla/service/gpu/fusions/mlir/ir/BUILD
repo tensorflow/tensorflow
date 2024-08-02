@@ -18,6 +18,7 @@ td_library(
     srcs = glob(["*.td"]),
     includes = ["."],
     deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
@@ -66,16 +67,44 @@ gentbl_cc_library(
     strip_include_prefix = ".",
     tbl_outs = [
         (
-            ["-gen-attrdef-decls"],
+            [
+                "-gen-attrdef-decls",
+            ],
             "xla_gpu_attrs.h.inc",
         ),
         (
-            ["-gen-attrdef-defs"],
+            [
+                "-gen-attrdef-defs",
+            ],
             "xla_gpu_attrs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_gpu_attrs.td",
+    deps = [":xla_gpu_td_files"],
+)
+
+gentbl_cc_library(
+    name = "xla_gpu_types_inc_gen",
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=xla_gpu",
+            ],
+            "xla_gpu_types.h.inc",
+        ),
+        (
+            [
+                "-gen-typedef-defs",
+                "-typedefs-dialect=xla_gpu",
+            ],
+            "xla_gpu_types.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "xla_gpu_types.td",
     deps = [":xla_gpu_td_files"],
 )
 
@@ -85,6 +114,7 @@ cc_library(
         "xla_gpu_attrs.cc",
         "xla_gpu_dialect.cc",
         "xla_gpu_ops.cc",
+        "xla_gpu_types.cc",
     ],
     hdrs = [
         "xla_gpu_ops.h",
@@ -93,6 +123,7 @@ cc_library(
         ":xla_gpu_attrs_inc_gen",
         ":xla_gpu_dialect_inc_gen",
         ":xla_gpu_ops_inc_gen",
+        ":xla_gpu_types_inc_gen",
         "//xla/service/gpu/model:indexing_analysis",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",

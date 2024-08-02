@@ -21,6 +21,9 @@ limitations under the License.
 #define GET_ATTRDEF_CLASSES
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.cc.inc"
 #undef GET_ATTRDEF_CLASSES
+#define GET_TYPEDEF_CLASSES
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_types.cc.inc"
+#undef GET_TYPEDEF_CLASSES
 
 namespace xla {
 namespace gpu {
@@ -122,6 +125,11 @@ void XlaGpuDialect::initialize() {
       >();
 #undef GET_ATTRDEF_LIST
   addInterfaces<XlaGpuInlinerInterface, XlaGpuOpAsmDialectInterface>();
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_types.cc.inc"
+#undef GET_TYPEDEF_LIST
+      >();
 }
 
 }  // namespace gpu
