@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
 namespace stream_executor {
@@ -59,20 +60,16 @@ absl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
 
 absl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
-  return executor_cache_.GetOrCreate(
-      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
+  return executor_cache_.GetOrCreate(config.ordinal,
+                                     [this, ordinal = config.ordinal]() {
+                                       return GetUncachedExecutor(ordinal);
+                                     });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<HostExecutor>(this, config.ordinal);
-  auto init_status = executor->Init();
-  if (!init_status.ok()) {
-    return absl::InternalError(absl::StrFormat(
-        "failed initializing StreamExecutor for device ordinal %d: %s",
-        config.ordinal, init_status.ToString().c_str()));
-  }
-
+HostPlatform::GetUncachedExecutor(int ordinal) {
+  auto executor = std::make_unique<HostExecutor>(this, ordinal);
+  TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }
 

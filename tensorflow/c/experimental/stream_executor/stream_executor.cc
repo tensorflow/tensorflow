@@ -455,17 +455,19 @@ absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
 }
 absl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
-  return executor_cache_.GetOrCreate(
-      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
+  return executor_cache_.GetOrCreate(config.ordinal,
+                                     [this, ordinal = config.ordinal]() {
+                                       return GetUncachedExecutor(ordinal);
+                                     });
 }
 absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
-    const StreamExecutorConfig& config) {
+    int ordinal) {
   // Fill device creation params
   SE_CreateDeviceParams device_params{SE_CREATE_DEVICE_PARAMS_STRUCT_SIZE};
   SP_Device device{SP_DEVICE_STRUCT_SIZE};
   device_params.device = &device;
   device_params.ext = nullptr;
-  device_params.ordinal = config.ordinal;
+  device_params.ordinal = ordinal;
   OwnedTFStatus c_status(TF_NewStatus());
 
   // Create Device

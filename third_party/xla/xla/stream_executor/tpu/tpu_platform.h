@@ -114,11 +114,11 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   absl::Mutex& mutex() { return event_map_mu_; }
 
  private:
-  // Returns a device constructed with the options specified in "config" without
+  // Returns a device constructed with the ordinal specified without
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
-  GetUncachedExecutor(const ::stream_executor::StreamExecutorConfig& config);
+  GetUncachedExecutor(int ordinal);
 
   mutable SE_Platform* platform_;
   std::string name_;

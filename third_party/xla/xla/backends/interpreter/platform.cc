@@ -56,24 +56,16 @@ absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
 
 absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
-  return executor_cache_.GetOrCreate(
-      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
+  return executor_cache_.GetOrCreate(config.ordinal,
+                                     [this, ordinal = config.ordinal]() {
+                                       return GetUncachedExecutor(ordinal);
+                                     });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-XlaInterpreterPlatform::GetUncachedExecutor(
-    const StreamExecutorConfig& config) {
-  auto executor =
-      std::make_unique<XlaInterpreterExecutor>(config.ordinal, this);
-  auto init_status = executor->Init();
-  if (!init_status.ok()) {
-    return absl::Status{
-        absl::StatusCode::kInternal,
-        absl::StrFormat(
-            "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString())};
-  }
-
+XlaInterpreterPlatform::GetUncachedExecutor(int ordinal) {
+  auto executor = std::make_unique<XlaInterpreterExecutor>(ordinal, this);
+  TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }
 

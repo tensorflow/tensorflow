@@ -57,11 +57,11 @@ class CudaPlatform : public Platform {
   absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
 
-  // Returns a device constructed with the options specified in "config" without
+  // Returns a device constructed with the ordinal specified without
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config);
+      int ordinal);
 
  private:
   // This platform's name.

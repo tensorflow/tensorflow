@@ -60,13 +60,15 @@ absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
 
 absl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
-  return executor_cache_.GetOrCreate(
-      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
+  return executor_cache_.GetOrCreate(config.ordinal,
+                                     [this, ordinal = config.ordinal]() {
+                                       return GetUncachedExecutor(ordinal);
+                                     });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<GpuExecutor>(this, config.ordinal);
+ROCmPlatform::GetUncachedExecutor(int ordinal) {
+  auto executor = std::make_unique<GpuExecutor>(this, ordinal);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }
