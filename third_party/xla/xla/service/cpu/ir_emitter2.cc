@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
@@ -355,7 +356,46 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitReductionHostKernel(
     const HloInstruction* instr) {
   VLOG(2) << "Emit reduction host kernel: " << instr->name();
 
-  // TODO(ezhulenev): Port vectorized reduction emitter from IrEmitter.
+  if (instr->opcode() == HloOpcode::kReduce &&
+      !options::VectorizedReduceDisabled(hlo_module_.config())) {
+    TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                        EmitKernelPrototype(instr));
+
+    auto arg = instr->operand(0);
+    auto init_value = instr->operand(1);
+
+    llvm_ir::IrArray input_array = kernel_prototype.arguments[0];
+    llvm_ir::IrArray init_value_array = kernel_prototype.arguments[1];
+    llvm_ir::IrArray output_array = kernel_prototype.results[0];
+    HloComputation* to_apply = instr->to_apply();
+
+    llvm::IRBuilder<> b(module_->getContext());
+    auto builder_overwrite = nested_ir_emitter_->WithBuilder(b);
+
+    nested_ir_emitter_->PushComputeFunction(
+        &b, module_,
+        /*num_dynamic_loop_bounds=*/0, kernel_prototype.function,
+        /*dynamic_loop_bounds_arg=*/nullptr, kernel_prototype.return_block);
+
+    auto status = nested_ir_emitter_->HandleReduce(
+        const_cast<HloInstruction*>(instr), const_cast<HloInstruction*>(arg),
+        const_cast<HloInstruction*>(init_value), input_array, init_value_array,
+        output_array, to_apply, /*is_thunk_runtime=*/true);
+
+    nested_ir_emitter_->PopComputeFunction();
+
+    if (!status.ok()) {
+      TF_ASSIGN_OR_RETURN(
+          kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
+                                           se::BlockDim(), se::ThreadDim())),
+          EmitElementalHostKernel(instr));
+      return kernels_.back();
+    }
+
+    return kernels_.emplace_back(KernelInfo{std::move(kernel_prototype),
+                                            se::BlockDim(), se::ThreadDim()});
+  }
+
   return EmitElementalHostKernel(instr);
 }
 

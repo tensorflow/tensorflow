@@ -263,6 +263,13 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleSort(HloInstruction* hlo) override;
   absl::Status HandleParameter(HloInstruction* parameter) override;
   absl::Status HandleReduce(HloInstruction* reduce) override;
+  absl::Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
+                            HloInstruction* init_value,
+                            const llvm_ir::IrArray& arg_array,
+                            const llvm_ir::IrArray& init_value_array,
+                            const llvm_ir::IrArray& output_array,
+                            HloComputation* function,
+                            bool is_thunk_runtime = false);
   absl::Status HandleReduceWindow(HloInstruction* reduce_window) override;
   absl::Status HandleSelectAndScatter(
       HloInstruction* select_and_scatter) override;
@@ -486,6 +493,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // something similar.
   absl::StatusOr<bool> EmitVectorizedReduce(
       HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
+      const llvm_ir::IrArray& arg_array,
+      const llvm_ir::IrArray& init_value_array,
+      const llvm_ir::IrArray& output_array,
       absl::Span<const int64_t> dimensions, HloComputation* function,
       std::string* failure_reason);
 
@@ -536,6 +546,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::StatusOr<ShardedVector> EmitInnerLoopForVectorizedReduction(
       const ReductionGenerator& reduction_generator,
       const llvm_ir::IrArray::Index& output_index,
+      const llvm_ir::IrArray& arg_array,
+      const llvm_ir::IrArray& init_value_array,
       const ShardedVectorType& accumulator_type, HloInstruction* init_value,
       HloInstruction* arg, absl::Span<const int64_t> dimensions,
       llvm::Align element_alignment);

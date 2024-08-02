@@ -289,6 +289,19 @@ TEST(CallORToolsSolverTest, SolvesMaxDepartures) {
   EXPECT_EQ(result, expected_result);
 }
 
+TEST(CallORToolsSolverTest, MinimizesDepartures) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.set_minimize_departures(true);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 1, 0, 0, 1};
+  const double objective_value = 3.0;
+  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
+}
+
 TEST(CallORToolsSolverTest, AvoidsInfiniteNodeCosts) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.mutable_computation_costs(0)->set_costs(0, kInfinityCost);
