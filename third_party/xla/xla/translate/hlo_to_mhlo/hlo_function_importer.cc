@@ -27,7 +27,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -52,23 +55,20 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/LogicalResult.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/translate/hlo_to_mhlo/attribute_importer.h"
@@ -328,36 +328,6 @@ static bool IsNestedTupleInData(Type type) {
   return false;
 }
 
-static bool HasCustomLayout(const Shape& shape) {
-  if (shape.IsTuple()) {
-    return llvm::any_of(shape.tuple_shapes(), HasCustomLayout);
-  }
-  return shape.has_layout() && !shape.layout().minor_to_major().empty() &&
-         shape.layout() != LayoutUtil::GetDefaultLayoutForShape(shape);
-}
-
-static mlir::Attribute GetLayoutAttribute(mlir::Builder& b,
-                                          const Shape& shape) {
-  if (shape.IsTuple()) {
-    llvm::SmallVector<mlir::Attribute> element_attrs;
-    for (const auto& tuple_shape : shape.tuple_shapes()) {
-      element_attrs.push_back(GetLayoutAttribute(b, tuple_shape));
-    }
-    return b.getArrayAttr(element_attrs);
-  }
-
-  llvm::SmallVector<int64_t> layout;
-  if (shape.has_layout()) {
-    layout = {shape.layout().minor_to_major().begin(),
-              shape.layout().minor_to_major().end()};
-  } else {
-    Layout layout_for_shape = LayoutUtil::GetDefaultLayoutForShape(shape);
-    layout = {layout_for_shape.minor_to_major().begin(),
-              layout_for_shape.minor_to_major().end()};
-  }
-  return b.getIndexTensorAttr(layout);
-}
-
 mlir::Attribute GetFrontendAttributes(mlir::Builder& b,
                                       const FrontendAttributes& attributes) {
   llvm::SmallVector<mlir::NamedAttribute> attrs;
@@ -589,34 +559,6 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   if (computation.execution_thread() != "main") {
     function->setAttr("execution_thread",
                       builder_->getStringAttr(computation.execution_thread()));
-  }
-
-  // The MLIR CPU pipeline assumes default layouts throughout the program. At
-  // the boundaries, this may not be the case, so layout information needs to
-  // be propagated to adapt the data layouts.
-  if (computation.IsEntryComputation()) {
-    const auto& computation_layout =
-        computation.parent()->entry_computation_layout();
-    if (computation_layout.LayoutIsSet()) {
-      if (HasCustomLayout(computation_layout.result_layout().shape())) {
-        function->setAttr(
-            "xla_entry_computation_result_layout",
-            GetLayoutAttribute(*builder_,
-                               computation_layout.result_layout().shape()));
-      }
-      if (llvm::any_of(computation_layout.parameter_layouts(),
-                       [](const ShapeLayout& shape) {
-                         return HasCustomLayout(shape.shape());
-                       })) {
-        llvm::SmallVector<mlir::Attribute> parameter_layouts;
-        for (auto& layout : computation_layout.parameter_layouts()) {
-          parameter_layouts.push_back(
-              GetLayoutAttribute(*builder_, layout.shape()));
-        }
-        function->setAttr("xla_entry_computation_parameter_layouts",
-                          builder_->getArrayAttr(parameter_layouts));
-      }
-    }
   }
 
   symbol_table_.insert(function);
@@ -2440,7 +2382,7 @@ void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
                                            const Shape& shape,
                                            llvm::StringRef attr_name) {
   mlir::Builder b(op->getContext());
-  op->setAttr(attr_name, GetLayoutAttribute(b, shape));
+  op->setAttr(attr_name, GetLayoutAttribute(b, shape).first);
 }
 
 absl::Status HloFunctionImporter::ConvertShapeToMlirLayout(
@@ -2468,6 +2410,42 @@ absl::Status HloFunctionImporter::ConvertShapeToMlirLayout(
     return absl::OkStatus();
   }
   return Internal("Couldn't convert layout.");
+}
+
+mlir::Attribute ConvertInputOutputAlias(const HloInputOutputAliasConfig& alias,
+                                        mlir::Builder* builder) {
+  llvm::SmallVector<mlir::Attribute> element_attrs;
+  alias.ForEachAlias([&](const ShapeIndex& output_index,
+                         const HloInputOutputAliasConfig::Alias& alias) {
+    std::string kindToString;
+    switch (alias.kind) {
+      case HloInputOutputAliasConfig::AliasKind::kMayAlias:
+        kindToString = "may_alias";
+        break;
+      case HloInputOutputAliasConfig::AliasKind::kMustAlias:
+        kindToString = "must_alias";
+        break;
+      default:
+        kindToString = "undefined_alias";
+    }
+    mlir::NamedAttribute alias_named_attributes[3] = {
+        builder->getNamedAttr(
+            "parameter_index",
+            builder->getDenseI64ArrayAttr(ArrayRef<int64_t>(
+                alias.parameter_index.begin(), alias.parameter_index.end()))),
+        builder->getNamedAttr("parameter_number", builder->getI64IntegerAttr(
+                                                      alias.parameter_number)),
+        builder->getNamedAttr("kind", builder->getStringAttr(kindToString))};
+
+    mlir::NamedAttribute named_attributes[2] = {
+        builder->getNamedAttr("output_index",
+                              builder->getDenseI64ArrayAttr(ArrayRef<int64_t>(
+                                  output_index.begin(), output_index.end()))),
+        builder->getNamedAttr(
+            "alias", builder->getDictionaryAttr(alias_named_attributes))};
+    element_attrs.push_back(builder->getDictionaryAttr(named_attributes));
+  });
+  return builder->getArrayAttr(element_attrs);
 }
 
 mlir::Attribute ConvertSharding(const HloSharding& sharding,

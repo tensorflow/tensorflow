@@ -92,7 +92,6 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
     if (auto oldSharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
       addFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding, argNum);
-      funcOp.removeArgAttr(argNum, kShardingAttr);
     }
   }
 
@@ -122,7 +121,6 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
           TensorShardingPerValueAttr::get(customCallOp.getContext(), sharding),
           builder);
       returnOperand.set(customCallOp.getResult(0));
-      funcOp.removeResultAttr(resultNum, builder.getStringAttr(kShardingAttr));
     }
   }
 
@@ -130,7 +128,6 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
     if (auto oldShardingPerValue =
             op->getAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
       saveOpShardingPerValueAttr(op, oldShardingPerValue, builder);
-      op->removeAttr(kShardingAttr);
     }
   });
 
@@ -155,8 +152,6 @@ class SdyRoundTripExportShardingsPass
     }
 
     SmallVector<NamedAttribute> mhloMeshes;
-    mlir::SymbolTableCollection symbolTableCollection;
-    SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
     // Saves the MeshOps for MHLO<->HLO round-trip and removes them from the
     // ModuleOp.
     for (MeshOp meshOp :
@@ -164,7 +159,6 @@ class SdyRoundTripExportShardingsPass
       mhloMeshes.emplace_back(
           meshOp.getSymNameAttr(),
           getStringAttribute(meshOp.getMeshAttr(), builder));
-      symbolTable.erase(meshOp);
     }
     addFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
                          DictionaryAttr::get(context, mhloMeshes));

@@ -358,7 +358,7 @@ bool SupportSpatialPartitioning(
       computation_map.find(instruction->parent()) == computation_map.end() &&
       !(is_entry_root && allow_spmd_sharding_propagation_to_output)) {
     // We don't support sharding the root instruction of a computation yet,
-    // unless the computation is a while body.
+    // unless the computation is in computation_map.
     return false;
   }
 
@@ -2037,8 +2037,7 @@ bool InferDynamicUpdateSliceShardingFromOperand0(
 }
 
 bool ShardingPropagation::InferShardingFromShardGroup(
-    HloInstruction* instruction, const ComputationMap& computation_map,
-    int64_t aggressiveness,
+    HloInstruction* instruction, int64_t aggressiveness,
     const absl::flat_hash_set<HloInstruction*>& shard_group) {
   if (!CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness)) {
     return false;
@@ -2887,13 +2886,22 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       return std::vector<HloInstruction*>{inst, callee->root_instruction()};
     } else if (inst->opcode() == HloOpcode::kParameter) {
       auto it = computation_map.find(inst->parent());
-      if (it != computation_map.end() &&
-          it->second->opcode() == HloOpcode::kConditional) {
-        HloInstruction* cond = it->second;
-        for (int64_t i = 1; i < cond->operand_count(); ++i) {
-          if (cond->called_computations()[i - 1] == inst->parent()) {
-            return std::vector<HloInstruction*>{inst, cond->mutable_operand(i)};
+      if (it != computation_map.end()) {
+        if (it->second->opcode() == HloOpcode::kConditional) {
+          HloInstruction* cond = it->second;
+          for (int64_t i = 1; i < cond->operand_count(); ++i) {
+            if (cond->called_computations()[i - 1] == inst->parent()) {
+              return std::vector<HloInstruction*>{inst,
+                                                  cond->mutable_operand(i)};
+            }
           }
+        }
+        if (it->second->opcode() == HloOpcode::kCall) {
+          HloInstruction* call = it->second;
+          int64_t operand_index = inst->parameter_number();
+          CHECK_LT(operand_index, call->operand_count());
+          return std::vector<HloInstruction*>{
+              inst, call->mutable_operand(operand_index)};
         }
       }
       return std::vector<HloInstruction*>{};
@@ -2937,9 +2945,11 @@ absl::StatusOr<bool> ShardingPropagation::Run(
               auto it = computation_map.find(instruction->parent());
               if (it != computation_map.end()) {
                 propagate_to_instruction(it->second);
-                // Propagate parameter shardings back to conditional's operands.
+                // Propagate parameter shardings back to conditional's and
+                // call's operands.
                 if (instruction->opcode() == HloOpcode::kParameter &&
-                    it->second->opcode() == HloOpcode::kConditional) {
+                    (it->second->opcode() == HloOpcode::kConditional ||
+                     it->second->opcode() == HloOpcode::kCall)) {
                   propagate_to_instruction(instruction);
                 }
               }
@@ -2955,8 +2965,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
     }
   }
 
-  // Populate computation_map in order to associate while bodies to their
-  // while instructions.
+  // Populate computation_map in order to associate while bodies and conditions
+  // to their while instructions.
   for (auto computation : module->computations(execution_threads)) {
     for (auto instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile ||
@@ -2983,6 +2993,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         }
         if (instruction->opcode() == HloOpcode::kWhile) {
           computation_map[instruction->while_body()] = instruction;
+          computation_map[instruction->while_condition()] = instruction;
         } else {
           for (HloComputation* c : instruction->called_computations()) {
             computation_map[c] = instruction;
@@ -3134,8 +3145,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
               continue;
             }
             already_inferred_from_shard_group.insert(instruction);
-            if (InferShardingFromShardGroup(instruction, computation_map,
-                                            aggressiveness, shard_group)) {
+            if (InferShardingFromShardGroup(instruction, aggressiveness,
+                                            shard_group)) {
               ++inferred_from_shard_group_counter;
               any_changed = true;
               VLOG(2) << "Add sharding (shard group): "

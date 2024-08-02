@@ -18,8 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/framework/device_id_manager.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/device_name_utils.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace tsl {
@@ -182,11 +182,7 @@ TEST(DeviceIdUtilsTest, GetDeviceIdWithPlatformDeviceId) {
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
 
-  TF_ASSERT_OK_AND_ASSIGN(int device_id,
-                          GetDeviceIdFromDeviceParsedName(
-                              device_name, DeviceType(kTestDeviceType)));
-
-  EXPECT_EQ(device_id, 1);
+  EXPECT_EQ(GetDeviceIdFromDeviceParsedName(device_name), 0);
   DeviceIdManager::TestOnlyReset();
 }
 
@@ -194,11 +190,7 @@ TEST(DeviceIdUtilsTest, GetDeviceIdWithoutPlatformDeviceId) {
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
 
-  TF_ASSERT_OK_AND_ASSIGN(int device_id,
-                          GetDeviceIdFromDeviceParsedName(
-                              device_name, DeviceType(kTestDeviceType)));
-
-  EXPECT_EQ(device_id, 0);
+  EXPECT_EQ(GetDeviceIdFromDeviceParsedName(device_name), 0);
 }
 
 }  // namespace

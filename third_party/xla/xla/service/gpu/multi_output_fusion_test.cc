@@ -1529,6 +1529,8 @@ ENTRY main {
 }
   )")
                     .value();
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 

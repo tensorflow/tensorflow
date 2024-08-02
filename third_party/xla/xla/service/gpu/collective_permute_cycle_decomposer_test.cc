@@ -150,11 +150,14 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
     iter = u32[] get-tuple-element(param), index=0
     data = f32[2,2] get-tuple-element(param), index=1
     weights = f32[2,2] get-tuple-element(param), index=2
-    matmul = f32[2,2] dot(weights, data), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    cp = f32[2,2] collective-permute(matmul), channel_id=1, source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+    cp = f32[2,2] collective-permute(data),
+      channel_id=1,
+      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}},
+      frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10}}"}
+    matmul = f32[2,2] dot(weights, cp), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     iter_increment = u32[] constant(1)
     next_iter = u32[] add(iter, iter_increment)
-    ROOT result = (u32[], f32[2,2], f32[2,2]) tuple(next_iter, cp, weights)
+    ROOT result = (u32[], f32[2,2], f32[2,2]) tuple(next_iter, matmul, weights)
   }
 
   ENTRY test_computation {
@@ -178,8 +181,12 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
       DynCast<HloCollectivePermuteInstruction>(
           FindInstruction(module.get(), "collective-permute.1"));
   EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{3,0}}"));
+  EXPECT_THAT(cp1->ToString(),
+              HasSubstr("_xla_send_recv_validation=\"{{3,10}}\""));
   EXPECT_THAT(cp2->ToString(),
               HasSubstr("source_target_pairs={{0,1},{1,2},{2,3}}"));
+  EXPECT_THAT(cp2->ToString(),
+              HasSubstr("_xla_send_recv_validation=\"{{0,7},{1,8},{2,9}}\""));
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {

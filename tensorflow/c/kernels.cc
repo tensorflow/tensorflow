@@ -794,10 +794,7 @@ int TF_GetDeviceId(TF_OpKernelContext* ctx) {
 #else
   const auto* device = reinterpret_cast<const tensorflow::Device*>(
       device_base->UnderlyingDevice());
-  const absl::StatusOr<int> id = tsl::GetDeviceIdFromDeviceParsedName(
-      device->parsed_name(), tensorflow::DeviceType(device->device_type()));
-  if (!id.ok()) return -1;
-  return *id;
+  return tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name());
 #endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 

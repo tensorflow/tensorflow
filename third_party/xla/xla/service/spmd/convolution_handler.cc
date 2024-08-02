@@ -1028,43 +1028,8 @@ absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }
-  auto dims_info = dot_as_convolution_util::ParseConvolutionDimsInfo(hlo);
-  dot_as_convolution_util::DotConvolutionDimsInfo mapping;
-  for (const auto& dims : dims_info.batch_dims) {
-    mapping.batch_dims.emplace_back();
-    mapping.batch_dims.back().lhs = dims.lhs;
-    mapping.batch_dims.back().rhs = dims.rhs;
-    mapping.batch_dims.back().output = dims.output;
-    mapping.batch_dims.back().spatial_dim = dims.spatial_dim;
-  }
-  for (const auto& dims : dims_info.contracting_dims) {
-    mapping.contracting_dims.emplace_back();
-    mapping.contracting_dims.back().lhs = dims.lhs;
-    mapping.contracting_dims.back().rhs = dims.rhs;
-    mapping.contracting_dims.back().output = dims.output;
-    mapping.contracting_dims.back().spatial_dim = dims.spatial_dim;
-  }
-  for (const auto& dims : dims_info.lhs_non_contracting_dims) {
-    mapping.lhs_non_contracting_dims.emplace_back();
-    mapping.lhs_non_contracting_dims.back().lhs = dims.lhs;
-    mapping.lhs_non_contracting_dims.back().rhs = dims.rhs;
-    mapping.lhs_non_contracting_dims.back().output = dims.output;
-    mapping.lhs_non_contracting_dims.back().spatial_dim = dims.spatial_dim;
-  }
-  for (const auto& dims : dims_info.rhs_non_contracting_dims) {
-    mapping.rhs_non_contracting_dims.emplace_back();
-    mapping.rhs_non_contracting_dims.back().lhs = dims.lhs;
-    mapping.rhs_non_contracting_dims.back().rhs = dims.rhs;
-    mapping.rhs_non_contracting_dims.back().output = dims.output;
-    mapping.rhs_non_contracting_dims.back().spatial_dim = dims.spatial_dim;
-  }
-  for (const auto& dims : dims_info.conv_spatial_dims) {
-    mapping.conv_spatial_dims.emplace_back();
-    mapping.conv_spatial_dims.back().lhs = dims.lhs;
-    mapping.conv_spatial_dims.back().rhs = dims.rhs;
-    mapping.conv_spatial_dims.back().output = dims.output;
-    mapping.conv_spatial_dims.back().spatial_dim = dims.spatial_dim;
-  }
+  const auto dims_info = dot_as_convolution_util::ParseConvolutionDimsInfo(hlo);
+
   auto create_sharded_conv =
       [&](HloInstruction* lhs_hlo, HloInstruction* rhs_hlo,
           spmd::SpmdBuilder* b,
@@ -1084,7 +1049,7 @@ absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
     }
   };
 
-  return HandleDotHelper(hlo, mapping, create_sharded_conv);
+  return HandleDotHelper(hlo, dims_info, create_sharded_conv);
 }
 
 }  // namespace spmd

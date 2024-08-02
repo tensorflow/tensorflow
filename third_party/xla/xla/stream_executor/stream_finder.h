@@ -13,21 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_IR_XLA_GPU_ATTRS_H_
-#define XLA_SERVICE_GPU_FUSIONS_MLIR_IR_XLA_GPU_ATTRS_H_
+#ifndef XLA_STREAM_EXECUTOR_STREAM_FINDER_H_
+#define XLA_STREAM_EXECUTOR_STREAM_FINDER_H_
 
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/OpImplementation.h"
-#include "mlir/Support/LLVM.h"
-#include "xla/service/gpu/model/indexing_map.h"  // IWYU pragma: keep
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 
-namespace xla {
-namespace gpu {
+namespace stream_executor {
 
-// Custom parser to parse IndexingMapAttr.
-mlir::FailureOr<mlir::Attribute> ParseIndexingMapAttr(mlir::AsmParser& parser);
+// Returns a Stream given the gpu_stream handle.
+absl::StatusOr<Stream*> FindStream(Platform* platform, void* gpu_stream);
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace stream_executor
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_MLIR_IR_XLA_GPU_ATTRS_H_
+#endif  // XLA_STREAM_EXECUTOR_STREAM_FINDER_H_

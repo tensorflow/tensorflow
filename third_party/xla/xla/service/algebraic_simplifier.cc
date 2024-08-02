@@ -4280,6 +4280,19 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
 }
 }  // namespace
 
+bool AlgebraicSimplifierVisitor::IsNondecreasingSublinear(
+    const HloInstruction* hlo) {
+  switch (hlo->opcode()) {
+    case HloOpcode::kCbrt:
+    case HloOpcode::kErf:
+    case HloOpcode::kLogistic:
+    case HloOpcode::kTanh:
+      return true;
+    default:
+      return false;
+  }
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
     HloInstruction* maximum) {
   HloInstruction *lhs, *rhs;
@@ -4348,6 +4361,33 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
         ReplaceInstructionIfCompatible(maximum, clamp)) {
       return absl::OkStatus();
     }
+  }
+
+  // If the operands of the max are the same non-decreasing function, then we
+  // can sink it; i.e. max(tanh(x), tanh(y)) to tanh(max(x, y))
+  // We only do this if the function asymptotically satisfies |f(x)| <= |x| to
+  // guarantee that no overflow occurs. Proof of correctness:
+  /* https://cvc5.github.io/app/
+  (set-logic ALL)
+  (declare-fun f (Float32) Float32)
+  (assert (forall ((x Float32) (y Float32))
+                  (=> (fp.lt x y) (fp.leq (f x) (f y))))) ; NonDecreasing
+  (assert (forall ((x Float32))
+                  (fp.leq (fp.abs (f x)) (fp.abs x)))) ; Sublinear
+  (assert (not (forall ((x Float32) (y Float32))
+                       (fp.eq (fp.max (f x) (f y))
+                              (f (fp.max x y)))))) ; Expect unsat
+  (check-sat)
+  */
+  if (lhs->opcode() == rhs->opcode() && IsNondecreasingSublinear(lhs)) {
+    TF_ASSIGN_OR_RETURN(
+        auto new_maximum,
+        MakeBinaryHlo(HloOpcode::kMaximum, lhs->mutable_operand(0),
+                      rhs->mutable_operand(0)));
+    VLOG(10) << "Sinking nondecreasing op through max";
+    return ReplaceWithNewInstruction(
+        maximum, HloInstruction::CreateUnary(maximum->shape(), lhs->opcode(),
+                                             new_maximum));
   }
 
   return absl::OkStatus();
@@ -7359,6 +7399,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     if (multi_output_reduce) {
       std::vector<HloInstruction*> broadcast_inits;
       int64_t inputs = reduce->input_count();
+      broadcast_inits.reserve(inputs);
       for (int64_t i = 0; i < inputs; ++i) {
         broadcast_inits.push_back(reduce->init_values()[i]->AddInstruction(
             HloInstruction::CreateBroadcast(reduce->shape().tuple_shapes(i),
@@ -7404,6 +7445,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     if (multi_output_reduce) {
       std::vector<HloInstruction*> reshaped_args;
       int64_t inputs = reduce->input_count();
+      reshaped_args.reserve(inputs);
       for (int64_t i = 0; i < inputs; ++i) {
         reshaped_args.push_back(
             reduce->AddInstruction(HloInstruction::CreateReshape(
@@ -7930,6 +7972,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   if (ShapeUtil::IsZeroElementArray(*input_shapes[0]) ||
       ShapeUtil::IsZeroElementArray(*output_shapes[0])) {
     std::vector<HloInstruction*> broadcast_inits;
+    broadcast_inits.reserve(input_count);
     for (int64_t i = 0; i < input_count; ++i) {
       broadcast_inits.push_back(
           hlo->AddInstruction(HloInstruction::CreateBroadcast(

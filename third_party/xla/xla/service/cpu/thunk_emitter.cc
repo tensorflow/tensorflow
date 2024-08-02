@@ -755,9 +755,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
   TF_ASSIGN_OR_RETURN(ThunkSequence body_thunk,
                       EmitHloComputation(instruction->while_body()));
 
+  // Check if while loop has a statically known trip count.
+  TF_ASSIGN_OR_RETURN(
+      auto loop_config,
+      instruction->backend_config<xla::WhileLoopBackendConfig>());
+
+  std::optional<int64_t> trip_count;
+  if (loop_config.has_known_trip_count()) {
+    trip_count = loop_config.known_trip_count().n();
+  }
+
   return ThunkSequence::Of<WhileThunk>(ThunkInfo(instruction), cond_buffer,
                                        std::move(cond_thunk),
-                                       std::move(body_thunk));
+                                       std::move(body_thunk), trip_count);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(

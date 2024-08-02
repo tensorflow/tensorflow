@@ -476,7 +476,7 @@ message DebugOptions {
 
   // Enables address computation fusion to optimize dynamic-slice and
   // dynamic-update-slice operations around library calls.
-  bool xla_gpu_enable_address_computation_fusion = 105;
+  bool xla_gpu_enable_dynamic_slice_fusion = 105;
 
   reserved 233;  // was xla_gpu_enable_gpu2_runtime
   reserved 234;  // was xla_gpu_enable_gpu2_hal
@@ -749,7 +749,7 @@ message DebugOptions {
   // are counted.
   reserved 282;  // was xla_gpu_skip_mlir_kernels
 
-  // Threshold to rewrite matmul to cuBLAS or Triton (minumum combined number of
+  // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
   // rewrite).
   int64 xla_gpu_gemm_rewrite_size_threshold = 283;
@@ -806,10 +806,7 @@ message DebugOptions {
   // If true, Nccl errors will terminate the process.
   bool xla_gpu_nccl_terminate_on_error = 301;
 
-  // Use Shardy, a new partitioner, to replace the existing
-  // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
-  // details.
-  bool xla_use_shardy = 302;
+  reserved 302;  // was xla_use_shardy
 
   bool xla_gpu_shard_autotuning = 304;
 
@@ -838,7 +835,7 @@ message DebugOptions {
 
   // Custom call targets with legacy registry API (non FFI API),
   // that support recording to command buffer custom command,
-  // i.e, custom call target supports cuda-graph capturing for CUDA devices.
+  // i.e., custom call target supports cuda-graph capturing for CUDA devices.
   // This flag is read if CUSTOM_CALL command type is recorded into
   // command buffer.
   repeated string legacy_command_buffer_custom_call_targets = 314;

@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "xla/service/cpu/onednn_matmul_rewriter.h"
+#include "xla/service/cpu/onednn_contraction_rewriter.h"
 
 #include "xla/executable_run_options.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
+#include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_matmul.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_pattern_utils.h"
@@ -364,7 +365,8 @@ inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
 
 }  // namespace
 
-bool OneDnnMatMulRewriter::ShouldRewrite(const HloInstruction* dot_instr) {
+bool OneDnnContractionRewriter::ShouldRewriteDot(
+    const HloInstruction* dot_instr) {
   // Currently, blocking control dependencies
   if (dot_instr->HasControlDependencies()) return false;
   if (!IsSupportedType(dot_instr->shape().element_type())) return false;
@@ -424,7 +426,37 @@ bool OneDnnMatMulRewriter::ShouldRewrite(const HloInstruction* dot_instr) {
   return (num_flops >= flops_threshold);
 }
 
-class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
+bool OneDnnContractionRewriter::ShouldRewriteConv(
+    const HloInstruction* conv_instr) {
+  if (conv_instr->HasControlDependencies()) return false;
+  if (!IsSupportedType(conv_instr->shape().element_type())) return false;
+  if (conv_instr->batch_group_count() != 1) return false;
+
+  // TODO(intel-tf): Remove this restriction after enabling backward weights
+  // support
+  if (conv_instr->operand(1)->opcode() == HloOpcode::kReverse) return false;
+
+  const Shape& inp_shape = conv_instr->operand(0)->shape();
+  const Shape& ker_shape = conv_instr->operand(1)->shape();
+  const Shape& out_shape = conv_instr->shape();
+  if (ShapeUtil::IsZeroElementArray(inp_shape) ||
+      ShapeUtil::IsZeroElementArray(ker_shape) ||
+      ShapeUtil::IsZeroElementArray(out_shape)) {
+    return false;
+  }
+
+  auto dims = conv_instr->window().dimensions().size();
+  if (dims >= 4 || dims <= 0) return false;
+
+  if (inp_shape.rank() != ker_shape.rank() ||
+      inp_shape.rank() != out_shape.rank()) {
+    return false;
+  }
+
+  return true;
+}
+
+class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
  public:
   // Matches patterns for possible MatMul fusions that are supported by oneDNN
   // library. Matched HLO instruction(s) are replaced by custom call.
@@ -435,7 +467,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
 
     TF_RETURN_IF_ERROR(
         ValidateDotDimensionNumbers(dot_instr->dot_dimension_numbers()));
-    if (!OneDnnMatMulRewriter::ShouldRewrite(dot_instr))
+    if (!OneDnnContractionRewriter::ShouldRewriteDot(dot_instr))
       return absl::OkStatus();
     TF_ASSIGN_OR_RETURN(dot_instr, ReconfigureDotDimensions(dot_instr));
     auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
@@ -461,6 +493,72 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     matmul_config->set_transpose_b(transpose_b);
     TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleConvolution(HloInstruction* conv) override {
+    if (!OneDnnContractionRewriter::ShouldRewriteConv(conv)) {
+      return absl::OkStatus();
+    }
+
+    const Shape& conv_shape = conv->shape();
+    auto dims = conv->window().dimensions().size();
+    const ConvolutionDimensionNumbers& conv_dims =
+        conv->convolution_dimension_numbers();
+
+    BackendConfig backend_config;
+    OneDnnConvolutionConfig* conv_config =
+        backend_config.mutable_onednn_conv_config();
+
+    conv_config->set_dims(conv_shape.rank());
+    conv_config->set_feature_groups(conv->feature_group_count());
+    conv_config->mutable_input()->mutable_data()->set_batch_dim(
+        conv_dims.input_batch_dimension());
+    conv_config->mutable_kernel()->mutable_filter()->set_input_feature_dim(
+        conv_dims.kernel_input_feature_dimension());
+    conv_config->mutable_output()->mutable_data()->set_batch_dim(
+        conv_dims.output_batch_dimension());
+    conv_config->mutable_input()->mutable_data()->set_feature_dim(
+        conv_dims.input_feature_dimension());
+    conv_config->mutable_kernel()->mutable_filter()->set_output_feature_dim(
+        conv_dims.kernel_output_feature_dimension());
+    conv_config->mutable_output()->mutable_data()->set_feature_dim(
+        conv_dims.output_feature_dimension());
+
+    const Shape& output_shape = conv->shape();
+
+    for (auto it = conv->window().dimensions().begin();
+         it != conv->window().dimensions().end(); it++) {
+      if ((*it).padding_low() < 0 || (*it).padding_high() < 0 ||
+          (*it).stride() < 0 || (*it).base_dilation() != 1 ||
+          (*it).window_reversal()) {
+        return absl::OkStatus();
+      }
+      // Changing the input subspace of uint repeated fields from whole numbers
+      // to natural nummbers to avoid misinterpretation of buffer values.
+      conv_config->mutable_window()->add_pad_left((*it).padding_low() + 1);
+      conv_config->mutable_window()->add_pad_right((*it).padding_high() + 1);
+      conv_config->mutable_window()->add_strides((*it).stride() + 1);
+      conv_config->mutable_window()->add_window_dilations(
+          (*it).window_dilation() + 1);
+    }
+
+    for (int i = 0; i < dims; i++) {
+      conv_config->mutable_input()->mutable_data()->add_spatial_dims(
+          conv_dims.input_spatial_dimensions()[i] + 1);
+      conv_config->mutable_kernel()->mutable_filter()->add_spatial_dims(
+          conv_dims.kernel_spatial_dimensions()[i] + 1);
+      conv_config->mutable_output()->mutable_data()->add_spatial_dims(
+          conv_dims.output_spatial_dimensions()[i] + 1);
+    }
+
+    HloInstruction* custom_call =
+        conv->AddInstruction(HloInstruction::CreateCustomCall(
+            output_shape, {conv->mutable_operand(0), conv->mutable_operand(1)},
+            "__onednn$convolution"));
+
+    TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(conv, custom_call));
     return absl::OkStatus();
   }
 
@@ -1108,10 +1206,10 @@ EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch,
                                        OneDnnMatMulConfig, onednn_matmul_config,
                                        optimization_config, user_scratchpad);
 
-absl::StatusOr<bool> OneDnnMatMulRewriter::Run(
+absl::StatusOr<bool> OneDnnContractionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  OneDnnMatMulRewriteVisitor visitor;
+  OneDnnContractionRewriteVisitor visitor;
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
 

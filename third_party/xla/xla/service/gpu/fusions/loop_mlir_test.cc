@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -196,10 +196,10 @@ TEST_F(MlirLoopFusionTest, Constant_Broadcast) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d1 * 1024 + d0)>
-    // CHECK: #[[MAP1:.*]] = affine_map<(d0, d1) -> ((d1 * 1024 + d0) floordiv 768)>
-    // CHECK: #[[MAP2:.*]] = affine_map<(d0, d1) -> (((d1 * 1024 + d0) floordiv 48) mod 16)>
-    // CHECK: #[[MAP3:.*]] = affine_map<(d0, d1) -> ((d1 * 1024 + d0) mod 48)>
+    // CHECK-DAG: #[[MAP0:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 1024 + d0)
+    // CHECK-DAG: #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 1024 + d0) floordiv 768)
+    // CHECK-DAG: #[[MAP2:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (((d1 * 1024 + d0) floordiv 48) mod 16)
+    // CHECK-DAG: #[[MAP3:.*]] = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 1024 + d0) mod 48)
     // CHECK: func.func @fused_computation(%[[ARG0:.*]]: tensor<2x16x48xbf16>
     // CHECK: %[[UPPER_BOUND:.*]] = arith.constant 1535 : index
     // CHECK: %[[THREAD_ID:.*]] = gpu.thread_id

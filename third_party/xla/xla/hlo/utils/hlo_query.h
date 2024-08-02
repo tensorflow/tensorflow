@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -152,6 +153,13 @@ bool HasX64TransformedHostTransfer(const HloModule& module);
 HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
                                         int64_t index);
 
+// TODO: b/356153995 - refactor hlo_test_base
+// Check that one instruction comes before another one for a given computation.
+// The function returns true if the first instruction comes before the second
+// one, and false otherwise. This is useful for partial checks on the
+// transformed IR without going through a full file check.
+bool IsBeforeInComputation(const HloComputation* computation,
+                           absl::string_view inst1, absl::string_view inst2);
 }  // namespace hlo_query
 }  // namespace xla
 

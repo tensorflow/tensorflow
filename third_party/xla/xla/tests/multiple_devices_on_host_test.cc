@@ -18,7 +18,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
 

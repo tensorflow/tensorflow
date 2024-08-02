@@ -60,12 +60,9 @@ absl::StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
     const DeviceNameUtils::ParsedName& device_name,
     const DeviceType& device_type);
 
-// TODO(b/293324740): support virtual devices.
-// Returns the corresponding PlatformDeviceId if it is found. Otherwise returns
-// the id in device_name.
-absl::StatusOr<int> GetDeviceIdFromDeviceParsedName(
-    const DeviceNameUtils::ParsedName& device_name,
-    const DeviceType& device_type);
+// Returns the id in device_name.
+int GetDeviceIdFromDeviceParsedName(
+    const DeviceNameUtils::ParsedName& device_name);
 
 }  // namespace tsl
 

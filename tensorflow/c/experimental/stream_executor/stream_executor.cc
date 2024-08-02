@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -303,15 +305,6 @@ class CStreamExecutor : public StreamExecutorCommon {
                                        size, c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
-  absl::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
-                      uint64 size) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();
-    SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
-    stream_executor_->memset(&device_, stream_handle, &device_mem, pattern,
-                             size, c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
   void DeallocateStream(Stream* stream) override {
     static_cast<CStream*>(stream)->Destroy();
   }
@@ -405,8 +398,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override {
+      std::optional<std::variant<StreamPriority, int>> priority) override {
     auto stream = std::make_unique<CStream>(&device_, stream_executor_, this);
     TF_RETURN_IF_ERROR(stream->Create());
     return std::move(stream);
@@ -440,7 +432,6 @@ CPlatform::CPlatform(SP_Platform platform,
       name_(platform.name) {}
 
 CPlatform::~CPlatform() {
-  executor_cache_.DestroyAllExecutors();
   platform_fns_.destroy_device_fns(&platform_, &device_fns_);
   platform_fns_.destroy_stream_executor(&platform_, &stream_executor_);
   platform_fns_.destroy_timer_fns(&platform_, &timer_fns_);
@@ -465,7 +456,7 @@ absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
 absl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
 }
 absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {

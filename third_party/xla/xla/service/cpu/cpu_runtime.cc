@@ -73,6 +73,17 @@ XfeedManager* GetXfeedManager(int device_ordinal) {
   return it->second;
 }
 
+// TODO(zhangqiaorjc): Prefer to make callers set and use device_ordinal
+// directly since callers may not have a Stream*.
+int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options) {
+  if (!run_options) {
+    return 0;
+  } else if (run_options->device_ordinal() != -1) {
+    return run_options->device_ordinal();
+  }
+  return run_options->stream()->parent()->device_ordinal();
+}
+
 extern const char* const kEigenMatMulF16SymbolName =
     "__xla_cpu_runtime_EigenMatMulF16";
 extern const char* const kEigenMatMulF32SymbolName =
@@ -196,17 +207,6 @@ std::string ShapeString(const void* shape_ptr, int32_t shape_length) {
     return ShapeUtil::HumanStringWithLayout(shape.value());
   }
   return "<invalid shape>";
-}
-
-// TODO(zhangqiaorjc): Prefer to make callers set and use device_ordinal
-// directly since callers may not have a Stream*.
-int GetDeviceOrdinal(const ExecutableRunOptions* run_options) {
-  if (!run_options) {
-    return 0;
-  } else if (run_options->device_ordinal() != -1) {
-    return run_options->device_ordinal();
-  }
-  return run_options->stream()->parent()->device_ordinal();
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY

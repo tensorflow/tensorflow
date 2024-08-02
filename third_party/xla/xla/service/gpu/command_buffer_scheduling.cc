@@ -719,7 +719,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   }
 
   absl::flat_hash_set<std::string> legacy_custom_call_targets;
-  for (auto target :
+  for (const auto& target :
        debug_options.legacy_command_buffer_custom_call_targets()) {
     legacy_custom_call_targets.insert(target);
   }

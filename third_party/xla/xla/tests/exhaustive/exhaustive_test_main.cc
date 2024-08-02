@@ -18,18 +18,23 @@ limitations under the License.
 // the --benchmark_filter flag which specifies which benchmarks to run,
 // we will either run benchmarks or run the gtest tests in the program.
 
+#include <string>
+#include <vector>
+
+#include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
+#include "xla/tsl/util/command_line_flags.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 
-namespace xla {
-namespace exhaustive_op_test {
-
-static int eup_version = 0;
-int GetEupVersion() { return eup_version; }
-
-}  // namespace exhaustive_op_test
-}  // namespace xla
-
 GTEST_API_ int main(int argc, char** argv) {
+  std::vector<tsl::Flag> flag_list;
+  xla::exhaustive_op_test::AddExhaustiveFlags(flag_list);
+  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  if (!tsl::Flags::Parse(&argc, argv, flag_list)) {
+    LOG(ERROR) << "\n" << usage;
+    return 2;
+  }
+
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

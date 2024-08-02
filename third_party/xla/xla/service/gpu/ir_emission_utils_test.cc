@@ -22,12 +22,12 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/backend_config.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -703,12 +703,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -742,12 +743,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(false));
 }
 
@@ -782,8 +784,9 @@ ENTRY main {
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
   BufferAllocation::Slice slice1(&alloc, 10, 20);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [fusion, &slice0, &slice1](const HloInstruction* instr,
                                              const ShapeIndex&) {
                     if (instr == fusion) {
@@ -791,7 +794,7 @@ ENTRY main {
                     }
                     return slice1;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(false));
 }
 
@@ -825,12 +828,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(false));
 }
 
@@ -868,12 +872,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -913,12 +918,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -954,12 +960,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -995,12 +1002,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -1038,12 +1046,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 

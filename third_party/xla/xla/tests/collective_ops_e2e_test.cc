@@ -154,6 +154,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
     )";
 
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_reduce = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -190,6 +191,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_gather = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
@@ -231,6 +233,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_gather = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
@@ -268,6 +271,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_collective_broadcast = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -300,6 +304,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_collective_permute = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -343,6 +348,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   )";
 
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_reduce_scatter = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -376,6 +382,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_to_all = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -420,6 +427,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_to_all = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -472,6 +480,7 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
    }
   )";
   const int64_t kNumReplicas = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -592,6 +601,7 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
   )";
 
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(true);
@@ -646,6 +656,7 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -677,6 +688,7 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
       absl::string_view hlo_text, bool disable_dot_merger = false) {
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
+    SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
 
     HloModuleConfig config =
         GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -959,6 +971,7 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const int64_t kNumPartitions = 4;
 
   HloModuleConfig config =
@@ -1052,6 +1065,7 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1085,6 +1099,7 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const int64_t kNumPartitions = 4;
 
   HloModuleConfig config =

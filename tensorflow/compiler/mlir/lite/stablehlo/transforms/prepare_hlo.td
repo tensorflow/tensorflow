@@ -29,8 +29,9 @@ include "mlir/Dialect/Arith/IR/ArithOps.td"
 // to be of a specific configuration:
 //
 // TFL Native Standard Conv Layouts:
-// 2D : [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// 3D : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+// 2D             : [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// 3D             : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+// 2D (depthwise) : [b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]
 //
 // The following patterns transpose the inputs and output of mhlo.convolution
 // ops until they are complicit with the TFL required layout.
@@ -63,8 +64,15 @@ def PermuteShape : NativeCodeCall<
 def IsStandardConv : Constraint<CPred<
   "IsStandardConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
 
+def IsDepthwiseConv : Constraint<CPred<
+  "IsDepthwiseConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
+
+def IsStandardOrDepthwiseConv : Constraint<Or
+  <[IsStandardConv.predicate, IsDepthwiseConv.predicate]>>;
+
+//
 // Re-layout input (lhs) to [b, spatials..., f]
-//===------------------------------------------
+//===---------------------------------------------------------------------------
 
 def IsInputNotTFLNativeLayout : Constraint<CPred<
     "Layout("
@@ -127,38 +135,46 @@ def ReLayoutConvInput : Pat<(MHLO_ConvolutionOp:$conv
                             [(AreDnumsFullyDefined $conv),
                              (InputHasIotaSpatials $dnums),
                              (IsInputNotTFLNativeLayout $dnums),
-                             (IsStandardConv $conv)]>;
+                             (IsStandardOrDepthwiseConv $conv)],
+                             [],
+                             (addBenefit 1)>;
 
 
-// Re-layout kernel to [o, spatials..., i] (2d) or [spatials..., i, o] (3d)
-//===----------------------------------------------------------------------
-
-def IsKernelNotTFLNativeLayout : Constraint<CPred<
-    "Layout("
-      "$0.getKernelInputFeatureDimension(),"
-      "$0.getKernelOutputFeatureDimension(),"
-      "$0.getKernelSpatialDimensions())"
-    "!= GetTFLNativeKernelLayout($0)">>;
-
-def KernelLayout : NativeCodeCall<
-    "Layout($0.getKernelInputFeatureDimension(),"
-                "$0.getKernelOutputFeatureDimension(),"
-                "$0.getKernelSpatialDimensions())">;
-
-def TFLNativeKernelLayout : NativeCodeCall<
-    "GetTFLNativeKernelLayout($0)">;
+//
+// Re-layout kernel
+//===---------------------------------------------------------------------------
 
 def KernelHasIotaSpatials : Constraint<CPred<
     "Layout($0.getKernelInputFeatureDimension(),"
                 "$0.getKernelOutputFeatureDimension(),"
                 "$0.getKernelSpatialDimensions()).AreSpatialsIota()">>;
 
+def KernelLayout : NativeCodeCall<
+    "Layout($0.getKernelInputFeatureDimension(),"
+                "$0.getKernelOutputFeatureDimension(),"
+                "$0.getKernelSpatialDimensions())">;
+
+//
+// standard conv kernel = [o, spatials..., i].
+//=-----
+
+def IsKernelNotTFLNativeStandardConvLayout : Constraint<CPred<
+    "Layout("
+      "$0.getKernelInputFeatureDimension(),"
+      "$0.getKernelOutputFeatureDimension(),"
+      "$0.getKernelSpatialDimensions())"
+    "!= GetTFLNativeStandardConvKernelLayout($0)">>;
+
+def TFLNativeStandardConvKernelLayout : NativeCodeCall<
+    "GetTFLNativeStandardConvKernelLayout($0)">;
+
 // Copy dnums with the kernel layout set to [o, spatials..., i].
-def CloneDnumsWithTFLNativeKernelLayout : NativeCodeCall<
+def CloneDnumsWithTFLNativeStandardConvKernelLayout : NativeCodeCall<
     "CloneDnumsWithKernelLayout("
       "$_builder,"
       "$0,"
-      "GetTFLNativeKernelLayout($0))">;
+      "GetTFLNativeStandardConvKernelLayout($0))">;
+
 
 def ReLayoutConvKernel : Pat<(MHLO_ConvolutionOp:$conv
                                 $input,
@@ -179,25 +195,88 @@ def ReLayoutConvKernel : Pat<(MHLO_ConvolutionOp:$conv
                                   $kernel,
                                     (PermForReLayout
                                       (KernelLayout $dnums),
-                                      (TFLNativeKernelLayout $dnums))
+                                      (TFLNativeStandardConvKernelLayout $dnums))
                                 ),
                                 $strides,
                                 $padding,
                                 $lhs_dilation,
                                 $rhs_dilation,
                                 $window_reversal,
-                                (CloneDnumsWithTFLNativeKernelLayout $dnums),
+                                (CloneDnumsWithTFLNativeStandardConvKernelLayout $dnums),
                                 $feature_groups,
                                 $batch_groups,
                                 $precision_config
                             ),
                             [(AreDnumsFullyDefined $conv),
                              (KernelHasIotaSpatials $dnums),
-                             (IsKernelNotTFLNativeLayout $dnums),
-                             (IsStandardConv $conv)]>;
+                             (IsKernelNotTFLNativeStandardConvLayout $dnums),
+                             (IsStandardConv $conv)],
+                             [],
+                             (addBenefit 1)>;
 
+
+//
+// depthwise conv kernel = [i, spatials..., o].
+//=-----
+
+def IsKernelNotTFLNativeDepthwiseLayout : Constraint<CPred<
+    "Layout("
+      "$0.getKernelInputFeatureDimension(),"
+      "$0.getKernelOutputFeatureDimension(),"
+      "$0.getKernelSpatialDimensions())"
+    "!= GetTFLNativeDepthwiseConvKernelLayout()">>;
+
+def TFLNativeDepthwiseConvKernelLayout : NativeCodeCall<
+    "GetTFLNativeDepthwiseConvKernelLayout()">;
+
+def CloneDnumsWithTFLNativeDepthwiseConvKernelLayout : NativeCodeCall<
+    "CloneDnumsWithKernelLayout("
+      "$_builder,"
+      "$0,"
+      "GetTFLNativeDepthwiseConvKernelLayout())">;
+
+
+def ReLayoutConvKernelDepthwise : Pat<(MHLO_ConvolutionOp:$conv
+                                $input,
+                                $kernel,
+                                $strides,
+                                $padding,
+                                $lhs_dilation,
+                                $rhs_dilation,
+                                $window_reversal,
+                                $dnums,
+                                $feature_groups,
+                                $batch_groups,
+                                $precision_config
+                            ),
+                            (MHLO_ConvolutionOp
+                                $input,
+                                (MHLO_TransposeOp
+                                  $kernel,
+                                    (PermForReLayout
+                                      (KernelLayout $dnums),
+                                      (TFLNativeDepthwiseConvKernelLayout))
+                                ),
+                                $strides,
+                                $padding,
+                                $lhs_dilation,
+                                $rhs_dilation,
+                                $window_reversal,
+                                (CloneDnumsWithTFLNativeDepthwiseConvKernelLayout $dnums),
+                                $feature_groups,
+                                $batch_groups,
+                                $precision_config
+                            ),
+                            [(AreDnumsFullyDefined $conv),
+                             (KernelHasIotaSpatials $dnums),
+                             (IsKernelNotTFLNativeDepthwiseLayout $dnums),
+                             (IsDepthwiseConv $conv)],
+                             [],
+                             (addBenefit 1)>;
+
+//
 // Re-layout output to [b, spatials..., f]
-//===-------------------------------------
+//===---------------------------------------------------------------------------
 
 def IsOutputNotTFLNativeLayout : Constraint<CPred<
     "Layout("
@@ -265,7 +344,81 @@ def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
                             [(AreDnumsFullyDefined $conv),
                              (KernelHasIotaSpatials $dnums),
                              (IsOutputNotTFLNativeLayout $dnums),
-                             (IsStandardConv $conv)]>;
+                             (IsStandardOrDepthwiseConv $conv)]>;
+
+
+// Pull out non-trivial padding into separate explicit pad_op.
+//
+// This has the benifit of allowing for a single point of control
+// for turning negative padding into slices. TFL convs can fuse
+// "SAME" padding back in post-legalization. Note when lhs dilations
+// are non-trivial, the mhlo.convolution has the semantics of a deconvolution.
+// In this case padding is interpreted differently and so we leave it in the op.
+//===---------------------------------------------------------------------------
+
+// Given DenseElements (i64), check if they are all equal to "val".
+class AreI64ElementsAll<int val> : Constraint<CPred<
+  "!$0 || llvm::all_of($0.getValues<int64_t>(),"
+    "[](auto v) { return v == "# val #"; })">>;
+
+class AreI64ElementsNotAll<int val> :
+  Constraint<Neg<AreI64ElementsAll<val>.predicate>>;
+
+// Gets a tuple of DenseElements (i64) given result from mhlo.convolution.
+def GetExplicitPaddingArgs : NativeCodeCall<
+  "GetExplicitPaddingArgs($_builder,"
+    "$0.getDefiningOp<mhlo::ConvolutionOp>())">;
+
+// Gets element type from Value.
+def GetElementType : NativeCodeCall<
+  "$0.getType().cast<RankedTensorType>().getElementType()">;
+
+// Given element type, get a DenseElements with scalar shape and 0 value.
+def GetZeroScalarAttrFromType : NativeCodeCall<
+  "$_builder.getZeroAttr("
+    "RankedTensorType::get({}, $0))">;
+
+// Given padding attr, get new padding attr for trivial (no) padding.
+def GetTrivialPaddingAttr : NativeCodeCall<
+  "$_builder.getZeroAttr($0.getType())">;
+
+// Given mhlo.convolution result, build an explicit mhlo.pad op
+// which is semantically equivalant.
+def ExplicitlyPadInput : NativeCodeCall<
+  "CreatePadOpFromConvPadding($_builder,"
+     "$0.getDefiningOp<mhlo::ConvolutionOp>())">;
+
+def UnfuseConvWithExplicitPadding : Pat<(MHLO_ConvolutionOp:$conv
+                                $input,
+                                $kernel,
+                                $strides,
+                                $padding,
+                                $lhs_dilation,
+                                $rhs_dilation,
+                                $window_reversal,
+                                $dnums,
+                                $feature_groups,
+                                $batch_groups,
+                                $precision_config
+                            ),
+                            (MHLO_ConvolutionOp
+                                (ExplicitlyPadInput $conv),
+                                $kernel,
+                                $strides,
+                                (GetTrivialPaddingAttr $padding),
+                                $lhs_dilation,
+                                $rhs_dilation,
+                                $window_reversal,
+                                $dnums,
+                                $feature_groups,
+                                $batch_groups,
+                                $precision_config
+                            ),
+                            [(AreDnumsFullyDefined $conv),
+                             (KernelHasIotaSpatials $dnums),
+                             (IsStandardOrDepthwiseConv $conv),
+                             (AreI64ElementsNotAll<0> $padding)]>;
+
 
 
 //===------------------------------------------------------------------------===

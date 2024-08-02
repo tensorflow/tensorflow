@@ -145,6 +145,9 @@ class MemoryAllocation : public Allocation {
 
  private:
   const void* buffer_;
+#if defined(__x86_64__) && defined(UNDEFINED_BEHAVIOR_SANITIZER)
+  void* aligned_ptr_ = nullptr;
+#endif
   size_t buffer_size_bytes_ = 0;
 };
 

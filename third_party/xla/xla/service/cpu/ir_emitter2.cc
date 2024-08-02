@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -47,7 +48,7 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/Casting.h"
+#include "llvm/Support/CodeGen.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -564,6 +565,10 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
                           /*is_top_level_computation=*/true, schedule,
                           /*allow_reassociation=*/false));
 
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  comparator_function->setUWTableKind(llvm::UWTableKind::Default);
+
   return comparators_.emplace_back(
       ComparatorInfo{comparator_function->getName().str()});
 }
@@ -791,11 +796,15 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     }
   }
 
-  // Create a kernel function with HostKernel API.
-  llvm::Function* function = llvm::dyn_cast<llvm::Function>(
-      module_->getOrInsertFunction(name, KernelFunctionTy(ctx)).getCallee());
+  // Create a kernel function with HostKernel API. We use external linkage
+  // because we'll be resolving this function from the XLA runtime.
+  llvm::Function* function = llvm::Function::Create(
+      KernelFunctionTy(ctx), llvm::GlobalValue::ExternalLinkage, name, module_);
   function->setCallingConv(llvm::CallingConv::C);
-  function->setDoesNotThrow();
+
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  function->setUWTableKind(llvm::UWTableKind::Default);
 
   // Set prefer-vector-width attribute to allow LLVM to use wider vector
   // registers (by default LLVM uses at most 256-bit registers).

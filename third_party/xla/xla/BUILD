@@ -632,13 +632,13 @@ xla_cc_test(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -692,8 +692,8 @@ xla_cc_test(
         ":literal_comparison",
         ":literal_util",
         ":test_helpers",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -960,7 +960,7 @@ xla_cc_test(
         ":test_helpers",
         ":text_literal_writer",
         ":types",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -1310,6 +1310,33 @@ cc_library(
 cc_library(
     name = "empty",
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "sort_json",
+    srcs = ["sort_json.cc"],
+    hdrs = ["sort_json.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "sort_json_test",
+    srcs = ["sort_json_test.cc"],
+    deps = [
+        ":sort_json",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
 
 # Needed to workaround https://github.com/bazelbuild/bazel/issues/21519

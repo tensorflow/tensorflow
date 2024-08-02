@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

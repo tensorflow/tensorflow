@@ -139,7 +139,8 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_tensor,
       MakeTensorFromArray(*client, *assembled_array, GetParam().sharding,
-                          device_list, thread_pool));
+                          device_list, thread_pool)
+          .Await());
 
   EXPECT_THAT(GetParam().expected_out_tensor, TensorEq(output_tensor));
 }

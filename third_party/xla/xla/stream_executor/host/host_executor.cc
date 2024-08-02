@@ -74,16 +74,10 @@ absl::Status HostExecutor::Init() {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::CreateKernel() {
-  return std::make_unique<HostKernel>(thread_pool_);
-}
-
-absl::Status HostExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                     Kernel* kernel) {
-  HostKernel* host_kernel = AsHostKernel(kernel);
+absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::LoadKernel(
+    const MultiKernelLoaderSpec& spec) {
+  auto host_kernel = std::make_unique<HostKernel>(thread_pool_);
   host_kernel->SetArity(spec.arity());
-
-  VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
 
   for (auto& loader : KernelFunctionLoaderRegistry()) {
     auto loaded = loader(spec);
@@ -91,7 +85,7 @@ absl::Status HostExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
 
     TF_ASSIGN_OR_RETURN(auto kernel_function, *std::move(loaded));
     host_kernel->SetKernelFunction(std::move(kernel_function));
-    return absl::OkStatus();
+    return std::move(host_kernel);
   }
 
   return absl::InternalError("No method of loading host kernel provided");
@@ -140,16 +134,6 @@ void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
 absl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                               uint64_t size) {
   memset(location->opaque(), 0, size);
-  return absl::OkStatus();
-}
-
-absl::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                  uint8 pattern, uint64_t size) {
-  void* gpu_mem = location->opaque();
-  // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
-  // with the HostExecutor.
-  AsHostStream(stream)->EnqueueTask(
-      [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
   return absl::OkStatus();
 }
 

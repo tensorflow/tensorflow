@@ -54,9 +54,9 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
-const tsl::thread::ThreadPool& GetThreadPool() {
+tsl::thread::ThreadPool& GetThreadPool() {
   constexpr int kMaxParallelism = 16;
-  static auto* const thread_pool =
+  static auto* thread_pool =
       new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
                                   "IfrtSharding", kMaxParallelism);
   return *thread_pool;

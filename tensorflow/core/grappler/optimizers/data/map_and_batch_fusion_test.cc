@@ -402,6 +402,71 @@ TEST(MapAndBatchFusionTest, NoChange) {
   EXPECT_TRUE(graph_utils::Compare(*graph.graph(), output));
 }
 
+TEST(MapAndBatchFusionTest, NoChange_UnboundedThreadpoolParallelMap) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
+
+  std::vector<string> range_inputs(3);
+  range_inputs[0] = start_node->name();
+  range_inputs[1] = stop_node->name();
+  range_inputs[2] = step_node->name();
+  std::vector<std::pair<string, AttrValue>> range_attrs;
+  NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
+                                             range_attrs, &graph);
+  NodeDef *captured_input_node =
+      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+  NodeDef *num_parallel_calls_node =
+      graph_utils::AddScalarConstNode<int>(2, &graph);
+
+  NodeDef *map_node;
+  {
+    std::vector<string> map_inputs(3);
+    map_inputs[0] = range_node->name();
+    map_inputs[1] = captured_input_node->name();
+    map_inputs[2] = num_parallel_calls_node->name();
+    std::vector<std::pair<string, AttrValue>> map_attrs(3);
+    AttrValue f_attr;
+    SetAttrValue("f", &f_attr);
+    map_attrs[0] = std::make_pair("f", f_attr);
+    AttrValue args_attr;
+    SetAttrValue("Targuments", &args_attr);
+    map_attrs[1] = std::make_pair("Targuments", args_attr);
+    AttrValue use_unbounded_threadpool_attr;
+    SetAttrValue(true, &use_unbounded_threadpool_attr);
+    map_attrs[2] = std::make_pair("use_unbounded_threadpool",
+                                  use_unbounded_threadpool_attr);
+    map_node = graph_utils::AddNode("", "ParallelMapDataset", map_inputs,
+                                    map_attrs, &graph);
+  }
+
+  NodeDef *batch_size_node =
+      graph_utils::AddScalarConstNode<int64_t>(5, &graph);
+  NodeDef *batch_node;
+  {
+    std::vector<string> batch_inputs(2);
+    batch_inputs[0] = map_node->name();
+    batch_inputs[1] = batch_size_node->name();
+    std::vector<std::pair<string, AttrValue>> batch_attrs(2);
+    AttrValue shapes_attr;
+    SetAttrValue("output_shapes", &shapes_attr);
+    batch_attrs[0] = std::make_pair("output_shapes", shapes_attr);
+    AttrValue types_attr;
+    SetAttrValue("output_types", &types_attr);
+    batch_attrs[1] = std::make_pair("output_types", types_attr);
+    batch_node = graph_utils::AddNode("", "BatchDataset", batch_inputs,
+                                      batch_attrs, &graph);
+  }
+
+  MapAndBatchFusion optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  EXPECT_TRUE(graph_utils::Compare(*graph.graph(), output));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

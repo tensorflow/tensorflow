@@ -26,14 +26,16 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.h"  // IWYU pragma: keep
-
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.h.inc"
-#define GET_OP_CLASSES
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h.inc"
-#undef GET_OP_CLASSES
+#include "xla/service/gpu/model/indexing_map.h"  // IWYU pragma: keep
 #define GET_ATTRDEF_CLASSES
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.h.inc"
 #undef GET_ATTRDEF_CLASSES
+#define GET_TYPEDEF_CLASSES
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_types.h.inc"
+#undef GET_TYPEDEF_CLASSES
+#define GET_OP_CLASSES
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h.inc"
+#undef GET_OP_CLASSES
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_MLIR_IR_XLA_GPU_OPS_H_

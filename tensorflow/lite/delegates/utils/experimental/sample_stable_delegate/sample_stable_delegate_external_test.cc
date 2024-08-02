@@ -56,7 +56,7 @@ TEST(SampleStableDelegate, LoadFromSharedLibraryTestFile) {
       LoadDelegateFromSharedLibrary(
           "tensorflow/lite/delegates/utils/experimental/"
           "sample_stable_delegate/"
-          "libtensorflowlite_sample_stable_delegate_for_test.so");
+          "libtensorflowlite_sample_stable_delegate.so");
   ASSERT_NE(stable_delegate_handle, nullptr);
   EXPECT_STREQ(stable_delegate_handle->delegate_abi_version,
                TFL_STABLE_DELEGATE_ABI_VERSION);

@@ -23,6 +23,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"
 #include "xla/service/cpu/runtime_matmul.h"
 #include "xla/service/cpu/runtime_matmul_acl.h"
@@ -179,6 +180,30 @@ TEST_F(CpuRuntimeTest, FailureStatus) {
   XlaCustomCallStatusSetFailure(&success_status, "Failed", 6);
   ASSERT_FALSE(__xla_cpu_runtime_StatusIsSuccess(&success_status));
 }
+
+// When run_options is null, the process should not crash and the device ordinal
+// should be 0.
+TEST_F(CpuRuntimeTest, GetDeviceOrdinalWhenRunOptionsEmpty) {
+  EXPECT_EQ(cpu::runtime::GetDeviceOrdinal(/*run_options=*/nullptr), 0);
+}
+
+// When the device ordinal is set directly in run options, it should be returned
+// (and NOT the value from stream).
+TEST_F(CpuRuntimeTest, GetDeviceOrdinalWhenSetInRunOptions) {
+  // GetDeviceOrdinal implementation bases on the fact that device ordinal is
+  // -1 by default. So we need to assert for that here to avoid crash in case
+  // the default value changes in the future.
+  ExecutableRunOptions run_options;
+  ASSERT_EQ(run_options.device_ordinal(), -1);
+
+  // Actual test - set device ordinal in run options and check that it is
+  // returned.
+  run_options.set_device_ordinal(3);
+  EXPECT_EQ(cpu::runtime::GetDeviceOrdinal(&run_options), 3);
+}
+
+// TODO(abanas): Add test case for the device ordinal with stream case. It
+// requires mocking the stream and stream executor.
 
 }  // namespace
 }  // namespace xla

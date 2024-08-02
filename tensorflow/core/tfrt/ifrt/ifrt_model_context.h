@@ -55,7 +55,7 @@ class IfrtModelContext {
   explicit IfrtModelContext(
       std::shared_ptr<xla::ifrt::Client> client,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
-      const tsl::thread::ThreadPool* thread_pool,
+      tsl::thread::ThreadPool* thread_pool,
       std::unique_ptr<tsl::protobuf::Message> compilation_environment_proto)
       : client_(std::move(client)),
         ifrt_serving_core_selector_(ifrt_serving_core_selector),
@@ -65,8 +65,7 @@ class IfrtModelContext {
   IfrtModelContext(
       std::shared_ptr<xla::ifrt::Client> client,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
-      const tsl::thread::ThreadPool* thread_pool,
-      tensorflow::DeviceMgr* device_mgr,
+      tsl::thread::ThreadPool* thread_pool, tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       std::unique_ptr<tsl::protobuf::Message> compilation_environment_proto,
       std::shared_ptr<const void> topology)
@@ -90,7 +89,7 @@ class IfrtModelContext {
     return shape_representation_fn_;
   }
 
-  const tsl::thread::ThreadPool& GetThreadPool() const;
+  tsl::thread::ThreadPool& GetThreadPool() const;
 
   const IfrtLoadedVariableRegistry& GetLoadedVariableRegistry() const {
     return loaded_variable_registry_;
@@ -139,7 +138,7 @@ class IfrtModelContext {
   std::shared_ptr<const void> topology_;
 
   IfrtServingCoreSelector* ifrt_serving_core_selector_;  // May be nullptr
-  const tsl::thread::ThreadPool& thread_pool_;
+  tsl::thread::ThreadPool& thread_pool_;
 
   tensorflow::DeviceMgr* device_mgr_ = nullptr;  // Not owned.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_ =

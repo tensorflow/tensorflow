@@ -34,6 +34,7 @@ limitations under the License.
 
 namespace xla {
 namespace exhaustive_op_test {
+namespace {
 
 // T is the Primitive Type of the complex number
 // Test parameter is a tuple containing
@@ -325,5 +326,6 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000))));
 
+}  // namespace
 }  // namespace exhaustive_op_test
 }  // namespace xla

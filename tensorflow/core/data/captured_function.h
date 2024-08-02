@@ -288,6 +288,18 @@ class InstantiatedCapturedFunction {
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done,
+                const std::shared_ptr<model::Node>& node) const {
+    RunAsync(*(ctx->runner()), ctx->cancellation_manager(),
+             ctx->collective_executor(), std::move(args), rets, done, node);
+  }
+
+  // A version of `RunAsync` that does not take an `IteratorContext` but a
+  // runner, a cancellation manager, and a collective executor.
+  void RunAsync(std::function<void(std::function<void()>)> runner,
+                CancellationManager* parent_cancellation_manager,
+                CollectiveExecutor* collective_executor,
+                std::vector<Tensor>&& args, std::vector<Tensor>* rets,
+                FunctionLibraryRuntime::DoneCallback done,
                 const std::shared_ptr<model::Node>& node) const;
 
   std::string func_name() const { return captured_func_->func().name(); }

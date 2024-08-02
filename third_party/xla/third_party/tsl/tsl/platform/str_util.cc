@@ -26,28 +26,28 @@ limitations under the License.
 namespace tsl {
 namespace str_util {
 
-size_t RemoveLeadingWhitespace(StringPiece* text) {
+size_t RemoveLeadingWhitespace(absl::string_view* text) {
   absl::string_view new_text = absl::StripLeadingAsciiWhitespace(*text);
   size_t count = text->size() - new_text.size();
   *text = new_text;
   return count;
 }
 
-size_t RemoveTrailingWhitespace(StringPiece* text) {
+size_t RemoveTrailingWhitespace(absl::string_view* text) {
   absl::string_view new_text = absl::StripTrailingAsciiWhitespace(*text);
   size_t count = text->size() - new_text.size();
   *text = new_text;
   return count;
 }
 
-size_t RemoveWhitespaceContext(StringPiece* text) {
+size_t RemoveWhitespaceContext(absl::string_view* text) {
   absl::string_view new_text = absl::StripAsciiWhitespace(*text);
   size_t count = text->size() - new_text.size();
   *text = new_text;
   return count;
 }
 
-bool ConsumeLeadingDigits(StringPiece* s, uint64_t* val) {
+bool ConsumeLeadingDigits(absl::string_view* s, uint64_t* val) {
   const char* p = s->data();
   const char* limit = p + s->size();
   uint64_t v = 0;
@@ -72,7 +72,7 @@ bool ConsumeLeadingDigits(StringPiece* s, uint64_t* val) {
   }
 }
 
-bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
+bool ConsumeNonWhitespace(absl::string_view* s, absl::string_view* val) {
   const char* p = s->data();
   const char* limit = p + s->size();
   while (p < limit) {
@@ -82,27 +82,27 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   }
   const size_t n = p - s->data();
   if (n > 0) {
-    *val = StringPiece(s->data(), n);
+    *val = absl::string_view(s->data(), n);
     s->remove_prefix(n);
     return true;
   } else {
-    *val = StringPiece();
+    *val = absl::string_view();
     return false;
   }
 }
 
-void TitlecaseString(string* s, StringPiece delimiters) {
+void TitlecaseString(string* s, absl::string_view delimiters) {
   bool upper = true;
   for (string::iterator ss = s->begin(); ss != s->end(); ++ss) {
     if (upper) {
       *ss = toupper(*ss);
     }
-    upper = (delimiters.find(*ss) != StringPiece::npos);
+    upper = (delimiters.find(*ss) != absl::string_view::npos);
   }
 }
 
-string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
-                     bool replace_all) {
+string StringReplace(absl::string_view s, absl::string_view oldsub,
+                     absl::string_view newsub, bool replace_all) {
   // TODO(jlebar): We could avoid having to shift data around in the string if
   // we had a StringPiece::find() overload that searched for a StringPiece.
   string res(s);
@@ -128,7 +128,7 @@ size_t Strnlen(const char* str, const size_t string_max_len) {
   return len;
 }
 
-string ArgDefCase(StringPiece s) {
+string ArgDefCase(absl::string_view s) {
   const size_t n = s.size();
 
   // Compute the size of resulting string.

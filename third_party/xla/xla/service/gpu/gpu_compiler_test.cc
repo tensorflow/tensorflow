@@ -46,8 +46,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -391,7 +391,6 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
-  GTEST_SKIP() << "TODO(b/354864068): Test fails in OSS stack on A100-80.";
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()
@@ -428,8 +427,7 @@ ENTRY main {
 
   HloModuleConfig config;
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
-  triton_enabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
-      false);
+  triton_enabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_enabled_debug_options
       .set_xla_gpu_require_complete_aot_autotune_results(true);
   config.set_debug_options(triton_enabled_debug_options);
@@ -448,8 +446,7 @@ ENTRY main {
                           GetOptimizedModule(std::move(module)));
   AutotunerUtil::ClearAutotuneResults();
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
-  triton_disabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
-      false);
+  triton_disabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
   config.set_debug_options(triton_disabled_debug_options);
   TF_ASSERT_OK_AND_ASSIGN(module,

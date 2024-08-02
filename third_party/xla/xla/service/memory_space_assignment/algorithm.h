@@ -514,6 +514,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     absl::Span<const int64_t> all_use_times;
     // See the comment for require_copy_allocation
     HloInstruction* required_copy_allocation_for;
+    // Data structure that contains the options for making window prefetched
+    // allocations.
+    const WindowPrefetchedAllocation::Options* window_prefetch_options =
+        nullptr;
   };
 
   // This struct contains mandatory memory assignments at a given time. E.g., an
@@ -669,6 +673,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     // Data structures used to compute and store the unsliced solution.
     WorkingIntervals unsliced_solution_intervals;
     std::optional<UnslicedSolution> unsliced_solution;
+
+    // Indicates whether the prefetch is for a windowed prefetch. A window
+    // prefetch only prefetches a window worth of data. Its prefetch does not
+    // use sliced prefetch.
+    bool window_prefetch = false;
   };
 
   // Result of an allocation, prefetch, eviction etc. request.  The result is
@@ -860,7 +869,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Try prefetching to alternate memory space.
   Result Prefetch(const AllocationRequest& request,
-                  Allocation& prev_allocation_in_default_mem);
+                  Allocation& prev_allocation_in_default_mem,
+                  const Shape* shape = nullptr);
 
   // Helper methods used to implement Prefetch().
   //
@@ -887,6 +897,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // context).
   std::string AlternateMemoryAllocationAttemptToString(
       bool for_sliced_solution, const PrefetchContext& context) const;
+
+  // Try to prefetch a window worth of data into the alternate memory.
+  Result WindowPrefetch(const AllocationRequest& request,
+                        Allocation& prev_allocation_in_default_mem);
 
   // Find the best possible chunk candidate, where it has the longest possible
   // availability if no preferred offset is given, or at the preferred_offset if
@@ -1014,6 +1028,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void ImportRepackedSlicedAllocation(RepackAllocationBlock& block);
   absl::Status AreRepackedSlicesValid(const RepackAllocationBlock& block);
 
+  // Registers an asynchronous copy with asynchronous copy data structures to
+  // keep track of its state.
+  void RegisterAsyncCopy(MemorySpace memory_space, int64_t exclusive_start_time,
+                         int64_t copy_done_schedule_before_time,
+                         AllocationSequence* allocations,
+                         AliasedOffset* aliased_offset, float resource,
+                         std::optional<int> cross_program_prefetch_index);
+
   // Adds an asynchronous copy to allocations.
   void AddAsyncCopy(
       Allocation& prev_allocation, MemorySpace memory_space,
@@ -1031,6 +1053,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       AliasedOffset* aliased_offset,
       const std::vector<SliceDecision>& slice_decisions_sorted_by_start_time,
       int64_t prefetch_end_time, int64_t allocation_end_time);
+
+  // For window prefetching, adds a WindowPrefetchedAllocation to allocations.
+  // Also updates asynchronous copy data structures, prefetch_interval_tree_,
+  // and aliasing data structures.
+  void AddAsyncCopyForWindowPrefetch(
+      Allocation& prev_allocation, HloUse use, const Chunk& chunk,
+      int64_t exclusive_start_time, int64_t inclusive_end_time,
+      AllocationSequence* allocations, AliasedOffset* aliased_offset,
+      float resource, const WindowPrefetchedAllocation::Options& options);
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back

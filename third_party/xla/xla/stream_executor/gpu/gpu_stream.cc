@@ -48,7 +48,7 @@ void InternalHostCallback(void* data) {
 }
 }  // namespace
 
-bool GpuStream::Init() {
+absl::Status GpuStream::Init() {
   int priority = [&]() {
     if (std::holds_alternative<int>(stream_priority_)) {
       return std::get<int>(stream_priority_);
@@ -58,11 +58,9 @@ bool GpuStream::Init() {
   }();
   if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_,
                                priority)) {
-    return false;
+    return absl::InternalError("Failed to CreateStream");
   }
-  return GpuDriver::InitEvent(parent_->gpu_context(), &completed_event_,
-                              GpuDriver::EventFlags::kDisableTiming)
-      .ok();
+  return absl::OkStatus();
 }
 
 Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
@@ -86,7 +84,10 @@ absl::Status GpuStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
       size % 4 == 0) {
     return Memset32(location, 0x0, size);
   } else {
-    return parent_->Memset(this, location, 0x0, size);
+    return GpuDriver::AsynchronousMemsetUint8(
+        parent_->gpu_context(),
+        reinterpret_cast<GpuDevicePtr>(location->opaque()), 0x0, size,
+        gpu_stream());
   }
 }
 
@@ -130,14 +131,12 @@ absl::Status GpuStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
 
 absl::Status GpuStream::WaitFor(Stream* other) {
   GpuStream* other_gpu = AsGpuStream(other);
-  GpuEventHandle other_completed_event = *(other_gpu->completed_event());
-  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(),
-                                            other_completed_event,
-                                            AsGpuStreamValue(other_gpu)));
 
-  if (GpuDriver::WaitStreamOnEvent(parent_->gpu_context(),
-                                   AsGpuStreamValue(this),
-                                   other_completed_event)) {
+  GpuEvent* other_completed_event = other_gpu->completed_event();
+  TF_RETURN_IF_ERROR(other_completed_event->Record(other_gpu->gpu_stream()));
+
+  if (GpuDriver::WaitStreamOnEvent(parent_->gpu_context(), gpu_stream(),
+                                   other_completed_event->gpu_event())) {
     return absl::OkStatus();
   }
   return absl::InternalError("Couldn't wait for stream.");
@@ -173,20 +172,16 @@ absl::Status GpuStream::DoHostCallbackWithStatus(
   return absl::InternalError("Failed to host callback.");
 }
 
-void GpuStream::Destroy() {
-  if (completed_event_ != nullptr) {
-    absl::Status status =
-        GpuDriver::DestroyEvent(parent_->gpu_context(), &completed_event_);
-    if (!status.ok()) {
-      LOG(ERROR) << status.message();
-    }
+GpuStream::~GpuStream() {
+  BlockHostUntilDone().IgnoreError();
+  parent()->DeallocateStream(this);
+
+  if (!GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_)) {
+    LOG(ERROR) << "Deallocating stream with pending work";
   }
 
+  completed_event_.reset();
   GpuDriver::DestroyStream(parent_->gpu_context(), &gpu_stream_);
-}
-
-bool GpuStream::IsIdle() const {
-  return GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_);
 }
 
 void GpuStream::set_name(absl::string_view name) {

@@ -802,7 +802,8 @@ class ReadySetLt {
             return *value;
           }
         }
-        // Otherwise pick a node that increases the pressure from the list.
+        // Otherwise pick a node that increases the pressure the least from the
+        // list.
         if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
                 a_increase.first < b_increase.first, a,
                 b_increase.first < a_increase.first, b,
@@ -880,6 +881,36 @@ class ReadySetLt {
       }
     }
 
+    auto async_depth_0_candidate =
+        [this](DefaultSchedulerCore::ScheduleCandidate& a,
+               DefaultSchedulerCore::ScheduleCandidate& b)
+        -> std::optional<DefaultSchedulerCore::CandidateResult> {
+      // If an instruction releasing a resource is not resource constrained and
+      // has an async depth of 0, delay it as much as possible to avoid
+      // potential cost model inefficiencies. For example, if a pair of
+      // async-start and async-done have no dependencies on other ops inside a
+      // loop, the async-start will be pushed to the beginning of the loop.
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              /*first_cond=*/!(a.node->DoesReleaseAnyResource() &&
+                               a.node->GetAsyncDepth() == 0 &&
+                               !IsResourceConstrained(a)),
+              a,
+              /*second_cond=*/
+              !(b.node->DoesReleaseAnyResource() &&
+                b.node->GetAsyncDepth() == 0 && !IsResourceConstrained(b)),
+              b, "kStartAtZeroDepth")) {
+        return value;
+      }
+      return std::nullopt;
+    };
+
+    if (sched_state_.config.aggressive_scheduling_policies &&
+        sched_state_.config.prioritize_async_depth_over_stall) {
+      if (auto value = async_depth_0_candidate(a, b)) {
+        return *value;
+      }
+    }
+
     const ApproximateLatencyEstimator::TimeCost a_ready_interval =
         std::max(a.node->GetReadyTime() - sched_state_.current_time, 0.0);
     const ApproximateLatencyEstimator::TimeCost b_ready_interval =
@@ -906,19 +937,9 @@ class ReadySetLt {
         return *value;
       }
     }
-    if (sched_state_.config.aggressive_scheduling_policies) {
-      // If an instruction releasing a resource is not resource constrained and
-      // has an async depth of 0, delay it as much as possible to avoid
-      // potential cost model inefficiencies.
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              /*first_cond=*/!(a.node->DoesReleaseAnyResource() &&
-                               a.node->GetAsyncDepth() == 0 &&
-                               !IsResourceConstrained(a)),
-              a,
-              /*second_cond=*/
-              !(b.node->DoesReleaseAnyResource() &&
-                b.node->GetAsyncDepth() == 0 && !IsResourceConstrained(b)),
-              b, "kStartAtZeroDepth")) {
+    if (sched_state_.config.aggressive_scheduling_policies &&
+        !sched_state_.config.prioritize_async_depth_over_stall) {
+      if (auto value = async_depth_0_candidate(a, b)) {
         return *value;
       }
     }

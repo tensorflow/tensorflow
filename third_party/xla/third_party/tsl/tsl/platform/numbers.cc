@@ -220,16 +220,16 @@ size_t DoubleToBuffer(double value, char* buffer) {
 }
 
 namespace {
-char SafeFirstChar(StringPiece str) {
+char SafeFirstChar(absl::string_view str) {
   if (str.empty()) return '\0';
   return str[0];
 }
-void SkipSpaces(StringPiece* str) {
+void SkipSpaces(absl::string_view* str) {
   while (isspace(SafeFirstChar(*str))) str->remove_prefix(1);
 }
 }  // namespace
 
-bool safe_strto64(StringPiece str, int64_t* value) {
+bool safe_strto64(absl::string_view str, int64_t* value) {
   SkipSpaces(&str);
 
   int64_t vlimit = kint64max;
@@ -270,7 +270,7 @@ bool safe_strto64(StringPiece str, int64_t* value) {
   return true;
 }
 
-bool safe_strtou64(StringPiece str, uint64_t* value) {
+bool safe_strtou64(absl::string_view str, uint64_t* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
@@ -291,7 +291,7 @@ bool safe_strtou64(StringPiece str, uint64_t* value) {
   return true;
 }
 
-bool safe_strto32(StringPiece str, int32_t* value) {
+bool safe_strto32(absl::string_view str, int32_t* value) {
   SkipSpaces(&str);
 
   int64_t vmax = kint32max;
@@ -321,7 +321,7 @@ bool safe_strto32(StringPiece str, int32_t* value) {
   return true;
 }
 
-bool safe_strtou32(StringPiece str, uint32_t* value) {
+bool safe_strtou32(absl::string_view str, uint32_t* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
@@ -341,7 +341,7 @@ bool safe_strtou32(StringPiece str, uint32_t* value) {
   return true;
 }
 
-bool safe_strtof(StringPiece str, float* value) {
+bool safe_strtof(absl::string_view str, float* value) {
   int processed_characters_count = -1;
   auto len = str.size();
 
@@ -354,7 +354,7 @@ bool safe_strtof(StringPiece str, float* value) {
   return processed_characters_count > 0;
 }
 
-bool safe_strtod(StringPiece str, double* value) {
+bool safe_strtod(absl::string_view str, double* value) {
   int processed_characters_count = -1;
   auto len = str.size();
 
@@ -417,7 +417,7 @@ bool StringToFp(const std::string& s, Fprint* fp) {
   }
 }
 
-StringPiece Uint64ToHexString(uint64_t v, char* buf) {
+absl::string_view Uint64ToHexString(uint64_t v, char* buf) {
   static const char* hexdigits = "0123456789abcdef";
   const int num_byte = 16;
   buf[num_byte] = '\0';
@@ -425,10 +425,10 @@ StringPiece Uint64ToHexString(uint64_t v, char* buf) {
     buf[i] = hexdigits[v & 0xf];
     v >>= 4;
   }
-  return StringPiece(buf, num_byte);
+  return absl::string_view(buf, num_byte);
 }
 
-bool HexStringToUint64(const StringPiece& s, uint64_t* result) {
+bool HexStringToUint64(const absl::string_view& s, uint64_t* result) {
   uint64_t v = 0;
   if (s.empty()) {
     return false;

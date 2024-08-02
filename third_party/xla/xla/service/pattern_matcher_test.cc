@@ -15,14 +15,25 @@ limitations under the License.
 
 #include "xla/service/pattern_matcher.h"
 
+#include <memory>
+#include <sstream>
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

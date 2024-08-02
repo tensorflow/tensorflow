@@ -47,43 +47,22 @@ class OneDnnSoftmaxTest
     : public HloTestBase,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_use_thunk_runtime(false);
+    return debug_options;
+  }
+
   const char* onednn_softmax_ =
       R"(
   ; CHECK: custom_call_target="__onednn$softmax"
   )";
 
-  // Test pattern match with OneDnnOpsRewriter pass
-  void TestSoftmax(std::string input_hlo_string, int expected_softmax_axis) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(input_hlo_string));
-    OneDnnOpsRewriter softmax_rewrite_pass;
-    HloInstruction* onednn_softmax;
-    OneDnnSoftmaxConfig softmax_config;
-    TF_ASSERT_OK_AND_ASSIGN(
-        bool changed, this->RunHloPass(&softmax_rewrite_pass, module.get()));
-    EXPECT_TRUE(changed);
-    EXPECT_THAT(module->entry_computation()->root_instruction(),
-                GmockMatch(::xla::match::CustomCall(&onednn_softmax,
-                                                    {"__onednn$softmax"})));
-
-    auto backend_config = onednn_softmax->backend_config<BackendConfig>();
-    softmax_config.CopyFrom(backend_config->onednn_softmax_config());
-    int axis_after_rewrite = softmax_config.softmax_axis();
-    EXPECT_EQ(expected_softmax_axis, axis_after_rewrite);
-  }
-};
-
-// Softmax test with last dimension as axis. In this case, axis = 2
-TEST_P(OneDnnSoftmaxTest, SoftmaxGenericTest) {
-  PrimitiveType data_type;
-  int batch_size;
-  std::tie(data_type, batch_size) = GetParam();
-  if (!IsSupportedType(data_type)) {
-    GTEST_SKIP() << "CPU does not support "
-                 << primitive_util::LowercasePrimitiveTypeName(data_type);
-  }
-
-  const std::string softmax_hlo_template_string = R"(
+  // Get raw HLO text for generic softmax pattern, after replacing $0 with
+  // datatype and $1 with batch size.
+  const std::string GetGenericSoftmaxHLORawText(PrimitiveType data_type,
+                                                int batch_size) {
+    const std::string softmax_hlo_template_string = R"(
         HloModule softmax_module
         region_max {
             Arg_0 = $0[] parameter(0)
@@ -115,11 +94,83 @@ TEST_P(OneDnnSoftmaxTest, SoftmaxGenericTest) {
         }
     )";
 
-  const std::string softmax_hlo_string = absl::Substitute(
-      softmax_hlo_template_string,
-      primitive_util::LowercasePrimitiveTypeName(data_type), batch_size);
+    const std::string softmax_hlo_string = absl::Substitute(
+        softmax_hlo_template_string,
+        primitive_util::LowercasePrimitiveTypeName(data_type), batch_size);
 
-  TestSoftmax(softmax_hlo_string, /*expected_softmax_axis*/ 2);
+    return softmax_hlo_string;
+  }
+
+  // Test pattern match with OneDnnOpsRewriter pass
+  void TestSoftmaxPatternMatching(std::string input_hlo_string,
+                                  int expected_softmax_axis) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(input_hlo_string));
+    OneDnnOpsRewriter softmax_rewrite_pass;
+    HloInstruction* onednn_softmax;
+    OneDnnSoftmaxConfig softmax_config;
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed, this->RunHloPass(&softmax_rewrite_pass, module.get()));
+    EXPECT_TRUE(changed);
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(::xla::match::CustomCall(&onednn_softmax,
+                                                    {"__onednn$softmax"})));
+
+    auto backend_config = onednn_softmax->backend_config<BackendConfig>();
+    softmax_config.CopyFrom(backend_config->onednn_softmax_config());
+    int axis_after_rewrite = softmax_config.softmax_axis();
+    EXPECT_EQ(expected_softmax_axis, axis_after_rewrite);
+  }
+};
+
+// Softmax test with last dimension as axis. In this case, axis = 2
+// This test is to make sure the pattern matching works as expected
+TEST_P(OneDnnSoftmaxTest, SoftmaxGenericTest) {
+  PrimitiveType data_type;
+  int batch_size;
+  std::tie(data_type, batch_size) = GetParam();
+  if (!IsSupportedType(data_type)) {
+    GTEST_SKIP() << "CPU does not support "
+                 << primitive_util::LowercasePrimitiveTypeName(data_type);
+  }
+  const std::string softmax_hlo_string =
+      GetGenericSoftmaxHLORawText(data_type, batch_size);
+
+  TestSoftmaxPatternMatching(softmax_hlo_string, /*expected_softmax_axis*/ 2);
+}
+
+// Generic Softmax test with last dimension as axis. In this case, axis = 2
+// This test to make sure the accuracy is fine with onednn softmax custom call
+TEST_P(OneDnnSoftmaxTest, SoftmaxGenericNumericalCorrectnessTest) {
+  PrimitiveType data_type;
+  int batch_size;
+  std::tie(data_type, batch_size) = GetParam();
+  if (!IsSupportedType(data_type)) {
+    GTEST_SKIP() << "CPU does not support "
+                 << primitive_util::LowercasePrimitiveTypeName(data_type);
+  }
+
+  const std::string onednn_softmax_hlo_template_string = R"(
+        HloModule softmax_module
+        ENTRY main {
+            Arg_0 = $0[$1,128,30522]{2,1,0} parameter(0)
+            ROOT custom-call = $0[$1,128,30522]{2,1,0} custom-call(Arg_0), custom_call_target="$2", backend_config={"onednn_softmax_config":{"softmax_axis":2}}
+        }
+    )";
+
+  auto onednn_softmax_hlo_string =
+      absl::Substitute(onednn_softmax_hlo_template_string,
+                       primitive_util::LowercasePrimitiveTypeName(data_type),
+                       batch_size, "__onednn$softmax");
+  const std::string hlo_string_ref =
+      GetGenericSoftmaxHLORawText(data_type, batch_size);
+
+  float atol = (data_type == F32) ? 1e-4 : 1e-2;
+  float rtol = (data_type == F32) ? 1e-4 : 1e-2;
+
+  EXPECT_TRUE(RunAndCompareTwoModules(onednn_softmax_hlo_string, hlo_string_ref,
+                                      ErrorSpec{atol, rtol},
+                                      /*run_hlo_passes=*/false));
 }
 
 INSTANTIATE_TEST_SUITE_P(OneDnnSoftmaxTestSuite, OneDnnSoftmaxTest,
@@ -163,7 +214,7 @@ TEST_F(OneDnnSoftmaxTest, SoftmaxFP32OnAxisZero) {
         }
     )";
 
-  TestSoftmax(softmax_hlo_string, /*expected_softmax_axis*/ 0);
+  TestSoftmaxPatternMatching(softmax_hlo_string, /*expected_softmax_axis*/ 0);
 }
 
 TEST_F(OneDnnSoftmaxTest, SoftmaxWithBF16ConvertOutputFP32Pattern) {
@@ -204,7 +255,7 @@ TEST_F(OneDnnSoftmaxTest, SoftmaxWithBF16ConvertOutputFP32Pattern) {
         }
     )";
 
-  TestSoftmax(softmax_hlo_string, /*expected_softmax_axis=*/2);
+  TestSoftmaxPatternMatching(softmax_hlo_string, /*expected_softmax_axis=*/2);
 }
 
 }  // namespace cpu

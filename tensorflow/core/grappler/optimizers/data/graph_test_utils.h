@@ -89,7 +89,8 @@ NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
 NodeDef MakeParallelMapV2Node(StringPiece name, StringPiece input_node_name,
                               StringPiece num_parallel_calls_node_name,
                               StringPiece function_name,
-                              StringPiece deterministic);
+                              StringPiece deterministic,
+                              bool use_unbounded_threadpool);
 
 // Creates a test NodeDef for ParseExampleDataset.
 NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,

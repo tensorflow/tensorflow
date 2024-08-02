@@ -111,7 +111,7 @@ void FillAndCopyVarLen(const int d, const size_t num_elements,
 bool ParseExample(StringRef serialized, Example* example) {
   DCHECK(example != nullptr);
   tf::protobuf::io::CodedInputStream stream(
-      reinterpret_cast<const uint8*>(serialized.str), serialized.len);
+      reinterpret_cast<const uint8_t*>(serialized.str), serialized.len);
   tensorflow::example::EnableAliasing(&stream);
   return ParseExample(&stream, example);
 }

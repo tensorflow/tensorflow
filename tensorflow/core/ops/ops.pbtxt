@@ -33011,6 +33011,13 @@ op {
     }
   }
   attr {
+    name: "use_unbounded_threadpool"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "metadata"
     type: "string"
     default_value {

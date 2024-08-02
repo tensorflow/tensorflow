@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -214,7 +214,7 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 127}),
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
+CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127)
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
 CHECK:            arith.index_castui %[[PID]] : i32 to index
@@ -272,7 +272,7 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 127}),
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
+CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127)
 CHECK-LABEL:  tt.func @triton_fn(
 CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
@@ -339,7 +339,7 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 1, 127}),
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
+CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127)
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
@@ -517,7 +517,7 @@ ENTRY main {
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 1, 16}),
                                           "triton_softmax_computation", R"(
-// CHECK:         #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
+// CHECK:         #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 16)
 // CHECK-LABEL:   tt.func @triton_fn(
 // CHECK-SAME:                       %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 // CHECK-SAME:                       %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
@@ -674,7 +674,7 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 127}),
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
+CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127)
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
 CHECK:            arith.index_castui %[[PID]] : i32 to index

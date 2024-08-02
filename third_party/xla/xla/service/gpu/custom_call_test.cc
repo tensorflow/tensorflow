@@ -57,7 +57,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA

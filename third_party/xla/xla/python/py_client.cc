@@ -34,12 +34,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Pass/PassManager.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
 #include "nanobind/stl/pair.h"  // IWYU pragma: keep
@@ -67,6 +68,7 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/nb_numpy.h"
@@ -86,9 +88,13 @@ limitations under the License.
 #include "xla/python/types.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"  // IWYU pragma: keep
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -437,6 +443,22 @@ PyClient::CompileIfrtProgram(
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModuleString(mlir_module, context));
+  if (options.executable_build_options.use_shardy_partitioner()) {
+    mlir::PassManager pm(&context);
+    // Since Shardy is inside the middle of the XLA pipeline, after converting
+    // down to HLO, we need to run the Shardy export pipeline to preserve the
+    // SDY ops and sharding attributes for when we come back from HLO to MLIR
+    // when Shardy propagation is run.
+    xla::sdy::addSdyRoundTripExportPipeline(pm);
+    // TODO(bartchr): remove setting `kPythonIntegrationComplete` in follow-up
+    // now that both JAX and PartIR are integrated with Shardy.
+    xla::sdy::addFrontendAttribute(*module,
+                                   xla::sdy::kPythonIntegrationComplete,
+                                   mlir::StringAttr::get(&context, "t"));
+    TF_RETURN_IF_ERROR(
+        tsl::StatusScopedDiagnosticHandler(&context).consumeStatus(
+            pm.run(*module)));
+  }
   return CompileIfrtProgram(
       client, std::make_unique<xla::ifrt::HloProgram>(module.get()),
       MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks)));

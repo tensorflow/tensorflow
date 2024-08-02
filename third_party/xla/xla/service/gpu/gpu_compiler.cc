@@ -934,6 +934,8 @@ absl::Status RunCollectiveOptimizationPasses(
   // Remove dead computations left over after ar/rs promotion.
   collectives_pipeline.AddPass<HloDCE>();
 
+  // Moves collectives' subsequent quantization before the collective to
+  // minimize data transfers.
   collectives_pipeline.AddPass<CollectiveQuantizer>();
   // Remove dead computations after collective quantization.
   collectives_pipeline.AddPass<HloDCE>();
@@ -1253,7 +1255,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   // This is a "low effort, high impact" fusion that should be run first.
   if (hlo_module->config()
           .debug_options()
-          .xla_gpu_enable_address_computation_fusion()) {
+          .xla_gpu_enable_dynamic_slice_fusion()) {
     HloPassPipeline pipeline("dynamic-slice");
     TF_ASSIGN_OR_RETURN(se::Platform * platform,
                         se::PlatformManager::PlatformWithId(PlatformId()));
@@ -1374,6 +1376,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // heuristic, so we can mix and match various Gemm implementations based
     // on projected (measured) performance.
     if (debug_options.xla_gpu_enable_custom_fusions()) {
+      pipeline.AddPass<SimplifyFPConversions>();
       pipeline.AddPass<CustomKernelFusionRewriter>(
           &gpu_target_config.device_description);
       pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
@@ -1419,8 +1422,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
     if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
-        cuda_cc != nullptr &&
-        cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+        ((cuda_cc != nullptr &&
+          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
+         rocm_cc != nullptr)) {
       // Triton compilation needs normalized operations on bf16 (i.e. converted
       // to f32).
       add_float_normalization(pipeline);

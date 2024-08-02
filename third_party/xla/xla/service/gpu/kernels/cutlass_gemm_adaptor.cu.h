@@ -199,8 +199,9 @@ namespace adaptor_3x {
 template <typename Tag>
 static std::optional<Dim3> ClusterDim() {
   typename Traits<Tag>::Kernel::DispatchPolicy::ClusterShape cluster;
-  return Dim3{cute::get<0>(cluster), cute::get<1>(cluster),
-              cute::get<2>(cluster)};
+  return Dim3{static_cast<uint32_t>(cute::get<0>(cluster)),
+              static_cast<uint32_t>(cute::get<1>(cluster)),
+              static_cast<uint32_t>(cute::get<2>(cluster))};
 }
 
 template <typename Tag>

@@ -128,8 +128,7 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
   HloInstructionAdaptor add{*module->GetComputationWithName("fused_computation")
                                  ->GetInstructionWithName("add"),
                             fusion_adaptor1.get()};
-  EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("add.1"),
-                                          InstructionAdaptorName("mul"),
+  EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("mul"),
                                           InstructionAdaptorName("res")));
 
   auto fusion_adaptor2 = HloFusionAdaptor::ForInstruction(
@@ -145,49 +144,37 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
       *module->GetComputationWithName("fused_computation_1")
            ->GetInstructionWithName("neg.1"),
       fusion_adaptor2.get()};
-  EXPECT_THAT(neg.GetUsers(), ElementsAre(InstructionAdaptorName("exp.1")));
+  EXPECT_TRUE(neg.GetUsers().empty());
 }
 
 TEST_F(HloTraversalTest, TraverseFusionConsumerFirst) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;
-  std::vector<std::string> visited_args;
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
-  HloBfsConsumersFirstTraversal(
-      fusion->GetRoots(), *fusion,
-      [&](HloInstructionAdaptor node) {
-        visited_nodes.emplace_back(node.name());
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor arg) {
-        visited_args.emplace_back(arg.name());
-      });
+  HloBfsConsumersFirstTraversal(fusion->GetRoots(), *fusion,
+                                [&](HloInstructionAdaptor node) {
+                                  visited_nodes.emplace_back(node.name());
+                                  return TraversalResult::kAdvance;
+                                });
 
   EXPECT_THAT(visited_nodes, ElementsAre("reduce.1", "mul"));
-  EXPECT_THAT(visited_args, ElementsAre("p0", "negate"));
 }
 
 TEST_F(HloTraversalTest,
        TraverseFusionConsumerFirstFromFusionRootAndInnerNode) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;
-  std::vector<std::string> visited_args;
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
   auto root = fusion->GetRoots()[0];
-  HloBfsConsumersFirstTraversal(
-      {root, root.GetOperand(0)}, *fusion,
-      [&](HloInstructionAdaptor node) {
-        visited_nodes.emplace_back(node.name());
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor arg) {
-        visited_args.emplace_back(arg.name());
-      });
+  HloBfsConsumersFirstTraversal({root, root.GetOperand(0)}, *fusion,
+                                [&](HloInstructionAdaptor node) {
+                                  visited_nodes.emplace_back(node.name());
+                                  return TraversalResult::kAdvance;
+                                });
 
   EXPECT_THAT(visited_nodes, ElementsAre("reduce.1", "mul"));
-  EXPECT_THAT(visited_args, ElementsAre("p0", "negate"));
 }
 
 TEST_F(HloTraversalTest, TraverseFusionProducerFirst) {
@@ -377,21 +364,16 @@ TEST_F(HloTraversalTest, FuseFusionConsumer) {
            ->GetInstructionWithName("reduce.1"),
       fusion.get());
 
-  EXPECT_THAT(reduce_1.GetUsers(),
-              ElementsAre(InstructionAdaptorName("fusion.2")));
+  EXPECT_TRUE(reduce_1.GetUsers().empty());
 
   std::vector<std::string> nodes;
-  std::vector<std::string> params;
-  HloBfsConsumersFirstTraversal(
-      fusion->GetRoots(), *fusion,
-      [&](HloInstructionAdaptor node) {
-        nodes.emplace_back(node.name());
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor param) { params.emplace_back(param.name()); });
+  HloBfsConsumersFirstTraversal(fusion->GetRoots(), *fusion,
+                                [&](HloInstructionAdaptor node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kAdvance;
+                                });
 
   EXPECT_THAT(nodes, ElementsAre("reduce.1", "mul", "negate"));
-  EXPECT_THAT(params, ElementsAre("p0", "sum"));
 }
 
 TEST_F(HloTraversalTest, FuseFusionProducer) {
@@ -413,17 +395,13 @@ TEST_F(HloTraversalTest, FuseFusionProducer) {
                           InstructionAdaptorName("fusion.1")));
 
   std::vector<std::string> nodes;
-  std::vector<std::string> params;
-  HloBfsConsumersFirstTraversal(
-      fusion->GetRoots(), *fusion,
-      [&](HloInstructionAdaptor node) {
-        nodes.emplace_back(node.name());
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor arg) { params.emplace_back(arg.name()); });
+  HloBfsConsumersFirstTraversal(fusion->GetRoots(), *fusion,
+                                [&](HloInstructionAdaptor node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kAdvance;
+                                });
 
   EXPECT_THAT(nodes, ElementsAre("difference", "reduce.2"));
-  EXPECT_THAT(params, ElementsAre("p0", "negate", "fusion.1"));
 }
 
 TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {

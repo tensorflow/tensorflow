@@ -58,10 +58,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -11777,6 +11777,25 @@ TEST_F(AlgebraicSimplifierTest, ReduceBroadcastScalarToBroadcastMultiply) {
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
   EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kMultiply);
+}
+
+TEST_F(AlgebraicSimplifierTest, SinkCbrtThroughMax) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = bf16[17,96,120] parameter(0)
+        b = bf16[17,96,120] parameter(1)
+        cbrt_a = bf16[17,96,120] cbrt(a)
+        cbrt_b = bf16[17,96,120] cbrt(b)
+        ROOT max = bf16[17,96,120] maximum(cbrt_a, cbrt_b)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, GmockMatch(m::Cbrt(m::Maximum(m::Parameter(0), m::Parameter(1)))));
 }
 
 }  // namespace

@@ -674,9 +674,8 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
                                           ->tensorflow_accelerator_device_info()
                                           ->use_pjrt_tensor_buffer;
   const DeviceType& device_type = GetDeviceType(context_.get());
-  TF_ASSERT_OK_AND_ASSIGN(const int pjrt_device_id,
-                          tsl::GetDeviceIdFromDeviceParsedName(
-                              context_->device()->parsed_name(), device_type));
+  const int pjrt_device_id =
+      tsl::GetDeviceIdFromDeviceParsedName(context_->device()->parsed_name());
   TF_ASSERT_OK_AND_ASSIGN(xla::PjRtDevice * pjrt_device,
                           pjrt_client_->LookupAddressableDevice(
                               xla::PjRtLocalDeviceId(pjrt_device_id)));

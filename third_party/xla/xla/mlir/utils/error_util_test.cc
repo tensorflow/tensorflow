@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 
 namespace mlir {

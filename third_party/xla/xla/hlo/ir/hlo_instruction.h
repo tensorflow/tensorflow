@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/layout.h"
@@ -97,6 +98,7 @@ class HloPrintOptions {
         print_metadata_(true),
         print_metadata_only_op_name_(false),
         print_backend_config_(true),
+        sort_backend_config_(false),
         print_infeed_outfeed_config_(true),
         compact_operands_(false),
         include_layout_in_shapes_(true),
@@ -214,6 +216,14 @@ class HloPrintOptions {
   // If true, backend_config will be printed.
   HloPrintOptions& set_print_backend_config(bool value) {
     print_backend_config_ = value;
+    return *this;
+  }
+
+  // If true, will attempt to sort the backend config's json representation
+  // before printing it. If the backend config is a raw string that is not json,
+  // it will be printed as is, without sorting.
+  HloPrintOptions& set_sort_backend_config(bool value) {
+    sort_backend_config_ = value;
     return *this;
   }
 
@@ -381,6 +391,7 @@ class HloPrintOptions {
     return print_metadata_only_op_name_;
   }
   bool print_backend_config() const { return print_backend_config_; }
+  bool sort_backend_config() const { return sort_backend_config_; }
   bool print_infeed_outfeed_config() const {
     return print_infeed_outfeed_config_;
   }
@@ -421,6 +432,7 @@ class HloPrintOptions {
   bool print_metadata_;
   bool print_metadata_only_op_name_;
   bool print_backend_config_;
+  bool sort_backend_config_;
   bool print_infeed_outfeed_config_;
   bool compact_operands_;
   bool include_layout_in_shapes_;
@@ -2549,6 +2561,9 @@ class HloInstruction {
   HloInstruction(const HloInstruction&) = delete;
   HloInstruction& operator=(const HloInstruction&) = delete;
 
+  std::shared_ptr<OriginalValue> original_value() const;
+  void set_original_value(std::shared_ptr<OriginalValue> original_value);
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
@@ -2798,6 +2813,10 @@ class HloInstruction {
 
   // String identifier for instruction.
   std::string name_;
+
+  // Original value this instruction corresponds to in the unoptimized HLO
+  // graph.
+  std::shared_ptr<OriginalValue> original_value_ = nullptr;
 
   // Metadata for debugging.  Allocate it on heap, so that it does not increase
   // the memory footprint of HloInstruction.

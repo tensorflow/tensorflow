@@ -45,7 +45,7 @@ class BufferAllocations {
   // Same as above, but also adjusts the returned address for the offset and
   // size contained in the given slice.
   absl::StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
-      const BufferAllocation::Slice& slice) const;
+      BufferAllocation::Slice slice) const;
 
   // Unchecked version of `GetDeviceAddress` that does not check the buffer
   // index and assumes it is valid.
@@ -55,16 +55,19 @@ class BufferAllocations {
   // Unchecked version of `GetDeviceAddress` that does not check the slice
   // buffer index, offset and size and assumes they all are valid.
   se::DeviceMemoryBase GetDeviceAddressUnchecked(
-      const BufferAllocation::Slice& slice) const;
+      BufferAllocation::Slice slice) const;
 
  private:
   std::vector<se::DeviceMemoryBase> buffers_;
+  se::DeviceMemoryBase* buffers_data_;  // buffers_.data()
   size_t num_buffers_;
 };
 
 inline BufferAllocations::BufferAllocations(
     absl::Span<const MaybeOwningDeviceMemory> buffers)
-    : buffers_(buffers.size()), num_buffers_(buffers_.size()) {
+    : buffers_(buffers.size()),
+      buffers_data_(buffers_.data()),
+      num_buffers_(buffers_.size()) {
   for (size_t i = 0; i < buffers.size(); ++i) {
     buffers_[i] = buffers[i].AsDeviceMemoryBase();
   }
@@ -82,8 +85,7 @@ BufferAllocations::GetDeviceAddress(BufferAllocation::Index index) const {
 }
 
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE absl::StatusOr<se::DeviceMemoryBase>
-BufferAllocations::GetDeviceAddress(
-    const BufferAllocation::Slice& slice) const {
+BufferAllocations::GetDeviceAddress(BufferAllocation::Slice slice) const {
   // Handle empty slices explicitly and return a null pointer device memory to
   // guarantee that we do not accidentally write through the empty slice which
   // would hide a real bug in the code.
@@ -97,7 +99,7 @@ BufferAllocations::GetDeviceAddress(
         "Invalid buffer index %d. It must be in the range [0, %d)", index,
         num_buffers_);
   }
-  const se::DeviceMemoryBase& base = buffers_[index];
+  const se::DeviceMemoryBase& base = buffers_data_[index];
 
   int64_t offset = slice.offset();
   int64_t extent = offset + slice.size();
@@ -125,15 +127,16 @@ BufferAllocations::GetDeviceAddress(
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE se::DeviceMemoryBase
 BufferAllocations::GetDeviceAddressUnchecked(
     BufferAllocation::Index buffer_index) const {
-  return buffers_[buffer_index];
+  return buffers_data_[buffer_index];
 }
 
 // Unchecked version of `GetDeviceAddress` that does not check the slice
 // buffer index, offset and size and assumes they are valid.
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE se::DeviceMemoryBase
 BufferAllocations::GetDeviceAddressUnchecked(
-    const BufferAllocation::Slice& slice) const {
-  return buffers_[slice.index()].GetByteSlice(slice.offset(), slice.size());
+    BufferAllocation::Slice slice) const {
+  return buffers_data_[slice.index()].GetByteSlice(slice.offset(),
+                                                   slice.size());
 }
 
 }  // namespace xla::cpu

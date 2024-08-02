@@ -13,32 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_KERNEL_FACTORY_H_
-#define XLA_STREAM_EXECUTOR_KERNEL_FACTORY_H_
+#include "xla/stream_executor/stream_finder.h"
 
-#include <memory>
-
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
-// Creates Kernels from kernel specifications.
-class KernelFactory {
- public:
-  // Creates kernel on a given executor from a given kernel specification.
-  static inline absl::StatusOr<std::unique_ptr<Kernel>> Create(
-      StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
-    TF_ASSIGN_OR_RETURN(auto kernel, executor->CreateKernel());
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
-    return kernel;
+absl::StatusOr<Stream*> FindStream(Platform* platform, void* gpu_stream) {
+  int number_devices = platform->VisibleDeviceCount();
+  for (int i = 0; i < number_devices; ++i) {
+    TF_ASSIGN_OR_RETURN(auto stream_executor, platform->ExecutorForDevice(i));
+    Stream* found_stream = nullptr;
+    if ((found_stream = stream_executor->FindAllocatedStream(gpu_stream)) !=
+        nullptr) {
+      return found_stream;
+    }
   }
-};
+  return absl::NotFoundError("Stream not found");
+}
 
 }  // namespace stream_executor
-
-#endif  // XLA_STREAM_EXECUTOR_KERNEL_FACTORY_H_

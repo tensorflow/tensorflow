@@ -104,7 +104,7 @@ struct TopKOpRecomposePattern
     auto res = verifyCustomCallOpAttributes(
         op, rewriter, [&](NamedAttribute attr) -> LogicalResult {
           if (attr.getName() != "largest") return success();
-          if (cast<BoolAttr>(attr.getValue()).getValue() == false)
+          if (!cast<BoolAttr>(attr.getValue()).getValue())
             return rewriter.notifyMatchFailure(
                 op, "largest = false is not supported.");
           return success();

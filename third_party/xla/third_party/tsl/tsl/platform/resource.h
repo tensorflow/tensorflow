@@ -25,7 +25,7 @@ namespace tsl {
 // ResourceTagger objects should only be allocated on the stack.
 class ResourceTagger {
  public:
-  ResourceTagger(StringPiece key, StringPiece value);
+  ResourceTagger(absl::string_view key, absl::string_view value);
   ~ResourceTagger();
 
   // Do not allow copying or moving ResourceTagger

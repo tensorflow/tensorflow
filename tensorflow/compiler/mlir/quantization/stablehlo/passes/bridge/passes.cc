@@ -31,7 +31,7 @@ void AddQuantizationLoweringPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mhlo::createHloLegalizeToStablehloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::createStablehloLegalizeQuantToIntPass());
+      mlir::stablehlo::createStablehloLegalizeQuantToMathPass());
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateVerifyQuantLegalizationPass());

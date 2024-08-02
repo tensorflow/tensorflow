@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -377,7 +376,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                      se::KernelFactory::Create(stream_exec, loader_spec));
+                      stream_exec->LoadKernel(loader_spec));
 
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
@@ -437,7 +436,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
 
   // Use a large prime number to fragment the accesses.
   constexpr int host_buffer_size = 10069;
-  static std::vector<T>* host_buffer = [] {
+  static std::vector<T>* host_buffer = [&] {
     auto* ret = new std::vector<T>(host_buffer_size);
     // Default-seeded random numbers.
     std::mt19937 gen;

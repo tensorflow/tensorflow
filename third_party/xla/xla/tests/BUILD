@@ -213,11 +213,11 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
@@ -299,8 +299,8 @@ cc_library(
         ":filecheck",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -413,7 +413,7 @@ xla_test(
         "//xla/service:backend",
         "//xla/service:executable",
         "//xla/stream_executor:stream_executor_memory_allocator",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -543,8 +543,8 @@ xla_test(
         "//xla/client/lib:arithmetic",
         "//xla/service:platform_util",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
@@ -572,11 +572,11 @@ xla_test(
         "//xla/client:xla_computation",
         "//xla/service:platform_util",
         "//xla/service:stream_pool",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:test",
     ],
@@ -664,7 +664,7 @@ xla_test(
         "//xla/client:local_client",
         "//xla/client:xla_builder",
         "//xla/client/lib:arithmetic",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -1162,7 +1162,7 @@ xla_test(
         "//xla/client:local_client",
         "//xla/client:xla_builder",
         "//xla/client/lib:constants",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test",
     ],
@@ -1613,8 +1613,8 @@ xla_test(
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
         "//xla/service:hlo_parser",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -1665,12 +1665,12 @@ xla_test(
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
         "//xla/client/lib:arithmetic",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -1717,9 +1717,9 @@ xla_test_library(
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
         "//xla/client/lib:arithmetic",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
     ],
@@ -1912,13 +1912,13 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
@@ -2124,6 +2124,9 @@ xla_test(
 xla_test(
     name = "dynamic_reshape_test",
     srcs = ["dynamic_reshape_test.cc"],
+    backend_tags = {
+        "gpu": ["notsan"],  # TODO(b/345034145): Fix tsan error.
+    },
     disabled_backends = ["interpreter"],
     tags = ["test_xla_cpu_thunks"],
     deps = [
@@ -2272,15 +2275,9 @@ xla_test(
     srcs = ["collective_ops_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],
     backend_tags = {
-        # This test is tagged "manual" because it requires multiple GPUs, and
-        # Forge only supports single-GPU tests.  Guitar skips "manual" tests
-        # unless they're also tagged "guitar".
         "gpu": [
-            "guitar",
-            "manual",
             "multi_gpu",
             "no_oss",
-            "notap",
         ],
         "cpu": [
             "notsan",
@@ -2304,9 +2301,9 @@ xla_test(
         "//xla/service:computation_placer",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
     ],
@@ -2317,14 +2314,9 @@ xla_test(
     srcs = ["collective_pipeline_parallelism_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],
     backend_tags = {
-        # This test is tagged "manual" because it requires multiple GPUs, and Forge only supports
-        # single-GPU tests.  Guitar skips "manual" tests unless they're also tagged "guitar".
         "gpu": [
-            "guitar",
-            "manual",
             "multi_gpu",
             "no_oss",
-            "notap",
         ],
         "cpu": [
             "notsan",
@@ -2363,15 +2355,9 @@ xla_test(
     name = "collective_ops_e2e_test",
     srcs = ["collective_ops_e2e_test.cc"],
     backend_tags = {
-        # This test is tagged "manual" because it requires multiple GPUs, and
-        # Forge only supports single-GPU tests.  Guitar skips "manual" tests
-        # unless they're also tagged "guitar".
         "gpu": [
-            "guitar",
-            "manual",
             "multi_gpu",
             "no_oss",
-            "notap",
         ],
     },
     backends = [
@@ -2415,15 +2401,9 @@ xla_test(
     name = "replicated_io_feed_test",
     srcs = ["replicated_io_feed_test.cc"],
     backend_tags = {
-        # This test is tagged "manual" because it requires multiple GPUs, and
-        # Forge only supports single-GPU tests.  Guitar skips "manual" tests
-        # unless they're also tagged "guitar".
         "gpu": [
-            "guitar",
-            "manual",
             "multi_gpu",
             "no_oss",
-            "notap",
         ],
     },
     backends = ["gpu"],
@@ -2436,7 +2416,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -2511,9 +2491,9 @@ xla_test(
         "//xla:test",
         "//xla:test_helpers",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -2541,10 +2521,10 @@ xla_test(
         "//xla/client:xla_computation",
         "//xla/client/lib:arithmetic",
         "//xla/client/lib:prng",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -2568,9 +2548,9 @@ xla_test(
         "//xla/client:global_data",
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 
@@ -2742,9 +2722,9 @@ xla_test(
         "//xla/client:local_client",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_runner",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
@@ -2796,7 +2776,10 @@ xla_test(
     size = "large",
     srcs = ["local_client_execute_test.cc"],
     shard_count = 30,
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+        "test_xla_cpu_thunks",
+    ],
     deps = [
         ":literal_test_util",
         ":local_client_test_base",
@@ -2838,7 +2821,7 @@ xla_test(
         ":local_client_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -3007,9 +2990,9 @@ xla_test(
         "//xla:shape_util",
         "//xla/client:xla_builder",
         "//xla/service:hlo_parser",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 
@@ -3044,8 +3027,8 @@ xla_cc_test(
         "//xla/client:xla_builder",
         "//xla/service:cpu_plugin",
         "//xla/stream_executor:platform_manager",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
     ],
@@ -3087,6 +3070,9 @@ xla_test(
 xla_test(
     name = "set_dimension_size_test",
     srcs = ["set_dimension_size_test.cc"],
+    backend_tags = {
+        "gpu": ["notsan"],  # TODO(b/345034145): Fix tsan error.
+    },
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
@@ -3124,9 +3110,9 @@ xla_test(
         "//xla/client:xla_builder",
         "//xla/client/lib:math",
         "//xla/client/lib:matrix",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 
@@ -3150,8 +3136,8 @@ xla_test(
         "//xla/client:xla_builder",
         "//xla/client/lib:arithmetic",
         "//xla/client/lib:matrix",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 

@@ -46,6 +46,21 @@ message SlicedPrefetchOptions {
   uint64 preferred_slice_size = 5;
 }
 
+// Memory space assignment options for prefetching windows of data
+message WindowPrefetchDetail {
+  message WindowDetail {
+    // Index of the operand that is window prefetched.
+    int64 operand = 1;
+    // Window buffer size in bytes.
+    int64 size = 2;
+    // Unique identifier to distinguish the buffers that are associated with the
+    // same operand.
+    int64 uid = 3;
+  }
+
+  repeated WindowDetail windows = 1;
+}
+
 // Options for memory-bound loop optimizations in memory space assignment. If
 // enabled, this pass can optimize memory-bound unrolled loops to maximize the
 // bandwidth utilized and minimize the execution time.

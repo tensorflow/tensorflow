@@ -37,6 +37,7 @@ filegroup(
         "bitmap.h",
         "bits.h",
         "status_test_util.h",
+        "@local_xla//xla/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -68,6 +69,7 @@ filegroup(
     name = "legacy_lib_core_status_test_util_header",
     srcs = [
         "status_test_util.h",
+        "@local_xla//xla/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -95,6 +97,7 @@ cc_library(
     deps = [
         "//tsl/platform:status_matchers",
         "//tsl/platform:test",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

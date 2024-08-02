@@ -180,6 +180,7 @@ limitations under the License.
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_invariant_code_motion.h"
 #include "xla/service/while_loop_simplifier.h"
+#include "xla/service/while_loop_trip_count_annotator.h"
 #include "xla/service/zero_sized_hlo_elimination.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -204,8 +205,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "xla/service/cpu/cpu_float_support.h"
-#include "xla/service/cpu/onednn_convolution_rewriter.h"
-#include "xla/service/cpu/onednn_matmul_rewriter.h"
+#include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #include "xla/service/simplify_fp_conversions.h"
 #endif
@@ -447,7 +447,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
-    if (module->config().debug_options().xla_use_shardy()) {
+    if (module->config().use_shardy_partitioner()) {
       spmd_pipeline.AddPass<sdy::ShardyXLA>();
     } else {
       spmd_pipeline.AddPass<ShardingPropagation>(
@@ -520,7 +520,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
-  if (!is_aot_compile) {
+  bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
+  if (!is_aot_compile && !is_thunk_runtime) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic
@@ -540,7 +541,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   FloatSupport bf16_support(BF16);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   CpuFloatSupport onednn_bf16_support(BF16);
-  if (!is_aot_compile) {
+  if (!is_aot_compile && !is_thunk_runtime) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
   } else {
     pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -685,6 +686,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<OptimizationBarrierExpander>();
   pipeline.AddPass<TupleSimplifier>();
 
+  // Annotate while loops with statically known trip counts, so that at run time
+  // we can avoid running the loop condition computations.
+  pipeline.AddPass<WhileLoopTripCountAnnotator>();
+
   // Layout assignment uses alias analysis, which requires the call graph to be
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
@@ -741,8 +746,11 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
           : tsl::port::NumSchedulableCPUs();
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  auto& debug_options = module->config().debug_options();
+  bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
+
   // AOT compiled code runs in single thread.
-  if (!is_aot_compile) {
+  if (!is_aot_compile && !is_thunk_runtime) {
     auto debug_options = module->config().debug_options();
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
@@ -750,11 +758,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }
-    pipeline.AddPass<OneDnnConvolutionRewriter>();
-    pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
-                                           compile_options.thread_pool);
+    pipeline.AddPass<OneDnnContractionRewriter>(max_parallelism,
+                                                compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
-    // that may exist as a result of running OneDnnMatMulRewriter pass.
+    // that may exist as a result of running OneDnnContractionRewriter pass.
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }

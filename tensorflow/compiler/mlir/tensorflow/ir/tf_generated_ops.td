@@ -11293,6 +11293,7 @@ elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedOptionalAttr<StrAttr, "\"default\"">:$deterministic,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_unbounded_threadpool,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$metadata
   );
 

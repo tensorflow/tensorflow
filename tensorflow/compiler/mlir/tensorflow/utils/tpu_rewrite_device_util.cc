@@ -74,9 +74,11 @@ namespace {
 llvm::SmallVector<ParsedDevice, 8> FindMatchingDevices(
     ParsedDevices devices, const ParsedDevice& spec) {
   llvm::SmallVector<ParsedDevice, 8> matching_devices;
-  for (const auto& device : devices)
-    if (DeviceNameUtils::IsCompleteSpecification(spec, device))
+  for (const auto& device : devices) {
+    if (DeviceNameUtils::IsCompleteSpecification(spec, device)) {
       matching_devices.push_back(device);
+    }
+  }
   return matching_devices;
 }
 
@@ -621,6 +623,71 @@ absl::StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
   }
 
   return device_coordinates;
+}
+
+absl::StatusOr<xla::DeviceAssignmentProto> GetXlaDeviceAssignmentProto(
+    llvm::StringRef topology_attr, int num_replicas, int num_cores_per_replica,
+    llvm::ArrayRef<int64_t> device_assignment_attr) {
+  tpu::TopologyProto topology_proto;
+  if (!topology_proto.ParseFromString(topology_attr.str()))
+    return absl::InvalidArgumentError(absl::StrCat(
+        "failed to parse '", kTopologyAttr, "' attribute to TopologyProto"));
+
+  if (topology_proto.mesh_shape_size() < 4) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The size of mesh_shape must be larger than or equal to 4, but got ",
+        topology_proto.mesh_shape_size()));
+  }
+
+  const int bound_x = topology_proto.mesh_shape(0);
+  const int bound_y = topology_proto.mesh_shape(1);
+  const int bound_z = topology_proto.mesh_shape(2);
+  const int bound_core = topology_proto.mesh_shape(3);
+
+  const int expected_device_assignment_size =
+      num_replicas * num_cores_per_replica * kTPUTopologyRank;
+  const int device_assignment_attr_size = device_assignment_attr.size();
+  if (device_assignment_attr_size != expected_device_assignment_size)
+    return absl::InvalidArgumentError(absl::StrCat(
+        "length of '", kDeviceAssignmentAttr,
+        "' must be 'num_replicas' * 'num_cores_per_replica' * ",
+        kTPUTopologyRank, " (", num_replicas, " * ", num_cores_per_replica,
+        " * ", kTPUTopologyRank, "), got ", device_assignment_attr.size()));
+
+  // TPU XLA device ID is determined by its device coordinate, from major to
+  // minor coordinates (z, y, x, core).
+  auto location_to_id = [&](int x, int y, int z, int core) {
+    return (x + bound_x * (y + bound_y * z)) * bound_core + core;
+  };
+
+  std::vector<bool> used_device_ids(bound_x * bound_y * bound_z * bound_core,
+                                    false);
+
+  xla::DeviceAssignment device_assignment(num_replicas, num_cores_per_replica);
+  int pos = 0;
+  for (int replica = 0; replica < num_replicas; ++replica) {
+    for (int logical_core = 0; logical_core < num_cores_per_replica;
+         ++logical_core) {
+      int x = device_assignment_attr[pos++];
+      int y = device_assignment_attr[pos++];
+      int z = device_assignment_attr[pos++];
+      int core = device_assignment_attr[pos++];
+      if (DeviceCoordinateOutOfBound(x, y, z, core, bound_x, bound_y, bound_z,
+                                     bound_core))
+        return DeviceCoordinateErrorMsg(kDeviceAssignmentAttr, x, y, z, core,
+                                        bound_x, bound_y, bound_z, bound_core);
+      const int device_id = location_to_id(x, y, z, core);
+      if (used_device_ids[device_id])
+        return DuplicateCoordinateErrorMsg(kDeviceAssignmentAttr, x, y, z,
+                                           core);
+
+      used_device_ids[device_id] = true;
+      device_assignment(replica, logical_core) = device_id;
+    }
+  }
+  xla::DeviceAssignmentProto device_assignment_proto;
+  device_assignment.Serialize(&device_assignment_proto);
+  return device_assignment_proto;
 }
 
 absl::StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(

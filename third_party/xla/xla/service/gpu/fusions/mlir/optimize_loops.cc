@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -66,8 +67,17 @@ bool DoIndicesDependOnInductionVar(mlir::ValueRange indices,
 
 bool CanReplaceInductionVar(mlir::ValueRange indices) {
   return absl::c_all_of(indices, [&](mlir::Value v) {
-    if (mlir::isa<mlir::BlockArgument>(v)) {
-      return true;
+    if (auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(v)) {
+      auto for_op = mlir::dyn_cast_or_null<mlir::scf::ForOp>(
+          v.getParentRegion()->getParentOp());
+      // This is a bbarg that is defined outside of the loop, so it doesn't
+      // affect pipelining.
+      if (!for_op) {
+        return true;
+      }
+      // We can only replace the induction variable, not other loop-carried
+      // values.
+      return v == for_op.getInductionVar();
     }
     auto* op = v.getDefiningOp();
     return op &&
@@ -191,9 +201,10 @@ struct PipelineLoad : mlir::OpRewritePattern<Op> {
     auto plus_one_map = mlir::AffineMap::get(
         1, 0, mlir::getAffineDimExpr(0, this->getContext()) + 1);
     b.setInsertionPoint(next_value);
+    IndexingMap indexing_map(plus_one_map, {DimVar{0, ub.getSExtValue() - 1}},
+                             /*range_vars=*/{}, /*rt_vars=*/{});
     auto induction_plus_one =
-        b.create<ApplyIndexingOp>(new_for.getInductionVar(), plus_one_map, 0,
-                                  ub.getSExtValue() - 1)
+        b.create<ApplyIndexingOp>(new_for.getInductionVar(), indexing_map)
             ->getResult(0);
 
     // Create the new apply_indexing ops outside the if, to improve CSE.

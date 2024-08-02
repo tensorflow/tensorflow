@@ -31,6 +31,7 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -121,6 +122,13 @@ class PrepareTFPass : public impl::PrepareTFPassBase<PrepareTFPass> {
     this->allow_bf16_and_f16_type_legalization_ =
         allow_bf16_and_f16_type_legalization;
     this->use_fake_quant_num_bits_ = use_fake_quant_num_bits;
+  }
+
+  explicit PrepareTFPass(const PrepareTFPassOptions &options) {
+    this->unfold_batch_matmul_ = options.unfold_batch_matmul_;
+    this->allow_bf16_and_f16_type_legalization_ =
+        options.allow_bf16_and_f16_type_legalization_;
+    this->use_fake_quant_num_bits_ = options.use_fake_quant_num_bits_;
   }
 
   void runOnOperation() override;
@@ -1569,6 +1577,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
                                          allow_bf16_and_f16_type_legalization,
                                          use_fake_quant_num_bits);
+}
+
+// Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
+    const PrepareTFPassOptions &options) {
+  return std::make_unique<PrepareTFPass>(options);
 }
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.

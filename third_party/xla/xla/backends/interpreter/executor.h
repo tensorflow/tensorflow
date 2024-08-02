@@ -86,8 +86,8 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   absl::Status Init() override { return absl::OkStatus(); }
 
   int device_ordinal() const override { return device_ordinal_; };
-  absl::Status GetKernel(const MultiKernelLoaderSpec &spec,
-                         Kernel *kernel) override {
+  absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
+      const MultiKernelLoaderSpec &spec) override {
     return absl::UnimplementedError("Not Implemented");
   }
   absl::Status Launch(Stream *stream, const ThreadDim &thread_dims,
@@ -105,11 +105,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   }
   void HostMemoryDeallocate(void *mem) override {
     delete[] static_cast<char *>(mem);
-  }
-
-  absl::Status Memset(Stream *stream, DeviceMemoryBase *location,
-                      uint8_t pattern, uint64_t size) override {
-    return absl::InternalError("Interpreter can not memset");
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.
@@ -151,8 +146,7 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override {
+      std::optional<std::variant<StreamPriority, int>> priority) override {
     return std::make_unique<InterpreterStream>(this);
   }
 

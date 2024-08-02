@@ -830,7 +830,6 @@ cc_library(
     deps = [
         ":minimal_logging",
         "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/core/c:common",
     ],
 )
 

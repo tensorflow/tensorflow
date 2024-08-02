@@ -20,25 +20,20 @@ limitations under the License.
 // be represented using a TensorFlow op. Otherwise, TensorFlow Lite dialect op
 // is used.
 
-#include <climits>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -57,14 +52,11 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
@@ -89,25 +81,6 @@ namespace mlir {
 
 namespace {
 
-// TODO(b/355062942): This a temporary solution to unblock LLVM intergration.
-// https://github.com/llvm/llvm-project/commit/bbd4af5da2b741672a8e6f625eb12ea5c2d6220f
-// changed the behavior of `applySignatureConversion`. Before, an op adaptor
-// would have the new block arguments directly as operands. Now, there is an
-// `UnrealizedConversionCastOp` inserts from the new type to the old type.
-// The new behaviour is correct, but passes in this file depended on the old
-// bahavior and worked by coincidence.
-llvm::SmallVector<Value, 4> GetOperandsAndSkipUnrealizedConversionCasts(
-    ValueRange operands) {
-  llvm::SmallVector<Value, 4> result;
-  for (Value operand : operands) {
-    if (auto cast = operand.getDefiningOp<UnrealizedConversionCastOp>()) {
-      operand = cast.getInputs().front();
-    }
-    result.push_back(operand);
-  }
-  return result;
-}
-
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
     : public impl::LowerStaticTensorListPassBase<LowerStaticTensorListPass> {
@@ -121,6 +94,14 @@ struct LowerStaticTensorListPass
     this->allow_tensorlist_pass_through_ = allow_tensorlist_pass_through;
     this->default_to_single_batch_ = default_to_single_batch;
     this->enable_dynamic_update_slice_ = enable_dynamic_update_slice;
+  }
+
+  explicit LowerStaticTensorListPass(
+      const TFL::LowerStaticTensorListPassOptions &options) {
+    this->allow_tensorlist_pass_through_ =
+        options.allow_tensorlist_pass_through_;
+    this->default_to_single_batch_ = options.default_to_single_batch_;
+    this->enable_dynamic_update_slice_ = options.enable_dynamic_update_slice_;
   }
 
   void runOnOperation() override;
@@ -371,9 +352,7 @@ struct ConvertTensorListSetItem
       ConversionPatternRewriter &rewriter) const {
     Location loc = op.getLoc();
 
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
-
+    auto operands = adaptor.getOperands();
     Value input = operands[0];
     Value index = operands[1];
     Value item = operands[2];
@@ -433,8 +412,7 @@ struct ConvertTensorListSetItem
       ConversionPatternRewriter &rewriter) const {
     Location loc = op.getLoc();
 
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    auto operands = adaptor.getOperands();
     Value input = operands[0];
     Value index = operands[1];
     Value item = operands[2];
@@ -721,8 +699,7 @@ struct ConvertTensorListPushBack
   LogicalResult matchAndRewrite(
       TF::TensorListPushBackOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    auto operands = adaptor.getOperands();
     Value input_handle = operands[0];
     Value item = operands[1];
 
@@ -764,8 +741,7 @@ struct ConvertTensorListResize
   LogicalResult matchAndRewrite(
       TF::TensorListResizeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    auto operands = adaptor.getOperands();
     Value input_handle = operands[0];
     Value size = operands[1];
 
@@ -929,9 +905,7 @@ struct ConvertTensorListGetItem
   LogicalResult matchAndRewrite(
       TF::TensorListGetItemOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
-
+    auto operands = adaptor.getOperands();
     Value input = operands[0];
     Value index = operands[1];
     rewriter.replaceOpWithNewOp<TF::GatherOp>(op, op.getType(), input, index,
@@ -948,8 +922,7 @@ struct ConvertTensorListLength
       TF::TensorListLengthOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input_handle =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands())[0];
+    Value input_handle = adaptor.getOperands()[0];
 
     BoolAttr true_attr = rewriter.getBoolAttr(true);
     auto shape = rewriter.create<TF::ShapeOp>(loc, input_handle,
@@ -970,8 +943,7 @@ struct ConvertTensorListStack
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    auto operands = adaptor.getOperands();
     Value input = operands[0];
     Value element_shape = operands[1];
 
@@ -1021,8 +993,7 @@ struct ConvertTensorListConcatV2
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    auto operands = adaptor.getOperands();
     Value input = operands[0];
     Value element_shape = operands[1];
 
@@ -1084,8 +1055,7 @@ struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   LogicalResult matchAndRewrite(
       TF::IdentityOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands())[0];
+    Value input = adaptor.getOperands()[0];
     rewriter.replaceOpWithNewOp<TF::IdentityOp>(op, input.getType(), input,
                                                 op->getAttrs());
     return success();
@@ -1098,9 +1068,7 @@ struct ConvertReturn : public OpConversionPattern<func::ReturnOp> {
   LogicalResult matchAndRewrite(
       func::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
-
+    auto operands = adaptor.getOperands();
     rewriter.replaceOpWithNewOp<func::ReturnOp>(op, ValueRange{}, operands,
                                                 op->getAttrs());
     return success();
@@ -1113,8 +1081,7 @@ struct ConvertYield : public OpConversionPattern<TF::YieldOp> {
   LogicalResult matchAndRewrite(
       TF::YieldOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto operands =
-        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    auto operands = adaptor.getOperands();
     rewriter.replaceOpWithNewOp<TF::YieldOp>(op, operands);
     return success();
   }
@@ -1659,6 +1626,11 @@ std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
   return std::make_unique<LowerStaticTensorListPass>(
       allow_tensorlist_pass_through, default_to_single_batch,
       enable_dynamic_update_slice);
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
+    const LowerStaticTensorListPassOptions &options) {
+  return std::make_unique<LowerStaticTensorListPass>(options);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>

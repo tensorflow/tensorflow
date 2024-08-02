@@ -37,8 +37,8 @@ cc_library(
     hdrs = ["batch_stats.h"],
     deps = [
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/time",
     ],
 )

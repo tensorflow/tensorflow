@@ -77,7 +77,7 @@ Status DistributedTPURewriteHelpers::GetSystemDevice(
       return errors::InvalidArgument(
           "System devices cannot be part "
           "of multiple different jobs.  Found: ",
-          str_util::Join(job_names, ","));
+          absl::StrJoin(job_names, ","));
     }
 
     // Identify the lexicographically first device from the list of

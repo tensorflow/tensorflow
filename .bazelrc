@@ -351,6 +351,13 @@ build:windows --features=archive_param_file
 build:windows --copt=/d2ReducedOptimizeHugeFunctions
 build:windows --host_copt=/d2ReducedOptimizeHugeFunctions
 
+# Before VS 2017 15.8, the member "type" would non-conformingly have an
+# alignment of only alignof(max_align_t). VS 2017 15.8 was fixed to handle this
+# correctly, but the fix inherently changes layout and breaks binary
+# compatibility (*only* for uses of aligned_storage with extended alignments).
+build:windows --copt=-D_ENABLE_EXTENDED_ALIGNED_STORAGE
+build:windows --host_copt=-D_ENABLE_EXTENDED_ALIGNED_STORAGE
+
 # Enable the runfiles symlink tree on Windows. This makes it possible to build
 # the pip package on Windows without an intermediate data-file archive, as the
 # build_pip_package script in its current form (as of Aug 2023) uses the

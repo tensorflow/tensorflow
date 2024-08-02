@@ -485,7 +485,7 @@ xla_cc_test(
         ":hlo_module_loader",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -587,7 +587,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:xla_data_proto_cc",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -642,8 +642,8 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_parser",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
@@ -692,8 +692,8 @@ xla_cc_test(
         "//xla/service/spmd:spmd_partitioner",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 
@@ -819,6 +819,7 @@ xla_test(
     data = [
         ":data/add.hlo",
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
+        "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
@@ -830,14 +831,16 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
+        "//xla/service/gpu:autotuner_util",
+        "//xla/service/gpu:gpu_symbol_repository",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:env_time",
         "@local_tsl//tsl/platform:path",

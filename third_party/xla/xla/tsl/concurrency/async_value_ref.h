@@ -423,7 +423,9 @@ class AsyncValuePtr {
   T& operator*() const { return get(); }
 
   explicit operator bool() const { return value_ != nullptr; }
-  bool operator!=(std::nullptr_t) const { return value_ != nullptr; }
+  bool operator==(const AsyncValuePtr& p) const { return value_ == p.value_; }
+  bool operator!=(const AsyncValuePtr& p) const { return value_ != p.value_; }
+
   AsyncValuePtr& operator=(std::nullptr_t) {
     value_ = nullptr;
     return *this;

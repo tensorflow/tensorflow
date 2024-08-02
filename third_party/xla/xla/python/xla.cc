@@ -71,6 +71,10 @@ limitations under the License.
 #include "gloo/transport/tcp/device.h"
 #include "xla/pjrt/cpu/gloo_collectives.h"
 #include "xla/pjrt/cpu/gloo_kv_store.h"
+#elif __APPLE__
+#include "gloo/transport/uv/device.h"
+#include "xla/pjrt/cpu/gloo_collectives.h"
+#include "xla/pjrt/cpu/gloo_kv_store.h"
 #endif  // __linux__
 
 #if !defined(_WIN32) && !defined(PLATFORM_GOOGLE)
@@ -257,7 +261,7 @@ NB_MODULE(xla_extension, m_nb) {
          std::optional<std::string> hostname,
          std::optional<std::string> interface)
           -> std::shared_ptr<xla::cpu::CollectivesInterface> {
-#ifdef __linux__
+#if defined(__linux__)
         std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
         if (distributed_client != nullptr) {
           kv_store = GetDistributedKeyValueStore(distributed_client,
@@ -274,9 +278,26 @@ NB_MODULE(xla_extension, m_nb) {
         auto tcp_device = gloo::transport::tcp::CreateDevice(tcp_attrs);
         return std::make_shared<cpu::GlooCollectives>(std::move(gloo_kv_store),
                                                       std::move(tcp_device));
+#elif defined(__APPLE__)
+        std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
+        if (distributed_client != nullptr) {
+          kv_store = GetDistributedKeyValueStore(distributed_client,
+                                                 /*key_prefix=*/"cpu:");
+        }
+        auto gloo_kv_store = std::make_unique<cpu::GlooKeyValueStore>(kv_store);
+        auto uv_attrs = gloo::transport::uv::attr();
+        if (hostname) {
+          uv_attrs.hostname = *hostname;
+        }
+        if (interface) {
+          uv_attrs.iface = *interface;
+        }
+        auto uv_device = gloo::transport::uv::CreateDevice(uv_attrs);
+        return std::make_shared<cpu::GlooCollectives>(std::move(gloo_kv_store),
+                                                      std::move(uv_device));
 #else   // __linux__
         throw xla::XlaRuntimeError(
-            "make_gloo_tcp_collectives only implemented for linux");
+            "make_gloo_tcp_collectives only implemented for linux and macos");
 #endif  // __linux__
       },
       nb::arg("distributed_client"), nb::arg("hostname").none() = std::nullopt,

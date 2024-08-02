@@ -3325,6 +3325,7 @@ void AnnotateShardingWithSimpleHeuristic(
 
       if (heuristic == "shard-largest") {
         std::vector<int64_t> lengths;
+        lengths.reserve(inst->shape().rank());
         for (int64_t i = 0; i < inst->shape().rank(); ++i) {
           lengths.push_back(inst->shape().dimensions(i));
         }
@@ -3982,7 +3983,9 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   std::vector<std::vector<int64_t>> partial_mesh_shapes;
   if (option_.solve_nd_sharding_iteratively) {
     // Generate partial mesh shapes to optimize iteratively.
-    partial_mesh_shapes = spmd::DecomposeMeshShapes(option_.device_mesh_shape);
+    partial_mesh_shapes = spmd::DecomposeMeshShapes(option_.device_mesh_shape,
+                                                    option_.device_mesh_alpha,
+                                                    option_.device_mesh_beta);
   } else {
     partial_mesh_shapes = {option_.device_mesh_shape};
   }

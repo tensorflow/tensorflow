@@ -57,6 +57,10 @@ using ReservedScopedMemoryFunction = std::function<int64_t(
     const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
 using PositionRequiresContiguousAllocationFunction =
     std::function<bool(const HloPosition&)>;
+using WindowPrefetchDetailFunction =
+    std::function<WindowPrefetchDetail(const HloInstruction*)>;
+using WindowPrefetchNotifyOperandAppendedFunction =
+    std::function<void(HloInstruction*, int64_t, int64_t)>;
 
 // The different options to be passed to the Run() API.
 struct Options {
@@ -110,6 +114,15 @@ struct Options {
   PositionRequiresContiguousAllocationFunction
       position_requires_contiguous_allocation_fn =
           [](const HloPosition&) { return false; };
+
+  // This function is called to get details about window prefetches.
+  WindowPrefetchDetailFunction window_prefetch_detail_fn =
+      [](const HloInstruction*) { return WindowPrefetchDetail(); };
+
+  // This function is called to notify that an operand has been appended as a
+  // window prefetch buffer.
+  WindowPrefetchNotifyOperandAppendedFunction notify_operand_appended_fn =
+      [](HloInstruction*, int64_t, int64_t) {};
 
   // If true, we will try to reduce scoped allocation buffer size for all
   // instructions if their operand/output has been allocated in alternate
@@ -234,6 +247,13 @@ struct Options {
   // Option to always spill buffers from alternate memory to default memory
   // and prefetching back to alternate memory(if needed) just in time for use.
   bool always_spill_to_default_memory = false;
+
+  // If true, enables window prefetching. Window prefetching is a mechanism
+  // where we prefetch windows of data into the alternate memory before the
+  // first use of the buffer. This allows large tensors to be prefetched as well
+  // and gives MSA more flexibility in choosing the prefetch time and how much
+  // data to prefetch.
+  bool enable_window_prefetch = false;
 };
 }  // namespace memory_space_assignment
 }  // namespace xla

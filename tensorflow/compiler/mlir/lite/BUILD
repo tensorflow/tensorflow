@@ -404,9 +404,9 @@ cc_library(
         "utils/variables_utils.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
     ],
@@ -464,7 +464,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -513,11 +515,12 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -532,11 +535,8 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
-        "//tensorflow/core:framework",
         "@flatbuffers",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -553,9 +553,10 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
+        "//tensorflow/core/ir/types:Dialect",
         "@flatbuffers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -573,6 +574,8 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -586,8 +589,9 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/core/c:common",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "@flatbuffers//:runtime_cc",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -604,9 +608,9 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -616,6 +620,7 @@ tf_cc_test(
     srcs = ["utils/lstm_utils_test.cc"],
     deps = [
         ":lstm_utils",
+        ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -635,14 +640,13 @@ tf_cc_test(
     deps = [
         ":perception_ops_utils",
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -774,6 +778,7 @@ cc_library(
         ":constant_utils",
         ":convert_type",
         ":tensorflow_lite",
+        ":tensorflow_lite_optimize_inc_gen",
         ":tensorflow_lite_passes_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
@@ -942,8 +947,8 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@eigen_archive//:eigen3",
@@ -1061,7 +1066,7 @@ cc_library(
         ":convert_type",
         ":converter_inc",
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/core/c:private_common",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
@@ -1125,7 +1130,7 @@ cc_library(
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite:control_edges",
         "//tensorflow/compiler/mlir/lite/core:macros",
-        "//tensorflow/compiler/mlir/lite/core/c:private_common",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_cc",
@@ -1238,6 +1243,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

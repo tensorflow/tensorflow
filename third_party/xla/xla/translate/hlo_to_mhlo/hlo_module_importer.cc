@@ -18,10 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -35,9 +37,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/hlo_to_mhlo/module_config_importer.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
@@ -122,6 +127,10 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
         ConvertSharding(hlo_module.spmd_output_sharding(), &builder_));
   }
 
+  module->setAttr("mhlo.input_output_alias",
+                  ConvertInputOutputAlias(
+                      hlo_module.input_output_alias_config(), &builder_));
+
   if (hlo_module.has_spmd_parameters_shardings()) {
     llvm::SmallVector<mlir::Attribute> parameter_shardings;
     parameter_shardings.reserve(hlo_module.spmd_parameters_shardings().size());
@@ -146,6 +155,45 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
                &builder_,
                /*is_main*/ true, flatten_computation_args_result_)
         .status();
+
+  // The MLIR CPU pipeline assumes default layouts throughout the program. At
+  // the boundaries, this may not be the case, so layout information needs to
+  // be propagated to adapt the data layouts.
+  if (const auto& computation_layout = hlo_module.entry_computation_layout();
+      computation_layout.LayoutIsSet() &&
+      !computation_layout.result_layout().shape().IsTuple()) {
+    if (HasCustomLayout(computation_layout.result_layout().shape())) {
+      std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
+          GetLayoutAttribute(builder_,
+                             computation_layout.result_layout().shape(),
+                             computation_layout.result_layout().layout());
+      module->setAttr("mhlo.xla_entry_computation_result_layout",
+                      layout_attrs.first);
+      module->setAttr("mhlo.xla_entry_computation_result_tiles",
+                      layout_attrs.second);
+    }
+    if (llvm::any_of(computation_layout.parameter_layouts(),
+                     [](const ShapeLayout& shape) {
+                       return HasCustomLayout(shape.shape());
+                     })) {
+      llvm::SmallVector<mlir::Attribute> parameter_layouts;
+      llvm::SmallVector<mlir::Attribute> parameter_tiles;
+      for (auto& layout : computation_layout.parameter_layouts()) {
+        std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
+            GetLayoutAttribute(
+                builder_, layout.shape(),
+                (layout.LayoutIsSet() && !layout.shape().IsTuple())
+                    ? std::optional<Layout>(layout.layout())
+                    : std::nullopt);
+        parameter_layouts.push_back(layout_attrs.first);
+        parameter_tiles.push_back(layout_attrs.second);
+      }
+      module->setAttr("mhlo.xla_entry_computation_parameter_layouts",
+                      builder_.getArrayAttr(parameter_layouts));
+      module->setAttr("mhlo.xla_entry_computation_parameter_tiles",
+                      builder_.getArrayAttr(parameter_tiles));
+    }
+  }
 
   auto* module_entry_computation = hlo_module.entry_computation();
   for (const auto* computation : hlo_module.computations())
