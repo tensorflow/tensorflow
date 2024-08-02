@@ -1199,6 +1199,9 @@ TEST_F(CoordinationBarrierTest, BarrierTimeout) {
                         GetTaskName(GetTask(1))));  // First task at barrier.
   EXPECT_TRUE(absl::StrContains(barrier_status_0.message(),
                                 GetTaskName(GetTask(2))));  // Timed-out task.
+  EXPECT_TRUE(absl::StrContains(
+      barrier_status_0.message(),
+      "2/3"));  // Number of tasks at barrier / total number of tasks.
 }
 
 TEST_F(CoordinationBarrierTest, BarrierReturnsPreviousError) {

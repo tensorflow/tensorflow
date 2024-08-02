@@ -551,7 +551,8 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
                 absl::StrAppend(
                     &error_message,
                     "Total Number of tasks already at the barrier: ",
-                    barrier->tasks_at_barrier.size() - pending_task_count,
+                    barrier->tasks_at_barrier.size() - pending_task_count, "/",
+                    barrier->tasks_at_barrier.size(),
                     ". Timed out task names:\n%s", pending_tasks);
               }
               const absl::Status error = MakeCoordinationError(
@@ -1471,9 +1472,11 @@ void CoordinationServiceStandaloneImpl::SendErrorPollingResponse(
       return;
     }
   }
-  LOG(ERROR) << "An error is encountered. Sending the error as a response to "
-                "all error polling requests: "
-             << error;
+  if (!absl::IsCancelled(error)) {
+    LOG(ERROR) << "An error is encountered. Sending the error as a response to "
+                  "all error polling requests: "
+               << error;
+  }
   std::vector<std::string> missing_tasks;
   {
     absl::MutexLock l(&state_mu_);

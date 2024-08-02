@@ -412,20 +412,17 @@ void CoordinationServiceAgentImpl::StartSendingHeartbeats() {
 }
 
 void CoordinationServiceAgentImpl::StartPollingForError() {
-  LOG(INFO) << "Polling error from coordination service. This thread "
-               "will run until an error is encountered or the agent is "
-               "shutdown.";
+  LOG(INFO) << "Polling for error from coordination service. This thread will "
+               "run until an error is encountered or the agent is shutdown.";
   absl::Status status = PollForError();
   CHECK(!status.ok()) << "PollForError returned OK status. Should "
                          "always return an error.";
   if (absl::IsCancelled(status)) {
-    LOG(INFO) << "Stop polling error from coordination service because "
-                 "the service or the agent is shutting down."
-              << status;
+    LOG(INFO) << "Cancelling error polling because the service or the agent is "
+                 "shutting down.";
     return;
   }
-  LOG(INFO) << "Error returned from coordination service after polling: "
-            << status;
+  LOG(INFO) << "Error returned from coordination service: " << status;
 
   SetError(status);
 }
@@ -440,10 +437,11 @@ absl::Status CoordinationServiceAgentImpl::PollForError() {
   n.WaitForNotification();
   CHECK(!status.ok())
       << "PollForError returned OK status. Should always return an error.";
-  LOG(ERROR)
-      << "PollForError returned with status (this can be an error from this or "
-         "another task): "
-      << status;
+  if (!absl::IsCancelled(status)) {  // No need to log if cancelled.
+    LOG(ERROR) << "PollForError returned with status (this can be an error "
+                  "from this or another task): "
+               << status;
+  }
   return status;
 }
 
