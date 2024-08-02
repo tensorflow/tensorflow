@@ -182,11 +182,7 @@ TEST(DeviceIdUtilsTest, GetDeviceIdWithPlatformDeviceId) {
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
 
-  TF_ASSERT_OK_AND_ASSIGN(int device_id,
-                          GetDeviceIdFromDeviceParsedName(
-                              device_name, DeviceType(kTestDeviceType)));
-
-  EXPECT_EQ(device_id, 1);
+  EXPECT_EQ(GetDeviceIdFromDeviceParsedName(device_name), 0);
   DeviceIdManager::TestOnlyReset();
 }
 
@@ -194,11 +190,7 @@ TEST(DeviceIdUtilsTest, GetDeviceIdWithoutPlatformDeviceId) {
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
 
-  TF_ASSERT_OK_AND_ASSIGN(int device_id,
-                          GetDeviceIdFromDeviceParsedName(
-                              device_name, DeviceType(kTestDeviceType)));
-
-  EXPECT_EQ(device_id, 0);
+  EXPECT_EQ(GetDeviceIdFromDeviceParsedName(device_name), 0);
 }
 
 }  // namespace
