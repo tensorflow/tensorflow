@@ -239,7 +239,17 @@ absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
                                            slices, device)}};
   }
 
-  return absl::InvalidArgumentError("Unsupported CUTLASS gemm data type");
+  if (dot_type == PrimitiveType::F32 && lhs_type == PrimitiveType::BF16 &&
+      rhs_type == PrimitiveType::S8) {
+    return {{Load<Bf16xS8ToF32<Default>>(std::move(name), m, n, k, indices,
+                                         slices, device)}};
+  }
+
+  std::string kernel_name = PrimitiveType_Name(lhs_type) + "x" +
+                            PrimitiveType_Name(rhs_type) + "To" +
+                            PrimitiveType_Name(dot_type);
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Unsupported CUTLASS gemm data type for kernel: ", kernel_name));
 }
 
 absl::StatusOr<CustomKernel> LoadCutlassGemmKernel(

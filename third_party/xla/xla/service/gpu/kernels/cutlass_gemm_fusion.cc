@@ -356,12 +356,6 @@ class CutlassGemmWithUpcastFusion : public CustomKernelFusion {
     PrimitiveType lhs_upcast_type = lhs_upcast_shape.element_type();
     PrimitiveType rhs_upcast_type = rhs_upcast_shape.element_type();
 
-    // We only support F32 <- BF16 x BF16 upcasted gemm.
-    if (dot_type != PrimitiveType::F32 ||
-        lhs_upcast_type != PrimitiveType::BF16 ||
-        rhs_upcast_type != PrimitiveType::BF16)
-      return absl::InternalError("unsupported upcasting pattern: ");
-
     // Mapping from fusion arguments to gemm kernel arguments.
     kernel::gemm_universal::ArgsIndices args_indices = {
         lhs_upcast->parameter_number(), rhs_upcast->parameter_number(),
