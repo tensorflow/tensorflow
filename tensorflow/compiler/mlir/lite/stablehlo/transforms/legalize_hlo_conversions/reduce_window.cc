@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
@@ -39,6 +40,10 @@ limitations under the License.
 
 namespace mlir::odml {
 namespace {
+
+// filters, strides, padding, faf.
+using TFLPoolAttrsT = std::tuple<IntegerAttr, IntegerAttr, IntegerAttr,
+                                 IntegerAttr, StringAttr, StringAttr>;
 
 bool AreDilationsSupported(const ReduceWindowView& op) {
   auto is_one = [](int64_t v) { return v == 1; };
@@ -162,6 +167,27 @@ std::optional<std::string> GetTFLPadding(ArrayRef<DimPadding> paddings,
   return tfl_padding;
 }
 
+TFLPoolAttrsT BuildTFLPoolAttrs(OpBuilder& b, const ReduceWindowView& view,
+                                StringRef padding) {
+  const int32_t filter_h = view.WindowDims()[1];
+  auto filter_h_attr = b.getI32IntegerAttr(filter_h);
+
+  const int32_t filter_w = view.WindowDims()[2];
+  auto filter_w_attr = b.getI32IntegerAttr(filter_w);
+
+  const int32_t stride_h = view.WindowStrides()[1];
+  auto stride_h_attr = b.getI32IntegerAttr(stride_h);
+
+  const int32_t stride_w = view.WindowStrides()[2];
+  auto stride_w_attr = b.getI32IntegerAttr(stride_w);
+
+  auto padding_attr = b.getStringAttr(padding);
+  auto faf_attr = b.getStringAttr("NONE");
+
+  return std::tuple(filter_h_attr, filter_w_attr, stride_h_attr, stride_w_attr,
+                    padding_attr, faf_attr);
+}
+
 //===------------------------------------------------------------------------===
 // relayout reduce_window to channel last
 //===------------------------------------------------------------------------===
@@ -271,8 +297,19 @@ LogicalResult RelayoutReduceWindow::matchAndRewrite(
 // mhlo.reduce_window -> tfl.max_pool
 //===------------------------------------------------------------------------===
 
-class LegalizeReduceWindowMax
-    : public OpConversionPattern<mhlo::ReduceWindowOp> {
+bool isFloatMinusInfinity(Value value) {
+  DenseFPElementsAttr float_value;
+  if (!matchPattern(value, m_Constant(&float_value))) {
+    return false;
+  }
+  if (float_value.getNumElements() != 1) {
+    return false;
+  }
+  APFloat element = float_value.getValues<APFloat>()[0];
+  return element.isInfinity() && element.isNegative();
+}
+
+class LegalizeMaxPool : public OpConversionPattern<mhlo::ReduceWindowOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -280,11 +317,65 @@ class LegalizeReduceWindowMax
       ConversionPatternRewriter& rewriter) const final;
 };
 
-// TODO: b/352960217 - Implement.
-LogicalResult LegalizeReduceWindowMax::matchAndRewrite(
+LogicalResult LegalizeMaxPool::matchAndRewrite(
     mhlo::ReduceWindowOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
-  return failure();
+  //
+  // parse and validate lhs reduce window
+  //=-----
+
+  const auto opt_view = GetViewIfAttrsSupported(op);
+  if (!opt_view.has_value()) {
+    return rewriter.notifyMatchFailure(op, "Reduce window is not valid.");
+  }
+  const auto [view, layout] = opt_view.value();
+  if (layout != TFLNativePoolingLayout(layout.Rank())) {
+    return rewriter.notifyMatchFailure(op, "Not tfl standard layout.");
+  }
+
+  // Check that the reduce-window is a max-reduce-window.
+  if (failed(MatchBinaryReduceFunction<mhlo::MaxOp>(op.getBody()))) {
+    return rewriter.notifyMatchFailure(op, "Must be a max pool.");
+  }
+
+  auto type = mlir::dyn_cast<ShapedType>(op.getResult(0).getType());
+  if (!mlir::isa<FloatType>(type.getElementType())) {
+    return rewriter.notifyMatchFailure(op, "Not a floating point pool.");
+  }
+
+  //
+  // validate inputs and init
+  //=-----
+
+  auto opt_inputs_and_init = GetInputAndInitIfValid(op);
+  if (!opt_inputs_and_init.has_value()) {
+    return rewriter.notifyMatchFailure(op, "Too many inputs or inits.");
+  }
+  auto [input, init] = opt_inputs_and_init.value();
+  auto input_type = llvm::dyn_cast<ShapedType>(input.getType());
+
+  if (!isFloatMinusInfinity(init)) {
+    return rewriter.notifyMatchFailure(op, "Init not minus infinity.");
+  }
+
+  //
+  // build tfl
+  //=-----
+
+  auto opt_tfl_padding =
+      GetTFLPadding(view.Paddings(), view.WindowStrides(),
+                    input_type.getShape(), view.WindowDims());
+  if (!opt_tfl_padding.has_value()) {
+    return rewriter.notifyMatchFailure(op, "Padding not SAME or VALID.");
+  }
+  const auto& tfl_padding = opt_tfl_padding.value();
+
+  auto [fh, fw, sh, sw, p, faf] =
+      BuildTFLPoolAttrs(rewriter, view, tfl_padding);
+  rewriter.replaceOpWithNewOp<TFL::MaxPool2DOp>(op, type, input, p, sw, sh, fw,
+                                                fh, faf);
+
+  return success();
 }
 
 //===------------------------------------------------------------------------===
@@ -295,28 +386,13 @@ void ReplaceWithAvgPool(mhlo::DivOp op, Value rw_lhs_input,
                         const ReduceWindowView& lhs_view,
                         llvm::StringRef padding, PatternRewriter& rewriter,
                         mhlo::TransposeOp opt_final_tpose) {
-  auto tfl_padding_attr = rewriter.getStringAttr(padding);
-  auto tfl_faf_attr = rewriter.getStringAttr("NONE");
-
   Type out_type =
       opt_final_tpose ? opt_final_tpose.getOperand().getType() : op.getType();
 
-  const int32_t tfl_filter_h = lhs_view.WindowDims()[1];
-  auto tfl_filter_h_attr = rewriter.getI32IntegerAttr(tfl_filter_h);
-
-  const int32_t tfl_filter_w = lhs_view.WindowDims()[2];
-  auto tfl_filter_w_attr = rewriter.getI32IntegerAttr(tfl_filter_w);
-
-  const int32_t tfl_stride_h = lhs_view.WindowStrides()[1];
-  auto tfl_stride_h_attr = rewriter.getI32IntegerAttr(tfl_stride_h);
-
-  const int32_t tfl_stride_w = lhs_view.WindowStrides()[2];
-  auto tfl_stride_w_attr = rewriter.getI32IntegerAttr(tfl_stride_w);
-
+  auto [fh, fw, sh, sw, p, faf] =
+      BuildTFLPoolAttrs(rewriter, lhs_view, padding);
   Value final_op = rewriter.create<TFL::AveragePool2DOp>(
-      op->getLoc(), out_type, rw_lhs_input, tfl_filter_h_attr,
-      tfl_filter_w_attr, tfl_padding_attr, tfl_stride_h_attr, tfl_stride_w_attr,
-      tfl_faf_attr);
+      op->getLoc(), out_type, rw_lhs_input, fh, fw, p, sh, sw, faf);
 
   if (opt_final_tpose) {
     final_op = rewriter
@@ -375,9 +451,6 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
     return rewriter.notifyMatchFailure(div_op, "Lhs rw is not valid.");
   }
   const auto [rw_lhs_view, rw_lhs_layout] = opt_rw_lhs_view.value();
-  if (rw_lhs_view.Rank() != 4) {
-    return rewriter.notifyMatchFailure(div_op, "Not a 2d pooling operator.");
-  }
   if (rw_lhs_layout != TFLNativePoolingLayout(rw_lhs_layout.Rank())) {
     return rewriter.notifyMatchFailure(
         div_op, "Lhs reduce window not tfl standard layout.");
@@ -528,7 +601,7 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
 void PopulateLegalizeReduceWindowPatterns(MLIRContext* ctx,
                                           RewritePatternSet& patterns,
                                           ConversionTarget& target) {
-  patterns.add<LegalizeAvgPool>(ctx);
+  patterns.add<LegalizeAvgPool, LegalizeMaxPool>(ctx);
   target.addDynamicallyLegalOp<mhlo::ReduceWindowOp>(IsReduceWindowLegal);
   target.addDynamicallyLegalOp<mhlo::DivOp>(IsDivideLegal);
 }
