@@ -67,8 +67,17 @@ bool DoIndicesDependOnInductionVar(mlir::ValueRange indices,
 
 bool CanReplaceInductionVar(mlir::ValueRange indices) {
   return absl::c_all_of(indices, [&](mlir::Value v) {
-    if (mlir::isa<mlir::BlockArgument>(v)) {
-      return true;
+    if (auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(v)) {
+      auto for_op = mlir::dyn_cast_or_null<mlir::scf::ForOp>(
+          v.getParentRegion()->getParentOp());
+      // This is a bbarg that is defined outside of the loop, so it doesn't
+      // affect pipelining.
+      if (!for_op) {
+        return true;
+      }
+      // We can only replace the induction variable, not other loop-carried
+      // values.
+      return v == for_op.getInductionVar();
     }
     auto* op = v.getDefiningOp();
     return op &&

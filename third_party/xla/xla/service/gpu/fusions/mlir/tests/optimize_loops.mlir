@@ -183,3 +183,29 @@ module {
 // CHECK:     math.log %[[VAL]]
 // CHECK:     %[[ADD:.*]] = arith.addf
 // CHECK:     yield %[[ADD]], %[[NEXT_VAL]]
+
+// -----
+
+module {
+  func.func @sequential_extract(%arg0: tensor<6xindex>, %arg1: tensor<22xindex>) -> (index) {
+    %c1 = arith.constant 1 : index
+    %c733 = arith.constant 733 : index
+    %c0 = arith.constant 0 : index
+    %2 = scf.for %i = %c0 to %c733 step %c1 iter_args(%x = %c1) -> (index) {
+      %extracted = tensor.extract %arg0[%i] : tensor<6xindex>
+      %extracted_1 = tensor.extract %arg1[%extracted] : tensor<22xindex>
+      scf.yield %extracted_1 : index
+    }
+    return %2 : index
+  }
+}
+
+// Once `extracted` is pipelined, it becomes an iter arg, so `extracted_1` is
+// extract %arg1[%arg]. While it is possible to pipeline this in principle, we
+// do not currently do this.
+
+// CHECK-LABEL: @sequential_extract
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<6xindex>, %[[ARG1:.*]]: tensor<22xindex>)
+// CHECK: tensor.extract %[[ARG0]]
+// CHECK-NOT: tensor.extract
+// CHECK: scf.for
