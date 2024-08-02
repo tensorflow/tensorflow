@@ -122,6 +122,7 @@ cc_library(
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:attribute_map",
@@ -147,6 +148,10 @@ cc_library(
         "//xla/service/gpu/runtime:dynamic_slice_thunk",
         "//xla/service/gpu/runtime:gemm_thunk",
         "//xla/service/gpu/runtime:kernel_thunk",
+        "//xla/service/gpu/runtime:nccl_all_reduce_thunk",
+        "//xla/service/gpu/runtime:nccl_api",
+        "//xla/service/gpu/runtime:nccl_clique_key",
+        "//xla/service/gpu/runtime:nccl_collective_thunk",
         "//xla/service/gpu/runtime:thunk",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -167,6 +172,12 @@ cc_library(
 xla_test(
     name = "dynamic_slice_fusion_test",
     srcs = if_cuda_is_configured(["dynamic_slice_fusion_test.cc"]),
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
@@ -184,11 +195,14 @@ xla_test(
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:dynamic_slice_fusion_rewriter",
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:test_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:errors",
