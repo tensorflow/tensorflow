@@ -74,7 +74,8 @@ TEST(RemoveCompressionMap, Success) {
            /*input_node_name=*/"RangeDataset/_3",
            /*num_parallel_calls_node_name=*/"Const/_4",
            /*function_name=*/"__inference_Dataset_map_lambda_10",
-           /*deterministic=*/"default"),
+           /*deterministic=*/"default",
+           /*use_unbounded_threadpool=*/false),
 
        NDef("dataset",                    // name
             "_Retval",                    // op

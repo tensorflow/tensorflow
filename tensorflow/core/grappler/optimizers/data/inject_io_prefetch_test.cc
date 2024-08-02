@@ -101,7 +101,7 @@ GraphDef EligibleMapCase() {
             {{"value", 1}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeParallelMapV2Node(
            "map_1", "io_1", "num_parallel_calls_1", "noop_1",
-           /*deterministic=*/"default"),
+           /*deterministic=*/"default", /*use_unbounded_threadpool=*/false),
 
        NDef("files_2", "Const", {},
             {{"value", "file1file2"}, {"dtype", DT_STRING}}),
@@ -114,7 +114,7 @@ GraphDef EligibleMapCase() {
             {{"value", 1}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeParallelMapV2Node(
            "map_2", "io_2", "num_parallel_calls_2", "noop_2",
-           /*deterministic=*/"default"),
+           /*deterministic=*/"default", /*use_unbounded_threadpool=*/false),
 
        NDef("zip", "ZipDataset", {"map_1", "map_2"}, {}),
        NDef("Sink", "Identity", {"zip"}, {})},

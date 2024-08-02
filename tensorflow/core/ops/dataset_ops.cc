@@ -206,6 +206,7 @@ REGISTER_OP("ParallelMapDatasetV2")
     // "true", "false", or "default".
     .Attr("deterministic: string = 'default'")
     .Attr("preserve_cardinality: bool = false")
+    .Attr("use_unbounded_threadpool: bool = false")
     .Attr("metadata: string = ''")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))

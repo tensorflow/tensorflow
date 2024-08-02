@@ -131,11 +131,11 @@ tf_class {
   }
   member_method {
     name: "map"
-    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\', \'synchronous\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\', \'synchronous\', \'use_unbounded_threadpool\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "map_with_legacy_function"
-    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\', \'use_unbounded_threadpool\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "options"
