@@ -36,6 +36,9 @@ tsl_pybind_extension(
         "@pybind11",
         "@stablehlo//:stablehlo_portable_api",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 pytype_strict_library(

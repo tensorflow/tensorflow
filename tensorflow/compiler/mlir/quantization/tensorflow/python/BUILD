@@ -5,6 +5,7 @@ load(
     "tf_py_strict_test",
     "tf_python_pybind_extension",
 )
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -203,6 +204,7 @@ tf_python_pybind_extension(
     visibility = [
         "__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         ":py_function_lib",
@@ -227,9 +229,8 @@ tf_python_pybind_extension(
     srcs = ["pywrap_quantize_model.cc"],
     pytype_srcs = ["pywrap_quantize_model.pyi"],
     # All deps must be header-only.
-    deps = [
+    deps = if_pywrap([":quantize_model_cc_impl"], [":quantize_model_cc"]) + [
         ":py_function_lib",
-        ":quantize_model_cc",
         ":type_casters",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

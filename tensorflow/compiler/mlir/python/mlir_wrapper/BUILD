@@ -5,22 +5,16 @@ package(
     licenses = ["notice"],
 )
 
-tf_python_pybind_extension(
-    name = "mlir_wrapper",
+cc_library(
+    name = "mlir_wrapper_lib",
     srcs = [
         "attrs.cc",
         "basic_classes.cc",
         "builders.cc",
-        "mlir_wrapper.cc",
-        "mlir_wrapper.h",
         "ops.cc",
         "types.cc",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
-        "mlir_wrapper.pyi",
-    ],
-    visibility = ["//visibility:public"],
+    hdrs = ["mlir_wrapper.h",],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -31,6 +25,21 @@ tf_python_pybind_extension(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "mlir_wrapper",
+    srcs = [
+        "mlir_wrapper.cc",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "mlir_wrapper.pyi",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":mlir_wrapper_lib",
         "@pybind11",
     ],
 )

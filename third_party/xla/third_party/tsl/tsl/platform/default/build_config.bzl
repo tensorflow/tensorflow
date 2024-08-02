@@ -2,6 +2,7 @@
 
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
+load("@pywrap_compat//:pywrap_compat.bzl", "use_pywrap_rules")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
     "clean_dep",
@@ -9,6 +10,7 @@ load(
     "if_tsl_link_protobuf",
 )
 load("//tsl/platform:build_config_root.bzl", "if_static")
+
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.
@@ -147,6 +149,8 @@ def _proto_py_outs(srcs, use_grpc_plugin = False):
         ret += [s[:-len(".proto")] + "_pb2_grpc.py" for s in srcs]
     return ret
 
+# TODO(b/356020232): cleanup non use_pywrap_rules() parts and everythin relate
+#                    to creation of header-only protobuf targets
 # Re-defined protocol buffer rule to allow building "header only" protocol
 # buffers, to avoid duplicate registrations. Also allows non-iterable cc_libs
 # containing select() statements.
@@ -247,21 +251,29 @@ def cc_proto_library(
         })
 
     impl_name = name + "_impl"
-    header_only_name = name + "_headers_only"
-    header_only_deps = tf_deps(protolib_deps, "_cc_headers_only")
 
-    if make_default_target_header_only:
-        native.alias(
-            name = name,
-            actual = header_only_name,
-            visibility = kwargs["visibility"],
-        )
-    else:
+    if use_pywrap_rules():
         native.alias(
             name = name,
             actual = impl_name,
             visibility = kwargs["visibility"],
         )
+    else:
+        header_only_name = name + "_headers_only"
+        header_only_deps = tf_deps(protolib_deps, "_cc_headers_only")
+
+        if make_default_target_header_only:
+            native.alias(
+                name = name,
+                actual = header_only_name,
+                visibility = kwargs["visibility"],
+            )
+        else:
+            native.alias(
+                name = name,
+                actual = impl_name,
+                visibility = kwargs["visibility"],
+            )
 
     native.cc_library(
         name = impl_name,
@@ -272,14 +284,18 @@ def cc_proto_library(
         alwayslink = 1,
         **kwargs
     )
-    native.cc_library(
-        name = header_only_name,
-        deps = [
-            "@com_google_protobuf//:protobuf_headers",
-        ] + header_only_deps + if_tsl_link_protobuf([impl_name]),
-        hdrs = gen_hdrs,
-        **kwargs
-    )
+
+    if use_pywrap_rules():
+        pass
+    else:
+        native.cc_library(
+            name = header_only_name,
+            deps = [
+                "@com_google_protobuf//:protobuf_headers",
+            ] + header_only_deps + if_tsl_link_protobuf([impl_name]),
+            hdrs = gen_hdrs,
+            **kwargs
+        )
 
 # Re-defined protocol buffer rule to allow setting service namespace.
 def cc_grpc_library(
@@ -430,6 +446,8 @@ def py_proto_library(
         **kwargs
     )
 
+# TODO(b/356020232): cleanup non-use_pywrap_rules part and all logic reated to
+#                    protobuf header-only targets after migration is done
 def tf_proto_library_cc(
         name,
         srcs = [],
@@ -481,23 +499,35 @@ def tf_proto_library_cc(
             visibility = visibility,
         )
 
-        native.alias(
-            name = cc_name + "_headers_only",
-            actual = cc_name,
-            testonly = testonly,
-            visibility = visibility,
-        )
+        if use_pywrap_rules():
+            pass
+        else:
+            native.alias(
+                name = cc_name + "_headers_only",
+                actual = cc_name,
+                testonly = testonly,
+                visibility = visibility,
+            )
 
-        native.cc_library(
-            name = cc_name,
-            deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_tsl_link_protobuf([name + "_cc_impl"]),
-            testonly = testonly,
-            visibility = visibility,
-        )
+            native.cc_library(
+                name = cc_name,
+                deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_tsl_link_protobuf([name + "_cc_impl"]),
+                testonly = testonly,
+                visibility = visibility,
+            )
+
         native.cc_library(
             name = cc_name + "_impl",
             deps = [s + "_impl" for s in cc_deps],
         )
+
+        if use_pywrap_rules():
+            native.cc_library(
+                name = cc_name,
+                deps = cc_deps + ["@com_google_protobuf//:protobuf_headers", cc_name + "_impl"],
+                testonly = testonly,
+                visibility = visibility,
+            )
 
         return
 
@@ -766,8 +796,11 @@ def tf_protobuf_deps():
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
 
+# TODO(b/356020232): remove completely after migration is done
 # Link protobuf, unless the tsl_link_protobuf build flag is explicitly set to false.
 def tsl_protobuf_deps():
+#    if use_pywrap_rules():
+#        return []
     return if_tsl_link_protobuf([clean_dep("@com_google_protobuf//:protobuf")], [clean_dep("@com_google_protobuf//:protobuf_headers")])
 
 # When tsl_protobuf_header_only is true, we need to add the protobuf library

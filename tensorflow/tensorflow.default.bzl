@@ -4,6 +4,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     _ADDITIONAL_API_INDEXABLE_SETTINGS = "ADDITIONAL_API_INDEXABLE_SETTINGS",
     _cc_header_only_library = "cc_header_only_library",
+    _custom_op_cc_header_only_library = "custom_op_cc_header_only_library",
     _clean_dep = "clean_dep",
     _cuda_py_test = "cuda_py_test",
     _filegroup = "filegroup",
@@ -44,6 +45,15 @@ load(
     _tfcompile_dfsan_abilists = "tfcompile_dfsan_abilists",
     _tfcompile_dfsan_enabled = "tfcompile_dfsan_enabled",
     _tfcompile_target_cpu = "tfcompile_target_cpu",
+    _pywrap_aware_filegroup = "pywrap_aware_filegroup",
+    _pywrap_aware_genrule = "pywrap_aware_genrule",
+    _pywrap_aware_cc_import = "pywrap_aware_cc_import",
+    _pywrap_aware_tf_cc_shared_object = "pywrap_aware_tf_cc_shared_object",
+    _pywrap_aware_py_strict_library = "pywrap_aware_py_strict_library",
+    _pywrap_library = "pywrap_library",
+    _pywrap_common_library = "pywrap_common_library",
+    _stripped_cc_info = "stripped_cc_info",
+
 )
 
 clean_dep = _clean_dep
@@ -80,6 +90,7 @@ tf_grpc_dependencies = _tf_grpc_dependencies
 tf_grpc_cc_dependencies = _tf_grpc_cc_dependencies
 get_compatible_with_portable = _get_compatible_with_portable
 cc_header_only_library = _cc_header_only_library
+custom_op_cc_header_only_library = _custom_op_cc_header_only_library
 tf_gen_op_libs = _tf_gen_op_libs
 tf_gen_op_wrapper_cc = _tf_gen_op_wrapper_cc
 tf_gen_op_wrappers_cc = _tf_gen_op_wrappers_cc
@@ -91,3 +102,11 @@ internal_tfrt_deps = _internal_tfrt_deps
 tf_disable_ptxas_warning_flags = _tf_disable_ptxas_warning_flags
 replace_with_portable_tf_lib_when_required = _replace_with_portable_tf_lib_when_required
 tf_python_framework_friends = _tf_python_framework_friends
+pywrap_aware_filegroup = _pywrap_aware_filegroup
+pywrap_aware_genrule = _pywrap_aware_genrule
+pywrap_aware_cc_import = _pywrap_aware_cc_import
+pywrap_aware_tf_cc_shared_object = _pywrap_aware_tf_cc_shared_object
+pywrap_aware_py_strict_library = _pywrap_aware_py_strict_library
+pywrap_library = _pywrap_library
+pywrap_common_library = _pywrap_common_library
+stripped_cc_info = _stripped_cc_info

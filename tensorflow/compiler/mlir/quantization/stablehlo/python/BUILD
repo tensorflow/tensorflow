@@ -163,4 +163,7 @@ tf_python_pybind_extension(
         "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ]
 )

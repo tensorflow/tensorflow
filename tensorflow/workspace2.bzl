@@ -6,6 +6,7 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
+load("@local_xla//rules_pywrap:pywrap_compat.bzl", "pywrap_compat_init")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
@@ -793,7 +794,10 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/80f3440cd8fee124e077e2e47a8a17b78b451363.zip"),
         sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
         strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
-        patch_file = ["//third_party/pybind11_protobuf:remove_license.patch"],
+        patch_file = [
+            "//third_party/pybind11_protobuf:protobuf.patch",
+            "//third_party/pybind11_protobuf:remove_license.patch"
+        ],
     )
 
     tf_http_archive(
@@ -924,10 +928,12 @@ def _tf_repositories():
     )
 
 def workspace():
+    # TODO(b/356020232): remove after migration is done
+    pywrap_compat_init(name = "pywrap_compat")
+
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.
     versions.check("1.0.0")
-
     # Initialize toolchains and platforms.
     _tf_toolchains()
 

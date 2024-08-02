@@ -20,6 +20,7 @@ load(
     "//tensorflow/core/tpu:build_defs.bzl",
     "if_libtpu_tf_status",
 )
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -981,6 +982,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/platform:resource_loader",
     ],
+    extra_copts = if_pywrap(["-DTENSORFLOW_NO_SHARED_OBJECTS"], [])
 )
 
 tf_cc_test(
@@ -1135,7 +1137,10 @@ tf_cuda_library(
     name = "python_api",
     srcs = ["python_api.cc"],
     hdrs = ["python_api.h"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":c_api",
         ":c_api_internal",

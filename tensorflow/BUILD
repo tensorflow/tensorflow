@@ -23,6 +23,7 @@ load(
     "//tensorflow:tensorflow.default.bzl",
     "ADDITIONAL_API_INDEXABLE_SETTINGS",
     "tf_cc_shared_library",
+    "pywrap_aware_tf_cc_shared_object",
 )
 load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
@@ -1262,7 +1263,7 @@ cc_import(
 # an "-exported_symbols_list" command.  -z defs disallows undefined
 # symbols in object files.
 
-tf_cc_shared_object(
+pywrap_aware_tf_cc_shared_object(
     name = "tensorflow",
     linkopts = select({
         "//tensorflow:macos": [

@@ -16,7 +16,7 @@ cc_library(
     ),
     hdrs = ["wrapper/metrics_wrapper.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         "//third_party/python_runtime:headers",
     ] + if_portable(
@@ -39,6 +39,7 @@ pybind_extension(
     visibility = [
         "__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         ":metrics_wrapper_lib",

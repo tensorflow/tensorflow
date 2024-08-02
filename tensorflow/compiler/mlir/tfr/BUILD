@@ -369,6 +369,9 @@ tf_python_pybind_extension(
         "@llvm-project//mlir:ShapeDialect",
         "@pybind11",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ]
 )
 
 py_strict_library(

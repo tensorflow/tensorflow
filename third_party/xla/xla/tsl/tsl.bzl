@@ -1,6 +1,7 @@
 """Provides build configuration for TSL"""
 
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
+load("@pywrap_compat//:pywrap_compat.bzl", "use_pywrap_rules")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
@@ -33,6 +34,7 @@ load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
+load("//rules_pywrap:pywrap_compat.bzl", "pywrap_pybind_extension")
 
 # Internally this loads a macro, but in OSS this is a function
 # buildifier: disable=out-of-order-load
@@ -121,7 +123,10 @@ def internal_visibility(internal_targets):
     return if_google(internal_targets, ["//visibility:public"])
 
 # TODO(jakeharmon): Use this to replace if_static
+# TODO(b/356020232): remove completely after migration is done
 def if_tsl_link_protobuf(if_true, if_false = []):
+    if use_pywrap_rules():
+        return if_true
     return select({
         "//conditions:default": if_true,
         clean_dep("//xla/tsl:tsl_protobuf_header_only"): if_false,
@@ -264,6 +269,7 @@ def get_win_copts(is_external = False):
         return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
         # copybara:comment_end
 
+# TODO(b/356020232): cleanup non-use_pywrap_rules part once migration is done
 def tsl_copts(
         android_optimization_level_override = "-O2",
         is_external = False,
@@ -278,6 +284,16 @@ def tsl_copts(
     ]
     if android_optimization_level_override:
         android_copts.append(android_optimization_level_override)
+
+    framework_deps = []
+    if use_pywrap_rules():
+        pass
+    else:
+        select({
+            clean_dep("//xla/tsl:framework_shared_object"): [],
+            "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
+        })
+
     return (
         if_not_windows([
             "-DEIGEN_AVOID_STL_ARRAY",
@@ -306,10 +322,7 @@ def tsl_copts(
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
-        select({
-            clean_dep("//xla/tsl:framework_shared_object"): [],
-            "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
-        }) +
+        framework_deps +
         select({
             clean_dep("//xla/tsl:android"): android_copts,
             clean_dep("//xla/tsl:emscripten"): [],
@@ -488,6 +501,23 @@ def transitive_hdrs(name, deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
     native.filegroup(name = name, srcs = [":" + name + "_gather"], **kwargs)
 
+def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
+    if use_pywrap_rules():
+        cc_library(
+            name = name,
+            deps = deps + extra_deps,
+            compatible_with = compatible_with,
+            **kwargs,
+        )
+    else:
+        custom_op_cc_header_only_library(
+            name,
+            deps,
+            includes,
+            extra_deps,
+            compatible_with,
+            **kwargs)
+
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
 #
@@ -501,7 +531,7 @@ def transitive_hdrs(name, deps = [], **kwargs):
 #   * Eigen: it's a header-only library.  Add it directly to your deps.
 #   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
 #
-def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
+def custom_op_cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
     _transitive_hdrs(
         name = name + "_gather",
         deps = deps,
@@ -792,3 +822,6 @@ def tsl_extra_config_settings():
 
 def tsl_extra_config_settings_targets():
     return []
+
+# TODO(b/356020232): remove after migration is done
+tsl_pybind_extension = pywrap_pybind_extension if use_pywrap_rules() else tsl_pybind_extension_opensource

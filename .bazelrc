@@ -618,10 +618,10 @@ build:release_linux_base --action_env PYTHON_BIN_PATH="/usr/bin/python3"
 build:release_linux_base --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
 build:release_linux_base --python_path="/usr/bin/python3"
 # Set Clang as compiler. Use the actual path to clang installed in container.
-build:release_cpu_linux_base --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:release_cpu_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
+build:release_cpu_linux_base --repo_env=CC="/usr/lib/llvm-17/bin/clang"
+build:release_cpu_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-17/bin/clang"
 # Test-related settings below this point.
-test:release_linux_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true
+test:release_linux_base --build_tests_only --test_output=errors --verbose_failures=true
 test:release_linux_base --local_test_jobs=HOST_CPUS
 test:release_linux_base --test_env=LD_LIBRARY_PATH
 # Give only the list of failed tests at the end of the log
@@ -927,3 +927,6 @@ test:rbe_cross_compile_macos_x86 --jobs=100
 
 # Try to load the XLA warnings config if available
 try-import %workspace%/warnings.bazelrc
+
+build --symlink_prefix=/usr/local/google/home/vam/_/projects/github/vam-google/tensorflow-upstream_symlinks/bazel-
+build --keep_going

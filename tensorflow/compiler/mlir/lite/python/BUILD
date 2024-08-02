@@ -1,6 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 licenses(["notice"])
 
@@ -253,5 +254,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
+    ] + if_pywrap([":converter_python_api"]),
+    visibility = [
+        "//tensorflow/python:__pkg__",
     ],
 )

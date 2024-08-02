@@ -6,6 +6,7 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "cuda_py_benchmark_test",
 )
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,6 +30,9 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ]
 )
 
 tf_python_pybind_extension(
@@ -43,7 +47,16 @@ tf_python_pybind_extension(
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/gradients/tape:tape_context",
+            "//tensorflow/c/experimental/gradients:math_grad",
+            "//tensorflow/c/experimental/gradients:nn_grad",
+        ]
+    ),
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ]
 )
 
 tf_python_pybind_extension(
@@ -63,7 +76,14 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/ops:math_ops",
+        ]
+    ),
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ]
 )
 
 tf_python_pybind_extension(
@@ -83,7 +103,14 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/ops:nn_ops",
+        ]
+    ),
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ]
 )
 
 py_strict_library(

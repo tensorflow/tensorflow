@@ -931,6 +931,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/training:__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         # placeholder for index annotation deps
