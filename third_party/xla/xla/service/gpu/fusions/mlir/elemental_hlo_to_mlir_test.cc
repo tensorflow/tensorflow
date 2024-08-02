@@ -333,6 +333,79 @@ TEST_F(ElementalHloToMlirTest, Concatenate) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ConcatenateMany) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[10,1,30] parameter(0)
+      p1 = f32[10,2,30] parameter(1)
+      p2 = f32[10,3,30] parameter(2)
+      p3 = f32[10,4,30] parameter(3)
+      p4 = f32[10,5,30] parameter(4)
+      p5 = f32[10,6,30] parameter(5)
+      p6 = f32[10,7,30] parameter(6)
+      ROOT r = f32[10,28,30] concatenate(p0, p1, p2, p3, p4, p5, p6),
+          dimensions={1}
+    })",
+                   R"(
+      // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+      // CHECK-DAG:  %[[C3:.*]] = arith.constant 3 : index
+      // CHECK-DAG:  %[[C6:.*]] = arith.constant 6 : index
+      // CHECK-DAG:  %[[C10:.*]] = arith.constant 10 : index
+      // CHECK-DAG:  %[[C15:.*]] = arith.constant 15 : index
+      // CHECK-DAG:  %[[C21:.*]] = arith.constant 21 : index
+      // CHECK:      %[[P0TO2:.*]] = arith.cmpi ult, %[[I:.*]], %[[C6]]
+      // CHECK:      %[[CONCAT:.*]] = scf.if %[[P0TO2]] -> (f32)
+      // CHECK-NEXT:   %[[P0:.*]] = arith.cmpi ult, %[[I]], %[[C1]]
+      // CHECK-NEXT:   scf.if %[[P0]]
+      // CHECK-NEXT:     tensor.extract {{.*}}[{{.*}}, %[[I]], {{.*}}] : tensor<10x1x30xf32>
+      // CHECK-NEXT:     yield
+      // CHECK-NEXT:   } else {
+      // CHECK-NEXT:     %[[P1:.*]] = arith.cmpi ult, %[[I]], %[[C3]]
+      // CHECK-NEXT:     scf.if %[[P1]]
+      // CHECK-NEXT:       %[[O:.*]] = arith.subi %[[I]], %[[C1]]
+      // CHECK-NEXT:       tensor.extract {{.*}}[{{.*}}, %[[O]], {{.*}}] : tensor<10x2x30xf32>
+      // CHECK-NEXT:       yield
+      // CHECK-NEXT:     } else {
+      // CHECK-NEXT:       %[[O:.*]] = arith.subi %[[I]], %[[C3]]
+      // CHECK-NEXT:       tensor.extract {{.*}}[{{.*}}, %[[O]], {{.*}}] : tensor<10x3x30xf32>
+      // CHECK-NEXT:       yield
+      // CHECK-NEXT:     }
+      // CHECK-NEXT:     yield
+      // CHECK-NEXT:   }
+      // CHECK-NEXT:   yield
+      // CHECK-NEXT: } else {
+      // CHECK-NEXT:   %[[P3TO4:.*]] = arith.cmpi ult, %[[I]], %[[C15]]
+      // CHECK-NEXT:   scf.if %[[P3TO4]]
+      // CHECK-NEXT:     %[[P3:.*]] = arith.cmpi ult, %[[I]], %[[C10]]
+      // CHECK-NEXT:     scf.if %[[P3]]
+      // CHECK-NEXT:       %[[O:.*]] = arith.subi %[[I]], %[[C6]]
+      // CHECK-NEXT:       tensor.extract {{.*}}[{{.*}}, %[[O]], {{.*}}] : tensor<10x4x30xf32>
+      // CHECK-NEXT:       yield
+      // CHECK-NEXT:     } else {
+      // CHECK-NEXT:       %[[O:.*]] = arith.subi %[[I]], %[[C10]]
+      // CHECK-NEXT:       tensor.extract {{.*}}[{{.*}}, %[[O]], {{.*}}] : tensor<10x5x30xf32>
+      // CHECK-NEXT:       yield
+      // CHECK-NEXT:     }
+      // CHECK-NEXT:     yield
+      // CHECK-NEXT:   } else {
+      // CHECK-NEXT:     %[[P5:.*]] = arith.cmpi ult, %[[I]], %[[C21]]
+      // CHECK-NEXT:     scf.if %[[P5]]
+      // CHECK-NEXT:       %[[O:.*]] = arith.subi %[[I]], %[[C15]]
+      // CHECK-NEXT:       tensor.extract {{.*}}[{{.*}}, %[[O]], {{.*}}] : tensor<10x6x30xf32>
+      // CHECK-NEXT:       yield
+      // CHECK-NEXT:     } else {
+      // CHECK-NEXT:       %[[O:.*]] = arith.subi %[[I]], %[[C21]]
+      // CHECK-NEXT:       tensor.extract {{.*}}[{{.*}}, %[[O]], {{.*}}] : tensor<10x7x30xf32>
+      // CHECK-NEXT:       yield
+      // CHECK-NEXT:     }
+      // CHECK-NEXT:     yield
+      // CHECK-NEXT:   }
+      // CHECK-NEXT:   yield
+      // CHECK-NEXT: }
+      // CHECK-NEXT: return %[[CONCAT]]
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, ConcatenateUnsigned) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
