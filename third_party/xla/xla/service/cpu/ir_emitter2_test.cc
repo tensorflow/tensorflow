@@ -142,6 +142,8 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK:      ret ptr null
     CHECK: }
 
+    #0 = { uwtable "frame-pointer"="all" "prefer-vector-width"="256" }
+
     CHECK-DAG: ![[ALIGNMENT]] = !{i64 16}
     CHECK-DAG: ![[SCOPE0]] = !{}
     CHECK-DAG: ![[SCOPE1]] = !{![[RES0:.+]], ![[RES1:.+]]}
