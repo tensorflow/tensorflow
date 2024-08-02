@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/verifier.h"
-#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -468,7 +467,8 @@ class FlatBufferModelBase {
         // '\0's in the buffer.
         for (int len = 0; len < array->size(); ++len) {
           if (array->data()[len] == '\0') {
-            return string(reinterpret_cast<const char*>(array->data()), len);
+            return std::string(reinterpret_cast<const char*>(array->data()),
+                               len);
           }
         }
         // If there is no '\0' in the buffer, this indicates that the flatbuffer
@@ -503,8 +503,8 @@ class FlatBufferModelBase {
       if (!buffer || !buffer->data()) continue;
       const flatbuffers::Vector<uint8_t>* array = buffer->data();
       if (!array) continue;
-      std::string val =
-          string(reinterpret_cast<const char*>(array->data()), array->size());
+      std::string val = std::string(
+          reinterpret_cast<const char*>(array->data()), array->size());
       // Skip if key or value of metadata is empty.
       if (!metadata->name() || val.empty()) continue;
       keys_values[metadata->name()->str()] = val;

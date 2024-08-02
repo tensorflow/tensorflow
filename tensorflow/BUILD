@@ -1439,7 +1439,6 @@ tf_cc_shared_library(
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
         "//tensorflow/dtensor/cc:tensor_layout",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/internal:compatibility",
