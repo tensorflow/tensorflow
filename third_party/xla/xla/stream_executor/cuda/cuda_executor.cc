@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/numeric/int128.h"
 #include "absl/strings/str_join.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/cuda/cuda_fft.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
@@ -665,8 +664,18 @@ fft::FftSupport* GpuExecutor::AsFft() {
   if (fft_ != nullptr) {
     return fft_.get();
   }
+  PluginRegistry* registry = PluginRegistry::Instance();
+  absl::StatusOr<PluginRegistry::FftFactory> status =
+      registry->GetFactory<PluginRegistry::FftFactory>(cuda::kCudaPlatformId);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to retrieve FFT factory: "
+               << status.status().message();
+    return nullptr;
+  }
 
-  fft_ = std::make_unique<gpu::CUDAFft>(this);
+  auto fft = status.value()(this);
+
+  fft_.reset(fft);
   return fft_.get();
 }
 
