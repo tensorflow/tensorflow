@@ -60,6 +60,8 @@ using mlir::getAffineDimExpr;
 using mlir::getAffineSymbolExpr;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
+using mlir::OpAsmParser;
+using mlir::OpAsmPrinter;
 using mlir::OpBuilder;
 using mlir::OperationState;
 using mlir::PatternRewriter;
@@ -139,14 +141,14 @@ void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
 
 // Parses a comma-separated list of operands, ex: %d1, %d2.
 mlir::ParseResult parseOperands(
-    mlir::OpAsmParser& parser,
-    SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4>* operands) {
-  mlir::OpAsmParser::UnresolvedOperand operand;
+    OpAsmParser& parser,
+    SmallVector<OpAsmParser::UnresolvedOperand, 4>* operands) {
+  OpAsmParser::UnresolvedOperand operand;
   return parser.parseCommaSeparatedList(
       [&]() { return parser.parseOperand(operands->emplace_back()); });
 }
 
-mlir::ParseResult ApplyIndexingOp::parse(mlir::OpAsmParser& parser,
+mlir::ParseResult ApplyIndexingOp::parse(OpAsmParser& parser,
                                          OperationState& result) {
   mlir::Builder& builder = parser.getBuilder();
   auto index_type = builder.getIndexType();
@@ -157,7 +159,7 @@ mlir::ParseResult ApplyIndexingOp::parse(mlir::OpAsmParser& parser,
     return failure();
   }
 
-  SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> operands;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
   SmallVector<int64_t, 4> lower_bounds, upper_bounds;
   if (succeeded(parser.parseOptionalLParen())) {
     if (parseOperands(parser, &operands) || parser.parseRParen()) {
@@ -178,7 +180,7 @@ mlir::ParseResult ApplyIndexingOp::parse(mlir::OpAsmParser& parser,
   return success();
 }
 
-void ApplyIndexingOp::print(mlir::OpAsmPrinter& p) {
+void ApplyIndexingOp::print(OpAsmPrinter& p) {
   AffineMap affine_map = getIndexingMapAttr().getMap();
   p << " " << getIndexingMapAttr();
 
@@ -579,6 +581,123 @@ void SyncThreadsOp::getAsmResultNames(
   for (auto result : getResults()) {
     setNameFn(result, "synced_tensor");
   }
+}
+
+//===----------------------------------------------------------------------===//
+// LoopOp
+//===----------------------------------------------------------------------===//
+
+mlir::ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
+  SmallVector<OpAsmParser::Argument, 4> region_args, ivs, iter_args;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> dim_operands;
+
+  // Parse the dimension values.
+  OpBuilder b(parser.getContext());
+  Type index_type = b.getIndexType();
+  if (parser.parseOperandList(dim_operands, OpAsmParser::Delimiter::Paren) ||
+      parser.resolveOperands(dim_operands, index_type, result.operands))
+    return failure();
+  // Parse the induction variables.
+  if (parser.parseArgumentList(ivs, OpAsmParser::Delimiter::Square))
+    return failure();
+  for (auto iv : ivs) {
+    region_args.push_back(iv);
+    region_args.back().type = index_type;
+  }
+
+  // Parse the indexing map attribute.
+  IndexingMapAttr indexing_map_attr;
+  if (parser.parseKeyword("in") ||
+      parser.parseAttribute(indexing_map_attr, "indexing_map_attr",
+                            result.attributes)) {
+    return failure();
+  }
+
+  // Parse the arguments.
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> init_operands;
+  if (parser.parseKeyword("iter_args") ||
+      parser.parseAssignmentList(iter_args, init_operands) ||
+      parser.parseArrowTypeList(result.types) ||
+      parser.resolveOperands(init_operands, result.types, parser.getNameLoc(),
+                             result.operands))
+    return failure();
+
+  for (auto [index, iter_arg] : llvm::enumerate(iter_args)) {
+    region_args.push_back(iter_arg);
+    region_args.back().type = result.types[index];
+  }
+
+  if (region_args.size() != result.types.size() + ivs.size()) {
+    return parser.emitError(parser.getNameLoc(),
+                            "mismatch in number of induction variables + "
+                            "loop-carried values and the number of results");
+  }
+
+  // Parse the body region.
+  Region* body = result.addRegion();
+  if (parser.parseRegion(*body, region_args)) return failure();
+  LoopOp::ensureTerminator(*body, b, result.location);
+
+  // Parse the optional attribute list
+  result.addAttribute(
+      LoopOp::getOperandSegmentSizeAttr(),
+      b.getDenseI32ArrayAttr({static_cast<int32_t>(dim_operands.size()),
+                              static_cast<int32_t>(iter_args.size())}));
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+
+  return success();
+}
+
+void LoopOp::print(OpAsmPrinter& p) {
+  p << " (" << getDims() << ")[" << getInductionVars() << "] in "
+    << getIndexingMapAttr() << " iter_args(";
+  llvm::interleaveComma(
+      llvm::zip(getRegionIterArgs(), getInits()), p,
+      [&](auto it) { p << std::get<0>(it) << " = " << std::get<1>(it); });
+  p << ") -> (" << getInits().getTypes() << ") ";
+  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/true);
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{
+                              getIndexingMapAttrAttrName(),
+                              getOperandSegmentSizesAttrName(),
+                          });
+}
+
+LogicalResult LoopOp::verify() {
+  if (getInits().size() != getNumResults()) {
+    return emitOpError("mismatch in number of loop-carried values and results");
+  }
+  IndexingMap indexing_map = getIndexingMap();
+  if (indexing_map.GetRangeVarsCount() != getNumInductionVars()) {
+    return emitOpError() << "mismatch in number of induction variables "
+                         << getNumInductionVars()
+                         << " and RangeVars in the indexing map "
+                         << indexing_map.ToString();
+  }
+  if (indexing_map.GetDimVarsCount() != getDims().size()) {
+    return emitOpError() << "mismatch in number of dims operands "
+                         << getDims().size()
+                         << " and DimVars in the indexing map "
+                         << indexing_map.ToString();
+  }
+  for (auto [bb_arg, result_type, init] :
+       llvm::zip(getRegionIterArgs(), getResultTypes(), getInits())) {
+    if (bb_arg.getType() != result_type || init.getType() != result_type) {
+      return emitOpError() << "block iter arg type = " << bb_arg.getType()
+                           << ", result type = " << result_type
+                           << " and init operand type = " << init.getType()
+                           << " should match";
+    }
+  }
+  return success();
+}
+
+IndexingMap LoopOp::getIndexingMap() {
+  return IndexingMap(getIndexingMapAttr().getMap(),
+                     getIndexingMapAttr().getDimVars(),
+                     getIndexingMapAttr().getRangeVars(),
+                     /*rt_vars=*/{}, getIndexingMapAttr().getConstraints());
 }
 
 }  // namespace gpu

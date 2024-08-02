@@ -22,6 +22,7 @@ include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.td"
 include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.td"
 
@@ -105,11 +106,13 @@ def XLAGPU_AtomicRMWOp : XLAGPU_Op<"atomic_rmw",
   }];
 }
 
-def XLAGPU_YieldOp : XLAGPU_Op<"yield",
-    [HasParent<"::xla::gpu::AtomicRMWOp">, Terminator]> {
+def XLAGPU_YieldOp : XLAGPU_Op<"yield", [
+    ParentOneOf<["::xla::gpu::AtomicRMWOp", "::xla::gpu::LoopOp"]>,
+    ReturnLike, Terminator]> {
   let summary = "Terminator for atomic_rmw ops.";
   let arguments = (ins AnyType:$result);
 
+  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
   let assemblyFormat = "$result attr-dict `:` type($result)";
 }
 
@@ -256,7 +259,7 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
                "llvm::ArrayRef<RangeVar>":$range_vars)>,
   ];
   let extraClassDeclaration = [{
-    // Returns the indexing map constructed from affine_map and the bounds.
+    // Returns the indexing map constructed from IndexingMapAttr.
     xla::gpu::IndexingMap getIndexingMap();
     // Extracts the affine map from the attribute.
     mlir::AffineMap getAffineMap() { return getIndexingMapAttr().getMap(); }
@@ -265,6 +268,59 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+}
+
+def LoopOp : XLAGPU_Op<"loop", [
+    AttrSizedOperandSegments, Pure,
+    SingleBlockImplicitTerminator<"xla::gpu::YieldOp">
+  ]> {
+  let summary = "Loop nest that iterates over all feasible values of RangeVars.";
+  let description = [{
+
+    ```mlir
+      #map = #xla_gpu.indexing_map<(d0)[s0, s1] -> (d0 + s0, s1),
+        domain:
+        d0 in [0, 3],
+        s0 in [0, 1024],
+        s1 in [0, 32]
+      >
+      // Initial sum set to 0.
+      %sum_0 = arith.constant 0.0 : f32
+      %dim = arith.constant 1 : index
+      // iter_args binds initial values to the loop's region arguments.
+      %sum = xla_gpu.loop (%dim)[%i, %j] in #map iter_args(%sum_iter = %sum_0) -> (f32) {
+        %t = tensor.extract %buffer[%i, %j] : tensor<1024x32xf32>
+        %sum_next = arith.addf %sum_iter, %t : f32
+        // Yield current iteration sum to next iteration %sum_iter or to %sum
+        // if final iteration.
+        scf.yield %sum_next : f32
+      }
+    ```
+  }];
+  let arguments = (ins XLAGPU_IndexingMapAttr:$indexing_map_attr,
+                       Variadic<Index>:$dims,
+                       Variadic<AnyType>:$inits);
+  let results = (outs Variadic<AnyType>);
+  let regions = (region SizedRegion<1>:$region);
+
+  let extraClassDeclaration = [{
+    // Returns the indexing map constructed from IndexingMapAttr.
+    xla::gpu::IndexingMap getIndexingMap();
+    int64_t getNumInductionVars() {
+      return getBody()->getNumArguments() - getNumResults();
+    }
+    mlir::BlockArgument getInductionVar(int64_t index) {
+      return getBody()->getArgument(index);
+    }
+    mlir::Block::BlockArgListType getInductionVars() {
+      return getBody()->getArguments().take_front(getNumInductionVars());
+    }
+    mlir::Block::BlockArgListType getRegionIterArgs() {
+      return getBody()->getArguments().drop_front(getNumInductionVars());
+    }
+  }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

@@ -124,3 +124,22 @@ func.func @apply_indexing_no_dims(%s0: index) -> (index, index) {
 // CHECK-LABEL: @apply_indexing_no_dims
 // CHECK: (%[[s0:.*]]: index)
 // CHECK: xla_gpu.apply_indexing #[[$MAP0]][%[[s0]]]
+
+// -----
+
+#map = #xla_gpu.indexing_map<(d0)[s0, s1] -> (s0, s1), domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32]>
+func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32) {
+  %sum = xla_gpu.loop (%dim)[%i, %j] in #map iter_args(%sum_ = %init) -> (f32) {
+    %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
+    %add = arith.addf %sum_, %t : f32
+    xla_gpu.yield %add : f32
+  } {xla.range = [0 : index, 42 : index]}
+  func.return %sum : f32
+}
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map
+// CHECK:      %0 = xla_gpu.loop (%{{.*}})[%[[I:.*]], %[[J:.*]]] in #[[$MAP]]
+// CHECK-SAME:     iter_args(%[[SUM_ITER:.*]] = %{{.*}}) -> (f32) {
+// CHECK:        %[[EXTRACTED:.*]] = tensor.extract %{{.*}}[%[[I]], %[[J]]]
+// CHECK:        %[[ADD:.*]] = arith.addf %{{.*}}, %[[EXTRACTED]] : f32
+// CHECK:        xla_gpu.yield %[[ADD]] : f32 
+// CHECK:      } {xla.range = [0 : index, 42 : index]}
