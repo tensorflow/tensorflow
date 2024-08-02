@@ -1,66 +1,15 @@
 diff --git i/third_party/llvm/workspace.bzl w/third_party/llvm/workspace.bzl
-index 415ba34..a1cff7e 100644
+index a1cff7e..63c6e1b 100644
 --- i/third_party/llvm/workspace.bzl
 +++ w/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "c6ce324fa7fb2438b945fa1205b2a23138327e83"
--    LLVM_SHA256 = "59509548e930f6145344850cade577c17798486c654e7ff0a76b127000847ba6"
-+    LLVM_COMMIT = "90617e99bb17303b351351681a70394c312e0e58"
-+    LLVM_SHA256 = "0c2469cd181002520212f7bf01234ae59524ef67db3181ddcc0e846ed7a90197"
+-    LLVM_COMMIT = "90617e99bb17303b351351681a70394c312e0e58"
+-    LLVM_SHA256 = "0c2469cd181002520212f7bf01234ae59524ef67db3181ddcc0e846ed7a90197"
++    LLVM_COMMIT = "0b92e70dfb7a3b49c24157d0a1b93d127f622683"
++    LLVM_SHA256 = "0a6d078cee61bcd60250f039a419235215096a564e0f5bb98f8872445fb09742"
  
      tf_http_archive(
          name = name,
-diff --git i/third_party/stablehlo/temporary.patch w/third_party/stablehlo/temporary.patch
-index 8b13789..503052e 100755
---- i/third_party/stablehlo/temporary.patch
-+++ w/third_party/stablehlo/temporary.patch
-@@ -1 +1,31 @@
-+diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/PortableApi.h
-+--- stablehlo/stablehlo/api/PortableApi.h
-++++ stablehlo/stablehlo/api/PortableApi.h
-+@@ -27,7 +27,7 @@
-+ 
-+ /// Return the current version for portable API.
-+ /// Increments on all meaningful changes to this file.
-+-inline int64_t getApiVersion() { return 7; }
-++inline int64_t getApiVersion() { return 8; }
-+ 
-+ // Get the smaller version between version1 and version2.
-+ LogicalResult getSmallerVersion(const std::string& version1,
-+diff --ruN a/stablehlo/stablehlo/tests/math/ulp_difference_float32.mlir b/stablehlo/stablehlo/tests/math/ulp_difference_float32.mlir
-+--- stablehlo/stablehlo/tests/math/ulp_difference_float32.mlir
-++++ stablehlo/stablehlo/tests/math/ulp_difference_float32.mlir
-+@@ -1,4 +1,5 @@
-+ // RUN: stablehlo-opt --chlo-legalize-to-stablehlo %s | stablehlo-translate --interpret
-++// XFAIL: *
-+ // This file is generated, see build_tools/math/README.md for more information.
-+ module @ulp_difference_float32 {
-+   func.func public @main() {
-+diff --ruN a/stablehlo/stablehlo/tests/math/ulp_difference_float64.mlir b/stablehlo/stablehlo/tests/math/ulp_difference_float64.mlir
-+--- stablehlo/stablehlo/tests/math/ulp_difference_float64.mlir
-++++ stablehlo/stablehlo/tests/math/ulp_difference_float64.mlir
-+@@ -1,4 +1,5 @@
-+ // RUN: stablehlo-opt --chlo-legalize-to-stablehlo %s | stablehlo-translate --interpret
-++// XFAIL: *
-+ // This file is generated, see build_tools/math/README.md for more information.
-+ module @ulp_difference_float64 {
-+   func.func public @main() {
- 
-diff --git i/third_party/stablehlo/workspace.bzl w/third_party/stablehlo/workspace.bzl
-index 4008a2b..91e512d 100644
---- i/third_party/stablehlo/workspace.bzl
-+++ w/third_party/stablehlo/workspace.bzl
-@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
- 
- def repo():
-     #
--    STABLEHLO_COMMIT = "2fcbae0c933b5cc2735523bab2de880a3a9c5e46"
--    STABLEHLO_SHA256 = "14f879b246266dc7c5cb49cdbf88c87ebac0444e3ebae04b57448d4bbc2fe180"
-+    STABLEHLO_COMMIT = "fb18ee251b81a43fd9a0f45f2f34770389e916d0"
-+    STABLEHLO_SHA256 = "03b9bd8a0e1ec68ced545c59e75796d37a3b7507f283f276c5fa0ab21a9becad"
-     #
- 
-     tf_http_archive(
