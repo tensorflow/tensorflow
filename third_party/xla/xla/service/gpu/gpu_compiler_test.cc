@@ -391,7 +391,6 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
-  GTEST_SKIP() << "TODO(b/354864068): Test fails in OSS stack on A100-80.";
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()

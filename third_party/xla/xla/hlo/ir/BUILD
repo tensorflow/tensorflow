@@ -72,6 +72,7 @@ cc_library(
         "//xla:protobuf_util",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:sort_json",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",

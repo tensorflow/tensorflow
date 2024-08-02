@@ -98,6 +98,7 @@ class HloPrintOptions {
         print_metadata_(true),
         print_metadata_only_op_name_(false),
         print_backend_config_(true),
+        sort_backend_config_(false),
         print_infeed_outfeed_config_(true),
         compact_operands_(false),
         include_layout_in_shapes_(true),
@@ -215,6 +216,14 @@ class HloPrintOptions {
   // If true, backend_config will be printed.
   HloPrintOptions& set_print_backend_config(bool value) {
     print_backend_config_ = value;
+    return *this;
+  }
+
+  // If true, will attempt to sort the backend config's json representation
+  // before printing it. If the backend config is a raw string that is not json,
+  // it will be printed as is, without sorting.
+  HloPrintOptions& set_sort_backend_config(bool value) {
+    sort_backend_config_ = value;
     return *this;
   }
 
@@ -382,6 +391,7 @@ class HloPrintOptions {
     return print_metadata_only_op_name_;
   }
   bool print_backend_config() const { return print_backend_config_; }
+  bool sort_backend_config() const { return sort_backend_config_; }
   bool print_infeed_outfeed_config() const {
     return print_infeed_outfeed_config_;
   }
@@ -422,6 +432,7 @@ class HloPrintOptions {
   bool print_metadata_;
   bool print_metadata_only_op_name_;
   bool print_backend_config_;
+  bool sort_backend_config_;
   bool print_infeed_outfeed_config_;
   bool compact_operands_;
   bool include_layout_in_shapes_;

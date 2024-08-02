@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -3635,6 +3636,13 @@ void HloInstruction::PrintWithCanonicalNameMap(
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
     absl::string_view config = backend_config_.GetRawString();
+    std::string sorted_config;
+    if (options.sort_backend_config()) {
+      // Use `value_or` below, because the backend config string isn't
+      // guaranteed to be a JSON string.
+      sorted_config = SortJson(config).value_or(std::string(config));
+      config = sorted_config;
+    }
     printer->Append(", backend_config=");
     // In the common case that the backend-config is valid-ish JSON, the parser
     // doesn't need it delimited by quotes, so we can print it without
