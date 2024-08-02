@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "xla/service/bfloat16_propagation.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -564,6 +570,44 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
   }
 }
 
+void BFloat16Propagation::ResolveForSupportOfMixedPrecision() {
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> instructions_to_revert;
+  auto add_instruction_to_revert_list =
+      [&](HloInstruction* instruction,
+          const absl::flat_hash_map<Shape*, ShapeIndex>& shape_map) {
+        for (const auto& shape_index_pair : shape_map) {
+          instructions_to_revert.push_back(
+              std::make_pair(instruction, shape_index_pair.second));
+        }
+      };
+  for (auto it = changes_to_bf16_.begin(); it != changes_to_bf16_.end(); ++it) {
+    HloInstruction* instruction = it->first;
+    if (!bfloat16_support_->SupportsMixedPrecisions(*instruction)) {
+      // This instruction is supposed to be changed to BF16, all of its operands
+      // must also be changed to BF16.
+      for (HloInstruction* operand : instruction->operands()) {
+        if (!changes_to_bf16_.contains(operand)) {
+          // One of the operands is not changed to BF16, we need to revert the
+          // change of this instruction.
+          VLOG(2) << absl::StreamFormat(
+              "Instruction %s should be BF16, but operand %d (%s) is not. "
+              "Since mixed precision is not supported for %s, we are reverting "
+              "this change.",
+              instruction->name(), instruction->operand_index(operand),
+              operand->name(), instruction->name());
+          add_instruction_to_revert_list(instruction, it->second);
+          break;
+        }
+      }
+    }
+  }
+  for (const std::pair<HloInstruction*, ShapeIndex>& instruction_and_shape :
+       instructions_to_revert) {
+    AddToOrRemoveFromBF16ChangeSet(instruction_and_shape.first,
+                                   instruction_and_shape.second, F32);
+  }
+}
+
 bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
     HloComputation* computation,
     absl::flat_hash_set<const HloComputation*>* visited_computations) {
@@ -577,7 +621,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       auto hlo = *inst_it;
       auto adjust_hlo_output = [&](const Shape& /* subshape */,
                                    const ShapeIndex& index) {
-        auto output_type = OutputTypeAfterChange(hlo, index);
+        const PrimitiveType output_type = OutputTypeAfterChange(hlo, index);
         VLOG(2) << "output_type is " << ((output_type == BF16) ? "BF16" : "F32")
                 << " for :" << hlo->ToString() << "\n";
         if (output_type != F32 && output_type != BF16) {
@@ -909,6 +953,10 @@ absl::StatusOr<bool> BFloat16Propagation::Run(
     computations_visited_in_backward_pass_.insert(*comp_it);
   }
 
+  // We might have propagated type changes partially over an instruction which
+  // does not support mixed precision. Revert such cases.
+  ResolveForSupportOfMixedPrecision();
+
   // It's possible that an instruction does not define a buffer, but the
   // defining instruction's shape has changed. So we need to adjust the output
   // shapes of instructions according to the HLO values they refer to.
@@ -1018,6 +1066,9 @@ void BFloat16Propagation::AddToOrRemoveFromBF16ChangeSet(
     }
     it->second.erase(
         ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index));
+    if (it->second.empty()) {
+      changes_to_bf16_.erase(it);
+    }
   }
 }
 

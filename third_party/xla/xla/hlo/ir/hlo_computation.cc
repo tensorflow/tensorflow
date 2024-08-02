@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -1373,8 +1374,11 @@ absl::StatusOr<bool> HloComputation::ReplaceInstruction(
     bool remove_unused_operands) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
-      << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
-      << ShapeUtil::HumanString(new_instruction->shape());
+      << absl::StreamFormat("\"%s\" (%s) vs \"%s\" (%s)",
+                            old_instruction->name(),
+                            ShapeUtil::HumanString(old_instruction->shape()),
+                            new_instruction->name(),
+                            ShapeUtil::HumanString(new_instruction->shape()));
   return ReplaceInstructionWithDifferentShape(
       old_instruction, new_instruction, preserve_sharding,
       relay_control_dependency, remove_unused_operands);
