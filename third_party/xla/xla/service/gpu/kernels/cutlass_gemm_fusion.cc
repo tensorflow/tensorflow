@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -136,13 +137,21 @@ static absl::Status MatchSimpleGemm(
   return absl::InternalError("unsupported operands type");
 }
 
-// Returns matched GEMM with one of the operands upcasted to the accumulator
-// data type with an HLO convert instruction.
+// Returns matched GEMM with one or both the operands upcasted to the
+// accumulator data type with an HLO convert instruction.
 static absl::StatusOr<GemmWithUpcast> MatchGemmWithUpcast(
     HloDotInstruction* dot) {
   TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
   GemmWithUpcast match(dot);
+
+  // C <- convert(A) * convert(B)
+  if (Match(const_cast<HloInstruction*>(dot->operand(0)),
+            m::Convert(&match.lhs_upcast, m::Op())) &&
+      Match(const_cast<HloInstruction*>(dot->operand(1)),
+            m::Convert(&match.rhs_upcast, m::Op()))) {
+    return match;
+  }
 
   // C <- convert(A) * B
   if (Match(const_cast<HloInstruction*>(dot->operand(0)),
@@ -254,16 +263,19 @@ CutlassGemmWithUpcastPattern::TryMatch(const se::DeviceDescription& device,
   if (!dot) return std::nullopt;
 
   auto matched = MatchGemmWithUpcast(dot);
-  if (!matched.ok()) return std::nullopt;
 
-  // Only one operand can be upcasted.
-  DCHECK(matched->lhs_upcast == nullptr || matched->rhs_upcast == nullptr);
+  if (!matched.ok()) return std::nullopt;
 
   CustomFusionConfig config;
   config.set_name("cutlass_gemm_with_upcast");
 
-  return matched->lhs_upcast ? Match{config, {matched->lhs_upcast, instr}}
-                             : Match{config, {matched->rhs_upcast, instr}};
+  if (matched->lhs_upcast != nullptr && matched->rhs_upcast == nullptr) {
+    return Match{config, {matched->lhs_upcast, instr}};
+  } else if (matched->rhs_upcast != nullptr && matched->lhs_upcast == nullptr) {
+    return Match{config, {matched->rhs_upcast, instr}};
+  } else {
+    return Match{config, {matched->lhs_upcast, matched->rhs_upcast, instr}};
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -283,7 +295,7 @@ class CutlassGemmFusion : public CustomKernelFusion {
 
     TF_RETURN_IF_ERROR(MatchSimpleGemm(dot, {PrimitiveType::F32}));
 
-    auto dtype = dot->shape().element_type();
+    PrimitiveType dot_type = dot->shape().element_type();
 
     auto* lhs = Cast<HloParameterInstruction>(dot->operand(0));
     auto* rhs = Cast<HloParameterInstruction>(dot->operand(1));
@@ -293,15 +305,19 @@ class CutlassGemmFusion : public CustomKernelFusion {
         lhs->parameter_number(), rhs->parameter_number(),
         computation->num_parameters()};
 
-    auto& lhs_shape = lhs->shape();
-    auto& rhs_shape = rhs->shape();
+    const Shape& lhs_shape = lhs->shape();
+    const Shape& rhs_shape = rhs->shape();
 
     size_t m = lhs_shape.dimensions(0);
     size_t k = lhs_shape.dimensions(1);
     size_t n = rhs_shape.dimensions(1);
 
+    PrimitiveType lhs_type = lhs->shape().element_type();
+    PrimitiveType rhs_type = rhs->shape().element_type();
+
     return kernel::gemm_universal::GetCutlassGemmKernels(
-        "cutlass_gemm", dtype, m, n, k, indices, /*slices=*/{}, device);
+        "cutlass_gemm", dot_type, lhs_type, rhs_type, m, n, k, indices,
+        /*slices=*/{}, device);
   }
 };
 
@@ -316,20 +332,44 @@ class CutlassGemmWithUpcastFusion : public CustomKernelFusion {
           "cutlass_gemm requires ROOT operation to be a dot");
     }
 
-    TF_ASSIGN_OR_RETURN(auto matched, MatchGemmWithUpcast(dot));
+    TF_ASSIGN_OR_RETURN(GemmWithUpcast matched, MatchGemmWithUpcast(dot));
 
-    // We only support upcasting of rhs operand.
-    if (matched.lhs_upcast != nullptr)
-      return absl::InternalError("only rhs upcasting is implemented");
+    // We only support upcasting of both operands.
+    if (matched.lhs_upcast == nullptr || matched.rhs_upcast == nullptr) {
+      return absl::InternalError(
+          "Both lhs and rhs operands have to be casted.");
+    }
 
-    auto dot_dtype = dot->shape().element_type();
-    auto upcast_dtype = matched.rhs_upcast->shape().element_type();
+    auto lhs_upcast =
+        Cast<HloParameterInstruction>(matched.lhs_upcast->operand(0));
+    auto rhs_upcast =
+        Cast<HloParameterInstruction>(matched.rhs_upcast->operand(0));
 
-    // We only support BF16 <- BF16 x S8 upcasted gemm.
-    if (dot_dtype != PrimitiveType::BF16 || upcast_dtype != PrimitiveType::S8)
-      return absl::InternalError("unsupported upcasting pattern");
+    const Shape& lhs_upcast_shape = lhs_upcast->shape();
+    const Shape& rhs_upcast_shape = rhs_upcast->shape();
 
-    return absl::UnimplementedError("requires CUTLASS 3.3.0");
+    size_t m = lhs_upcast_shape.dimensions(0);
+    size_t k = lhs_upcast_shape.dimensions(1);
+    size_t n = rhs_upcast_shape.dimensions(1);
+
+    PrimitiveType dot_type = dot->shape().element_type();
+    PrimitiveType lhs_upcast_type = lhs_upcast_shape.element_type();
+    PrimitiveType rhs_upcast_type = rhs_upcast_shape.element_type();
+
+    // We only support F32 <- BF16 x BF16 upcasted gemm.
+    if (dot_type != PrimitiveType::F32 ||
+        lhs_upcast_type != PrimitiveType::BF16 ||
+        rhs_upcast_type != PrimitiveType::BF16)
+      return absl::InternalError("unsupported upcasting pattern: ");
+
+    // Mapping from fusion arguments to gemm kernel arguments.
+    kernel::gemm_universal::ArgsIndices args_indices = {
+        lhs_upcast->parameter_number(), rhs_upcast->parameter_number(),
+        computation->num_parameters()};
+
+    return kernel::gemm_universal::GetCutlassGemmKernels(
+        "cutlass_gemm_with_dynamic_update_slice", dot_type, lhs_upcast_type,
+        rhs_upcast_type, m, n, k, args_indices, /*slices=*/{}, device);
   }
 };
 
@@ -353,7 +393,7 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomKernelFusion {
         MatchSimpleGemm(Cast<HloDotInstruction>(matched.dot),
                         {PrimitiveType::F32, PrimitiveType::BF16}));
 
-    auto dtype = matched.dot->shape().element_type();
+    auto dot_type = matched.dot->shape().element_type();
 
     auto* lhs = Cast<HloParameterInstruction>(matched.dot->operand(0));
     auto* rhs = Cast<HloParameterInstruction>(matched.dot->operand(1));
@@ -370,21 +410,25 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomKernelFusion {
     kernel::gemm_universal::DynamicSliceIndices slices;
     slices.out = offset->parameter_number();
 
-    auto& lhs_shape = lhs->shape();
-    auto& rhs_shape = rhs->shape();
+    const Shape& lhs_shape = lhs->shape();
+    const Shape& rhs_shape = rhs->shape();
 
     size_t m = lhs_shape.dimensions(0);
     size_t k = lhs_shape.dimensions(1);
     size_t n = rhs_shape.dimensions(1);
 
+    PrimitiveType lhs_type = lhs->shape().element_type();
+    PrimitiveType rhs_type = rhs->shape().element_type();
+
     return kernel::gemm_universal::GetCutlassGemmKernels(
-        "cutlass_gemm_with_dynamic_update_slice", dtype, m, n, k, args_indices,
-        slices, device);
+        "cutlass_gemm_with_dynamic_update_slice", dot_type, lhs_type, rhs_type,
+        m, n, k, args_indices, slices, device);
   }
 };
 
 }  // namespace xla::gpu
 
+XLA_REGISTER_CUSTOM_FUSION_PATTERN(::xla::gpu::CutlassGemmWithUpcastPattern);
 XLA_REGISTER_CUSTOM_FUSION_PATTERN(
     ::xla::gpu::CutlassGemmWithDynamicUpdateSlicePattern);
 

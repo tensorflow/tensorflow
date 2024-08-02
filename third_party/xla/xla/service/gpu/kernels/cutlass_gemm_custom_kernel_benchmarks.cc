@@ -54,7 +54,8 @@ static void BM_RowMajorGemm(benchmark::State& state) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto custom_kernels,
-      GetCutlassGemmKernels("cutlass_gemm", PrimitiveType::BF16, m, n, k,
+      GetCutlassGemmKernels("cutlass_gemm", PrimitiveType::BF16,
+                            PrimitiveType::BF16, PrimitiveType::BF16, m, n, k,
                             /*indices=*/{0, 1, 2}, /*slices=*/{}, device));
   const auto& custom_kernel = custom_kernels[0];
 

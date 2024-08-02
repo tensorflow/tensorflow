@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu {
@@ -41,10 +42,12 @@ class CutlassFusionTest : public HloTestBase {
         ->GetDeviceDescription()
         .shared_memory_per_block_optin();
   }
-  int CutlassGemmKernelSharedMemorySize(PrimitiveType dtype, int m, int n,
+  int CutlassGemmKernelSharedMemorySize(PrimitiveType dot_type,
+                                        PrimitiveType lhs_type,
+                                        PrimitiveType rhs_type, int m, int n,
                                         int k) {
     return kernel::gemm_universal::GetCutlassGemmKernels(
-               "cutlass_gemm", dtype, m, n, k,
+               "cutlass_gemm", dot_type, lhs_type, rhs_type, m, n, k,
                /*indices=*/{0, 1, 2}, /*slices=*/{},
                backend().default_stream_executor()->GetDeviceDescription())
         ->at(0)
@@ -118,6 +121,48 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
 
     ; CHECK: ENTRY %main {{.*}} {
     ; CHECK:   ROOT [[FUSION:%[^ ]+]] = bf16[15,17]{1,0} fusion
+    ; CHECK:     kind=kCustom, calls=%cutlass_gemm_with_upcast,
+    ; CHECK:     backend_config={
+    ; CHECK:       "kind":"__custom_fusion",
+    ; CHECK:       "custom_fusion_config":{"name":"cutlass_gemm_with_upcast","kernel_index":0}
+    ; CHECK:     }
+    ; CHECK: }
+  )";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
+}
+
+TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastOfBothOperands) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main (p0: bf16[15,19], p1: bf16[19,17]) -> f32[15,17] {
+      %p0 = bf16[15,19]{1,0} parameter(0)
+      %c1 = f32[15,19]{1,0} convert(%p0)
+      %p1 = bf16[19,17]{1,0} parameter(1)
+      %c2 = f32[19,17]{1,0} convert(%p1)
+      ROOT %r = f32[15,17]{1,0} dot(%c1, %c2),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK: %cutlass_gemm_with_upcast {{.*}} {
+    ; CHECK-DAG: [[P0:%[^ ]+]] = bf16[15,19]{1,0} parameter
+    ; CHECK:     [[C1:%[^ ]+]] = f32[15,19]{1,0} convert([[P0]])
+    ; CHECK-DAG: [[P1:%[^ ]+]] = bf16[19,17]{1,0} parameter
+    ; CHECK:     [[C2:%[^ ]+]] = f32[19,17]{1,0} convert([[P1]])
+    ; CHECK:     ROOT [[DOT:%[^ ]+]] = f32[15,17]{1,0} dot([[C1]], [[C2]]),
+    ; CHECK:       lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ; CHECK: }
+
+    ; CHECK: ENTRY %main {{.*}} {
+    ; CHECK:   ROOT [[FUSION:%[^ ]+]] = f32[15,17]{1,0} fusion
     ; CHECK:     kind=kCustom, calls=%cutlass_gemm_with_upcast,
     ; CHECK:     backend_config={
     ; CHECK:       "kind":"__custom_fusion",
@@ -371,7 +416,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
 
 TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
   if (GpuSharedMemorySize() <
-      CutlassGemmKernelSharedMemorySize(BF16, 8, 8, 8)) {
+      CutlassGemmKernelSharedMemorySize(BF16, BF16, BF16, 8, 8, 8)) {
     GTEST_SKIP_("The GPU does not have sufficient shared memory");
   }
 
@@ -445,7 +490,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
 TEST_F(CutlassFusionTest,
        RowMajorGemmWithDynamicUpdateSliceKernelWithoutBitcast) {
   if (GpuSharedMemorySize() <
-      CutlassGemmKernelSharedMemorySize(BF16, 8, 8, 8)) {
+      CutlassGemmKernelSharedMemorySize(BF16, BF16, BF16, 8, 8, 8)) {
     GTEST_SKIP_("The GPU does not have sufficient shared memory");
   }
 

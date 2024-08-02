@@ -52,6 +52,9 @@ struct Bf16xBf16ToBf16 {};
 template <Arch arch>
 struct F32xF32ToF32 {};
 
+template <Arch arch>
+struct Bf16xBf16ToF32 {};
+
 // A tag to specialize CUTLASS kernel adaptors for loading kernels from shared
 // libraries using dlopen.
 struct DlOpenedKernel {};

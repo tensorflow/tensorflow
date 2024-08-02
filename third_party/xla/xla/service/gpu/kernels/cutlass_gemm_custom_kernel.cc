@@ -204,17 +204,21 @@ static CustomKernel Load(std::string name, int32_t m, int32_t n, int32_t k,
 }
 
 absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
-    std::string name, PrimitiveType dtype, int32_t m, int32_t n, int32_t k,
+    std::string name, PrimitiveType dot_type, PrimitiveType lhs_type,
+    PrimitiveType rhs_type, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device) {
   auto& cuda_cc =
       std::get<se::CudaComputeCapability>(device.gpu_compute_capability());
 
-  switch (dtype) {
-    case PrimitiveType::F32:
-      return {{Load<F32xF32ToF32<Default>>(std::move(name), m, n, k, indices,
-                                           slices, device)}};
-    case PrimitiveType::BF16:
+  if (dot_type == PrimitiveType::F32 && lhs_type == PrimitiveType::F32 &&
+      rhs_type == PrimitiveType::F32) {
+    return {{Load<F32xF32ToF32<Default>>(std::move(name), m, n, k, indices,
+                                         slices, device)}};
+  }
+
+  if (dot_type == PrimitiveType::BF16 && lhs_type == PrimitiveType::BF16 &&
+      rhs_type == PrimitiveType::BF16) {
 #if CUDA_VERSION >= 12000
       if (cuda_cc.IsAtLeastHopper()) {
         return {{Load<Bf16xBf16ToBf16<Sm90>>(std::move(name), m, n, k, indices,
@@ -222,15 +226,20 @@ absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
       }
 #endif
       if (cuda_cc.IsAtLeastAmpere()) {
-        return {{Load<Bf16xBf16ToBf16<Sm80>>(std::move(name), m, n, k, indices,
-                                             slices, device)}};
+        return {{Load<Bf16xBf16ToBf16<Default>>(std::move(name), m, n, k,
+                                                indices, slices, device)}};
       }
       return {{Load<Bf16xBf16ToBf16<Default>>(std::move(name), m, n, k, indices,
                                               slices, device)}};
-
-    default:
-      return absl::InvalidArgumentError("Unsupported CUTLASS gemm data type");
   }
+
+  if (dot_type == PrimitiveType::F32 && lhs_type == PrimitiveType::BF16 &&
+      rhs_type == PrimitiveType::BF16) {
+    return {{Load<Bf16xBf16ToF32<Default>>(std::move(name), m, n, k, indices,
+                                           slices, device)}};
+  }
+
+  return absl::InvalidArgumentError("Unsupported CUTLASS gemm data type");
 }
 
 absl::StatusOr<CustomKernel> LoadCutlassGemmKernel(
