@@ -623,7 +623,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     double abs_err =
         std::abs(ReplaceInfWithMax(expected) - ReplaceInfWithMax(actual));
     double rel_err = abs_err / std::abs(ReplaceInfWithMax(expected));
-
     return abs_err <= spec.abs_err || rel_err <= spec.rel_err;
   }
 
@@ -1258,7 +1257,13 @@ class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
 };
 
 template <PrimitiveType T>
-using ExhaustiveBinaryTest = ExhaustiveOpTestBase<T, 2>;
+class ExhaustiveBinaryTest : public ExhaustiveOpTestBase<T, 2> {
+ public:
+  using typename ExhaustiveOpTestBase<T, 2>::ErrorSpecGen;
+  static ErrorSpecGen GetDefaultSpecGenerator() {
+    return exhaustive_op_test::GetDefaultSpecGenerator<T, 2>();
+  }
+};
 
 }  // namespace exhaustive_op_test
 }  // namespace xla

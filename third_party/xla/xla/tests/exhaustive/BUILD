@@ -184,6 +184,7 @@ xla_test(
     deps = [
         ":exhaustive_op_test_utils",
         "//xla:literal",
+        "//xla:types",
         "//xla/client:xla_builder",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/util:command_line_flags",

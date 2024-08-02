@@ -17,7 +17,9 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include "absl/log/check.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
 #include "tsl/platform/test.h"
 
 #ifdef __FAST_MATH__
@@ -115,10 +118,61 @@ BINARY_TEST_16BIT(Sub, {
   Run(AddEmptyBroadcastDimension(Sub), host_sub);
 })
 
-// TODO(bixia): Mul fails with bfloat16 on CPU.
-BINARY_TEST_16BIT(DISABLED_ON_CPU(Mul), {
-  auto host_mul = [](float x, float y) { return x * y; };
-  Run(AddEmptyBroadcastDimension(Mul), host_mul);
+// Can be thought of as an absolute error of `<=
+// |std::numeric_limits::<float>::min()|`.
+double MulCpuBf16AbsErr(xla::bfloat16 left, xla::bfloat16 right) {
+  float output = static_cast<float>(left) * static_cast<float>(right);
+
+  // Subnormals are flushed to 0 (as inputs or outputs). In these cases, we
+  // calculate 0 instead of the expected very small number so we use the minimum
+  // float value as the absolute error to give a buffer.
+  auto left_is_subnormal = IsSubnormal(left);
+  auto right_is_subnormal = IsSubnormal(right);
+  auto output_is_subnormal = IsSubnormal(output);
+  if (left_is_subnormal || right_is_subnormal || output_is_subnormal) {
+    return std::numeric_limits<float>::min();
+  }
+
+  return 0.0;
+}
+
+bool MulCpuBf16Skip(xla::bfloat16 left, xla::bfloat16 right) {
+  // For BF16, multiplying a subnormal by infinity will lead to calculating 0
+  // multiplied by infinity due to subnormal flushing, which is defined to be
+  // NaN. However, the calculation in higher precision does not flush the
+  // subnormal value to 0, leading to a result of infinity.
+  auto left_is_subnormal = IsSubnormal(left);
+  auto left_is_infinite = std::isinf(left);
+  auto right_is_subnormal = IsSubnormal(right);
+  auto right_is_infinite = std::isinf(right);
+  if ((left_is_subnormal && right_is_infinite) ||
+      (left_is_infinite && right_is_subnormal)) {
+    return true;
+  }
+
+  return false;
+}
+
+BINARY_TEST_16BIT(Mul, {
+  ErrorSpecGen error_spec_gen = +[](NativeT left, NativeT right) {
+    return ErrorSpec::Builder().strict_signed_zeros().build();
+  };
+  if (IsCpu(platform_)) {
+    if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+      error_spec_gen = +[](NativeT left, NativeT right) {
+        return ErrorSpec::Builder()
+            .abs_err(MulCpuBf16AbsErr(static_cast<xla::bfloat16>(left),
+                                      static_cast<xla::bfloat16>(right)))
+            .strict_signed_zeros()
+            .skip_comparison(MulCpuBf16Skip(static_cast<xla::bfloat16>(left),
+                                            static_cast<xla::bfloat16>(right)))
+            .build();
+      };
+    }
+  }
+  Run(
+      AddEmptyBroadcastDimension(Mul), [](float x, float y) { return x * y; },
+      error_spec_gen);
 })
 
 // TODO(bixia): Div fails with bfloat16 on CPU.

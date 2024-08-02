@@ -539,6 +539,8 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     }
 
     ErrorSpec error_spec = CallErrorSpec(error_spec_gen, inputs);
+    ASSERT_GE(error_spec.abs_err, 0.0);
+    ASSERT_GE(error_spec.rel_err, 0.0);
 
     if (error_spec.skip_comparison) {
       PrintSkipped(&skipped, [&] {
