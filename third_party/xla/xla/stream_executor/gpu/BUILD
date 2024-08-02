@@ -757,30 +757,6 @@ xla_test(
 )
 
 xla_test(
-    name = "stream_search_test",
-    size = "small",
-    srcs = ["stream_search_test.cc"],
-    backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-    tags = ["gpu"],
-    deps = [
-        "//xla/stream_executor",
-        "//xla/stream_executor/host:host_platform",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
-)
-
-xla_test(
     name = "gpu_executor_test",
     size = "small",
     srcs = ["gpu_executor_test.cc"],

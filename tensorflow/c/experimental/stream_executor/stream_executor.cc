@@ -456,7 +456,7 @@ absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
 absl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
 }
 absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
