@@ -107,7 +107,6 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::Operation;
 using mlir::OwningOpRef;
-using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
 bool IsControlFlowV1Op(Operation* op) {
