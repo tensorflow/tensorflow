@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
-#include "xla/service/cpu/onednn_matmul_rewriter.h"
+#include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"

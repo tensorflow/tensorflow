@@ -222,8 +222,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":ir_emitter2",
-        ":onednn_convolution_rewriter",
-        ":onednn_matmul_rewriter",
+        ":onednn_contraction_rewriter",
         ":onednn_ops_rewriter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
@@ -1872,17 +1871,19 @@ cc_library(
 )
 
 cc_library(
-    name = "onednn_matmul_rewriter",
-    srcs = ["onednn_matmul_rewriter.cc"],
+    name = "onednn_contraction_rewriter",
+    srcs = ["onednn_contraction_rewriter.cc"],
     hdrs = [
+        "onednn_contraction_rewriter.h",
+        "onednn_convolution.h",
         "onednn_matmul.h",
-        "onednn_matmul_rewriter.h",
         "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = tsl_copts(),
     deps = [
         ":backend_config_proto_cc",
         ":onednn_config_proto_cc",
+        ":onednn_convolution",
         ":onednn_matmul",
         ":onednn_memory_util",
         ":onednn_pattern_utils",
@@ -1898,6 +1899,7 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
@@ -1931,43 +1933,12 @@ cc_library(
 )
 
 cc_library(
-    name = "onednn_convolution_rewriter",
-    srcs = ["onednn_convolution_rewriter.cc"],
-    hdrs = ["onednn_convolution_rewriter.h"],
-    copts = tsl_copts(),
-    deps = [
-        ":backend_config_proto_cc",
-        ":onednn_config_proto_cc",
-        ":onednn_convolution",
-        ":onednn_memory_util",
-        ":onednn_util",
-        "//xla:executable_run_options",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/evaluator:hlo_evaluator",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_creation_utils",
-        "//xla/service:hlo_pass",
-        "//xla/service:pattern_matcher",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status:statusor",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:blocking_counter",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-    ] + mkl_deps(),
-)
-
-cc_library(
     name = "cpu_float_support",
     srcs = ["cpu_float_support.cc"],
     hdrs = ["cpu_float_support.h"],
     copts = tsl_copts(),
     deps = [
-        ":onednn_convolution_rewriter",
-        ":onednn_matmul_rewriter",
+        ":onednn_contraction_rewriter",
         "//xla/service:float_support",
     ],
 )

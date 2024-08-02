@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,27 +12,34 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_CPU_ONEDNN_CONVOLUTION_REWRITER_H_
-#define XLA_SERVICE_CPU_ONEDNN_CONVOLUTION_REWRITER_H_
+
+#ifndef XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_
+#define XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
 #include <optional>
 
 #include "absl/algorithm/container.h"
-#include "absl/status/statusor.h"
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace cpu {
 
-// This pass converts hlo convolution instructions into a single oneDNN
-// operation and rewrites into custom calls.
-class OneDnnConvolutionRewriter : public HloModulePass {
+// This pass pattern-matches HLO Dot and Convolution instructions and rewrites
+// them into custom calls.
+class OneDnnContractionRewriter : public HloModulePass {
  public:
+  OneDnnContractionRewriter(int intra_op_parallelism,
+                            const tsl::thread::ThreadPool* compile_threadpool)
+      : intra_op_parallelism_(intra_op_parallelism),
+        compile_threadpool_(compile_threadpool) {}
+  OneDnnContractionRewriter() = default;
   absl::string_view name() const override {
-    return "onednn-convolution-rewriter";
+    return "onednn-contraction-rewriter";
   }
 
   using HloPassInterface::Run;
@@ -40,11 +47,16 @@ class OneDnnConvolutionRewriter : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  static bool ShouldRewrite(const HloInstruction* instr);
+  static bool ShouldRewriteDot(const HloInstruction* dot_instr);
+  static bool ShouldRewriteConv(const HloInstruction* conv_instr);
+
+ private:
+  int intra_op_parallelism_;
+  const tsl::thread::ThreadPool* compile_threadpool_;
 };
 
 }  // namespace cpu
 }  // namespace xla
 
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
-#endif  // XLA_SERVICE_CPU_ONEDNN_CONVOLUTION_REWRITER_H_
+#endif  // XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_

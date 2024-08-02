@@ -205,8 +205,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "xla/service/cpu/cpu_float_support.h"
-#include "xla/service/cpu/onednn_convolution_rewriter.h"
-#include "xla/service/cpu/onednn_matmul_rewriter.h"
+#include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #include "xla/service/simplify_fp_conversions.h"
 #endif
@@ -759,11 +758,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }
-    pipeline.AddPass<OneDnnConvolutionRewriter>();
-    pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
-                                           compile_options.thread_pool);
+    pipeline.AddPass<OneDnnContractionRewriter>(max_parallelism,
+                                                compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
-    // that may exist as a result of running OneDnnMatMulRewriter pass.
+    // that may exist as a result of running OneDnnContractionRewriter pass.
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }
