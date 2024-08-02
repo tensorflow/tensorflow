@@ -57,7 +57,7 @@ absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
 absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>

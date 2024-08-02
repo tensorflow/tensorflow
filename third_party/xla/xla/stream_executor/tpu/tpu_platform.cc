@@ -80,7 +80,7 @@ int TpuPlatform::VisibleDeviceCount() const {
 absl::StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
     const ::stream_executor::StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
 }
 
 absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
