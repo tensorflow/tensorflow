@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -431,8 +432,8 @@ std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructToDotMaps(
       map_b_ab(b_shape.rank(), -1);
   int64_t ab_index = 0;
   // Extract a and b contraction dimensions from dnums
-  auto a_batch_dims = dnums.lhs_batch_dimensions();
-  auto b_batch_dims = dnums.rhs_batch_dimensions();
+  const auto& a_batch_dims = dnums.lhs_batch_dimensions();
+  const auto& b_batch_dims = dnums.rhs_batch_dimensions();
   const auto& a_contracting_dims = dnums.lhs_contracting_dimensions();
   const auto& b_contracting_dims = dnums.rhs_contracting_dimensions();
   // First add the batch dimensions
@@ -1412,7 +1413,7 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
         }
         (*reshaped_dimensions)[bitcast_pos] = bitcast_dim;
       }
-      auto op_dims = result_map[bitcast_dim];
+      const auto& op_dims = result_map[bitcast_dim];
       if (op_dims.size() > 1 && op_pos > 0) {
         // Check that op dimensions that are combined into bitcast_dim are not
         // non-contiguous or reordered to be different from how they appear in
@@ -1502,7 +1503,7 @@ bool AlgebraicSimplifierVisitor::SwapCopyBitcastCopy(
     VLOG(3) << "Failed to compute bitcast map.";
     return false;
   }
-  std::vector<std::vector<int64_t>> operand_map = dim_map.value();
+  const auto& operand_map = dim_map.value();
   if (!ValidateTilingOfBitcast(bitcast->shape(), copy->shape(), operand_map)) {
     VLOG(2) << "Abort because bitcast changes tiling assignment.\n";
     return false;
@@ -3691,7 +3692,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
       // We now iterate through the batch and contracting dimensions of each
       // pair, using the previously constructed maps to add to new_outer dnums
       for (int pair = 0; pair < 2; ++pair) {
-        DotDimensionNumbers dnums = dnums_to_reorder[pair];
+        const auto& dnums = dnums_to_reorder[pair];
         std::vector<int64_t> map =
             (pair % 2) == 0 ? map_lhs_new_inner : map_rhs_new_inner;
 
