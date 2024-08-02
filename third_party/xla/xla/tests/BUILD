@@ -2124,6 +2124,9 @@ xla_test(
 xla_test(
     name = "dynamic_reshape_test",
     srcs = ["dynamic_reshape_test.cc"],
+    backend_tags = {
+        "gpu": ["notsan"],  # TODO(b/345034145): Fix tsan error.
+    },
     disabled_backends = ["interpreter"],
     tags = ["test_xla_cpu_thunks"],
     deps = [
@@ -3064,6 +3067,9 @@ xla_test(
 xla_test(
     name = "set_dimension_size_test",
     srcs = ["set_dimension_size_test.cc"],
+    backend_tags = {
+        "gpu": ["notsan"],  # TODO(b/345034145): Fix tsan error.
+    },
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
