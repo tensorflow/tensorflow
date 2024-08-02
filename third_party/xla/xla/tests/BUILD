@@ -2776,7 +2776,10 @@ xla_test(
     size = "large",
     srcs = ["local_client_execute_test.cc"],
     shard_count = 30,
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+        "test_xla_cpu_thunks",
+    ],
     deps = [
         ":literal_test_util",
         ":local_client_test_base",
