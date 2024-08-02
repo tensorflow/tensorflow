@@ -25,8 +25,10 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/backend.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_runner.h"
@@ -430,6 +432,9 @@ class HloTestBase : public ManifestCheckingTest {
   HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
   // Gets the instruction from the given module with the given opcode.
   HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
+  // Gets all the instructions from the given module with the given opcode.
+  std::vector<HloInstruction*> FindInstructions(HloModule* module,
+                                                HloOpcode opcode);
 
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }

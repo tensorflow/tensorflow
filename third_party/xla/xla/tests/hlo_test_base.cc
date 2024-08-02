@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <set>
 #include <string>
@@ -27,6 +28,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_parser.h"
@@ -1043,6 +1046,16 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
     }
   }
   return nullptr;
+}
+
+std::vector<HloInstruction*> HloTestBase::FindInstructions(HloModule* module,
+                                                           HloOpcode opcode) {
+  std::vector<HloInstruction*> instructions;
+  for (const HloComputation* c : module->computations()) {
+    absl::c_copy_if(c->instructions(), std::back_inserter(instructions),
+                    [&](HloInstruction* i) { return i->opcode() == opcode; });
+  }
+  return instructions;
 }
 
 se::DeviceMemoryAllocator* HloTestBase::GetAllocator() {
