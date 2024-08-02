@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 // Helpers for working with mhlo.convolution attrs in the mlir api as
@@ -26,91 +27,7 @@ limitations under the License.
 
 namespace mlir::odml {
 
-// Generic class that wraps the "layout" of a convolution parameter.
-// Both kernel (e.g. [o, 0, 1, i]) and input/output (e.g. [b, 0, 1, f])
-// share the same structure just with different terminology for the
-// batch/feature/input_feature/output_feature dims.
-class Layout {
- public:
-  llvm::ArrayRef<int64_t> Spatials() const { return spatials_; }
-
-  int64_t NumSpatials() const { return spatials_.size(); }
-
-  int64_t Rank() const { return NumSpatials() + 2; }
-
-  Layout(int64_t special_dim1, int64_t special_dim2, ArrayRef<int64_t> spatials)
-      : special_dim1_(special_dim1),
-        special_dim2_(special_dim2),
-        spatials_(spatials) {}
-
-  // Gets index of first special dim. The batch dim for input and outputs,
-  // or the output feature dim for the kernel.
-  int64_t SpecialDim1() const { return special_dim1_; }
-
-  // Conveniance accesor for getting the dimension size of the first
-  // special dimension from a shape.
-  int64_t SpecialDim1(llvm::ArrayRef<int64_t> shape) const {
-    return shape[special_dim1_];
-  }
-
-  // Gets index of second special dim. The feature dim for input and outputs,
-  // or the input feature dim for the kernel.
-  int64_t SpecialDim2() const { return special_dim2_; }
-
-  // Convenience accesor for getting the dimension size of the second
-  // special dimension from a shape.
-  int64_t SpecialDim2(llvm::ArrayRef<int64_t> shape) const {
-    return shape[special_dim2_];
-  }
-
-  // Conveniance method for equality checking special dims.
-  bool HasSpecialDims(int64_t special_dim1, int64_t special_dim2) const;
-
-  // Determines if the spatial dimensions are all adjacent and in
-  // ascending order (HWD).
-  bool AreSpatialsIota() const;
-
-  // Gets a "permutation array" to be used for transposing a tensor
-  // of "this" layout to the given layout. A permutation array is some
-  // permutation of [0, 1, i...] for i < rank(layout). Assumes
-  // "this" and given layout have the same rank.
-  llvm::SmallVector<int64_t, 4> GetPermForReLayout(
-      const Layout& to_layout) const;
-
-  // Permutes given shape based on the permutaion implied to take this Layout to
-  // the given one.
-  llvm::SmallVector<int64_t, 4> PermuteShape(const Layout& to_layout,
-                                             ArrayRef<int64_t> shape) const;
-
-  bool operator==(const Layout& other) const {
-    return SpecialDim1() == other.SpecialDim1() &&
-           SpecialDim2() == other.SpecialDim2() &&
-           Spatials() == other.Spatials();
-  }
-
-  bool operator!=(const Layout& other) const { return !(*this == other); }
-
- private:
-  int64_t special_dim1_;
-  int64_t special_dim2_;
-  llvm::SmallVector<int64_t> spatials_;
-};
-
-// Wrapper for the padding attrs along a single dimension.
-class DimPadding {
- public:
-  int64_t Hi() const { return hi_; }
-
-  int64_t Lo() const { return lo_; }
-
-  DimPadding(int64_t hi, int64_t lo) : hi_(hi), lo_(lo) {}
-
- private:
-  int64_t hi_;
-  int64_t lo_;
-};
-
-class ConvData {
+class ConvView {
  public:
   // int for each spatial dim. Default 1.
   llvm::ArrayRef<int64_t> Strides() const { return strides_; }
@@ -145,7 +62,7 @@ class ConvData {
 
   mlir::Type ElementType() const { return element_type_; }
 
-  explicit ConvData(mhlo::ConvolutionOp op);
+  explicit ConvView(mhlo::ConvolutionOp op);
 
  private:
   llvm::SmallVector<int64_t, 2> strides_;
@@ -171,11 +88,11 @@ class ConvData {
   mlir::Type element_type_;
 };
 
-inline bool HasSupportedRank(const ConvData& data) {
+inline bool HasSupportedRank(const ConvView& data) {
   return data.InputLayout().Rank() == 4 || data.InputLayout().Rank() == 5;
 }
 
-inline bool HasSupportedOutFeatureDims(const ConvData& data) {
+inline bool HasSupportedOutFeatureDims(const ConvView& data) {
   const int64_t kernel_out_features =
       data.KernelLayout().SpecialDim2(data.KernelShape());
   const int64_t out_features =
@@ -183,7 +100,7 @@ inline bool HasSupportedOutFeatureDims(const ConvData& data) {
   return kernel_out_features == out_features;
 }
 
-inline bool IsNonTrivialConv(const ConvData& data) {
+inline bool IsNonTrivialConv(const ConvView& data) {
   return llvm::all_of(data.InputDilations(), [](auto d) { return d == 1; });
 }
 
@@ -191,7 +108,7 @@ inline bool IsNonTrivialConv(const ConvData& data) {
 // Standard conv predicates
 //=-----
 
-inline bool HasStandardConvInFeatureDims(const ConvData& data) {
+inline bool HasStandardConvInFeatureDims(const ConvView& data) {
   // kernel_in_features * feature_groups = input_features by definition.
   const int64_t input_features =
       data.InputLayout().SpecialDim2(data.InputShape());
@@ -204,7 +121,7 @@ inline bool HasStandardConvInFeatureDims(const ConvData& data) {
   return !trivial_kernel_in_features && (!is_grouped_conv || rank == 4);
 }
 
-inline bool IsStandardConv(const ConvData& data) {
+inline bool IsStandardConv(const ConvView& data) {
   return HasSupportedRank(data) && IsNonTrivialConv(data) &&
          HasStandardConvInFeatureDims(data) && HasSupportedOutFeatureDims(data);
 }
@@ -212,7 +129,7 @@ inline bool IsStandardConv(const ConvData& data) {
 // Does this convolution map to a standard conv_2d or conv_3d
 // (not depthwise or tranpose conv)?
 inline bool IsStandardConv(mhlo::ConvolutionOp op) {
-  const ConvData data(op);
+  const ConvView data(op);
   return IsStandardConv(data);
 }
 
@@ -220,7 +137,7 @@ inline bool IsStandardConv(mhlo::ConvolutionOp op) {
 // Depthwise conv predicates
 //=-----
 
-inline bool IsDepthwiseConv(const ConvData& data) {
+inline bool IsDepthwiseConv(const ConvView& data) {
   const bool valid_rank = data.InputLayout().Rank() == 4;
   if (!valid_rank || !HasSupportedOutFeatureDims(data) ||
       !IsNonTrivialConv(data)) {
@@ -233,7 +150,7 @@ inline bool IsDepthwiseConv(const ConvData& data) {
 
 // Does this convolution map to depthwise conv?
 inline bool IsDepthwiseConv(mhlo::ConvolutionOp op) {
-  const ConvData data(op);
+  const ConvView data(op);
   return IsDepthwiseConv(data);
 }
 
@@ -273,7 +190,7 @@ inline Layout GetTFLNativeStandardConvKernelLayout(
   return GetTFLNativeStandardConvKernelLayout(DnumRank(dnums));
 }
 
-inline bool IsTFLNativeLayout(const ConvData& data) {
+inline bool IsTFLNativeLayout(const ConvView& data) {
   const int64_t rank = data.KernelLayout().Rank();
   const auto native_io_layout = GetTFLNativeInputOrOutputLayout(rank);
 

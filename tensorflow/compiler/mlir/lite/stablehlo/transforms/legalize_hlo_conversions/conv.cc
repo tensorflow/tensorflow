@@ -44,27 +44,27 @@ bool IsShapeFullyStatic(ArrayRef<int64_t> shape) {
   return llvm::all_of(shape, [](int64_t d) { return d >= 0; });
 }
 
-bool AreShapesSupported(const ConvData& data) {
+bool AreShapesSupported(const ConvView& data) {
   return IsShapeFullyStatic(data.InputShape()) &&
          IsShapeFullyStatic(data.KernelShape()) &&
          IsShapeFullyStatic(data.OutputShape());
 }
 
-bool IsPaddingSupported(const ConvData& data) {
+bool IsPaddingSupported(const ConvView& data) {
   return llvm::all_of(data.Padding(), [](const DimPadding& p) {
     return p.Hi() == 0 && p.Lo() == 0;
   });
 }
 
-bool IsInputDilationSupported(const ConvData& data) {
+bool IsInputDilationSupported(const ConvView& data) {
   return llvm::all_of(data.InputDilations(), [](int64_t v) { return v == 1; });
 }
 
-bool IsBatchGroupSupported(const ConvData& data) {
+bool IsBatchGroupSupported(const ConvView& data) {
   return data.BatchGroupCount() == 1;
 }
 
-bool IsWindowReversalSupported(const ConvData& data) {
+bool IsWindowReversalSupported(const ConvView& data) {
   return llvm::all_of(data.WindowReversal(), [](bool b) { return !b; });
 }
 
@@ -72,7 +72,7 @@ bool IsWindowReversalSupported(const ConvData& data) {
 // Used externally to setup a ConversionTarget with dynamically legal
 // mhlo.convolution. Doubles as matching predicate during legalization.
 bool IsConvLegal(mhlo::ConvolutionOp op) {
-  const ConvData data(op);
+  const ConvView data(op);
 
   const bool supported_conv_type =
       IsStandardConv(data) || IsDepthwiseConv(data);
@@ -89,7 +89,7 @@ bool IsConvLegal(mhlo::ConvolutionOp op) {
 
 // Bias is a zero tensor of shape [output_channels].
 arith::ConstantOp BuildEmptyBias(OpBuilder& b, Location loc,
-                                 const ConvData& data) {
+                                 const ConvView& data) {
   auto bias_type = RankedTensorType::get(
       {data.OutputLayout().SpecialDim2(data.OutputShape())},
       data.ElementType());
@@ -109,7 +109,7 @@ LogicalResult LegalizeConv2D::matchAndRewrite(
     mhlo::ConvolutionOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   // Parse mhlo.convolution attrs into cc types.
-  const ConvData data(op);
+  const ConvView data(op);
 
   if (IsConvLegal(op) || !IsStandardConv(data) ||
       data.InputLayout().Rank() != 4) {
@@ -168,7 +168,7 @@ LogicalResult LegalizeConvDepthwise::matchAndRewrite(
     mhlo::ConvolutionOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   // Parse mhlo.convolution attrs into cc types.
-  const ConvData data(op);
+  const ConvView data(op);
 
   if (IsConvLegal(op) || !IsDepthwiseConv(data)) {
     return failure();
@@ -236,7 +236,7 @@ LogicalResult LegalizeConv3D::matchAndRewrite(
     mhlo::ConvolutionOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   // Parse mhlo.convolution attrs into cc types.
-  const ConvData data(op);
+  const ConvView data(op);
 
   if (IsConvLegal(op) || !IsStandardConv(data) ||
       data.InputLayout().Rank() != 5) {
@@ -324,7 +324,7 @@ std::tuple<llvm::SmallVector<int64_t>, Layout> InsertTrivialSpatialDim(
 
 LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
                                               PatternRewriter& rewriter) const {
-  const ConvData view(op);
+  const ConvView view(op);
 
   if (view.InputLayout().Rank() != 3) {
     return rewriter.notifyMatchFailure(op, "Not 1D conv.");

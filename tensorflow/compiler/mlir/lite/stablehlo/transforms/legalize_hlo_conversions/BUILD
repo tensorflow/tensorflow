@@ -21,7 +21,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -140,6 +139,7 @@ cc_library(
     srcs = ["conv_util.cc"],
     hdrs = ["conv_util.h"],
     deps = [
+        ":op_util_common",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
@@ -188,6 +188,47 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "reduce_window",
+    srcs = ["reduce_window.cc"],
+    hdrs = ["reduce_window.h"],
+    deps = [
+        ":op_util_common",
+        ":reduce_window_util",
+        ":util",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "op_util_common",
+    srcs = ["op_util_common.cc"],
+    hdrs = ["op_util_common.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "reduce_window_util",
+    srcs = ["reduce_window_util.cc"],
+    hdrs = ["reduce_window_util.h"],
+    deps = [
+        ":op_util_common",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_xla//xla/mlir_hlo",
     ],
 )

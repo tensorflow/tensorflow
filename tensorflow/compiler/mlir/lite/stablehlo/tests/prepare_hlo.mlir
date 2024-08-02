@@ -1,4 +1,5 @@
-// RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file | FileCheck %s --dump-input=fail 
+// RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file
+// | FileCheck %s --dump-input=fail 
 
 // Just assert that pass is properly registered.
 func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
@@ -546,3 +547,60 @@ func.func @pad_3d_mixed(%arg0: tensor<3x3x3xf32>, %arg1: tensor<f32>) -> tensor<
 // CHECK-SAME: edge_padding_low = dense<[0, 1, 0]>
 // CHECK-SAME: (tensor<2x2x3xf32>, tensor<f32>) -> tensor<3x3x3xf32>
 
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.reduce_window
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: reduce_window_valid_channel_first
+func.func @reduce_window_valid_channel_first(%arg0: tensor<4x3x16x16xf32>) -> tensor<4x3x7x7xf32> {
+  // "0xFF800000" represents -INF for f32.
+  %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.maximum %arg1, %arg2 : tensor<f32>
+    mhlo.return %2 : tensor<f32>
+  }) {
+    base_dilations = dense<1> : tensor<4xi64>,
+    padding = dense<0> : tensor<4x2xi64>,
+    window_dilations = dense<1> : tensor<4xi64>,
+    window_dimensions = dense<[1, 1, 3, 3]> : tensor<4xi64>,
+    window_strides = dense<[1, 1, 2, 2]> : tensor<4xi64>} : (tensor<4x3x16x16xf32>, tensor<f32>) -> tensor<4x3x7x7xf32>
+  func.return %1 : tensor<4x3x7x7xf32>
+}
+
+// CHECK:      %[[INIT_CST:.*]] = mhlo.constant dense<0xFF800000> : tensor<f32>
+// CHECK:      %[[TPOSE_IN:.*]] = "mhlo.transpose"(%arg0) <{permutation = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<4x3x16x16xf32>) -> tensor<4x16x16x3xf32>
+// CHECK:      %[[RW:.*]] = "mhlo.reduce_window"(%[[TPOSE_IN]], %[[INIT_CST]])
+// CHECK-SAME: window_dimensions = dense<[1, 3, 3, 1]>
+// CHECK-SAME: window_strides = dense<[1, 2, 2, 1]>
+// CHECK:      %3 = "mhlo.transpose"(%[[RW]]) <{permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : (tensor<4x7x7x3xf32>) -> tensor<4x3x7x7xf32>
+
+// -----
+
+// CHECK-LABEL: reduce_window_same_channel_first
+func.func @reduce_window_same_channel_first(%arg0: tensor<4x3x16x16xf32>) -> tensor<4x3x8x8xf32> {
+  // "0xFF800000" represents -INF for f32.
+  %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %6 = mhlo.maximum %arg1, %arg2 : tensor<f32>
+      "mhlo.return"(%6) : (tensor<f32>) -> ()
+    }) {
+    base_dilations = dense<1> : tensor<4xi64>,
+    padding = dense<[[0, 0], [0, 0], [0, 1], [0, 1]]> : tensor<4x2xi64>,
+    window_dilations = dense<1> : tensor<4xi64>,
+    window_dimensions = dense<[1, 1, 3, 3]> : tensor<4xi64>,
+    window_strides = dense<[1, 1, 2, 2]> : tensor<4xi64>} : (tensor<4x3x16x16xf32>, tensor<f32>) -> tensor<4x3x8x8xf32>
+  func.return %1 : tensor<4x3x8x8xf32>
+}
+
+// CHECK:      %[[INIT_CST:.*]] = mhlo.constant dense<0xFF800000> : tensor<f32>
+// CHECK:      %[[TPOSE_IN:.*]] = "mhlo.transpose"(%arg0) <{permutation = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<4x3x16x16xf32>) -> tensor<4x16x16x3xf32>
+// CHECK:      %[[RW:.*]] = "mhlo.reduce_window"(%[[TPOSE_IN]], %[[INIT_CST]])
+// CHECK-SAME: padding
+// CHECK-SAME: [0, 0], [0, 1], [0, 1], [0, 0]
+// CHECK-SAME: window_dimensions = dense<[1, 3, 3, 1]>
+// CHECK-SAME: window_strides = dense<[1, 2, 2, 1]>
+// CHECK:      %3 = "mhlo.transpose"(%[[RW]]) <{permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : (tensor<4x8x8x3xf32>) -> tensor<4x3x8x8xf32>
