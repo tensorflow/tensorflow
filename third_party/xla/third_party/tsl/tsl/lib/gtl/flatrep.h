@@ -58,10 +58,11 @@ class FlatRep {
     CopyEntries(src.array_, src.end_, CopyEntry());
   }
 
-  FlatRep(FlatRep&& src)
-      // Copy rather than move src.hash_ and src.equal_.  This is necessary to
-      // leave src in a valid state -- otherwise e.g. if hash_ is an
-      // std::function, moving it would null it out.
+  FlatRep(
+      FlatRep&& src) noexcept  // Copy rather than move src.hash_ and
+                               // src.equal_.  This is necessary to leave src in
+                               // a valid state -- otherwise e.g. if hash_ is an
+                               // std::function, moving it would null it out.
       : hash_(src.hash_), equal_(src.equal_) {
     // TODO(jlebar): Init(1) still allocates some memory, so this isn't as cheap
     // as it could be.  The fundamental problem is that we need to leave src in
@@ -118,7 +119,7 @@ class FlatRep {
     MaybeResize();
   }
 
-  void swap(FlatRep& x) {
+  void swap(FlatRep& x) noexcept {
     using std::swap;
     swap(array_, x.array_);
     swap(end_, x.end_);
