@@ -587,27 +587,30 @@ tsl_gpu_library(
     ],
 )
 
-cc_library(
+tsl_gpu_library(
     name = "gpu_cudamallocasync_allocator",
-    srcs = if_cuda_is_configured(["gpu_cudamallocasync_allocator.cc"]),
-    hdrs = if_cuda_is_configured(["gpu_cudamallocasync_allocator.h"]),
-    tags = ["gpu"],
+    srcs = [
+        "gpu_cudamallocasync_allocator.cc",
+    ],
+    hdrs = ["gpu_cudamallocasync_allocator.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    cuda_deps = [
+        "//xla/stream_executor/cuda:cuda_activation",
+        "//xla/stream_executor/cuda:cuda_executor",
+    ],
     deps = [
         ":gpu_init_impl",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_activation",
-        "//xla/stream_executor/cuda:cuda_executor",
-        "//xla/stream_executor/cuda:cuda_status",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
