@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.h"
-
 #include <string>
 #include <utility>
 

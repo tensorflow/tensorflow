@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Transforms/InliningUtils.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #define GET_ATTRDEF_CLASSES
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.cc.inc"

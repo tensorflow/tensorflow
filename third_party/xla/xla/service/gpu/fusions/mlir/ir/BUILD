@@ -87,7 +87,6 @@ cc_library(
         "xla_gpu_ops.cc",
     ],
     hdrs = [
-        "xla_gpu_attrs.h",
         "xla_gpu_ops.h",
     ],
     deps = [

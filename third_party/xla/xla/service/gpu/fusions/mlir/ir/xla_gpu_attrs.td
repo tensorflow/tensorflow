@@ -57,4 +57,4 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
   let genVerifyDecl = 1;
 }
 
-#endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_ATTRS
+#endif // XLA_SERVICE_GPU_FUSIONS_MLIR_ATTRS
