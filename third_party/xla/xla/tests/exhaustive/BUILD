@@ -29,6 +29,7 @@ cc_library(
     deps = [
         "//xla:bit_cast",
         "//xla:executable_run_options",
+        "//xla:fp_util",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -102,6 +103,11 @@ ErrorSpecBuilder& ErrorSpecBuilder::rel_err(double rel_err) & {
   return *this;
 }
 
+ErrorSpecBuilder& ErrorSpecBuilder::distance_err(int64_t distance_err) & {
+  spec_.distance_err = distance_err;
+  return *this;
+}
+
 ErrorSpecBuilder& ErrorSpecBuilder::strict_signed_zeros(
     bool strict_signed_zeros) & {
   spec_.strict_signed_zeros = strict_signed_zeros;
@@ -120,6 +126,11 @@ ErrorSpecBuilder&& ErrorSpecBuilder::abs_err(double abs_err) && {
 
 ErrorSpecBuilder&& ErrorSpecBuilder::rel_err(double rel_err) && {
   spec_.rel_err = rel_err;
+  return std::move(*this);
+}
+
+ErrorSpecBuilder&& ErrorSpecBuilder::distance_err(int64_t distance_err) && {
+  spec_.distance_err = distance_err;
   return std::move(*this);
 }
 
@@ -541,6 +552,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     ErrorSpec error_spec = CallErrorSpec(error_spec_gen, inputs);
     ASSERT_GE(error_spec.abs_err, 0.0);
     ASSERT_GE(error_spec.rel_err, 0.0);
+    ASSERT_GE(error_spec.distance_err, 0.0);
 
     if (error_spec.skip_comparison) {
       PrintSkipped(&skipped, [&] {

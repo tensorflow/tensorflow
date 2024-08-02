@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/fp_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -140,6 +141,24 @@ bool IsSubnormalOrMinNormal(NativeT value) {
   return IsSubnormal(value) || IsMinNormal(value);
 }
 
+// Get the floating point distance (number of floating point values between)
+// expected and actual.
+//
+// This is a wrapper around xla::CalculateDistanceInFloats for most types. For
+// complex types, this returns the maximum distance between the real and
+// imaginary components.
+template <typename NativeT>
+int64_t GetDistanceErr(NativeT expected, NativeT actual) {
+  if constexpr (std::is_same_v<NativeT, xla::complex64> ||
+                std::is_same_v<NativeT, xla::complex128>) {
+    return std::max(
+        CalculateDistanceInFloats(expected.real(), actual.real()),
+        CalculateDistanceInFloats(expected.imag(), expected.imag()));
+  } else {
+    return CalculateDistanceInFloats(expected, actual);
+  }
+}
+
 class ErrorSpecBuilder;
 
 struct ErrorSpec {
@@ -147,6 +166,15 @@ struct ErrorSpec {
 
   double abs_err = 0.0;
   double rel_err = 0.0;
+  // The acceptable amount of floating point values between the expected and
+  // actual (also calling floating point distance).
+  //
+  // This is similar to absolute error, but the same distance_err can have
+  // different floating point values as the exponent changes. In some way, it is
+  // a hybrid of absolute and relative error, as it allows a fixed binary
+  // difference (like abs_err), but that has a varied floating point value based
+  // on the number (like rel_err).
+  int64_t distance_err = 0;
   // If true, will consider -0 not near to +0 and vice versa.  Note that
   // +epsilon may still be considered close to -0, depending on the error
   // spec; this only covers the case when both `expected` and `actual` are
@@ -169,11 +197,13 @@ class ErrorSpecBuilder {
 
   ErrorSpecBuilder& abs_err(double abs_err) &;
   ErrorSpecBuilder& rel_err(double rel_err) &;
+  ErrorSpecBuilder& distance_err(int64_t distance_err) &;
   ErrorSpecBuilder& strict_signed_zeros(bool strict_signed_zeros = true) &;
   ErrorSpecBuilder& skip_comparison(bool skip_comparison = true) &;
 
   ErrorSpecBuilder&& abs_err(double abs_err) &&;
   ErrorSpecBuilder&& rel_err(double rel_err) &&;
+  ErrorSpecBuilder&& distance_err(int64_t distance_err) &&;
   ErrorSpecBuilder&& strict_signed_zeros(bool strict_signed_zeros = true) &&;
   ErrorSpecBuilder&& skip_comparison(bool skip_comparison = true) &&;
 
@@ -623,7 +653,12 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     double abs_err =
         std::abs(ReplaceInfWithMax(expected) - ReplaceInfWithMax(actual));
     double rel_err = abs_err / std::abs(ReplaceInfWithMax(expected));
-    return abs_err <= spec.abs_err || rel_err <= spec.rel_err;
+    // N.B.: For sub-32-bit floats, NativeRefT is `float`, so ULP comparisons
+    // will be wildly off. We convert back to NativeT for this comparison.
+    int64_t distance_err = GetDistanceErr(NativeT(expected), NativeT(actual));
+
+    return abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
+           distance_err <= spec.distance_err;
   }
 
   // Converts part or all bits in an uint64_t to the value of the floating point
