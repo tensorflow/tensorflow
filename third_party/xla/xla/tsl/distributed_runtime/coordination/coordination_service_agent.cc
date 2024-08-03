@@ -422,8 +422,8 @@ void CoordinationServiceAgentImpl::StartPollingForError() {
                  "shutting down.";
     return;
   }
-  LOG(INFO) << "Error returned from coordination service: " << status;
-
+  LOG(ERROR) << "An error is returned from coordination service (this can be "
+                "an error from this or another task).";
   SetError(status);
 }
 
@@ -437,11 +437,6 @@ absl::Status CoordinationServiceAgentImpl::PollForError() {
   n.WaitForNotification();
   CHECK(!status.ok())
       << "PollForError returned OK status. Should always return an error.";
-  if (!absl::IsCancelled(status)) {  // No need to log if cancelled.
-    LOG(ERROR) << "PollForError returned with status (this can be an error "
-                  "from this or another task): "
-               << status;
-  }
   return status;
 }
 

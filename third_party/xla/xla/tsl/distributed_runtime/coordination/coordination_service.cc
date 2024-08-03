@@ -1473,9 +1473,9 @@ void CoordinationServiceStandaloneImpl::SendErrorPollingResponse(
     }
   }
   if (!absl::IsCancelled(error)) {
-    LOG(ERROR) << "An error is encountered. Sending the error as a response to "
-                  "all error polling requests: "
-               << error;
+    VLOG(2) << "An error is encountered. Sending the error as a response to "
+               "all error polling requests: "
+            << error;
   }
   std::vector<std::string> missing_tasks;
   {
