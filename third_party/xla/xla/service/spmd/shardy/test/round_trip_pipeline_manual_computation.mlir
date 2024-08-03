@@ -7,8 +7,8 @@
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: sharding_hlo_string
 
-// CHECK: sdy.mesh @mesh_1 = <"a"=4, "b"=2>
-sdy.mesh @mesh_1 = <"a"=4, "b"=2>
+// CHECK: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 
 // CHECK-LABEL: func.func @main
 func.func @main(%arg0: tensor<16x32xf32>) -> tensor<128x32xf32> {

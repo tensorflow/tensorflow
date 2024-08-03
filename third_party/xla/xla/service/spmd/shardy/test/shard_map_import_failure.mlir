@@ -1,7 +1,7 @@
 // RUN: sdy_opt %s -xla-sdy-shard-map-import -split-input-file -verify-diagnostics
 
-sdy.mesh @mesh_1 = <"a"=4, "b"=2>
-sdy.mesh @mesh_2 = <"a"=4, "b"=2, "c"=3>
+sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+sdy.mesh @mesh_2 = <["a"=4, "b"=2, "c"=3]>
 
 func.func public @multiple_meshes(%arg0: tensor<16x16xf32>) -> tensor<32x4xf32> {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_1, [{"b"}, {"a"}]>]>} : (tensor<16x16xf32>) -> tensor<16x16xf32>
@@ -19,7 +19,7 @@ func.func private @shmap_body_0(%arg0: tensor<8x4xf32>) -> (tensor<8x4xf32>) {
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   // expected-error @+1 {{expecting CustomCallOp as operand}}
@@ -35,7 +35,7 @@ func.func private @shmap_body_1(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>)
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
@@ -52,7 +52,7 @@ func.func private @shmap_body_1(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>)
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @SPMDFullToShardShape(%arg0) : (tensor<16x32xf32>) -> tensor<16x32xf32>
@@ -69,7 +69,7 @@ func.func private @shmap_body(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>) {
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @SPMDFullToShardShape(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
@@ -87,7 +87,7 @@ func.func private @shmap_body(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>) {
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
@@ -105,7 +105,7 @@ func.func private @shmap_body(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>) {
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>, tensor<16x32xf32>) {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
@@ -123,7 +123,7 @@ func.func private @shmap_body(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>) {
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
@@ -139,7 +139,7 @@ func.func private @shmap_body(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>) {
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
@@ -157,7 +157,7 @@ func.func private @shmap_body(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>) {
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>
@@ -174,7 +174,7 @@ func.func private @shmap_body(%arg0: tensor<16x32xf32>) -> (tensor<16x32xf32>) {
 
 // -----
 
-sdy.mesh @mesh_0 = <"a"=4>
+sdy.mesh @mesh_0 = <["a"=4]>
 
 func.func public @pattern_mismatch(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
   %0 = mhlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}]>]>} : (tensor<16x32xf32>) -> tensor<16x32xf32>

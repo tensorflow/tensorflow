@@ -1473,3 +1473,12 @@ func.func @bitwise_xor_ui8() -> tensor<3xui8> {
 }
 
 // CHECK: %cst = arith.constant dense<[5, 5, 4]> : tensor<3xui8>
+
+// CHECK-LABEL: relu
+func.func @relu() -> tensor<3xf32> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99]> : tensor<3xf32>
+  %0 = "tfl.relu"(%cst) : (tensor<3xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[0.000000e+00, 0.000000e+00, 9.900000e-01]> : tensor<3xf32>

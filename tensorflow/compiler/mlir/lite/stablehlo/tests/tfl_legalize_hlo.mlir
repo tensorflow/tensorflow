@@ -2158,6 +2158,32 @@ func.func @iota_1d() -> tensor<123xf32> {
 
 // -----
 
+// CHECK-LABEL: iota_i64
+func.func @iota_i64() -> tensor<123xi64> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xi64>
+  func.return %0 : tensor<123xi64>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0> : tensor<i64>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<123> : tensor<i64>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1> : tensor<i64>
+// CHECK:     "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<i64>, tensor<i64>, tensor<i64>) -> tensor<123xi64>
+
+// -----
+
+// CHECK-LABEL: iota_i32
+func.func @iota_i32() -> tensor<123xi32> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xi32>
+  func.return %0 : tensor<123xi32>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<123> : tensor<i32>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1> : tensor<i32>
+// CHECK:     "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<123xi32>
+
+// -----
+
 // CHECK-LABEL: iota_3d
 func.func @iota_3d() -> tensor<5x7x9xi32> {
   %0 = "mhlo.iota"() <{ iota_dimension = 1 : i64 }> : () -> tensor<5x7x9xi32>

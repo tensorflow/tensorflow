@@ -248,9 +248,16 @@ class ExecutableRunOptions {
       const ffi::ExecutionContext* ffi_execution_context);
   const ffi::ExecutionContext* ffi_execution_context() const;
 
+  // This indicates how many local devices are used by the execution.
+  // Valid values are any value greater than 0.
+  // 0 means unset.
+  ExecutableRunOptions& set_local_device_count(int local_device_count);
+  int local_device_count() const;
+
  private:
   stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
+  int local_device_count_ = 0;
   int physical_device_ordinal_ = -1;
   const DeviceAssignment* device_assignment_ = nullptr;
   stream_executor::Stream* stream_ = nullptr;

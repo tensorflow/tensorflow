@@ -42,12 +42,22 @@ class LegalizeIota : public OpConversionPattern<mhlo::IotaOp> {
       ConversionPatternRewriter& rewriter) const final;
 };
 
+bool IsIotaLegal(mhlo::IotaOp op) {
+  auto e_type = llvm::cast<ShapedType>(op.getType()).getElementType();
+  return !(e_type.isF32() || e_type.isSignlessInteger(32) ||
+           e_type.isSignlessInteger(64));
+}
+
 std::tuple<DenseElementsAttr, DenseElementsAttr, DenseElementsAttr>
 BuildRangeParams(Type e_type, int64_t iota_dim_size, OpBuilder& b) {
-  if (e_type.isInteger()) {
+  if (e_type.isInteger(32)) {
     return std::tuple(BuildScalarDense<int>(e_type, 0),
                       BuildScalarDense<int>(e_type, iota_dim_size),
                       BuildScalarDense<int>(e_type, 1));
+  } else if (e_type.isInteger(64)) {
+    return std::tuple(BuildScalarDense<int64_t>(e_type, 0),
+                      BuildScalarDense<int64_t>(e_type, iota_dim_size),
+                      BuildScalarDense<int64_t>(e_type, 1));
   }
   return std::tuple(BuildScalarDense<float>(e_type, 0.0),
                     BuildScalarDense<float>(e_type, iota_dim_size),
@@ -57,11 +67,11 @@ BuildRangeParams(Type e_type, int64_t iota_dim_size, OpBuilder& b) {
 LogicalResult LegalizeIota::matchAndRewrite(
     mhlo::IotaOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
-  auto type = llvm::cast<ShapedType>(op.getType());
-  if (!type.getElementType().isIntOrFloat()) {
-    return rewriter.notifyMatchFailure(op, "Must be int or float");
+  if (IsIotaLegal(op)) {
+    return rewriter.notifyMatchFailure(op, "Must be i32, i64 or f32");
   }
 
+  auto type = llvm::cast<ShapedType>(op.getType());
   auto e_type = type.getElementType();
   const int64_t iota_dim_size = type.getDimSize(op.getIotaDimension());
 
@@ -112,7 +122,7 @@ LogicalResult LegalizeIota::matchAndRewrite(
 void PopulateIotaPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                           ConversionTarget& target) {
   patterns.add<LegalizeIota>(ctx);
-  target.addIllegalOp<mhlo::IotaOp>();
+  target.addDynamicallyLegalOp<mhlo::IotaOp>(IsIotaLegal);
 }
 
 }  // namespace mlir::odml

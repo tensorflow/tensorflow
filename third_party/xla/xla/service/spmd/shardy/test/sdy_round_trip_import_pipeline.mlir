@@ -1,8 +1,8 @@
 // RUN: sdy_opt %s -xla-sdy-round-trip-import-pipeline 2>&1 | FileCheck %s
 
 // CHECK-LABEL: module @multiple_func_result_shardings
-module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{mesh = \22#sdy.mesh<\\22a\\22=8, \\22b\\22=8, \\22c\\22=8>\22}"}} {
-  // CHECK: sdy.mesh @mesh = <"a"=8, "b"=8, "c"=8>
+module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{mesh = \22#sdy.mesh<[\\22a\\22=8, \\22b\\22=8, \\22c\\22=8]>\22}"}} {
+  // CHECK: sdy.mesh @mesh = <["a"=8, "b"=8, "c"=8]>
 
   // CHECK-LABEL: func @func_results_with_sharding
   // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}p2]>},

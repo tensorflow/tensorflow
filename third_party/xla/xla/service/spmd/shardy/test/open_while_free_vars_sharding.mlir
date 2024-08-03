@@ -1,7 +1,7 @@
 // RUN: sdy_opt %s -xla-sdy-open-while-free-vars-sharding 2>&1 | FileCheck %s
 
-sdy.mesh @mesh1 = <"a"=2>
-sdy.mesh @mesh2 = <"b"=2>
+sdy.mesh @mesh1 = <["a"=2]>
+sdy.mesh @mesh2 = <["b"=2]>
 
 // CHECK-LABEL: func @while_with_free_variables
 func.func @while_with_free_variables(

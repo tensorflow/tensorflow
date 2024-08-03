@@ -10,8 +10,8 @@
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: xla.sdy.sharding
 
-// CHECK: sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
-sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
+// CHECK: sdy.mesh @mesh = <["a"=2, "b"=2, "c"=2]>
+sdy.mesh @mesh = <["a"=2, "b"=2, "c"=2]>
 
 // CHECK-LABEL: func @main
 func.func @main(
@@ -33,8 +33,8 @@ func.func @main(
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: xla.sdy.sharding
 
-// CHECK: sdy.mesh @mesh = <"a"=2, "b"=2>
-sdy.mesh @mesh = <"a"=2, "b"=2>
+// CHECK: sdy.mesh @mesh = <["a"=2, "b"=2]>
+sdy.mesh @mesh = <["a"=2, "b"=2]>
 
 // CHECK-LABEL: func @main
 func.func @main(
@@ -54,8 +54,8 @@ func.func @main(
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: xla.sdy.sharding
 
-// CHECK: sdy.mesh @mesh = <"a"=2, "b"=2>
-sdy.mesh @mesh = <"a"=2, "b"=2>
+// CHECK: sdy.mesh @mesh = <["a"=2, "b"=2]>
+sdy.mesh @mesh = <["a"=2, "b"=2]>
 
 // CHECK-LABEL: func @main
 func.func @main(
@@ -78,8 +78,8 @@ func.func @main(
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: xla.sdy.sharding
 
-// CHECK: sdy.mesh @mesh = <"a"=2, "b"=2>
-sdy.mesh @mesh = <"a"=2, "b"=2>
+// CHECK: sdy.mesh @mesh = <["a"=2, "b"=2]>
+sdy.mesh @mesh = <["a"=2, "b"=2]>
 
 // CHECK-LABEL: func @main
 func.func @main(
@@ -98,8 +98,8 @@ func.func @main(
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: xla.sdy.sharding
 
-// CHECK: sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
-sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
+// CHECK: sdy.mesh @mesh = <["a"=2, "b"=2, "c"=2]>
+sdy.mesh @mesh = <["a"=2, "b"=2, "c"=2]>
 
 // CHECK-LABEL:      @main(
 // CHECK-SAME:   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}p4]>},
@@ -123,8 +123,8 @@ func.func @main(
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: sharding_hlo_string
 
-// CHECK: sdy.mesh @mesh = <"data"=2>
-sdy.mesh @mesh = <"data"=2>
+// CHECK: sdy.mesh @mesh = <["data"=2]>
+sdy.mesh @mesh = <["data"=2]>
 
 // CHECK-LABEL: func @main
 func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
@@ -146,8 +146,8 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: xla.sdy.sharding
 
-// CHECK: sdy.mesh @mesh_2 = <"x"=8, "y"=4>
-sdy.mesh @mesh_2 = <"x"=8, "y"=4>
+// CHECK: sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
+sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 
 // CHECK-LABEL: func @main
 func.func @main(
@@ -163,8 +163,8 @@ func.func @main(
 
 // -----
 
-// CHECK: sdy.mesh @mesh = <"x"=2>
-sdy.mesh @mesh = <"x"=2>
+// CHECK: sdy.mesh @mesh = <["x"=2]>
+sdy.mesh @mesh = <["x"=2]>
 
 // Test WhileOp with lifted free variables and sinked constants.
 
