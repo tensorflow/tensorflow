@@ -227,21 +227,27 @@ class ConstantFoldingTest : public ::testing::Test {
     test::FillIota<float>(&a_const_data, 1.0f);
 
     auto o_root = tensorflow::Scope::NewRootScope();
-    _Recv(o_root.WithOpName("original_recv"), DT_FLOAT, "", "", 0, "");
+    _Recv give_me_a_name(o_root.WithOpName("original_recv"), DT_FLOAT, "", "",
+                         0, "");
     Output o_a_const =
         Const(o_root.WithOpName("a_const"), Input::Initializer(a_const_data));
-    Placeholder(o_root.WithOpName("placeholder"), DT_FLOAT);
-    _Send(o_root.WithOpName("original_send"), o_a_const, "", "", 0, "");
+    Placeholder give_me_a_name(o_root.WithOpName("placeholder"), DT_FLOAT);
+    _Send give_me_a_name(o_root.WithOpName("original_send"), o_a_const, "", "",
+                         0, "");
     GraphDef o_graph_def;
     TF_ASSERT_OK(o_root.ToGraphDef(&o_graph_def));
 
     auto n_root = tensorflow::Scope::NewRootScope();
-    _Recv(n_root.WithOpName("original_recv"), DT_FLOAT, "", "", 0, "");
+    _Recv give_me_a_name(n_root.WithOpName("original_recv"), DT_FLOAT, "", "",
+                         0, "");
     Output n_a_const =
         Const(n_root.WithOpName("a_const"), Input::Initializer(a_const_data));
-    _Recv(n_root.WithOpName("_recv_placeholder_0"), DT_FLOAT, "", "", 0, "");
-    _Send(n_root.WithOpName("original_send"), n_a_const, "", "", 0, "");
-    _Send(n_root.WithOpName("new_send"), n_a_const, "", "", 0, "");
+    _Recv give_me_a_name(n_root.WithOpName("_recv_placeholder_0"), DT_FLOAT, "",
+                         "", 0, "");
+    _Send give_me_a_name(n_root.WithOpName("original_send"), n_a_const, "", "",
+                         0, "");
+    _Send give_me_a_name(n_root.WithOpName("new_send"), n_a_const, "", "", 0,
+                         "");
     GraphDef n_graph_def;
     TF_ASSERT_OK(n_root.ToGraphDef(&n_graph_def));
 
