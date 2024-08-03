@@ -47,7 +47,7 @@ def tf_additional_tpu_ops_deps():
 # on MacOS platforms. If "macos" is not provided, the "otherwise" list is
 # used for all framework_shared_object platforms including MacOS.
 def if_static(extra_deps, otherwise = [], macos = []):
-    if use_pywrap_rules:
+    if use_pywrap_rules():
         return extra_deps
 
     ret = {
