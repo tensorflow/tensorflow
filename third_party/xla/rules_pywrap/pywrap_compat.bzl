@@ -1,18 +1,6 @@
 # TODO(b/356020232): remove entire file and all usages after migration is done
 load("//rules_pywrap:pywrap.bzl", "pybind_extension")
 
-# Starlakr does not have sets, so using map with empty values
-#_DEFAULT_IGNORED_DEPS = {
-#    "@pybind11": None,
-#    "@pybind11//:pybind11": None,
-#}
-#_DEFAULT_PRIVATE_DEPS = {
-#    "@pybind11_abseil//pybind11_abseil:absl_casters": None,
-#    "@pybind11_abseil//pybind11_abseil:import_status_module": None,
-#    "@pybind11_abseil//pybind11_abseil:status_casters": None,
-#    "@pybind11_protobuf//pybind11_protobuf:native_proto_caster": None,
-#}
-
 def pywrap_pybind_extension(
         name, # original
         deps, # original

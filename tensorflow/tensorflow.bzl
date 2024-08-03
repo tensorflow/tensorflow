@@ -3694,9 +3694,26 @@ def tf_python_framework_friends():
     return ["//tensorflow:__subpackages__"]
 
 # TODO(b/356020232): remove all of these and their usages after migration is done
-pywrap_library = _pywrap_library
-pywrap_common_library = _pywrap_common_library
-stripped_cc_info = _stripped_cc_info
+def pywrap_library(name, **kwargs):
+    if use_pywrap_rules():
+        _pywrap_library(
+            name = name,
+            **kwargs
+        )
+
+def pywrap_common_library(name, **kwargs):
+    if use_pywrap_rules():
+        _pywrap_common_library(
+            name = name,
+            **kwargs,
+        )
+
+def stripped_cc_info(name, **kwargs):
+    if use_pywrap_rules():
+        _stripped_cc_info(
+            name = name,
+            **kwargs,
+        )
 
 def pywrap_aware_filegroup(name, **kwargs):
     if use_pywrap_rules():

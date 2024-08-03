@@ -1,22 +1,46 @@
 diff --git a/BUILD.bazel b/BUILD.bazel
 --- a/BUILD.bazel	(revision 90b73ac3f0b10320315c2ca0d03a5a9b095d2f66)
-+++ b/BUILD.bazel	(date 1670471682469)
-@@ -68,6 +68,7 @@
++++ b/BUILD.bazel	(date 1714620794503)
+@@ -68,6 +68,8 @@
      copts = COPTS,
      includes = ["src/"],
      linkopts = LINK_OPTS,
++    local_defines = ["PROTOBUF_USE_DLLS", "LIBPROTOBUF_EXPORTS"],
 +    alwayslink = 1,
      visibility = ["//visibility:public"],
  )
 
-@@ -135,6 +136,7 @@
+@@ -135,6 +137,8 @@
      copts = COPTS,
      includes = ["src/"],
      linkopts = LINK_OPTS,
++    local_defines = ["PROTOBUF_USE_DLLS", "LIBPROTOBUF_EXPORTS"],
 +    alwayslink = 1,
      visibility = ["//visibility:public"],
      deps = [":protobuf_lite"] + select({
          "//build_defs:config_msvc": [],
+@@ -1074,7 +1078,8 @@
+         "@com_google_protobuf//:type_proto",
+         "@com_google_protobuf//:wrappers_proto",
+     ],
+-    command_line = "--cpp_out=$(OUT)",
++    command_line = "--cpp_out=dllexport_decl=PROTOBUF_EXPORT:$(OUT)",
++#    command_line = "--cpp_out=$(OUT)",
+     runtime = ":protobuf",
+     visibility = ["//visibility:public"],
+ )
+diff --git a/protobuf.bzl b/protobuf.bzl
+--- a/protobuf.bzl	(revision 90b73ac3f0b10320315c2ca0d03a5a9b095d2f66)
++++ b/protobuf.bzl	(date 1714611573270)
+@@ -127,7 +127,7 @@
+         use_grpc_plugin = (ctx.attr.plugin_language == "grpc" and ctx.attr.plugin)
+         path_tpl = "$(realpath %s)" if in_gen_dir else "%s"
+         if ctx.attr.gen_cc:
+-            args += [("--cpp_out=" + path_tpl) % gen_dir]
++            args += [("--cpp_out=dllexport_decl=PROTOBUF_EXPORT:" + path_tpl) % gen_dir]
+             outs.extend(_CcOuts([src.basename], use_grpc_plugin = use_grpc_plugin))
+         if ctx.attr.gen_py:
+             args += [("--python_out=" + path_tpl) % gen_dir]
 diff --git a/python/google/protobuf/pyext/descriptor.cc b/python/google/protobuf/pyext/descriptor.cc
 index 162531226..e93ec4809 100644
 --- a/python/google/protobuf/pyext/descriptor.cc

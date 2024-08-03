@@ -289,7 +289,7 @@ def tsl_copts(
     if use_pywrap_rules():
         pass
     else:
-        select({
+        framework_deps = select({
             clean_dep("//xla/tsl:framework_shared_object"): [],
             "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
         })

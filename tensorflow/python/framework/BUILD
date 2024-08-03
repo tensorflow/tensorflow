@@ -59,9 +59,15 @@ stripped_cc_info(
 
 tf_cc_shared_object(
     name = "test_file_system.so",
-    deps = [
-        ":test_file_system_stripped"
-    ] + if_pywrap(["//tensorflow/python:_pywrap_tensorflow_common"]),
+    deps = if_pywrap(
+        if_true = [
+            ":test_file_system_stripped",
+            "//tensorflow/python:_pywrap_tensorflow_common"
+        ],
+        if_false = [
+            ":test_file_system",
+        ]
+    ),
 )
 
 tf_py_strict_test(
