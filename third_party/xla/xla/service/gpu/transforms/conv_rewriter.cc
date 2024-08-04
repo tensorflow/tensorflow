@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_conv_rewriter.h"
+#include "xla/service/gpu/transforms/conv_rewriter.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -845,10 +845,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
 }
 }  // namespace
 
-absl::StatusOr<bool> GpuConvRewriter::Run(
+absl::StatusOr<bool> ConvRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(2, "GpuConvRewriter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "ConvRewriter::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -856,11 +856,11 @@ absl::StatusOr<bool> GpuConvRewriter::Run(
                         RunOnComputation(computation, compute_capability_));
     changed |= result;
   }
-  XLA_VLOG_LINES(2, "GpuConvRewriter::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "ConvRewriter::Run(), after:\n" + module->ToString());
   return changed;
 }
 
-/*static*/ bool GpuConvRewriter::ConvIsLowerable(HloInstruction* conv) {
+/*static*/ bool ConvRewriter::ConvIsLowerable(HloInstruction* conv) {
   return CanImplementAsGpuForwardConv(conv) || MatchBackwardFilter(conv) ||
          MatchBackwardInput(conv);
 }

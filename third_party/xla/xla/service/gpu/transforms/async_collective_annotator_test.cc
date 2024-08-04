@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_async_collective_annotator.h"
+#include "xla/service/gpu/transforms/async_collective_annotator.h"
 
 #include <memory>
 #include <string>
@@ -97,18 +97,18 @@ struct TestCase {
   absl::flat_hash_set<absl::string_view> expected_sync;
 };
 
-class GpuAsyncCollectiveAnnotatorTest
+class AsyncCollectiveAnnotatorTest
     : public HloTestBase,
       public ::testing::WithParamInterface<TestCase> {};
 
-XLA_TEST_P(GpuAsyncCollectiveAnnotatorTest, Test) {
+XLA_TEST_P(AsyncCollectiveAnnotatorTest, Test) {
   const TestCase& test_case = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloString, /*replica_count=*/2));
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, GpuAsyncCollectiveAnnotator(test_case.is_async_predicate)
-                        .Run(module.get()));
+      bool changed,
+      AsyncCollectiveAnnotator(test_case.is_async_predicate).Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Assert that all async collectives are annotated with the backend config.
@@ -175,8 +175,8 @@ std::string TestCaseName(const ::testing::TestParamInfo<TestCase>& test_case) {
   return test_case.param.test_name;
 }
 
-INSTANTIATE_TEST_SUITE_P(GpuAsyncCollectiveAnnotatorTest,
-                         GpuAsyncCollectiveAnnotatorTest,
+INSTANTIATE_TEST_SUITE_P(AsyncCollectiveAnnotatorTest,
+                         AsyncCollectiveAnnotatorTest,
                          ::testing::ValuesIn(TestCases()), TestCaseName);
 }  // namespace
 }  // namespace gpu

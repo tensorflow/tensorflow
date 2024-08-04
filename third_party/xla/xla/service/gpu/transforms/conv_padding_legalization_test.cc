@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_conv_padding_legalization.h"
+#include "xla/service/gpu/transforms/conv_padding_legalization.h"
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -32,9 +32,9 @@ namespace {
 
 namespace m = ::xla::match;
 
-using GpuConvPaddingLegalizationTest = HloTestBase;
+using ConvPaddingLegalizationTest = HloTestBase;
 
-TEST_F(GpuConvPaddingLegalizationTest, BackwardInputConvolve) {
+TEST_F(ConvPaddingLegalizationTest, BackwardInputConvolve) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule convolution_module
 ENTRY %convolution (operand f64[2,2,2,3]{3,2,1,0}) -> (f64[2,2,4,4]{3,2,1,0}, u8[0]) {
@@ -75,7 +75,7 @@ ENTRY %convolution (operand f64[2,2,2,3]{3,2,1,0}) -> (f64[2,2,4,4]{3,2,1,0}, u8
 }
                                                )")
                     .value();
-  ASSERT_TRUE(GpuConvPaddingLegalization().Run(module.get()).value());
+  ASSERT_TRUE(ConvPaddingLegalization().Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Tuple(
                         m::Slice(m::GetTupleElement(

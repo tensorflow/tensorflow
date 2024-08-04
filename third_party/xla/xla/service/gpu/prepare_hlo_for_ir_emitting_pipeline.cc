@@ -22,10 +22,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
-#include "xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/transforms/alias_passthrough_params.h"
 #include "xla/service/gpu/transforms/copy_fusion.h"
+#include "xla/service/gpu/transforms/sanitize_constant_names.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -85,7 +85,7 @@ HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
   sub_pipeline.AddPass<CopyFusion>();
   sub_pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
   sub_pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<GpuSanitizeConstantNames>();
+  pipeline.AddPass<SanitizeConstantNames>();
   return pipeline;
 }
 

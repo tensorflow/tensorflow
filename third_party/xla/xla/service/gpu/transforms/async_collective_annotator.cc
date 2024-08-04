@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_async_collective_annotator.h"
+#include "xla/service/gpu/transforms/async_collective_annotator.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<bool> GpuAsyncCollectiveAnnotator::Run(
+absl::StatusOr<bool> AsyncCollectiveAnnotator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

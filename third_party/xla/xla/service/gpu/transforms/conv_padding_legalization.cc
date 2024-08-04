@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_conv_padding_legalization.h"
+#include "xla/service/gpu/transforms/conv_padding_legalization.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -166,7 +166,7 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
 }
 }  // namespace
 
-bool GpuConvPaddingLegalization::CanonicalizeForwardConvolution(
+bool ConvPaddingLegalization::CanonicalizeForwardConvolution(
     HloInstruction* conv) {
   if (IsForwardConvolutionCanonical(*conv)) {
     return false;
@@ -219,7 +219,7 @@ void IncreasePaddingHighBy(int64_t delta, WindowDimension* window_dim) {
 }
 }  // namespace
 
-bool GpuConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
+bool ConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
     HloInstruction* backward_conv) {
   CHECK_EQ(backward_conv->custom_call_target(),
            kCudnnConvBackwardFilterCallTarget);
@@ -292,7 +292,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   return true;
 }
 
-bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
+bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
     HloInstruction* backward_conv) {
   if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
@@ -418,7 +418,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   return true;
 }
 
-absl::StatusOr<bool> GpuConvPaddingLegalization::RunOnComputation(
+absl::StatusOr<bool> ConvPaddingLegalization::RunOnComputation(
     HloComputation* computation) {
   bool changed = false;
   std::vector<HloCustomCallInstruction*> convs;
@@ -445,7 +445,7 @@ absl::StatusOr<bool> GpuConvPaddingLegalization::RunOnComputation(
   return changed;
 }
 
-absl::StatusOr<bool> GpuConvPaddingLegalization::Run(
+absl::StatusOr<bool> ConvPaddingLegalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

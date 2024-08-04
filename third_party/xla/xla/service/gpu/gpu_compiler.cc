@@ -74,7 +74,6 @@ limitations under the License.
 #include "xla/service/all_reduce_folder.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
-#include "xla/service/all_reduce_splitter.h"
 #include "xla/service/async_collective_creator.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/bitcast_dtypes_expander.h"
@@ -118,9 +117,6 @@ limitations under the License.
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/gpu_algebraic_simplifier.h"
-#include "xla/service/gpu/gpu_all_gather_optimizer.h"
-#include "xla/service/gpu/gpu_async_collective_annotator.h"
-#include "xla/service/gpu/gpu_conv_rewriter.h"
 #include "xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_float_support.h"
@@ -128,11 +124,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/gpu_layout_assignment.h"
 #include "xla/service/gpu/gpu_p2p_pipeliner.h"
-#include "xla/service/gpu/gpu_reduce_scatter_creator.h"
-#include "xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "xla/service/gpu/gpu_scatter_expander.h"
 #include "xla/service/gpu/gpu_spmd_pipeline.h"
-#include "xla/service/gpu/gpu_windowed_einsum_handler.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -161,10 +154,14 @@ limitations under the License.
 #include "xla/service/gpu/topk_specializer.h"
 #include "xla/service/gpu/topk_splitter.h"
 #include "xla/service/gpu/transforms/algorithm_checker.h"
+#include "xla/service/gpu/transforms/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/all_reduce_blueconnect.h"
+#include "xla/service/gpu/transforms/all_reduce_splitter.h"
+#include "xla/service/gpu/transforms/async_collective_annotator.h"
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/transforms/command_buffer_scheduling.h"
+#include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
@@ -175,6 +172,9 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemv_rewriter.h"
+#include "xla/service/gpu/transforms/reduce_scatter_creator.h"
+#include "xla/service/gpu/transforms/sanitize_constant_names.h"
+#include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/service/gpu/tree_reduction_rewriter.h"
 #include "xla/service/gpu/triton_fusion_numerics_verifier.h"
 #include "xla/service/hlo.pb.h"
@@ -495,7 +495,7 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts =
       opts_from_compiler;
   layout_insensitive_algsimp_opts.set_conv_is_lowerable_callback(
-      GpuConvRewriter::ConvIsLowerable);
+      ConvRewriter::ConvIsLowerable);
   layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
       hlo_module_config.debug_options()
           .xla_gpu_enable_dot_strength_reduction());
@@ -629,7 +629,7 @@ absl::Status RunOptimizationPasses(
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline);
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
-    pipeline.AddPass<GpuWindowedEinsumHandler>();
+    pipeline.AddPass<WindowedEinsumHandler>();
   }
   pipeline.AddPass<TopKSplitter>();
   pipeline.AddPass<TopkSpecializer>();
@@ -1123,7 +1123,7 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
         return false;
     }
   };
-  pipeline.AddPass<GpuAsyncCollectiveAnnotator>(convert_to_async);
+  pipeline.AddPass<AsyncCollectiveAnnotator>(convert_to_async);
 
   return pipeline.Run(hlo_module).status();
 }
@@ -2484,7 +2484,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<CommandBufferScheduling>(
         gpu_device_info, toolkit_version,
         driver_version.value_or(toolkit_version));
-    pipeline.AddPass<GpuSanitizeConstantNames>();
+    pipeline.AddPass<SanitizeConstantNames>();
   }
 
   AddHloVerifier(&main_pipeline,

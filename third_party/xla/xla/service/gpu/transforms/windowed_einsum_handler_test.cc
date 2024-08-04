@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_windowed_einsum_handler.h"
+#include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 
 #include <memory>
 #include <string>
@@ -34,7 +34,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-using GpuWindowedEinsumHanlderTest = HloTestBase;
+using WindowedEinsumHanlderTest = HloTestBase;
 
 HloInstruction* FindInstructionByName(HloComputation* comp, std::string name) {
   for (auto inst : comp->instructions()) {
@@ -45,7 +45,7 @@ HloInstruction* FindInstructionByName(HloComputation* comp, std::string name) {
   return nullptr;
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest, AgLoopsHaveStreamIds) {
+TEST_F(WindowedEinsumHanlderTest, AgLoopsHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,512,24576]{2,1,0}, bf16[24576,24576]{1,0})->bf16[2048,24576]{1,0}}, num_partitions=4
 
@@ -102,7 +102,7 @@ ENTRY test_main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  GpuWindowedEinsumHandler gpu_handler;
+  WindowedEinsumHandler gpu_handler;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -121,7 +121,7 @@ ENTRY test_main {
       cp1->backend_config<GpuBackendConfig>()->force_earliest_schedule());
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest, RsLoopsHaveStreamIds) {
+TEST_F(WindowedEinsumHanlderTest, RsLoopsHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[24576,24576]{1,0}, bf16[512,24576]{1,0}, bf16[2048,24576]{1,0})->bf16[512,24576]{1,0}}, num_partitions=4
 
@@ -180,7 +180,7 @@ ENTRY main.9_spmd {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  GpuWindowedEinsumHandler gpu_handler;
+  WindowedEinsumHandler gpu_handler;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -198,7 +198,7 @@ ENTRY main.9_spmd {
       cp1->backend_config<GpuBackendConfig>()->force_earliest_schedule());
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest, AgLoopsMultipleConsumersAreChained) {
+TEST_F(WindowedEinsumHanlderTest, AgLoopsMultipleConsumersAreChained) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,512,24576]{2,1,0}, bf16[24576,24576]{1,0}, bf16[24576,24576]{1,0})->bf16[2,2048,24576]{2,1,0}}, num_partitions=4
 
@@ -259,7 +259,7 @@ ENTRY main.12_spmd {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  GpuWindowedEinsumHandler gpu_handler;
+  WindowedEinsumHandler gpu_handler;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -286,7 +286,7 @@ ENTRY main.12_spmd {
                           m::Op(), m::Op(), m::Op(), m::Op()),
                       m::Op(), m::Op(), m::Op(), m::Op()))));
 }
-TEST_F(GpuWindowedEinsumHanlderTest, A2aGemmHaveStreamIds) {
+TEST_F(WindowedEinsumHanlderTest, A2aGemmHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,8192,32768]{2,1,0}, bf16[1,4,2048,8192]{3,2,1,0})->bf16[1,4,2048,32768]{3,2,1,0}}, num_partitions=8
 
@@ -350,7 +350,7 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(bf16[1,4,2048,32768]{3,2,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  GpuWindowedEinsumHandler gpu_handler;
+  WindowedEinsumHandler gpu_handler;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
@@ -358,7 +358,7 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(bf16[1,4,2048,32768]{3,2,
   EXPECT_TRUE(filecheck_matched);
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest, GemmA2aHaveStreamIds) {
+TEST_F(WindowedEinsumHanlderTest, GemmA2aHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,8192,32768]{2,1,0}, bf16[1,4,2048,32768]{3,2,1,0})->bf16[1,4,2048,8192]{3,2,1,0}}, num_partitions=4
 
@@ -422,7 +422,7 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,8192]{3,2,1,0} add(bf16[1,4,2048,8192]{3,2,1,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  GpuWindowedEinsumHandler gpu_handler;
+  WindowedEinsumHandler gpu_handler;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
@@ -430,7 +430,7 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,8192]{3,2,1,0} add(bf16[1,4,2048,8192]{3,2,1,
   EXPECT_TRUE(filecheck_matched);
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest, A2aTransposeLoopsHaveStreamIds) {
+TEST_F(WindowedEinsumHanlderTest, A2aTransposeLoopsHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,8192,32768]{2,1,0}, bf16[1,1,8192,4,1,2048]{5,4,3,2,1,0})->bf16[1,4,2048,32768]{3,2,1,0}}, num_partitions=4
 
@@ -504,7 +504,7 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(bf16[1,4,2048,32768]{3,2,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  GpuWindowedEinsumHandler gpu_handler;
+  WindowedEinsumHandler gpu_handler;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -513,7 +513,7 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(bf16[1,4,2048,32768]{3,2,
   EXPECT_TRUE(filecheck_matched);
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest, GemmA2aTransposeLoopsHaveStreamIds) {
+TEST_F(WindowedEinsumHanlderTest, GemmA2aTransposeLoopsHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,4,2048,32768]{3,2,1,0}, bf16[1,32768,8192]{2,1,0})->bf16[1,4,1,1,2048,8192]{5,4,3,2,1,0}}, num_partitions=4
 
@@ -588,7 +588,7 @@ CHECK: ROOT {{.*}} = bf16[1,4,1,1,2048,8192]{5,4,3,2,1,0} reshape(bf16[1,4,1,204
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  GpuWindowedEinsumHandler gpu_handler;
+  WindowedEinsumHandler gpu_handler;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -597,7 +597,7 @@ CHECK: ROOT {{.*}} = bf16[1,4,1,1,2048,8192]{5,4,3,2,1,0} reshape(bf16[1,4,1,204
   EXPECT_TRUE(filecheck_matched);
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest, AllGatherF8) {
+TEST_F(WindowedEinsumHanlderTest, AllGatherF8) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[], f32[])->f32[2,2048,24576]{2,1,0}}, num_partitions=4
 
@@ -660,7 +660,7 @@ ENTRY test_main {
 }
 )";
 
-  RunAndFilecheckHloRewrite(kHloString, GpuWindowedEinsumHandler(),
+  RunAndFilecheckHloRewrite(kHloString, WindowedEinsumHandler(),
                             R"(
 ; CHECK-LABEL: windowed_dot_general_body_ag
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) parameter(0)
@@ -716,7 +716,7 @@ ENTRY test_main {
 )");
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest, ReduceScatterF8) {
+TEST_F(WindowedEinsumHanlderTest, ReduceScatterF8) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f8e4m3fn[2,2048,24576]{2,1,0}, f32[], f32[])->f32[2,512,24576]{2,1,0}}, num_partitions=4
 
@@ -780,7 +780,7 @@ ENTRY main.9_spmd {
 }
 )";
 
-  RunAndFilecheckHloRewrite(kHloString, GpuWindowedEinsumHandler(),
+  RunAndFilecheckHloRewrite(kHloString, WindowedEinsumHandler(),
                             R"(
 ; CHECK-LABEL: windowed_dot_general_body_rs
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = (f8e4m3fn[2,2048,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) parameter(0)
@@ -837,7 +837,7 @@ ENTRY main.9_spmd {
 )");
 }
 
-TEST_F(GpuWindowedEinsumHanlderTest,
+TEST_F(WindowedEinsumHanlderTest,
        AgLoopsMultipleConsumersAreChainedWithShardedContratingDim) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0})->bf16[4096,6288]{1,0}}, num_partitions=8
@@ -900,7 +900,7 @@ ENTRY main.12_spmd {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  GpuWindowedEinsumHandler gpu_handler;
+  WindowedEinsumHandler gpu_handler;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);

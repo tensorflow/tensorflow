@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_schedule_postprocessing.h"
+#include "xla/service/gpu/transforms/schedule_postprocessing.h"
 
 #include <vector>
 
@@ -132,7 +132,7 @@ absl::StatusOr<bool> ProcessComputation(
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> GpuSchedulePostprocessing::Run(
+absl::StatusOr<bool> SchedulePostprocessing::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!module->has_schedule()) return false;

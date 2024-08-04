@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_sanitize_constant_names.h"
+#include "xla/service/gpu/transforms/sanitize_constant_names.h"
 
 #include <cstdint>
 #include <memory>
@@ -44,7 +44,7 @@ TEST_F(SanitizeConstantNamesTest, InstructionNameWithHyphenSanitized) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
+  EXPECT_TRUE(SanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->name(), "equal_to");
 }
@@ -59,7 +59,7 @@ TEST_F(SanitizeConstantNamesTest, InstructionNameWithDotSanitized) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
+  EXPECT_TRUE(SanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->name(), "equal_to");
 }
@@ -74,7 +74,7 @@ TEST_F(SanitizeConstantNamesTest, NewInstructionNameRegisteredWithModule) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
+  EXPECT_TRUE(SanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->name(), "equal_to");
 
@@ -99,7 +99,7 @@ TEST_F(SanitizeConstantNamesTest, BufferSanitizedNameCollisionResolved) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
+  EXPECT_TRUE(SanitizeConstantNames().Run(module.get()).value());
   EXPECT_THAT(FindInstruction(module.get(), "equal_to_1"),
               GmockMatch(m::Constant()));
   EXPECT_THAT(FindInstruction(module.get(), "equal_to_2"),
