@@ -444,7 +444,7 @@ bool IsQuantizedMatMul(const NodeDef& node) {
 }
 
 bool IsQueue(const NodeDef& node) {
-  return str_util::EndsWith(node.op(), "QueueV2");
+  return absl::EndsWith(node.op(), "QueueV2");
 }
 
 bool IsRandomShuffle(const NodeDef& node) {
