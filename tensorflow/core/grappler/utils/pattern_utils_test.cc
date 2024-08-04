@@ -184,7 +184,7 @@ TEST_F(PatternMatcherTest, Tree) {
   bool all_indices_matched = true;
   for (auto it = matched_nodes_map.begin(); it != matched_nodes_map.begin();
        it++) {
-    auto label = str_util::StripPrefix(it->first, "my_");
+    auto label = absl::StripPrefix(it->first, "my_");
     int matched_node_idx = it->second;
     int expected_node_idx = graph_view.GetNode(label)->node_index();
     if (matched_node_idx != expected_node_idx) {
@@ -268,7 +268,7 @@ TEST_F(PatternMatcherTest, DAG) {
   bool all_indices_matched = true;
   for (auto it = matched_nodes_map.begin(); it != matched_nodes_map.begin();
        it++) {
-    auto label = str_util::StripPrefix(it->first, "my_");
+    auto label = absl::StripPrefix(it->first, "my_");
     int matched_node_idx = it->second;
     int expected_node_idx = graph_view.GetNode(label)->node_index();
     if (matched_node_idx != expected_node_idx) {
@@ -387,7 +387,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGelu) {
   bool all_indices_matched = true;
   for (auto it = matched_nodes_map.begin(); it != matched_nodes_map.begin();
        it++) {
-    auto label = str_util::StripPrefix(it->first, "my_");
+    auto label = absl::StripPrefix(it->first, "my_");
     int matched_node_idx = it->second;
     int expected_node_idx = graph_view.GetNode(label)->node_index();
     if (matched_node_idx != expected_node_idx) {
@@ -561,7 +561,7 @@ TEST_F(PatternMatcherTest, CommutativeInputs) {
       bool all_indices_matched = true;
       for (auto it = matched_nodes_map.begin(); it != matched_nodes_map.begin();
            it++) {
-        auto label = str_util::StripPrefix(it->first, "my_");
+        auto label = absl::StripPrefix(it->first, "my_");
         int matched_node_idx = it->second;
         int expected_node_idx = graph_view.GetNode(label)->node_index();
         if (matched_node_idx != expected_node_idx) {
