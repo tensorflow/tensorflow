@@ -114,6 +114,7 @@ cc_library(
     hdrs = ["ifrt_serving_executable.h"],
     deps = [
         ":ifrt_config_proto_cc",
+        ":ifrt_device_utils",
         ":ifrt_loaded_variable_registry",
         ":ifrt_loaded_variable_utils",
         ":ifrt_restore_tensor_registry",
@@ -143,7 +144,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
