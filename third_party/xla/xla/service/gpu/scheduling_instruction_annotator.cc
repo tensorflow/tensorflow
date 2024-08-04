@@ -37,7 +37,7 @@ absl::StatusOr<bool> AnnotateSchedulingInstructionNames(
     if (!inst->metadata().scheduling_name().empty()) {
       continue;
     }
-    inst->set_metadata_scheduling_name(std::string(inst->name()));
+    inst->set_metadata_scheduling_name(inst->name());
     changed = true;
   }
   return changed;

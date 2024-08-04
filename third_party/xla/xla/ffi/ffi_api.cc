@@ -470,6 +470,11 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
         InvalidArgument("Unsupported alignment: %d", args->alignment)};
   }
 
+  if (ABSL_PREDICT_FALSE(args->ctx->allocator == nullptr)) {
+    return new XLA_FFI_Error{
+        Unimplemented("No device memory allocator available on this platform")};
+  }
+
   absl::StatusOr<stream_executor::OwningDeviceMemory> memory =
       args->ctx->allocator->Allocate(args->ctx->device_ordinal, args->size);
   if (!memory.ok()) {
@@ -485,6 +490,11 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_DeviceMemory_Free_Args",
       XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE, args->struct_size));
+
+  if (ABSL_PREDICT_FALSE(args->ctx->allocator == nullptr)) {
+    return new XLA_FFI_Error{
+        Unimplemented("No device memory allocator available on this platform")};
+  }
 
   absl::Status status = args->ctx->allocator->Deallocate(
       args->ctx->device_ordinal,

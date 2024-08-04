@@ -87,14 +87,6 @@ absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         mlir::triton::FuncOp fn,
                         const BlockLevelParameters& block_level_parameters);
 
-// Generate Softmax in Triton IR inside 'fn'.
-// Use execution parameters from 'block_level_parameters'.
-absl::Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
-                         const se::DeviceDescription& device_info,
-                         const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn,
-                         const BlockLevelParameters& block_level_parameters);
-
 using TritonIrEmitter = std::function<absl::Status(
     mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,
     const HloFusionInstruction*, mlir::triton::FuncOp,
