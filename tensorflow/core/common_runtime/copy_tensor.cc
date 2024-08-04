@@ -206,7 +206,7 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         const Tensor* input, Tensor* output,
                         int dev_to_dev_stream_index, StatusCallback done,
                         bool sync_dst_compute) {
-  profiler::ScopedAnnotation annotation(
+  tsl::profiler::ScopedAnnotation annotation(
       [&] { return absl::StrCat("#edge_name=", edge_name, "#"); });
   VLOG(4) << "Copy " << edge_name;
 
