@@ -237,12 +237,11 @@ TEST(FfiTest, BufferArgument) {
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto handler =
-      Ffi::Bind().Arg<BufferR2<DataType::F32>>().To([&](auto buffer) {
-        EXPECT_EQ(buffer.typed_data(), storage.data());
-        EXPECT_EQ(buffer.dimensions().size(), 2);
-        return Error::Success();
-      });
+  auto handler = Ffi::Bind().Arg<BufferR2<F32>>().To([&](auto buffer) {
+    EXPECT_EQ(buffer.typed_data(), storage.data());
+    EXPECT_EQ(buffer.dimensions().size(), 2);
+    return Error::Success();
+  });
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
@@ -270,7 +269,7 @@ TEST(FfiTest, MissingBufferArgument) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Arg<BufferR1<DataType::F32>>().To(
+  auto handler = Ffi::Bind().Arg<BufferR1<F32>>().To(
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
@@ -286,7 +285,7 @@ TEST(FfiTest, WrongRankBufferArgument) {
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Arg<BufferR1<DataType::F32>>().To(
+  auto handler = Ffi::Bind().Arg<BufferR1<F32>>().To(
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
@@ -303,7 +302,7 @@ TEST(FfiTest, WrongTypeBufferArgument) {
   builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Arg<BufferR2<DataType::F32>>().To(
+  auto handler = Ffi::Bind().Arg<BufferR2<F32>>().To(
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
@@ -747,7 +746,7 @@ BENCHMARK(BM_AnyBufferArgX4);
 void BM_BufferArgX1(benchmark::State& state) {
   auto call_frame = WithBufferArgs(1).Build();
 
-  auto handler = Ffi::Bind().Arg<BufferR4<DataType::F32>>().To([](auto buffer) {
+  auto handler = Ffi::Bind().Arg<BufferR4<F32>>().To([](auto buffer) {
     benchmark::DoNotOptimize(buffer);
     return Error::Success();
   });
@@ -767,10 +766,10 @@ void BM_BufferArgX4(benchmark::State& state) {
   auto call_frame = WithBufferArgs(4).Build();
 
   auto handler = Ffi::Bind()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
                      .To([](auto b0, auto b1, auto b2, auto b3) {
                        benchmark::DoNotOptimize(b0);
                        benchmark::DoNotOptimize(b1);
@@ -794,14 +793,14 @@ void BM_BufferArgX8(benchmark::State& state) {
   auto call_frame = WithBufferArgs(8).Build();
 
   auto handler = Ffi::Bind()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
-                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
                      .To([](auto b0, auto b1, auto b2, auto b3, auto b4,
                             auto b5, auto b6, auto b7) {
                        benchmark::DoNotOptimize(b0);

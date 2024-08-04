@@ -75,6 +75,30 @@ enum class DataType : uint8_t {
   F8E4M3FNUZ = XLA_FFI_DataType_F8E4M3FNUZ,
 };
 
+// Create aliases in ::xla::ffi namespace for all DataTypes, for consistency
+// with xla that defines PrimitiveType enums in ::xla namespace.
+inline constexpr DataType PRED = DataType::PRED;
+inline constexpr DataType S8 = DataType::S8;
+inline constexpr DataType S16 = DataType::S16;
+inline constexpr DataType S32 = DataType::S32;
+inline constexpr DataType S64 = DataType::S64;
+inline constexpr DataType U8 = DataType::U8;
+inline constexpr DataType U16 = DataType::U16;
+inline constexpr DataType U32 = DataType::U32;
+inline constexpr DataType U64 = DataType::U64;
+inline constexpr DataType F16 = DataType::F16;
+inline constexpr DataType F32 = DataType::F32;
+inline constexpr DataType F64 = DataType::F64;
+inline constexpr DataType BF16 = DataType::BF16;
+inline constexpr DataType C64 = DataType::C64;
+inline constexpr DataType C128 = DataType::C128;
+inline constexpr DataType TOKEN = DataType::TOKEN;
+inline constexpr DataType F8E5M2 = DataType::F8E5M2;
+inline constexpr DataType F8E4M3FN = DataType::F8E4M3FN;
+inline constexpr DataType F8E4M3B11FNUZ = DataType::F8E4M3B11FNUZ;
+inline constexpr DataType F8E5M2FNUZ = DataType::F8E5M2FNUZ;
+inline constexpr DataType F8E4M3FNUZ = DataType::F8E4M3FNUZ;
+
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   return os << static_cast<XLA_FFI_DataType>(dtype);
 }
