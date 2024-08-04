@@ -517,7 +517,7 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
   const size_t num_executors = executors_and_keys->items.size();
 
-  profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&] {
         if (options_.config.experimental().has_session_metadata()) {
