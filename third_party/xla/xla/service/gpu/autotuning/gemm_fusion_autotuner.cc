@@ -487,6 +487,15 @@ absl::Status DumpOriginalFusion(AutotunerCompileUtil& util,
   // Using the original module for its debug info and name in the first
   // parameter. It's better to include the name of both the original module
   // and the extracted module, to avoid name clashes.
+  std::string rendered_graph_name =
+      absl::StrCat("gemm_fusion_", fusion_id, ".", module->name(), ".dot");
+  std::string rendered_graph = RenderGraph(rendered_graph_name, *module,
+                                           RenderedGraphFormat::kDot, true);
+  DumpToFileInDir(
+      /*module=*/*fusion.GetModule(),
+      /*file_prefix=*/"",
+      /*file_suffix=*/rendered_graph_name,
+      /*contents=*/rendered_graph);
   DumpToFileInDirOrStdout(
       /*module=*/*fusion.GetModule(),
       /*file_prefix=*/"",

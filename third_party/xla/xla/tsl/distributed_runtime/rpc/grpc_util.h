@@ -54,9 +54,10 @@ inline bool IsStreamRemovedError(const ::grpc::Status& s) {
 
 inline std::string SerializePayloads(const absl::Status& s) {
   tensorflow::distributed_runtime::GrpcPayloadContainer container;
-  s.ForEachPayload([&container](StringPiece key, const absl::Cord& value) {
-    (*container.mutable_payloads())[std::string(key)] = std::string(value);
-  });
+  s.ForEachPayload(
+      [&container](absl::string_view key, const absl::Cord& value) {
+        (*container.mutable_payloads())[std::string(key)] = std::string(value);
+      });
   return container.SerializeAsString();
 }
 
