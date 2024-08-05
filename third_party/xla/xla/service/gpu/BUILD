@@ -558,6 +558,7 @@ cc_library(
 
 xla_test(
     name = "gemm_fusion_autotuner_test",
+    timeout = "long",
     srcs = if_cuda_is_configured(["gemm_fusion_autotuner_test.cc"]),
     backend_tags = {"gpu": [
         "requires-gpu-sm80",
