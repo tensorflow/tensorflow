@@ -5186,8 +5186,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
         .set_uid(CudnnfMHAUid::P_ID);
   }
   CudnnGraph cudnnGraph(std::move(graph));
-  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(dnn_support));
-  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
+  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(
+      dnn_support, NumericOptions{/*require_determinism=*/false,
+                                  /*allow_tf32=*/true}));
+  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
 
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\b flash attention operation graph: " << graph;
@@ -5402,8 +5404,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
       .set_data_type(ioDataType);
 
   CudnnGraph cudnnGraph(std::move(graph));
-  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(dnn_support));
-  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
+  TF_RETURN_IF_ERROR(
+      cudnnGraph.Prepare(dnn_support, NumericOptions{force_deterministic,
+                                                     /*allow_tf32=*/true}));
+  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
 
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\b flash attention operation backward graph: " << graph;
@@ -8353,11 +8357,16 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
-absl::Status CudnnGraph::Prepare(dnn::DnnSupport& dnn_support) {
+absl::Status CudnnGraph::Prepare(dnn::DnnSupport& dnn_support,
+                                 const NumericOptions& numeric_options) {
   const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
   TF_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetLocalHandle());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn->handle()));
+  if (numeric_options.require_determinism) {
+    graph_.deselect_numeric_notes(
+        {cudnn_frontend::NumericalNote_t::NONDETERMINISTIC});
+  }
   RETURN_IF_CUDNN_FRONTEND_ERROR(
       graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}));
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.check_support(cudnn->handle()));

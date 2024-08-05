@@ -1257,11 +1257,7 @@ class DnnGraph {
   DnnGraph() = default;
   virtual ~DnnGraph() = default;
 
-  // Returns non-OK status on hard failures (incorrectly constructed graph,
-  // anything else unexpected),
-  // false on expected ones (graph is valid but not supported),
-  // true on success.
-  virtual absl::Status Prepare(DnnSupport&) = 0;
+  virtual absl::Status Prepare(DnnSupport&, const NumericOptions&) = 0;
   virtual absl::Status Build(DnnSupport&, std::optional<int64_t> plan_id) = 0;
   virtual absl::Status Execute(Stream& stream,
                                absl::Span<DeviceMemoryBase> operands) const = 0;

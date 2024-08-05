@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
@@ -596,7 +597,10 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
   if (!graph.has_value()) {
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
-  TF_RETURN_IF_ERROR(graph->Prepare(dnn_support));
+  TF_RETURN_IF_ERROR(graph->Prepare(
+      dnn_support,
+      se::NumericOptions{RequireDeterminism(hlo.GetModule()->config()),
+                         /*allow_tf32=*/true}));
   return *graph;
 }
 

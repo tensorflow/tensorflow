@@ -2244,6 +2244,7 @@ cc_library(
         ":ir_emission_utils",
         ":kernel_reuse_cache",
         ":matmul_utils",
+        ":stream_executor_util",
         ":triton_fusion_analysis",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

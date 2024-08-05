@@ -60,7 +60,7 @@ class CudnnGraph : public dnn::DnnGraph {
   explicit CudnnGraph(cudnn_frontend::graph::Graph&& graph)
       : graph_(std::move(graph)) {}
   // Prepares a graph and checks whether it is generally supported.
-  absl::Status Prepare(dnn::DnnSupport&) override;
+  absl::Status Prepare(dnn::DnnSupport&, const NumericOptions&) override;
   // Builds single plan of the graph with given ID.
   absl::Status Build(dnn::DnnSupport&, std::optional<int64_t> plan_id) override;
   // Builds all the plans
