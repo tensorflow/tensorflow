@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -68,7 +67,7 @@ std::string TestDataToString(const ::testing::TestParamInfo<TestData>& data) {
 //
 // In general we want to avoid these because we want HLO text to be
 // round-trippable!  But nested instructions, e.g. add(sqrt(x), y), cannot be
-// round-triped without modification.
+// round-tripped without modification.
 struct NonRoundtripTestData {
   std::string test_name;
   std::string input_module_string;
@@ -459,6 +458,96 @@ R"(HloModule CallR0F32IdentityScalar_module, entry_computation_layout={()->f32[]
 ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
   %constant = f32[] constant(42)
   ROOT %call = f32[] call(f32[] %constant), to_apply=%Identity.v1
+}
+
+)"
+},
+// composite call
+{
+"CompositeCall",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+}
+
+)"
+},
+// composite call with extra frontend attributes
+{
+"CompositeCallWithExtraFrontendAttributes",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1",foo="bar"}
+}
+
+)"
+},
+// composite call optional composite.attributes and composite.version
+{
+"CompositeCallOptionalAttributesAndVersion",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.name="foo.bar"}
+}
+
+)"
+},
+// composite call optional composite.attributes
+{
+"CompositeCallOptionalAttributes",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.name="foo.bar",composite.version="1"}
+}
+
+)"
+},
+// composite call optional composite.version
+{
+"CompositeCallOptionalVersion",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar"}
 }
 
 )"

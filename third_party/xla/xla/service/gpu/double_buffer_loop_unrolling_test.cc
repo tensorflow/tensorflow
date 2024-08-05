@@ -853,10 +853,10 @@ ENTRY main {
   VLOG(0) << module->ToString();
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body {{.+}} {
-    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}"}
+    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}"}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
     // CHECK: }
     // CHECK: ENTRY %main {{.+}} {
@@ -907,13 +907,13 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6},{3,6}{{[}]}}"}
+    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6},{3,6}{{[}]}}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]])
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{0,2},{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6}{{[}]}}"}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6}{{[}]}}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
     // CHECK: ENTRY %main {{.+}} {
-    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}"}
+    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}}
     // CHECK:   %[[out_peeled:.+]] = {{.+}} tuple({{.+}} %[[cp_peeled]], {{.+}})
     // CHECK:   %[[while:.+]] = {{.+}} while({{.+}} %[[out_peeled]])
     // CHECK: }
@@ -961,10 +961,10 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(f32[] %param_0), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{4,6},{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3}{{[}]}}"}
+    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(f32[] %param_0), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{4,6},{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3}{{[}]}}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3},{0,2}{{[}]}}"}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3},{0,2}{{[}]}}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
     // CHECK: ENTRY %main
     // CHECK-NOT: collective-permute
@@ -1013,14 +1013,14 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{3,6},{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3}{{[}]}}"}
+    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3}{{[}]}}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3},{0,2}{{[}]}}"}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3},{0,2}{{[}]}}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
     // CHECK: }
     // CHECK: ENTRY %main
-    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{0,0}{{[}]}}"}
+    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{0,0}{{[}]}}}
     // CHECK:   %[[out_peeled:.+]] = {{.+}} tuple({{.+}} %[[cp_peeled]], {{.+}})
     // CHECK:   ROOT {{.+}} = {{.+}} while({{.+}} %[[out_peeled]])
     // CHECK: }
@@ -1069,11 +1069,11 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp_start1:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}"}
+    // CHECK:   %[[cp_start1:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}}
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute-done({{.+}} %[[cp_start1]])
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]]), index=0
-    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation="{{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}"}
+    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}}
     // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute-done({{.+}} %[[cp_start2]])
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
     // CHECK: }
@@ -1133,8 +1133,8 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[recv1:.+]] = {{.+}} recv({{.+}}), {{.+}},_xla_send_recv_validation="{{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}"
-    // CHECK:   %[[recv2:.+]] = {{.+}} recv({{.+}}), {{.+}},_xla_send_recv_validation="{{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}"
+    // CHECK:   %[[recv1:.+]] = {{.+}} recv({{.+}}), {{.+}},_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}
+    // CHECK:   %[[recv2:.+]] = {{.+}} recv({{.+}}), {{.+}},_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}
     // CHECK: ENTRY %main
     // CHECK-NOT: recv
     // CHECK: }
@@ -1190,8 +1190,8 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[send1:.+]] = {{.+}} send({{.+}}), {{.+}},_xla_send_recv_validation="{{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}"
-    // CHECK:   %[[send2:.+]] = {{.+}} send({{.+}}), {{.+}},_xla_send_recv_validation="{{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}"
+    // CHECK:   %[[send1:.+]] = {{.+}} send({{.+}}), {{.+}},_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}
+    // CHECK:   %[[send2:.+]] = {{.+}} send({{.+}}), {{.+}},_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}
     // CHECK: ENTRY %main
     // CHECK-NOT: send
     // CHECK: }

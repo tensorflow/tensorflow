@@ -220,6 +220,162 @@ TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
                         "computation's thread name"));
 }
 
+TEST_F(HloVerifierTest, CompositeCall) {
+  constexpr absl::string_view hlo = R"(
+  HloModule Module
+
+  add_n {
+    x = f32[] parameter(0)
+    constant = f32[] constant(2)
+    ROOT z = f32[] add(f32[] x, f32[] constant)
+  }
+
+  ENTRY entry {
+    constant = f32[] constant(42)
+    ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.name="foo.bar",composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.version="1"}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, CompositeCallMissingFrontendAttributes) {
+  constexpr absl::string_view hlo = R"(
+  HloModule Module
+
+  add_n {
+    x = f32[] parameter(0)
+    constant = f32[] constant(2)
+    ROOT z = f32[] add(f32[] x, f32[] constant)
+  }
+
+  ENTRY entry {
+    constant = f32[] constant(42)
+    ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("A composite call op must have frontend attributes"));
+}
+
+TEST_F(HloVerifierTest, CompositeCallOptionalAttributesAndVersion) {
+  constexpr absl::string_view hlo = R"(
+  HloModule Module
+
+  add_n {
+    x = f32[] parameter(0)
+    constant = f32[] constant(2)
+    ROOT z = f32[] add(f32[] x, f32[] constant)
+  }
+
+  ENTRY entry {
+    constant = f32[] constant(42)
+    ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.name="foo.bar"}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, CompositeCallOptionalAttributes) {
+  constexpr absl::string_view hlo = R"(
+  HloModule Module
+
+  add_n {
+    x = f32[] parameter(0)
+    constant = f32[] constant(2)
+    ROOT z = f32[] add(f32[] x, f32[] constant)
+  }
+
+  ENTRY entry {
+    constant = f32[] constant(42)
+    ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.name="foo.bar",composite.version="1"}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, CompositeCallMissingName) {
+  constexpr absl::string_view hlo = R"(
+  HloModule Module
+
+  add_n {
+    x = f32[] parameter(0)
+    constant = f32[] constant(2)
+    ROOT z = f32[] add(f32[] x, f32[] constant)
+  }
+
+  ENTRY entry {
+    constant = f32[] constant(42)
+    ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.version="1"}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("A composite call op must have frontend attributes "
+                        "with key composite.name whose value is non-empty"));
+}
+
+TEST_F(HloVerifierTest, CompositeCallOptionalVersion) {
+  constexpr absl::string_view hlo = R"(
+  HloModule Module
+
+  add_n {
+    x = f32[] parameter(0)
+    constant = f32[] constant(2)
+    ROOT z = f32[] add(f32[] x, f32[] constant)
+  }
+
+  ENTRY entry {
+    constant = f32[] constant(42)
+    ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar"}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, CompositeCallNonNegativeVersion) {
+  constexpr absl::string_view hlo = R"(
+  HloModule Module
+
+  add_n {
+    x = f32[] parameter(0)
+    constant = f32[] constant(2)
+    ROOT z = f32[] add(f32[] x, f32[] constant)
+  }
+
+  ENTRY entry {
+    constant = f32[] constant(42)
+    ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="-1"}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("A composite call op must have frontend attributes with a "
+                "composite.version whose value is a non-negative integer"));
+}
+
 TEST_F(HloVerifierTest, CheckConditionalOperandParameterShapesMismatch) {
   const char* const hlo_string = R"(
   HloModule Module

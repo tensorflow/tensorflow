@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
-#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -1160,12 +1159,43 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << instruction->opcode() << proto.name();
       TF_RET_CHECK(!proto.has_dot_dimension_numbers()) << instruction->opcode();
 
-      auto call_instruction = new HloCallInstruction(
-          shape, all_operands(),
-          computation_map.at(proto.called_computation_ids()[0]));
-      call_instruction->set_output_to_operand_aliasing(
-          output_to_operand_aliasing());
-      instruction = absl::WrapUnique(call_instruction);
+      if (proto.is_composite()) {
+        TF_RET_CHECK(proto.has_frontend_attributes())
+            << "A composite call op must have frontend attributes";
+        auto map = proto.frontend_attributes().map();
+        auto name = map.find("composite.name");
+        TF_RET_CHECK(name != map.end() && !name->second.empty())
+            << "A composite call op must have frontend attributes with key "
+               "composite.name whose value is non-empty";
+
+        auto attributes = map.find("composite.attributes");
+        TF_RET_CHECK(attributes == map.end() || !attributes->second.empty())
+            << "A composite call op must have frontend attributes with key "
+               "composite.attributes whose value is default: {} or non-empty";
+
+        auto version_str = map.find("composite.version");
+        int64_t version = 0;
+        TF_RET_CHECK(
+            version_str == map.end() ||
+            (absl::SimpleAtoi(version_str->second, &version) && version >= 0))
+            << "A composite call op must have frontend attributes with a "
+               "composite.version whose value is a non-negative integer but "
+               "got: "
+            << version_str->second;
+
+        instruction = CreateCompositeCall(
+            shape, all_operands(),
+            computation_map.at(proto.called_computation_ids()[0]), name->second,
+            attributes == map.end() ? "{}" : attributes->second, version);
+        instruction->set_output_to_operand_aliasing(
+            output_to_operand_aliasing());
+      } else {
+        instruction = std::make_unique<HloCallInstruction>(
+            shape, all_operands(),
+            computation_map.at(proto.called_computation_ids()[0]));
+        instruction->set_output_to_operand_aliasing(
+            output_to_operand_aliasing());
+      }
       break;
     }
     default: {
@@ -2251,6 +2281,27 @@ bool HloInstruction::HasSideEffect() const {
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* computation) {
   return std::make_unique<HloCallInstruction>(shape, operands, computation);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCompositeCall(const Shape& shape,
+                                    HloInstruction* decomposition_root,
+                                    const std::string& name,
+                                    const std::string& attributes,
+                                    int64_t version) {
+  return std::make_unique<HloCallInstruction>(shape, decomposition_root, name,
+                                              attributes, version);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCompositeCall(const Shape& shape,
+                                    absl::Span<HloInstruction* const> operands,
+                                    HloComputation* decomposition,
+                                    const std::string& name,
+                                    const std::string& attributes,
+                                    int64_t version) {
+  return std::make_unique<HloCallInstruction>(shape, operands, decomposition,
+                                              name, attributes, version);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
@@ -3790,6 +3841,10 @@ void HloInstruction::PrintExtraAttributes(
           PrintNameInternal(printer, to_apply()->name(), options);
         });
       }
+      if (opcode() == HloOpcode::kCall && is_composite()) {
+        printer.Next(
+            [](Printer* printer) { printer->Append("is_composite=true"); });
+      }
     } else if (opcode() == HloOpcode::kCustomCall) {
       if (!called_computations().empty()) {
         printer.Next([this, &options](Printer* printer) {
@@ -3886,6 +3941,10 @@ void HloInstruction::PrintExtraAttributes(
             to_apply()->Print(printer, new_options);
           });
         }
+        if (opcode() == HloOpcode::kCall && is_composite()) {
+          printer.Next(
+              [](Printer* printer) { printer->Append("is_composite=true"); });
+        }
         break;
       default:
         if (!called_computations().empty()) {
@@ -3908,11 +3967,16 @@ void HloInstruction::PrintExtraAttributes(
       sharding().Print(printer, options.print_metadata());
     });
   }
-  if (!rare()->frontend_attributes.map().empty()) {
+  if (!frontend_attributes().map().empty()) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "frontend_attributes=",
-                FrontendAttributesToString(rare()->frontend_attributes));
+                FrontendAttributesToString(frontend_attributes()));
     });
+  }
+
+  if (opcode() != HloOpcode::kCall) {
+    CHECK(!is_composite())
+        << "Only kCall instructions should have is_composite set";
   }
 
   if (options.print_control_dependencies() && !control_predecessors().empty()) {
@@ -3960,6 +4024,23 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
   return std::move(multi_string_printer).ConsumeStrings();
 }
 
+std::string FrontendAttributesToString(
+    const FrontendAttributes& frontend_attributes) {
+  std::vector<std::pair<std::string, std::string>> sorted_attributes(
+      frontend_attributes.map().begin(), frontend_attributes.map().end());
+  absl::c_sort(sorted_attributes);
+  const auto formatter = [](std::string* out,
+                            const std::pair<std::string, std::string>& item) {
+    if (LexesAsJsonDict(item.second)) {
+      absl::StrAppend(out, item.first, "=", item.second);
+    } else {
+      absl::StrAppend(out, item.first, "=\"", item.second, "\"");
+    }
+  };
+  return absl::StrFormat("{%s}",
+                         absl::StrJoin(sorted_attributes, ",", formatter));
+}
+
 std::string HloInstruction::ToShortString() const {
   return StrCat("%", name(), " = ", HloOpcodeString(opcode()), "(",
                 StrJoin(operands_, ", ",
@@ -3998,6 +4079,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_frontend_attributes() = frontend_attributes();
+  proto.set_is_composite(is_composite());
 
   *proto.mutable_statistics_viz() = statistics_viz();
 

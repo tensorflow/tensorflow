@@ -124,12 +124,11 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
   EXPECT_EQ(cp1->operand(0), cp2->operand(0));
   EXPECT_GT(cp2->channel_id().value(), cp1->channel_id().value());
   EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{3,0}}"));
-  EXPECT_THAT(cp1->ToString(),
-              HasSubstr("_xla_send_recv_validation=\"{{3,10}}\""));
+  EXPECT_THAT(cp1->ToString(), HasSubstr("_xla_send_recv_validation={{3,10}}"));
   EXPECT_THAT(cp2->ToString(),
               HasSubstr("source_target_pairs={{0,1},{1,2},{2,3}}"));
   EXPECT_THAT(cp2->ToString(),
-              HasSubstr("_xla_send_recv_validation=\"{{0,7},{1,8},{2,9}}\""));
+              HasSubstr("_xla_send_recv_validation={{0,7},{1,8},{2,9}}"));
   check_metadata(cp1);
   check_metadata(cp2);
 }
@@ -181,12 +180,11 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
       DynCast<HloCollectivePermuteInstruction>(
           FindInstruction(module.get(), "collective-permute.1"));
   EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{3,0}}"));
-  EXPECT_THAT(cp1->ToString(),
-              HasSubstr("_xla_send_recv_validation=\"{{3,10}}\""));
+  EXPECT_THAT(cp1->ToString(), HasSubstr("_xla_send_recv_validation={{3,10}}"));
   EXPECT_THAT(cp2->ToString(),
               HasSubstr("source_target_pairs={{0,1},{1,2},{2,3}}"));
   EXPECT_THAT(cp2->ToString(),
-              HasSubstr("_xla_send_recv_validation=\"{{0,7},{1,8},{2,9}}\""));
+              HasSubstr("_xla_send_recv_validation={{0,7},{1,8},{2,9}}"));
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {
@@ -223,12 +221,11 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {
   EXPECT_EQ(cp1->operand(0), cp2->operand(0));
   EXPECT_GT(cp2->channel_id().value(), cp1->channel_id().value());
   EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{0,3}}"));
-  EXPECT_THAT(cp1->ToString(),
-              HasSubstr("_xla_send_recv_validation=\"{{0,7}}\""));
+  EXPECT_THAT(cp1->ToString(), HasSubstr("_xla_send_recv_validation={{0,7}}"));
   EXPECT_THAT(cp2->ToString(),
               HasSubstr("source_target_pairs={{1,0},{2,1},{3,2}}"));
   EXPECT_THAT(cp2->ToString(),
-              HasSubstr("_xla_send_recv_validation=\"{{1,8},{2,9},{3,10}}\""));
+              HasSubstr("_xla_send_recv_validation={{1,8},{2,9},{3,10}}"));
   check_metadata(cp1);
   check_metadata(cp2);
 }

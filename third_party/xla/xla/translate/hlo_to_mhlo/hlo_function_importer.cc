@@ -761,7 +761,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     frontend_attributes.push_back(
         builder_->getNamedAttr(k, builder_->getStringAttr(v)));
   }
+
+  int frontend_attributes_index = 0;
   if (!frontend_attributes.empty()) {
+    frontend_attributes_index = attributes.size();
     attributes.push_back(builder_->getNamedAttr(
         kFrontendAttributesAttr,
         builder_->getDictionaryAttr(frontend_attributes)));
@@ -926,6 +929,68 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           FuncOp function,
           ImportAsFunc(*instruction->to_apply(), /*is_main=*/false));
       mlir::Operation* new_operation;
+      if (instruction->is_composite()) {
+        // TODO: b/354721812 -  Support flatten_computation_args_result_ flag
+        // for composite calls
+
+        mlir::DictionaryAttr frontend_attributes_attr =
+            builder_->getDictionaryAttr(frontend_attributes);
+        if (frontend_attributes.empty() ||
+            !frontend_attributes_attr.contains("composite.attributes") ||
+            !frontend_attributes_attr.contains("composite.name") ||
+            !frontend_attributes_attr.contains("composite.version")) {
+          return InvalidArgument(
+              "A composite call op must have frontend attributes with the "
+              "following keys: composite.attributes, composite.name, "
+              "composite.version");
+        }
+
+        llvm::SmallVector<NamedAttribute, 4> fe_attrs_without_composite_attrs;
+        for (const auto& attr : frontend_attributes) {
+          if (attr.getName() != "composite.attributes" &&
+              attr.getName() != "composite.name" &&
+              attr.getName() != "composite.version") {
+            fe_attrs_without_composite_attrs.push_back(attr);
+          }
+        }
+
+        // Frontend attributes may have been created by composite related
+        // attributes. If frontend attributes is empty after removing
+        // composite related attributes, it is not needed, so we remove it
+        // entirely. Otherwise, we update it.
+        if (fe_attrs_without_composite_attrs.empty()) {
+          attributes.erase(attributes.begin() + frontend_attributes_index);
+        } else {
+          attributes[frontend_attributes_index] = builder_->getNamedAttr(
+              kFrontendAttributesAttr,
+              builder_->getDictionaryAttr(fe_attrs_without_composite_attrs));
+        }
+
+        auto frontend_attributes_map = instruction->frontend_attributes().map();
+        mlir::StringAttr name = builder_->getStringAttr(
+            frontend_attributes_map.find("composite.name")->second);
+        mlir::Attribute composite_attributes = mlir::parseAttribute(
+            frontend_attributes_map.find("composite.attributes")->second,
+            builder_->getContext());
+        mlir::FlatSymbolRefAttr decomposition = mlir::SymbolRefAttr::get(
+            builder_->getContext(), instruction->to_apply()->name());
+        mlir::IntegerAttr version = builder_->getIntegerAttr(
+            builder_->getI32Type(),
+            std::stoi(
+                frontend_attributes_map.find("composite.version")->second));
+
+        new_operation = func_builder->create<mlir::mhlo::CompositeOp>(
+            loc, result_type, operands);
+        new_operation->setAttr("name", name);
+        new_operation->setAttr("composite_attributes", composite_attributes);
+        new_operation->setAttr("decomposition", decomposition);
+        new_operation->setAttr("version", version);
+        for (const auto& attr : attributes) {
+          new_operation->setAttr(attr.getName(), attr.getValue());
+        }
+        return new_operation;
+      }
+
       if (flatten_computation_args_result_) {
         // Flatten the tuple-typed operands.
         llvm::SmallVector<Value> flattened_operands = FlattenTupleValues(
@@ -946,7 +1011,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       } else {
         new_operation =
             func_builder->create<mlir::func::CallOp>(loc, function, operands);
-        for (auto attr : attributes) {
+        for (const auto& attr : attributes) {
           new_operation->setAttr(attr.getName(), attr.getValue());
         }
       }

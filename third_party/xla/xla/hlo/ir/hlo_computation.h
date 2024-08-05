@@ -465,13 +465,23 @@ class HloComputation {
       absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
-  // Creates a call instruction containing the given instructions.  Instructions
+  // Creates a call instruction containing the given instructions. Instructions
   // must be in reverse topological order (root of the called computation
   // first). Replaces all uses of the original root instruction with the call
   // instruction. The original instructions are removed if they have no uses
   // after creating the call (this is necessarily true for at least the root).
   HloInstruction* CreateCallInstruction(
       absl::Span<HloInstruction* const> instructions_to_call);
+
+  // Creates a composite call instruction containing the given instructions.
+  // Instructions must be in reverse topological order (root of the called
+  // computation first). Replaces all uses of the original root instruction with
+  // the composite call instruction. The original instructions are removed if
+  // they have no uses after creating the composite call (this is necessarily
+  // true for at least the root).
+  HloInstruction* CreateCompositeCallInstruction(
+      absl::Span<HloInstruction* const> instructions_to_call,
+      const std::string& name, const std::string& attributes, int64_t version);
 
   // Creates an async start/done instruction pair where instruction is wrapped
   // inside an asynchronous computation. The context shapes are appended to the

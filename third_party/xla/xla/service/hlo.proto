@@ -112,7 +112,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 89
+// Next ID: 90
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -385,6 +385,9 @@ message HloInstructionProto {
 
   // For HLO value tracking.
   xla.OriginalValueProto original_value = 88;
+
+  // Specifies if a call instruction is a composite.
+  bool is_composite = 89;
 }
 
 // Serialization of HloComputation.

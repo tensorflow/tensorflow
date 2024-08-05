@@ -12,6 +12,7 @@ lit_test_suite(
         [
             "add.mlir",
             "case.mlir",
+            "composite.mlir",
             "dynamic.mlir",
             "export-with-layouts.mlir",
             "export.mlir",

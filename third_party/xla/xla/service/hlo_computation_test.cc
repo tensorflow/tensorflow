@@ -940,5 +940,32 @@ TEST_F(HloComputationTest, CloneWrappedAsyncInstructionSameWrappedFunc) {
             cloned_done.get()->async_wrapped_computation());
 }
 
+TEST_F(HloComputationTest, CompositeCall) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  add (x: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    %constant = f32[] constant(2)
+    ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+  }
+
+  ENTRY %CallR0F32AddScalar.v2 () -> f32[] {
+    %constant.1 = f32[] constant(42)
+    ROOT %call = f32[] call(f32[] %constant.1), to_apply=add, is_composite=true,
+      frontend_attributes={
+        composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},
+        composite.name="foo.bar",
+        composite.version="1"
+      }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* composite_call = FindInstruction(module.get(), "call");
+  EXPECT_EQ(composite_call->opcode(), HloOpcode::kCall);
+  EXPECT_TRUE(composite_call->is_composite());
+  EXPECT_EQ(composite_call->frontend_attributes().map().size(), 3);
+}
+
 }  // namespace
 }  // namespace xla

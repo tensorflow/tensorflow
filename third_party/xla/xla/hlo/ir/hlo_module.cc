@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
