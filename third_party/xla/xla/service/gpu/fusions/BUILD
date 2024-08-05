@@ -708,7 +708,6 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service:dump",
         "//xla/service:executable",
-        "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu:cudnn_fusion_compiler",
