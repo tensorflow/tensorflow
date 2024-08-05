@@ -332,9 +332,14 @@ class BatchResourceBase : public ResourceBase {
   static Status EmitIndexTensor(OpKernelContext* context, const BatchT& batch,
                                 int output_index);
 
-  // Looks up the batcher queue for 'queue_name'. If it did't previously exist,
+  // Looks up the batcher queue for 'queue_name'. If it didn't previously exist,
   // creates it.
+  //
+  // The model_name and op_name are the names of the current model and
+  // operation, respectively.
   Status LookupOrCreateBatcherQueue(const string& queue_name,
+                                    const string& model_name,
+                                    const string& op_name,
                                     BatcherQueueT** queue);
 
   SessionMetadata session_metadata_;

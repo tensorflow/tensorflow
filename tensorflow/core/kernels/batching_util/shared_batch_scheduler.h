@@ -150,7 +150,7 @@ class SharedBatchScheduler
       const Options& options,
       std::shared_ptr<SharedBatchScheduler<TaskType>>* scheduler);
 
-  ~SharedBatchScheduler();
+  virtual ~SharedBatchScheduler();
 
   // Adds a queue to which tasks may be submitted. The returned queue implements
   // the BatchScheduler API. Each queue has its own set of scheduling options,
@@ -283,13 +283,15 @@ class SharedBatchScheduler
     MixedPriorityBatchingPolicy mixed_priority_batching_policy =
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
   };
-  Status AddQueue(const QueueOptions& options,
-                  ProcessBatchCallback process_batch_callback,
-                  std::unique_ptr<BatchScheduler<TaskType>>* queue);
+  // This method is marked virtual for testing purposes only.
+  virtual Status AddQueue(const QueueOptions& options,
+                          ProcessBatchCallback process_batch_callback,
+                          std::unique_ptr<BatchScheduler<TaskType>>* queue);
 
- private:
+ protected:
   explicit SharedBatchScheduler(const Options& options);
 
+ private:
   void GetNextWorkItem_Locked(internal::Queue<TaskType>** queue_for_batch_out,
                               BatchUniquePtr* batch_to_process_out)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
