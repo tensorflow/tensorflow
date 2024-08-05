@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/platform.h"
 
 namespace stream_executor {
 
@@ -39,15 +40,15 @@ class ExecutorCache {
   ExecutorCache();
   ~ExecutorCache();
 
-  // Looks up 'device_ordinal' in the cache. Returns a pointer to the existing
-  // executor, if already present, or creates it using 'factory', if it does
-  // not. Factories may be executed concurrently for different device ordinals.
-  absl::StatusOr<StreamExecutor*> GetOrCreate(int device_ordinal,
-                                              const ExecutorFactory& factory);
+  // Looks up 'config' in the cache. Returns a pointer to the existing executor,
+  // if already present, or creates it using 'factory', if it does not.
+  // Factories may be executed concurrently for different device ordinals.
+  absl::StatusOr<StreamExecutor*> GetOrCreate(
+      const StreamExecutorConfig& config, const ExecutorFactory& factory);
 
-  // Returns a pointer to the described executor (if one with a matching
-  // device_ordinal has been created), or a NOT_FOUND status.
-  absl::StatusOr<StreamExecutor*> Get(int device_ordinal);
+  // Returns a pointer to the described executor (if one with a matching config
+  // has been created), or a NOT_FOUND status.
+  absl::StatusOr<StreamExecutor*> Get(const StreamExecutorConfig& config);
 
  private:
   // Protects cache_.

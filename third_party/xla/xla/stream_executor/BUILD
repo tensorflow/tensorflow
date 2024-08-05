@@ -202,55 +202,6 @@ cc_library(
 )
 
 cc_library(
-    name = "stream_finder",
-    srcs = ["stream_finder.cc"],
-    hdrs = ["stream_finder.h"],
-    deps = [
-        ":platform",
-        ":stream",
-        ":stream_executor_h",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "mock_platform",
-    testonly = True,
-    hdrs = ["mock_platform.h"],
-    deps = [
-        ":device_description",
-        ":platform",
-        ":stream_executor_h",
-        "//xla:test",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "mock_stream",
-    testonly = True,
-    hdrs = ["mock_stream.h"],
-    deps = [
-        ":device_description",
-        ":device_memory",
-        ":event",
-        ":event_based_timer",
-        ":kernel",
-        ":launch_dim",
-        ":platform",
-        ":stream",
-        "//xla:test",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-cc_library(
     name = "mock_stream_executor",
     testonly = True,
     hdrs = ["mock_stream_executor.h"],
@@ -869,24 +820,8 @@ xla_cc_test(
         ":mock_stream_executor",
         ":platform",
         ":stream",
-        "//xla:test",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "stream_finder_test",
-    srcs = ["stream_finder_test.cc"],
-    deps = [
-        ":mock_platform",
-        ":mock_stream",
-        ":mock_stream_executor",
-        ":stream_finder",
-        "//xla:test",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

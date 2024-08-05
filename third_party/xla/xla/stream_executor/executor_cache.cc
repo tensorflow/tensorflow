@@ -33,11 +33,11 @@ ExecutorCache::ExecutorCache() = default;
 ExecutorCache::~ExecutorCache() = default;
 
 absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
-    int device_ordinal, const ExecutorFactory& factory) {
+    const StreamExecutorConfig& config, const ExecutorFactory& factory) {
   // In the fast path case, the cache already has an entry and we can just
   // return after Get() which only takes a shared lock and not a unique lock.
   // If we need to create, we take a unique lock on cache_.
-  if (auto fast_result = Get(device_ordinal); fast_result.ok()) {
+  if (auto fast_result = Get(config); fast_result.ok()) {
     return fast_result;
   }
 
@@ -45,19 +45,32 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
   auto returned_executor = result.get();
   absl::MutexLock lock(&mutex_);
-  cache_.emplace(device_ordinal, std::move(result));
+  cache_.emplace(config.ordinal, std::move(result));
   return returned_executor;
 }
 
-absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int device_ordinal) {
+absl::StatusOr<StreamExecutor*> ExecutorCache::Get(
+    const StreamExecutorConfig& config) {
   absl::ReaderMutexLock lock{&mutex_};
 
-  if (auto it = cache_.find(device_ordinal); it != cache_.end()) {
+  // If gpu stream is not nullptr we have to find StreamExecutor that owns it,
+  // and return NOT_FOUND error if we can't find it.
+  if (config.gpu_stream) {
+    for (auto& [ordinal, executor] : cache_) {
+      if (executor->FindAllocatedStream(config.gpu_stream)) {
+        return executor.get();
+      }
+    }
+    return absl::NotFoundError(
+        absl::StrFormat("No executors own stream %p", config.gpu_stream));
+  }
+
+  if (auto it = cache_.find(config.ordinal); it != cache_.end()) {
     return it->second.get();
   }
 
   return absl::NotFoundError(absl::StrFormat(
-      "No executors registered for ordinal %d", device_ordinal));
+      "No executors registered for ordinal %d", config.ordinal));
 }
 
 }  // namespace stream_executor
