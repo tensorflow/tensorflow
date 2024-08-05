@@ -593,13 +593,19 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_index]) {
-      absl::flat_hash_set<int> device_ids;
+      std::vector<int> device_ids;
+      device_ids.reserve(device_list.size());
       for (const auto& device : device_list) {
-        device_ids.insert(device->Id().value());
+        device_ids.push_back(device->Id().value());
       }
+      TF_ASSIGN_OR_RETURN(
+          xla::HloSharding hlo_sharding,
+          xla::HloSharding::FromProto(
+              executable_bundle->compile_metadata.args()[i].sharding()));
       IfrtLoadedVariableRegistry::Key key{
           .device_ids = std::move(device_ids),
           .input_name = inputs[i].scalar<tsl::tstring>()(),
+          .hlo_sharding = std::move(hlo_sharding),
       };
       TF_ASSIGN_OR_RETURN(
           auto loaded_variable,
@@ -689,11 +695,15 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     }
     std::string runtime_name = inputs[i].scalar<tsl::tstring>()();
     // TODO(b/339521818): Add test cases for OpSharding on variables.
-    VariableDeviceShardingConfigProto sharding_config;
-    *sharding_config.mutable_sharding() =
-        executable_bundle.compile_metadata.args()[i].sharding();
+    TF_ASSIGN_OR_RETURN(
+        xla::HloSharding hlo_sharding,
+        xla::HloSharding::FromProto(
+            executable_bundle.compile_metadata.args()[i].sharding()));
+    VariableDeviceShardingConfig sharding_config{
+        .hlo_sharding = std::move(hlo_sharding),
+    };
     for (const auto& device : devices) {
-      sharding_config.add_device_ids(device->Id().value());
+      sharding_config.device_ids.push_back(device->Id().value());
     }
 
     TF_RETURN_IF_ERROR(
