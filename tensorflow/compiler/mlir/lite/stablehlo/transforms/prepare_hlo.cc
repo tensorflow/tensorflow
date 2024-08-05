@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -52,10 +51,10 @@ void PrepareHloPass::runOnOperation() {
   auto func = getOperation();
 
   RewritePatternSet patterns(context);
-  PopulatePrepareReduceWindowPatterns(context, patterns);
   populateWithGenerated(patterns);
 
   PopulatePrepareConvPatterns(context, patterns);
+  PopulatePrepareReduceWindowPatterns(context, patterns);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     signalPassFailure();

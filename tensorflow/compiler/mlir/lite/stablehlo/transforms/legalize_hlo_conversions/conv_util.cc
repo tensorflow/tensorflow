@@ -109,8 +109,8 @@ Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op) {
       b.create<arith::ConstantOp>(op->getLoc(), padding_value_attr);
 
   auto pad_op = b.create<mhlo::PadOp>(padding_value_op->getLoc(), op.getLhs(),
-                                      padding_value_op, hi_padding_attr,
-                                      lo_padding_attr, interior_padding_attr);
+                                      padding_value_op, lo_padding_attr,
+                                      hi_padding_attr, interior_padding_attr);
 
   return pad_op;
 }

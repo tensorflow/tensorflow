@@ -1,5 +1,4 @@
-// RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file
-// | FileCheck %s --dump-input=fail 
+// RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file | FileCheck %s --dump-input=fail 
 
 // Just assert that pass is properly registered.
 func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
@@ -159,6 +158,31 @@ func.func @conv2d_nhwc_ohwi_nhwc_padded(%input: tensor<1x254x254x3xf32>, %filter
 // CHECK:      %[[PADDED_LHS:.*]] = "mhlo.pad"
 // CHECK-SAME: edge_padding_high = dense<[0, 1, 1, 0]>
 // CHECK-SAME: edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME: interior_padding = dense<0>
+// CHECK:      mhlo.convolution(%[[PADDED_LHS]]
+// CHECK-SAME: pad
+// CHECK-SAME: [0, 0], [0, 0]
+// CHECK-SAME: (tensor<1x256x256x3xf32>, tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32>
+
+// -----
+
+// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_asymmetric_padded
+func.func @conv2d_nhwc_ohwi_nhwc_asymmetric_padded(%input: tensor<1x255x255x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32> {
+  %0 = "mhlo.convolution"(%input, %filter) {
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    window_strides = dense<1> : tensor<2xi64>,
+    padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
+    rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
+    lhs_dilation = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<1x255x255x3xf32>, tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32>
+  func.return %0 : tensor<1x256x256x2xf32>
+}
+
+// CHECK:      %[[PADDED_LHS:.*]] = "mhlo.pad"
+// CHECK-SAME: edge_padding_high = dense<[0, 1, 1, 0]>
+// CHECK-SAME: edge_padding_low = dense<0>
 // CHECK-SAME: interior_padding = dense<0>
 // CHECK:      mhlo.convolution(%[[PADDED_LHS]]
 // CHECK-SAME: pad
@@ -418,7 +442,6 @@ func.func @conv3d_ncdhw_dhwio_ndhwc_padded(%arg0: tensor<1x207x6x6x30xf32>, %arg
 // 1D
 //=--
 
-// TODO: b/351437662 - Add support for conv1d.
 // CHECK-LABEL: conv1d_nsc_osi_nsc
 func.func @conv1d_nsc_osi_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x256xf32>) -> tensor<16x32x256xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
