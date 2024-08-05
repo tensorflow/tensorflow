@@ -175,10 +175,44 @@ BINARY_TEST_16BIT(Mul, {
       error_spec_gen);
 })
 
-// TODO(bixia): Div fails with bfloat16 on CPU.
-BINARY_TEST_16BIT(DISABLED_ON_CPU(Div), {
-  auto host_div = [](float x, float y) { return x / y; };
-  Run(AddEmptyBroadcastDimension(Div), host_div);
+// Can be thought of as an absolute error of `<=
+// |std::numeric_limits::<float>::min()|`.
+double DivCpuBf16AbsErr(xla::bfloat16 left, xla::bfloat16 right) {
+  float output = static_cast<float>(left) / static_cast<float>(right);
+
+  // Subnormals are flushed to 0 so we add a absolute error margin that is
+  // larger than any subnormal.
+  auto output_is_subnormal = IsSubnormal(output);
+  if (output_is_subnormal) {
+    return std::numeric_limits<float>::min();
+  }
+
+  return 0.0;
+}
+
+BINARY_TEST_16BIT(Div, {
+  ErrorSpecGen error_spec_gen = +[](NativeT, NativeT) {
+    return ErrorSpec::Builder().strict_signed_zeros().build();
+  };
+  if (IsCpu(platform_)) {
+    if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+      error_spec_gen = +[](NativeT left, NativeT right) {
+        return ErrorSpec::Builder()
+            .abs_err(DivCpuBf16AbsErr(static_cast<xla::bfloat16>(left),
+                                      static_cast<xla::bfloat16>(right)))
+            .strict_signed_zeros()
+            .build();
+      };
+    }
+  }
+  if (IsGpu(platform_) && std::is_same_v<NativeT, xla::half>) {
+    error_spec_gen = +[](NativeT, NativeT) {
+      return ErrorSpec::Builder().distance_err(1).strict_signed_zeros().build();
+    };
+  }
+  Run(
+      AddEmptyBroadcastDimension(Div), [](float x, float y) { return x / y; },
+      error_spec_gen);
 })
 
 BINARY_TEST_16BIT(Max, {
