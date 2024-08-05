@@ -366,22 +366,20 @@ cuda_only_cc_library(
 )
 
 cuda_only_cc_library(
-    name = "cufft_plugin",
+    name = "cuda_fft",
     srcs = ["cuda_fft.cc"],
     hdrs = ["cuda_fft.h"],
-    visibility = ["//visibility:public"],
     deps = [
-        ":cuda_activation_header",
+        ":cuda_activation",
         ":cuda_helpers",
-        ":cuda_platform_id",
-        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:fft",
-        "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_helpers_header",
-        "//xla/stream_executor/gpu:gpu_stream_header",
+        "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/platform",
         "//xla/tsl/cuda:cufft",
         "@com_google_absl//absl/log",
@@ -390,6 +388,18 @@ cuda_only_cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cuda_only_cc_library(
+    name = "cufft_plugin",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cuda_activation_header",
+        ":cuda_fft",
+        ":cuda_helpers",
+        ":cuda_platform_id",
+        "//xla/stream_executor",
     ],
     alwayslink = True,
 )
@@ -783,6 +793,7 @@ cuda_only_cc_library(
         ":cuda_diagnostics",
         ":cuda_driver",
         ":cuda_event",  # buildcleaner: keep
+        ":cuda_fft",
         ":cuda_kernel",  # buildcleaner: keep
         ":cuda_platform_id",
         ":cuda_runtime",  # buildcleaner: keep

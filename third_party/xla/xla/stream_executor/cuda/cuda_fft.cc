@@ -29,15 +29,12 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -457,29 +454,4 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 #undef STREAM_EXECUTOR_CUDA_DEFINE_FFT
 
 }  // namespace gpu
-
-void initialize_cufft() {
-  absl::Status status =
-      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
-          cuda::kCudaPlatformId, "cuFFT",
-          [](StreamExecutor *parent) -> fft::FftSupport * {
-            gpu::GpuExecutor *cuda_executor =
-                dynamic_cast<gpu::GpuExecutor *>(parent);
-            if (cuda_executor == nullptr) {
-              LOG(ERROR) << "Attempting to initialize an instance of the cuFFT "
-                         << "support library with a non-CUDA StreamExecutor";
-              return nullptr;
-            }
-
-            return new gpu::CUDAFft(cuda_executor);
-          });
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuFFT factory: " << status.message();
-  }
-}
-
 }  // namespace stream_executor
-
-STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cufft, {
-  stream_executor::initialize_cufft();
-});
