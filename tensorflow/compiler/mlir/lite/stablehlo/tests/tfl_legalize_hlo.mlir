@@ -1900,3 +1900,23 @@ func.func @maxpool_same_channel_first(%arg0: tensor<4x3x16x16xf32>) -> tensor<4x
 // CHECK:      return
 // CHECK-SAME: tensor<4x3x8x8xf32>
 
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.slice
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: slice
+func.func @slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
+  %0 = "mhlo.slice"(%arg0) <{limit_indices = dense<[1, 4672]> : tensor<2xi64>, start_indices = dense<[0, 4153]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}> : (tensor<1x4672xf32>) -> tensor<1x519xf32>
+  func.return %0 : tensor<1x519xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 4153]> : tensor<2xi64>
+// CHECK: %[[CST_0:.*]] = arith.constant dense<[1, 4672]> : tensor<2xi64>
+// CHECK: %[[CST_1:.*]] = arith.constant dense<1> : tensor<2xi64>
+// CHECK: %[[VAL_0:.*]] = "tfl.cast"(%[[CST]]) : (tensor<2xi64>) -> tensor<2xi32>
+// CHECK: %[[VAL_1:.*]] = "tfl.cast"(%[[CST_0]]) : (tensor<2xi64>) -> tensor<2xi32>
+// CHECK: %[[VAL_2:.*]] = "tfl.cast"(%[[CST_1]]) : (tensor<2xi64>) -> tensor<2xi32>
+// CHECK: %[[VAL_3:.*]] = "tfl.strided_slice"(%arg0, %[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x4672xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x519xf32>
