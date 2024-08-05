@@ -149,9 +149,11 @@ cc_library(
     hdrs = ["batch_scheduler_utils.h"],
     deps = [
         ":batch_scheduler_hdrs",
+        ":batch_stats",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -187,6 +189,8 @@ tf_cc_test(
     deps = [
         ":batch_scheduler_hdrs",
         ":batch_scheduler_utils",
+        ":batch_stats",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
