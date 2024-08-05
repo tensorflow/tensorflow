@@ -47,6 +47,18 @@ class CudnnNormRewriterTest : public GpuCodegenTest {
   }
 
  protected:
+  void SetUp() override {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
+    GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
+#endif
+    if (!(GetCudaComputeCapability().major ==
+          se::CudaComputeCapability::AMPERE) &&
+        !(GetCudaComputeCapability().major ==
+          se::CudaComputeCapability::HOPPER)) {
+      GTEST_SKIP()
+          << "Layer norm kernels require Ampere or Hopper architectures.";
+    }
+  }
   void TestNorm(std::string hlo_text, std::string optimized_hlo) {
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
     MatchOptimizedHlo(hlo_text, optimized_hlo);
@@ -56,16 +68,6 @@ class CudnnNormRewriterTest : public GpuCodegenTest {
 // The following tests evaluate LayerNormXDY configurations, with X the rank of
 // the input and Y the dimensions that are normalized.
 TEST_F(CudnnNormRewriterTest, LayerNorm2D1) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -125,16 +127,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm2D1) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNorm4D3) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -194,16 +186,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNorm4D3Degenerate0) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -263,16 +245,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3Degenerate0) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNorm4D2) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -333,16 +305,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D2) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNorm4D2Degenerate1) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -403,16 +365,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D2Degenerate1) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNorm4D12) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -473,16 +425,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D12) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNorm4D12Degenerate2) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -543,16 +485,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D12Degenerate2) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNorm4D3IncorrectScaleBroadcast) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -600,16 +532,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3IncorrectScaleBroadcast) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNorm4D3InputOutputTypeMismatch) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -658,16 +580,6 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3InputOutputTypeMismatch) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrain2D1) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -735,16 +647,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain2D1) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrain4D3) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -812,16 +714,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain4D3) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -890,16 +782,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12Degenerate2) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -968,16 +850,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12Degenerate2) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward2D1) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -1083,16 +955,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward2D1) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D3) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -1198,16 +1060,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D3) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D2) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -1316,16 +1168,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D2) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -1434,16 +1276,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12) {
 }
 
 TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12Degenerate2) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -1554,16 +1386,6 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12Degenerate2) {
 // TODO(b/343124533) Reenable when fixed
 TEST_F(CudnnNormRewriterTest,
        DISABLED_LayerNormTrainBackward4D1DoutputReshapeSplit) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -1675,16 +1497,6 @@ TEST_F(CudnnNormRewriterTest,
 // TODO(b/343124533) Reenable when fixed
 TEST_F(CudnnNormRewriterTest,
        DISABLED_LayerNormTrainBackward4D1DoutputReshapeCombine) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
-  if (!(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::AMPERE) &&
-      !(GetCudaComputeCapability().major ==
-        se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP()
-        << "Layer norm kernels require Ampere or Hopper architectures.";
-  }
   const char* hlo_text = R"(
     HloModule test
 
