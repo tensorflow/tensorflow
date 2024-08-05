@@ -233,6 +233,16 @@ void RecordBatchParamMaxBatchSize(int64_t max_batch_size,
   cell->GetCell(model_name, op_name)->Set(max_batch_size);
 }
 
+void RecordBatchParamPaddingPolicy(const string& batch_padding_policy,
+                                   const string& model_name,
+                                   const string& op_name) {
+  static auto* cell = monitoring::Gauge<string, 2>::New(
+      "/tensorflow/serving/batching/configured_batch_padding_policy",
+      "The value of BatchFunction.batch_padding_policy attribute.",
+      "model_name", "op_name");
+  cell->GetCell(model_name, op_name)->Set(batch_padding_policy);
+}
+
 void RecordBatchParamMaxEnqueuedBatches(int64_t max_enqueued_batches,
                                         const string& model_name,
                                         const string& op_name) {
@@ -406,6 +416,9 @@ Status BatchResourceBase::RegisterInput(
     RecordBatchParamMaxEnqueuedBatches(
         batcher_queue_options_.max_enqueued_batches, GetModelName(context),
         context->op_kernel().name());
+    RecordBatchParamPaddingPolicy(
+        this->batcher_queue_options_.batch_padding_policy,
+        GetModelName(context), context->op_kernel().name());
   } else if (adaptive_batcher_) {
     RecordBatchParamBatchTimeoutMicros(
         adaptive_batcher_queue_options_.batch_timeout_micros,

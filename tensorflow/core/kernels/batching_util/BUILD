@@ -490,6 +490,7 @@ tf_cc_test(
     deps = [
         ":batch_resource_base",
         ":batch_scheduler_hdrs",
+        ":batch_scheduler_utils",
         ":batch_stats",
         ":shared_batch_scheduler",
         "//tensorflow/core:core_cpu",
@@ -503,6 +504,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:batch_kernels",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:notification",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

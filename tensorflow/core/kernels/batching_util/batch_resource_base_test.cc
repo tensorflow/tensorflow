@@ -40,8 +40,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/public/session_options.h"
@@ -566,6 +568,48 @@ TEST_F(BatchResourceBaseTest, PassesCorrectModelBatchStatsToSbs) {
   EXPECT_EQ(batcher->queue_options().model_batch_stats,
             &GlobalBatchStatsRegistry().model(/* model_name= */ "my_model_name",
                                               /* op_name= */ "my_batch_node"));
+
+  // Wait for the batch timeout to expire and the scheduler to dump the only
+  // scheduled task back to the batch resource. If we don't do this, the
+  // scheduler will do this itself on destruction, when the resource has already
+  // been destroyed.
+  my_batch_resource->process_func_batch_called().WaitForNotificationWithTimeout(
+      absl::Seconds(1));
+
+  // This is how we have to destroy the BatchResource.
+  my_batch_resource->Unref();
+}
+
+TEST_F(BatchResourceBaseTest, ConfiguredBatchPaddingPolicyMetric) {
+  tensorflow::monitoring::testing::CellReader<std::string> metric(
+      "/tensorflow/serving/batching/configured_batch_padding_policy");
+
+  std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
+  TF_CHECK_OK(
+      SharedBatchScheduler<BatchResourceBase::BatchTask>::Create({}, &batcher));
+
+  MyBatchResource* my_batch_resource = new MyBatchResource(
+      /* has_process_batch_function */ true,
+      /* batcher= */ batcher,
+      /* batcher_queue_options */
+      MyBatchResource::BatcherT::QueueOptions{
+          .batch_padding_policy{kMinimizeTpuCostPerRequestPolicy},
+      },
+      /* allowed_batch_sizes */ {});
+
+  TF_CHECK_OK(my_batch_resource->RegisterInput(
+      /* guid= */
+      0, /* context= */ context_.get(),
+      /* batcher_queue_name= */ "batcher_queue_name",
+      /* create_batch_task_fn= */
+      []() -> absl::StatusOr<std::unique_ptr<BatchResourceBase::BatchTask>> {
+        return std::make_unique<BatchResourceBase::BatchTask>();
+      },
+      /* done_callback= */ [] {}, /* forced_warmup_batch_size= */ 0));
+
+  EXPECT_EQ(metric.Read(/* model_name= */ "my_model_name",
+                        /* op_name= */ "my_batch_node"),
+            kMinimizeTpuCostPerRequestPolicy);
 
   // Wait for the batch timeout to expire and the scheduler to dump the only
   // scheduled task back to the batch resource. If we don't do this, the
