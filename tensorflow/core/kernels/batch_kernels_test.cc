@@ -39,12 +39,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/criticality.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -84,19 +84,12 @@ class SharedBatchFunctionTestState : public OpsTestBase {
           return absl::OkStatus();
         }});
   }
-};
 
-class BatchFunctionTestState : public SharedBatchFunctionTestState {
- public:
-  // Init test fixture with a batch kernel instance. The caller guarantees that
-  // the device pointer is valid throughout the life of this class.
-  absl::Status Init(Device *device, bool enable_low_priority_queue,
-                    absl::string_view mixed_priority_policy,
-                    int64_t expected_batch_size) {
-    // Override the per-test/per-op device with a given device so that it can
-    // be shared between ops.
-    device_ = device;
-
+ protected:
+  // Create common batch function op for testing.
+  absl::StatusOr<NodeDefBuilder> CreateBatchFunctionBuilder(
+      const std::vector<int> &allowed_batch_sizes, int max_batch_size,
+      const TensorShape &expected_output_shape) {
     NameAttrList f;
     f.set_name("ShapeEnforcingFunction");
     FunctionDef func = FunctionDefHelper::Create(
@@ -112,8 +105,7 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
         {{{"o"},
           "EnsureShape",
           {"x"},
-          {{"T", DataType::DT_INT64},
-           {"shape", TensorShape({expected_batch_size, 2})}}}},
+          {{"T", DataType::DT_INT64}, {"shape", expected_output_shape}}}},
         // ret_def
         {{"o", "o:output"}});
     TF_RETURN_IF_ERROR(flib_def_->AddFunctionDef(func));
@@ -121,13 +113,38 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
 
     std::vector<NodeDefBuilder::NodeOut> inputs(
         {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
-    TF_RETURN_IF_ERROR(NodeDefBuilder("BatchTPUInput", "BatchFunction")
-                           .Attr("max_batch_size", 8)
-                           .Attr("num_batch_threads", 8)
-                           .Attr("allowed_batch_sizes", {4, 8})
-                           .Attr("batch_timeout_micros", 1000000)
-                           .Attr("max_enqueued_batches", 10)
-                           .Attr("enable_large_batch_splitting", true)
+    return NodeDefBuilder("BatchTPUInput", "BatchFunction")
+        .Attr("max_batch_size", max_batch_size)
+        .Attr("num_batch_threads", 8)
+        .Attr("allowed_batch_sizes", allowed_batch_sizes)
+        .Attr("batch_timeout_micros", 1000000)
+        .Attr("max_enqueued_batches", 10)
+        .Attr("enable_large_batch_splitting", true)
+        .Attr("Tin", {DataType::DT_INT64})
+        .Input(inputs)
+        .Attr("Tcaptured", std::vector<DataType>{})
+        .Input(std::vector<NodeDefBuilder::NodeOut>{})
+        .Attr("Tout", std::vector<DataType>{DT_INT64})
+        .Attr("f", f);
+  }
+};
+
+class BatchFunctionTestState : public SharedBatchFunctionTestState {
+ public:
+  // Init test fixture with a batch kernel instance. The caller guarantees that
+  // the device pointer is valid throughout the life of this class.
+  absl::Status Init(Device *device, bool enable_low_priority_queue,
+                    absl::string_view mixed_priority_policy,
+                    int64_t expected_batch_size) {
+    // Override the per-test/per-op device with a given device so that it can
+    // be shared between ops.
+    device_ = device;
+
+    const TensorShape expected_output_shape({expected_batch_size, 2});
+    TF_ASSIGN_OR_RETURN(
+        NodeDefBuilder builder,
+        CreateBatchFunctionBuilder({4, 8}, 8, expected_output_shape));
+    TF_RETURN_IF_ERROR(builder
                            .Attr("low_priority_max_batch_size",
                                  enable_low_priority_queue ? 8 : 0)
                            .Attr("low_priority_batch_timeout_micros",
@@ -139,14 +156,8 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
                            .Attr("low_priority_max_enqueued_batches",
                                  enable_low_priority_queue ? 2 : 0)
                            .Attr("mixed_priority_policy", mixed_priority_policy)
-                           .Attr("batch_padding_policy", "PAD_UP")
-                           .Attr("Tin", {DataType::DT_INT64})
-                           .Input(inputs)
-                           .Attr("Tcaptured", std::vector<DataType>{})
-                           .Input(std::vector<NodeDefBuilder::NodeOut>{})
-                           .Attr("Tout", std::vector<DataType>{DT_INT64})
-                           .Attr("f", f)
                            .Finalize(node_def()));
+
     return OpsTestBase::InitOp();
   }
 
@@ -576,48 +587,13 @@ class BatchFunctionKernelParallelWarmupTestState
     // be shared between ops.
     device_ = cpu_device;
 
-    NameAttrList f;
-    f.set_name("BatchFunctionKernelParallelWarmupTestStateFunc");
-    FunctionDef func = FunctionDefHelper::Create(
-        // function_name
-        f.name(),
-        // in_def
-        {"x:int64"},
-        // out_def
-        {"o:int64"},
-        // attr_def
-        {},
-        // node_def
-        {{{"o"},
-          "EnsureShape",
-          {"x"},
-          {{"T", DataType::DT_INT64}, {"shape", TensorShape({2})}}}},
-        // ret_def
-        {{"o", "o:output"}});
-    TF_RETURN_IF_ERROR(flib_def_->AddFunctionDef(func));
-    SharedBatchFunctionTestState::CreateFunctionLibraryRuntime();
+    const TensorShape expected_output_shape({2});
+    TF_ASSIGN_OR_RETURN(
+        NodeDefBuilder builder,
+        CreateBatchFunctionBuilder({2, 4, 8}, enable_splitting ? 16 : 8,
+                                   expected_output_shape));
+    TF_RETURN_IF_ERROR(builder.Finalize(node_def()));
 
-    std::vector<NodeDefBuilder::NodeOut> inputs(
-        {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
-    TF_RETURN_IF_ERROR(NodeDefBuilder("BatchTPUInput", "BatchFunction")
-                           .Attr("max_batch_size", enable_splitting ? 16 : 8)
-                           .Attr("num_batch_threads", 8)
-                           .Attr("allowed_batch_sizes", {2, 4, 8})
-                           .Attr("batch_timeout_micros", 1000000)
-                           .Attr("max_enqueued_batches", 10)
-                           .Attr("enable_large_batch_splitting", true)
-                           .Attr("low_priority_max_batch_size", 64)
-                           .Attr("low_priority_batch_timeout_micros", 8000)
-                           .Attr("low_priority_allowed_batch_sizes", {32, 64})
-                           .Attr("low_priority_max_enqueued_batches", 1000)
-                           .Attr("batch_padding_policy", "PAD_UP")
-                           .Attr("Tin", {DataType::DT_INT64})
-                           .Input(inputs)
-                           .Attr("Tcaptured", std::vector<DataType>{})
-                           .Input(std::vector<NodeDefBuilder::NodeOut>{})
-                           .Attr("Tout", std::vector<DataType>{DT_INT64})
-                           .Attr("f", f)
-                           .Finalize(node_def()));
     return OpsTestBase::InitOp();
   }
 

@@ -1648,7 +1648,7 @@ cc_library(
 
 tf_cc_test(
     name = "batch_kernels_test",
-    size = "medium",
+    size = "small",
     srcs = ["batch_kernels_test.cc"],
     features = ["-layering_check"],
     deps = [
