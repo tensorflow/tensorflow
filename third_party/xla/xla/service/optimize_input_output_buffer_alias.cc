@@ -149,6 +149,7 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
   // and output_shape.
   const auto& entry_computation_layout = module->entry_computation_layout();
   std::vector<Shape> input_shapes;
+  input_shapes.reserve(module->entry_computation()->num_parameters());
   for (int64_t i = 0; i < module->entry_computation()->num_parameters(); ++i) {
     input_shapes.push_back(entry_computation_layout.parameter_shape(i));
   }
