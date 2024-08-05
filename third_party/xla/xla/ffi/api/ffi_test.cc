@@ -640,14 +640,19 @@ TEST(FfiTest, ScratchAllocator) {
 
   // A test only memory allocator that returns a fixed memory address.
   struct TestDeviceMemoryAllocator final : public se::DeviceMemoryAllocator {
-    TestDeviceMemoryAllocator() : se::DeviceMemoryAllocator(nullptr) {}
+    size_t count;
+
+    TestDeviceMemoryAllocator()
+        : se::DeviceMemoryAllocator(nullptr), count(0) {}
 
     absl::StatusOr<se::OwningDeviceMemory> Allocate(int, uint64_t size, bool,
                                                     int64_t) final {
+      count++;
       return se::OwningDeviceMemory(se::DeviceMemoryBase(kAddr, size), 0, this);
     }
 
     absl::Status Deallocate(int, se::DeviceMemoryBase mem) final {
+      count--;
       EXPECT_EQ(mem.opaque(), kAddr);
       return absl::OkStatus();
     }
@@ -676,6 +681,7 @@ TEST(FfiTest, ScratchAllocator) {
   auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
+  EXPECT_EQ(allocator.count, 0);
 }
 
 //===----------------------------------------------------------------------===//

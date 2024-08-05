@@ -782,6 +782,7 @@ inline std::optional<void*> ScratchAllocator::Allocate(size_t size,
     internal::DestroyError(api_, error);
     return std::nullopt;
   }
+  allocations_.push_back({size, args.data});
   return args.data;
 }
 
