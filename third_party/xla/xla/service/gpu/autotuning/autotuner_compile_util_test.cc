@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/autotuner_compile_util.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"

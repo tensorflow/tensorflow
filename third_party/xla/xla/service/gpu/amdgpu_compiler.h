@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"

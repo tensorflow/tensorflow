@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_CUSTOM_KERNEL_FUSION_AUTOTUNER_H_
-#define XLA_SERVICE_GPU_CUSTOM_KERNEL_FUSION_AUTOTUNER_H_
+#ifndef XLA_SERVICE_GPU_AUTOTUNING_CUSTOM_KERNEL_FUSION_AUTOTUNER_H_
+#define XLA_SERVICE_GPU_AUTOTUNING_CUSTOM_KERNEL_FUSION_AUTOTUNER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/xla.pb.h"
 
@@ -50,4 +50,4 @@ class CustomKernelFusionAutotuner : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_CUSTOM_KERNEL_FUSION_AUTOTUNER_H_
+#endif  // XLA_SERVICE_GPU_AUTOTUNING_CUSTOM_KERNEL_FUSION_AUTOTUNER_H_

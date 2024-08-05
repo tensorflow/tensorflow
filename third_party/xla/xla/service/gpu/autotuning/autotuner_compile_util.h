@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_AUTOTUNER_COMPILE_UTIL_H_
-#define XLA_SERVICE_GPU_AUTOTUNER_COMPILE_UTIL_H_
+#ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_COMPILE_UTIL_H_
+#define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_COMPILE_UTIL_H_
 
 #include <cstdint>
 #include <memory>
@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -174,4 +174,4 @@ class RedzoneBuffers {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_AUTOTUNER_COMPILE_UTIL_H_
+#endif  // XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_COMPILE_UTIL_H_

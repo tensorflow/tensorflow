@@ -142,8 +142,8 @@ struct KernelTimer {
 };
 
 // TODO(b/152925936): Re-evaluate these constants with current usage patterns.
-typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
-typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
+typedef absl::InlinedVector<TensorValue, 4UL> TensorValueVec;
+typedef absl::InlinedVector<AllocatorAttributes, 4UL> AllocatorAttributeVec;
 
 class ExecutorImpl : public Executor {
  public:

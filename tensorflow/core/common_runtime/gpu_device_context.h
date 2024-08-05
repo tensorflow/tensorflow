@@ -29,14 +29,14 @@ namespace tensorflow {
 class GPUDeviceContext : public DeviceContext {
  public:
   // Does not take ownership of streams.
-  GPUDeviceContext(int stream_id, se::Stream* stream,
+  GPUDeviceContext(
+      int stream_id, se::Stream* stream,
 #if TENSORFLOW_USE_ROCM
-                   se::Stream* nccl_stream,
+      se::Stream* nccl_stream,
 #endif
-                   se::Stream* host_to_device_stream,
-                   se::Stream* device_to_host_stream,
-                   gtl::InlinedVector<se::Stream*, 4> device_to_device_stream,
-                   Allocator* host_memory_allocator)
+      se::Stream* host_to_device_stream, se::Stream* device_to_host_stream,
+      absl::InlinedVector<se::Stream*, 4UL> device_to_device_stream,
+      Allocator* host_memory_allocator)
       : stream_id_(stream_id),
         stream_(stream),
 #if TENSORFLOW_USE_ROCM
@@ -96,7 +96,7 @@ class GPUDeviceContext : public DeviceContext {
   // The stream to use for copying data from GPU to host.
   se::Stream* device_to_host_stream_;
   // Streams to use for copying data between GPUs.
-  gtl::InlinedVector<se::Stream*, 4> device_to_device_stream_;
+  absl::InlinedVector<se::Stream*, 4UL> device_to_device_stream_;
   // The allocator to use for allocating pinned host memory.
   // Not owned.
   Allocator* host_memory_allocator_;

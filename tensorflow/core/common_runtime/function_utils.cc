@@ -130,7 +130,7 @@ const Edge* GetTheOnlyDataEdge(const EdgeSet& edges) {
 bool RemoveIdentityNodes(Graph* g) {
   VLOG(2) << "Removing identity nodes";
   bool removed_any = false;
-  gtl::InlinedVector<Node*, 8> matches;
+  absl::InlinedVector<Node*, 8UL> matches;
   for (Node* n : g->nodes()) {
     if (!n->IsIdentity()) continue;
     if (!GetTheOnlyDataEdge(n->in_edges())) continue;
@@ -162,7 +162,7 @@ bool RemoveIdentityNodes(Graph* g) {
 
 bool RemoveListArrayConverter(Graph* g) {
   VLOG(2) << "Removing list array converter";
-  gtl::InlinedVector<Node*, 8> matches;
+  absl::InlinedVector<Node*, 8UL> matches;
   for (Node* n : g->nodes()) {
     if ((n->type_string() == "_ListToArray") ||
         (n->type_string() == "_ArrayToList")) {
@@ -175,7 +175,7 @@ bool RemoveListArrayConverter(Graph* g) {
       if (n->num_inputs() != n->num_outputs()) {
         continue;  // Not expected. Skip.
       }
-      gtl::InlinedVector<Node*, 8> identity_nodes(n->num_inputs(), nullptr);
+      absl::InlinedVector<Node*, 8UL> identity_nodes(n->num_inputs(), nullptr);
 
       const auto no_op = [&](StringPiece name) -> Node* {
         return AddNoOp(absl::StrCat(n->name(), "/", name), g);
@@ -298,7 +298,7 @@ string NewName(const Node* n, bool pretty) {
 void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // We visit nodes in forward topological sort order, which is a
   // possible execution order of the graph.
-  gtl::InlinedVector<const Edge*, 4> inputs;
+  absl::InlinedVector<const Edge*, 4UL> inputs;
   gdef->Clear();
   *gdef->mutable_versions() = g->versions();
 

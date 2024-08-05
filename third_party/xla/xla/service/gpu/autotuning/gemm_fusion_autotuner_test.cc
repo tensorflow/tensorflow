@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/gemm_fusion_autotuner.h"
+#include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_fusion.h"
 #include "xla/service/gpu/gemm_rewriter.h"

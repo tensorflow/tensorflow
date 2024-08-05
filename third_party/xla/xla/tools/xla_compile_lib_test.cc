@@ -45,7 +45,7 @@ limitations under the License.
 #include "tsl/protobuf/status.pb.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #endif
 
 namespace xla {

@@ -38,7 +38,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
           "Parallel concat removal should happen before partitioning and a "
           "graph should be available.");
     }
-    gtl::InlinedVector<Node*, 2> matches;
+    absl::InlinedVector<Node*, 2UL> matches;
     for (Node* n : g->op_nodes()) {
       if (n->type_string() == "ParallelConcat") {
         matches.push_back(n);

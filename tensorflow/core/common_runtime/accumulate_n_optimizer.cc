@@ -64,7 +64,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     }
 
     // Build up a todo list of ops to replace, *then* modify the graph
-    gtl::InlinedVector<Node*, 2> matches;
+    absl::InlinedVector<Node*, 2UL> matches;
     for (Node* n : g->op_nodes()) {
       if (n->type_string() == "AccumulateNV2") {
         matches.push_back(n);

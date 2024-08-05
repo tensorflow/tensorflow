@@ -37,11 +37,11 @@ struct FunctionBody {
   DataTypeVector ret_types;
   // arg_nodes[i] contains the i'th function input. In other words,
   // GetNodeAttr(arg_nodes[i]->attrs(), "index") == i.
-  gtl::InlinedVector<Node*, 4> arg_nodes;
+  absl::InlinedVector<Node*, 4UL> arg_nodes;
   // ret_nodes[i] contains the i'th function output. In other words,
   // GetNodeAttr(ret_nodes[i]->attrs(), "index") == i.
-  gtl::InlinedVector<Node*, 4> ret_nodes;
-  gtl::InlinedVector<Node*, 4> control_ret_nodes;
+  absl::InlinedVector<Node*, 4UL> ret_nodes;
+  absl::InlinedVector<Node*, 4UL> control_ret_nodes;
 
   FunctionBody() {}
   FunctionBody(core::RefCountPtr<FunctionRecord>&& record,

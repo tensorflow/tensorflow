@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_AUTOTUNER_UTIL_H_
-#define XLA_SERVICE_GPU_AUTOTUNER_UTIL_H_
+#ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_UTIL_H_
+#define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_UTIL_H_
 
 #include <algorithm>
 #include <cstdint>
@@ -331,4 +331,4 @@ absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s);
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_AUTOTUNER_UTIL_H_
+#endif  // XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_UTIL_H_

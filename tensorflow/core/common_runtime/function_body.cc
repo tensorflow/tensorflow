@@ -35,7 +35,7 @@ FunctionBody::FunctionBody(core::RefCountPtr<FunctionRecord>&& record,
   this->arg_nodes.resize(arg_types.size());
   this->ret_nodes.resize(ret_types.size());
   for (Node* n : this->graph->op_nodes()) {
-    gtl::InlinedVector<Node*, 4>* node_vec;
+    absl::InlinedVector<Node*, 4UL>* node_vec;
     if (n->type_string() == FunctionLibraryDefinition::kRetOp ||
         n->type_string() == FunctionLibraryDefinition::kDeviceRetOp) {
       node_vec = &this->ret_nodes;
