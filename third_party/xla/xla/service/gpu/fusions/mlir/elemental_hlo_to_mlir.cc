@@ -1468,6 +1468,8 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       .Convert();
 }
 
+}  // namespace
+
 void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
                                   const IndexingMap& indexing_map,
                                   SmallVectorImpl<Value>* lbs,
@@ -1481,8 +1483,6 @@ void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
     steps->push_back(c1);
   }
 }
-
-}  // namespace
 
 absl::Status SubgraphToMlirFunction(
     const PartitionedComputation& computation,

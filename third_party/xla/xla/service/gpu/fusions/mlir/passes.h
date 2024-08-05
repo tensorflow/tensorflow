@@ -44,6 +44,7 @@ std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
     bool is_amd_gpu = false, const std::string& gpu_arch = "6.0");
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass();
+std::unique_ptr<mlir::Pass> CreateLowerXlaGpuLoopsToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();

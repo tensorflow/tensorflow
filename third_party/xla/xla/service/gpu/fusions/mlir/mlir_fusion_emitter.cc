@@ -305,13 +305,14 @@ MlirFusionEmitterBase::CreateLLVMModule(
   mlir::PassManager pm(&mlir_context);
   pm.addPass(CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(CreateLowerXlaGpuToScfPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaGpuToScfPass());
   pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
     // CSE after inlining because inlining can introduce duplicates.
     pm.addPass(mlir::createCSEPass());
   }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaGpuLoopsToScfPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
   // We need LICM before unswitching loops, because our loop unswitcher only

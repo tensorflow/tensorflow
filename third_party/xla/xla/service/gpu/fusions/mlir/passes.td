@@ -162,7 +162,7 @@ def ExpandFloatOpsPass : Pass<"xla-gpu-expand-float-ops", "mlir::ModuleOp"> {
 }
 
 def LowerXlaGpuToScfPass :
-   Pass<"xla-gpu-lower-xla-gpu-to-scf", "mlir::ModuleOp"> {
+   Pass<"xla-gpu-lower-xla-gpu-to-scf", "mlir::func::FuncOp"> {
   let summary = "Lowers xla_gpu to SCF.";
 
   let dependentDialects = [
@@ -171,6 +171,24 @@ def LowerXlaGpuToScfPass :
   ];
 
   let constructor = "CreateLowerXlaGpuToScfPass()";
+}
+
+def LowerXlaGpuLoopsToScfPass : Pass<
+    "xla-gpu-lower-xla-gpu-loops-to-scf", "mlir::func::FuncOp"> {
+  let summary = "Lowers xla_gpu.loop to SCF.";
+
+  let description = [{
+    This pass is separate from lower-xla-gpu-to-scf because
+    lower-xla-gpu-to-scf, inliner, peeling and lower-xla-gpu-loops-to-scf
+    have to run in that order.
+  }];
+
+  let dependentDialects = [
+    "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+  ];
+
+  let constructor = "CreateLowerXlaGpuLoopsToScfPass()";
 }
 
 def EraseDeadFunctionsPass : Pass<"xla-erase-dead-functions", "mlir::ModuleOp"> {

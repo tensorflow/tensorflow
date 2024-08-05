@@ -298,6 +298,7 @@ cc_library(
     ],
     hdrs = ["passes.h"],
     deps = [
+        ":elemental_hlo_to_mlir",
         ":passes_inc_gen",
         "//xla:shape_util",
         "//xla:util",
