@@ -1,16 +1,14 @@
-// RUN: mlir_fusions_opt %s -xla-gpu-lower-xla-gpu-to-scf | FileCheck %s
+// RUN: mlir_fusions_opt %s -xla-gpu-lower-xla-gpu-to-scf --split-input-file  \
+// RUN: | FileCheck %s
 
-module {
-  func.func @reducer(%a: f32, %b: i32, %c: f32, %d: i32) -> (f32, i32) {
-    return %a, %b : f32, i32
-  }
-
-  func.func @shuffler(%a: f32, %b: i32) -> (f32, i32) {
-    %ret:2 = xla_gpu.shuffle_reduce @reducer(%a, %b) to 4 : f32, i32
-    return %ret#0, %ret#1 : f32, i32
-  }
+func.func @reducer(%a: f32, %b: i32, %c: f32, %d: i32) -> (f32, i32) {
+  return %a, %b : f32, i32
 }
 
+func.func @shuffler(%a: f32, %b: i32) -> (f32, i32) {
+  %ret:2 = xla_gpu.shuffle_reduce @reducer(%a, %b) to 4 : f32, i32
+  return %ret#0, %ret#1 : f32, i32
+}
 // CHECK: @shuffler(%[[A:.*]]: f32, %[[B:.*]]: i32)
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1
 // CHECK-DAG: %[[C2:.*]] = arith.constant 2
@@ -29,83 +27,68 @@ module {
 
 // -----
 
-module {
-  func.func @reducer(%a: f64, %b: f64) -> f64 {
-    return %a : f64
-  }
-
-  func.func @shuffler(%a: f64) -> f64 {
-    %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : f64
-    return %ret : f64
-  }
+func.func @reducer(%a: f64, %b: f64) -> f64 {
+  return %a : f64
 }
 
+func.func @shuffler(%a: f64) -> f64 {
+  %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : f64
+  return %ret : f64
+}
 // CHECK: @shuffler(%[[A:.*]]: f64
 // CHECK: gpu.shuffle down {{.*}}, %[[C1]]
 // CHECK: gpu.shuffle down {{.*}}, %[[C1]]
 
 // -----
 
-module {
-  func.func @reducer(%a: complex<f64>, %b: complex<f64>) -> complex<f64> {
-    return %a : complex<f64>
-  }
-
-  func.func @shuffler(%a: complex<f64>) -> complex<f64> {
-    %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : complex<f64>
-    return %ret : complex<f64>
-  }
+func.func @reducer(%a: complex<f64>, %b: complex<f64>) -> complex<f64> {
+  return %a : complex<f64>
 }
 
+func.func @shuffler(%a: complex<f64>) -> complex<f64> {
+  %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : complex<f64>
+  return %ret : complex<f64>
+}
 // CHECK: @shuffler
 // CHECK-COUNT-4: gpu.shuffle down {{.*}}, %[[C1]]
 
 // -----
 
-module {
-  func.func @reducer(%a: ui64, %b: ui64) -> ui64 {
-    return %a : ui64
-  }
-
-  func.func @shuffler(%a: ui64) -> ui64 {
-    %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : ui64
-    return %ret : ui64
-  }
+func.func @reducer(%a: ui64, %b: ui64) -> ui64 {
+  return %a : ui64
 }
 
+func.func @shuffler(%a: ui64) -> ui64 {
+  %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : ui64
+  return %ret : ui64
+}
 // CHECK: @shuffler
 // CHECK: unrealized_conversion_cast
 // CHECK-COUNT-2: gpu.shuffle down {{.*}}, %[[C1]]
 
 // -----
 
-module {
-  func.func @reducer(%a: i8, %b: i8) -> i8 {
-    return %a : i8
-  }
-
-  func.func @shuffler_i8(%a: i8) -> i8 {
-    %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : i8
-    return %ret : i8
-  }
+func.func @reducer(%a: i8, %b: i8) -> i8 {
+  return %a : i8
 }
 
+func.func @shuffler_i8(%a: i8) -> i8 {
+  %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : i8
+  return %ret : i8
+}
 // CHECK: @shuffler_i8(
 // CHECK-NOT: vector
 // CHECK-COUNT-1: gpu.shuffle down {{.*}}, %[[C1]]
 
 // -----
 
-module {
-  func.func @predicated_insert(
-      %v: i32, %tensor: tensor<2xi32>, %index: index,
-      %cond: i1) -> tensor<2xi32> {
-    %ret = xla_gpu.predicated_insert %v into %tensor[%index] if %cond
-      : tensor<2xi32>
-    return %ret : tensor<2xi32>
-  }
+func.func @predicated_insert(
+    %v: i32, %tensor: tensor<2xi32>, %index: index,
+    %cond: i1) -> tensor<2xi32> {
+  %ret = xla_gpu.predicated_insert %v into %tensor[%index] if %cond
+    : tensor<2xi32>
+  return %ret : tensor<2xi32>
 }
-
 // CHECK: @predicated_insert
 // CHECK-SAME: %[[V:.*]]: i32, %[[TENSOR:.*]]: tensor<2xi32>,
 // CHECK-SAME: %[[INDEX:.*]]: index, %[[COND:.*]]: i1
@@ -119,16 +102,13 @@ module {
 
 // -----
 
-module {
-  func.func @predicated_extract(
-      %v: i32, %tensor: tensor<2xi32>, %index: index,
-      %cond: i1) -> i32 {
-    %ret = xla_gpu.predicated_extract %tensor[%index] if %cond else %v
-      : tensor<2xi32>
-    return %ret : i32
-  }
+func.func @predicated_extract(
+    %v: i32, %tensor: tensor<2xi32>, %index: index,
+    %cond: i1) -> i32 {
+  %ret = xla_gpu.predicated_extract %tensor[%index] if %cond else %v
+    : tensor<2xi32>
+  return %ret : i32
 }
-
 // CHECK: @predicated_extract
 // CHECK-SAME: %[[V:.*]]: i32, %[[TENSOR:.*]]: tensor<2xi32>,
 // CHECK-SAME: %[[INDEX:.*]]: index, %[[COND:.*]]: i1

@@ -64,7 +64,7 @@ llvm::SmallVector<mlir::Value, 2> ProvideParameterRange(
 
 // Checks whether the given HLO instruction can be converted to MLIR.
 bool IsHloOpSupported(const HloInstruction* instr,
-                      se::CudaComputeCapability compute_capability);
+                      se::GpuComputeCapability compute_capability);
 
 // Checks whether the given HLO computation is supported by the MLIR converter:
 // - all instructions in it are supported
@@ -147,6 +147,13 @@ mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
 mlir::SmallVector<mlir::Value, 2> InlineBlock(mlir::OpBuilder& builder,
                                               mlir::Block& src_block,
                                               mlir::ValueRange mapped_args);
+
+// Populates `lbs`, `ubs` and `steps` with the loop bounds from `indexing_map`.
+void GetLoopBoundsFromIndexingMap(mlir::ImplicitLocOpBuilder& b,
+                                  const IndexingMap& indexing_map,
+                                  llvm::SmallVectorImpl<mlir::Value>* lbs,
+                                  llvm::SmallVectorImpl<mlir::Value>* ubs,
+                                  llvm::SmallVectorImpl<mlir::Value>* steps);
 
 }  // namespace mlir_converter
 }  // namespace gpu

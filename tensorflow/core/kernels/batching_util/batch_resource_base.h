@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
 #include "tensorflow/core/platform/context.h"
@@ -52,6 +54,7 @@ struct BatchResourceOptions {
   int32_t batch_timeout_micros;
   int32_t max_enqueued_batches;
   std::vector<int32_t> allowed_batch_sizes;
+  std::string batch_padding_policy{kPadUpPolicy};
   int32_t low_priority_max_batch_size;
   int32_t low_priority_batch_timeout_micros;
   int32_t low_priority_max_enqueued_batches;
@@ -213,6 +216,7 @@ class BatchResourceBase : public ResourceBase {
       int32_t batch_timeout_micros, int32_t max_enqueued_batches,
       const std::vector<int32>& allowed_batch_sizes,
       bool enable_large_batch_splitting, bool disable_padding,
+      absl::string_view batch_padding_policy,
       int32_t low_priority_max_batch_size,
       int32_t low_priority_batch_timeout_micros,
       int32_t low_priority_max_enqueued_batches,

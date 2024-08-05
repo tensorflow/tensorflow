@@ -1180,30 +1180,23 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
 }  // namespace
 
 bool IsHloOpSupported(const HloInstruction* instr,
-                      se::CudaComputeCapability compute_capability) {
+                      se::GpuComputeCapability compute_capability) {
   return !(kUnsupportedOps.contains(instr->opcode()) ||
            IsUnsupportedGather(instr));
 }
 
 bool IsHloConversionSupported(const HloComputation* computation,
                               se::GpuComputeCapability compute_capability) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
-    // ROCM is not tested.
-    return false;
-  }
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(compute_capability);
-
-  return absl::c_all_of(
-             computation->instructions(),
-             [=](const HloInstruction* instr) {
-               return absl::c_all_of(instr->called_computations(),
+  return absl::c_all_of(computation->instructions(),
+                        [=](const HloInstruction* instr) {
+                          return absl::c_all_of(
+                                     instr->called_computations(),
                                      [&](const HloComputation* called) {
                                        return IsHloConversionSupported(
                                            called, compute_capability);
                                      }) &&
-                      IsHloOpSupported(instr, cuda_compute_capability);
-             }) &&
+                                 IsHloOpSupported(instr, compute_capability);
+                        }) &&
          (computation->IsFusionComputation() ||
           (absl::c_all_of(
               computation->parameter_instructions(), [](auto* param) {
@@ -1213,20 +1206,13 @@ bool IsHloConversionSupported(const HloComputation* computation,
 
 bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
                               se::GpuComputeCapability compute_capability) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
-    // ROCM is not tested.
-    return false;
-  }
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(compute_capability);
-
   return !HloAnyOf(fusion, [=](HloInstructionAdaptor instr) {
     return !absl::c_all_of(instr.instruction().called_computations(),
                            [&](const HloComputation* called) {
                              return IsHloConversionSupported(
                                  called, compute_capability);
                            }) ||
-           !IsHloOpSupported(&instr.instruction(), cuda_compute_capability);
+           !IsHloOpSupported(&instr.instruction(), compute_capability);
   });
 }
 
@@ -1468,6 +1454,8 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       .Convert();
 }
 
+}  // namespace
+
 void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
                                   const IndexingMap& indexing_map,
                                   SmallVectorImpl<Value>* lbs,
@@ -1481,8 +1469,6 @@ void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
     steps->push_back(c1);
   }
 }
-
-}  // namespace
 
 absl::Status SubgraphToMlirFunction(
     const PartitionedComputation& computation,
