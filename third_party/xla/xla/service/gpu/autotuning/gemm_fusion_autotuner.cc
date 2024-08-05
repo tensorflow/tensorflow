@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gemm_fusion_autotuner.h"
+#include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 
 #include <algorithm>
 #include <array>
@@ -57,8 +57,8 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/float_normalization.h"
-#include "xla/service/gpu/autotuner_compile_util.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/cudnn_fusion_compiler.h"

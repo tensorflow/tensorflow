@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_CONV_ALGORITHM_PICKER_H_
-#define XLA_SERVICE_GPU_CONV_ALGORITHM_PICKER_H_
+#ifndef XLA_SERVICE_GPU_AUTOTUNING_CONV_ALGORITHM_PICKER_H_
+#define XLA_SERVICE_GPU_AUTOTUNING_CONV_ALGORITHM_PICKER_H_
 
 #include <optional>
 #include <string>
@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/autotuner_compile_util.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/hlo_module_config.h"
@@ -156,4 +156,4 @@ class GpuConvAlgorithmPicker : public HloModulePass {
 
 }  // namespace gpu
 }  // namespace xla
-#endif  // XLA_SERVICE_GPU_CONV_ALGORITHM_PICKER_H_
+#endif  // XLA_SERVICE_GPU_AUTOTUNING_CONV_ALGORITHM_PICKER_H_

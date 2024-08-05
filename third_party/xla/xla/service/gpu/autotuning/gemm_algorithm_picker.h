@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_GEMM_ALGORITHM_PICKER_H_
-#define XLA_SERVICE_GPU_GEMM_ALGORITHM_PICKER_H_
+#ifndef XLA_SERVICE_GPU_AUTOTUNING_GEMM_ALGORITHM_PICKER_H_
+#define XLA_SERVICE_GPU_AUTOTUNING_GEMM_ALGORITHM_PICKER_H_
 
 #include <functional>
 #include <optional>
@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/shape.h"
@@ -67,4 +67,4 @@ class GemmAlgorithmPicker : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GEMM_ALGORITHM_PICKER_H_
+#endif  // XLA_SERVICE_GPU_AUTOTUNING_GEMM_ALGORITHM_PICKER_H_

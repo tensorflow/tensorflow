@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_dataflow_analysis.h"

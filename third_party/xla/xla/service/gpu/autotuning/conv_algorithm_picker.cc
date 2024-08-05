@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/conv_algorithm_picker.h"
+#include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 
 #include <algorithm>
 #include <cmath>
@@ -43,11 +43,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/autotuner_compile_util.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/gpu_autotuning.pb.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/gpu_autotuning.pb.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/hlo_algorithm_denylist.h"
 #include "xla/service/gpu/stream_executor_util.h"

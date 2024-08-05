@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gemm_algorithm_picker.h"
+#include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/autotuner_compile_util.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/cublas_cudnn.h"

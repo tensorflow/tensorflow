@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_GEMM_FUSION_AUTOTUNER_H_
-#define XLA_SERVICE_GPU_GEMM_FUSION_AUTOTUNER_H_
+#ifndef XLA_SERVICE_GPU_AUTOTUNING_GEMM_FUSION_AUTOTUNER_H_
+#define XLA_SERVICE_GPU_AUTOTUNING_GEMM_FUSION_AUTOTUNER_H_
 
 #include <cstdint>
 #include <memory>
@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuner_compile_util.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
@@ -144,4 +144,4 @@ class GemmFusionAutotunerImpl {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GEMM_FUSION_AUTOTUNER_H_
+#endif  // XLA_SERVICE_GPU_AUTOTUNING_GEMM_FUSION_AUTOTUNER_H_

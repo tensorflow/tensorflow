@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/custom_kernel_fusion_autotuner.h"
+#include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 
 #include <memory>
 #include <string>
@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
