@@ -405,6 +405,7 @@ class ZerosLikeOp : public XlaOpKernel {
         std::vector<xla::XlaOp> dynamic_dims;
         const xla::Shape& shape = list_shape.tuple_shapes(i);
         auto sub_element = xla::GetTupleElement(list, i);
+        dynamic_dims.reserve(shape.dimensions_size());
         for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
           dynamic_dims.push_back(xla::GetDimensionSize(sub_element, dim));
         }
