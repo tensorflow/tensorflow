@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/random.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -215,6 +215,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
       batch_resource_options.batch_timeout_micros = batch_timeout_micros_;
       batch_resource_options.max_enqueued_batches = max_enqueued_batches_;
       batch_resource_options.allowed_batch_sizes = allowed_batch_sizes_;
+      batch_resource_options.batch_padding_policy = batch_padding_policy_;
       batch_resource_options.low_priority_max_batch_size =
           low_priority_max_batch_size_;
       batch_resource_options.low_priority_batch_timeout_micros =

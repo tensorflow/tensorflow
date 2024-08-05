@@ -502,7 +502,9 @@ BatchResourceBase::GetBatcherQueueOptions(
   return GetBatcherQueueOptions(
       num_batch_threads, max_batch_size, batch_timeout_micros,
       max_enqueued_batches, allowed_batch_sizes, enable_large_batch_splitting,
-      disable_padding, /*low_priority_max_batch_size=*/0,
+      disable_padding,
+      /*batch_padding_policy=*/kPadUpPolicy,
+      /*low_priority_max_batch_size=*/0,
       /*low_priority_batch_timeout_micros=*/0,
       /*low_priority_max_enqueued_batches=*/0,
       /*low_priority_allowed_batch_sizes=*/{},
@@ -516,7 +518,7 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32_t batch_timeout_micros, int32_t max_enqueued_batches,
     const std::vector<int32>& allowed_batch_sizes,
     bool enable_large_batch_splitting, bool disable_padding,
-    int32_t low_priority_max_batch_size,
+    absl::string_view batch_padding_policy, int32_t low_priority_max_batch_size,
     int32_t low_priority_batch_timeout_micros,
     int32_t low_priority_max_enqueued_batches,
     const std::vector<int32>& low_priority_allowed_batch_sizes,
@@ -525,6 +527,8 @@ BatchResourceBase::GetBatcherQueueOptions(
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
   batcher_queue_options.batch_timeout_micros = batch_timeout_micros;
+  batcher_queue_options.batch_padding_policy =
+      std::string(batch_padding_policy);
   if (low_priority_max_batch_size > 0) {
     batcher_queue_options.enable_priority_queue = true;
   }
