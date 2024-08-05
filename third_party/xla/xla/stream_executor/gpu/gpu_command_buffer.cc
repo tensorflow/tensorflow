@@ -1006,6 +1006,8 @@ absl::Status GpuCommandBuffer::Finalize() {
       } else {
         TF_RETURN_IF_ERROR(retry);
       }
+    } else {
+      TF_RETURN_IF_ERROR(instantiated);
     }
 
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();
