@@ -66,6 +66,10 @@ limitations under the License.
 
 namespace tensorflow::serving {
 
+// Default values for when there is no recorded statistic in ModelBatchStats.
+constexpr int64_t kNumBatchThreadsUnknown = -1;
+constexpr int64_t kBatchTimeoutMicrosUnknown = -1;
+
 // Tracks the average cost of registered samples.
 //
 // Thread-safe.
@@ -167,6 +171,23 @@ class ModelBatchStats {
     return result;
   }
 
+  void SetNumBatchThreads(int64_t num_batch_threads) {
+    num_batch_threads_.store(num_batch_threads, std::memory_order_relaxed);
+  }
+
+  int64_t num_batch_threads() const {
+    return num_batch_threads_.load(std::memory_order_relaxed);
+  }
+
+  void SetBatchTimeoutMicros(int64_t batch_timeout_micros) {
+    batch_timeout_micros_.store(batch_timeout_micros,
+                                std::memory_order_relaxed);
+  }
+
+  int64_t batch_timeout_micros() const {
+    return batch_timeout_micros_.load(std::memory_order_relaxed);
+  }
+
  private:
   mutable mutex mu_;
 
@@ -184,6 +205,15 @@ class ModelBatchStats {
   // Can be used to generate an internal load metric per model. See
   // RegisterQuerySize for more details.
   std::atomic<int64_t> cumulative_processed_size_ = 0;
+
+  // The number of batch threads assigned to this model. Set to -1 if there is
+  // no batch thread count information for this model.
+  std::atomic<int64_t> num_batch_threads_ = -1;
+
+  // The timeout in microseconds for this model (after which the current batch
+  // is sent to be processed by the TPU). Set to -1 if there is no batch
+  // timeout information for this model.
+  std::atomic<int64_t> batch_timeout_micros_ = -1;
 };
 
 // Tracks batch statistics for all models.
