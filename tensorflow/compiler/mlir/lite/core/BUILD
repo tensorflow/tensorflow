@@ -34,7 +34,6 @@ cc_library(
         ":macros",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite:allocation",
-        "//tensorflow/lite:string",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/api:verifier",
         "@com_google_absl//absl/strings",
