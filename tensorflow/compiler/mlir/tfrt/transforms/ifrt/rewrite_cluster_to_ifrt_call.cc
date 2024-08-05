@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -128,6 +129,7 @@ class RewriteClusterToIfrtCallPass
              << " is missing";
     int num_cores_per_replica = num_cores_per_replica_attr.getInt();
 
+    // TODO(b/355508052): remove DeviceAssignment after verification.
     std::optional<xla::DeviceAssignmentProto> xla_device_assignment;
     auto topology_attr = cluster_func->getAttrOfType<mlir::StringAttr>(
         tensorflow::kTopologyAttr);
@@ -194,10 +196,14 @@ class RewriteClusterToIfrtCallPass
 
       auto metadata_attr =
           ifrt_program->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
-      if (!metadata_attr) {
+      auto device_assignment_attr =
+          ifrt_program->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr);
+      if (!metadata_attr || !device_assignment_attr) {
         return signalPassFailure();
       }
+
       ifrt_call_op->setAttr(kMetadataTextAttrName, metadata_attr);
+      ifrt_call_op->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
 
       // TODO(b/304839793): populate variable names after adding a variable
       // hoisting pass.
@@ -230,6 +236,13 @@ class RewriteClusterToIfrtCallPass
     cloned_ifrt_program->setAttr(kMetadataTextAttrName,
                                  builder.getStringAttr(serialized_metadata));
 
+    auto device_assignment_attr =
+        cluster_func->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr);
+    if (!device_assignment_attr) {
+      device_assignment_attr = builder.getArrayAttr({});
+    }
+    cloned_ifrt_program->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
+
     cloned_ifrt_program.setName(ifrt_program_name);
 
     int64_t program_id = NewProgramId();
@@ -254,6 +267,7 @@ class RewriteClusterToIfrtCallPass
     // pass such as SinkVariableAsNamedArrayPass relies on this attribute.
     ifrt_call_op->setAttr(kMetadataTextAttrName,
                           builder.getStringAttr(serialized_metadata));
+    ifrt_call_op->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
 
     cluster_func->replaceAllUsesWith(ifrt_call_op.getResults());
     cluster_func->erase();
