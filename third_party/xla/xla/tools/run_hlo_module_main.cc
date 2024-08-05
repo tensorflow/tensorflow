@@ -122,7 +122,13 @@ int main(int argc, char** argv) {
           "other "
           "than the reference this is necessary because some HLO passes are "
           "legalization passes which must be run prior to code generation."),
-
+      tsl::Flag(
+          "force_use_cpu_thunk_runtime_for_test",
+          &opts.force_use_cpu_thunk_runtime_for_test,
+          "Use thunk runtime for the test platform. If true, thunks runtime "
+          "will be used for the test run regardless of the "
+          "xla_cpu_use_thunk_runtime flag in XLA_FLAGS. This option doesn't "
+          "impact reference run. It is ignored for platforms other than CPU."),
       tsl::Flag("random_init_input_literals", &opts.random_init_input_literals,
                 "Initialize input literals with random numbers."
                 "Leave them uninitialized otherwise."),
