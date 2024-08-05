@@ -63,7 +63,7 @@ class ROCmPlatform : public Platform {
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) override;
+      const StreamExecutorConfig& config);
 
   // This platform's name.
   std::string name_;
