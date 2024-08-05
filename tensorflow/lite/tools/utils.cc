@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <random>
 
@@ -79,6 +80,66 @@ TfLiteStatus ConvertToArray(const TfLiteTensor& tflite_tensor,
     values[i] = static_cast<ValueType>(tensor_data[i]);
   }
   return kTfLiteOk;
+}
+
+// Converts an array to InputTensorData. Returns an error if the total number of
+// tensor bytes allocated is not equal to the size of the array multiplied by
+// the size of the tensor type.
+template <typename TensorType, typename ValueType>
+TfLiteStatus ConvertToInputTensorData(absl::Span<const ValueType> values,
+                                      size_t bytes, InputTensorData& tensor) {
+  const int total_elements = values.size();
+  const int bytes_per_element = sizeof(TensorType);
+  if (bytes != total_elements * bytes_per_element) {
+    return kTfLiteError;
+  }
+  tensor.bytes = bytes;
+  TensorType* raw = new TensorType[total_elements];
+  for (int i = 0; i < total_elements; i++) {
+    raw[i] = static_cast<TensorType>(values[i]);
+  }
+
+  tensor.data = VoidUniquePtr(static_cast<void*>(raw), [](void* ptr) {
+    delete[] static_cast<TensorType*>(ptr);
+  });
+  return kTfLiteOk;
+}
+
+template <typename ValueType>
+TfLiteStatus ArrayToInputTensorData(absl::Span<const ValueType> values,
+                                    size_t bytes, TfLiteType tensor_type,
+                                    InputTensorData& tensor) {
+  switch (tensor_type) {
+    case kTfLiteFloat32:
+      return ConvertToInputTensorData<float, ValueType>(values, bytes, tensor);
+    case kTfLiteFloat64:
+      return ConvertToInputTensorData<double, ValueType>(values, bytes, tensor);
+    case kTfLiteUInt8:
+      return ConvertToInputTensorData<uint8_t, ValueType>(values, bytes,
+                                                          tensor);
+    case kTfLiteInt8:
+      return ConvertToInputTensorData<int8_t, ValueType>(values, bytes, tensor);
+    case kTfLiteUInt16:
+      return ConvertToInputTensorData<uint16_t, ValueType>(values, bytes,
+                                                           tensor);
+    case kTfLiteInt16:
+      return ConvertToInputTensorData<int16_t, ValueType>(values, bytes,
+                                                          tensor);
+    case kTfLiteInt32:
+      return ConvertToInputTensorData<int32_t, ValueType>(values, bytes,
+                                                          tensor);
+    case kTfLiteUInt32:
+      return ConvertToInputTensorData<uint32_t, ValueType>(values, bytes,
+                                                           tensor);
+    case kTfLiteUInt64:
+      return ConvertToInputTensorData<uint64_t, ValueType>(values, bytes,
+                                                           tensor);
+    case kTfLiteInt64:
+      return ConvertToInputTensorData<int64_t, ValueType>(values, bytes,
+                                                          tensor);
+    default:
+      return kTfLiteError;
+  }
 }
 
 }  // namespace
@@ -228,6 +289,18 @@ TfLiteStatus TfLiteTensorToInt64Array(const TfLiteTensor& tensor,
     default:
       return kTfLiteError;
   }
+}
+
+TfLiteStatus Float32ArrayToInputTensorData(absl::Span<const float> values,
+                                           size_t bytes, TfLiteType tensor_type,
+                                           InputTensorData& tensor) {
+  return ArrayToInputTensorData<float>(values, bytes, tensor_type, tensor);
+}
+
+TfLiteStatus Int64ArrayToInputTensorData(absl::Span<const int64_t> values,
+                                         size_t bytes, TfLiteType tensor_type,
+                                         InputTensorData& tensor) {
+  return ArrayToInputTensorData<int64_t>(values, bytes, tensor_type, tensor);
 }
 
 }  // namespace utils
