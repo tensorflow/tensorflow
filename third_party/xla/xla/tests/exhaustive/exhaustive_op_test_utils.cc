@@ -614,7 +614,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
           result = pure_subnormal_cache[cache_loc];
         }
       } else {
-        result = result = CallOperation(evaluate_op, test_value);
+        result = CallOperation(evaluate_op, test_value);
       }
 
       if (IsClose(result, static_cast<NativeRefT>(actual), error_spec)) {
