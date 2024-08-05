@@ -1,240 +1,313 @@
+diff --git a/third_party/absl/nvidia_jetson.patch b/third_party/absl/nvidia_jetson.patch
+deleted file mode 100644
+index 5328c3a..0000000
+--- a/third_party/absl/nvidia_jetson.patch
++++ /dev/null
+@@ -1,35 +0,0 @@
+-From 372124e6af36a540e74a2ec31d79d7297a831f98 Mon Sep 17 00:00:00 2001
+-From: =?UTF-8?q?Fr=C3=A9d=C3=A9ric=20Bastien?= <frederic.bastien@gmail.com>
+-Date: Thu, 1 Aug 2024 12:38:52 -0700
+-Subject: [PATCH] PR #1732: Fix build on NVIDIA Jetson board. Fix #1665
+-
+-Imported from GitHub PR https://github.com/abseil/abseil-cpp/pull/1732
+-
+-Fix build on NVIDIA Jetson board. Fix #1665
+-
+-This patch is already used by the spark project.
+-I'm fixing this as this break the build of Tensorflow and JAX on Jetson board.
+-Merge 7db2d2ab9fbed1f0fabad10a6ec73533ba71bfff into 6b8ebb35c0414ef5a2b6fd4a0f59057e41beaff9
+-
+-Merging this change closes #1732
+-
+-COPYBARA_INTEGRATE_REVIEW=https://github.com/abseil/abseil-cpp/pull/1732 from nouiz:fix_neon_on_jetson 7db2d2ab9fbed1f0fabad10a6ec73533ba71bfff
+-PiperOrigin-RevId: 658501520
+-Change-Id: If502ede4efc8c877fb3fed227eca6dc7622dd181
+----
+- absl/base/config.h | 2 +-
+- 1 file changed, 1 insertion(+), 1 deletion(-)
+-
+-diff --git a/absl/base/config.h b/absl/base/config.h
+-index 97c9a22a109..ab1e9860a91 100644
+---- a/absl/base/config.h
+-+++ b/absl/base/config.h
+-@@ -926,7 +926,7 @@ static_assert(ABSL_INTERNAL_INLINE_NAMESPACE_STR[0] != 'h' ||
+- // https://llvm.org/docs/CompileCudaWithLLVM.html#detecting-clang-vs-nvcc-from-code
+- #ifdef ABSL_INTERNAL_HAVE_ARM_NEON
+- #error ABSL_INTERNAL_HAVE_ARM_NEON cannot be directly set
+--#elif defined(__ARM_NEON) && !defined(__CUDA_ARCH__)
+-+#elif defined(__ARM_NEON) && !(defined(__NVCC__) && defined(__CUDACC__))
+- #define ABSL_INTERNAL_HAVE_ARM_NEON 1
+- #endif
+- 
+diff --git a/third_party/absl/workspace.bzl b/third_party/absl/workspace.bzl
+index f5da8c2..7dd563c 100644
+--- a/third_party/absl/workspace.bzl
++++ b/third_party/absl/workspace.bzl
+@@ -44,5 +44,4 @@ def repo():
+         system_link_files = SYS_LINKS,
+         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
+         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
+-        patch_file = ["//third_party/absl:nvidia_jetson.patch"],
+     )
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..350ae6a 100644
+index 350ae6a..6d39ea0 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,220 @@
+@@ -1,220 +1,26 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/lldb/include/lldb/Core/PluginManager.h b/lldb/include/lldb/Core/PluginManager.h
-+--- a/lldb/include/lldb/Core/PluginManager.h
-++++ b/lldb/include/lldb/Core/PluginManager.h
-+@@ -194,7 +194,7 @@
-+   GetObjectFileCreateMemoryCallbackForPluginName(llvm::StringRef name);
+-diff -ruN --strip-trailing-cr a/lldb/include/lldb/Core/PluginManager.h b/lldb/include/lldb/Core/PluginManager.h
+---- a/lldb/include/lldb/Core/PluginManager.h
+-+++ b/lldb/include/lldb/Core/PluginManager.h
+-@@ -194,7 +194,7 @@
+-   GetObjectFileCreateMemoryCallbackForPluginName(llvm::StringRef name);
+- 
+-   static Status SaveCore(const lldb::ProcessSP &process_sp,
+--                         lldb_private::SaveCoreOptions &core_options);
+-+                         const lldb_private::SaveCoreOptions &core_options);
+- 
+-   // ObjectContainer
+-   static bool RegisterPlugin(
+-diff -ruN --strip-trailing-cr a/lldb/include/lldb/lldb-private-interfaces.h b/lldb/include/lldb/lldb-private-interfaces.h
+---- a/lldb/include/lldb/lldb-private-interfaces.h
+-+++ b/lldb/include/lldb/lldb-private-interfaces.h
+-@@ -57,7 +57,7 @@
+-     const lldb::ModuleSP &module_sp, lldb::WritableDataBufferSP data_sp,
+-     const lldb::ProcessSP &process_sp, lldb::addr_t offset);
+- typedef bool (*ObjectFileSaveCore)(const lldb::ProcessSP &process_sp,
+--                                   lldb_private::SaveCoreOptions &options,
+-+                                   const lldb_private::SaveCoreOptions &options,
+-                                    Status &error);
+- typedef EmulateInstruction *(*EmulateInstructionCreateInstance)(
+-     const ArchSpec &arch, InstructionType inst_type);
+-diff -ruN --strip-trailing-cr a/lldb/source/Core/PluginManager.cpp b/lldb/source/Core/PluginManager.cpp
+---- a/lldb/source/Core/PluginManager.cpp
+-+++ b/lldb/source/Core/PluginManager.cpp
+-@@ -702,7 +702,7 @@
+- }
+- 
+- Status PluginManager::SaveCore(const lldb::ProcessSP &process_sp,
+--                               lldb_private::SaveCoreOptions &options) {
+-+                               const lldb_private::SaveCoreOptions &options) {
+-   Status error;
+-   if (!options.GetOutputFile()) {
+-     error.SetErrorString("No output file specified");
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.cpp b/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.cpp
+---- a/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.cpp
+-+++ b/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.cpp
+-@@ -6351,7 +6351,7 @@
+- CreateAllImageInfosPayload(const lldb::ProcessSP &process_sp,
+-                            offset_t initial_file_offset,
+-                            StreamString &all_image_infos_payload,
+--                           lldb_private::SaveCoreOptions &options) {
+-+                           const lldb_private::SaveCoreOptions &options) {
+-   Target &target = process_sp->GetTarget();
+-   ModuleList modules = target.GetImages();
+- 
+-@@ -6522,17 +6522,16 @@
+- };
+- 
+- bool ObjectFileMachO::SaveCore(const lldb::ProcessSP &process_sp,
+--                               lldb_private::SaveCoreOptions &options,
+-+                               const lldb_private::SaveCoreOptions &options,
+-                                Status &error) {
+-+  auto core_style = options.GetStyle();
+-+  if (core_style == SaveCoreStyle::eSaveCoreUnspecified)
+-+    core_style = SaveCoreStyle::eSaveCoreDirtyOnly;
+-   // The FileSpec and Process are already checked in PluginManager::SaveCore.
+-   assert(options.GetOutputFile().has_value());
+-   assert(process_sp);
+-   const FileSpec outfile = options.GetOutputFile().value();
+- 
+--  // MachO defaults to dirty pages
+--  if (options.GetStyle() == SaveCoreStyle::eSaveCoreUnspecified)
+--    options.SetStyle(eSaveCoreDirtyOnly);
+--
+-   Target &target = process_sp->GetTarget();
+-   const ArchSpec target_arch = target.GetArchitecture();
+-   const llvm::Triple &target_triple = target_arch.GetTriple();
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.h b/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.h
+---- a/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.h
+-+++ b/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.h
+-@@ -62,7 +62,7 @@
+-                                         lldb_private::ModuleSpecList &specs);
+- 
+-   static bool SaveCore(const lldb::ProcessSP &process_sp,
+--                       lldb_private::SaveCoreOptions &options,
+-+                       const lldb_private::SaveCoreOptions &options,
+-                        lldb_private::Status &error);
+- 
+-   static bool MagicBytesMatch(lldb::DataBufferSP data_sp, lldb::addr_t offset,
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Minidump/MinidumpFileBuilder.h b/lldb/source/Plugins/ObjectFile/Minidump/MinidumpFileBuilder.h
+---- a/lldb/source/Plugins/ObjectFile/Minidump/MinidumpFileBuilder.h
+-+++ b/lldb/source/Plugins/ObjectFile/Minidump/MinidumpFileBuilder.h
+-@@ -76,7 +76,7 @@
+- public:
+-   MinidumpFileBuilder(lldb::FileUP &&core_file,
+-                       const lldb::ProcessSP &process_sp,
+--                      lldb_private::SaveCoreOptions &save_core_options)
+-+                      const lldb_private::SaveCoreOptions &save_core_options)
+-       : m_process_sp(process_sp), m_core_file(std::move(core_file)),
+-         m_save_core_options(save_core_options){};
+- 
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.cpp b/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.cpp
+---- a/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.cpp
+-+++ b/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.cpp
+-@@ -56,15 +56,16 @@
+- }
+- 
+- bool ObjectFileMinidump::SaveCore(const lldb::ProcessSP &process_sp,
+--                                  lldb_private::SaveCoreOptions &options,
+-+                                  const lldb_private::SaveCoreOptions &options,
+-                                   lldb_private::Status &error) {
+-   // Output file and process_sp are both checked in PluginManager::SaveCore.
+-   assert(options.GetOutputFile().has_value());
+-   assert(process_sp);
+- 
+-   // Minidump defaults to stacks only.
+--  if (options.GetStyle() == SaveCoreStyle::eSaveCoreUnspecified)
+--    options.SetStyle(SaveCoreStyle::eSaveCoreStackOnly);
+-+  SaveCoreStyle core_style = options.GetStyle();
+-+  if (core_style == SaveCoreStyle::eSaveCoreUnspecified)
+-+    core_style = SaveCoreStyle::eSaveCoreStackOnly;
+- 
+-   llvm::Expected<lldb::FileUP> maybe_core_file = FileSystem::Instance().Open(
+-       options.GetOutputFile().value(),
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.h b/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.h
+---- a/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.h
+-+++ b/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.h
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/X86/avx10_2_512minmax-error.c b/clang/test/CodeGen/X86/avx10_2_512minmax-error.c
++--- a/clang/test/CodeGen/X86/avx10_2_512minmax-error.c
+++++ b/clang/test/CodeGen/X86/avx10_2_512minmax-error.c
++@@ -1,7 +1,7 @@
++ // RUN: %clang_cc1 %s -flax-vector-conversions=none -ffreestanding -triple=x86_64 -target-feature +avx10.2-512 \
++-// RUN: -Wno-invalid-feature-combination -emit-llvm -verify
+++// RUN: -Wno-invalid-feature-combination -verify -fsyntax-only
++ // RUN: %clang_cc1 %s -flax-vector-conversions=none -ffreestanding -triple=i386 -target-feature +avx10.2-512 \
++-// RUN: -Wno-invalid-feature-combination -emit-llvm -verify
+++// RUN: -Wno-invalid-feature-combination -verify -fsyntax-only
 + 
-+   static Status SaveCore(const lldb::ProcessSP &process_sp,
-+-                         lldb_private::SaveCoreOptions &core_options);
-++                         const lldb_private::SaveCoreOptions &core_options);
++ #include <immintrin.h>
 + 
-+   // ObjectContainer
-+   static bool RegisterPlugin(
-+diff -ruN --strip-trailing-cr a/lldb/include/lldb/lldb-private-interfaces.h b/lldb/include/lldb/lldb-private-interfaces.h
-+--- a/lldb/include/lldb/lldb-private-interfaces.h
-++++ b/lldb/include/lldb/lldb-private-interfaces.h
-+@@ -57,7 +57,7 @@
-+     const lldb::ModuleSP &module_sp, lldb::WritableDataBufferSP data_sp,
-+     const lldb::ProcessSP &process_sp, lldb::addr_t offset);
-+ typedef bool (*ObjectFileSaveCore)(const lldb::ProcessSP &process_sp,
-+-                                   lldb_private::SaveCoreOptions &options,
-++                                   const lldb_private::SaveCoreOptions &options,
-+                                    Status &error);
-+ typedef EmulateInstruction *(*EmulateInstructionCreateInstance)(
-+     const ArchSpec &arch, InstructionType inst_type);
-+diff -ruN --strip-trailing-cr a/lldb/source/Core/PluginManager.cpp b/lldb/source/Core/PluginManager.cpp
-+--- a/lldb/source/Core/PluginManager.cpp
-++++ b/lldb/source/Core/PluginManager.cpp
-+@@ -702,7 +702,7 @@
-+ }
-+ 
-+ Status PluginManager::SaveCore(const lldb::ProcessSP &process_sp,
-+-                               lldb_private::SaveCoreOptions &options) {
-++                               const lldb_private::SaveCoreOptions &options) {
-+   Status error;
-+   if (!options.GetOutputFile()) {
-+     error.SetErrorString("No output file specified");
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.cpp b/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.cpp
-+--- a/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.cpp
-++++ b/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.cpp
-+@@ -6351,7 +6351,7 @@
-+ CreateAllImageInfosPayload(const lldb::ProcessSP &process_sp,
-+                            offset_t initial_file_offset,
-+                            StreamString &all_image_infos_payload,
-+-                           lldb_private::SaveCoreOptions &options) {
-++                           const lldb_private::SaveCoreOptions &options) {
-+   Target &target = process_sp->GetTarget();
-+   ModuleList modules = target.GetImages();
-+ 
-+@@ -6522,17 +6522,16 @@
-+ };
-+ 
-+ bool ObjectFileMachO::SaveCore(const lldb::ProcessSP &process_sp,
-+-                               lldb_private::SaveCoreOptions &options,
-++                               const lldb_private::SaveCoreOptions &options,
-+                                Status &error) {
-++  auto core_style = options.GetStyle();
-++  if (core_style == SaveCoreStyle::eSaveCoreUnspecified)
-++    core_style = SaveCoreStyle::eSaveCoreDirtyOnly;
-+   // The FileSpec and Process are already checked in PluginManager::SaveCore.
-+   assert(options.GetOutputFile().has_value());
-+   assert(process_sp);
-+   const FileSpec outfile = options.GetOutputFile().value();
-+ 
-+-  // MachO defaults to dirty pages
-+-  if (options.GetStyle() == SaveCoreStyle::eSaveCoreUnspecified)
-+-    options.SetStyle(eSaveCoreDirtyOnly);
-+-
-+   Target &target = process_sp->GetTarget();
-+   const ArchSpec target_arch = target.GetArchitecture();
-+   const llvm::Triple &target_triple = target_arch.GetTriple();
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.h b/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.h
-+--- a/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.h
-++++ b/lldb/source/Plugins/ObjectFile/Mach-O/ObjectFileMachO.h
-+@@ -62,7 +62,7 @@
-+                                         lldb_private::ModuleSpecList &specs);
-+ 
-+   static bool SaveCore(const lldb::ProcessSP &process_sp,
-+-                       lldb_private::SaveCoreOptions &options,
-++                       const lldb_private::SaveCoreOptions &options,
-+                        lldb_private::Status &error);
-+ 
-+   static bool MagicBytesMatch(lldb::DataBufferSP data_sp, lldb::addr_t offset,
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Minidump/MinidumpFileBuilder.h b/lldb/source/Plugins/ObjectFile/Minidump/MinidumpFileBuilder.h
-+--- a/lldb/source/Plugins/ObjectFile/Minidump/MinidumpFileBuilder.h
-++++ b/lldb/source/Plugins/ObjectFile/Minidump/MinidumpFileBuilder.h
-+@@ -76,7 +76,7 @@
-+ public:
-+   MinidumpFileBuilder(lldb::FileUP &&core_file,
-+                       const lldb::ProcessSP &process_sp,
-+-                      lldb_private::SaveCoreOptions &save_core_options)
-++                      const lldb_private::SaveCoreOptions &save_core_options)
-+       : m_process_sp(process_sp), m_core_file(std::move(core_file)),
-+         m_save_core_options(save_core_options){};
-+ 
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.cpp b/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.cpp
-+--- a/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.cpp
-++++ b/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.cpp
-+@@ -56,15 +56,16 @@
-+ }
-+ 
-+ bool ObjectFileMinidump::SaveCore(const lldb::ProcessSP &process_sp,
-+-                                  lldb_private::SaveCoreOptions &options,
-++                                  const lldb_private::SaveCoreOptions &options,
-+                                   lldb_private::Status &error) {
-+   // Output file and process_sp are both checked in PluginManager::SaveCore.
-+   assert(options.GetOutputFile().has_value());
-+   assert(process_sp);
-+ 
-+   // Minidump defaults to stacks only.
-+-  if (options.GetStyle() == SaveCoreStyle::eSaveCoreUnspecified)
-+-    options.SetStyle(SaveCoreStyle::eSaveCoreStackOnly);
-++  SaveCoreStyle core_style = options.GetStyle();
-++  if (core_style == SaveCoreStyle::eSaveCoreUnspecified)
-++    core_style = SaveCoreStyle::eSaveCoreStackOnly;
-+ 
-+   llvm::Expected<lldb::FileUP> maybe_core_file = FileSystem::Instance().Open(
-+       options.GetOutputFile().value(),
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.h b/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.h
-+--- a/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.h
-++++ b/lldb/source/Plugins/ObjectFile/Minidump/ObjectFileMinidump.h
-+@@ -55,7 +55,7 @@
-+ 
-+   // Saves dump in Minidump file format
-+   static bool SaveCore(const lldb::ProcessSP &process_sp,
-+-                       lldb_private::SaveCoreOptions &options,
-++                       const lldb_private::SaveCoreOptions &options,
-+                        lldb_private::Status &error);
-+ 
-+ private:
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.cpp b/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.cpp
-+--- a/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.cpp
-++++ b/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.cpp
-+@@ -355,7 +355,7 @@
-+ }
-+ 
-+ bool ObjectFilePECOFF::SaveCore(const lldb::ProcessSP &process_sp,
-+-                                lldb_private::SaveCoreOptions &options,
-++                                const lldb_private::SaveCoreOptions &options,
-+                                 lldb_private::Status &error) {
-+   // Outfile and process_sp are validated by PluginManager::SaveCore
-+   assert(options.GetOutputFile().has_value());
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h b/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h
-+--- a/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h
-++++ b/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h
-+@@ -82,7 +82,7 @@
-+                                         lldb_private::ModuleSpecList &specs);
-+ 
-+   static bool SaveCore(const lldb::ProcessSP &process_sp,
-+-                       lldb_private::SaveCoreOptions &options,
-++                       const lldb_private::SaveCoreOptions &options,
-+                        lldb_private::Status &error);
-+ 
-+   static bool MagicBytesMatch(lldb::DataBufferSP data_sp);
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.cpp b/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.cpp
-+--- a/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.cpp
-++++ b/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.cpp
-+@@ -21,7 +21,8 @@
-+ namespace lldb_private {
-+ 
-+ bool SaveMiniDump(const lldb::ProcessSP &process_sp,
-+-                  SaveCoreOptions &core_options, lldb_private::Status &error) {
-++                  const SaveCoreOptions &core_options,
-++                  lldb_private::Status &error) {
-+   if (!process_sp)
-+     return false;
-+ #ifdef _WIN32
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.h b/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.h
-+--- a/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.h
-++++ b/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.h
-+@@ -14,7 +14,8 @@
-+ namespace lldb_private {
-+ 
-+ bool SaveMiniDump(const lldb::ProcessSP &process_sp,
-+-                  SaveCoreOptions &core_options, lldb_private::Status &error);
-++                  const SaveCoreOptions &core_options,
-++                  lldb_private::Status &error);
-+ 
-+ } // namespace lldb_private
-+ 
-+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/process_save_core/TestProcessSaveCore.py b/lldb/test/API/functionalities/process_save_core/TestProcessSaveCore.py
-+--- a/lldb/test/API/functionalities/process_save_core/TestProcessSaveCore.py
-++++ b/lldb/test/API/functionalities/process_save_core/TestProcessSaveCore.py
-+@@ -10,11 +10,6 @@
-+ 
-+ 
-+ class ProcessSaveCoreTestCase(TestBase):
-+-    def validate_core_pid(self, pid, core_path):
-+-        target = self.dbg.CreateTarget(None)
-+-        process = target.LoadCore(core_path)
-+-        return process.GetProcessID() == pid
-+-
-+     @skipIfRemote
-+     @skipUnlessWindows
-+     def test_cannot_save_core_unless_process_stopped(self):
-+@@ -93,24 +88,3 @@
-+                 os.unlink(core)
-+             except OSError:
-+                 pass
-+-
-+-    @skipUnlessPlatform(["linux"])
-+-    def test_save_core_default_values_for_style_minidump(self):
-+-        """Test we can still save a core for minidump when no
-+-        core style is specified."""
-+-        self.build()
-+-        exe = self.getBuildArtifact("a.out")
-+-        core = self.getBuildArtifact("core.dmp")
-+-        target = self.dbg.CreateTarget(exe)
-+-        target.BreakpointCreateByName("bar")
-+-        process = target.LaunchSimple(None, None, self.get_process_working_directory())
-+-        self.assertState(process.GetState(), lldb.eStateStopped)
-+-        pid = process.GetProcessID()
-+-        options = lldb.SBSaveCoreOptions()
-+-        minidump_path = core + ".minidump"
-+-        options.SetOutputFile(lldb.SBFileSpec(minidump_path))
-+-        options.SetPluginName("minidump")
-+-        error = process.SaveCore(options)
-+-        self.assertSuccess(error, error.GetCString())
-+-        self.assertTrue(os.path.isfile(minidump_path))
-+-        self.assertTrue(self.validate_core_pid(pid, minidump_path))
++diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-symbolizer/skip-line-zero.s b/llvm/test/tools/llvm-symbolizer/skip-line-zero.s
++--- a/llvm/test/tools/llvm-symbolizer/skip-line-zero.s
+++++ b/llvm/test/tools/llvm-symbolizer/skip-line-zero.s
+ @@ -55,7 +55,7 @@
++ ## Check to ensure that '--skip-line-zero' with '--output-style=JSON' displays approximate flag in JSON output.
++ # RUN: llvm-symbolizer --obj=%t.o -f=none --skip-line-zero --output-style=JSON 0x1717 | FileCheck --strict-whitespace --match-full-lines --check-prefix=JSON %s
+  
+-   // Saves dump in Minidump file format
+-   static bool SaveCore(const lldb::ProcessSP &process_sp,
+--                       lldb_private::SaveCoreOptions &options,
+-+                       const lldb_private::SaveCoreOptions &options,
+-                        lldb_private::Status &error);
+- 
+- private:
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.cpp b/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.cpp
+---- a/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.cpp
+-+++ b/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.cpp
+-@@ -355,7 +355,7 @@
+- }
+- 
+- bool ObjectFilePECOFF::SaveCore(const lldb::ProcessSP &process_sp,
+--                                lldb_private::SaveCoreOptions &options,
+-+                                const lldb_private::SaveCoreOptions &options,
+-                                 lldb_private::Status &error) {
+-   // Outfile and process_sp are validated by PluginManager::SaveCore
+-   assert(options.GetOutputFile().has_value());
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h b/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h
+---- a/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h
+-+++ b/lldb/source/Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h
+-@@ -82,7 +82,7 @@
+-                                         lldb_private::ModuleSpecList &specs);
+- 
+-   static bool SaveCore(const lldb::ProcessSP &process_sp,
+--                       lldb_private::SaveCoreOptions &options,
+-+                       const lldb_private::SaveCoreOptions &options,
+-                        lldb_private::Status &error);
+- 
+-   static bool MagicBytesMatch(lldb::DataBufferSP data_sp);
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.cpp b/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.cpp
+---- a/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.cpp
+-+++ b/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.cpp
+-@@ -21,7 +21,8 @@
+- namespace lldb_private {
+- 
+- bool SaveMiniDump(const lldb::ProcessSP &process_sp,
+--                  SaveCoreOptions &core_options, lldb_private::Status &error) {
+-+                  const SaveCoreOptions &core_options,
+-+                  lldb_private::Status &error) {
+-   if (!process_sp)
+-     return false;
+- #ifdef _WIN32
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.h b/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.h
+---- a/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.h
+-+++ b/lldb/source/Plugins/ObjectFile/PECOFF/WindowsMiniDump.h
+-@@ -14,7 +14,8 @@
+- namespace lldb_private {
+- 
+- bool SaveMiniDump(const lldb::ProcessSP &process_sp,
+--                  SaveCoreOptions &core_options, lldb_private::Status &error);
+-+                  const SaveCoreOptions &core_options,
+-+                  lldb_private::Status &error);
+- 
+- } // namespace lldb_private
+- 
+-diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/process_save_core/TestProcessSaveCore.py b/lldb/test/API/functionalities/process_save_core/TestProcessSaveCore.py
+---- a/lldb/test/API/functionalities/process_save_core/TestProcessSaveCore.py
+-+++ b/lldb/test/API/functionalities/process_save_core/TestProcessSaveCore.py
+-@@ -10,11 +10,6 @@
+- 
++-# JSON:[{"Address":"0x1717","ModuleName":"{{.*}}{{[/|\]+}}test{{[/|\]+}}tools{{[/|\]+}}llvm-symbolizer{{[/|\]+}}Output{{[/|\]+}}skip-line-zero.s.tmp.o","Symbol":[{"Approximate":true,"Column":0,"Discriminator":0,"FileName":"main.c","FunctionName":"","Line":1,"StartAddress":"","StartFileName":"","StartLine":0}]}]
+++# JSON:[{"Address":"0x1717","ModuleName":"{{.*}}{{[/|\]+}}skip-line-zero.s{{.*}}","Symbol":[{"Approximate":true,"Column":0,"Discriminator":0,"FileName":"main.c","FunctionName":"","Line":1,"StartAddress":"","StartFileName":"","StartLine":0}]}]
+  
+- class ProcessSaveCoreTestCase(TestBase):
+--    def validate_core_pid(self, pid, core_path):
+--        target = self.dbg.CreateTarget(None)
+--        process = target.LoadCore(core_path)
+--        return process.GetProcessID() == pid
+--
+-     @skipIfRemote
+-     @skipUnlessWindows
+-     def test_cannot_save_core_unless_process_stopped(self):
+-@@ -93,24 +88,3 @@
+-                 os.unlink(core)
+-             except OSError:
+-                 pass
+--
+--    @skipUnlessPlatform(["linux"])
+--    def test_save_core_default_values_for_style_minidump(self):
+--        """Test we can still save a core for minidump when no
+--        core style is specified."""
+--        self.build()
+--        exe = self.getBuildArtifact("a.out")
+--        core = self.getBuildArtifact("core.dmp")
+--        target = self.dbg.CreateTarget(exe)
+--        target.BreakpointCreateByName("bar")
+--        process = target.LaunchSimple(None, None, self.get_process_working_directory())
+--        self.assertState(process.GetState(), lldb.eStateStopped)
+--        pid = process.GetProcessID()
+--        options = lldb.SBSaveCoreOptions()
+--        minidump_path = core + ".minidump"
+--        options.SetOutputFile(lldb.SBFileSpec(minidump_path))
+--        options.SetPluginName("minidump")
+--        error = process.SaveCore(options)
+--        self.assertSuccess(error, error.GetCString())
+--        self.assertTrue(os.path.isfile(minidump_path))
+--        self.assertTrue(self.validate_core_pid(pid, minidump_path))
++ ## main.c
++ ## __attribute__((section("def"))) int foo() { return 1234; }
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 37dca70..9a6a758 100644
+index 9a6a758..4f30c1b 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "a0a9bf5152507beacd2a72dda42d054391494c4a"
--    LLVM_SHA256 = "0ffb2aae087c2648f6bf5afc015fad84d2e2be834d5d359a0e52a6c5b60e6258"
-+    LLVM_COMMIT = "1a9acd786d493b00c08d1611f51420d421b74cf1"
-+    LLVM_SHA256 = "98c2979eac2524f2cf156150867a190357668266b82708655dcbf6ec7c483465"
+-    LLVM_COMMIT = "1a9acd786d493b00c08d1611f51420d421b74cf1"
+-    LLVM_SHA256 = "98c2979eac2524f2cf156150867a190357668266b82708655dcbf6ec7c483465"
++    LLVM_COMMIT = "77011b00ad5f7f1789e788e85aed1babeb540213"
++    LLVM_SHA256 = "224182f1db9cabf0a2abdc9878584a7155149bfd28e03fc1f6f05d40ffd2f2b2"
  
      tf_http_archive(
          name = name,
