@@ -420,6 +420,7 @@ void CoordinationServiceAgentImpl::StartPollingForError() {
   if (absl::IsCancelled(status)) {
     LOG(INFO) << "Cancelling error polling because the service or the agent is "
                  "shutting down.";
+    // Return early and there is no need to set error.
     return;
   }
   LOG(ERROR) << "An error is returned from coordination service (this can be "

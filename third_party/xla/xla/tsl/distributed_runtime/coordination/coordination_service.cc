@@ -246,10 +246,6 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     void Disconnect(uint64_t grace_period_duration_us);
     absl::Status RecordHeartbeat(uint64_t task_incarnation);
     int64_t TimeSinceLastHeartbeatMs();
-    // This denotes the deadline after which we stop accepting heartbeats from a
-    // disconnected task. This grace period accounts for the lag time between
-    // the service recording the state change and the agent stopping heartbeats.
-    uint64_t GetDisconnectedGracePeriodMicros();
     void SetError(absl::Status status);
     DeviceInfo GetDeviceInfo() { return devices_; }
     void CollectDeviceInfo(const DeviceInfo& devices) { devices_ = devices; }
@@ -260,6 +256,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     absl::flat_hash_set<std::string> GetOngoingBarriers();
     void JoinBarrier(std::string_view barrier_id);
     void ExitBarrier(std::string_view barrier_id);
+    // Returns true if the task has been disconnected beyond the grace period
+    // and no further agent requests are expected. Note that the grace period
+    // accounts for the lag time between the service recording the state change
+    // and the agent stopping heartbeats/error polling.
+    bool IsDisconnectedBeyondGracePeriod();
 
    private:
     // Incarnation ID for CPU:0 on remote task.
@@ -269,9 +270,10 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     absl::Status status_;
     absl::Mutex last_heartbeat_mu_;
     uint64_t last_heartbeat_us_ ABSL_GUARDED_BY(last_heartbeat_mu_);
-    // This denotes the deadline after which we stop accepting heartbeats from a
-    // disconnected task. This grace period accounts for the lag time between
-    // the service recording the state change and the agent stopping heartbeats.
+    // This denotes the deadline after which we stop accepting heartbeats or
+    // error polling requests from a disconnected task. This grace period
+    // accounts for the lag time between the service recording the state change
+    // and the agent stopping heartbeats/error polling.
     uint64_t disconnect_grace_period_us_ = 0;
     DeviceInfo devices_;
     // For now, we assume there won't be many simultaneous barriers so we simply
@@ -392,11 +394,6 @@ CoordinationServiceStandaloneImpl::TaskState::TimeSinceLastHeartbeatMs() {
   return (Env::Default()->NowMicros() - last_heartbeat_us_) / 1000;
 }
 
-uint64_t CoordinationServiceStandaloneImpl::TaskState::
-    GetDisconnectedGracePeriodMicros() {
-  return disconnect_grace_period_us_;
-}
-
 absl::flat_hash_set<std::string>
 CoordinationServiceStandaloneImpl::TaskState::GetOngoingBarriers() {
   return ongoing_barriers_for_task_;
@@ -410,6 +407,12 @@ void CoordinationServiceStandaloneImpl::TaskState::JoinBarrier(
 void CoordinationServiceStandaloneImpl::TaskState::ExitBarrier(
     std::string_view barrier_id) {
   ongoing_barriers_for_task_.erase(barrier_id);
+}
+
+bool CoordinationServiceStandaloneImpl::TaskState::
+    IsDisconnectedBeyondGracePeriod() {
+  return GetState() == CoordinatedTaskState::TASKSTATE_DISCONNECTED &&
+         Env::Default()->NowMicros() > disconnect_grace_period_us_;
 }
 
 void CoordinationServiceStandaloneImpl::SetDeviceAggregationFunction(
@@ -891,14 +894,10 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     }
     if (!cluster_state_[task_name]->GetStatus().ok()) {
       return cluster_state_[task_name]->GetStatus();
-    } else if (cluster_state_[task_name]->GetState() ==
-                   CoordinatedTaskState::TASKSTATE_DISCONNECTED &&
-               // We accept heartbeats for a short grace period to account for
-               // the lag time between the service recording the state change
-               // and the agent stopping heartbeats.
-               Env::Default()->NowMicros() >
-                   cluster_state_[task_name]
-                       ->GetDisconnectedGracePeriodMicros()) {
+    } else if (cluster_state_[task_name]->IsDisconnectedBeyondGracePeriod()) {
+      // We accept heartbeats for a short grace period to account for the lag
+      // time between the service recording the state change and the agent
+      // stopping heartbeats.
       return MakeCoordinationError(absl::InvalidArgumentError(absl::StrCat(
           "Task with task_name=", task_name,
           " must be registered before sending heartbeat messages")));
@@ -1194,11 +1193,26 @@ void CoordinationServiceStandaloneImpl::PollForErrorAsync(
     return;
   }
 
-  if (cluster_state_[task_name]->GetState() !=
-      CoordinatedTaskState::TASKSTATE_CONNECTED) {
-    done(MakeCoordinationError(absl::InvalidArgumentError(
+  // On the agent side, the error polling thread will only be started when the
+  // task is connected, but by the time the request is processed by the service,
+  // the task state may have changed due to actions by the service or the main
+  // thread on the agent. As a way to handle this, we accept error polling for a
+  // short grace period. After the grace period, the service will return an
+  // error to the task.
+  if (cluster_state_[task_name]->IsDisconnectedBeyondGracePeriod()) {
+    done(MakeCoordinationError(absl::FailedPreconditionError(
         absl::StrCat("Task (", task_name,
-                     ") that has not been registered polling for errors."))));
+                     ") that has not been registered or has disconnected "
+                     "polling for errors."))));
+    return;
+  }
+
+  if (cluster_state_[task_name]->GetState() ==
+      CoordinatedTaskState::TASKSTATE_ERROR) {
+    done(MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
+        "Task (", task_name,
+        ") that is already in error state polling for errors. Current error: ",
+        cluster_state_[task_name]->GetStatus().ToString()))));
     return;
   }
 
