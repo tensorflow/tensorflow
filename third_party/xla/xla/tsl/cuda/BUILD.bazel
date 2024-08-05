@@ -1,6 +1,7 @@
 # Description:
 #   Stubs for dynamically loading CUDA.
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
@@ -16,6 +17,14 @@ package(
     licenses = ["notice"],
 )
 
+selects.config_setting_group(
+    name = "linux_with_cuda_enabled",
+    match_all = [
+        "@local_config_cuda//:is_cuda_enabled",
+        "@platforms//os:linux",
+    ],
+)
+
 cuda_stub(
     name = "cublas",
     srcs = ["cublas.symbols"],
@@ -23,10 +32,14 @@ cuda_stub(
 
 cc_library(
     name = "cublas",  # buildifier: disable=duplicated-name
-    srcs = if_cuda_is_configured([
-        "cublas_stub.cc",
-        "cublas.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "cublas.tramp.S",
+            "cublas_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["cublas_stub.cc"],
+        "//conditions:default": [],
+    }),
     linkopts = if_cuda_is_configured(cuda_rpath_flags(
         "nvidia/cublas/lib",
     )),
@@ -51,10 +64,14 @@ cuda_stub(
 
 cc_library(
     name = "cublas_lt",
-    srcs = if_cuda_is_configured([
-        "cublasLt_stub.cc",
-        "cublasLt.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "cublasL.tramp.S",
+            "cublasLt_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["cublasLt_stub.cc"],
+        "//conditions:default": [],
+    }),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -75,10 +92,14 @@ cuda_stub(
 
 cc_library(
     name = "cuda",  # buildifier: disable=duplicated-name
-    srcs = if_cuda_is_configured([
-        "cuda_stub.cc",
-        "cuda.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "cuda.tramp.S",
+            "cuda_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["cuda_stub.cc"],
+        "//conditions:default": [],
+    }),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -100,11 +121,11 @@ cuda_stub(
 cc_library(
     name = "cudart",  # buildifier: disable=duplicated-name
     srcs = select({
-        # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": [
+        ":linux_with_cuda_enabled": [
             "cudart.tramp.S",
             "cudart_stub.cc",
         ],
+        "@local_config_cuda//:is_cuda_enabled": ["cudart_stub.cc"],
         "//conditions:default": [],
     }),
     linkopts = select({
@@ -136,10 +157,14 @@ cuda_stub(
 
 cc_library(
     name = "cudnn",  # buildifier: disable=duplicated-name
-    srcs = if_cuda_is_configured([
-        "cudnn_stub.cc",
-        "cudnn.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "cudnn.tramp.S",
+            "cudnn_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["cudnn_stub.cc"],
+        "//conditions:default": [],
+    }),
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cudnn/lib")),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
@@ -174,10 +199,14 @@ cuda_stub(
 
 cc_library(
     name = "cufft",  # buildifier: disable=duplicated-name
-    srcs = if_cuda_is_configured([
-        "cufft_stub.cc",
-        "cufft.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "cufft.tramp.S",
+            "cufft_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["cufft_stub.cc"],
+        "//conditions:default": [],
+    }),
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cufft/lib")),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
@@ -199,10 +228,14 @@ cuda_stub(
 
 cc_library(
     name = "cupti",  # buildifier: disable=duplicated-name
-    srcs = if_cuda_is_configured([
-        "cupti_stub.cc",
-        "cupti.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "cupti.tramp.S",
+            "cupti_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["cupti_stub.cc"],
+        "//conditions:default": [],
+    }),
     data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cuda_cupti/lib")),
     local_defines = [
@@ -226,10 +259,14 @@ cuda_stub(
 
 cc_library(
     name = "cusolver",  # buildifier: disable=duplicated-name
-    srcs = if_cuda_is_configured([
-        "cusolver_stub.cc",
-        "cusolver.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "cusolver.tramp.S",
+            "cusolver_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["cusolver_stub.cc"],
+        "//conditions:default": [],
+    }),
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cusolver/lib")),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
@@ -251,10 +288,14 @@ cuda_stub(
 
 cc_library(
     name = "cusparse",  # buildifier: disable=duplicated-name
-    srcs = if_cuda_is_configured([
-        "cusparse_stub.cc",
-        "cusparse.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "cusparse.tramp.S",
+            "cusparse_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["cusparse_stub.cc"],
+        "//conditions:default": [],
+    }),
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cusparse/lib")),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
@@ -277,10 +318,14 @@ cuda_stub(
 
 cc_library(
     name = "nccl_stub",
-    srcs = if_cuda_is_configured([
-        "nccl_stub.cc",
-        "nccl.tramp.S",
-    ]),
+    srcs = select({
+        ":linux_with_cuda_enabled": [
+            "nccl.tramp.S",
+            "nccl_stub.cc",
+        ],
+        "@local_config_cuda//:is_cuda_enabled": ["nccl_stub.cc"],
+        "//conditions:default": [],
+    }),
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nccl/lib")),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",

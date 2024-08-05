@@ -612,11 +612,16 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
       // from potential x-tiling).
       return 4 * 32 * 33 * primitive_size * num_variadic;
     }
-  } else if (GetDescriptionForTiledTransposeEmitter(instr, instr).has_value()) {
+  } else if (auto tr = GetDescriptionForTiledTransposeEmitter(instr, instr)) {
     // Tile size for transposition.
     int64_t primitive_size =
         ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
-    return 32 * 33 * primitive_size;
+    int64_t bytes_required = 32 * 33 * primitive_size;
+    // If the last dimension is not changed, it becomes part of the tile.
+    if (tr->permutation.back() == tr->permutation.size() - 1) {
+      bytes_required *= tr->dimensions.back();
+    }
+    return bytes_required;
   }
   // Other fused expressions for now don't need the shared memory budget.
   return 0;

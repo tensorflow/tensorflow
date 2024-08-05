@@ -177,6 +177,7 @@ class WindowOp : public DatasetOpKernel {
     std::vector<std::vector<Tensor>> elements;
     for (size_t i = 0; i < num_elements; ++i) {
       std::vector<Tensor> element;
+      element.reserve(element_size);
       for (size_t j = 0; j < element_size; ++j) {
         element.push_back(std::move(inputs[i * element_size + j]));
       }

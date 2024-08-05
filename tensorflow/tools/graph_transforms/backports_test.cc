@@ -192,7 +192,7 @@ TEST(BackportTensorArrayV3Test, TestBackportTensorArrayV3Subtypes) {
     std::map<string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     ASSERT_EQ(1, node_lookup.count("v3_node"));
-    EXPECT_TRUE(str_util::EndsWith(node_lookup.at("v3_node")->op(), "V2"));
+    EXPECT_TRUE(absl::EndsWith(node_lookup.at("v3_node")->op(), "V2"));
   }
 }
 

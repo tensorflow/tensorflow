@@ -54,6 +54,10 @@ inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 // efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
+// As the amount of shared memory is limited, we need to make sure that we don't
+// detect 102 transposes that would require too much bytes for the most minor
+// dimension.
+inline constexpr int64_t kMaxBytesInMostMinorDimension = 8;
 
 // Matrix multiplication before the rewrite.
 bool IsMatrixMultiplication(const HloInstruction& dot);

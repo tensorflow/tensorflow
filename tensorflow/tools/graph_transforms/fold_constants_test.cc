@@ -210,10 +210,10 @@ class ConstantFoldingTest : public ::testing::Test {
     for (const NodeDef& node : graph_def.node()) {
       const StringPiece name(node.name());
       const int occurrence_count = folded_node_map.count(node.name());
-      if (str_util::EndsWith(name, "expect_removed")) {
+      if (absl::EndsWith(name, "expect_removed")) {
         EXPECT_EQ(0, occurrence_count) << "node.name()=" << node.name();
       }
-      if (str_util::EndsWith(name, "expect_remains")) {
+      if (absl::EndsWith(name, "expect_remains")) {
         EXPECT_EQ(1, occurrence_count) << "node.name()=" << node.name();
       }
     }

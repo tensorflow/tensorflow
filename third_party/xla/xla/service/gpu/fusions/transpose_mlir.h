@@ -98,6 +98,7 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
   IndexingMap GetSharedMemoryIndexing(bool read, mlir::MLIRContext* ctx) const;
   llvm::SmallVector<mlir::AffineExpr, 4> GetThreadOffsets(
       mlir::MLIRContext* ctx) const;
+  bool MostMinorDimensionUnchanged() const;
 
   TransposeDescription transpose_;
   Vector3 permutation_;

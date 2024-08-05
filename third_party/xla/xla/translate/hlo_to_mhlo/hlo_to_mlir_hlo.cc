@@ -15,11 +15,28 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
+#include "absl/status/statusor.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
 #include "xla/translate/hlo_to_mhlo/hlo_module_importer.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
+    mlir::MLIRContext& ctx, xla::HloModuleProto const* hlo_module,
+    bool import_all_computations, bool flatten_computation_args_result) {
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
+  TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, hlo_module,
+                                         import_all_computations,
+                                         flatten_computation_args_result));
+  return module;
+}
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  xla::HloModuleProto const* hlo_module_proto,
@@ -32,13 +49,24 @@ absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
 }
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
-                                 xla::HloModule* hlo_module,
+                                 const xla::HloModule* hlo_module,
                                  bool import_all_computation,
                                  bool flatten_computation_args_result) {
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   return HloModuleImporter(module, import_all_computation,
                            flatten_computation_args_result)
       .Import(*hlo_module);
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
+    mlir::MLIRContext& ctx, const xla::HloModule* hlo_module,
+    bool import_all_computations, bool flatten_computation_args_result) {
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
+  TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, hlo_module,
+                                         import_all_computations,
+                                         flatten_computation_args_result));
+  return module;
 }
 
 }  // namespace xla

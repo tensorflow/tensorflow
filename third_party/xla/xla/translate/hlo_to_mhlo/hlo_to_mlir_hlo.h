@@ -19,6 +19,10 @@ limitations under the License.
 #include <stdbool.h>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 
 namespace mlir {
 class ModuleOp;
@@ -35,6 +39,11 @@ class HloModuleProto;
 //
 // If `flatten_computation_args_result` is set to true, flattens all tuple
 // arguments and result of every computation when importing them as func ops.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
+    mlir::MLIRContext& ctx, xla::HloModuleProto const* hlo_module,
+    bool import_all_computations = false,
+    bool flatten_computation_args_result = false);
+
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  xla::HloModuleProto const* hlo_module,
                                  bool import_all_computations = false,
@@ -47,8 +56,13 @@ absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
 //
 // If `flatten_computation_args_result` is set to true, flattens all tuple
 // arguments and result of every computation when importing them as func ops.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
+    mlir::MLIRContext& ctx, const xla::HloModule* hlo_module,
+    bool import_all_computations = false,
+    bool flatten_computation_args_result = false);
+
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
-                                 xla::HloModule* hlo_module,
+                                 const xla::HloModule* hlo_module,
                                  bool import_all_computations = false,
                                  bool flatten_computation_args_result = false);
 
