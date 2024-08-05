@@ -160,13 +160,13 @@ TEST(QuantizationUtilTest, SafeCast) {
 //  255       | 30.0
 //  128       | 10.0
 TEST(QuantizationUtilTest, ChooseQuantizationParams) {
-  QuantizationParams qp = ChooseQuantizationParams<uint8>(-10.0, 30.0);
+  QuantizationParams qp = ChooseQuantizationParams<uint8_t>(-10.0, 30.0);
   EXPECT_NEAR(qp.scale, 0.156863, 1e-5);
   EXPECT_EQ(qp.zero_point, 64);
 }
 
 TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMinBoundary) {
-  QuantizationParams qp = ChooseQuantizationParams<uint8>(0.0, 30.0);
+  QuantizationParams qp = ChooseQuantizationParams<uint8_t>(0.0, 30.0);
   EXPECT_NEAR(qp.scale, 0.117647, 1e-5);
   EXPECT_EQ(qp.zero_point, 0);
 }
@@ -174,23 +174,23 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMinBoundary) {
 #if GTEST_HAS_DEATH_TEST
 TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroNotInRange) {
   // Assumption is that zero is within the range.
-  EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, 30.0), "");
+  EXPECT_DEATH(ChooseQuantizationParams<uint8_t>(10.0, 30.0), "");
 }
 
 TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangePositive) {
   // Assumption is that zero is within the range.
-  EXPECT_DEATH(ChooseQuantizationParams<uint8>(30.0, 30.0), "");
+  EXPECT_DEATH(ChooseQuantizationParams<uint8_t>(30.0, 30.0), "");
 }
 #endif  // GTEST_HAS_DEATH_TEST
 
 TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangeZero) {
-  QuantizationParams qp = ChooseQuantizationParams<uint8>(0.0, 0.0);
+  QuantizationParams qp = ChooseQuantizationParams<uint8_t>(0.0, 0.0);
   EXPECT_NEAR(qp.scale, 0.0, 1e-5);
   EXPECT_EQ(qp.zero_point, 0);
 }
 
 TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMaxBoundary) {
-  QuantizationParams qp = ChooseQuantizationParams<uint8>(-10.0, 0.0);
+  QuantizationParams qp = ChooseQuantizationParams<uint8_t>(-10.0, 0.0);
   EXPECT_NEAR(qp.scale, 0.039216, 1e-5);
   EXPECT_EQ(qp.zero_point, 255);
 }
@@ -330,7 +330,7 @@ TEST(QuantizationUtilTest, IntegerDoubleCompare) {
 
 #if GTEST_HAS_DEATH_TEST
 TEST(QuantizationUtilTest, ChooseQuantizationParamsInvalidRange) {
-  EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, -30.0), "");
+  EXPECT_DEATH(ChooseQuantizationParams<uint8_t>(10.0, -30.0), "");
 }
 
 TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOneExp) {
@@ -533,12 +533,12 @@ TEST(QuantizationUtilTest, QuantizeMultiplierArray) {
   const std::vector<double> weights = {-4,    -2,   -1,  -0.5, -0.25, -0.125, 0,
                                        0.125, 0.25, 0.5, 1,    2,     4};
   const int size = weights.size();
-  std::vector<int32> effective_scale_significand(size);
+  std::vector<int32_t> effective_scale_significand(size);
   std::vector<int> effective_scale_shift(size);
   QuantizeMultiplierArray(weights.data(), size,
                           effective_scale_significand.data(),
                           effective_scale_shift.data());
-  const std::vector<int32> expected_effective_scale_significand = {
+  const std::vector<int32_t> expected_effective_scale_significand = {
       -1073741824,  // float scale = -4
       -1073741824,  // float scale = -2
       -1073741824,  // float scale = -1
