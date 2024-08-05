@@ -252,9 +252,9 @@ int main(int argc, char** argv) {
                                 &input_literals_proto);
     }
 
-    for (int i = 1; i <= iteration_count; ++i) {
+    for (int i = 0; i < iteration_count; ++i) {
       if (iteration_count != 1) {
-        std::cerr << "\n=== Iteration " << i << "\n";
+        std::cerr << "\n=== Iteration " << i + 1 << "\n";
       }
       xla::RunHloModuleIterationLiterals* iteration_literals_proto = nullptr;
       if (!opts.output_literals_file.empty() ||
@@ -276,7 +276,7 @@ int main(int argc, char** argv) {
           opts, iteration_literals_proto,
           /*reference_module_modifier_hook=*/{},
           [&](xla::HloModuleConfig* config) {
-            config->set_seed(different_random_seeds ? i : 42);
+            config->set_seed(different_random_seeds ? i + 1 : 42);
           });
 
       if (result.ok()) {
