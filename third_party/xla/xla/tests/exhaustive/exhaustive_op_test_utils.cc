@@ -462,6 +462,20 @@ void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
 
 }  // namespace
 
+// If we are in debug mode, we fail the test execution at the first
+// comparison failure to avoid dumping too much log data and ensure the
+// relevant debugging information is the last logged data.
+//
+// If we are not in debug mode, we will continue to the next loop iteration.
+#define EXPECT_NEAR_FAIL_OR_CONTINUE() \
+  do {                                 \
+    if (should_emit_debug_logging_) {  \
+      ASSERT_TRUE(false);              \
+    } else {                           \
+      continue;                        \
+    }                                  \
+  } while (false)
+
 template <PrimitiveType T, size_t N>
 void ExhaustiveOpTestBase<T, N>::ExpectNear(
     const InputLiterals& input_literals, const Literal& result_literal,
@@ -571,7 +585,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
             StringifyNum<NativeT, ComponentIntegralNativeT, N>(inputs),
             StringifyNum<NativeT, ComponentIntegralNativeT>(actual));
       });
-      continue;
+      EXPECT_NEAR_FAIL_OR_CONTINUE();
     }
 
     if (IsClose(static_cast<NativeRefT>(expected),
@@ -592,7 +606,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
             StringifyNum<NativeT, ComponentIntegralNativeT>(expected),
             StringifyNum<NativeT, ComponentIntegralNativeT>(actual));
       });
-      continue;
+      EXPECT_NEAR_FAIL_OR_CONTINUE();
     }
 
     // Otherwise, we need to test the additional subnormal test values.
@@ -653,13 +667,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
             StringifyNum<NativeT, ComponentIntegralNativeT>(actual)));
 
     PrintMismatch(&mismatches, [mismatch] { return mismatch; });
-
-    // If we have emitted debug logging, we fail the test execution at the first
-    // comparison failure to avoid dumping too much log data and ensure the
-    // relevant debugging information is the last logged data.
-    if (should_emit_debug_logging_) {
-      ASSERT_TRUE(false);
-    }
+    EXPECT_NEAR_FAIL_OR_CONTINUE();
   }
   EXPECT_EQ(mismatches, 0);
 
