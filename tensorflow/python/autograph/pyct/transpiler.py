@@ -238,7 +238,7 @@ class GenericTranspiler(object):
           result = <<transform node>>
           return result
 
-      transformer = MyTransformer()
+      transformer = MyTransfomer()
 
       result = transformer.transform(f, ...)
       # result is the output
@@ -381,7 +381,7 @@ class PyToPy(GenericTranspiler):
           node = <<transform node, usually using ast.NodeTransformer classes>>
           return node
 
-      transformer = MyTransformer()
+      transformer = MyTransfomer()
 
       new_f, module, source_map = transformer.transform_function(f, ...)
       # new_f is a function with signature identical to f
@@ -430,7 +430,7 @@ class PyToPy(GenericTranspiler):
     return cached_factory
 
   def transform_function(self, fn, user_context):
-    """Transforms a function. See GenericTranspiler.transform_function.
+    """Transforms a function. See GenericTranspiler.trasnform_function.
 
     This overload wraps the parent's `transform_function`, adding caching and
     facilities to instantiate the output as a Python object. It also

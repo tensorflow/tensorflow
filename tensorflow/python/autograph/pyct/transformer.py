@@ -320,7 +320,7 @@ class NodeStateTracker(object):
             in this list instead of the list returned by visit_block.
 
     Returns:
-      A list of AST node objects containing the transformed items from nodes,
+      A list of AST node objects containing the transformed items fron nodes,
       except those nodes that have been relocated using after_visit.
     """
     if nodes is None:
