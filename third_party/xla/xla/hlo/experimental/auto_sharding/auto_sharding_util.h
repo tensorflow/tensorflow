@@ -92,9 +92,11 @@ bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
 // Append elements of `array` to `result`. The `indices` is a generalized
 // multi-dimensional index that can index a whole row (use -1 to indicate this).
 template <typename T>
-void AppendFlattenElements(std::vector<T>* result, const Array<T>& array,
-                           absl::Span<const int64_t> indices, int cur_depth,
-                           std::vector<int64_t> cur_indices) {
+void AppendFlattenElementsInternal(std::vector<T>* result,
+                                   const Array<T>& array,
+                                   absl::Span<const int64_t> indices,
+                                   int cur_depth,
+                                   std::vector<int64_t> cur_indices) {
   if (cur_depth == array.num_dimensions() - 1) {
     result->push_back(array(cur_indices));
   } else {
@@ -104,13 +106,23 @@ void AppendFlattenElements(std::vector<T>* result, const Array<T>& array,
     if (index == -1) {
       for (int64_t i = 0; i < array.dim(next_depth); ++i) {
         cur_indices[next_depth] = i;
-        AppendFlattenElements(result, array, indices, next_depth, cur_indices);
+        AppendFlattenElementsInternal(result, array, indices, next_depth,
+                                      cur_indices);
       }
     } else {
       cur_indices[next_depth] = index;
-      AppendFlattenElements(result, array, indices, next_depth, cur_indices);
+      AppendFlattenElementsInternal(result, array, indices, next_depth,
+                                    cur_indices);
     }
   }
+}
+
+template <typename T>
+void AppendFlattenElements(std::vector<T>* result, const Array<T>& array,
+                           absl::Span<const int64_t> indices) {
+  std::vector<int64_t> tmp_indices(array.num_dimensions(), 0);
+  AppendFlattenElementsInternal(result, array, indices,
+                                /*cur_depth=*/-1, tmp_indices);
 }
 
 // Return the index of key in a span. -1 means not found.
@@ -501,6 +513,11 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     int64_t tensor_shape_rank, const HloSharding& spec,
     const Array<int64_t>& device_mesh,
     bool consider_reverse_device_meshes = false);
+
+HloSharding Tile(const Shape& tensor_shape,
+                 absl::Span<const int64_t> tensor_dims,
+                 const std::vector<std::vector<int64_t>>& mesh_dims,
+                 const Array<int64_t>& device_mesh);
 
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
