@@ -81,7 +81,6 @@ class HandlerBase {
         option_(option),
         call_graph_(call_graph),
         device_mesh_(cluster_env.device_mesh_),
-        device_mesh_1d_(cluster_env.device_mesh_1d_),
         lhs_(ins->operand(0)),
         rhs_(ins->operand(1)) {}
 
@@ -111,7 +110,7 @@ class HandlerBase {
       const std::string& name, const DimMap& lhs_dim_map,
       const DimMap& rhs_dim_map,
       const std::optional<DimMap>& expected_output_dim_map,
-      const Array<int64_t>& device_mesh, double compute_cost = 0,
+      double compute_cost = 0,
       const std::optional<std::function<double(const HloSharding&)>>&
           communication_cost_fn = std::nullopt);
 
@@ -121,7 +120,7 @@ class HandlerBase {
       const std::string& name, const DimMap& lhs_dim_map,
       const DimMap& rhs_dim_map,
       const std::optional<DimMap>& expected_output_dim_map,
-      const Array<int64_t>& device_mesh, double compute_cost = 0,
+      double compute_cost = 0,
       const std::optional<std::function<double(const HloSharding&)>>&
           communication_cost_fn = std::nullopt);
 
@@ -132,7 +131,7 @@ class HandlerBase {
   virtual void AppendAllGatherWindowedEinsumStrategyForOperand(
       int operand_num, const std::string& name, const DimMap& lhs_dim_map,
       const DimMap& rhs_dim_map, const DimMap& output_dim_map,
-      const Array<int64_t>& device_mesh, double compute_cost) {}
+      double compute_cost) {}
 
   // Given an existing (allreduce) sharding candidate, generate a corresponding
   // candidate by additionally sharding (if possible) the dot/conv output, such
@@ -141,7 +140,7 @@ class HandlerBase {
   virtual void AppendReduceScatterWindowedEinsumStrategy(
       const std::string& name, const DimMap& lhs_dim_map,
       const DimMap& rhs_dim_map, const DimMap& output_dim_map,
-      const Array<int64_t>& device_mesh, double compute_cost) {}
+      double compute_cost) {}
 
   std::optional<HloSharding> GetShardingFromUser(const HloSharding& lhs_spec,
                                                  const HloSharding& rhs_spec);
@@ -225,7 +224,6 @@ class HandlerBase {
   const CallGraph& call_graph_;
 
   const Array<int64_t>& device_mesh_;
-  const Array<int64_t>& device_mesh_1d_;
   const HloInstruction* lhs_;
   const HloInstruction* rhs_;
 };
@@ -262,12 +260,13 @@ class DotHandler : public HandlerBase {
   void AppendAllGatherWindowedEinsumStrategyForOperand(
       int operand_num, const std::string& name, const DimMap& lhs_dim_map,
       const DimMap& rhs_dim_map, const DimMap& output_dim_map,
-      const Array<int64_t>& device_mesh, double compute_cost) override;
+      double compute_cost) override;
 
-  void AppendReduceScatterWindowedEinsumStrategy(
-      const std::string& name, const DimMap& lhs_dim_map,
-      const DimMap& rhs_dim_map, const DimMap& output_dim_map,
-      const Array<int64_t>& device_mesh, double compute_cost) override;
+  void AppendReduceScatterWindowedEinsumStrategy(const std::string& name,
+                                                 const DimMap& lhs_dim_map,
+                                                 const DimMap& rhs_dim_map,
+                                                 const DimMap& output_dim_map,
+                                                 double compute_cost) override;
 
   absl::Status RegisterStrategies();
 
@@ -352,29 +351,28 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
   }));
 }
 
-// Given lhs and rhs dim maps, infers a sharding for the output by relying on
-// the sharding_propagation pass. Given that this is a relatively new change
-// (as of 11/2023), we also take an optional expected output dim map as an
-// argument, to verify that sharding propagation in fact infers the sharding
-// we expect (and to crash if it doesn't).
+// Given lhs and rhs dim maps, infers a sharding for the output by relying
+// on the sharding_propagation pass. Given that this is a relatively new
+// change (as of 11/2023), we also take an optional expected output dim map
+// as an argument, to verify that sharding propagation in fact infers the
+// sharding we expect (and to crash if it doesn't).
 // TODO(b/309638633) As we build more confidence in this, we should remove
 // this expected_output_dim_map argument and fully rely on sharding
 // propagation.
 void HandlerBase::MaybeAppendInternal(
     const std::string& name, const DimMap& lhs_dim_map,
     const DimMap& rhs_dim_map,
-    const std::optional<DimMap>& expected_output_dim_map,
-    const Array<int64_t>& device_mesh, double compute_cost,
+    const std::optional<DimMap>& expected_output_dim_map, double compute_cost,
     const std::optional<std::function<double(const HloSharding&)>>&
         communication_cost_fn) {
-  HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map, device_mesh);
-  HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map, device_mesh);
+  HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map, device_mesh_);
+  HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map, device_mesh_);
   std::optional<HloSharding> output_spec =
       GetShardingFromUser(lhs_spec, rhs_spec);
   if (output_spec.has_value()) {
     if (expected_output_dim_map.has_value()) {
       HloSharding expected_output_spec =
-          CreateInputSpec(ins_, *expected_output_dim_map, device_mesh);
+          CreateInputSpec(ins_, *expected_output_dim_map, device_mesh_);
       // TODO(b/308687597) Once the bug is resolved, we ideally either want
       // have a CHECK statement verifying that the sharding inferred by
       // sharding propagation is in fact what we expect, or we trust sharding
@@ -394,7 +392,7 @@ void HandlerBase::MaybeAppendInternal(
     }
   } else {
     CHECK(expected_output_dim_map.has_value());
-    output_spec = CreateInputSpec(ins_, *expected_output_dim_map, device_mesh);
+    output_spec = CreateInputSpec(ins_, *expected_output_dim_map, device_mesh_);
     LOG(WARNING)
         << "Sharding propagation could not infer output sharding for:\n  "
         << ins_->ToString() << "\n  LHS Spec: " << lhs_spec
@@ -412,29 +410,27 @@ void HandlerBase::MaybeAppendInternal(
 void HandlerBase::MaybeAppend(
     const std::string& name, const DimMap& lhs_dim_map,
     const DimMap& rhs_dim_map,
-    const std::optional<DimMap>& expected_output_dim_map,
-    const Array<int64_t>& device_mesh, double compute_cost,
+    const std::optional<DimMap>& expected_output_dim_map, double compute_cost,
     const std::optional<std::function<double(const HloSharding&)>>&
         communication_cost_fn) {
   MaybeAppendInternal(name, lhs_dim_map, rhs_dim_map, expected_output_dim_map,
-                      device_mesh, compute_cost, communication_cost_fn);
+                      compute_cost, communication_cost_fn);
   if (!option_.generate_windowed_einsum_strategies ||
       !expected_output_dim_map.has_value()) {
     return;
   }
   if (absl::StrContains(name, "allreduce")) {
     CHECK(communication_cost_fn.has_value());
-    AppendReduceScatterWindowedEinsumStrategy(name, lhs_dim_map, rhs_dim_map,
-                                              *expected_output_dim_map,
-                                              device_mesh, compute_cost);
+    AppendReduceScatterWindowedEinsumStrategy(
+        name, lhs_dim_map, rhs_dim_map, *expected_output_dim_map, compute_cost);
   } else {
     CHECK(!communication_cost_fn.has_value());
     AppendAllGatherWindowedEinsumStrategyForOperand(
         0, name, lhs_dim_map, rhs_dim_map, *expected_output_dim_map,
-        device_mesh, compute_cost);
+        compute_cost);
     AppendAllGatherWindowedEinsumStrategyForOperand(
         1, name, lhs_dim_map, rhs_dim_map, *expected_output_dim_map,
-        device_mesh, compute_cost);
+        compute_cost);
   }
 }
 
@@ -667,7 +663,7 @@ void DotHandler::GenerateDotShardingStrategiesFromOutputSharding(
       // generation code. Removing it will only increase the search space.
       IsFullySharded(output_dim_map, device_mesh_.num_dimensions())) {
     MaybeAppend(GenerateNameForDotSharding(output_dim_map, lhs_dim_map),
-                lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+                lhs_dim_map, rhs_dim_map, output_dim_map);
   }
 
   // Generate shardings for contraction dimensions
@@ -728,7 +724,7 @@ void DotHandler::GenerateDotShardingStrategiesFromOutputSharding(
     MaybeAppend(GenerateNameForDotSharding(output_dim_map,
                                            lhs_dim_map_with_contractions),
                 lhs_dim_map_with_contractions, rhs_dim_map_with_contractions,
-                output_dim_map, device_mesh_,
+                output_dim_map,
                 /*compute_cost=*/0, communication_cost_fn);
   };
 
@@ -740,7 +736,7 @@ void DotHandler::GenerateDotShardingStrategiesFromOutputSharding(
 void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
     int operand_num, const std::string& name, const DimMap& lhs_dim_map,
     const DimMap& rhs_dim_map, const DimMap& output_dim_map,
-    const Array<int64_t>& device_mesh, double compute_cost) {
+    double compute_cost) {
   const HloInstruction* operand = ins_->operand(operand_num);
   const DimMap& operand_dim_map = operand_num == 0 ? lhs_dim_map : rhs_dim_map;
   absl::flat_hash_set<int64_t> used_mesh_dims;
@@ -779,7 +775,7 @@ void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
           updated_name,
           operand_num == 0 ? further_sharded_dim_map : lhs_dim_map,
           operand_num == 1 ? further_sharded_dim_map : rhs_dim_map,
-          output_dim_map, device_mesh, compute_cost, communication_cost_fn);
+          output_dim_map, compute_cost, communication_cost_fn);
     }
   }
 }
@@ -787,7 +783,7 @@ void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
 void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
     const std::string& name, const DimMap& lhs_dim_map,
     const DimMap& rhs_dim_map, const DimMap& output_dim_map,
-    const Array<int64_t>& device_mesh, double compute_cost) {
+    double compute_cost) {
   absl::flat_hash_set<int64_t> used_mesh_dims;
   for (const auto& [tensor_dim, mesh_dim_set] : output_dim_map) {
     used_mesh_dims.insert(mesh_dim_set.begin(), mesh_dim_set.end());
@@ -822,7 +818,7 @@ void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
           name,
           absl::StrFormat("|rs_windowed_einsum_t%dm%d", tensor_dim, mesh_dim));
       MaybeAppendInternal(updated_name, lhs_dim_map, rhs_dim_map,
-                          further_sharded_dim_map, device_mesh, compute_cost,
+                          further_sharded_dim_map, compute_cost,
                           communication_cost_fn);
     }
   }
@@ -894,7 +890,7 @@ void ConvHandler::GenerateConvolutionShardingStrategiesFromOutputSharding(
     absl::StrAppend(&name, "oc-1");
   }
 
-  MaybeAppend(name, lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+  MaybeAppend(name, lhs_dim_map, rhs_dim_map, output_dim_map);
 
   // Generate shardings for contraction dimensions
   if (used_mesh_dims.size() == device_mesh_.num_dimensions()) {
@@ -927,7 +923,7 @@ void ConvHandler::GenerateConvolutionShardingStrategiesFromOutputSharding(
     };
 
     MaybeAppend(name, lhs_dim_map_with_contractions,
-                rhs_dim_map_with_contractions, output_dim_map, device_mesh_,
+                rhs_dim_map_with_contractions, output_dim_map,
                 /*compute_cost=*/0, communication_cost_fn);
   }
 }
@@ -1002,7 +998,7 @@ void ConvHandler::SplitDepthwise(bool forward) {
         MaybeAppend(
             absl::StrCat("b", ToString(out_batch_mesh_dim_set), "oc",
                          ToString(out_out_channel_mesh_dim_set), "|depthwise"),
-            lhs_dim_map, rhs_dim_map, output_dim_map, device_mesh_);
+            lhs_dim_map, rhs_dim_map, output_dim_map);
       };
   std::vector<int> all_mesh_dims(device_mesh_.num_dimensions());
   Enumerate(split_func, 2, /*current_mesh_dim_idx=*/0, all_mesh_dims,

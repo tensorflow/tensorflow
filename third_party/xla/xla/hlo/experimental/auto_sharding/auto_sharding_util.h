@@ -48,7 +48,6 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
-inline constexpr absl::string_view kPipelineMarker = "xla_pipeline_marker";
 inline constexpr absl::string_view kIdentityMarker = "identity";
 
 inline constexpr int64_t kAutoShardingPointerSize = 8;

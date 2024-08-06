@@ -779,12 +779,6 @@ InstructionBatchDimMap BuildInstructionBatchDimMap(
         batch_map[ins->name()] = batch_dim_of_source;
       }
     }
-
-    if (ins->IsCustomCall(kPipelineMarker) &&
-        absl::StrContains(ins->metadata().op_type(), "start")) {
-      // Reset the status after meet a new pipeline marker.
-      set_the_next_dot_conv = true;
-    }
   }
   int64_t previous_cnt = 0;
   while (true) {
