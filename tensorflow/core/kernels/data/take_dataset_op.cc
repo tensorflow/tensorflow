@@ -187,12 +187,6 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
-    if (ctx->restored_element_count().has_value()) {
-      mutex_lock l(mu_);
-      i_ = *ctx->restored_element_count();
-      return RestoreInput(ctx, reader, input_impl_);
-    }
-
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
     int64_t input_empty;

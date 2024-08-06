@@ -186,14 +186,16 @@ class ListDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return split_provider_->Save(
-          [this](const std::string& key) { return full_name(key); }, writer);
+      TF_RETURN_IF_ERROR(split_provider_->Save(
+          [this](const std::string& key) { return full_name(key); }, writer));
+      TF_RETURN_IF_ERROR(global_shuffle_iterator_.Save(prefix(), ctx, writer));
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       if (ctx->restored_element_count().has_value()) {
-        return global_shuffle_iterator_.Restore(ctx);
+        return global_shuffle_iterator_.Restore(prefix(), ctx, reader);
       }
       return split_provider_->Restore(
           [this](const std::string& key) { return full_name(key); }, reader);

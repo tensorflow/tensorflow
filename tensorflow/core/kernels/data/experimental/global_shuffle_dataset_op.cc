@@ -235,15 +235,8 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
         TF_ASSIGN_OR_RETURN(element_position,
                             parent_index_mapper(element_position));
       }
-      // This could happen if the source dataset generates more elements than
-      // needed by the intermediate transformations. For example, when shuffling
-      // `range(10).batch(3, drop_remainder=True)`, the last element of `range`
-      // has index 9, which maps to the 4th batched element. However, since
-      // `batch` drops remainders, the cardinality is 3. In this case, the
-      // element position exceeds the max index. The caller is responsible to
-      // handle this case properly.
       if (element_position > max_index) {
-        return element_position;
+        return absl::OutOfRangeError("Out of range");
       }
       if (max_index == 0) {
         return 0;
@@ -265,6 +258,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed, seed_));
     TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed2, seed2_));
     TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed3, seed3_));
+    TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
     return absl::OkStatus();
   }
 

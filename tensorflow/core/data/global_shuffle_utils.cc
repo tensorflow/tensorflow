@@ -16,10 +16,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +31,13 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+namespace {
+
+constexpr absl::string_view kGlobalShuffleIteratorNextIndex =
+    "global_shuffle_iterator_next_index";
+
+}
 
 IteratorContextWithIndexMapper::IteratorContextWithIndexMapper(
     IteratorContext* ctx, const IteratorBase* iterator)
@@ -60,10 +70,22 @@ absl::Status GlobalShuffleIterator::GetNext(IteratorContext* ctx,
   }
 
   absl::MutexLock l(&mu_);
-  TF_ASSIGN_OR_RETURN(int64_t output_index,
-                      ctx->index_mapper()(element_count_++));
+  absl::StatusOr<int64_t> shuffled_index =
+      absl::NotFoundError("Default not found");
+
+  while (absl::IsNotFound(shuffled_index.status())) {
+    shuffled_index = ctx->index_mapper()(element_count_++);
+  }
+
+  if (absl::IsOutOfRange(shuffled_index.status())) {
+    *end_of_sequence = true;
+    return absl::OkStatus();
+  }
+
+  TF_RETURN_IF_ERROR(shuffled_index.status());
+
   absl::Status status =
-      dataset_->Get(AnyContext(ctx), output_index, out_tensors);
+      dataset_->Get(AnyContext(ctx), shuffled_index.value(), out_tensors);
   if (absl::IsOutOfRange(status)) {
     *end_of_sequence = true;
     return absl::OkStatus();
@@ -73,7 +95,18 @@ absl::Status GlobalShuffleIterator::GetNext(IteratorContext* ctx,
   return absl::OkStatus();
 }
 
-absl::Status GlobalShuffleIterator::Restore(IteratorContext* ctx) {
+absl::Status GlobalShuffleIterator::Save(
+    const std::string& parent_iterator_prefix, SerializationContext* ctx,
+    IteratorStateWriter* writer) {
+  absl::MutexLock l(&mu_);
+  TF_RETURN_IF_ERROR(writer->WriteScalar(
+      parent_iterator_prefix, kGlobalShuffleIteratorNextIndex, element_count_));
+  return absl::OkStatus();
+}
+
+absl::Status GlobalShuffleIterator::Restore(
+    const std::string& parent_iterator_prefix, IteratorContext* ctx,
+    IteratorStateReader* reader) {
   if (!ctx->restored_element_count().has_value()) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Trying to restore random element count for dataset ",
@@ -81,7 +114,9 @@ absl::Status GlobalShuffleIterator::Restore(IteratorContext* ctx) {
   }
 
   absl::MutexLock l(&mu_);
-  element_count_ = *(ctx->restored_element_count());
+  TF_RETURN_IF_ERROR(reader->ReadScalar(parent_iterator_prefix,
+                                        kGlobalShuffleIteratorNextIndex,
+                                        &element_count_));
   return absl::OkStatus();
 }
 

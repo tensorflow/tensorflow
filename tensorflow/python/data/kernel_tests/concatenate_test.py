@@ -13,8 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.concatenate()."""
+from typing import Callable, Tuple
 from absl.testing import parameterized
 import numpy as np
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -246,6 +248,302 @@ class ConcatenateRandomAccessTest(test_base.DatasetTestBase,
       self.assertAllEqual(random_access.at(concatenated, index=i), i)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(concatenated, index=5))
+
+
+class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
+  """Tests for global shuffling of tf.data datasets."""
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffledOutput(self):
+    dataset1 = dataset_ops.Dataset.range(0, 5)
+    dataset2 = dataset_ops.Dataset.range(5, 17)
+
+    dataset = dataset1.concatenate(dataset2)
+
+    dataset = global_shuffle_op._global_shuffle(dataset)
+
+    output = self.getDatasetOutput(dataset, requires_initialization=True)
+    self.assertCountEqual(output, range(0, 17))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffledWithBatchOutput(self):
+    """Testing with `.batch()` ensures the global shuffle map is stateless."""
+    dataset1 = dataset_ops.Dataset.range(0, 4)
+    dataset2 = dataset_ops.Dataset.range(4, 10)
+
+    dataset = dataset1.concatenate(dataset2)
+    dataset = dataset.batch(3, drop_remainder=True)
+
+    dataset = global_shuffle_op._global_shuffle(dataset)
+
+    got = self.getDatasetOutput(dataset, requires_initialization=True)
+    expected = [
+        np.array([0, 1, 2], dtype=np.int32),
+        np.array([3, 4, 5], dtype=np.int32),
+        np.array([6, 7, 8], dtype=np.int32),
+    ]
+
+    self.assertIsInstance(got, list)
+    # Converts to tuples for lexicographically sort
+    got.sort(key=tuple)
+
+    self.assertLen(got, len(expected))
+
+    for element_got, element_expected in zip(got, expected):
+      self.assertAllEqual(element_got, element_expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedConcatenateShuffledOutput(self):
+    dataset1 = dataset_ops.Dataset.range(0, 3)
+    dataset2 = dataset_ops.Dataset.range(3, 6)
+    dataset3 = dataset_ops.Dataset.range(6, 9)
+
+    dataset = dataset1.concatenate(dataset2)
+    dataset = dataset.concatenate(dataset3)
+
+    dataset = global_shuffle_op._global_shuffle(dataset)
+
+    output = self.getDatasetOutput(dataset, requires_initialization=True)
+    self.assertCountEqual(output, range(0, 9))
+
+
+class ConcatenateGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_ranges=[(10, 8), (9, 5), (4, 7), (5, 8)],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False],
+          ),
+      )
+  )
+  def testConcatenate(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_ranges: Tuple[int, int],
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool,
+  ):
+
+    def _build_dataset():
+      first_dataset = dataset_ops.Dataset.range(dataset_ranges[0])
+      second_dataset = dataset_ops.Dataset.range(
+          dataset_ranges[0], dataset_ranges[0] + dataset_ranges[1]
+      )
+      dataset = first_dataset.concatenate(second_dataset)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=10, reshuffle_each_iteration=reshuffle_each_iteration
+      )
+
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=sum(dataset_ranges),
+        assert_items_equal=reshuffle_each_iteration,
+    )
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_ranges=[(10, 8, 11), (9, 5, 3)],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False],
+          ),
+      )
+  )
+  def testNestedConcatenate(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_ranges: Tuple[int, int],
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool,
+  ):
+
+    def _build_dataset():
+      first_dataset = dataset_ops.Dataset.range(dataset_ranges[0])
+      second_dataset = dataset_ops.Dataset.range(
+          dataset_ranges[0], dataset_ranges[0] + dataset_ranges[1]
+      )
+      third_dataset = dataset_ops.Dataset.range(
+          sum(dataset_ranges[:2]), sum(dataset_ranges[:3])
+      )
+
+      dataset = first_dataset.concatenate(second_dataset)
+      dataset = dataset.concatenate(third_dataset)
+
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=10, reshuffle_each_iteration=reshuffle_each_iteration
+      )
+
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=sum(dataset_ranges),
+        assert_items_equal=reshuffle_each_iteration,
+    )
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_ranges=[(3, 4, 6, 5)],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False],
+          ),
+      )
+  )
+  def testFourNestedConcatenate(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_ranges: Tuple[int, int],
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool,
+  ):
+    def _build_dataset():
+      first_dataset = dataset_ops.Dataset.range(dataset_ranges[0])
+      second_dataset = dataset_ops.Dataset.range(
+          dataset_ranges[0], sum(dataset_ranges[:2])
+      )
+      third_dataset = dataset_ops.Dataset.range(
+          sum(dataset_ranges[:2]), sum(dataset_ranges[:3])
+      )
+      fourth_dataset = dataset_ops.Dataset.range(
+          sum(dataset_ranges[:3]), sum(dataset_ranges)
+      )
+
+      left = first_dataset.concatenate(second_dataset)
+      right = third_dataset.concatenate(fourth_dataset)
+
+      dataset = left.concatenate(right)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=10, reshuffle_each_iteration=reshuffle_each_iteration
+      )
+
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=sum(dataset_ranges),
+        assert_items_equal=reshuffle_each_iteration,
+    )
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_ranges=[(1, 2, 3, 4, 5, 6)],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False],
+          ),
+      )
+  )
+  def testDeepConcatenate(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_ranges: Tuple[int, ...],
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool,
+  ):
+    def _build_dataset():
+      prefix_sums = [0] * (len(dataset_ranges) + 1)
+      for i, value in enumerate(dataset_ranges):
+        prefix_sums[i + 1] = prefix_sums[i] + value
+
+      dataset = dataset_ops.Dataset.range(prefix_sums[0], prefix_sums[1])
+      for i in range(1, len(dataset_ranges)):
+        to_concat = dataset_ops.Dataset.range(
+            prefix_sums[i], prefix_sums[i + 1]
+        )
+        dataset = dataset.concatenate(to_concat)
+
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=10, reshuffle_each_iteration=reshuffle_each_iteration
+      )
+
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=sum(dataset_ranges),
+        assert_items_equal=reshuffle_each_iteration,
+    )
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_ranges=[(1, 2, 3, 4, 5, 6)],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False],
+          ),
+      )
+  )
+  def testDeepConcatenateWithBatchAndPrefetch(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_ranges: Tuple[int, ...],
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool,
+  ):
+    def _build_dataset():
+      prefix_sums = [0] * (len(dataset_ranges) + 1)
+      for i, value in enumerate(dataset_ranges):
+        prefix_sums[i + 1] = prefix_sums[i] + value
+
+      dataset = dataset_ops.Dataset.range(prefix_sums[0], prefix_sums[1])
+      for i in range(1, len(dataset_ranges)):
+        to_concat = dataset_ops.Dataset.range(
+            prefix_sums[i], prefix_sums[i + 1]
+        )
+        dataset = dataset.concatenate(to_concat)
+
+      dataset = dataset.batch(2, drop_remainder=True)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=10, reshuffle_each_iteration=reshuffle_each_iteration
+      )
+      dataset = dataset.unbatch()
+
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=(sum(dataset_ranges) // 2) * 2,
+        assert_items_equal=reshuffle_each_iteration,
+    )
 
 
 if __name__ == "__main__":
