@@ -34,16 +34,14 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
     // CHECK-NEXT: %[[C1:.*]] = sdy.constant dense<1>
     // CHECK-NEXT: %[[C32:.*]] = sdy.constant dense<32>
-    // CHECK-NEXT: %[[WHILE:.*]]:4 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]], %iterArg_1 = %[[C32]], %iterArg_2 = %[[C1]])
+    // CHECK-NEXT: %[[WHILE:.*]]:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
     // CHECK-NEXT:   cond {
-    // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %iterArg_1
+    // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %[[C32]]
     // CHECK-NEXT:   mhlo.return %[[COND]]
     // CHECK-NEXT: } do {
-    // CHECK-NEXT:   %[[ADD_0:.*]] = mhlo.add %iterArg_0, %iterArg_2
+    // CHECK-NEXT:   %[[ADD_0:.*]] = mhlo.add %iterArg_0, %[[C1]]
     // CHECK-NEXT:   %[[ADD_1:.*]] = mhlo.add %iterArg, %iterArg
-    // CHECK-NEXT:   %[[IDENTITY_0:.*]] = sdy.identity %iterArg_1
-    // CHECK-NEXT:   %[[IDENTITY_1:.*]] = sdy.identity %iterArg_2
-    // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]], %[[IDENTITY_0]], %[[IDENTITY_1]]
+    // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]]
     // CHECK-NEXT: }
     // CHECK-NEXT: return %[[WHILE]]#0
     %0 = mhlo.constant dense<0> : tensor<i32>

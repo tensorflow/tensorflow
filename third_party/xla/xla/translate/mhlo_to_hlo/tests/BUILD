@@ -38,6 +38,7 @@ lit_test_suite(
             "simple.mlir",
             "unsupported_type.mlir",
             "while.mlir",
+            "while_free_vars.mlir",
         ],
         include = [
             "*.mlir",

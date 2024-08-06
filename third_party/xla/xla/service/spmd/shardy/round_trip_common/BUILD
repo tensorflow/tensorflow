@@ -32,22 +32,6 @@ cc_library(
 )
 
 cc_library(
-    name = "identity_to_pass_through_while_args",
-    srcs = ["identity_to_pass_through_while_args.cc"],
-    hdrs = ["identity_to_pass_through_while_args.h"],
-    deps = [
-        "//xla/mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-    ],
-)
-
-cc_library(
     name = "import_constants",
     srcs = ["import_constants.cc"],
     hdrs = ["import_constants.h"],
@@ -94,7 +78,6 @@ cc_library(
     hdrs = ["pipeline_passes.h"],
     deps = [
         ":convert_sharding_custom_calls",
-        ":identity_to_pass_through_while_args",
         ":import_constants",
         ":shard_map_import",
         "//xla/mlir_hlo:mhlo_passes",
