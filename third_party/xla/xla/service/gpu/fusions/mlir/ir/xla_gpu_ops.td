@@ -253,7 +253,7 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
     OpBuilder<(ins "mlir::ValueRange":$dims, "mlir::ValueRange":$symbols,
                    "const IndexingMap&":$indexing_map)>,
     OpBuilder<(ins "mlir::ValueRange":$operands,
-                   "IndexingMap":$indexing_map)>,
+                   "const IndexingMap&":$indexing_map)>,
     OpBuilder<(ins "mlir::ValueRange":$operands, "mlir::AffineMap":$affine_map,
                "llvm::ArrayRef<DimVar>":$dim_vars,
                "llvm::ArrayRef<RangeVar>":$range_vars)>,

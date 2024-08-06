@@ -123,7 +123,8 @@ void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
 }
 
 void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
-                            ValueRange operands, IndexingMap indexing_map) {
+                            ValueRange operands,
+                            const IndexingMap& indexing_map) {
   SmallVector<Type, 2> result_types(indexing_map.GetAffineMap().getNumResults(),
                                     builder.getIndexType());
   IndexingMapAttr indexing_map_attr =
