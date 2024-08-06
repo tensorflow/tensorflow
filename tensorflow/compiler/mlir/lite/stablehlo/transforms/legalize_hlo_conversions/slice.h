@@ -22,8 +22,12 @@ limitations under the License.
 namespace mlir::odml {
 
 // Patterns to legalize mhlo.slice to TFL.
-void PopulateSlicePatterns(MLIRContext* ctx, RewritePatternSet& patterns,
-                           ConversionTarget& target);
+void PopulateLegalizeSlicePatterns(MLIRContext* ctx,
+                                   RewritePatternSet& patterns,
+                                   ConversionTarget& target);
+
+void PopulatePrepareSlicePatterns(MLIRContext* ctx,
+                                  RewritePatternSet& patterns);
 
 }  // namespace mlir::odml
 

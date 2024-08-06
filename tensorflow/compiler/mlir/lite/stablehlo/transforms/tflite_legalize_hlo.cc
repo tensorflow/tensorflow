@@ -83,7 +83,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulateLegalizeReduceWindowPatterns(context, patterns, target);
   PopulateGatherPatterns(context, patterns, target);
   PopulateLegalizeConvPatterns(context, patterns, target);
-  PopulateSlicePatterns(context, patterns, target);
+  PopulateLegalizeSlicePatterns(context, patterns, target);
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {

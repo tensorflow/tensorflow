@@ -1,5 +1,3 @@
-
-
 /* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,20 +14,45 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/slice.h"
 
+#include <cstdint>
+
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
+
+// mhlo encodes ND indice arguments as a variadiac of scalars. Pack them
+// into a single tensor for use in TFL.
+Value PackScalarIndices(mlir::ValueRange indices, OpBuilder& b) {
+  auto e_type =
+      llvm::cast<ShapedType>(indices.front().getType()).getElementType();
+  const int64_t num_indices = indices.size();
+  auto packed_indices_type = RankedTensorType::get({num_indices}, e_type);
+
+  auto values_count_attr = b.getI32IntegerAttr(num_indices);
+  auto pack_axis_attr = b.getI32IntegerAttr(0);
+
+  return b.create<TFL::PackOp>(indices.back().getLoc(), packed_indices_type,
+                               indices, values_count_attr, pack_axis_attr);
+}
+
+//===----------------------------------------------------------------------===//
+// mhlo.slice
+//===----------------------------------------------------------------------===//
 
 // Cast the value to i32.
 Value BuildTFLCastOp(OpBuilder& b, Value value) {
@@ -65,12 +88,152 @@ class LegalizeSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// mhlo.dynamic_slice
+//===----------------------------------------------------------------------===//
+
+class CastSliceIndicesToSignless
+    : public OpRewritePattern<mhlo::DynamicSliceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::DynamicSliceOp op,
+                                PatternRewriter& rewriter) const final;
+};
+
+LogicalResult CastSliceIndicesToSignless::matchAndRewrite(
+    mhlo::DynamicSliceOp op, PatternRewriter& rewriter) const {
+  // All start inds have the same element type.
+  auto start_type =
+      llvm::cast<ShapedType>(op.getStartIndices().front().getType());
+  auto start_e_type = start_type.getElementType();
+
+  if (start_e_type.isSignlessIntOrFloat()) {
+    return rewriter.notifyMatchFailure(op, "Already signless.");
+  }
+  auto new_start_e_type =
+      rewriter.getIntegerType(start_e_type.getIntOrFloatBitWidth());
+
+  llvm::SmallVector<Value> casted_start_inds;
+  for (auto start_ind_opr : op.getStartIndices()) {
+    auto casted_start_ind_opr = rewriter.create<mhlo::ConvertOp>(
+        start_ind_opr.getLoc(), start_ind_opr, new_start_e_type);
+    casted_start_inds.push_back(casted_start_ind_opr.getResult());
+  }
+
+  rewriter.replaceOpWithNewOp<mhlo::DynamicSliceOp>(
+      op, op.getOperand(), casted_start_inds, op.getSliceSizes());
+
+  return success();
+}
+
+bool IsDynamicSliceLegal(mhlo::DynamicSliceOp op) {
+  return !llvm::cast<ShapedType>(op.getOperand().getType()).hasStaticShape();
+}
+
+class LegalizeDynamicSliceOp
+    : public OpConversionPattern<mhlo::DynamicSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicSliceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
+    mhlo::DynamicSliceOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  auto start_type =
+      llvm::cast<ShapedType>(op.getStartIndices().front().getType());
+  auto start_e_type = start_type.getElementType();
+  if (!start_e_type.isSignlessIntOrFloat()) {
+    return rewriter.notifyMatchFailure(
+        op, "Must be signless integer for start indices.");
+  }
+
+  auto input_type = llvm::cast<ShapedType>(op.getOperand().getType());
+  if (!input_type.hasStaticShape()) {
+    return rewriter.notifyMatchFailure(op, "Input must be statically typed.");
+  }
+
+  //
+  // clamp start indices between zero and shape(operand) - slice_sizes
+  //=-----
+
+  Value clamp_left_cst = rewriter.create<arith::ConstantOp>(
+      op->getLoc(), rewriter.getZeroAttr(start_type));
+
+  llvm::SmallVector<Value> new_start_indices;
+  const auto stride_sizes = UnrollIntSplat<int64_t>(op.getSliceSizes());
+
+  for (auto [dim_size, start_ind_opr, stride_size] :
+       llvm::zip(input_type.getShape(), op.getStartIndices(), stride_sizes)) {
+    const int64_t clamp_right_val = dim_size - stride_size;
+    auto clamp_right_cst = rewriter.create<arith::ConstantOp>(
+        op->getLoc(), DenseIntElementsAttr::get(start_type, clamp_right_val));
+
+    Value new_start_ind = rewriter.create<TFL::MaximumOp>(
+        op->getLoc(), start_type, clamp_left_cst, start_ind_opr);
+    new_start_ind = rewriter.create<TFL::MinimumOp>(
+        op->getLoc(), start_type, clamp_right_cst, new_start_ind);
+
+    new_start_indices.push_back(new_start_ind);
+  }
+
+  //
+  // build tfl
+  //=-----
+
+  auto packed_indices = PackScalarIndices(new_start_indices, rewriter);
+
+  auto slice_sizes_cst =
+      rewriter.create<arith::ConstantOp>(op->getLoc(), op.getSliceSizes());
+
+  rewriter.replaceOpWithNewOp<TFL::SliceOp>(op, op.getType(), op.getOperand(),
+                                            packed_indices, slice_sizes_cst);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// mhlo.dynamic_update_slice
+//===----------------------------------------------------------------------===//
+
+class LegalizeDynamicUpdateSliceOp
+    : public OpConversionPattern<mhlo::DynamicUpdateSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicUpdateSliceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+LogicalResult LegalizeDynamicUpdateSliceOp::matchAndRewrite(
+    mhlo::DynamicUpdateSliceOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  auto packed_indices = PackScalarIndices(op.getStartIndices(), rewriter);
+  rewriter.replaceOpWithNewOp<TFL::DynamicUpdateSliceOp>(
+      op, op.getType(), op.getOperand(), op.getUpdate(), packed_indices);
+  return success();
+};
+
 }  // namespace
 
-void PopulateSlicePatterns(MLIRContext* ctx, RewritePatternSet& patterns,
-                           ConversionTarget& target) {
-  patterns.add<LegalizeSliceOp>(ctx);
-  target.addIllegalOp<mhlo::SliceOp>();
+void PopulateLegalizeSlicePatterns(MLIRContext* ctx,
+                                   RewritePatternSet& patterns,
+                                   ConversionTarget& target) {
+  patterns.add<LegalizeSliceOp, LegalizeDynamicSliceOp,
+               LegalizeDynamicUpdateSliceOp>(ctx);
+
+  target.addIllegalOp<mhlo::SliceOp, mhlo::DynamicUpdateSliceOp>();
+  target.addDynamicallyLegalOp<mhlo::DynamicSliceOp>(IsDynamicSliceLegal);
+}
+
+void PopulatePrepareSlicePatterns(MLIRContext* ctx,
+                                  RewritePatternSet& patterns) {
+  patterns.add<CastSliceIndicesToSignless>(ctx);
 }
 
 }  // namespace mlir::odml
