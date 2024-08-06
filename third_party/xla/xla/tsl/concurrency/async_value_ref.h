@@ -88,8 +88,8 @@ class AsyncValueRef {
   AsyncValueRef(const AsyncValueRef&) = default;
   AsyncValueRef& operator=(const AsyncValueRef&) = default;
 
-  AsyncValueRef(AsyncValueRef&&) = default;
-  AsyncValueRef& operator=(AsyncValueRef&&) = default;
+  AsyncValueRef(AsyncValueRef&&) noexcept = default;
+  AsyncValueRef& operator=(AsyncValueRef&&) noexcept = default;
 
   explicit AsyncValueRef(RCReference<AsyncValue> value)
       : value_(std::move(value)) {}
@@ -953,13 +953,13 @@ class AsyncValueOwningRef {
   AsyncValueOwningRef(const AsyncValueOwningRef&) = delete;
   AsyncValueOwningRef& operator=(const AsyncValueOwningRef&) = delete;
 
-  AsyncValueOwningRef& operator=(AsyncValueOwningRef&& other) {
+  AsyncValueOwningRef& operator=(AsyncValueOwningRef&& other) noexcept {
     Destroy();
     std::swap(value_, other.value_);
     return *this;
   }
 
-  AsyncValueOwningRef(AsyncValueOwningRef&& other) {
+  AsyncValueOwningRef(AsyncValueOwningRef&& other) noexcept {
     Destroy();
     std::swap(value_, other.value_);
   }
