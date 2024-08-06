@@ -1637,7 +1637,7 @@ auto DictionaryDecoder(Members... m) {
 // type to decode the attribute as a scalar value and cast it to the enum type.
 #define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
   template <>                                                                 \
-  struct ::xla::ffi::AttrDecoding<T> {                                        \
+  struct AttrDecoding<T> {                                                    \
     using Type = T;                                                           \
     using U = std::underlying_type_t<Type>;                                   \
     static_assert(std::is_enum<Type>::value, "Expected enum class");          \

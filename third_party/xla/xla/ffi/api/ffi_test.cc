@@ -54,12 +54,8 @@ enum class Int64BasedEnum : int64_t {
   kTwo = kI32MaxValue + 2,
 };
 
-}  // namespace xla::ffi
-
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int32BasedEnum);
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int64BasedEnum);
-
-namespace xla::ffi {
 
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
