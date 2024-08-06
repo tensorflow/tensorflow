@@ -158,28 +158,9 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
     return absl::InternalError("Could not find entry function in MLIR Module.");
   }
 
-  auto device_assignment_attr =
-      op->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr);
-  std::optional<std::vector<int>> device_assignment_attr_val;
-
-  if (device_assignment_attr && !device_assignment_attr.getValue().empty()) {
-    std::vector<int> coords;
-    coords.reserve(num_replicas * num_cores_per_replica);
-    for (auto coord_attr : device_assignment_attr.getValue()) {
-      auto coord_attr_val = mlir::dyn_cast<mlir::IntegerAttr>(coord_attr);
-      if (!coord_attr_val) {
-        return absl::InternalError(
-            llvm::formatv("Device assignment attribute is not an integer: {0}",
-                          device_assignment_attr)
-                .str());
-      }
-      coords.push_back(coord_attr_val.getInt());
-    }
-    device_assignment_attr_val = std::move(coords);
-  }
-  return GetAssignedIfrtDevices(ifrt_client, num_replicas,
-                                num_cores_per_replica,
-                                device_assignment_attr_val);
+  return GetAssignedIfrtDevices(
+      ifrt_client, num_replicas, num_cores_per_replica,
+      op->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr));
 }
 
 }  // namespace
@@ -196,7 +177,7 @@ IfrtServingExecutable::Create(
     tensorflow::DeviceMgr* device_mgr,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     IfrtServingCoreSelector* ifrt_serving_core_selector,
-    tsl::protobuf::Message* compilation_environement_proto) {
+    tsl::protobuf::Message* compilation_environment_proto) {
   TF_ASSIGN_OR_RETURN(
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       GetCompileMetadata(*module, *client));
@@ -215,7 +196,7 @@ IfrtServingExecutable::Create(
       std::move(original_compile_metadata),
       xla::ifrt::DeviceList(xla::ifrt::DeviceList::Devices(
           assigned_devices.begin(), assigned_devices.end())),
-      compilation_environement_proto));
+      compilation_environment_proto));
 
   return executable;
 }
@@ -587,6 +568,8 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
                                         *executable_bundle, device_list));
 
+  LOG(INFO) << "Completed AsyncLoadIfrtArray";
+
   std::vector<tsl::RCReference<xla::ifrt::Array>> args;
   args.reserve(inputs.size());
   int variable_index = 0;
@@ -625,7 +608,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   }
   DCHECK_EQ(args.size(), dtypes_and_shapes.size());
 
-  VLOG(2) << "Start Execution";
+  LOG(INFO) << "Start Execution";
 
   std::optional<xla::ifrt::DeviceList> execution_device_list;
   if (UsePortableExecution(compile_metadata)) {

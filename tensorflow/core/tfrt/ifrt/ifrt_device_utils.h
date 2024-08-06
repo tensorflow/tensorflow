@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -54,8 +55,7 @@ namespace ifrt_serving {
 //   The assigned devices.
 absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedIfrtDevices(
     const xla::ifrt::Client& ifrt_client, int num_replicas,
-    int num_cores_per_replica,
-    std::optional<std::vector<int>> device_assignment);
+    int num_cores_per_replica, mlir::ArrayAttr device_assignment_attr);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

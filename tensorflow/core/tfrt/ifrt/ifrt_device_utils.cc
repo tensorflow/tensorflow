@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_device_utils.h"
 
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -28,6 +29,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -53,8 +57,24 @@ static constexpr int kTpuTopologyRank = 4;  // (x, y, z, core).
 
 absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedIfrtDevices(
     const xla::ifrt::Client& ifrt_client, int num_replicas,
-    int num_cores_per_replica,
-    std::optional<std::vector<int>> device_assignment) {
+    int num_cores_per_replica, mlir::ArrayAttr device_assignment_attr) {
+  std::optional<std::vector<int>> device_assignment;
+
+  if (device_assignment_attr && !device_assignment_attr.getValue().empty()) {
+    std::vector<int> coords;
+    coords.reserve(num_replicas * num_cores_per_replica);
+    for (auto coord_attr : device_assignment_attr.getValue()) {
+      auto coord_attr_val = mlir::dyn_cast<mlir::IntegerAttr>(coord_attr);
+      if (!coord_attr_val) {
+        return absl::InternalError(
+            llvm::formatv("Device assignment attribute is not an integer: {0}",
+                          device_assignment_attr)
+                .str());
+      }
+      coords.push_back(coord_attr_val.getInt());
+    }
+    device_assignment = std::move(coords);
+  }
   const int num_devices = num_replicas * num_cores_per_replica;
 
   // No device coordinates from ifrt devices. This disallow the mapping from

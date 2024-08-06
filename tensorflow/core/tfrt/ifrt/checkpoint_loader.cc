@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/future.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -287,8 +286,7 @@ int64_t GetSizeFromVarHandle(const ResourceHandle& handle) {
 
 }  // namespace
 
-absl::Status CheckpointLoader::PrepareRestore(
-    mlir::OwningOpRef<mlir::ModuleOp> module) {
+absl::Status CheckpointLoader::PrepareRestore(mlir::ModuleOp module) {
   VLOG(1) << "Skip CheckpointLoader::PrepareRestore";
   return absl::OkStatus();
 }

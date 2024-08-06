@@ -99,7 +99,7 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
   };
   if (ifrt_loaded_variable_registry.GetLoadedVariable(loaded_variable_key)
           .ok()) {
-    VLOG(1) << "Found alread registered variable for " << runtime_name;
+    LOG(INFO) << "Found alread registered variable for " << runtime_name;
     return absl::OkStatus();
   }
   xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =

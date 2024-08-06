@@ -155,8 +155,8 @@ absl::Status PrepareRestore(mlir::MLIRContext* context,
     return absl::InternalError("Missing checkpoint loader.");
   }
 
-  TF_RETURN_IF_ERROR(checkpoint_loader->PrepareRestore(
-      std::move(mlir_module_restore_analysis)));
+  TF_RETURN_IF_ERROR(
+      checkpoint_loader->PrepareRestore(mlir_module_restore_analysis.get()));
 
   LOG(INFO) << "Complete set restore metadata.";
   return absl::OkStatus();
@@ -637,10 +637,15 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     if (*model_restore_context == nullptr) {
       return absl::InternalError("IfrtModelRestoreContexts must not be null.");
     }
+    auto prepare_restore_start = absl::Now();
     TF_RETURN_IF_ERROR(
         PrepareRestore(&context, &model_context, meta_graph_def,
                        *fallback_state, std::string(saved_model_dir), options,
                        (*model_restore_context)->checkpoint_loader()));
+    const auto prepare_restore_duration = absl::Now() - prepare_restore_start;
+
+    LOG(INFO) << "TFRT finished prepare restore. Took "
+              << absl::ToInt64Milliseconds(prepare_restore_duration) << " ms.";
   }
 
   GetDefaultInputValue(meta_graph_def.signature_def(), model_context,
