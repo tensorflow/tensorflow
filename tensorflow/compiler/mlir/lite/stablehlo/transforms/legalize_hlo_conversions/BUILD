@@ -247,3 +247,18 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
     ],
 )
+
+cc_library(
+    name = "iota",
+    srcs = ["iota.cc"],
+    hdrs = ["iota.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
