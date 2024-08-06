@@ -19,9 +19,13 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
