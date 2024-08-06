@@ -554,7 +554,7 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* instruction = FindInstruction(module.get(), "p0");
+  const HloInstruction* instruction = FindInstruction(module.get(), "p0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
@@ -687,12 +687,47 @@ ENTRY %RngBitGenerator {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* param0 = FindInstruction(module.get(), "param.0");
-  auto* param1 = FindInstruction(module.get(), "param.1");
+  const HloInstruction* param0 = FindInstruction(module.get(), "param.0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param.1");
   ASSERT_NE(param0, nullptr);
   ASSERT_NE(param0, nullptr);
   EXPECT_THAT(param0, op::Sharding("{replicated}"));
   EXPECT_THAT(param1, op::Sharding("{replicated}"));
+}
+
+TEST_F(AutoShardingTest, DotMixedMeshStrategies) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+ENTRY %entry {
+  %param0 = f32[8192,23]{1,0} parameter(0), sharding={devices=[4,1]0,1,2,3}
+  %param1 = f32[23,23]{1,0} parameter(1)
+  %dot = f32[8192,23]{1,0} dot(%param0, %param1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  ROOT %copy = f32[8192,23]{1,0} copy(%dot)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  option.solve_nd_sharding_iteratively = false;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(2) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(param0, nullptr);
+  ASSERT_NE(param1, nullptr);
+  ASSERT_NE(dot, nullptr);
+  EXPECT_THAT(param0, op::Sharding("{devices=[4,1]0,1,2,3}"));
+  EXPECT_THAT(param1, op::Sharding("{replicated}"));
+  EXPECT_THAT(dot, op::Sharding("{devices=[4,1]0,1,2,3}"));
 }
 
 TEST_F(AutoShardingTest, DotLHSTwoNonContractingDims) {
@@ -717,9 +752,9 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* param0 = FindInstruction(module.get(), "param0");
-  auto* param1 = FindInstruction(module.get(), "param1");
-  auto* dot = FindInstruction(module.get(), "dot");
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
   ASSERT_NE(param0, nullptr);
   ASSERT_NE(param1, nullptr);
   ASSERT_NE(dot, nullptr);
@@ -770,9 +805,9 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* param0 = FindInstruction(module.get(), "param0");
-  auto* param1 = FindInstruction(module.get(), "param1");
-  auto* dot = FindInstruction(module.get(), "dot");
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
   ASSERT_NE(param0, nullptr);
   ASSERT_NE(param1, nullptr);
   ASSERT_NE(dot, nullptr);
