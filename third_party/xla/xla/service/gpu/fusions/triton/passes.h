@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_SPARSE_EXTENSIONS_H_
-#define XLA_SERVICE_GPU_FUSIONS_TRITON_SPARSE_EXTENSIONS_H_
+#ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_PASSES_H_
+#define XLA_SERVICE_GPU_FUSIONS_TRITON_PASSES_H_
 
 #include <cstdint>
 #include <memory>
@@ -23,16 +23,21 @@ limitations under the License.
 
 namespace xla::gpu {
 
-std::unique_ptr<mlir::Pass> CreateAddSparseDotEncodingPass(
-    int32_t num_warps, int32_t threads_per_warp, int32_t num_ctas);
+#define GEN_PASS_DECL
+#include "xla/service/gpu/fusions/triton/passes.h.inc"
+
+std::unique_ptr<mlir::Pass> CreateSparseAddDotEncodingPass(
+    int32_t num_warps = 4, int32_t threads_per_warp = 32, int32_t num_ctas = 1);
 std::unique_ptr<mlir::Pass> CreateSparseBlockedToMMAPass();
 std::unique_ptr<mlir::Pass> CreateSparseRemoveLayoutConversionPass();
 std::unique_ptr<mlir::Pass> CreateSparseLocalLoadToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateSparseDotOpToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateSparseWGMMAOpToLLVMPass();
+std::unique_ptr<mlir::Pass> CreatePreventMmaV3LoopUnrollingPass();
 
-void RegisterSparsePasses();
+#define GEN_PASS_REGISTRATION
+#include "xla/service/gpu/fusions/triton/passes.h.inc"
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_SPARSE_EXTENSIONS_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_PASSES_H_

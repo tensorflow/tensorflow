@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/triton/sparse_extensions.h"
-
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -48,9 +46,9 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/service/gpu/fusions/triton/passes.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Analysis/Membar.h"
 #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
@@ -64,6 +62,13 @@ limitations under the License.
 #include "triton/Tools/Sys/GetEnv.hpp"
 
 using namespace mlir;  // NOLINT(build/namespaces)
+
+namespace ttn = triton::nvgpu;
+using ::mlir::LLVM::getSharedMemoryObjectFromStruct;
+using ::mlir::triton::gpu::getShapePerCTA;
+using ::mlir::triton::gpu::getShapePerCTATile;
+using ::mlir::triton::gpu::SharedEncodingAttr;
+using ttn::OperandsAndConstraints;
 
 // The functions below are defined in AccelerateMatmul.cpp.
 namespace mlir::triton::gpu {
@@ -80,10 +85,19 @@ Value createDescriptor(ConversionPatternRewriter &rewriter, Location loc,
                        int64_t swizzling, uint32_t stride);
 int64_t getSwizzlingFromLayout(const triton::gpu::SharedEncodingAttr &layout,
                                uint32_t widthInByte);
-triton::nvgpu::WGMMAEltType getMmaRetType(Value);
-triton::nvgpu::WGMMAEltType getMmaOperandType(Value, bool);
+ttn::WGMMAEltType getMmaRetType(Value);
+ttn::WGMMAEltType getMmaOperandType(Value, bool);
 
+namespace xla::gpu {
 namespace {
+
+#define GEN_PASS_DEF_SPARSEADDDOTENCODINGPASS
+#define GEN_PASS_DEF_SPARSEBLOCKEDTOMMAPASS
+#define GEN_PASS_DEF_SPARSEDOTOPTOLLVMPASS
+#define GEN_PASS_DEF_SPARSELOCALLOADTOLLVMPASS
+#define GEN_PASS_DEF_SPARSEREMOVELAYOUTCONVERSIONPASS
+#define GEN_PASS_DEF_SPARSEWGMMAOPTOLLVMPASS
+#include "xla/service/gpu/fusions/triton/passes.h.inc"
 
 // Add sparse encoding for all the arguments of a SparseDotOp.
 struct AddSparseEncoding
@@ -179,23 +193,10 @@ struct AddSparseEncoding
   }
 };
 
-class AddSparseEncodingPass
-    : public PassWrapper<AddSparseEncodingPass, OperationPass<ModuleOp>> {
- public:
-  AddSparseEncodingPass() = default;
-  AddSparseEncodingPass(int32_t num_warps, int32_t threads_per_warp,
-                        int32_t num_ctas) {
-    num_warps_ = num_warps;
-    threads_per_warp_ = threads_per_warp;
-    num_ctas_ = num_ctas;
-  }
-  AddSparseEncodingPass(const AddSparseEncodingPass &other) {
-    num_warps_ = other.num_warps_;
-    threads_per_warp_ = other.threads_per_warp_;
-    num_ctas_ = other.num_ctas_;
-  };
-
-  StringRef getArgument() const override { return "add-sparse-encoding"; }
+struct SparseAddDotEncodingPass
+    : public impl::SparseAddDotEncodingPassBase<SparseAddDotEncodingPass> {
+  using impl::SparseAddDotEncodingPassBase<
+      SparseAddDotEncodingPass>::SparseAddDotEncodingPassBase;
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();
@@ -212,18 +213,6 @@ class AddSparseEncodingPass
                                       std::move(patterns))))
       return signalPassFailure();
   }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AddSparseEncodingPass)
-
- private:
-  Option<int32_t> num_warps_{
-      *this, "num-warps", llvm::cl::desc("number of warps"), llvm::cl::init(4)};
-  Option<int32_t> threads_per_warp_{
-      *this, "threads-per-warp", llvm::cl::desc("number of threads per warp"),
-      llvm::cl::init(32)};
-  Option<int32_t> num_ctas_{*this, "num-ctas",
-                            llvm::cl::desc("number of ctas in a cga"),
-                            llvm::cl::init(1)};
 };
 
 // Add convert layouts to and from MMA before and after SparseDotOp. In MMAV3,
@@ -332,13 +321,8 @@ class SparseBlockedToMMA : public RewritePattern {
   int compute_capability_;
 };
 
-class SparseBlockedToMMAPass
-    : public PassWrapper<SparseBlockedToMMAPass, OperationPass<ModuleOp>> {
- public:
-  SparseBlockedToMMAPass() = default;
-
-  StringRef getArgument() const override { return "sparse-blocked-to-mma"; }
-
+struct SparseBlockedToMMAPass
+    : public impl::SparseBlockedToMMAPassBase<SparseBlockedToMMAPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp module = getOperation();
@@ -350,8 +334,6 @@ class SparseBlockedToMMAPass
       return signalPassFailure();
     }
   }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseBlockedToMMAPass)
 };
 
 class SparseLocalLoadToLLVM
@@ -469,16 +451,9 @@ class SparseLocalLoadToLLVM
   }
 };
 
-class SparseRemoveLayoutConversionPass
-    : public PassWrapper<SparseRemoveLayoutConversionPass,
-                         OperationPass<ModuleOp>> {
- public:
-  SparseRemoveLayoutConversionPass() = default;
-
-  StringRef getArgument() const override {
-    return "sparse-remove-layout-conversion";
-  }
-
+struct SparseRemoveLayoutConversionPass
+    : public impl::SparseRemoveLayoutConversionPassBase<
+          SparseRemoveLayoutConversionPass> {
   void runOnOperation() override {
     getOperation().walk([&](triton::gpu::ConvertLayoutOp op) {
       ImplicitLocOpBuilder builder(op.getLoc(), op);
@@ -507,25 +482,13 @@ class SparseRemoveLayoutConversionPass
       op.erase();
     });
   }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseRemoveLayoutConversionPass)
 };
 
-class SparseLocalLoadToLLVMPass
-    : public PassWrapper<SparseLocalLoadToLLVMPass, OperationPass<ModuleOp>> {
- public:
-  SparseLocalLoadToLLVMPass() = default;
-
-  StringRef getArgument() const override { return "sparse-local-load-to-llvm"; }
-
-  void getDependentDialects(mlir::DialectRegistry &registry) const override {
-    registry.insert<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
-                    arith::ArithDialect>();
-  }
-
+struct SparseLocalLoadToLLVMPass
+    : public impl::SparseLocalLoadToLLVMPassBase<SparseLocalLoadToLLVMPass> {
   void runOnOperation() override {
     // Exit early if there are no sparse ops.
-    mlir::ModuleOp mod = getOperation();
+    ModuleOp mod = getOperation();
     if (!mod.walk([](triton::gpu::LocalLoadOp op) {
               if (isa<triton::gpu::SparseDotMetaEncodingAttr>(
                       op.getType().getEncoding())) {
@@ -553,7 +516,7 @@ class SparseLocalLoadToLLVMPass
           return !isa<triton::gpu::SparseDotMetaEncodingAttr>(
               op.getType().getEncoding());
         });
-    mlir::LowerToLLVMOptions option(context);
+    LowerToLLVMOptions option(context);
     TritonGPUToLLVMTypeConverter typeConverter(context, option);
     auto pattern = std::make_unique<SparseLocalLoadToLLVM>(typeConverter);
     RewritePatternSet patterns(context, std::move(pattern));
@@ -562,14 +525,7 @@ class SparseLocalLoadToLLVMPass
       return signalPassFailure();
     }
   }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseLocalLoadToLLVMPass)
 };
-
-using ::mlir::LLVM::getSharedMemoryObjectFromStruct;
-using ::mlir::triton::gpu::getShapePerCTA;
-using ::mlir::triton::gpu::getShapePerCTATile;
-using ::mlir::triton::gpu::SharedEncodingAttr;
 
 using ValueTableV2 = std::map<std::pair<unsigned, unsigned>, Value>;
 
@@ -818,17 +774,17 @@ LogicalResult convertSparseWGMMA(triton::gpu::SparseDotOp op,
   assert(hMetaPacked.size() == repM * repK);
 
   // Generate prologue.
-  triton::nvgpu::WGMMAEltType eltTypeA = getMmaOperandType(op.getA(), false);
-  triton::nvgpu::WGMMAEltType eltTypeB = getMmaOperandType(op.getB(), false);
-  triton::nvgpu::WGMMAEltType eltTypeC = getMmaRetType(op.getD());
+  ttn::WGMMAEltType eltTypeA = getMmaOperandType(op.getA(), false);
+  ttn::WGMMAEltType eltTypeB = getMmaOperandType(op.getB(), false);
+  ttn::WGMMAEltType eltTypeC = getMmaRetType(op.getD());
 
-  triton::nvgpu::WGMMALayout layoutA = transA ? triton::nvgpu::WGMMALayout::col
-                                              : triton::nvgpu::WGMMALayout::row;
-  triton::nvgpu::WGMMALayout layoutB = transB ? triton::nvgpu::WGMMALayout::row
-                                              : triton::nvgpu::WGMMALayout::col;
+  ttn::WGMMALayout layoutA =
+      transA ? ttn::WGMMALayout::col : ttn::WGMMALayout::row;
+  ttn::WGMMALayout layoutB =
+      transB ? ttn::WGMMALayout::row : ttn::WGMMALayout::col;
 
-  rewriter.create<triton::nvgpu::FenceAsyncSharedOp>(loc, 0);
-  rewriter.create<triton::nvgpu::WGMMAFenceOp>(loc);
+  rewriter.create<ttn::FenceAsyncSharedOp>(loc, 0);
+  rewriter.create<ttn::WGMMAFenceOp>(loc);
 
   // Generate main loop.
   for (int m = 0; m < repM; ++m) {
@@ -841,7 +797,7 @@ LogicalResult convertSparseWGMMA(triton::gpu::SparseDotOp op,
         Value a = loadA(m, k);
         Value b = loadB(n, k);
         Value meta = hMetaPacked[k * repM + m];
-        d = rewriter.create<triton::nvgpu::SparseWGMMAOp>(
+        d = rewriter.create<ttn::SparseWGMMAOp>(
             loc, accTy, a, meta, b, d, kWarpsInGroup * instrShape[0],
             instrShape[1], kContractingFactor * instrShape[2], eltTypeC,
             eltTypeA, eltTypeB, layoutA, layoutB);
@@ -858,8 +814,8 @@ LogicalResult convertSparseWGMMA(triton::gpu::SparseDotOp op,
       op.getContext(), SmallVector<Type>(fc.size(), f32_ty));
   Value res = packLLElements(loc, typeConverter, fc, rewriter, structTy);
 
-  rewriter.create<triton::nvgpu::WGMMACommitGroupOp>(loc);
-  res = rewriter.create<triton::nvgpu::WGMMAWaitGroupOp>(loc, res, 0);
+  rewriter.create<ttn::WGMMACommitGroupOp>(loc);
+  res = rewriter.create<ttn::WGMMAWaitGroupOp>(loc, res, 0);
   rewriter.replaceOp(op, res);
 
   return success();
@@ -899,26 +855,16 @@ struct SparseDotOpConversion
   }
 };
 
-class SparseDotOpToLLVMPass
-    : public PassWrapper<SparseDotOpToLLVMPass, OperationPass<ModuleOp>> {
- public:
-  SparseDotOpToLLVMPass() = default;
-
-  StringRef getArgument() const override { return "sparse-dot-to-llvm"; }
-
-  void getDependentDialects(mlir::DialectRegistry &registry) const override {
-    registry.insert<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
-                    arith::ArithDialect>();
-  }
-
+struct SparseDotOpToLLVMPass
+    : public impl::SparseDotOpToLLVMPassBase<SparseDotOpToLLVMPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ConversionTarget target(*context);
     target.addLegalDialect<LLVM::LLVMDialect, NVVM::NVVMDialect,
-                           arith::ArithDialect, triton::nvgpu::NVGPUDialect>();
+                           arith::ArithDialect, ttn::NVGPUDialect>();
     target.addIllegalOp<triton::gpu::SparseDotOp>();
     target.addIllegalDialect<mlir::gpu::GPUDialect>();
-    mlir::LowerToLLVMOptions option(context);
+    LowerToLLVMOptions option(context);
     TritonGPUToLLVMTypeConverter typeConverter(context, option);
     RewritePatternSet patterns(context);
     patterns.add<SparseDotOpConversion>(typeConverter);
@@ -928,12 +874,7 @@ class SparseDotOpToLLVMPass
       return signalPassFailure();
     }
   }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseLocalLoadToLLVMPass)
 };
-
-namespace ttn = mlir::triton::nvgpu;
-using ttn::OperandsAndConstraints;
 
 class SparseWGMMAOpPattern : public OpRewritePattern<ttn::SparseWGMMAOp> {
  public:
@@ -1021,13 +962,8 @@ class SparseWGMMAOpPattern : public OpRewritePattern<ttn::SparseWGMMAOp> {
   }
 };
 
-class SparseWGMMAOpToLLVMPass
-    : public PassWrapper<SparseWGMMAOpToLLVMPass, OperationPass<ModuleOp>> {
- public:
-  SparseWGMMAOpToLLVMPass() = default;
-
-  StringRef getArgument() const override { return "sparse-wgmma-to-llvm"; }
-
+struct SparseWGMMAOpToLLVMPass
+    : public impl::SparseWGMMAOpToLLVMPassBase<SparseWGMMAOpToLLVMPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     auto pattern = std::make_unique<SparseWGMMAOpPattern>(context);
@@ -1037,43 +973,38 @@ class SparseWGMMAOpToLLVMPass
       return signalPassFailure();
     }
   }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseLocalLoadToLLVMPass)
 };
 
 }  // namespace
 
-std::unique_ptr<Pass> xla::gpu::CreateAddSparseDotEncodingPass(
-    int32_t num_warps, int32_t threads_per_warp, int32_t num_ctas) {
-  return std::make_unique<AddSparseEncodingPass>(num_warps, threads_per_warp,
-                                                 num_ctas);
+std::unique_ptr<Pass> CreateSparseAddDotEncodingPass(int32_t num_warps,
+                                                     int32_t threads_per_warp,
+                                                     int32_t num_ctas) {
+  SparseAddDotEncodingPassOptions options;
+  options.num_warps_ = num_warps;
+  options.threads_per_warp_ = threads_per_warp;
+  options.num_ctas_ = num_ctas;
+  return std::make_unique<SparseAddDotEncodingPass>(options);
 }
 
-std::unique_ptr<mlir::Pass> xla::gpu::CreateSparseBlockedToMMAPass() {
+std::unique_ptr<Pass> CreateSparseBlockedToMMAPass() {
   return std::make_unique<SparseBlockedToMMAPass>();
 }
 
-std::unique_ptr<mlir::Pass> xla::gpu::CreateSparseRemoveLayoutConversionPass() {
+std::unique_ptr<Pass> CreateSparseRemoveLayoutConversionPass() {
   return std::make_unique<SparseRemoveLayoutConversionPass>();
 }
 
-std::unique_ptr<mlir::Pass> xla::gpu::CreateSparseLocalLoadToLLVMPass() {
+std::unique_ptr<Pass> CreateSparseLocalLoadToLLVMPass() {
   return std::make_unique<SparseLocalLoadToLLVMPass>();
 }
 
-std::unique_ptr<mlir::Pass> xla::gpu::CreateSparseDotOpToLLVMPass() {
+std::unique_ptr<Pass> CreateSparseDotOpToLLVMPass() {
   return std::make_unique<SparseDotOpToLLVMPass>();
 }
 
-std::unique_ptr<mlir::Pass> xla::gpu::CreateSparseWGMMAOpToLLVMPass() {
+std::unique_ptr<Pass> CreateSparseWGMMAOpToLLVMPass() {
   return std::make_unique<SparseWGMMAOpToLLVMPass>();
 }
 
-void xla::gpu::RegisterSparsePasses() {
-  registerPass([] { return std::make_unique<AddSparseEncodingPass>(); });
-  registerPass(CreateSparseBlockedToMMAPass);
-  registerPass(CreateSparseRemoveLayoutConversionPass);
-  registerPass(CreateSparseLocalLoadToLLVMPass);
-  registerPass(CreateSparseDotOpToLLVMPass);
-  registerPass(CreateSparseWGMMAOpToLLVMPass);
-}
+}  // namespace xla::gpu
