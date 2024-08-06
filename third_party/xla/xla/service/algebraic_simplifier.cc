@@ -179,6 +179,11 @@ std::optional<double> GetConstantValue(const HloInstruction* inst) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
           return static_cast<double>(
               inst->literal().GetFirstElement<NativeT>());
+        } else if constexpr (primitive_util::IsIntegralType(
+                                 primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return static_cast<int64_t>(
+              inst->literal().GetFirstElement<NativeT>());
         }
         return std::nullopt;
       },
@@ -605,6 +610,11 @@ std::unique_ptr<HloInstruction> MakeScalarInstruction(HloInstruction* target,
       [&](auto primitive_type_constant) -> std::unique_ptr<HloInstruction> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<NativeT>(static_cast<NativeT>(multiplier)));
+        } else if constexpr (primitive_util::IsIntegralType(
+                                 primitive_type_constant)) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
           return HloInstruction::CreateConstant(
               LiteralUtil::CreateR0<NativeT>(static_cast<NativeT>(multiplier)));
@@ -7879,27 +7889,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  // Replace Reduce(Broadcast(x), dims, Sum()) with Broadcast(x * prod(dims)).
-  if (HloInstruction * broadcast_arg;
-      Match(arg, m::Broadcast(m::ConstantScalar(&broadcast_arg))) &&
-      Match(function->root_instruction(),
-            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
-    if (auto broadcast_value = GetConstantValue(broadcast_arg);
-        broadcast_value.has_value() &&
-        // Skip float64, where product is too accurate compared to repeated-sum.
-        broadcast_arg->shape().element_type() != PrimitiveType::F64) {
-      auto result_value = broadcast_value.value() *
-                          ShapeUtil::ElementsIn(arg->shape()) /
-                          ShapeUtil::ElementsIn(reduce_result_shape);
-      return ReplaceWithNewInstruction(
-          reduce, HloInstruction::CreateBroadcast(
-                      reduce_result_shape,
-                      reduce->AddInstruction(
-                          MakeScalarInstruction(reduce, result_value)),
-                      {}));
-    }
-  }
-
   // For Computation equal to Min, Max, And or Or, replace Reduce(Broadcast(x),
   // a, Computation()) with Computation(x, a) when x is a scalar and the
   // broadcast is reduced to a scalar.
@@ -7923,26 +7912,28 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  // Replace Reduce(Broadcast(Scalar)) with Broadcast(Multiply(Scalar)) when the
-  // reduction operation is addition
+  // Replace Reduce(Broadcast(Scalar), +, init_value) with
+  // Broadcast(Add(Multiply(Scalar), init_value)))
   if (arg->opcode() == HloOpcode::kBroadcast &&
       ShapeUtil::IsScalar(arg->operand(0)->shape())) {
     if (Match(reduce->to_apply()->root_instruction(),
-              m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
-        IsScalarConstantZero(init_value)) {
+              m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
       int64_t reduction_dims_prod = 1;
       for (auto i : reduce->dimensions()) {
         reduction_dims_prod *= arg->shape().dimensions(i);
       }
-
+      // HloConstantFolding will later remove any unnecessary multiply and add
+      // instructions.
       HloInstruction* multiplier =
           MakeScalarLike(arg->mutable_operand(0), reduction_dims_prod);
       TF_ASSIGN_OR_RETURN(HloInstruction * multiplied_scalar,
                           MakeBinaryHlo(HloOpcode::kMultiply,
                                         arg->mutable_operand(0), multiplier));
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * add,
+          MakeBinaryHlo(HloOpcode::kAdd, init_value, multiplied_scalar));
       return ReplaceWithNewInstruction(
-          reduce, HloInstruction::CreateBroadcast(reduce->shape(),
-                                                  multiplied_scalar, {}));
+          reduce, HloInstruction::CreateBroadcast(reduce->shape(), add, {}));
     }
   }
 
