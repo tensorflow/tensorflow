@@ -19,9 +19,10 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

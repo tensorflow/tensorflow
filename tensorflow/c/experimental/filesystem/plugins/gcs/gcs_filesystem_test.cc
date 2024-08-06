@@ -16,11 +16,16 @@ limitations under the License.
 
 #include <random>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "tensorflow/c/tf_status_helper.h"
+#include "third_party/cloud_cpp/google/cloud/storage/client.h"
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/tf_file_statistics.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stacktrace_handler.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 #define ASSERT_TF_OK(x) ASSERT_EQ(TF_OK, TF_GetCode(x)) << TF_Message(x)
 #define EXPECT_TF_OK(x) EXPECT_EQ(TF_OK, TF_GetCode(x)) << TF_Message(x)
