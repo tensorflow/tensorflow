@@ -111,6 +111,7 @@ xla_test(
     disabled_backends = ["gpu_h100"],
     tags = ["no_rocm"],
     deps = [
+        ":custom_kernel",
         ":custom_kernel_fusion_pattern",
         ":cutlass_gemm_custom_kernel",
         ":cutlass_gemm_fusion",
@@ -124,6 +125,7 @@ xla_test(
         "//xla/service/gpu:custom_kernel_fusion_rewriter",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -358,7 +360,9 @@ cc_library(
         ":cutlass_gemm_kernel_bf16xbf16_to_bf16",
         ":cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80",
         ":cutlass_gemm_kernel_bf16xbf16_to_f32",
+        ":cutlass_gemm_kernel_bf16xf32_to_f32",
         ":cutlass_gemm_kernel_bf16xs8_to_f32",
+        ":cutlass_gemm_kernel_f32xbf16_to_f32",
         ":cutlass_gemm_kernel_f32xf32_to_f32",
     ] + if_cuda_newer_than(
         "12_0",
@@ -444,6 +448,40 @@ cuda_library(
 cuda_library(
     name = "cutlass_gemm_kernel_bf16xbf16_to_f32",
     srcs = if_cuda_is_configured(["cutlass_gemm_kernel_bf16xbf16_to_f32.cu.cc"]),
+    copts = [
+        "-mllvm",
+        "-unroll-threshold=100000",
+    ] + if_windows(
+        [],
+        ["-Wno-unknown-attributes"],
+    ),
+    deps = if_cuda_is_configured([
+        ":cutlass_gemm_adaptor",
+        "@cutlass_archive//:cutlass",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
+cuda_library(
+    name = "cutlass_gemm_kernel_bf16xf32_to_f32",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernel_bf16xf32_to_f32.cu.cc"]),
+    copts = [
+        "-mllvm",
+        "-unroll-threshold=100000",
+    ] + if_windows(
+        [],
+        ["-Wno-unknown-attributes"],
+    ),
+    deps = if_cuda_is_configured([
+        ":cutlass_gemm_adaptor",
+        "@cutlass_archive//:cutlass",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
+cuda_library(
+    name = "cutlass_gemm_kernel_f32xbf16_to_f32",
+    srcs = if_cuda_is_configured(["cutlass_gemm_kernel_f32xbf16_to_f32.cu.cc"]),
     copts = [
         "-mllvm",
         "-unroll-threshold=100000",

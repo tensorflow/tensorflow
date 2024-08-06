@@ -24,7 +24,7 @@ namespace xla::gpu::kernel::gemm_universal {
 namespace {
 
 using ElementA = cutlass::bfloat16_t;
-using ElementB = cutlass::int8_t;
+using ElementB = float;
 using ElementOutput = float;
 using ElementAccumulator = float;
 
@@ -34,7 +34,7 @@ using GemmOperation = cutlass::gemm::device::GemmUniversal<
     ElementA, cutlass::layout::RowMajor, ElementB, cutlass::layout::RowMajor,
     ElementOutput, cutlass::layout::RowMajor, ElementAccumulator,
     cutlass::arch::OpClassSimt, cutlass::arch::Sm70,
-    cutlass::gemm::GemmShape<64, 128, 8>, cutlass::gemm::GemmShape<32, 64, 8>,
+    cutlass::gemm::GemmShape<128, 32, 8>, cutlass::gemm::GemmShape<64, 32, 8>,
     cutlass::gemm::GemmShape<1, 1, 1>,
     cutlass::epilogue::thread::LinearCombination<float, 1, float, float>,
     cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<8>,
@@ -43,8 +43,9 @@ using GemmOperation = cutlass::gemm::device::GemmUniversal<
     1,  // B alignment
     cutlass::arch::OpMultiplyAdd>;
 
-XLA_GPU_DEFINE_CUTLASS_GEMM_TRAITS(Bf16xS8ToF32<Arch::kDefault>, GemmOperation);
-template struct Adaptor<Bf16xS8ToF32<Arch::kDefault>>;
-template struct DeviceKernel<Bf16xS8ToF32<Arch::kDefault>>;
+XLA_GPU_DEFINE_CUTLASS_GEMM_TRAITS(Bf16xF32ToF32<Arch::kDefault>,
+                                   GemmOperation);
+template struct Adaptor<Bf16xF32ToF32<Arch::kDefault>>;
+template struct DeviceKernel<Bf16xF32ToF32<Arch::kDefault>>;
 
 }  // namespace xla::gpu::kernel::gemm_universal
