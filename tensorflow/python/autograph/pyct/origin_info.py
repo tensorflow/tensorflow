@@ -172,7 +172,7 @@ class OriginResolver(gast.NodeVisitor):
         hasattr(root_node.decorator_list[0], 'lineno')):
       # Typical case: functions. The line number of the first decorator
       # is more accurate than the line number of the function itself in
-      # 3.8+. In earier versions they coincide.
+      # 3.8+. In earlier versions they coincide.
       self._lineno_offset = context_lineno - root_node.decorator_list[0].lineno
     else:
       # Fall back to the line number of the root node.
