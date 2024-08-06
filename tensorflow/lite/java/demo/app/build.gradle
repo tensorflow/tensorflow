@@ -7,7 +7,7 @@ android {
         applicationId "android.example.com.tflitecamerademo"
         // Required by Camera2 API.
         minSdkVersion 21
-        targetSdkVersion 26
+        targetSdkVersion 30
         versionCode 1
         versionName "1.0"
     }
@@ -132,4 +132,5 @@ class DownloadUrlTask extends DefaultTask {
         ant.get(src: sourceUrl, dest: target)
     }
 }
+
 
