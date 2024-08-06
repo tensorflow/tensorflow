@@ -222,5 +222,10 @@ mlir::LogicalResult IndexingMapAttr::verify(
   return mlir::success();
 }
 
+IndexingMap IndexingMapAttr::getIndexingMap() {
+  return IndexingMap(getMap(), getDimVars(), getRangeVars(), /*rt_vars=*/{},
+                     getConstraints());
+}
+
 }  // namespace gpu
 }  // namespace xla

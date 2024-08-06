@@ -221,10 +221,7 @@ LogicalResult ApplyIndexingOp::verify() {
 }
 
 IndexingMap ApplyIndexingOp::getIndexingMap() {
-  return IndexingMap(getIndexingMapAttr().getMap(),
-                     getIndexingMapAttr().getDimVars(),
-                     getIndexingMapAttr().getRangeVars(),
-                     /*rt_vars=*/{});
+  return getIndexingMapAttr().getIndexingMap();
 }
 
 namespace {
@@ -695,10 +692,7 @@ LogicalResult LoopOp::verify() {
 }
 
 IndexingMap LoopOp::getIndexingMap() {
-  return IndexingMap(getIndexingMapAttr().getMap(),
-                     getIndexingMapAttr().getDimVars(),
-                     getIndexingMapAttr().getRangeVars(),
-                     /*rt_vars=*/{}, getIndexingMapAttr().getConstraints());
+  return getIndexingMapAttr().getIndexingMap();
 }
 
 }  // namespace gpu
