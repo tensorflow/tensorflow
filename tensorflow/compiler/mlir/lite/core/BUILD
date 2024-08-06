@@ -42,3 +42,19 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "absl_error_model_builder",
+    srcs = ["absl_error_model_builder.cc"],
+    hdrs = ["absl_error_model_builder.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
+    ],
+    deps = [
+        ":model_builder_base",
+        "//tensorflow/lite/core/api:error_reporter",
+        "@com_google_absl//absl/log",
+    ],
+)
