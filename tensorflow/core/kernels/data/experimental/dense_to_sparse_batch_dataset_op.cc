@@ -251,7 +251,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
           const auto& t_flat = t.flat<T>();
           // TODO(mrry): Replace with a memcpy or something more
           // efficient. (Maybe an Eigen assign op?)
-          gtl::InlinedVector<int64_t, 4> strides(row_ndims);
+          absl::InlinedVector<int64_t, 4UL> strides(row_ndims);
           if (!strides.empty()) {
             strides[row_ndims - 1] = 1;
             for (int64_t row_dim = strides.size() - 2; row_dim >= 0;
