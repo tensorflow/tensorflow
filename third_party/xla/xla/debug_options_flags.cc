@@ -281,6 +281,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_enable_command_buffers_during_profiling(false);
 
+  opts.set_xla_gpu_cudnn_gemm_max_plans(5);
+
   return opts;
 }
 
@@ -1834,6 +1836,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Experimental: Enable command buffers while a profiling active. "
       "By default, enabling profiling switches from command buffers to "
       "op-by-op mode."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cudnn_gemm_max_plans",
+      int32_setter_for(&DebugOptions::set_xla_gpu_cudnn_gemm_max_plans),
+      debug_options->xla_gpu_cudnn_gemm_max_plans(),
+      "Limit for the number of kernel configurations (plans) to use during "
+      "autotuning of cuDNN GEMM fusions."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

@@ -730,8 +730,9 @@ int CuDnnFusionCompiler::GetAvailablePlanCount(
   if (!graph.ok()) {
     return 0;
   }
-  constexpr int64_t kMaxPlans = 10;
-  return std::min(graph->Graph().get_execution_plan_count(), kMaxPlans);
+  return std::min(
+      static_cast<int32_t>(graph->Graph().get_execution_plan_count()),
+      hlo.GetModule()->config().debug_options().xla_gpu_cudnn_gemm_max_plans());
 }
 
 }  // namespace gpu

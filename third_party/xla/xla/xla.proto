@@ -875,7 +875,12 @@ message DebugOptions {
   // TODO(b/355487968): Remove this option when validation complete.
   bool xla_enable_command_buffers_during_profiling = 317;
 
-  // Next id: 318
+  // Limit for the number of kernel configurations (plans) to use during
+  // autotuning of cuDNN GEMM fusions. The more - the slower the autotuning
+  // but potentially higher the performance.
+  int32 xla_gpu_cudnn_gemm_max_plans = 318;
+
+  // Next id: 319
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
