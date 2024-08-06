@@ -571,8 +571,11 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
              "not able to go from sharding "
           << sharding().ToString(/*include_metadata=*/true) << " to "
           << target.ToString(/*include_metadata=*/true)
-          << " without doing a full rematerialization of the tensor. You "
-             "probably want to enrich the sharding annotations to prevent "
+          << " without doing a full rematerialization of the tensor for HLO "
+             "operation: "
+          << hlo_->ToString()
+          << ". You probably want to enrich the sharding annotations to "
+             "prevent "
              "this from happening.";
     }
     return Replicate().Reshard(target);
