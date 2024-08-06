@@ -484,21 +484,20 @@ struct SparseRemoveLayoutConversionPass
   }
 };
 
+bool IsLocalLoadWithSparseEncoding(Operation *op) {
+  auto local_load = mlir::dyn_cast<triton::gpu::LocalLoadOp>(op);
+  if (!local_load) return false;
+  return isa<triton::gpu::SparseDotMetaEncodingAttr>(
+      local_load.getType().getEncoding());
+}
+
 struct SparseLocalLoadToLLVMPass
     : public impl::SparseLocalLoadToLLVMPassBase<SparseLocalLoadToLLVMPass> {
   void runOnOperation() override {
     // Exit early if there are no sparse ops.
     ModuleOp mod = getOperation();
-    if (!mod.walk([](triton::gpu::LocalLoadOp op) {
-              if (isa<triton::gpu::SparseDotMetaEncodingAttr>(
-                      op.getType().getEncoding())) {
-                return WalkResult::interrupt();
-              }
-              return WalkResult::advance();
-            })
-             .wasInterrupted()) {
-      return;
-    }
+    if (!ContainsOp(mod, IsLocalLoadWithSparseEncoding)) return;
+
     // Allocate shared memory and set barrier
     // This is also done in the TritonGPUToLLVMPass but we need to do it before
     // we write the local load op to LLVM to have barriers in the right place.

@@ -155,6 +155,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "passes.cc",
         "prevent_mmav3_loop_unrolling.cc",
         "sparse_extensions.cc",
     ],

@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 
 namespace xla::gpu {
@@ -34,6 +36,11 @@ std::unique_ptr<mlir::Pass> CreateSparseLocalLoadToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateSparseDotOpToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateSparseWGMMAOpToLLVMPass();
 std::unique_ptr<mlir::Pass> CreatePreventMmaV3LoopUnrollingPass();
+
+// Returns true if the `op` contains an operation in it's regions that satisfies
+// the `fn`.
+bool ContainsOp(mlir::Operation* op,
+                llvm::function_ref<bool(mlir::Operation*)> fn);
 
 #define GEN_PASS_REGISTRATION
 #include "xla/service/gpu/fusions/triton/passes.h.inc"
