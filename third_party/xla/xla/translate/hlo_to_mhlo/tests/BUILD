@@ -21,7 +21,6 @@ lit_test_suite(
             "if_conditional.hlo",
             "import.hlo",
             "import_async.hlo",
-            "import_async2.hlo",
             "layouts_and_names.hlo",
             "location.hlo",
             "module_attributes.hlo",

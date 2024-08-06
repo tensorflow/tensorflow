@@ -605,6 +605,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                            : instruction_shape;
   TF_ASSIGN_OR_RETURN(auto result_type,
                       ConvertShapeToType<RankedTensorType>(shape, *builder_));
+  LLVM_DEBUG(llvm::dbgs() << "  result: " << result_type << "\n");
   mlir::Location loc = mlir::mhlo::GenerateInstructionLocation(
       instruction, func_builder->getContext());
 
@@ -1244,7 +1245,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kSendDone: {
       return ImportAsyncOpDone(instruction, loc, operands, attributes,
-                               result_type, func_builder);
+                               result_type, func_builder, HloOpcode::kSend);
     }
     case HloOpcode::kRecv: {
       return ImportRecv(instruction, loc, operands, attributes, result_type,
@@ -1252,7 +1253,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kRecvDone: {
       return ImportAsyncOpDone(instruction, loc, operands, attributes,
-                               result_type, func_builder);
+                               result_type, func_builder, HloOpcode::kRecv);
     }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;
