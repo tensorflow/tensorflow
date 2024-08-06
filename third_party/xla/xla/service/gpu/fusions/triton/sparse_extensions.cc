@@ -354,6 +354,53 @@ class SparseBlockedToMMAPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseBlockedToMMAPass)
 };
 
+// Transforms a layout conversion op that includes sparse dot meta to a local
+// alloc and a local load op.
+class SparseRemoveLayoutConversionPass
+    : public PassWrapper<SparseRemoveLayoutConversionPass,
+                         OperationPass<ModuleOp>> {
+ public:
+  SparseRemoveLayoutConversionPass() = default;
+
+  StringRef getArgument() const override {
+    return "sparse-remove-layout-conversion";
+  }
+
+  void runOnOperation() override {
+    getOperation().walk([&](triton::gpu::ConvertLayoutOp op) {
+      ImplicitLocOpBuilder builder(op.getLoc(), op);
+      // Skip if the source is already in shared memory.
+      auto src_encoding =
+          cast<RankedTensorType>(op.getSrc().getType()).getEncoding();
+      if (isa<triton::gpu::SharedEncodingAttr>(src_encoding)) {
+        return;
+      }
+      auto dst_type = cast<RankedTensorType>(op.getType());
+      // Skip if the destination is not a sparse dot meta.
+      if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(
+              dst_type.getEncoding())) {
+        return;
+      }
+
+      auto shared_layout = builder.getAttr<triton::gpu::SharedEncodingAttr>(
+          // DO_NOT_SUBMIT: Why we use this constants?
+          /*vec=*/8, /*perPhase=*/1, /*maxPhase=*/1,
+          triton::gpu::getOrder(src_encoding),
+          triton::gpu::getCTALayout(src_encoding));
+      auto mem_type = triton::MemDescType::get(
+          dst_type.getShape(), dst_type.getElementType(), shared_layout,
+          builder.getAttr<triton::gpu::SharedMemorySpaceAttr>());
+      Value alloc =
+          builder.create<triton::gpu::LocalAllocOp>(mem_type, op.getSrc());
+      Value convert = builder.create<triton::gpu::LocalLoadOp>(dst_type, alloc);
+      op.replaceAllUsesWith(convert);
+      op.erase();
+    });
+  }
+
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseRemoveLayoutConversionPass)
+};
+
 class SparseLocalLoadToLLVM
     : public ConvertOpToLLVMPattern<triton::gpu::LocalLoadOp> {
  public:
@@ -467,48 +514,6 @@ class SparseLocalLoadToLLVM
     rewriter.replaceOp(op, res);
     return success();
   }
-};
-
-class SparseRemoveLayoutConversionPass
-    : public PassWrapper<SparseRemoveLayoutConversionPass,
-                         OperationPass<ModuleOp>> {
- public:
-  SparseRemoveLayoutConversionPass() = default;
-
-  StringRef getArgument() const override {
-    return "sparse-remove-layout-conversion";
-  }
-
-  void runOnOperation() override {
-    getOperation().walk([&](triton::gpu::ConvertLayoutOp op) {
-      ImplicitLocOpBuilder builder(op.getLoc(), op);
-      auto srcEncoding =
-          cast<RankedTensorType>(op.getSrc().getType()).getEncoding();
-      if (isa<triton::gpu::SharedEncodingAttr>(srcEncoding)) {
-        return;
-      }
-      auto dstType = cast<RankedTensorType>(op.getType());
-      if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(dstType.getEncoding())) {
-        return;
-      }
-
-      auto ctaLayout = triton::gpu::getCTALayout(srcEncoding);
-      auto sharedLayout = builder.getAttr<triton::gpu::SharedEncodingAttr>(
-          8, 1, 1, triton::gpu::getOrder(srcEncoding), ctaLayout);
-      auto sharedMemorySpace =
-          builder.getAttr<triton::gpu::SharedMemorySpaceAttr>();
-      auto memType =
-          triton::MemDescType::get(dstType.getShape(), dstType.getElementType(),
-                                   sharedLayout, sharedMemorySpace);
-      Value alloc =
-          builder.create<triton::gpu::LocalAllocOp>(memType, op.getSrc());
-      Value convert = builder.create<triton::gpu::LocalLoadOp>(dstType, alloc);
-      op.replaceAllUsesWith(convert);
-      op.erase();
-    });
-  }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseRemoveLayoutConversionPass)
 };
 
 class SparseLocalLoadToLLVMPass
