@@ -496,7 +496,7 @@ absl::StatusOr<bool> HloControlFlowFlattening::Run(
           TF_RETURN_IF_ERROR(RemoveCollective(instruction).status());
         }
         changed = true;
-      } else if (remove_comm_ &&
+      } else if ((remove_comm_ || remove_id_) &&
                  (instruction->opcode() == HloOpcode::kPartitionId ||
                   instruction->opcode() == HloOpcode::kReplicaId ||
                   (instruction->opcode() == HloOpcode::kCustomCall &&
