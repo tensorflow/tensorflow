@@ -27,9 +27,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/core/absl_error_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
-#include "tensorflow/lite/core/model_builder.h"
 
 namespace mlir {
 namespace lite {
@@ -41,7 +41,7 @@ TEST(SparsifyModelTest, MetadataIsAddedToOutputModel) {
   std::string expected_value = "test_data";
 
   // Load input model
-  auto input_fbm = tflite::FlatBufferModel::BuildFromFile(
+  auto input_fbm = mlir::TFL::FlatBufferModelAbslError::BuildFromFile(
       "tensorflow/compiler/mlir/lite/sparsity/testdata/"
       "sparse_tensor.bin");
   tflite::ModelT input_model;
@@ -60,7 +60,7 @@ TEST(SparsifyModelTest, MetadataIsAddedToOutputModel) {
   // Sparsify and create output model
   flatbuffers::FlatBufferBuilder output_builder;
   ASSERT_TRUE(SparsifyModel(input_model, &output_builder).ok());
-  auto output_fbm = tflite::FlatBufferModel::BuildFromBuffer(
+  auto output_fbm = mlir::TFL::FlatBufferModelAbslError::BuildFromBuffer(
       reinterpret_cast<const char*>(output_builder.GetCurrentBufferPointer()),
       output_builder.GetSize());
   tflite::ModelT output_model;

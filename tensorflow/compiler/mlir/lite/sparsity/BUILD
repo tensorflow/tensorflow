@@ -54,9 +54,9 @@ tf_cc_test(
     ],
     deps = [
         ":sparsify_model",
+        "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
-        "//tensorflow/lite/core:model_builder",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
