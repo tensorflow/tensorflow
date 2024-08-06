@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emission_utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -79,6 +80,13 @@ bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
 // Return whether the given shape is rank 1 excluding the batch dimensions.
 bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
   return shape.rank() == batch_dimensions_size + 1;
+}
+
+bool IsMlirTransposeEmitterEnabled(const HloInstruction& hlo) {
+  return hlo.GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_mlir_emitter_level() >= 3;
 }
 
 }  // namespace
@@ -560,10 +568,22 @@ static std::optional<TransposeDescription> FindTiledTranspose(
                                   /*permutation=*/Vector3{2, 1, 0}};
     }
   }
+  if (IsMlirTransposeEmitterEnabled(instr)) {
+    if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
+            instr.operand(0)->shape(), instr.shape(), Vector3{1, 0, 2})) {
+      auto byte_width = primitive_util::ByteWidth(instr.shape().element_type());
+      if (byte_width * tr->at(2) <= kMaxBytesInMostMinorDimension &&
+          byte_width * tr->at(2) * std::min(tr->at(0), tr->at(1)) >=
+              kMinDimensionToTransposeTiled) {
+        return TransposeDescription{&instr, *tr,
+                                    /*permutation=*/Vector3{1, 0, 2}};
+      }
+    }
+  }
   return std::nullopt;
 }
 
-// Find 021 or 210 transpose in logical + physical transposition.
+// Find 021, 210 or 102 transpose in logical + physical transposition.
 static std::optional<TransposeDescription> FindTiledLogicalTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kTranspose) {
@@ -593,6 +613,20 @@ static std::optional<TransposeDescription> FindTiledLogicalTranspose(
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
       return TransposeDescription{&instr, *tr,
                                   /*permutation=*/Vector3{2, 1, 0}};
+    }
+  }
+  if (IsMlirTransposeEmitterEnabled(instr)) {
+    if (std::optional<Vector3> tr =
+            ShapeUtil::GetNormalizedLogicalTransposeShape(
+                instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
+                Vector3{1, 0, 2})) {
+      auto byte_width = primitive_util::ByteWidth(instr.shape().element_type());
+      if (byte_width * tr->at(2) <= kMaxBytesInMostMinorDimension &&
+          byte_width * tr->at(2) * std::min(tr->at(0), tr->at(1)) >=
+              kMinDimensionToTransposeTiled) {
+        return TransposeDescription{&instr, *tr,
+                                    /*permutation=*/Vector3{1, 0, 2}};
+      }
     }
   }
   return std::nullopt;

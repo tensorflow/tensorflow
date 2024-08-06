@@ -63,6 +63,92 @@ ENTRY entry {
   EXPECT_EQ(result->permutation, Vector3({0, 2, 1}));
 }
 
+TEST_F(IrEmissionUtilsTest, FindTiledLogical102Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,2]{2,1,0} parameter(0)
+  ROOT t = f32[48,32,2]{2,1,0} transpose(p), dimensions={1,0,2}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, Vector3({48, 32, 2}));
+  EXPECT_EQ(result->permutation, Vector3({1, 0, 2}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogical102TransposeTooMuchMemoryRequired) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = s8[32,48,9]{2,1,0} parameter(0)
+  ROOT t = s8[48,32,9]{2,1,0} transpose(p), dimensions={1,0,2}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiled102Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = s16[32,48,4]{2,1,0} parameter(0)
+  ROOT t = s16[32,48,4]{2,0,1} copy(p)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, Vector3({48, 32, 4}));
+  EXPECT_EQ(result->permutation, Vector3({1, 0, 2}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiled102TransposeTooMuchMemoryRequired) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = s8[32,48,9]{2,1,0} parameter(0)
+  ROOT t = s8[32,48,9]{2,0,1} copy(p)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_FALSE(result.has_value());
+}
+
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTranspose) {
   const char* hlo = R"(
 HloModule module

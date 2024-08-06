@@ -1731,5 +1731,23 @@ TEST_F(GpuFusibleTest, GetFusibleComputations) {
                                    module->entry_computation()));
 }
 
+TEST_F(GpuFusibleTest, GetSharedMemoryUsage) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    wrapped_transpose {
+      p0 = f32[128,1024,2]{2,1,0} parameter(0)
+      ROOT transpose = f32[1024,128,2]{2,1,0} transpose(p0), dimensions={1,0,2}
+    }
+    ENTRY main {
+      p = f32[128,1024,2] parameter(0)
+      ROOT res = f32[1024,128,2]{2,1,0} fusion(p), kind=kInput, calls=wrapped_transpose
+    })"))
+                    .value();
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+  FusionInfoCache cache;
+  auto fusion = module->entry_computation()->root_instruction();
+  EXPECT_EQ(cache.GetSharedMemoryUsage(*fusion), 32 * 33 * 2 * 4);
+}
+
 }  // namespace gpu
 }  // namespace xla

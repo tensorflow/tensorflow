@@ -264,7 +264,7 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   }
 
   // We expect that the last dimension is swapped with a different dimension.
-  if (HasConsistentTransposeHeros() && tiled_transpose_->permutation[2] != 2) {
+  if (HasConsistentTransposeHeros()) {
     return EmitterFusionKind::kTranspose;
   }
 
