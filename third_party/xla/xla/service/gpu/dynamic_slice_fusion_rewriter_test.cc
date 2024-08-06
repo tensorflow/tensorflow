@@ -1785,9 +1785,6 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSConstantOffset) {
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
-// This is not required to pass, but in current implementation this works by
-// forcing a D2H copy. Adding this here to ensure that the change in this
-// behaviour is intentional.
 TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSParameterOffset) {
   const char* hlo = R"(
   HloModule test, replica_count=2
@@ -1806,18 +1803,8 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSParameterOffset) {
     reduce-scatter = f16[64,128]{1,0} reduce-scatter(param_0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
     ROOT dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, param_2, constant_0)
   })";
-
-  const char* expected = R"(
-  // CHECK: %address-computation{{.+}} {
-  // CHECK:   %[[RS:.+]] = f16[64,128]{1,0} reduce-scatter({{.+}})
-  // CHECK:   ROOT %{{.+}} = f16[128,128]{1,0} dynamic-update-slice(%{{.+}}, %[[RS]], %{{.+}}, %{{.+}})
-  // CHECK: }
-  // CHECK: ENTRY {{.+}} {
-  // CHECK-NOT: reduce-scatter
-  // CHECK:   ROOT %{{.+}} = {{.+}} fusion(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}), kind=kCustom, calls=%address-computation{{.+}}"name":"dynamic_address_computation"
-  // CHECK: }
-  )";
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
+                            std::nullopt);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSLoopIterationOffset) {
@@ -1876,6 +1863,199 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSLoopIterationOffset) {
   // CHECK: Body{{.+}}{
   // CHECK-NOT: {{.+}} = {{.*}}reduce-scatter({{.+}})
   // CHECK:   {{.+}} = {{.+}}fusion({{.+}}), kind=kCustom, calls=%address-computation{{.*}}"name":"dynamic_address_computation"
+  // CHECK: }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+}
+
+TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLoopIteration) {
+  const char* hlo = R"(
+  HloModule test
+
+  %Body {
+    param = (f16[1,8,8]{2,1,0}, f16[1,8,8]{2,1,0}, f16[4,8,8]{2,1,0}, u32[]) parameter(0)
+    p0 = get-tuple-element(param), index=0
+    p1 = get-tuple-element(param), index=1
+    p2 = get-tuple-element(param), index=2
+    loop_iter = get-tuple-element(param), index=3
+
+    bitcast.41 = f16[8,8]{1,0} bitcast(p0)
+    bitcast.42 = f16[8,8]{1,0} bitcast(p1)
+    custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["0"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+      }}
+    bitcast.43 = f16[1,8,8]{2,1,0} bitcast(custom-call.1)
+    c0 = u32[] constant(0)
+    c_trip_count = u32[] constant(11)
+    compare = pred[] compare(loop_iter, c0), direction=LT
+    add = u32[] add(loop_iter, c_trip_count)
+    offset = u32[] select(compare, add, loop_iter)
+    dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, offset, c0, c0)
+    c1 = u32[] constant(1)
+    add2 = u32[] add(loop_iter, c1)
+    ROOT tuple = tuple(p0, p1, dus, u32[] add2)
+  }
+
+  %Cond {
+    %param.1 = (f16[1,8,8]{2,1,0}, f16[1,8,8]{2,1,0}, f16[4,8,8]{2,1,0}, u32[]) parameter(0)
+    %i.1 = u32[] get-tuple-element(%param.1), index=3
+    %trip_count = u32[] constant(11)
+    ROOT %done = pred[] compare(u32[] %i.1, u32[] %trip_count), direction=LT
+  }
+
+  ENTRY %test {
+    %p0.1 = f16[1,8,8]{2,1,0} parameter(0)
+    %p1.1 = f16[1,8,8]{2,1,0} parameter(1)
+    %p2.1 = f16[4,8,8]{2,1,0} parameter(2)
+    %c0.1 = u32[] constant(0)
+    %initial_tuple = tuple(%p0.1, %p1.1, %p2.1, u32[] %c0.1)
+    ROOT %while = while(%initial_tuple), condition=%Cond, body=%Body, backend_config={"known_trip_count":{"n":"11"}}
+  })";
+
+  const char* expected = R"(
+  // CHECK: %Body{{.+}}{
+  // CHECK:   %[[PARAM:.+]] = {{.+}} parameter(0)
+  // CHECK:   %[[LOOP_ITER:.+]] = u32[] get-tuple-element(%[[PARAM]]), index=3
+  // CHECK:   %[[OFFSET:.+]] = u32[] select({{.+}})
+  // CHECK:   %[[ADDRESS_COMPUTATION:.+]] = {{.+}} fusion({{.+}}, {{.+}}, {{.+}}, %[[OFFSET]], %{{.+}}), kind=kCustom, calls=%address-computation, {{.+}}"name":"dynamic_address_computation"
+  // CHECK:   ROOT %tuple = {{.+}} tuple(%{{.+}}, %{{.+}}, %[[ADDRESS_COMPUTATION]], %{{.+}})
+  // CHECK: }
+  // CHECK: ENTRY %test{{.+}}{
+  // CHECK:   ROOT %{{.+}} = {{.+}} while(%{{.+}}), condition=%{{.+}}, body=%Body{{.*}}, backend_config={"known_trip_count":{"n":"11"}}
+  }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+}
+
+TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmParameterOffset) {
+  const char* hlo = R"(
+      HloModule test
+
+    ENTRY main.9 {
+      p0 = f16[1,8,8]{2,1,0} parameter(0)
+      p1 = f16[1,8,8]{2,1,0} parameter(1)
+      p2 = f16[4,8,8]{2,1,0} parameter(2)
+      p3 = s32[] parameter(3)
+      c1_s32 = s32[] constant(1)
+      c0_s32 = s32[] constant(0)
+      bitcast.41 = f16[8,8]{1,0} bitcast(p0)
+      bitcast.42 = f16[8,8]{1,0} bitcast(p1)
+
+      custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
+        custom_call_target="__cublas$gemm",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+        }}
+      bitcast.43 = f16[1,8,8]{2,1,0} bitcast(custom-call.1)
+      ROOT dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, p3, c0_s32, c0_s32)
+    })";
+
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
+                            std::nullopt);
+}
+
+TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLaxScan) {
+  const char* hlo = R"(
+  HloModule lax_scan
+
+  // This is the HLO generated for the following:
+  // 
+  // inp = jax.random.uniform(jax.random.key(128), (128, 128, 128))
+  // init = jnp.identity(128)
+  // ans = jax.lax.scan(lambda carry, x : (init, x@carry), init, inp)
+
+  Body {
+    arg_tuple.15 = (s32[], f32[128,128]{1,0}, f32[128,128,128]{2,1,0}, f32[128,128,128]{2,1,0}, f32[128,128]{1,0}) parameter(0)
+    get-tuple-element.16 = s32[] get-tuple-element(arg_tuple.15), index=0
+    constant.21 = s32[] constant(1)
+    add.2 = s32[] add(get-tuple-element.16, constant.21)
+    get-tuple-element.30 = f32[128,128]{1,0} get-tuple-element(arg_tuple.15), index=4
+    get-tuple-element.18 = f32[128,128,128]{2,1,0} get-tuple-element(arg_tuple.15), index=2
+    get-tuple-element.19 = f32[128,128,128]{2,1,0} get-tuple-element(arg_tuple.15), index=3
+    constant.23 = s32[] constant(0)
+    compare.2 = pred[] compare(get-tuple-element.16, constant.23), direction=LT
+    constant.22 = s32[] constant(128)
+    add.3 = s32[] add(get-tuple-element.16, constant.22)
+    select.1 = s32[] select(compare.2, add.3, get-tuple-element.16)
+    dynamic-slice.1 = f32[1,128,128]{2,1,0} dynamic-slice(get-tuple-element.19, select.1, constant.23, constant.23), dynamic_slice_sizes={1,128,128}
+    bitcast.72 = f32[128,128]{1,0} bitcast(dynamic-slice.1)
+    get-tuple-element.17 = f32[128,128]{1,0} get-tuple-element(arg_tuple.15), index=1
+    custom-call.1 = (f32[128,128]{1,0}, s8[131072]{0}) custom-call(bitcast.72, get-tuple-element.17), custom_call_target="__cublas$gemm"
+    get-tuple-element = f32[128,128]{1,0} get-tuple-element(custom-call.1), index=0
+    bitcast.77 = f32[1,128,128]{2,1,0} bitcast(get-tuple-element)
+    dynamic-update-slice.1 = f32[128,128,128]{2,1,0} dynamic-update-slice(get-tuple-element.18, bitcast.77, select.1, constant.23, constant.23)
+    ROOT tuple.38 = tuple(add.2, get-tuple-element.30, dynamic-update-slice.1, get-tuple-element.19, get-tuple-element.30)
+  } // Body
+
+  Cond {
+    arg_tuple.40 = (s32[], f32[128,128]{1,0}, f32[128,128,128]{2,1,0}, f32[128,128,128]{2,1,0}, f32[128,128]{1,0}) parameter(0)
+    get-tuple-element.41 = s32[] get-tuple-element(arg_tuple.40), index=0
+    constant.46 = s32[] constant(128)
+    ROOT compare.3 = pred[] compare(get-tuple-element.41, constant.46), direction=LT
+  }
+
+  ENTRY main {
+    constant.4 = s32[] constant(0)
+    Arg_1.2 = f32[128,128]{1,0} parameter(1)
+    constant.5 = f32[] constant(0)
+    broadcast.1 = f32[128,128,128]{2,1,0} broadcast(constant.5), dimensions={}
+    Arg_2.3 = f32[128,128,128]{2,1,0} parameter(2)
+    Arg_0.1 = f32[128,128]{1,0} parameter(0)
+    tuple.7 = tuple(constant.4, Arg_1.2, broadcast.1, Arg_2.3, Arg_0.1)
+    while.48 = while(tuple.7), condition=Cond, body=Body, backend_config={"known_trip_count":{"n":"128"}}
+    get-tuple-element.50 = f32[128,128]{1,0} get-tuple-element(while.48), index=1
+    get-tuple-element.51 = f32[128,128,128]{2,1,0} get-tuple-element(while.48), index=2
+    ROOT tuple.54 = (f32[128,128]{1,0}, f32[128,128,128]{2,1,0}) tuple(get-tuple-element.50, get-tuple-element.51)
+  } // main.55
+
+)";
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  const char* expected = R"(
+  // CHECK: %address-computation{{.*}} {{.+}} {
+  // CHECK:   {{.+}} = {{.+}}dynamic-slice
+  // CHECK:   {{.+}} = {{.+}}custom-call
+  // CHECK:   {{.+}} = {{.+}}dynamic-update-slice
+  // CHECK: }
+  // CHECK: %Body{{.+}}{
+  // CHECK:   %[[PARAM:.+]] = {{.+}} parameter(0)
+  // CHECK:   %[[LOOP_ITER:.+]] = s32[] get-tuple-element(%[[PARAM]]), index=0
+  // CHECK:   %[[OFFSET:.+]] = s32[] select({{.+}})
+  // CHECK:   %[[ADDRESS_COMPUTATION:.+]] = {{.+}} fusion({{.+}}, %[[OFFSET]], %{{.+}}), kind=kCustom, calls=%address-computation{{.+}}"name":"dynamic_address_computation"
+  // CHECK:   %[[GTE:.+]] = {{.+}} get-tuple-element(%[[ADDRESS_COMPUTATION]]), index=0
+  // CHECK:   ROOT %{{.+}} = {{.+}} tuple(%{{.+}}, %[[GTE]], %{{.+}})
+  // CHECK: }
+  // CHECK: ENTRY %main{{.+}}{
+  // CHECK:   %{{.+}} = {{.+}} while(%{{.+}}), condition=%{{.+}}, body=%Body{{.*}}, backend_config={"known_trip_count":{"n":"128"}}
   // CHECK: }
   )";
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
