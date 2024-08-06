@@ -63,9 +63,10 @@ class Resolver(object):
       ns: namespace
       types_ns: types namespace
       name: symbol name
+
     Returns:
       Tuple (type, static_value). The first element is the type to use for
-      inferrence. The second is the static value to use. Return None to treat it
+      inference. The second is the static value to use. Return None to treat it
       as unknown.
     """
     raise NotImplementedError('subclasses must implement')
@@ -383,7 +384,7 @@ class StmtInferrer(gast.NodeVisitor):
     for t in f_types:
 
       if isinstance(t, Callable):
-        # Note: these are undocummented - may be version-specific!
+        # Note: these are undocumented - may be version-specific!
         # Callable[[x], y]: __args__ are (x, y)
         args = t.__args__
         if args:
