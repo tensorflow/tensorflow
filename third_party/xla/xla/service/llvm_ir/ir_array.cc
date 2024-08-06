@@ -527,6 +527,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     if (!index.LinearValidOnShape(shape_)) {
       // Create a valid linear index.
       std::vector<int64_t> dimensions;
+      dimensions.reserve(shape_.rank());
       for (int64_t i = 0; i < shape_.rank(); ++i) {
         dimensions.push_back(shape_.dimensions(i));
       }

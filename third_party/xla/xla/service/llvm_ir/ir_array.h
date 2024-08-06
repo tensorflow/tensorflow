@@ -250,9 +250,9 @@ class IrArray {
   IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape);
 
   // Default implementations of copying and moving.
-  IrArray(IrArray&& other) = default;
+  IrArray(IrArray&& other) noexcept = default;
   IrArray(const IrArray& other) = default;
-  IrArray& operator=(IrArray&& other) = default;
+  IrArray& operator=(IrArray&& other) noexcept = default;
   IrArray& operator=(const IrArray& other) = default;
 
   llvm::Value* GetBasePointer() const { return base_ptr_; }
