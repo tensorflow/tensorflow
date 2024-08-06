@@ -347,10 +347,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   if (config.split_k > 1) {
     TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, config));
-    GpuFloatSupport bf16_support(gpu_device_info.cuda_compute_capability(),
-                                 BF16);
-    FloatNormalization float_normalization(&bf16_support);
-    TF_RETURN_IF_ERROR(float_normalization.Run(new_module.get()).status());
+    for (PrimitiveType type :
+         {BF16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
+      GpuFloatSupport float_support(gpu_device_info.cuda_compute_capability(),
+                                    type);
+      FloatNormalization float_normalization(&float_support);
+      TF_RETURN_IF_ERROR(float_normalization.Run(new_module.get()).status());
+    }
 
     auto shape_size_function = [&](const Shape& shape) {
       // The real pointer size is set in GpuCompiler. In HloCostAnalysis, the

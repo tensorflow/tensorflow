@@ -118,6 +118,7 @@ xla_test(
         "nomac",
     ],
     deps = [
+        ":autotuner_compile_util",
         ":autotuner_util",
         ":gemm_fusion_autotuner",
         "//xla:autotuning_proto_cc",

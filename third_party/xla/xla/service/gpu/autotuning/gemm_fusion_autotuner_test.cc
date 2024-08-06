@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_fusion.h"
@@ -940,6 +941,55 @@ ENTRY wais {
 
 INSTANTIATE_TEST_SUITE_P(GemmFusionAutotunerConfigSweep,
                          GemmFusionAutotunerConfigTest, ::testing::Bool());
+
+TEST_F(GemmFusionAutotunerTest, SplitKFLoatNormalization) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "f8 types are only supported from Hopper onwards.";
+  }
+  const se::CudaComputeCapability compute_capability =
+      GetCudaComputeCapability();
+  se::GpuDeviceInfoProto deviceless_proto;
+  auto ccc = deviceless_proto.mutable_cuda_compute_capability();
+  ccc->set_major(compute_capability.major);
+  ccc->set_minor(compute_capability.minor);
+  DeviceConfig test_config{backend().default_stream_executor(),
+                           backend().memory_allocator()};
+  AutotuneConfig autotune_config{test_config, GetDebugOptionsForTest()};
+  GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
+                                    GetDebugOptionsForTest(), nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto compile_util,
+      AutotunerCompileUtil::Create(autotune_config, GetDebugOptionsForTest()))
+
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+%gemm_fusion_dot_computation (parameter_0: f8e5m2[256,256], parameter_1: f8e4m3fn[128,256]) -> f8e5m2[256,128] {
+  %parameter_0 = f8e5m2[256,256]{1,0} parameter(0)
+  %parameter_1 = f8e4m3fn[128,256]{1,0} parameter(1)
+  %dot.1 = f32[256,128]{1,0} dot(f8e5m2[256,256]{1,0} %parameter_0, f8e4m3fn[128,256]{1,0} %parameter_1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  ROOT %convert.2 = f8e5m2[256,128]{1,0} convert(f32[256,128]{1,0} %dot.1)
+}
+ENTRY entry {
+  %p0 = f8e5m2[256,256]{1,0} parameter(0)
+  %p1 = f8e4m3fn[128,256]{1,0} parameter(1)
+  ROOT r = f8e5m2[256,128]{1,0} fusion(f8e5m2[256,256]{1,0} %p0, f8e4m3fn[128,256]{1,0} %p1), kind=kCustom, calls=%gemm_fusion_dot_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+})")
+                                                  .value();
+  GemmFusionAutotunerImpl::TilingConfigs configs;
+  configs.emplace_back(DynCast<HloFusionInstruction>(
+                           module->entry_computation()->root_instruction()),
+                       std::vector<GemmFusionAutotunerImpl::Config>{
+                           GemmFusionAutotunerImpl::Config(TritonGemmConfig(
+                               /*block_m=*/32,
+                               /*block_n=*/64,
+                               /*block_k=*/64,
+                               /*split_k=*/4,
+                               /*num_stages=*/1,
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1))});
+  CHECK_OK(autotuner.CompileAll(*compile_util, configs));
+}
 
 }  // namespace
 }  // namespace gpu
