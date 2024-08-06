@@ -37,7 +37,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     const HloModule& test_module, HloRunnerInterface* test_runner,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
     const std::function<absl::Status(const HloModule&, HloRunnerInterface*,
-                                     HloModule*)>& module_modifier_hook = {});
+                                     HloModule*)>& module_modifier_hook = {},
+    bool skip_despecialization = false);
 
 }  // namespace xla
 

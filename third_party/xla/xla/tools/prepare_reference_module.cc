@@ -34,7 +34,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     const HloModule& test_module, HloRunnerInterface* test_runner,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
     const std::function<absl::Status(const HloModule&, HloRunnerInterface*,
-                                     HloModule*)>& module_modifier_hook) {
+                                     HloModule*)>& module_modifier_hook,
+    bool skip_despecialization) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   // The combination of fast math and optimizations leads to unsound code
   // transformations (see third_party/tensorflow/compiler/xla/xla.proto for
@@ -51,7 +52,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
   if (module_modifier_hook) {
     TF_RETURN_IF_ERROR(
         module_modifier_hook(test_module, test_runner, reference_module.get()));
-  } else {
+  } else if (!skip_despecialization) {
     TF_RETURN_IF_ERROR(Despecializer().Run(reference_module.get()).status());
   }
   return std::move(reference_module);

@@ -508,6 +508,19 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "prepare_reference_module_test",
+    srcs = ["prepare_reference_module_test.cc"],
+    deps = [
+        ":prepare_reference_module",
+        "//xla:test",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 tf_proto_library(
     name = "run_hlo_module_proto",
     srcs = ["run_hlo_module.proto"],
