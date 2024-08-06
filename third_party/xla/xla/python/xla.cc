@@ -62,9 +62,6 @@ limitations under the License.
 #include "xla/python/py_program.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/tsl/python/lib/core/numpy.h"  //NOLINT
-#ifdef XLA_PYTHON_ENABLE_GPU
-#include "xla/python/gpu_support.h"
-#endif  // XLA_PYTHON_ENABLE_GPU
 
 #ifdef __linux__
 #include "gloo/transport/tcp/attr.h"
@@ -387,10 +384,6 @@ NB_MODULE(xla_extension, m_nb) {
   m_nb.def("initialize_pjrt_plugin", [](std::string platform_name) {
     return xla::ThrowIfError(pjrt::InitializePjrtPlugin(platform_name));
   });
-
-#ifdef XLA_PYTHON_ENABLE_GPU
-  RegisterGpuClientAndDefineGpuAllocatorConfig(m_nb);
-#endif  // XLA_PYTHON_ENABLE_GPU
 
   m_nb.def(
       "get_c_api_client",
