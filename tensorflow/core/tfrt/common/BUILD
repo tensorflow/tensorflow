@@ -188,13 +188,13 @@ tf_cc_test(
         ":pjrt_state",
         ":pjrt_util",
         "//tensorflow/core:framework",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/pjrt/cpu:cpu_client",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -214,13 +214,13 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
         "@local_xla//xla/service:gpu_plugin",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

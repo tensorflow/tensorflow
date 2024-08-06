@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/dump_graph.h"
 
 #include "absl/strings/match.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {

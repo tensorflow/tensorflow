@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

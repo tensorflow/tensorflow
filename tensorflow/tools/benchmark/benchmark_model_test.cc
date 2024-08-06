@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/stat_summarizer.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

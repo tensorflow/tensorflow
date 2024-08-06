@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/math_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/config/flags.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 

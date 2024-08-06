@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/port.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {

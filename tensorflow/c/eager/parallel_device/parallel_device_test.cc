@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 
 // NOTE(allenl): These tests currently go through TFE_Execute and so are
 // integration testing rather than purely testing the parallel device. They

@@ -21,11 +21,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {

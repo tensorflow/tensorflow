@@ -17,13 +17,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"

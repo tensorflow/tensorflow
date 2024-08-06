@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime

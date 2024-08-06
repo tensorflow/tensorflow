@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 

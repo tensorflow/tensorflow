@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/state_ops.h"
 #include "tensorflow/cc/training/coordinator.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/protobuf/error_codes.pb.h"
 

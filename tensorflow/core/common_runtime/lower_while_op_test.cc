@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

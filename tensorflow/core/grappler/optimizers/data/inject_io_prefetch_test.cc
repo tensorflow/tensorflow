@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace grappler {

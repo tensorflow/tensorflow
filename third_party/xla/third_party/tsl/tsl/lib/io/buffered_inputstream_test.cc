@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tsl/lib/io/buffered_inputstream.h"
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/random_inputstream.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"

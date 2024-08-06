@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {

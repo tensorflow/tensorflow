@@ -17,11 +17,11 @@ limitations under the License.
 #include <array>
 #include <climits>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

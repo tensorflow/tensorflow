@@ -25,13 +25,13 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 
 #ifdef TF_GPU_USE_PJRT
 #include "xla/pjrt/pjrt_client.h"

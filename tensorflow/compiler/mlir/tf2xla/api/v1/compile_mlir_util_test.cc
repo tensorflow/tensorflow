@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

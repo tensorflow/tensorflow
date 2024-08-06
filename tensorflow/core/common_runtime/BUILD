@@ -3427,10 +3427,10 @@ tf_cc_test(
         "//tensorflow/core/framework:function_testlib",
         "//tensorflow/core/framework:optimized_function_graph_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -3477,9 +3477,9 @@ tf_cc_test(
         "//tensorflow/core/kernels:function_ops",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -3497,7 +3497,7 @@ tf_cc_test(
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

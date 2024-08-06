@@ -16,10 +16,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tfrt/core_runtime/op_attr_type.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime

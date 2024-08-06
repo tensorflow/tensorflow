@@ -20,7 +20,7 @@ limitations under the License.
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/base64.h"
 #include "tsl/platform/cloud/http_request_fake.h"
 #include "tsl/platform/env.h"

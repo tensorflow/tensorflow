@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/cc/framework/scope.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/config/flag_defs.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace tensorflow {

@@ -34,11 +34,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tsl/lib/core/status_test_util.h"
 
 // Note: branched from tensorflow/lite/tools/optimize/quantize_model_test.cc
 

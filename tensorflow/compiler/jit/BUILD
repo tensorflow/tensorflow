@@ -678,7 +678,6 @@ tf_cc_test(
         "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
@@ -686,6 +685,7 @@ tf_cc_test(
         "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
         "@local_xla//xla/tests:literal_test_util",
         "@local_xla//xla/tsl/framework:device_id_utils",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -712,11 +712,11 @@ tf_cuda_only_cc_test(
         "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/tests:literal_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

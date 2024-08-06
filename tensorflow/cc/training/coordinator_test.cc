@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/cc/training/coordinator.h"
 
 #include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {

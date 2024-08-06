@@ -21,13 +21,13 @@ limitations under the License.
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {

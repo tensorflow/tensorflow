@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 

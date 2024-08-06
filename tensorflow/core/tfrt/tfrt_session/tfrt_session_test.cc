@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tensorflow {

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/inputbuffer.h"
 #include "tsl/lib/io/random_inputstream.h"
 #include "tsl/lib/io/snappy/snappy_inputbuffer.h"

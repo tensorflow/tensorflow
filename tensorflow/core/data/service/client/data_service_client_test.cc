@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/test_cluster.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {

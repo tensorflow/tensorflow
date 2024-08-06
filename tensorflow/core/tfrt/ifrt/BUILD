@@ -411,10 +411,10 @@ tf_cc_test(
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -434,7 +434,6 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
@@ -445,6 +444,7 @@ tf_cc_test(
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@local_xla//xla/tsl/concurrency:ref_count",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@tf_runtime//:hostcontext",
     ],
 )

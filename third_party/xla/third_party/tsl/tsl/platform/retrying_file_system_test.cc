@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <fstream>
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/test.h"
 

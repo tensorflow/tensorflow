@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cstring>
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/cloud/now_seconds_env.h"
 #include "tsl/platform/env.h"

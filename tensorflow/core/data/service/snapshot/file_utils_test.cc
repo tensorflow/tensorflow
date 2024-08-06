@@ -18,13 +18,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

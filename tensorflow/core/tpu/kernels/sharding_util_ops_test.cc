@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/protobuf/error_codes.pb.h"
 

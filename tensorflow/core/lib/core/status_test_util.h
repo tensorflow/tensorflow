@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_CORE_STATUS_TEST_UTIL_H_
 #define TENSORFLOW_CORE_LIB_CORE_STATUS_TEST_UTIL_H_
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 
 #endif  // TENSORFLOW_CORE_LIB_CORE_STATUS_TEST_UTIL_H_

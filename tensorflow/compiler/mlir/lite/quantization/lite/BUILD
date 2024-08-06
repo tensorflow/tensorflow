@@ -177,7 +177,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

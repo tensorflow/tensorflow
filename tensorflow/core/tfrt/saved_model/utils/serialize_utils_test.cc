@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 

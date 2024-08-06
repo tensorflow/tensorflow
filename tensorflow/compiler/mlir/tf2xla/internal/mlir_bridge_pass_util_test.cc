@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/tpu_functional_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/enable_tf2_utils.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 

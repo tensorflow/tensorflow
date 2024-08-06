@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gmock/gmock.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/kernels/batch_kernel_test_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
