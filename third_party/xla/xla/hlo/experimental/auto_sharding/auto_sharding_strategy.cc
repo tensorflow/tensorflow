@@ -824,15 +824,7 @@ BuildStrategyAndCost(
               }
             };
 
-        if (IsCustomCallMarker(ins)) {
-          const HloInstruction* operand = ins->operand(0);
-          const StrategyGroup* src_strategy_group =
-              strategy_map.at(operand).get();
-          CHECK(src_strategy_group->is_tuple);
-          strategy_group = MaybeFollowInsStrategyGroup(
-              src_strategy_group, ins->shape(), instruction_id, strategy_groups,
-              cluster_env, pretrimmed_strategy_map);
-        } else if (IsSPMDFullToShardShapeCustomCall(ins)) {
+        if (IsSPMDFullToShardShapeCustomCall(ins)) {
           return absl::InternalError(
               "An SPMDFullToShardShape call found outside a manually "
               "partitioned sub-graph.");

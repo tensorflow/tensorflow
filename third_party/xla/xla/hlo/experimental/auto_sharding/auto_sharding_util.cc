@@ -64,11 +64,6 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
-inline const HloInstruction* PassThroughCustomCallMarkerGetSource(
-    const HloInstruction* ins);
-inline HloInstruction* PassThroughCustomCallMarkerUser(
-    HloInstruction* raw_user, const HloInstruction* inst);
-
 std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
                                             int64_t op_index,
                                             const HloSharding& output_sharding,
@@ -221,10 +216,6 @@ InstructionDepthMap BuildInstructionDepthMap(
 
           if (reset) {
             depth_map[node] = 0;
-          } else if (node->opcode() == HloOpcode::kGetTupleElement &&
-                     IsCustomCallMarker(node->operand(0))) {
-            depth_map[node] =
-                depth_map.at(PassThroughCustomCallMarkerGetSource(node));
           } else {
             int64_t max_depth = depth_map.at(inst) + delta;
             for (const HloInstruction* operand : node->operands()) {
@@ -943,8 +934,7 @@ void TryReduceWithCommonAncestor(InstructionSet& replicated_set,
   for (HloInstruction* node : boundary_set) {
     HloInstruction* cur = node;
     while (cur->operand_count() == 1) {
-      HloInstruction* operand =
-          PassThroughCustomCallMarkerOperand(cur->mutable_operand(0), cur);
+      HloInstruction* operand = cur->mutable_operand(0);
       if (replicated_set.contains(operand)) {
         path.insert(cur);
       }
@@ -982,8 +972,7 @@ void UseAllReduceForGradAcc(InstructionSet& replicated_set,
 
   // Find the add instruction for grad accumulation, skip the identity marker
   // for remat and other elementwise ops.
-  HloInstruction* add =
-      PassThroughCustomCallMarkerUser(inst->users().front(), inst);
+  HloInstruction* add = inst->users().front();
   if (add->opcode() == HloOpcode::kGetTupleElement ||
       add->opcode() == HloOpcode::kTranspose) {
     if (add->users().size() != 1) {
@@ -1000,7 +989,7 @@ void UseAllReduceForGradAcc(InstructionSet& replicated_set,
     }
     CHECK_EQ(add->users().size(), 1);
     // Skip the end marker of backward computation
-    add = PassThroughCustomCallMarkerUser(add->users().front(), add);
+    add = add->users().front();
 
     // Do not partition the dot, add and parameter, so we can generate
     // all-reduce for grad accumulation.
@@ -1012,7 +1001,7 @@ void UseAllReduceForGradAcc(InstructionSet& replicated_set,
 
       replicated_set.erase(cur);
       for (auto x : cur->operands()) {
-        dfs_remove(PassThroughCustomCallMarkerOperand(x, cur));
+        dfs_remove(x);
       }
     };
 
@@ -1645,10 +1634,6 @@ AliasMap BuildAliasMap(const HloModule* module,
   HloComputation* entry = module->entry_computation();
   const auto& parameter_instructions = entry->parameter_instructions();
   const HloInstruction* output_tuple = entry->root_instruction();
-
-  if (IsCustomCallMarker(output_tuple)) {
-    output_tuple = output_tuple->operand(0);
-  }
 
   absl::flat_hash_map<int64_t, absl::flat_hash_map<int64_t, HloInstruction*>>
       parameter_index_to_operand_map;
