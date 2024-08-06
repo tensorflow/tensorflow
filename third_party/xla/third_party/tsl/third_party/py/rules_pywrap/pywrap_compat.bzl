@@ -1,5 +1,5 @@
 # TODO(b/356020232): remove entire file and all usages after migration is done
-load("//rules_pywrap:pywrap.bzl", "pybind_extension")
+load("//third_party/py/rules_pywrap:pywrap.bzl", "pybind_extension")
 
 def pywrap_pybind_extension(
         name, # original

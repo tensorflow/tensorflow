@@ -593,6 +593,9 @@ def _tf_repositories():
 
 # buildifier: disable=unnamed-macro
 def workspace():
+    # TODO(b/356020232): remove after migration is done
+    pywrap_compat_init(name = "pywrap_compat")
+
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.
     versions.check("1.0.0")

@@ -1267,7 +1267,9 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:optional",
         "@pybind11",
         # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ] + if_static(
+    ] + if_pywrap(
+        if_true = ["//tensorflow/python/eager:pywrap_tfe_lib"]
+    ) + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",

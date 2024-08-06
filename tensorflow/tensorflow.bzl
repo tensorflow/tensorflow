@@ -26,9 +26,9 @@ load(
     "onednn_v3_define",
 )
 load("@pywrap_compat//:pywrap_compat.bzl", "use_pywrap_rules")
-load("@local_xla//rules_pywrap:pywrap_compat.bzl", "pywrap_pybind_extension")
+load("@local_tsl//third_party/py/rules_pywrap:pywrap_compat.bzl", "pywrap_pybind_extension")
 load(
-    "@local_xla//rules_pywrap:pywrap.bzl",
+    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
     _pywrap_library = "pywrap_library",
     _pywrap_common_library = "pywrap_common_library",
     _stripped_cc_info = "stripped_cc_info",

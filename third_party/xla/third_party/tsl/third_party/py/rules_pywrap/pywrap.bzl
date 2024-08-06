@@ -536,7 +536,7 @@ _pywrap_info_wrapper = rule(
         "outer_module_name": attr.string(mandatory = False, default = ""),
         "py_stub_src": attr.label(
             allow_single_file = True,
-            default = Label("//rules_pywrap:pybind_extension.py.tpl")
+            default = Label("//third_party/py/rules_pywrap:pybind_extension.py.tpl")
         ),
         "additional_exported_symbols": attr.string_list(
             mandatory = False,

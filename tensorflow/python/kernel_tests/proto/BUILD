@@ -7,7 +7,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("@local_xla//rules_pywrap:pywrap.bzl", "stripped_cc_info")
+load("@local_tsl//third_party/py/rules_pywrap:pywrap.bzl", "stripped_cc_info")
 load("//tensorflow:tensorflow.bzl", "if_oss")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 

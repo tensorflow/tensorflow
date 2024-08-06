@@ -34,7 +34,7 @@ load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
-load("//rules_pywrap:pywrap_compat.bzl", "pywrap_pybind_extension")
+load("@local_tsl//third_party/py/rules_pywrap:pywrap_compat.bzl", "pywrap_pybind_extension")
 
 # Internally this loads a macro, but in OSS this is a function
 # buildifier: disable=out-of-order-load
