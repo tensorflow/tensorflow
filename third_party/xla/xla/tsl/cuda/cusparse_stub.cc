@@ -24,6 +24,9 @@ limitations under the License.
 
 // Implements the cusparse API by forwarding to cusparse loaded from the DSO.
 
+// Note that we do not need this for MSVC because it already uses lazy loading.
+#if !defined(_MSC_VER)
+
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
 void* GetDsoHandle() {
@@ -92,3 +95,4 @@ void _cusparse_tramp_resolve(int i) {
 }
 
 }  // extern "C"
+#endif

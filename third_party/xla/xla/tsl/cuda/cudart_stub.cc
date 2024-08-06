@@ -24,6 +24,9 @@ limitations under the License.
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/logging.h"
 
+// Note that we do not need this for MSVC because it already uses lazy loading.
+#if !defined(_MSC_VER)
+
 namespace {
 void *GetDsoHandle() {
   static auto handle = []() -> void * {
@@ -89,3 +92,4 @@ void _cudart_tramp_resolve(int i) {
 }
 
 }  // extern "C"
+#endif
