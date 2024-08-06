@@ -12,7 +12,7 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
     "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
-    "#cmakedefine ONEDNN_BUILD_GRAPH": "#undef ONEDNN_BUILD_GRAPH",
+    "#cmakedefine ONEDNN_BUILD_GRAPH": "#define ONEDNN_BUILD_GRAPH",
     "#cmakedefine DNNL_EXPERIMENTAL_SPARSE": "#define DNNL_EXPERIMENTAL_SPARSE",
     "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",
@@ -109,6 +109,7 @@ _COPTS_LIST = select({
     "-UUSE_CBLAS",
     "-DDNNL_ENABLE_MAX_CPU_ISA",
     "-DDNNL_ENABLE_ITT_TASKS",
+    "-DDNNL_ENABLE_GRAPH_DUMP",
 ] + tf_openmp_copts()
 
 _INCLUDES_LIST = [
@@ -119,6 +120,7 @@ _INCLUDES_LIST = [
     "src/cpu",
     "src/cpu/gemm",
     "src/cpu/x64/xbyak",
+    "src/graph",
 ]
 
 _TEXTUAL_HDRS_LIST = glob([
@@ -129,6 +131,15 @@ _TEXTUAL_HDRS_LIST = glob([
     "src/cpu/**/*.hpp",
     "src/cpu/jit_utils/**/*.hpp",
     "src/cpu/x64/xbyak/*.h",
+    "src/graph/interface/*.hpp",
+    "src/graph/backend/*.hpp",
+    "src/graph/backend/dnnl/*.hpp",
+    "src/graph/backend/fake/*.hpp",
+    "src/graph/backend/dnnl/passes/*.hpp",
+    "src/graph/backend/dnnl/patterns/*.hpp",
+    "src/graph/backend/dnnl/kernels/*.hpp",
+    "src/graph/utils/*.hpp",
+    "src/graph/utils/pm/*.hpp",
 ]) + [
     ":dnnl_config_h",
     ":dnnl_version_h",
@@ -160,6 +171,16 @@ cc_library(
             "src/cpu/**/*.cpp",
             "src/common/ittnotify/*.c",
             "src/cpu/jit_utils/**/*.cpp",
+            "src/cpu/x64/**/*.cpp",
+            "src/graph/interface/*.cpp",
+            "src/graph/backend/*.cpp",
+            "src/graph/backend/dnnl/*.cpp",
+            "src/graph/backend/fake/*.cpp",
+            "src/graph/backend/dnnl/passes/*.cpp",
+            "src/graph/backend/dnnl/patterns/*.cpp",
+            "src/graph/backend/dnnl/kernels/*.cpp",
+            "src/graph/utils/*.cpp",
+            "src/graph/utils/pm/*.cpp",
         ],
         exclude = [
             "src/cpu/aarch64/**",
