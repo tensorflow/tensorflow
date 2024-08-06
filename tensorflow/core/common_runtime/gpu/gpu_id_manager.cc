@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 
+#include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
