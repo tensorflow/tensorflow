@@ -146,22 +146,3 @@ def pywrap_aware_cc_import(name, **kwargs):
             name = name,
             **kwargs,
         )
-
-def pywrap_aware_py_strict_library(
-        name,
-        srcs = None,
-        deps = None,
-        visibility = None,
-        **kwargs):
-    if use_pywrap_rules():
-        native.py_library(
-            name = name,
-            srcs = [],
-            deps = [],
-            **kwargs,
-        )
-    else:
-        native.py_library(
-            name = name,
-            **kwargs,
-        )

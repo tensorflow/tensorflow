@@ -22,7 +22,6 @@ load(
     "pywrap_aware_filegroup",
     "pywrap_aware_genrule",
     "pywrap_aware_cc_import",
-    "pywrap_aware_py_strict_library",
     "pybind_extension",
     "pywrap_library",
     "pywrap_common_library",
