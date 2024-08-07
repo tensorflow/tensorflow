@@ -37,7 +37,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/Support/Error.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -80,12 +82,18 @@ using FunctionRegistry = CpuExecutable::FunctionRegistry;
 
 FunctionRegistry::FunctionRegistry(SimpleOrcJIT* jit) : jit_(jit) {}
 
+std::string FunctionRegistry::Mangle(std::string_view name) {
+  llvm::SmallVector<char, 40> mangled;
+  llvm::Mangler::getNameWithPrefix(mangled, name, jit_->data_layout());
+  return std::string(mangled.begin(), mangled.end());
+}
+
 absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
     std::string_view name) {
   VLOG(3) << "Find host kernel with a name " << name;
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
-      jit_->FindCompiledSymbol(std::string(name));
+      jit_->FindCompiledSymbol(Mangle(name));
   if (!sym) {
     return absl::InvalidArgumentError(
         absl::StrCat("Can't resolve host kernel with a name ", name,
@@ -99,7 +107,7 @@ absl::StatusOr<FunctionRegistry::Comparator> FunctionRegistry::FindComparator(
   VLOG(3) << "Find comparator with a name " << name;
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
-      jit_->FindCompiledSymbol(std::string(name));
+      jit_->FindCompiledSymbol(Mangle(name));
   if (!sym) {
     return absl::InvalidArgumentError(
         absl::StrCat("Can't resolve comparator with a name ", name,

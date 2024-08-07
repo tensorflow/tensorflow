@@ -151,6 +151,8 @@ class CpuExecutable : public Executable {
     absl::StatusOr<Comparator> FindComparator(std::string_view name) final;
 
    private:
+    std::string Mangle(std::string_view name);
+
     SimpleOrcJIT* jit_;
   };
 

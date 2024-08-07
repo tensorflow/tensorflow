@@ -1271,11 +1271,17 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
         std::move(llvm_module), std::move(llvm_context))));
 
+    auto mangle = [&](std::string_view name) {
+      llvm::SmallVector<char, 40> mangled;
+      llvm::Mangler::getNameWithPrefix(mangled, name, (*jit)->data_layout());
+      return std::string(mangled.begin(), mangled.end());
+    };
+
     // TODO(ezhulenev): We should be able to make it lazy on-demand, but today
     // we capture obj_files by reference and it leads to asan errors. Figure out
     // lifetime issues and move compilation to Thunk initialization stage.
     for (const auto& kernel : ir_emitter2.kernels()) {
-      if (auto sym = (*jit)->FindCompiledSymbol(kernel.name); !sym) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
         return Internal("Failed to find compiled symbol for kernel %s",
                         kernel.name);
       }
@@ -1283,7 +1289,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
     // Compile auxiliary comparator functions used by sort thunks.
     for (const auto& comparator : ir_emitter2.comparators()) {
-      if (auto sym = (*jit)->FindCompiledSymbol(comparator.name); !sym) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
         return Internal("Failed to find compiled symbol for comparator %s",
                         comparator.name);
       }
@@ -1783,16 +1789,22 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
+    auto mangle = [&](std::string_view name) {
+      llvm::SmallVector<char, 40> mangled;
+      llvm::Mangler::getNameWithPrefix(mangled, name, (*jit)->data_layout());
+      return std::string(mangled.begin(), mangled.end());
+    };
+
     // Lookup all kernel functions by name in the loaded object file.
     for (const auto& kernel : ir_emitter2.kernels()) {
-      if (auto sym = (*jit)->FindCompiledSymbol(kernel.name); !sym) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
         return Internal("Failed to find compiled symbol for kernel %s",
                         kernel.name);
       }
     }
 
     for (const auto& comparator : ir_emitter2.comparators()) {
-      if (auto sym = (*jit)->FindCompiledSymbol(comparator.name); !sym) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
         return Internal("Failed to find compiled symbol for comparator %s",
                         comparator.name);
       }
