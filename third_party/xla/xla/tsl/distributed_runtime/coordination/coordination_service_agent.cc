@@ -622,7 +622,7 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
     } else {
       LOG(ERROR)
           << "Failed to disconnect from coordination service with status: "
-          << status
+          << TrimCoordinationErrorMessage(status)
           << "\nProceeding with agent shutdown anyway. This is usually caused "
              "by an earlier error during execution. Check the logs (this task "
              "or the leader) for an earlier error to debug further.";
@@ -887,11 +887,12 @@ void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
   assert(!error.ok());
   absl::MutexLock l(&state_mu_);
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
+  absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
 
-  LOG(ERROR) << "Coordination agent is set to ERROR: " << error;
+  LOG(ERROR) << "Coordination agent is set to ERROR: " << trimmed_error;
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
-  status_ = error;
-  error_fn_(error);
+  status_ = trimmed_error;
+  error_fn_(trimmed_error);
 }
 
 absl::Status CoordinationServiceAgentImpl::ActivateWatch(

@@ -360,9 +360,7 @@ CoordinationClientCache* NewGrpcCoordinationClientCache(
 
 CoordinationClient* NewGrpcCoordinationClient(
     std::shared_ptr<::grpc::Channel> channel) {
-  // TODO(hanyangtay): Pass in the logical task name for better logging.
-  return new GrpcCoordinationClient(
-      channel, /*target=*/"unknown_target_for_coordination_leader");
+  return new GrpcCoordinationClient(channel, /*target=*/"coordination_service");
 }
 
 }  // namespace tsl

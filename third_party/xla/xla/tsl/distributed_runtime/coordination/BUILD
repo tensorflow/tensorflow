@@ -13,11 +13,13 @@ package(
 
 cc_library(
     name = "coordination_service_error_util",
+    srcs = ["coordination_service_error_util.cc"],
     hdrs = ["coordination_service_error_util.h"],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
+        "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
     ],
 )
@@ -28,6 +30,7 @@ tsl_cc_test(
     deps = [
         ":coordination_service_error_util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
