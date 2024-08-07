@@ -185,8 +185,7 @@ TEST(CAPI, MultiClientSendRecv) {
     if (worker_id == 0) {
       TFE_TensorHandle* in = TestMatrixTensorHandle(ctx);
       const std::string& op_name =
-          tensorflow::str_util::StrContains(send_device, "GPU") ? "Send"
-                                                                : "_HostSend";
+          absl::StrContains(send_device, "GPU") ? "Send" : "_HostSend";
       TFE_Op* sendop = SendOp(ctx, in, op_name, send_device, recv_device,
                               send_device_incarnation);
       TFE_TensorHandle* retvals[1];
@@ -197,8 +196,7 @@ TEST(CAPI, MultiClientSendRecv) {
       TFE_DeleteTensorHandle(in);
     } else {
       const std::string& op_name =
-          tensorflow::str_util::StrContains(send_device, "GPU") ? "Recv"
-                                                                : "_HostRecv";
+          absl::StrContains(send_device, "GPU") ? "Recv" : "_HostRecv";
       TFE_Op* recvop = RecvOp(ctx, op_name, send_device, recv_device,
                               send_device_incarnation);
       TFE_TensorHandle* retvals[1];
