@@ -3842,49 +3842,6 @@ absl::StatusOr<cudnn_frontend::Operation> CreateTernaryPwOp(
   RETURN_MSG_IF_CUDNN_ERROR(pw_op_created);
   return pw_op_created;
 }
-
-// Returns a cudnn tensor that's the output of the mask op
-absl::StatusOr<cudnn_frontend::Tensor> CreateCudnnMaskFwdTensor(
-    std::vector<cudnn_frontend::Operation>& ops, absl::Span<const int64_t> dims,
-    absl::Span<const int64_t> strides, dnn::DataType dtype,
-    cudnn_frontend::Tensor& input_tensor) {
-  std::vector<int64_t> mask_dim(dims.size(), 1);
-  std::vector<int64_t> mask_stride(strides.size(), 1);
-
-  // Create the mask tensor
-  TF_ASSIGN_OR_RETURN(
-      auto mask_tensor,
-      CreateCudnnTensor(dims, strides, CudnnfMHAUid::MASK_ID, dtype, 1, -1,
-                        /*is_virtual=*/false));
-  // Create the mask output tensor
-  TF_ASSIGN_OR_RETURN(
-      auto mask_out_tensor,
-      CreateCudnnTensor(dims, strides, CudnnfMHAUid::VIRTUAL_ID + 400,
-                        dnn::DataType::kFloat, 1, -1,
-                        /*is_virtual=*/true));
-
-  auto mask_desc = cudnn_frontend::PointWiseDescBuilder()
-                       .setMode(CUDNN_POINTWISE_MUL)
-                       .setComputeType(CUDNN_DATA_FLOAT)
-                       .build();
-
-  // Create the mask op.
-  auto mask_op = cudnn_frontend::OperationBuilder(
-                     CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
-                     .setxDesc(input_tensor)
-                     .setbDesc(mask_tensor)
-                     .setyDesc(mask_out_tensor)
-                     .setpwDesc(mask_desc)
-                     .build();
-
-  RETURN_MSG_IF_CUDNN_ERROR(mask_op);
-
-  RETURN_MSG_IF_CUDNN_ERROR(mask_out_tensor);
-  // Add mask to op list
-  ops.push_back(std::move(mask_op));
-
-  return mask_out_tensor;
-}
 #endif  // CUDNN_VERSION >= 8800
 
 absl::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
