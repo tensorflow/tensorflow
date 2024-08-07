@@ -154,7 +154,9 @@ LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
        llvm::zip(input_type.getShape(), op.getStartIndices(), stride_sizes)) {
     const int64_t clamp_right_val = dim_size - stride_size;
     auto clamp_right_cst = rewriter.create<arith::ConstantOp>(
-        op->getLoc(), DenseIntElementsAttr::get(start_type, clamp_right_val));
+        op->getLoc(),
+        DenseElementsAttr::get(start_type, rewriter.getIntegerAttr(
+                                               start_e_type, clamp_right_val)));
 
     Value new_start_ind = rewriter.create<TFL::MaximumOp>(
         op->getLoc(), start_type, clamp_left_cst, start_ind_opr);
