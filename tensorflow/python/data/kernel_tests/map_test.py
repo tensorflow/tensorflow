@@ -1542,6 +1542,20 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(
+                             use_unbounded_threadpool=[True, False])))
+  def testAutotuneUseUnboundedThreadpool(self, use_unbounded_threadpool):
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.map(
+        lambda x: x * 2,
+        num_parallel_calls=dataset_ops.AUTOTUNE,
+        use_unbounded_threadpool=use_unbounded_threadpool,
+        deterministic=True,
+        name="map")
+    self.assertDatasetProduces(dataset, [x * 2 for x in range(100)])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 1])))
   def testName(self, num_parallel_calls):
     dataset = dataset_ops.Dataset.from_tensors(21).map(
