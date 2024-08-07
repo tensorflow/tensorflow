@@ -658,9 +658,9 @@ struct RetDecoding<Buffer<dtype, rank>> {
 // Type-safe wrapper for accessing a variable number of results.
 //===----------------------------------------------------------------------===//
 
-class RemainingResults : public internal::RemainingResultsBase {
+class RemainingRets : public internal::RemainingRetsBase {
  public:
-  using internal::RemainingResultsBase::RemainingResultsBase;
+  using internal::RemainingRetsBase::RemainingRetsBase;
 
   template <typename T>
   ErrorOr<Result<T>> get(size_t index) const {
@@ -683,10 +683,10 @@ class RemainingResults : public internal::RemainingResultsBase {
 
 template <>
 struct internal::Decode<internal::RemainingRetsTag> {
-  static std::optional<RemainingResults> call(DecodingOffsets& offsets,
-                                              DecodingContext& ctx,
-                                              DiagnosticEngine& diagnostic) {
-    return RemainingResults(&ctx.call_frame->rets, offsets.rets);
+  static std::optional<RemainingRets> call(DecodingOffsets& offsets,
+                                           DecodingContext& ctx,
+                                           DiagnosticEngine& diagnostic) {
+    return RemainingRets(&ctx.call_frame->rets, offsets.rets);
   }
 };
 

@@ -365,7 +365,7 @@ TEST(FfiTest, RemainingRets) {
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto fn = [&](Result<AnyBuffer> ret, RemainingResults rets) {
+  auto fn = [&](Result<AnyBuffer> ret, RemainingRets rets) {
     EXPECT_EQ(rets.size(), 1);
 
     ErrorOr<Result<AnyBuffer>> ret0 = rets.get<AnyBuffer>(0);
@@ -377,7 +377,7 @@ TEST(FfiTest, RemainingRets) {
     return Error::Success();
   };
 
-  auto handler = Ffi::Bind().Ret<AnyBuffer>().RemainingResults().To(fn);
+  auto handler = Ffi::Bind().Ret<AnyBuffer>().RemainingRets().To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);

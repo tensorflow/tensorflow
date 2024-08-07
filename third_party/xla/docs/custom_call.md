@@ -135,8 +135,8 @@ a custom call, they can be decoded at run time using `RemainingArgs` and
 `RemainingRets`.
 
 ```
-auto handler = Ffi::Bind().RemainingArgs().RemainingResults().To(
-    [](RemainingArgs args, RemainingResults results) -> Error {
+auto handler = Ffi::Bind().RemainingArgs().RemainingRets().To(
+    [](RemainingArgs args, RemainingRets results) -> Error {
       ErrorOr<AnyBuffer> arg = args.get<AnyBuffer>(0);
       ErrorOr<Result<AnyBuffer>> res = results.get<AnyBuffer>(0);
 

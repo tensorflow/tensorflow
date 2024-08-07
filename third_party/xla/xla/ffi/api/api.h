@@ -426,7 +426,7 @@ class Binding {
     return {std::move(*this)};
   }
 
-  Binding<stage, Ts..., internal::RemainingRetsTag> RemainingResults() && {
+  Binding<stage, Ts..., internal::RemainingRetsTag> RemainingRets() && {
     static_assert(!internal::HasRemainingRetsTag<Ts...>::value,
                   "remaining results can be passed just once");
     return {std::move(*this)};
@@ -988,9 +988,9 @@ class RemainingArgsBase {
 
 namespace internal {
 
-class RemainingResultsBase {
+class RemainingRetsBase {
  public:
-  RemainingResultsBase(const XLA_FFI_Rets* rets, size_t offset)
+  RemainingRetsBase(const XLA_FFI_Rets* rets, size_t offset)
       : rets_(rets), offset_(offset) {
     assert(offset <= rets_->size && "illegal remaining rets offset");
   }
@@ -1090,7 +1090,7 @@ struct internal::Decode<internal::AttrsTag<T>> {
 // able to use slightly different implementations for internal and external
 // FFI (`absl::StatusOr` vs `ffi::ErrorOr`).
 class RemainingArgs;
-class RemainingResults;
+class RemainingRets;
 
 namespace internal {
 // A helper struct to extract the type of the handler argument.
@@ -1106,7 +1106,7 @@ struct FnArgType<internal::RemainingArgsTag> {
 
 template <>
 struct FnArgType<internal::RemainingRetsTag> {
-  using Type = RemainingResults;
+  using Type = RemainingRets;
 };
 
 // Extracts the underlying type from the returned result type tag.
