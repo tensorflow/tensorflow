@@ -410,8 +410,13 @@ string Env::GetExecutablePath() {
       int token_len = strlen(&buf[token_pos]) + 1;
       token_is_first_or_flag = false;
       // Check if we can skip without overshooting
+      int tmp_pos = token_pos;
       if (token_pos + token_len < cmd_length) {
-        token_pos += token_len;
+        tmp_pos += token_len;
+        if ((buf[tmp_pos] == '-') && (buf[tmp_pos + 1] == 'c'))
+          break;  // stop the loop if command flag passed
+        else
+          token_pos = tmp_pos;
         token_is_first_or_flag = (buf[token_pos] == '-');  // token is a flag
       }
     }
