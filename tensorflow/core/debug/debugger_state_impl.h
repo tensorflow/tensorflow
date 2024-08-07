@@ -26,7 +26,7 @@ namespace tensorflow {
 class DebuggerState : public DebuggerStateInterface {
  public:
   DebuggerState(const DebugOptions& debug_options);
-  virtual ~DebuggerState();
+  ~DebuggerState() override;
 
   // Publish metadata about the debugged Session::Run() call.
   //
@@ -47,7 +47,7 @@ class DebugGraphDecorator : public DebugGraphDecoratorInterface {
  public:
   DebugGraphDecorator(const DebugOptions& debug_options)
       : debug_options_(debug_options) {}
-  virtual ~DebugGraphDecorator() {}
+  ~DebugGraphDecorator() override {}
 
   Status DecorateGraph(Graph* graph, Device* device) override;
   Status PublishGraph(const Graph& graph, const string& device_name) override;

@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdlib>
-#include <unordered_set>
-
 #include "tensorflow/core/debug/debug_io_utils.h"
+
+#include <cstdlib>
+#include <memory>
+#include <unordered_set>
 
 #include "tensorflow/core/debug/debug_callback_registry.h"
 #include "tensorflow/core/debug/debug_node_key.h"
@@ -40,7 +41,7 @@ class DebugIOUtilsTest : public ::testing::Test {
   void Initialize() {
     env_ = Env::Default();
 
-    tensor_a_.reset(new Tensor(DT_FLOAT, TensorShape({2, 2})));
+    tensor_a_ = std::make_unique<Tensor>(DT_FLOAT, TensorShape({2, 2}));
     tensor_a_->flat<float>()(0) = 5.0;
     tensor_a_->flat<float>()(1) = 3.0;
     tensor_a_->flat<float>()(2) = -1.0;

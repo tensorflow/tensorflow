@@ -182,11 +182,8 @@ tf_cc_test(
         ":debug_grpc_testlib",
         ":debug_io_utils",
         ":debug_node_key",
-        ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -194,7 +191,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -260,7 +256,6 @@ tf_cc_test(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
