@@ -932,7 +932,6 @@ filegroup(
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
         "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
         "//tensorflow/dtensor/cc:tensor_layout",  # DTensor
-        "//tensorflow/lite/kernels/shim:tf_op_shim",  # tf_text
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
         "//tensorflow/python/client:tf_session_helper",  # tf_session
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
