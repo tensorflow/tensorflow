@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 #include <any>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tsl {
 
@@ -786,5 +788,26 @@ TEST(AsyncValueRefTest, RecursiveOwnership) {
   state_ptr->value.SetStateConcrete();
   EXPECT_EQ(counter, 1 + 2 + 3);
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+template <size_t size>
+static void BM_MakeConstructed(benchmark::State& state) {
+  for (auto _ : state) {
+    auto ref = MakeConstructedAsyncValueRef<std::array<char, size>>();
+    benchmark::DoNotOptimize(ref);
+  }
+}
+
+BENCHMARK(BM_MakeConstructed<1>);
+BENCHMARK(BM_MakeConstructed<4>);
+BENCHMARK(BM_MakeConstructed<8>);
+BENCHMARK(BM_MakeConstructed<16>);
+BENCHMARK(BM_MakeConstructed<32>);
+BENCHMARK(BM_MakeConstructed<64>);
+BENCHMARK(BM_MakeConstructed<128>);
+BENCHMARK(BM_MakeConstructed<256>);
 
 }  // namespace tsl

@@ -211,7 +211,6 @@ tf_cuda_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:statusor",
@@ -226,6 +225,7 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor/gpu:gpu_executor_header",
         "@local_xla//xla/stream_executor/gpu:gpu_stream_header",
         "@local_xla//xla/stream_executor/gpu:gpu_types_header",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
     alwayslink = 1,
 )

@@ -1501,6 +1501,29 @@ TEST_F(MatmulTest, WeightsPrepackAndScratch) {
   )");
 }
 
+TEST_F(MatmulTest, ColMajorBF16DotBeforeLayoutAssignment) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16.";
+  }
+
+  const char* matmul_module_str = R"(
+  HloModule matmul.colmajor.test
+  ENTRY matmul.colmajor.test.bf16 {
+    arg.0 = bf16[500,500]{0,1} parameter(0)
+    arg.1 = bf16[500,500]{1,0} parameter(1)
+    transpose.0 = bf16[500,500]{0,1} transpose(arg.1), dimensions={1,0}
+    ROOT dot.0 = bf16[500,500]{1,0} dot(arg.0, arg.1), lhs_contracting_dims={1},
+      rhs_contracting_dims={0}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-2, 1e-2)));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK: (bf16[500,500]{1,0}, u8[{{.*}}]{0})
+  ; CHECK-SAME: custom_call_target="__onednn$matmul"
+  )");
+}
+
 TEST_F(MatmulTest, ConsecutiveBinaryAdd) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32

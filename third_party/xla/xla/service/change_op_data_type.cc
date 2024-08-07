@@ -64,7 +64,7 @@ absl::StatusOr<bool> ChangeOpDataType::Run(
       }
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
       if (instr->opcode() == HloOpcode::kDot &&
-          cpu::OneDnnContractionRewriter::ShouldRewriteDot(instr)) {
+          cpu::OneDnnContractionRewriter::ShouldRewriteDot(instr, true)) {
         continue;
       }
       if (instr->opcode() == HloOpcode::kConvolution &&
