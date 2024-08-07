@@ -58,6 +58,7 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(Barrier);
   ENQUEUE_REQUEST(CancelBarrier);
   ENQUEUE_REQUEST(PollForError);
+  ENQUEUE_REQUEST(ReportInfoToService);
 #undef ENQUEUE_REQUEST
 
   void* tag;  // Matches the operation started against this cq_.

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 
+#include <sys/types.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -22,14 +24,17 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/bind_front.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -63,9 +68,12 @@ using tensorflow::CoordinationServiceError;
 using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
 
+constexpr int kSecondsToMillis = 1000;
+constexpr int kMilliSecondsToMicros = 1000;
+constexpr int kSecondsToMicros = kMilliSecondsToMicros * kSecondsToMillis;
 constexpr absl::Duration kDevicePropagationTimeout = absl::Hours(1);
-constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
-constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
+constexpr int kDefaultHeartbeatTimeoutMs = 10 * kSecondsToMillis;  // 10 seconds
+constexpr int kServiceToClientTimeoutMs = 10 * kSecondsToMillis;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
 constexpr int kPendingTaskLogLimit = 20;
@@ -146,6 +154,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                              const CoordinatedTask& task) override;
   void PollForErrorAsync(const CoordinatedTask& task,
                          StatusCallback done) override;
+  absl::Status RecordTaskInfo(const CoordinatedTask& task,
+                              const RuntimeInfo& info) override;
 
  private:
   const DeviceInfo& ListClusterDevices() override
@@ -155,6 +165,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void CheckHeartbeatTimeout();
   // Checks if any barrier has timed out.
   void CheckBarrierTimeout();
+  // Checks if any runtime info should be output.
+  void CheckRuntimeInfoReporting();
   // Checks both heartbeat and barrier timeouts. Use a single function so they
   // can be run in the same thread as threads are a constrained resource.
   void CheckStaleness();
@@ -290,6 +302,62 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
   };
 
+  class RuntimeInfoStore {
+   public:
+    // A piece of info that is being saved in the service.
+    using Entry = tensorflow::CoordinatedTaskRuntimeInfo;
+    // The callable that aggregates all the entries in the store.
+    using RuntimeInfoAggregator =
+        absl::AnyInvocable<std::string(const std::vector<Entry>&)>;
+
+    explicit RuntimeInfoStore(uint64_t max_waiting_time_us)
+        : max_waiting_time_us_(max_waiting_time_us) {}
+
+    // If maximum waiting time is 0, output the runtime info immediately.
+    // Otherwise, adds the info to the store.
+    void AddOrOutput(const CoordinatedTask& task, const RuntimeInfo& info);
+
+    // Outputs the summary of current runtime info.
+    void TriggerOutput();
+
+    // Returns true if it is time to output.
+    bool HasExceededMaxWaitingTime() {
+      absl::MutexLock l(&mu_);
+      return next_trigger_time_ > 0 &&
+             Env::Default()->NowMicros() > next_trigger_time_;
+    }
+
+   private:
+    // Clear all existing entry in the store.
+    void Clear();
+    // Generates a string representation for each entry. The representation will
+    // contain the timestamp, the task name, and the runtime info.
+    std::string Format(Entry entry);
+    // Aggregate and generates a summary of the existing info.
+    std::optional<std::string> Aggregate();
+
+    absl::Mutex mu_;
+    std::vector<Entry> info_ ABSL_GUARDED_BY(mu_);
+    // The time to trigger the next output. If 0, no output is pending.
+    uint64_t next_trigger_time_ ABSL_GUARDED_BY(mu_) = 0;
+    // The maximum waiting time for each piece of runtime info to be held by the
+    // service. When the maximum waiting time for any piece of runtime info is
+    // reached, an output will be triggered. When it is zero, each piece
+    // of runtime info will be output immediately.
+    const uint64_t max_waiting_time_us_;
+    // A trivial aggregator. The info will show in output in the order that they
+    // are received and with the default format.
+    RuntimeInfoAggregator default_aggregator_ =
+        ([this](const std::vector<Entry>& entries) {
+          std::string output;
+          for (const auto& entry : entries) {
+            absl::StrAppend(&output, Format(entry), "\n");
+          }
+          return output;
+        });
+    ;
+  };
+
   std::unique_ptr<CoordinationClientCache> client_cache_;
   Env& env_;
   const uint64_t service_incarnation_ = random::New64();
@@ -335,6 +403,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   absl::flat_hash_set<std::string> recoverable_jobs_;
 
   ErrorPollingState error_polling_state_ ABSL_GUARDED_BY(state_mu_);
+
+  std::unique_ptr<RuntimeInfoStore> runtime_info_store_;
 
   CoordinationServiceStandaloneImpl(const CoordinationServiceStandaloneImpl&) =
       delete;
@@ -424,6 +494,62 @@ bool CoordinationServiceStandaloneImpl::TaskState::
          Env::Default()->NowMicros() > disconnect_grace_period_us_;
 }
 
+void CoordinationServiceStandaloneImpl::RuntimeInfoStore::AddOrOutput(
+    const CoordinatedTask& task, const RuntimeInfo& info) {
+  Entry entry;
+  entry.set_timestamp_usec(Env::Default()->NowMicros());
+  *entry.mutable_source_task() = task;
+  *entry.mutable_info() = info;
+
+  absl::MutexLock l(&mu_);
+  if (max_waiting_time_us_ == 0) {
+    // Output immediately. This is a shortcut. No need to save the entry.
+    LOG(INFO) << Format(entry);
+    return;
+  }
+
+  info_.push_back(std::move(entry));
+  if (info_.size() == 1) {
+    next_trigger_time_ = Env::Default()->NowMicros() + max_waiting_time_us_;
+  }
+}
+
+void CoordinationServiceStandaloneImpl::RuntimeInfoStore::TriggerOutput() {
+  std::optional<std::string> output = Aggregate();
+  if (output.has_value()) {
+    LOG(INFO) << "Summary of runtime information reported to the service "
+                 "over the last "
+              << static_cast<float>(max_waiting_time_us_) / kSecondsToMicros
+              << " seconds:";
+    LOG(INFO) << output.value();
+  }
+  Clear();
+}
+
+std::string CoordinationServiceStandaloneImpl::RuntimeInfoStore::Format(
+    Entry entry) {
+  return absl::StrFormat(
+      "Timestamp: %s, task: %s, info: %s",
+      absl::FormatTime(absl::FromUnixMicros(entry.timestamp_usec())),
+      GetTaskName(entry.source_task()), absl::StrCat(entry.info()));
+}
+
+std::optional<std::string>
+CoordinationServiceStandaloneImpl::RuntimeInfoStore::Aggregate() {
+  std::string output;
+  absl::MutexLock l(&mu_);
+  if (info_.empty()) {
+    return std::nullopt;
+  }
+  return default_aggregator_(info_);
+}
+
+void CoordinationServiceStandaloneImpl::RuntimeInfoStore::Clear() {
+  absl::MutexLock l(&mu_);
+  info_.clear();
+  next_trigger_time_ = 0;
+}
+
 void CoordinationServiceStandaloneImpl::SetDeviceAggregationFunction(
     std::function<DeviceInfo(const DeviceInfo& devices)>
         post_aggregate_device_fn) {
@@ -453,6 +579,8 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
       cluster_state_.emplace(task_name, std::make_unique<TaskState>());
     }
   }
+  runtime_info_store_ = std::make_unique<RuntimeInfoStore>(
+      config.runtime_info_output_interval_in_ms() * kMilliSecondsToMicros);
   StartCheckStaleness();
 }
 
@@ -564,6 +692,12 @@ void CoordinationServiceStandaloneImpl::CheckBarrierTimeout() {
   }
 }
 
+void CoordinationServiceStandaloneImpl::CheckRuntimeInfoReporting() {
+  if (runtime_info_store_->HasExceededMaxWaitingTime()) {
+    runtime_info_store_->TriggerOutput();
+  }
+}
+
 void CoordinationServiceStandaloneImpl::CheckStaleness() {
   // Used to store stale tasks and barriers.
   while (true) {
@@ -576,6 +710,7 @@ void CoordinationServiceStandaloneImpl::CheckStaleness() {
     }
     CheckHeartbeatTimeout();
     CheckBarrierTimeout();
+    CheckRuntimeInfoReporting();
   }
 }
 
@@ -627,6 +762,8 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
         absl::CancelledError("Coordination service is shutting down. "
                              "Cancelling PollForErrorAsync()"));
   }
+  // Trigger output for all pending runtime info.
+  runtime_info_store_->TriggerOutput();
   // Destroy thread outside of the mutex.
   if (shut_staleness_thread) {
     check_staleness_thread_.reset();
@@ -811,7 +948,8 @@ absl::Status CoordinationServiceStandaloneImpl::DisconnectTask(
 
   // Disconnect task and fail any ongoing barriers.
   cluster_state_[task_name]->Disconnect(
-      /*grace_period_duration_us=*/heartbeat_timeout_ms_ * 1000);
+      /*grace_period_duration_us=*/heartbeat_timeout_ms_ *
+      kMilliSecondsToMicros);
   for (const auto& barrier_id :
        cluster_state_[task_name]->GetOngoingBarriers()) {
     absl::Status error = MakeCoordinationError(absl::InternalError(absl::StrCat(
@@ -1598,6 +1736,27 @@ bool CoordinationServiceStandaloneImpl::SendErrorPollingResponseOrStopService(
 
 bool CoordinationServiceStandaloneImpl::IsClientPollingForError() const {
   return client_polling_for_error_;
+}
+
+absl::Status CoordinationServiceStandaloneImpl::RecordTaskInfo(
+    const CoordinatedTask& task, const RuntimeInfo& info) {
+  std::string task_name = GetTaskName(task);
+  {
+    absl::MutexLock l(&state_mu_);
+    if (ServiceHasStopped()) {
+      return MakeCoordinationError(absl::InternalError(
+          "Coordination service has stopped. RecordTaskInfo() failed."));
+    } else if (!cluster_state_.contains(task_name)) {
+      return MakeCoordinationError(absl::InvalidArgumentError(
+          absl::StrCat("Unexpected request from task ", task_name)));
+    } else if (cluster_state_[task_name]->GetState() !=
+               CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      return MakeCoordinationError(absl::FailedPreconditionError(
+          "The task is not connected or already has an error."));
+    }
+  }
+  runtime_info_store_->AddOrOutput(task, info);
+  return absl::OkStatus();
 }
 
 // Register standalone coordination service implementation.

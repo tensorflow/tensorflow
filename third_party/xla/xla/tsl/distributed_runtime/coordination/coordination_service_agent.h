@@ -267,6 +267,9 @@ class CoordinationServiceAgent {
   virtual void CancelBarrierAsync(std::string_view barrier_id,
                                   StatusCallback done) = 0;
 
+  // Reports runtime information about the task to the service.
+  virtual absl::Status ReportInfo(const google::protobuf::Any& info) = 0;
+
   // Get unowned Env* that the agent was initialized with.
   virtual absl::StatusOr<tsl::Env*> GetEnv() = 0;
 

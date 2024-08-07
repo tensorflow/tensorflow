@@ -99,6 +99,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(Barrier);
   HANDLER(CancelBarrier);
   HANDLER(PollForError);
+  HANDLER(ReportInfoToService);
 #undef HANDLER
 
   thread::ThreadPool& compute_pool_;

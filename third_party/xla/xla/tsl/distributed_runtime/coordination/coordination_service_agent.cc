@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/tsl/framework/cancellation.h"
 #include "tsl/lib/monitoring/gauge.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
@@ -130,6 +131,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::Status CancelBarrier(std::string_view barrier_id) override;
   void CancelBarrierAsync(std::string_view barrier_id,
                           StatusCallback done) override;
+  absl::Status ReportInfo(const google::protobuf::Any& task_info) override;
 
   absl::StatusOr<Env*> GetEnv() override;
 
@@ -980,6 +982,30 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
         done(s);
         VLOG(3) << "CancelBarrierResponse: " << s;
       });
+}
+
+absl::Status CoordinationServiceAgentImpl::ReportInfo(
+    const google::protobuf::Any& info) {
+  TF_RETURN_IF_ERROR(ValidateRunningAgent(/*allow_disconnected=*/true));
+  ReportInfoToServiceRequest request;
+  *request.mutable_source_task() = task_;
+  *request.mutable_info() = info;
+  VLOG(3) << "ReportInfoToServiceRequest: " << request.DebugString();
+  ReportInfoToServiceResponse response;
+
+  absl::Status status;
+  absl::Notification n;
+  leader_client_->ReportInfoToServiceAsync(&request, &response,
+                                           [&](absl::Status s) {
+                                             status = s;
+                                             n.Notify();
+                                           });
+  n.WaitForNotification();
+  VLOG(3) << "ReportInfoToServiceResponse: " << status;
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to report info to service: " << status;
+  }
+  return status;
 }
 
 // Returns an error if agent is not running.

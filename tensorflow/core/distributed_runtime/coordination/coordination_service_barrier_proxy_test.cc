@@ -118,6 +118,8 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
               (std::string_view barrier_id, StatusCallback done), (override));
   MOCK_METHOD(absl::StatusOr<Env*>, GetEnv, (), (override));
   MOCK_METHOD(void, SetError, (const Status& error), (override));
+  MOCK_METHOD(Status, ReportInfo, (const google::protobuf::Any& task_info),
+              (override));
   MOCK_METHOD(Status, ActivateWatch,
               (std::string_view key,
                (const std::map<std::string, std::string>&)),

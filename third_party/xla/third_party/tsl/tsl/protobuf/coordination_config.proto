@@ -71,4 +71,10 @@ message CoordinationServiceConfig {
   // Use long polling to get error from coordination service as the error
   // propagation mechanism.
   bool poll_for_error_from_service_at_startup = 13;
+
+  // The longest time the coordination service will hold each piece of runtime
+  // information reported by tasks before they appear in output. If set to 0,
+  // the service will output runtime info immediately, so no summary will be
+  // generated.
+  int64 runtime_info_output_interval_in_ms = 14;
 }

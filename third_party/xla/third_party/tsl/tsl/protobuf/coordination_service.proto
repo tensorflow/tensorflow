@@ -52,6 +52,12 @@ message DeviceInfo {
   repeated google.protobuf.Any device = 1;
 }
 
+message CoordinatedTaskRuntimeInfo {
+  CoordinatedTask source_task = 1;
+  uint64 timestamp_usec = 2;
+  google.protobuf.Any info = 3;
+}
+
 // Request and response messages for registering a task to the cluster leader.
 // A task is uniquely represented by its `job_name`, `task_id` and
 // `incarnation`. Leader responds with its `incarnation` to identify a leader
@@ -84,6 +90,7 @@ message HeartbeatResponse {
   // broadcast error code and message to other tasks.
 }
 
+// Request and response messages for getting error from the service.
 message PollForErrorRequest {
   CoordinatedTask source_task = 1;
 }
@@ -227,6 +234,18 @@ message CancelBarrierRequest {
 
 message CancelBarrierResponse {}
 
+// Reports runtime information to the coorindator. The coordinator will start
+// collecting all runtime information from all workers and report the aggregated
+// information to the user.
+message ReportInfoToServiceRequest {
+  // The identifier of the worker.
+  CoordinatedTask source_task = 1;
+  // An arbitrary info reported by the task.
+  google.protobuf.Any info = 2;
+}
+
+message ReportInfoToServiceResponse {}
+
 // Coordination Service defines a TensorFlow service that controls and
 // coordinates distributed execution in a cluster of multiple tasks.
 //
@@ -358,6 +377,12 @@ service CoordinationService {
   // Possible service errors:
   //   - Aborted: Service is shutting down.
   rpc PollForError(PollForErrorRequest) returns (PollForErrorResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
+
+  // Reports runtime information about the task to the service.
+  rpc ReportInfoToService(ReportInfoToServiceRequest)
+      returns (ReportInfoToServiceResponse) {
     // [AUTOMATION]: Internal rpc option goes here.
   }
 }

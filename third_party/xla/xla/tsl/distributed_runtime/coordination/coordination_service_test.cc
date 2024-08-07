@@ -22,8 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "google/protobuf/any.pb.h"
+#include "absl/base/log_severity.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
@@ -44,9 +48,11 @@ limitations under the License.
 #include "tsl/platform/types.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace tsl {
 namespace {
+using ::testing::_;
 using ::testing::Each;
 using ::testing::EqualsProto;
 using ::testing::HasSubstr;
@@ -64,6 +70,7 @@ using tensorflow::TestDeviceList;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
+constexpr int64_t kRuntimeInfoOutputIntervalMs = 1000;
 constexpr char kCoordinationServiceType[] = "standalone";
 
 KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
@@ -80,6 +87,20 @@ CoordinationServiceConfig GetCoordinationServiceConfig(int num_tasks) {
   job->set_name("worker");
   job->set_num_tasks(num_tasks);
   return config;
+}
+
+// TODO(b/286141652) Refactor this method into a util file.
+std::string GetTaskName(const CoordinatedTask& task) {
+  return absl::StrCat("/job:", task.job_name(), "/replica:", 0,
+                      "/task:", task.task_id());
+}
+
+google::protobuf::Any CreateAnyProto(absl::string_view value) {
+  tensorflow::StatusProto info;
+  info.set_message(value);
+  google::protobuf::Any any;
+  any.PackFrom(info);
+  return any;
 }
 
 class TestCoordinationClient : public CoordinationClient {
@@ -123,6 +144,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
+  UNIMPLEMENTED(ReportInfoToService);
 #undef UNIMPLEMENTED
 
 #define UNIMPLEMENTED_WITH_CALL_OPTS(method)                                 \
@@ -202,12 +224,6 @@ class CoordinationBarrierTest : public ::testing::Test {
   }
   CoordinatedTask GetTask(int i) { return tasks_[i]; }
 
-  // TODO(b/286141652) Refactor this method into a util file.
-  std::string GetTaskName(const CoordinatedTask& task) {
-    return absl::StrCat("/job:", task.job_name(), "/replica:", 0,
-                        "/task:", task.task_id());
-  }
-
   std::vector<TestCoordinationClient*> GetClients() {
     std::vector<TestCoordinationClient*> clients;
     for (const auto& client : clients_) {
@@ -220,6 +236,34 @@ class CoordinationBarrierTest : public ::testing::Test {
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
   std::vector<CoordinatedTask> tasks_;
   std::vector<std::unique_ptr<TestCoordinationClient>> clients_;
+};
+
+class CoordinationRecordInfoTest : public ::testing::Test {
+ protected:
+  CoordinationRecordInfoTest() {
+    CoordinatedTask task_0;
+    task_.set_job_name("worker");
+    task_.set_task_id(0);
+    info_0_ = CreateAnyProto(message_0_);
+    info_1_ = CreateAnyProto(message_1_);
+  }
+
+  void EnableCoordinationService(int64_t runtime_info_output_interval_ms) {
+    CoordinationServiceConfig config =
+        GetCoordinationServiceConfig(/*num_tasks=*/1);
+    config.set_runtime_info_output_interval_in_ms(
+        runtime_info_output_interval_ms);
+    coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
+        Env::Default(), config,
+        /*cache=*/nullptr);
+  }
+
+  std::unique_ptr<CoordinationServiceInterface> coord_service_;
+  CoordinatedTask task_;
+  std::string message_0_ = "first test message";
+  std::string message_1_ = "second test message";
+  google::protobuf::Any info_0_;
+  google::protobuf::Any info_1_;
 };
 
 // Sets up coordination service that expects 2 worker tasks.
@@ -1952,6 +1996,129 @@ TEST_F(CoordinateTwoTasksTest, LatePollingTaskCanGetError) {
   EXPECT_EQ(statuses.size(), 2);
   EXPECT_THAT(statuses, Each(StatusIs(absl::StatusCode::kFailedPrecondition,
                                       HasSubstr("test_error_from_task_0"))));
+}
+
+TEST_F(CoordinationRecordInfoTest, ImmediateOutput) {
+  EnableCoordinationService(/*runtime_info_output_interval_ms=*/0);
+  ASSERT_OK(coord_service_->RegisterTask(task_, /*incarnation=*/0));
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  // The two messages will be combined into a single log.
+  EXPECT_CALL(log,
+              Log(absl::LogSeverity::kInfo, _,
+                  AllOf(HasSubstr(GetTaskName(task_)), HasSubstr(message_0_))));
+  log.StartCapturingLogs();
+  TF_EXPECT_OK(coord_service_->RecordTaskInfo(task_, info_0_));
+}
+
+TEST_F(CoordinationRecordInfoTest, CombinedMessage) {
+  EnableCoordinationService(kRuntimeInfoOutputIntervalMs);
+  ASSERT_OK(coord_service_->RegisterTask(task_, /*incarnation=*/0));
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  // The two messages will be combined into a single log.
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, _,
+                       AllOf(HasSubstr(GetTaskName(task_)),
+                             HasSubstr(message_0_), HasSubstr(message_1_))));
+  log.StartCapturingLogs();
+  TF_EXPECT_OK(coord_service_->RecordTaskInfo(task_, info_0_));
+  absl::SleepFor(absl::Milliseconds(kRuntimeInfoOutputIntervalMs / 2));
+  TF_EXPECT_OK(coord_service_->RecordTaskInfo(task_, info_1_));
+  absl::SleepFor(absl::Seconds(2));
+}
+
+TEST_F(CoordinationRecordInfoTest, InfoAfterWaitingTimeNotCombined) {
+  EnableCoordinationService(kRuntimeInfoOutputIntervalMs);
+  ASSERT_OK(coord_service_->RegisterTask(task_, /*incarnation=*/0));
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  // The two messages will not be combined.
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, _, HasSubstr(message_0_)));
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, _, HasSubstr(message_1_)));
+  log.StartCapturingLogs();
+  TF_EXPECT_OK(coord_service_->RecordTaskInfo(task_, info_0_));
+  // Use a long time so the first message is output before the second in a
+  // separate log.
+  absl::SleepFor(absl::Seconds(3));
+  TF_EXPECT_OK(coord_service_->RecordTaskInfo(task_, info_1_));
+  absl::SleepFor(absl::Seconds(2));
+}
+
+TEST_F(CoordinationRecordInfoTest, NoOutputImmediately) {
+  EnableCoordinationService(kRuntimeInfoOutputIntervalMs);
+  ASSERT_OK(coord_service_->RegisterTask(task_, /*incarnation=*/0));
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  // Because there is a waiting time, the message will not be in output before
+  // the waiting time ends.
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, _, HasSubstr(message_0_)))
+      .Times(0);
+  log.StartCapturingLogs();
+  TF_EXPECT_OK(coord_service_->RecordTaskInfo(task_, info_0_));
+  absl::SleepFor(absl::Milliseconds(500));
+}
+
+TEST_F(CoordinationRecordInfoTest, TriggerOutputOnStop) {
+  EnableCoordinationService(kRuntimeInfoOutputIntervalMs);
+  ASSERT_OK(coord_service_->RegisterTask(task_, /*incarnation=*/0));
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, _, HasSubstr(message_0_)));
+  log.StartCapturingLogs();
+  TF_EXPECT_OK(coord_service_->RecordTaskInfo(task_, info_0_));
+  // The following line will stop the service. When the service stops, all
+  // pending messages will be output.
+  coord_service_.reset();
+}
+
+TEST_F(CoordinationRecordInfoTest, DoNotAllowRecordInfoIfHasNotRegistered) {
+  EnableCoordinationService(kRuntimeInfoOutputIntervalMs);
+  absl::Status s = coord_service_->RecordTaskInfo(task_, info_0_);
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(CoordinationRecordInfoTest, DoNotAllowRecordInfoIfNotInCluster) {
+  EnableCoordinationService(kRuntimeInfoOutputIntervalMs);
+  CoordinatedTask task_not_in_cluster;
+  task_not_in_cluster.set_job_name("worker");
+  task_not_in_cluster.set_task_id(999);
+  absl::Status s = coord_service_->RecordTaskInfo(task_not_in_cluster, info_0_);
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(CoordinateTwoTasksTest, RecordInfo_ImmediateOutput) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  std::string task_0_message = "test message from 0";
+  std::string task_1_message = "test message from 1";
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  // By default, each piece of reported info will be output immediately.
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, _,
+                       AllOf(HasSubstr(GetTaskName(task_0_)),
+                             HasSubstr(task_0_message))));
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, _,
+                       AllOf(HasSubstr(GetTaskName(task_1_)),
+                             HasSubstr(task_1_message))));
+  log.StartCapturingLogs();
+  TF_EXPECT_OK(
+      coord_service_->RecordTaskInfo(task_0_, CreateAnyProto(task_0_message)));
+  TF_EXPECT_OK(
+      coord_service_->RecordTaskInfo(task_1_, CreateAnyProto(task_1_message)));
+}
+
+TEST_F(CoordinateTwoTasksTest, DoNotAllowRecordInfoIfServiceHasStopped) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  // No heartbeat for a while, leader consider the task as stale.
+  // As no error propagation is available, service stops.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
+
+  absl::Status s = coord_service_->RecordTaskInfo(task_0_, CreateAnyProto(""));
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kInternal,
+                          HasSubstr("service has stopped")));
 }
 
 }  // namespace tsl

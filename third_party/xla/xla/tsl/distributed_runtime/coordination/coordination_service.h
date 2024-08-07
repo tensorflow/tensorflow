@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "google/protobuf/any.pb.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -75,6 +76,8 @@ class CoordinationServiceInterface {
 
   using StatusOrValueCallback =
       std::function<void(const absl::StatusOr<std::string_view>&)>;
+
+  using RuntimeInfo = ::google::protobuf::Any;
 
   virtual ~CoordinationServiceInterface() = default;
 
@@ -248,6 +251,10 @@ class CoordinationServiceInterface {
   // connected tasks instead of simply shutting down.
   virtual void PollForErrorAsync(const tensorflow::CoordinatedTask& task,
                                  StatusCallback done) = 0;
+
+  // Records runtime information reported by tasks.
+  virtual absl::Status RecordTaskInfo(const tensorflow::CoordinatedTask& task,
+                                      const RuntimeInfo& info) = 0;
 
  private:
   friend class CoordinationServiceRpcHandler;

@@ -48,6 +48,7 @@ using ::testing::InvokeArgument;
 using ::testing::SetArgPointee;
 using ::testing::UnorderedPointwise;
 using ::testing::WithArgs;
+using ::testing::status::StatusIs;
 
 // TODO(b/229726259) Switch to OSS version after it's available.
 // Simple implementation of a proto matcher comparing string representations.
@@ -136,6 +137,10 @@ class TestCoordinationClient : public CoordinationClient {
   MOCK_METHOD(void, PollForErrorAsync,
               (CallOptions * call_opts, const PollForErrorRequest*,
                PollForErrorResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, ReportInfoToServiceAsync,
+              (const ReportInfoToServiceRequest*, ReportInfoToServiceResponse*,
+               StatusCallback),
               (override));
 
 #define UNIMPLEMENTED(method)                                         \
@@ -612,6 +617,27 @@ TEST_F(CoordinationServiceAgentTest, Connect_InternalErrorShouldBeRetried) {
   InitializeAgent();
 
   TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, ReportInfo) {
+  // Use a random proto type for testing.
+  tensorflow::CoordinationServiceError info;
+  google::protobuf::Any any;
+  any.PackFrom(info);
+
+  ReportInfoToServiceResponse mocked_response;
+  EXPECT_CALL(*GetClient(), ReportInfoToServiceAsync(_, _, _))
+      .WillOnce(DoAll(
+          SetArgPointee<1>(mocked_response),
+          InvokeArgument<2>(absl::FailedPreconditionError("Test Error."))))
+      .WillOnce(DoAll(SetArgPointee<1>(mocked_response),
+                      InvokeArgument<2>(absl::OkStatus())));
+
+  InitializeAgent();
+  TF_ASSERT_OK(agent_->Connect());
+  EXPECT_THAT(agent_->ReportInfo(any),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_OK(agent_->ReportInfo(any));
 }
 
 }  // namespace

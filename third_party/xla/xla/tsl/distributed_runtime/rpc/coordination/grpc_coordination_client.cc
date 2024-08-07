@@ -65,6 +65,8 @@ using tensorflow::ReportErrorToServiceRequest;
 using tensorflow::ReportErrorToServiceResponse;
 using tensorflow::ReportErrorToTaskRequest;
 using tensorflow::ReportErrorToTaskResponse;
+using tensorflow::ReportInfoToServiceRequest;
+using tensorflow::ReportInfoToServiceResponse;
 using tensorflow::ResetTaskRequest;
 using tensorflow::ResetTaskResponse;
 using tensorflow::ShutdownTaskRequest;
@@ -278,6 +280,16 @@ class GrpcCoordinationClient : public CoordinationClient {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/PollForError", *request,
         response, std::move(done), call_opts,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void ReportInfoToServiceAsync(const ReportInfoToServiceRequest* request,
+                                ReportInfoToServiceResponse* response,
+                                StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/ReportInfoToService",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }

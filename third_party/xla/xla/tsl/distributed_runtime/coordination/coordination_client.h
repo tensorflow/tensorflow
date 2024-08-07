@@ -48,6 +48,8 @@ using tensorflow::ReportErrorToServiceRequest;
 using tensorflow::ReportErrorToServiceResponse;
 using tensorflow::ReportErrorToTaskRequest;
 using tensorflow::ReportErrorToTaskResponse;
+using tensorflow::ReportInfoToServiceRequest;
+using tensorflow::ReportInfoToServiceResponse;
 using tensorflow::ResetTaskRequest;
 using tensorflow::ResetTaskResponse;
 using tensorflow::ShutdownTaskRequest;
@@ -130,6 +132,9 @@ class CoordinationClient {
                                  const PollForErrorRequest* request,
                                  PollForErrorResponse* response,
                                  StatusCallback done) = 0;
+  virtual void ReportInfoToServiceAsync(
+      const ReportInfoToServiceRequest* request,
+      ReportInfoToServiceResponse* response, StatusCallback done) = 0;
 };
 
 // Simple wrapper class that can be used to retrieve CoordinationClients.

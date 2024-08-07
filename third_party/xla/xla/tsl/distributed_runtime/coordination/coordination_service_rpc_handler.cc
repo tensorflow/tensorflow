@@ -315,4 +315,16 @@ void CoordinationServiceRpcHandler::PollForErrorAsync(
       [done = std::move(done)](const absl::Status& status) { done(status); });
 }
 
+void CoordinationServiceRpcHandler::ReportInfoToServiceAsync(
+    const tensorflow::ReportInfoToServiceRequest* request,
+    tensorflow::ReportInfoToServiceResponse* response, StatusCallback done) {
+  absl::ReaderMutexLock l(&mu_);
+  if (service_ == nullptr) {
+    done(MakeCoordinationError(
+        absl::InternalError("Coordination service is not enabled.")));
+    return;
+  }
+  done(service_->RecordTaskInfo(request->source_task(), request->info()));
+}
+
 }  // namespace tsl

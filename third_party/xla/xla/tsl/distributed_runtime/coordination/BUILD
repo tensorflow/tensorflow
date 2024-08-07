@@ -1,6 +1,6 @@
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility", "tsl_gpu_library")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility", "tsl_gpu_library")
 load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 
 package(
@@ -60,7 +60,7 @@ cc_library(
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
-    ],
+    ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
 )
 
 # Keeping the implementation as a separate build target.
@@ -78,6 +78,7 @@ tsl_gpu_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
@@ -119,7 +120,9 @@ tsl_cc_test(
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -133,7 +136,8 @@ tsl_cc_test(
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
         "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
-    ],
+        "@local_tsl//tsl/protobuf:status_proto_cc",
+    ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
 )
 
 tsl_gpu_library(
@@ -156,6 +160,7 @@ tsl_gpu_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/lib/monitoring:gauge",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -178,7 +183,6 @@ tsl_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
