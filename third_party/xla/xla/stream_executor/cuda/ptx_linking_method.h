@@ -26,11 +26,15 @@ enum class PtxLinkingMethod {
   kNone,
   kNvLink,
   kDriver,
+  kNvJitLink,
 };
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const PtxLinkingMethod& method) {
   switch (method) {
+    case PtxLinkingMethod::kNvJitLink:
+      sink.Append("NvJitLink");
+      break;
     case PtxLinkingMethod::kNvLink:
       sink.Append("NvLink");
       break;
