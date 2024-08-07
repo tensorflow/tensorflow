@@ -582,6 +582,7 @@ message HloModuleProto {
     FUSION = 2;
     LAYOUT = 3;
     DOT = 4;
+    FLAGNET = 5;
   }
 
   // Information about the optimization profile that this module contains.
