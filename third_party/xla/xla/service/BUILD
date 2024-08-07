@@ -7963,6 +7963,22 @@ cc_library(
 )
 
 cc_library(
+    name = "gather_scatter_normalizer",
+    srcs = ["gather_scatter_normalizer.cc"],
+    hdrs = ["gather_scatter_normalizer.h"],
+    deps = [
+        ":op_expander_pass",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "reduce_window_rewriter",
     srcs = ["reduce_window_rewriter.cc"],
     hdrs = ["reduce_window_rewriter.h"],
@@ -8083,6 +8099,16 @@ xla_cc_test(
     srcs = ["gather_simplifier_test.cc"],
     deps = [
         ":gather_simplifier",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+    ],
+)
+
+xla_cc_test(
+    name = "gather_scatter_normalizer_test",
+    srcs = ["gather_scatter_normalizer_test.cc"],
+    deps = [
+        ":gather_scatter_normalizer",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
     ],
