@@ -82,7 +82,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
-  opts.set_xla_cpu_use_thunk_runtime(false);
+  opts.set_xla_cpu_use_thunk_runtime(true);
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
   opts.set_xla_cpu_prefer_vector_width(256);
 
