@@ -118,6 +118,7 @@ cc_library(
         ":api",
         ":execution_context",
         ":execution_state",
+        "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",

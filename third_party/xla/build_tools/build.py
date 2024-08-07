@@ -318,7 +318,6 @@ _JAX_GPU_BUILD = Build(
     options=dict(
         **_DEFAULT_BAZEL_OPTIONS,
         override_repository="xla=/github/xla",
-        **{"//jax:build_cuda_plugin_from_source": True},
     ),
 )
 

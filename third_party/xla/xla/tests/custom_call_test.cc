@@ -26,17 +26,19 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
-#include "xla/client/lib/constants.h"
+#include "xla/array2d.h"
+#include "xla/array3d.h"
 #include "xla/client/xla_builder.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
@@ -54,6 +57,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace {
 void R0F32Add2(float* out, float** in) {
@@ -862,6 +868,40 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          "__xla_test$$HandleTupleDifferentRanks", "Host",
                          kHandleTupleDifferentRanks);
 
+static absl::Status CustomCallWithIntraOpThreadPool(
+    ffi::Result<ffi::AnyBuffer>,
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool) {
+  // We use two blocking counters to ensure that the task is actually running
+  // inside a thread pool.
+  absl::BlockingCounter counter0(1);
+  absl::BlockingCounter counter1(1);
+
+  intra_op_thread_pool->getPool()->Schedule([&]() {
+    counter0.Wait();
+    counter1.DecrementCount();
+  });
+
+  // Unblock submitted task.
+  counter0.DecrementCount();
+
+  // TODO(b/356389210): It is unsafe to wait for the completion of a task
+  // submitted into an intra-op thread pool as we might be running on a thread
+  // inside the same thread pool, and this can lead to deadlocks. Custom calls
+  // should return `AsyncValue` to signal completion of all submitted tasks.
+  counter1.Wait();
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kIntraOpThreadPool, CustomCallWithIntraOpThreadPool,
+                       ffi::Ffi::Bind()
+                           .Ret<AnyBuffer>()  // unused out buffer
+                           .Ctx<ffi::IntraOpThreadPool>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$intra_op_thread_pool", "Host",
+                         kIntraOpThreadPool);
+
 }  // namespace
 
 // __xla_test$$ConcatVectors
@@ -1608,6 +1648,20 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
   Literal expected = LiteralUtil::MakeTuple({&arg1, &inner_tuple, &arg0});
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(FfiCustomCallTest, IntraOpThreadPool) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      r0f32_, {}, "__xla_test$$intra_op_thread_pool", "",
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
+  EXPECT_EQ(status, absl::OkStatus());
 }
 
 }  // namespace

@@ -618,6 +618,16 @@ static void* XLA_FFI_INTERNAL_ExecutionState_Get(
   return const_cast<ffi::ExecutionState*>(ctx->execution_state);
 }
 
+void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(XLA_FFI_ExecutionContext* ctx) {
+  if (auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
+          &ctx->backend_context)) {
+    return const_cast<Eigen::ThreadPoolDevice*>(cpu->intra_op_thread_pool);
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI CPU context is not available")};
+}
+
 //===----------------------------------------------------------------------===//
 // XLA FFI Api access
 //===----------------------------------------------------------------------===//
@@ -632,6 +642,7 @@ static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_CalledComputation_Get,
     XLA_FFI_INTERNAL_ExecutionContext_Get,
     XLA_FFI_INTERNAL_ExecutionState_Get,
+    XLA_FFI_INTERNAL_IntraOpThreadPool_Get,
 };
 
 static XLA_FFI_Api api = {
