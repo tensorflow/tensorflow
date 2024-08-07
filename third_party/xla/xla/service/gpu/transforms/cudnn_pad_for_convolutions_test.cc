@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/cudnn_pad_for_convolutions.h"
+#include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

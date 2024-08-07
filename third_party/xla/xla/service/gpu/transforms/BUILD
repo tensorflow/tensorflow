@@ -8,7 +8,7 @@ load(
 )
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -581,6 +581,247 @@ cc_library(
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:stream_executor_h",
         "//xla/service:dump",
+        "//xla/stream_executor/cuda:cudnn_frontend_helpers",
+        "//xla/stream_executor/cuda:cudnn_plugin",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ]),
+)
+
+cc_library(
+    name = "cudnn_norm_rewriter",
+    srcs = ["cudnn_norm_rewriter.cc"],
+    hdrs = ["cudnn_norm_rewriter.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    deps = [
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla:window_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_creation_utils",
+        "//xla/service:hlo_pass",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:dnn_proto_cc",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]) + if_google([
+        "@com_google_protobuf//:wrappers_cc_proto",
+    ]),
+)
+
+xla_test(
+    name = "cudnn_norm_rewriter_test",
+    srcs = ["cudnn_norm_rewriter_test.cc"],
+    backends = ["gpu"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    deps = [
+        ":cudnn_norm_rewriter",
+        "//xla:error_spec",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:filecheck",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest_main",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
+)
+
+cc_library(
+    name = "cudnn_pad_for_convolutions",
+    srcs = ["cudnn_pad_for_convolutions.cc"],
+    hdrs = ["cudnn_pad_for_convolutions.h"],
+    deps = [
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:cudnn_support_utils",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "cudnn_pad_for_convolutions_test",
+    srcs = ["cudnn_pad_for_convolutions_test.cc"],
+    deps = [
+        ":cudnn_pad_for_convolutions",
+        "//xla/service:hlo_parser",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "cudnn_simplify_padding",
+    srcs = ["cudnn_simplify_padding.cc"],
+    hdrs = ["cudnn_simplify_padding.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_creation_utils",
+        "//xla/service:hlo_pass",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "cudnn_simplify_padding_test",
+    srcs = ["cudnn_simplify_padding_test.cc"],
+    deps = [
+        ":cudnn_pad_for_convolutions",
+        ":cudnn_simplify_padding",
+        ":cudnn_vectorize_convolutions",
+        "//xla:literal",
+        "//xla:util",
+        "//xla/service:algebraic_simplifier",
+        "//xla/service:call_inliner",
+        "//xla/service:hlo_pass",
+        "//xla/service:hlo_pass_pipeline",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "//xla/service:reshape_mover",
+        "//xla/service:tuple_simplifier",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:dnn",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "cudnn_vectorize_convolutions",
+    srcs = ["cudnn_vectorize_convolutions.cc"],
+    hdrs = ["cudnn_vectorize_convolutions.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/client:xla_builder",
+        "//xla/client:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:cudnn_support_utils",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor",
+        "//xla/stream_executor:dnn",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "cudnn_vectorize_convolutions_test",
+    srcs = ["cudnn_vectorize_convolutions_test.cc"],
+    deps = [
+        ":cudnn_vectorize_convolutions",
+        "//xla:util",
+        "//xla/service:call_inliner",
+        "//xla/service:hlo_parser",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:dnn",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "cudnn_workspace_rewriter",
+    srcs = if_cuda_is_configured(["cudnn_workspace_rewriter.cc"]),
+    hdrs = if_cuda_is_configured(["cudnn_workspace_rewriter.h"]),
+    deps = if_cuda_is_configured([
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_config_cuda//cuda:cudnn_header",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:gpu_fused_mha_runner",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cudnn_frontend_helpers",
         "//xla/stream_executor/cuda:cudnn_plugin",
         "@local_tsl//tsl/platform:errors",

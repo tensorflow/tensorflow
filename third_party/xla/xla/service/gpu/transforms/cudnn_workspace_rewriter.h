@@ -1,4 +1,4 @@
-/* Copyright 2018 The OpenXLA Authors.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,41 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_CUDNN_PAD_FOR_CONVOLUTIONS_H_
-#define XLA_SERVICE_GPU_CUDNN_PAD_FOR_CONVOLUTIONS_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_CUDNN_WORKSPACE_REWRITER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_CUDNN_WORKSPACE_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/util.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
 
-// Two zero-paddings for CuDNN thunking are done in this transform: padding for
-// tensor cores and padding for integer convolutions.  This transform also
-// add slice instruction to remove unnecessary output features.
-class CudnnPadForConvolutions : public HloModulePass {
+// Rewrite cuDNN custom call to have correct workspace size by build graph
+// and serialize so we can use it later
+class CuDnnWorkspaceRewriter : public HloModulePass {
  public:
-  explicit CudnnPadForConvolutions(se::CudaComputeCapability compute_capability)
-      : compute_capability_(compute_capability) {}
+  explicit CuDnnWorkspaceRewriter(se::StreamExecutor& stream_exec)
+      : dnn_support_(*stream_exec.AsDnn()) {}
 
-  absl::string_view name() const override {
-    return "cudnn_pad_for_convolutions";
-  }
-  // Run PadForConvolutions on the given module and return if any change is made
+  absl::string_view name() const override { return "cudnn-workspace-rewriter"; }
+
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::CudaComputeCapability compute_capability_;
+  se::dnn::DnnSupport& dnn_support_;
 };
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_CUDNN_PAD_FOR_CONVOLUTIONS_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_CUDNN_WORKSPACE_REWRITER_H_

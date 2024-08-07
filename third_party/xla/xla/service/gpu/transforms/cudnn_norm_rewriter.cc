@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/cudnn_norm_rewriter.h"
+#include "xla/service/gpu/transforms/cudnn_norm_rewriter.h"
 
 #include <algorithm>
 #include <cstdint>

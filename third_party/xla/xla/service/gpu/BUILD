@@ -2026,159 +2026,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "cudnn_pad_for_convolutions",
-    srcs = ["cudnn_pad_for_convolutions.cc"],
-    hdrs = ["cudnn_pad_for_convolutions.h"],
-    deps = [
-        ":cublas_cudnn",
-        ":cudnn_support_utils",
-        ":stream_executor_util",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_pass",
-        "//xla/stream_executor",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:bind_front",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "cudnn_pad_for_convolutions_test",
-    srcs = ["cudnn_pad_for_convolutions_test.cc"],
-    deps = [
-        ":cublas_cudnn",
-        ":cudnn_pad_for_convolutions",
-        "//xla/service:hlo_parser",
-        "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "cudnn_vectorize_convolutions",
-    srcs = ["cudnn_vectorize_convolutions.cc"],
-    hdrs = ["cudnn_vectorize_convolutions.h"],
-    deps = [
-        ":backend_configs_cc",
-        ":cublas_cudnn",
-        ":cudnn_support_utils",
-        ":stream_executor_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_pass",
-        "//xla/stream_executor",
-        "//xla/stream_executor:dnn",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "cudnn_vectorize_convolutions_test",
-    srcs = ["cudnn_vectorize_convolutions_test.cc"],
-    deps = [
-        ":backend_configs_cc",
-        ":cublas_cudnn",
-        ":cudnn_vectorize_convolutions",
-        "//xla:util",
-        "//xla/service:call_inliner",
-        "//xla/service:hlo_parser",
-        "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:dnn",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "cudnn_simplify_padding",
-    srcs = ["cudnn_simplify_padding.cc"],
-    hdrs = ["cudnn_simplify_padding.h"],
-    deps = [
-        ":backend_configs_cc",
-        ":cublas_cudnn",
-        "//xla:literal",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_creation_utils",
-        "//xla/service:hlo_pass",
-        "//xla/service:pattern_matcher",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "cudnn_simplify_padding_test",
-    srcs = ["cudnn_simplify_padding_test.cc"],
-    deps = [
-        ":cudnn_pad_for_convolutions",
-        ":cudnn_simplify_padding",
-        ":cudnn_vectorize_convolutions",
-        "//xla:literal",
-        "//xla:util",
-        "//xla/service:algebraic_simplifier",
-        "//xla/service:call_inliner",
-        "//xla/service:hlo_pass",
-        "//xla/service:hlo_pass_pipeline",
-        "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
-        "//xla/service:reshape_mover",
-        "//xla/service:tuple_simplifier",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:dnn",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "cublas_padding_requirements",
     srcs = ["cublas_padding_requirements.cc"],
     hdrs = ["cublas_padding_requirements.h"],
@@ -2189,38 +2036,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
     ],
-)
-
-cc_library(
-    name = "cudnn_workspace_rewriter",
-    srcs = if_cuda_is_configured(["cudnn_workspace_rewriter.cc"]),
-    hdrs = if_cuda_is_configured(["cudnn_workspace_rewriter.h"]),
-    deps = if_cuda_is_configured([
-        ":backend_configs_cc",
-        ":ir_emission_utils",
-        ":gpu_fused_mha_runner",
-        ":cublas_cudnn",
-        ":stream_executor_util",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_config_cuda//cuda:cudnn_header",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_pass",
-        "//xla/stream_executor/cuda:cudnn_frontend_helpers",
-        "//xla/stream_executor/cuda:cudnn_plugin",
-        "//xla/stream_executor:dnn",
-        "//xla/stream_executor:stream_executor_h",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "//xla:status_macros",
-    ]),
 )
 
 tf_proto_library(
@@ -2900,11 +2715,6 @@ cc_library(
     deps = [
         ":buffer_sharing",
         ":cublas_padding_requirements",
-        ":cudnn_norm_rewriter",
-        ":cudnn_pad_for_convolutions",
-        ":cudnn_simplify_padding",
-        ":cudnn_vectorize_convolutions",
-        ":cudnn_workspace_rewriter",
         ":cusolver_rewriter",
         ":dot_sparsity_rewriter",
         ":gpu_algebraic_simplifier",
@@ -2949,6 +2759,11 @@ cc_library(
         "//xla/service/gpu/transforms:cudnn_fused_mha_rewriter",
         "//xla/service/gpu/transforms:cudnn_fused_mha_transpose_fusion",
         "//xla/service/gpu/transforms:cudnn_fusion_compiler",
+        "//xla/service/gpu/transforms:cudnn_norm_rewriter",
+        "//xla/service/gpu/transforms:cudnn_pad_for_convolutions",
+        "//xla/service/gpu/transforms:cudnn_simplify_padding",
+        "//xla/service/gpu/transforms:cudnn_vectorize_convolutions",
+        "//xla/service/gpu/transforms:cudnn_workspace_rewriter",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
@@ -3805,62 +3620,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
     ],
-)
-
-cc_library(
-    name = "cudnn_norm_rewriter",
-    srcs = ["cudnn_norm_rewriter.cc"],
-    hdrs = ["cudnn_norm_rewriter.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    deps = [
-        ":backend_configs_cc",
-        ":cublas_cudnn",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:window_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_creation_utils",
-        "//xla/service:hlo_pass",
-        "//xla/service:pattern_matcher",
-        "//xla/stream_executor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudnn_header",
-    ]) + if_google([
-        "@com_google_protobuf//:wrappers_cc_proto",
-    ]),
-)
-
-xla_test(
-    name = "cudnn_norm_rewriter_test",
-    srcs = ["cudnn_norm_rewriter_test.cc"],
-    backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    deps = [
-        ":cublas_cudnn",
-        ":cudnn_norm_rewriter",
-        "//xla:error_spec",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:filecheck",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest_main",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudnn_header",
-    ]),
 )
 
 xla_test(

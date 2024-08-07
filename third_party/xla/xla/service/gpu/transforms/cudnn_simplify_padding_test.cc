@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/cudnn_simplify_padding.h"
+#include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
 
 #include <cstdint>
 #include <memory>
@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
-#include "xla/service/gpu/cudnn_pad_for_convolutions.h"
-#include "xla/service/gpu/cudnn_vectorize_convolutions.h"
+#include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
+#include "xla/service/gpu/transforms/cudnn_vectorize_convolutions.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/pattern_matcher.h"

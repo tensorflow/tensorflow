@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/cudnn_vectorize_convolutions.h"
+#include "xla/service/gpu/transforms/cudnn_vectorize_convolutions.h"
 
 #include <cstdint>
 #include <utility>
