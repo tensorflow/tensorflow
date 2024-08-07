@@ -20,9 +20,9 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -48,6 +48,10 @@ typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
 void UpdateEntryComputationLayout(
     HloModule* module, DeviceShapeRepresentationFn shape_representation_fn,
     bool empty_tiles_only = true);
+
+// Clear the entry computation layout.
+void ClearEntryComputationLayout(HloModule* module);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_HLO_MODULE_UTIL_H_

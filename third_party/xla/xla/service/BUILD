@@ -2101,11 +2101,20 @@ cc_library(
     hdrs = ["hlo_module_util.h"],
     deps = [
         ":compiler",
+        ":computation_layout",
+        ":computation_placer_hdr",
         ":hlo_module_config",
+        "//xla:debug_options_flags",
+        "//xla:shape_layout",
         "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

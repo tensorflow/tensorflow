@@ -118,6 +118,12 @@ exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 # functionality instead.
 tfrun() { "$@"; }
 
+if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
+  source ./ci/official/utilities/windows.sh
+  echo 'Converting MSYS Linux-like paths to Windows paths (for Docker, Python, etc.)'
+  source <(python ./ci/official/utilities/convert_msys_paths_to_win_paths.py --whitelist-prefix TFCI_)
+fi
+
 # Run all "tfrun" commands under Docker. See setup_docker.sh for details
 if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
   source ./ci/official/utilities/setup_docker.sh

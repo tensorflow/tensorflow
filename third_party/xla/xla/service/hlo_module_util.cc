@@ -15,18 +15,28 @@ limitations under the License.
 
 #include "xla/service/hlo_module_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -187,6 +197,16 @@ void UpdateEntryComputationLayout(
   update_shape(&shape);
   *module->mutable_entry_computation_layout()->mutable_result_layout() =
       ShapeLayout(shape);
+}
+
+void ClearEntryComputationLayout(HloModule* module) {
+  for (int i = 0; i < module->entry_computation_layout().parameter_count();
+       i++) {
+    module->mutable_entry_computation_layout()
+        ->mutable_parameter_layout(i)
+        ->Clear();
+  }
+  module->mutable_entry_computation_layout()->mutable_result_layout()->Clear();
 }
 
 }  // namespace xla
