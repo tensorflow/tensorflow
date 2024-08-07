@@ -89,11 +89,10 @@ func.func @sharding_constraint(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   return %0 : tensor<8x8xf32>
 }
 
-// CHECK-LABEL: func @identity_and_constant
-func.func @identity_and_constant() -> tensor<i32> {
+// CHECK-LABEL: func @constant
+func.func @constant() -> tensor<i32> {
   // CHECK-NEXT: %[[CONST:.*]] = mhlo.constant dense<0>
   // CHECK-NEXT: return %[[CONST]]
   %0 = sdy.constant dense<0> : tensor<i32>
-  %1 = sdy.identity %0 : tensor<i32>
-  return %1 : tensor<i32>
+  return %0 : tensor<i32>
 }

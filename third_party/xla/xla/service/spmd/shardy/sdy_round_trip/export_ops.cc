@@ -61,7 +61,6 @@ using ::mlir::StringRef;
 using ::mlir::success;
 
 using ::mlir::sdy::ConstantOp;
-using ::mlir::sdy::IdentityOp;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
@@ -77,20 +76,6 @@ class ConstantPattern : public OpConversionPattern<ConstantOp> {
     // added to the new op.
     rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
         op, op->getResultTypes(), adaptor.getOperands(), op->getAttrs());
-    return success();
-  }
-};
-
-// Removes `sdy::IdentityOp`.
-class IdentityPattern : public OpConversionPattern<IdentityOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-
- private:
-  LogicalResult matchAndRewrite(
-      IdentityOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const override {
-    rewriter.replaceOp(op, adaptor.getInput());
     return success();
   }
 };
@@ -130,11 +115,10 @@ class SdyRoundTripExportOpsPass
   void runOnOperation() final {
     mlir::MLIRContext& context = getContext();
     mlir::ConversionTarget target(context);
-    target.addIllegalOp<ConstantOp, IdentityOp, ShardingConstraintOp>();
+    target.addIllegalOp<ConstantOp, ShardingConstraintOp>();
     target.addLegalOp<mhlo::ConstantOp, mhlo::CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
-    patterns.add<ConstantPattern, IdentityPattern, ShardingConstraintPattern>(
-        &context);
+    patterns.add<ConstantPattern, ShardingConstraintPattern>(&context);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();

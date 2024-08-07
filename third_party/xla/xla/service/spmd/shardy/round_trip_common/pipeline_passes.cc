@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/round_trip_common/convert_sharding_custom_calls.h"
-#include "xla/service/spmd/shardy/round_trip_common/identity_to_pass_through_while_args.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
 #include "xla/service/spmd/shardy/round_trip_common/shard_map_import.h"
 
@@ -36,11 +35,6 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm) {
   // changes happen before shardings are added to operations, to ensure the
   // correct shardings are added and that they are not lost by this pass.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createPrepareForExportPass());
-  // The prepare-for-export pass lifts `mhlo::WhileOp` free variables, and added
-  // them as additional operands of the op whose corresponding block arguments
-  // are directly returned by the body of the op (pass-through). To prevent
-  // canonicalization from undoing this, we add identity ops.
-  pm.addNestedPass<FuncOp>(createAddIdentityToPassThroughWhileArgsPass());
 
   // We import `mhlo.constant` ops to `sdy.constant` ops so that constants
   // aren't folded in greedy pattern rewriters, which would lift them outside of
