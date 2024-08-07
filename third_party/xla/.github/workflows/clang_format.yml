@@ -14,7 +14,8 @@
 # ============================================================================
 
 name: Clang Format
-permissions: read-all
+permissions:
+  contents: read
 on:
   pull_request:
 

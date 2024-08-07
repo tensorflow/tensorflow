@@ -13,7 +13,8 @@
 # limitations under the License.
 # ============================================================================
 name: Buildifier
-permissions: read-all
+permissions:
+  contents: read
 on:
   pull_request:
 
