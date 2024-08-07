@@ -58,7 +58,7 @@ jobs:
           password: ${{ secrets.GCP_CREDS }}
       -
         name: Login to AR
-# Once this is verified, change the label's name. For now, we will piggyback on gcr.io actions.
+        # Once this is verified, change the label's name. For now, we will piggyback on gcr.io actions.
         if: contains(github.event.pull_request.labels.*.name, 'build and push to gcr.io for staging')
         uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446 # v3.2.0
         with:
