@@ -249,9 +249,3 @@ cc_library(
     # to make bazel query happy.
     name = "nvptxcompiler",
 )
-
-cc_library(
-    # This is not yet fully supported, but we need the rule
-    # to make bazel query happy.
-    name = "nvjitlink",
-)

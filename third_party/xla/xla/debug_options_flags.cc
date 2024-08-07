@@ -237,7 +237,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
 
   opts.set_xla_gpu_enable_libnvptxcompiler(false);
-  opts.set_xla_gpu_enable_libnvjitlink(false);
 
   opts.set_xla_gpu_enable_dot_strength_reduction(true);
 

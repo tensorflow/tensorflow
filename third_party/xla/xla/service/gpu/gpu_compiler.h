@@ -235,8 +235,7 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
   virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
-      se::GpuComputeCapability gpu_compute_capability,
-      se::StreamExecutor* stream_exec,
+      se::GpuComputeCapability cc, se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) {
     return Unimplemented("LinkModules is not implemented.");
