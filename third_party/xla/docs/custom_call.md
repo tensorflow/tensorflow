@@ -225,6 +225,52 @@ auto handler = Ffi::Bind().Attrs().To([](Dictionary attrs) -> Error {
 });
 ```
 
+### User-defined Struct Attributes
+
+XLA FFI can decode dictionary attributes into user-defined structs.
+
+```mlir
+%0 = "stablehlo.custom_call"(%arg0) {
+  call_target_name = "foo",
+  backend_config= {
+    range = { lo = 0 : i64, hi = 42 : i64 }
+  },
+  api_version = 4 : i32
+} : (tensor<f32>) -> tensor<f32>
+```
+
+In example above `range` is an `mlir::DictionaryAttr` attribute, and instead
+of accessing dictionary fields by name, it can be automatically decoded as
+a C++ struct. Decoding has to be explicitly registered with a
+`XLA_FFI_REGISTER_STRUCT_ATTR_DECODING` macro (behind the scene it defines
+a template specialization in `::xla::ffi` namespace, thus macro must be added to
+the global namespace).
+
+```c++
+struct Range {
+  int64_t lo;
+  int64_t hi;
+};
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(Range, StructMember<int64_t>("i64"),
+                                             StructMember<int64_t>("i64"));
+
+auto handler = Ffi::Bind().Attr<Range>("range").To([](Range range) -> Error{
+  return Error::Success();
+});
+```
+
+Custom attributes can be loaded from a dictionary, just like any other
+attribute. In example below, all custom call attributes decoded as a
+`Dictionary`, and a `range` can be accessed by name.
+
+```c++
+auto handler = Ffi::Bind().Attrs().To([](Dictionary attrs) -> Error {
+  ErrorOr<Range> range = attrs.get<Range>("range");
+  return Error::Success();
+});
+```
+
 ## Create a custom call on CPU
 
 You can create an HLO instruction that represents a custom call via XLA's client

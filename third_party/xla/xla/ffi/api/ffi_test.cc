@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -594,6 +595,66 @@ TEST(FfiTest, DictionaryAttr) {
   auto handler =
       Ffi::Bind().Attr<Dictionary>("dict0").Attr<Dictionary>("dict1").To(fn);
 
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+struct PairOfI32AndF32 {
+  int32_t i32;
+  float f32;
+};
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(PairOfI32AndF32,
+                                      StructMember<int32_t>("i32"),
+                                      StructMember<float>("f32"));
+
+TEST(FfiTest, StructAttr) {
+  CallFrameBuilder::FlatAttributesMap dict;
+  dict.try_emplace("i32", 42);
+  dict.try_emplace("f32", 42.0f);
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("str", "foo");
+  attrs.Insert("i32_and_f32", dict);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](std::string_view str, PairOfI32AndF32 i32_and_f32) {
+    EXPECT_EQ(str, "foo");
+    EXPECT_EQ(i32_and_f32.i32, 42);
+    EXPECT_EQ(i32_and_f32.f32, 42.0f);
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind()
+                     .Attr<std::string_view>("str")
+                     .Attr<PairOfI32AndF32>("i32_and_f32")
+                     .To(fn);
+
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, AttrsAsStruct) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](PairOfI32AndF32 i32_and_f32) {
+    EXPECT_EQ(i32_and_f32.i32, 42);
+    EXPECT_EQ(i32_and_f32.f32, 42.0f);
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Attrs<PairOfI32AndF32>().To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
