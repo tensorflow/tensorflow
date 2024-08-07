@@ -112,7 +112,7 @@ class GraphConstructor {
         : allow_internal_ops(false),
           expect_device_spec(false),
           propagate_device_spec(in.propagate_device_spec),
-          prefix(in.prefix.empty() || str_util::EndsWith(in.prefix, "/")
+          prefix(in.prefix.empty() || absl::EndsWith(in.prefix, "/")
                      ? in.prefix
                      : in.prefix + "/"),
           uniquify_names(in.uniquify_names),
