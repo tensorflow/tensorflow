@@ -297,11 +297,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (ctx->restored_element_count().has_value()) {
-        tsl::mutex_lock l(input_mu_);
-        return RestoreInput(ctx, reader, input_impl_);
-      }
-
       mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
       DCHECK(!prefetch_thread_);

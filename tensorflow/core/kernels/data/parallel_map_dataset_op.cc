@@ -415,10 +415,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (ctx->restored_element_count().has_value()) {
-        return RestoreInput(ctx, reader, input_impl_);
-      }
-
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       DCHECK(invocation_results_.empty());

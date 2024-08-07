@@ -91,6 +91,14 @@ using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
 // Maps the index of dataset elements to a globally shuffled index. See the
 // comment for IteratorContext::Params::index_mapper for more details.
+// Notes:
+// * `absl::OutOfRangeError` indicates the input index argument exceeds
+//   the cardinality of the dataset.
+// * `absl::NotFoundError` indicates we should skip this element.
+//    This happens in the case we mix multiple datasets into one. For example,
+//    `dataset1.concatenate(dataset2)`.
+// See go/tf-data-random-access-iterator and
+// go/tf-data-random-access-iterator-for-concatenate for more info.
 using IndexMapperFn = std::function<absl::StatusOr<size_t>(size_t)>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
@@ -904,6 +912,10 @@ class IteratorContext {
   RunMode run_mode() { return params_.run_mode; }
 
   IndexMapperFn index_mapper() const { return params_.index_mapper; }
+
+  void set_restored_element_count(size_t element_count) {
+    params_.restored_element_count.emplace(element_count);
+  }
 
   std::optional<int64_t> restored_element_count() const {
     return params_.restored_element_count;

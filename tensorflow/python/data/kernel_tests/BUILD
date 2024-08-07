@@ -213,9 +213,11 @@ tf_py_strict_test(
     name = "concatenate_test",
     size = "medium",
     srcs = ["concatenate_test.py"],
+    shard_count = 20,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
+        "//tensorflow/python/data/experimental/ops:global_shuffle_op",
         "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",

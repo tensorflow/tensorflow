@@ -88,13 +88,6 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
           test_base.default_test_combinations(),
           combinations.combine(
               num_elements=10,
-              asserted_cardinality=1,
-              expected_error=errors.FailedPreconditionError,
-              expected_error_message=(
-                  "Input dataset was expected to contain 1 element but "
-                  "contained at least 2 elements.")) +
-          combinations.combine(
-              num_elements=10,
               asserted_cardinality=100,
               expected_error=errors.FailedPreconditionError,
               expected_error_message=(

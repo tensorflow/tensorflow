@@ -184,13 +184,14 @@ class TensorDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kProduced,
                                              static_cast<int64_t>(produced_)));
+      TF_RETURN_IF_ERROR(global_shuffle_iterator_.Save(prefix(), ctx, writer));
       return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       if (ctx->restored_element_count().has_value()) {
-        return global_shuffle_iterator_.Restore(ctx);
+        return global_shuffle_iterator_.Restore(prefix(), ctx, reader);
       }
 
       mutex_lock l(mu_);

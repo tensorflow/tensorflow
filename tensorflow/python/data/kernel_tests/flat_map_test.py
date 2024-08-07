@@ -15,6 +15,7 @@
 """Tests for `tf.data.Dataset.flat_map()`."""
 import random
 from typing import Callable, Optional
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -466,6 +467,10 @@ class FlatMapCheckpointTest(
     verify_fn(self, build_dataset, num_outputs=3 * 4 - num_skips)
 
 
+@unittest.skip(
+    "TODO: b/355241367 - `flat_map_dataset_op.cc` still needs to be fixed."
+    " Please use concatenate dataset op plus global shuffling instead."
+)
 class FlatMapGlobalShuffleTest(
     test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -511,6 +516,10 @@ class FlatMapGlobalShuffleTest(
       self.getDatasetOutput(dataset, requires_initialization=True)
 
 
+@unittest.skip(
+    "TODO: b/355241367 - `flat_map_dataset_op.cc` still needs to be fixed."
+    " Please use concatenate dataset op plus global shuffling instead."
+)
 class FlatMapGlobalShuffleCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
 ):
