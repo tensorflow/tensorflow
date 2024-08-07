@@ -511,7 +511,7 @@ std::string ThunkExecutor::ToString() const {
   return str;
 }
 
-ABSL_ATTRIBUTE_ALWAYS_INLINE ThunkExecutor::FifoReadyQueue::FifoReadyQueue(
+inline ThunkExecutor::FifoReadyQueue::FifoReadyQueue(
     absl::Span<const NodeId> ready_nodes)
     : queue_(ready_nodes.begin(), ready_nodes.end()) {}
 
@@ -543,8 +543,7 @@ ThunkExecutor::FifoReadyQueue::CreateEmptyReadyQueue() const {
   return FifoReadyQueue(absl::Span<const NodeId>());
 }
 
-ABSL_ATTRIBUTE_ALWAYS_INLINE
-ThunkExecutor::PriorityReadyQueue::PriorityReadyQueue(
+inline ThunkExecutor::PriorityReadyQueue::PriorityReadyQueue(
     absl::Span<const NodeDef> nodes_defs, absl::Span<const NodeId> ready_nodes)
     : nodes_defs_(nodes_defs),
       queue_(ready_nodes.begin(), ready_nodes.end(), Compare{nodes_defs}) {}
