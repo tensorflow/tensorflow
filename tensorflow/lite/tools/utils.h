@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_UTILS_H_
 
 #include <memory>
+#include <vector>
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
@@ -43,6 +45,10 @@ InputTensorData CreateRandomTensorData(const TfLiteTensor& tensor,
 // benchmarking and/or testing purposes.
 void GetDataRangesForType(TfLiteType type, float* low_range, float* high_range);
 
+// Converts TfLiteTensor to float array. Returns an error if the tensor type is
+// not supported.
+TfLiteStatus TfLiteTensorToFloatArray(const TfLiteTensor& tensor,
+                                      std::vector<float>& float_list);
 }  // namespace utils
 }  // namespace tflite
 

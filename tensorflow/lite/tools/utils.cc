@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <cstdint>
 #include <random>
+#include <vector>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
@@ -53,6 +55,28 @@ inline InputTensorData CreateInputTensorData(int num_elements,
   tmp.data = VoidUniquePtr(static_cast<void*>(raw),
                            [](void* ptr) { delete[] static_cast<T*>(ptr); });
   return tmp;
+}
+
+// Converts a TfLiteTensor to a float array. Returns an error if the tensor
+// dimension is a null pointer.
+template <typename T>
+TfLiteStatus ConvertToFloat(const TfLiteTensor& tflite_tensor,
+                            std::vector<float>& float_list) {
+  if (tflite_tensor.dims == nullptr) {
+    return kTfLiteError;
+  }
+  const T* data = reinterpret_cast<const T*>(tflite_tensor.data.data);
+
+  int total_elements = 1;
+  for (int i = 0; i < tflite_tensor.dims->size; i++) {
+    total_elements *= tflite_tensor.dims->data[i];
+  }
+  float_list.clear();
+  float_list.reserve(total_elements);
+  for (int i = 0; i < total_elements; i++) {
+    float_list.push_back(static_cast<float>(data[i]));
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace
@@ -165,6 +189,36 @@ void GetDataRangesForType(TfLiteType type, float* low_range,
   } else if (type == kTfLiteInt8) {
     *low_range = -127;
     *high_range = 127;
+  }
+}
+
+// Converts a TfLiteTensor to a float array according to its type. Returns an
+// error if the tensor type is not supported.
+TfLiteStatus TfLiteTensorToFloatArray(const TfLiteTensor& tensor,
+                                      std::vector<float>& float_list) {
+  switch (tensor.type) {
+    case kTfLiteFloat32:
+      return ConvertToFloat<float>(tensor, float_list);
+    case kTfLiteFloat64:
+      return ConvertToFloat<double>(tensor, float_list);
+    case kTfLiteUInt8:
+      return ConvertToFloat<uint8_t>(tensor, float_list);
+    case kTfLiteInt8:
+      return ConvertToFloat<int8_t>(tensor, float_list);
+    case kTfLiteUInt16:
+      return ConvertToFloat<uint16_t>(tensor, float_list);
+    case kTfLiteInt16:
+      return ConvertToFloat<int16_t>(tensor, float_list);
+    case kTfLiteInt32:
+      return ConvertToFloat<int32_t>(tensor, float_list);
+    case kTfLiteUInt32:
+      return ConvertToFloat<uint32_t>(tensor, float_list);
+    case kTfLiteUInt64:
+      return ConvertToFloat<uint64_t>(tensor, float_list);
+    case kTfLiteInt64:
+      return ConvertToFloat<int64_t>(tensor, float_list);
+    default:
+      return kTfLiteError;
   }
 }
 
