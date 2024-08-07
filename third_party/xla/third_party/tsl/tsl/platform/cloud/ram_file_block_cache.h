@@ -45,9 +45,9 @@ class RamFileBlockCache : public FileBlockCache {
   /// cache is constructed. The returned Status should be OK as long as the
   /// read from the remote filesystem succeeded (similar to the semantics of the
   /// read(2) system call).
-  typedef std::function<Status(const string& filename, size_t offset,
-                               size_t buffer_size, char* buffer,
-                               size_t* bytes_transferred)>
+  typedef std::function<absl::Status(const string& filename, size_t offset,
+                                     size_t buffer_size, char* buffer,
+                                     size_t* bytes_transferred)>
       BlockFetcher;
 
   RamFileBlockCache(size_t block_size, size_t max_bytes, uint64 max_staleness,
@@ -88,8 +88,8 @@ class RamFileBlockCache : public FileBlockCache {
   ///    placed in `out`.
   /// 4) OK otherwise (i.e. the read succeeded, and at least one byte was placed
   ///    in `out`).
-  Status Read(const string& filename, size_t offset, size_t n, char* buffer,
-              size_t* bytes_transferred) override;
+  absl::Status Read(const string& filename, size_t offset, size_t n,
+                    char* buffer, size_t* bytes_transferred) override;
 
   // Validate the given file signature with the existing file signature in the
   // cache. Returns true if the signature doesn't change or the file doesn't
@@ -197,14 +197,14 @@ class RamFileBlockCache : public FileBlockCache {
   /// Look up a Key in the block cache.
   std::shared_ptr<Block> Lookup(const Key& key) TF_LOCKS_EXCLUDED(mu_);
 
-  Status MaybeFetch(const Key& key, const std::shared_ptr<Block>& block)
+  absl::Status MaybeFetch(const Key& key, const std::shared_ptr<Block>& block)
       TF_LOCKS_EXCLUDED(mu_);
 
   /// Trim the block cache to make room for another entry.
   void Trim() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Update the LRU iterator for the block at `key`.
-  Status UpdateLRU(const Key& key, const std::shared_ptr<Block>& block)
+  absl::Status UpdateLRU(const Key& key, const std::shared_ptr<Block>& block)
       TF_LOCKS_EXCLUDED(mu_);
 
   /// Remove all blocks of a file, with mu_ already held.

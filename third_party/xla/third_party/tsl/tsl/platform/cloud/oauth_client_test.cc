@@ -118,7 +118,7 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   EXPECT_EQ(13920, expiration_timestamp);
 
   // Now look at the JWT claim that was sent to the OAuth server.
-  StringPiece grant_type, assertion;
+  absl::string_view grant_type, assertion;
   ASSERT_TRUE(strings::Scanner(post_body)
                   .OneLiteral("grant_type=")
                   .RestartCapture()

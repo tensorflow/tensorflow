@@ -68,12 +68,12 @@ void RamFileBlockCache::Trim() {
 }
 
 /// Move the block to the front of the LRU list if it isn't already there.
-Status RamFileBlockCache::UpdateLRU(const Key& key,
-                                    const std::shared_ptr<Block>& block) {
+absl::Status RamFileBlockCache::UpdateLRU(const Key& key,
+                                          const std::shared_ptr<Block>& block) {
   mutex_lock lock(mu_);
   if (block->timestamp == 0) {
     // The block was evicted from another thread. Allow it to remain evicted.
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (block->lru_iterator != lru_list_.begin()) {
     lru_list_.erase(block->lru_iterator);
@@ -95,11 +95,11 @@ Status RamFileBlockCache::UpdateLRU(const Key& key,
 
   Trim();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RamFileBlockCache::MaybeFetch(const Key& key,
-                                     const std::shared_ptr<Block>& block) {
+absl::Status RamFileBlockCache::MaybeFetch(
+    const Key& key, const std::shared_ptr<Block>& block) {
   bool downloaded_block = false;
   auto reconcile_state =
       absl::MakeCleanup([this, &downloaded_block, &key, &block] {
@@ -123,7 +123,7 @@ Status RamFileBlockCache::MaybeFetch(const Key& key,
   // Loop until either block content is successfully fetched, or our request
   // encounters an error.
   mutex_lock l(block->mu);
-  Status status = OkStatus();
+  absl::Status status = absl::OkStatus();
   while (true) {
     switch (block->state) {
       case FetchState::ERROR:
@@ -155,23 +155,24 @@ Status RamFileBlockCache::MaybeFetch(const Key& key,
       case FetchState::FETCHING:
         block->cond_var.wait_for(l, std::chrono::seconds(60));
         if (block->state == FetchState::FINISHED) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         // Re-loop in case of errors.
         break;
       case FetchState::FINISHED:
-        return OkStatus();
+        return absl::OkStatus();
     }
   }
   return errors::Internal(
       "Control flow should never reach the end of RamFileBlockCache::Fetch.");
 }
 
-Status RamFileBlockCache::Read(const string& filename, size_t offset, size_t n,
-                               char* buffer, size_t* bytes_transferred) {
+absl::Status RamFileBlockCache::Read(const string& filename, size_t offset,
+                                     size_t n, char* buffer,
+                                     size_t* bytes_transferred) {
   *bytes_transferred = 0;
   if (n == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!IsCacheEnabled() || (n > max_bytes_)) {
     // The cache is effectively disabled, so we pass the read through to the
@@ -226,7 +227,7 @@ Status RamFileBlockCache::Read(const string& filename, size_t offset, size_t n,
     }
   }
   *bytes_transferred = total_bytes_transferred;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool RamFileBlockCache::ValidateAndUpdateFileSignature(const string& filename,
