@@ -3341,12 +3341,11 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
     } else if (opcode == HloOpcode::kBroadcast) {
       // Broadcasts of dot contracting dimensions can be reordered to reduces
       // of the corresponding contracting dimensions in the other dot operand
-      DimensionVector reduce_dims, broadcast_dim_sizes;
+      DimensionVector reduce_dims;
       const int64_t pre_broadcast_rank =
           reorder_from->mutable_operand(0)->shape().rank();
       int64_t post_broadcast_rank = reorder_from->shape().rank();
       Shape new_broadcast_shape = reorder_from->shape();
-      DimensionVector contracting_reordered;
 
       // Construct map from broadcasted shape to its original shape. Broadcast
       // dimensions are mapped to -1 since they were not present
