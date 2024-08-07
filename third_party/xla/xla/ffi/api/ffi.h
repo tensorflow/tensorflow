@@ -206,13 +206,17 @@ class Error {
   Error(XLA_FFI_Error_Code errc, std::string message)
       : Error(static_cast<ErrorCode>(errc), std::move(message)) {}
 
-  static Error Success() { return Error(); }
-
   bool success() const { return errc_ == ErrorCode::kOk; }
   bool failure() const { return !success(); }
 
   std::optional<ErrorCode> errc() const { return errc_; }
   const std::string& message() const { return message_; }
+
+  static Error Success() { return Error(); }
+
+  static Error InvalidArgument(std::string message) {
+    return Error(ErrorCode::kInvalidArgument, std::move(message));
+  }
 
  private:
   ErrorCode errc_ = ErrorCode::kOk;
@@ -508,6 +512,42 @@ struct ArgDecoding<Buffer<dtype, rank>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of arguments.
+//===----------------------------------------------------------------------===//
+
+class RemainingArgs : public internal::RemainingArgsBase {
+ public:
+  using internal::RemainingArgsBase::RemainingArgsBase;
+
+  template <typename T>
+  ErrorOr<T> get(size_t index) const {
+    size_t idx = offset() + index;
+    if (XLA_FFI_PREDICT_FALSE(idx >= args()->size)) {
+      return Unexpected(
+          Error(ErrorCode::kInvalidArgument, "Index out of range"));
+    }
+
+    DiagnosticEngine diagnostic;
+    std::optional<T> value = ArgDecoding<T>::Decode(
+        args()->types[idx], args()->args[idx], diagnostic);
+    if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
+      return Unexpected(Error(ErrorCode::kInternal, diagnostic.Result()));
+    }
+
+    return *value;
+  }
+};
+
+template <>
+struct internal::Decode<internal::RemainingArgsTag> {
+  static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
+                                           DecodingContext& ctx,
+                                           DiagnosticEngine& diagnostic) {
+    return RemainingArgs(&ctx.call_frame->args, offsets.args);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Results decoding
 //===----------------------------------------------------------------------===//
 
@@ -544,6 +584,42 @@ struct RetDecoding<Buffer<dtype, rank>> {
 
     return internal::DecodeBuffer<dtype, rank>(
         reinterpret_cast<XLA_FFI_Buffer*>(ret), diagnostic);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of results.
+//===----------------------------------------------------------------------===//
+
+class RemainingResults : public internal::RemainingResultsBase {
+ public:
+  using internal::RemainingResultsBase::RemainingResultsBase;
+
+  template <typename T>
+  ErrorOr<Result<T>> get(size_t index) const {
+    size_t idx = offset() + index;
+    if (XLA_FFI_PREDICT_FALSE(idx >= rets()->size)) {
+      return Unexpected(
+          Error(ErrorCode::kInvalidArgument, "Index out of range"));
+    }
+
+    DiagnosticEngine diagnostic;
+    std::optional<Result<T>> value = RetDecoding<T>::Decode(
+        rets()->types[idx], rets()->rets[idx], diagnostic);
+    if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
+      return Unexpected(Error(ErrorCode::kInternal, diagnostic.Result()));
+    }
+
+    return *value;
+  }
+};
+
+template <>
+struct internal::Decode<internal::RemainingRetsTag> {
+  static std::optional<RemainingResults> call(DecodingOffsets& offsets,
+                                              DecodingContext& ctx,
+                                              DiagnosticEngine& diagnostic) {
+    return RemainingResults(&ctx.call_frame->rets, offsets.rets);
   }
 };
 

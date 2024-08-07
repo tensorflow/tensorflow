@@ -27,6 +27,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 
 // IWYU pragma: begin_exports
 #include "xla/ffi/api/api.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -239,6 +241,41 @@ struct ArgDecoding<Buffer<dtype, rank>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of arguments.
+//===----------------------------------------------------------------------===//
+
+class RemainingArgs : public internal::RemainingArgsBase {
+ public:
+  using internal::RemainingArgsBase::RemainingArgsBase;
+
+  template <typename T>
+  absl::StatusOr<T> get(size_t index) const {
+    size_t idx = offset() + index;
+    if (ABSL_PREDICT_FALSE(idx >= args()->size)) {
+      return InvalidArgument("Index out of range.");
+    }
+
+    DiagnosticEngine diagnostic;
+    std::optional<T> value = ArgDecoding<T>::Decode(
+        args()->types[idx], args()->args[idx], diagnostic);
+    if (ABSL_PREDICT_FALSE(!value.has_value())) {
+      return Internal("%s", diagnostic.Result());
+    }
+
+    return *value;
+  }
+};
+
+template <>
+struct internal::Decode<internal::RemainingArgsTag> {
+  static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
+                                           DecodingContext& ctx,
+                                           DiagnosticEngine& diagnostic) {
+    return RemainingArgs(&ctx.call_frame->args, offsets.args);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Results decoding
 //===----------------------------------------------------------------------===//
 
@@ -268,6 +305,41 @@ struct RetDecoding<Buffer<dtype, rank>> {
 
     return internal::DecodeBuffer<dtype, rank>(
         reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of results.
+//===----------------------------------------------------------------------===//
+
+class RemainingResults : public internal::RemainingResultsBase {
+ public:
+  using internal::RemainingResultsBase::RemainingResultsBase;
+
+  template <typename T>
+  absl::StatusOr<Result<T>> get(size_t index) const {
+    size_t idx = offset() + index;
+    if (ABSL_PREDICT_FALSE(idx >= rets()->size)) {
+      return InvalidArgument("Index out of range.");
+    }
+
+    DiagnosticEngine diagnostic;
+    std::optional<Result<T>> value = RetDecoding<T>::Decode(
+        rets()->types[idx], rets()->rets[idx], diagnostic);
+    if (ABSL_PREDICT_FALSE(!value.has_value())) {
+      return Internal("%s", diagnostic.Result());
+    }
+
+    return *value;
+  }
+};
+
+template <>
+struct internal::Decode<internal::RemainingRetsTag> {
+  static std::optional<RemainingResults> call(DecodingOffsets& offsets,
+                                              DecodingContext& ctx,
+                                              DiagnosticEngine& diagnostic) {
+    return RemainingResults(&ctx.call_frame->rets, offsets.rets);
   }
 };
 

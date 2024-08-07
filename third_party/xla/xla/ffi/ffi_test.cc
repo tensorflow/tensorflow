@@ -631,8 +631,14 @@ TEST(FfiTest, RemainingArgs) {
 
   auto fn = [&](RemainingArgs args) {
     EXPECT_EQ(args.size(), 1);
-    EXPECT_TRUE(args.get<AnyBuffer>(0).has_value());
-    EXPECT_FALSE(args.get<AnyBuffer>(1).has_value());
+
+    absl::StatusOr<AnyBuffer> arg0 = args.get<AnyBuffer>(0);
+    absl::StatusOr<AnyBuffer> arg1 = args.get<AnyBuffer>(1);
+
+    EXPECT_TRUE(arg0.ok());
+    EXPECT_THAT(arg1.status(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                        HasSubstr("Index out of range")));
+
     return absl::OkStatus();
   };
 
@@ -653,8 +659,14 @@ TEST(FfiTest, RemainingRets) {
 
   auto fn = [&](Result<AnyBuffer> ret, RemainingResults rets) {
     EXPECT_EQ(rets.size(), 1);
-    EXPECT_TRUE(rets.get<AnyBuffer>(0).has_value());
-    EXPECT_FALSE(rets.get<AnyBuffer>(1).has_value());
+
+    absl::StatusOr<Result<AnyBuffer>> ret0 = rets.get<AnyBuffer>(0);
+    absl::StatusOr<Result<AnyBuffer>> ret1 = rets.get<AnyBuffer>(1);
+
+    EXPECT_TRUE(ret0.ok());
+    EXPECT_THAT(ret1.status(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                        HasSubstr("Index out of range")));
+
     return absl::OkStatus();
   };
 

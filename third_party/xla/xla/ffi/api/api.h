@@ -1022,9 +1022,11 @@ constexpr Expected<T, E>::Expected(Unexpected<E> u)
 // Type-safe wrapper for accessing a variable number of arguments.
 //===----------------------------------------------------------------------===//
 
-class RemainingArgs {
+namespace internal {
+
+class RemainingArgsBase {
  public:
-  RemainingArgs(const XLA_FFI_Args* args, size_t offset)
+  RemainingArgsBase(const XLA_FFI_Args* args, size_t offset)
       : args_(args), offset_(offset) {
     assert(offset <= args_->size && "illegal remaining args offset");
   }
@@ -1032,43 +1034,26 @@ class RemainingArgs {
   size_t size() const { return args_->size - offset_; }
   bool empty() const { return size() == 0; }
 
-  template <typename T>
-  Expected<T, std::string> get(size_t index) const {
-    size_t idx = offset_ + index;
-    if (idx >= args_->size) {
-      return Unexpected("Index out of range.");
-    }
-
-    DiagnosticEngine diagnostic;
-    auto value_opt =
-        ArgDecoding<T>::Decode(args_->types[idx], args_->args[idx], diagnostic);
-    if (!value_opt.has_value()) {
-      return Unexpected(diagnostic.Result());
-    }
-    return *value_opt;
-  }
+ protected:
+  const XLA_FFI_Args* args() const { return args_; }
+  size_t offset() const { return offset_; }
 
  private:
-  const XLA_FFI_Args* args_;  // not owned
+  const XLA_FFI_Args* args_;
   size_t offset_;
 };
 
-template <>
-struct internal::Decode<internal::RemainingArgsTag> {
-  static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
-                                           DecodingContext& ctx,
-                                           DiagnosticEngine& diagnostic) {
-    return RemainingArgs(&ctx.call_frame->args, offsets.args);
-  }
-};
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing a variable number of results.
 //===----------------------------------------------------------------------===//
 
-class RemainingResults {
+namespace internal {
+
+class RemainingResultsBase {
  public:
-  RemainingResults(const XLA_FFI_Rets* rets, size_t offset)
+  RemainingResultsBase(const XLA_FFI_Rets* rets, size_t offset)
       : rets_(rets), offset_(offset) {
     assert(offset <= rets_->size && "illegal remaining rets offset");
   }
@@ -1076,35 +1061,16 @@ class RemainingResults {
   size_t size() const { return rets_->size - offset_; }
   bool empty() const { return size() == 0; }
 
-  template <typename T>
-  Expected<T, std::string> get(size_t index) const {
-    size_t idx = offset_ + index;
-    if (idx >= rets_->size) {
-      return Unexpected("Index out of range.");
-    }
-
-    DiagnosticEngine diagnostic;
-    auto value_opt =
-        RetDecoding<T>::Decode(rets_->types[idx], rets_->rets[idx], diagnostic);
-    if (!value_opt.has_value()) {
-      return Unexpected(diagnostic.Result());
-    }
-    return **value_opt;
-  }
+ protected:
+  const XLA_FFI_Rets* rets() const { return rets_; }
+  size_t offset() const { return offset_; }
 
  private:
   const XLA_FFI_Rets* rets_;  // not owned
   size_t offset_;
 };
 
-template <>
-struct internal::Decode<internal::RemainingRetsTag> {
-  static std::optional<RemainingResults> call(DecodingOffsets& offsets,
-                                              DecodingContext& ctx,
-                                              DiagnosticEngine& diagnostic) {
-    return RemainingResults(&ctx.call_frame->rets, offsets.rets);
-  }
-};
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing dictionary attributes.
@@ -1185,6 +1151,13 @@ struct internal::Decode<internal::AttrsTag<T>> {
 //===----------------------------------------------------------------------===//
 // Template metaprogramming for decoding handler signature
 //===----------------------------------------------------------------------===//
+
+// Forward declare classes for decoding variadic number of arguments and
+// results. They are defined in `ffi.h` headers (internal and external), to be
+// able to use slightly different implementations for internal and external
+// FFI (`absl::StatusOr` vs `ffi::ErrorOr`).
+class RemainingArgs;
+class RemainingResults;
 
 namespace internal {
 // A helper struct to extract the type of the handler argument.

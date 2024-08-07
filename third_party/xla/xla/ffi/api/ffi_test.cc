@@ -321,11 +321,64 @@ TEST(FfiTest, TokenArgument) {
   auto fn = [&](Token tok) {
     EXPECT_EQ(tok.typed_data(), nullptr);
     EXPECT_EQ(tok.dimensions().size(), 0);
-    return ffi::Error::Success();
+    return Error::Success();
   };
 
   auto handler = Ffi::Bind().Arg<Token>().To(fn);
   auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, RemainingArgs) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](RemainingArgs args) {
+    EXPECT_EQ(args.size(), 1);
+
+    ErrorOr<AnyBuffer> arg0 = args.get<AnyBuffer>(0);
+    ErrorOr<AnyBuffer> arg1 = args.get<AnyBuffer>(1);
+
+    EXPECT_TRUE(arg0.has_value());
+    EXPECT_FALSE(arg1.has_value());
+
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().RemainingArgs().To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, RemainingRets) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/2);
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Result<AnyBuffer> ret, RemainingResults rets) {
+    EXPECT_EQ(rets.size(), 1);
+
+    ErrorOr<Result<AnyBuffer>> ret0 = rets.get<AnyBuffer>(0);
+    ErrorOr<Result<AnyBuffer>> ret1 = rets.get<AnyBuffer>(1);
+
+    EXPECT_TRUE(ret0.has_value());
+    EXPECT_FALSE(ret1.has_value());
+
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Ret<AnyBuffer>().RemainingResults().To(fn);
+  auto status = Call(*handler, call_frame);
+
   TF_ASSERT_OK(status);
 }
 

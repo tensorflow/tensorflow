@@ -120,6 +120,7 @@ cc_library(
         ":execution_state",
         "//xla:shape_util",
         "//xla:types",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
