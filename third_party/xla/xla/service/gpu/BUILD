@@ -2678,7 +2678,6 @@ cc_library(
     srcs = ["prepare_hlo_for_ir_emitting_pipeline.cc"],
     hdrs = ["prepare_hlo_for_ir_emitting_pipeline.h"],
     deps = [
-        ":alias_passthrough_params",
         ":copy_fusion",
         ":gpu_sanitize_constant_names",
         ":horizontal_loop_fusion",
@@ -2692,6 +2691,7 @@ cc_library(
         "//xla/service:hlo_verifier",
         "//xla/service:layout_assignment",
         "//xla/service:loop_schedule_linearizer",
+        "//xla/service/gpu/transforms:alias_passthrough_params",
     ],
 )
 
@@ -2706,7 +2706,6 @@ cc_library(
     deps = if_gpu_is_configured([
         # go/keep-sorted start prefix_order=":,,
         ":algorithm_checker",
-        ":alias_passthrough_params",
         ":all_reduce_blueconnect",
         ":buffer_sharing",
         ":collective_permute_cycle_decomposer",
@@ -4401,37 +4400,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-cc_library(
-    name = "alias_passthrough_params",
-    srcs = ["alias_passthrough_params.cc"],
-    hdrs = ["alias_passthrough_params.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_pass",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_cc_test(
-    name = "alias_passthrough_params_test",
-    srcs = ["alias_passthrough_params_test.cc"],
-    tags = [
-        "nomsan",
-    ],
-    deps = [
-        ":alias_passthrough_params",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
