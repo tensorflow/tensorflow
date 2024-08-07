@@ -225,8 +225,8 @@ TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("expects parent computation thread name same as called "
-                        "computation's thread name"));
+              HasSubstr("mycall top_apply computation execution thread does "
+                        "not match (parallel_thread vs main)"));
 }
 
 TEST_F(HloVerifierTest, CompositeCall) {
@@ -2165,10 +2165,10 @@ TEST_F(HloVerifierTest, FusionNestedComputationThreadVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().message(),
-              HasSubstr("Nested computations expects same computation's thread "
-                        "name: parallel_thread vs main, in called computation "
-                        "`add` vs caller computation `fused_computation`"));
+  EXPECT_THAT(
+      verifier().Run(module.get()).status().message(),
+      HasSubstr("crs0 top_apply computation execution thread does not match "
+                "(parallel_thread vs main)"));
 }
 
 TEST_F(HloVerifierTest, AllReduceVerifier) {
@@ -2804,8 +2804,8 @@ TEST_F(HloVerifierTest, VerifyCustomCallThread) {
           .status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("expects parent computation thread name same as called "
-                        "computation's thread name"));
+              HasSubstr("custom top_apply computation execution thread does "
+                        "not match (parallel_thread vs main)"));
 }
 
 TEST_F(HloVerifierTest, CheckWhileThread) {

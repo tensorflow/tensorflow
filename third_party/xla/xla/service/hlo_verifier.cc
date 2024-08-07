@@ -2956,6 +2956,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       }
     }
 
+    if (instruction->has_to_apply() &&
+        instruction->to_apply()->execution_thread() !=
+            instruction->parent()->execution_thread()) {
+      return Internal(
+          "%s top_apply computation execution thread does not match (%s vs %s)",
+          instruction->name(), instruction->to_apply()->execution_thread(),
+          instruction->parent()->execution_thread());
+    }
+
     return absl::OkStatus();
   }
 
