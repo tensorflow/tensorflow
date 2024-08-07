@@ -111,6 +111,14 @@ class DimPadding {
   int64_t hi_;
 };
 
+inline llvm::SmallVector<int64_t> UnrollI64Splat(DenseElementsAttr data) {
+  if (!data.isSplat()) {
+    return llvm::SmallVector<int64_t>(data.getValues<int64_t>());
+  }
+  return llvm::SmallVector<int64_t>(data.getType().getNumElements(),
+                                    data.getSplatValue<int64_t>());
+}
+
 // Resolves optional strides or dilations attributes. If not present,
 // will return trivial 1's vector.
 llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
