@@ -25,6 +25,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.td"
 include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.td"
+include "xla/service/gpu/fusions/mlir/ir/xla_gpu_types.td"
 
 class XLAGPU_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaGpuDialect, mnemonic, traits> {
@@ -236,7 +237,7 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
     symbol arguments must be equal to the respective number of dimensional and
     symbolic inputs in the affine map. The affine mapping can be
     multi-dimensional, and so the `apply_indexing` operation always returns one
-    value. The  operands and results must all have ‘index’ type.
+    value. The operands and results must all have ‘index’ type.
 
     Example:
 
@@ -321,6 +322,30 @@ def LoopOp : XLAGPU_Op<"loop", [
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+}
+
+def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize", [AttrSizedOperandSegments]> {
+  let summary = "Reads a tensor into registers";
+  let arguments = (ins Variadic<AnyType>:$input,
+                       Variadic<Index>:$indices,
+                       FlatSymbolRefAttr:$callee,
+                       XLAGPU_IndexingMapAttr:$map);
+  let results = (outs XLAGPU_IndexedVectorType:$result);
+  let assemblyFormat = [{
+    $callee `(` $input `)` `at` $map `(` $indices `)` attr-dict `:` functional-type($input, results)
+  }];
+}
+
+def XLAGPU_InsertOp : XLAGPU_Op<"insert", []> {
+  let summary = "Inserts an indexed vector into a tensor";
+  let arguments = (ins XLAGPU_IndexedVectorType:$source,
+                       Variadic<Index>:$indices,
+                       AnyRankedTensor:$dest,
+                       XLAGPU_IndexingMapAttr:$map);
+  let results = (outs AnyRankedTensor:$result);
+  let assemblyFormat = [{
+    $source `into` $dest `at` $map `(` $indices `)` attr-dict `:` type($source) `->` type($dest) `into` type($result)
+  }];
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

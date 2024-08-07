@@ -71,8 +71,6 @@ using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::FuncOp;
 using mlir::func::ReturnOp;
-using mlir::tensor::ExtractOp;
-using mlir::tensor::InsertOp;
 using mlir_converter::ApplyIndexing;
 
 constexpr int kNumRows = 4;
@@ -260,8 +258,8 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
           root_computation, transpose,
           /*operand_index=*/0, input_indices(transpose->operand(0)),
           call_target_provider, entry_function, builder)[0];
-      result_tensors.push_back(
-          builder.create<InsertOp>(result_scalar, output, shmem_indices));
+      result_tensors.push_back(builder.create<mlir::tensor::InsertOp>(
+          result_scalar, output, shmem_indices));
     }
 
     // Produce all side outputs and then write them.
@@ -281,7 +279,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
          llvm::zip(side_outputs, side_output_indices,
                    output_tensors.take_back(side_output_roots_.size()))) {
       result_tensors.push_back(
-          builder.create<InsertOp>(value, output, indices));
+          builder.create<mlir::tensor::InsertOp>(value, output, indices));
     }
 
     return result_tensors;
@@ -329,7 +327,7 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
         for (auto [transpose, shmem] :
              llvm::zip(shmem_transposes_, written.shmem_tensors)) {
           transpose_values[transpose].push_back(
-              builder.create<ExtractOp>(shmem, shmem_indices));
+              builder.create<mlir::tensor::ExtractOp>(shmem, shmem_indices));
         }
         llvm::SmallVector<Value> epilogue_indices = dim_values;
         absl::c_copy(symbol_values, std::back_inserter(epilogue_indices));
@@ -343,7 +341,7 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
                        shmem_transpose_root_indices_)) {
           llvm::SmallVector<Value> indices =
               ApplyIndexing(indexing, dim_values, symbol_values, builder);
-          results[root_index] = builder.create<InsertOp>(
+          results[root_index] = builder.create<mlir::tensor::InsertOp>(
               result_scalars.at(root).front(), results[root_index], indices);
         }
         return results;
