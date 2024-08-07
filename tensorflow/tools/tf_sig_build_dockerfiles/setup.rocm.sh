@@ -85,13 +85,13 @@ if [[ "$DISTRO" == "focal" ]] || [[ "$DISTRO" == "jammy" ]]; then
     fi
     apt-get update --allow-insecure-repositories
 
-    wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -;
-    echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/$DISTRO/ llvm-toolchain-$DISTRO-17 main" | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+    wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+    echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/$DISTRO/ llvm-toolchain-$DISTRO-17 main" | tee /etc/apt/sources.list.d/llvm.list
+    apt-get update --allow-insecure-repositories
 
     # install rocm
     /setup.packages.sh /devel.packages.rocm.txt
 
-    apt-get update --allow-insecure-repositories
     MIOPENKERNELS=$( \
                         apt-cache search --names-only miopen-hip-gfx | \
                         awk '{print $1}' | \
