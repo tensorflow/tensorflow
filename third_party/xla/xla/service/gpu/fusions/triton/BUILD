@@ -1,4 +1,3 @@
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla:xla.bzl", "xla_cc_test")
@@ -33,7 +32,8 @@ cc_library(
     ]),
     hdrs = ["triton_fusion_emitter.h"],
     deps = [
-        ":passes",
+        ":prevent_mmav3_loop_unrolling",
+        ":sparse_extensions",
         "//xla:autotuning_proto_cc",
         "//xla:comparison_util",
         "//xla:debug_options_flags",
@@ -135,33 +135,11 @@ cc_library(
     ]),
 )
 
-gentbl_cc_library(
-    name = "passes_inc_gen",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TritonFusionTransforms",
-            ],
-            "passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "passes.td",
-    visibility = ["//visibility:private"],
-    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
-)
-
 cc_library(
-    name = "passes",
-    srcs = [
-        "passes.cc",
-        "prevent_mmav3_loop_unrolling.cc",
-        "sparse_extensions.cc",
-    ],
-    hdrs = ["passes.h"],
+    name = "sparse_extensions",
+    srcs = ["sparse_extensions.cc"],
+    hdrs = ["sparse_extensions.h"],
     deps = [
-        ":passes_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:GPUCommonTransforms",
@@ -173,7 +151,6 @@ cc_library(
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Rewrite",
-        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
@@ -185,6 +162,20 @@ cc_library(
         "@triton//third_party/nvidia:NVGPUDialect",
         "@triton//third_party/nvidia:NVGPUToLLVM",
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
+    ],
+)
+
+cc_library(
+    name = "prevent_mmav3_loop_unrolling",
+    srcs = ["prevent_mmav3_loop_unrolling.cc"],
+    hdrs = ["prevent_mmav3_loop_unrolling.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@triton//:TritonDialects",
     ],
 )
 

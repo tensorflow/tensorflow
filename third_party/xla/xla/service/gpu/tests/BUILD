@@ -857,7 +857,8 @@ lit_test_suite(
 #     name = "xla-opt",
 #     srcs = ["xla-opt.cc"],
 #     deps = [
-#         "//xla/service/gpu/fusions/triton:passes",
+#         "//xla/service/gpu/fusions/triton:prevent_mmav3_loop_unrolling",
+#         "//xla/service/gpu/fusions/triton:sparse_extensions",
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@triton//:AllPassesAndDialects",

@@ -1,6 +1,6 @@
 // RUN: xla-opt %s \
 // RUN:   -convert-triton-to-tritongpu='target=cuda:80' \
-// RUN:   -sparse-add-encoding -canonicalize \
+// RUN:   -add-sparse-encoding -canonicalize \
 // RUN: | FileCheck %s
 
 // Note: 'canonicalize' folds redundant (back-and-forth) convert_layout ops.
