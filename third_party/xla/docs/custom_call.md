@@ -220,7 +220,7 @@ and lazily decode only the attributes that are needed at run time.
 
 ```c++
 auto handler = Ffi::Bind().Attrs().To([](Dictionary attrs) -> Error {
-  auto i32 = attrs.get<int32_t>("i32");
+  ErrorOr<int32_t> i32 = attrs.get<int32_t>("i32");
   return Error::Success();
 });
 ```

@@ -36,6 +36,7 @@ limitations under the License.
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "xla/ffi/api/c_api.h"
@@ -173,7 +174,7 @@ class Span {
 };
 
 //===----------------------------------------------------------------------===//
-// Error and ErrorOr
+// Error
 //===----------------------------------------------------------------------===//
 
 enum class ErrorCode : uint8_t {
@@ -214,6 +215,10 @@ class Error {
 
   static Error Success() { return Error(); }
 
+  static Error Internal(std::string message) {
+    return Error(ErrorCode::kInternal, std::move(message));
+  }
+
   static Error InvalidArgument(std::string message) {
     return Error(ErrorCode::kInvalidArgument, std::move(message));
   }
@@ -222,6 +227,68 @@ class Error {
   ErrorCode errc_ = ErrorCode::kOk;
   std::string message_;
 };
+
+//===----------------------------------------------------------------------===//
+// Expected<T, E> and ErrorOr<T>
+//===----------------------------------------------------------------------===//
+
+// Forward declare.
+template <typename E>
+class Unexpected;
+
+// TODO(slebedev): Replace with `std::expected` when C++23 is available.
+template <typename T, typename E>
+class Expected {
+ public:
+  constexpr Expected(T value) : data_(std::move(value)) {}  // NOLINT
+  constexpr Expected(Unexpected<E> u);                      // NOLINT
+
+  constexpr operator bool() const {  // NOLINT
+    return has_value();
+  }
+
+  constexpr T& operator*() & { return value(); }
+  constexpr const T& operator*() const& { return value(); }
+  constexpr T&& operator*() && { return std::move(value()); }
+  constexpr const T& operator*() const&& { return std::move(value()); }
+
+  constexpr T* operator->() { return &value(); }
+  constexpr const T* operator->() const { return &value(); }
+
+  constexpr bool has_value() const { return std::holds_alternative<T>(data_); }
+  constexpr bool has_error() const { return std::holds_alternative<E>(data_); }
+
+  constexpr T& value() & { return std::get<T>(data_); }
+  constexpr const T& value() const& { return std::get<T>(data_); }
+  constexpr T&& value() && { return std::get<T>(std::move(data_)); }
+  constexpr const T& value() const&& { return std::get<T>(std::move(data_)); }
+
+  constexpr E& error() & { return std::get<E>(data_); }
+  constexpr const E& error() const& { return std::get<E>(data_); }
+  constexpr E&& error() && { return std::get<E>(std::move(data_)); }
+  constexpr const E&& error() const&& { return std::get<E>(std::move(data_)); }
+
+ private:
+  std::variant<T, E> data_;
+};
+
+template <typename E>
+class Unexpected {
+ public:
+  constexpr Unexpected(E error) : error_(std::move(error)) {}  // NOLINT
+
+ private:
+  template <typename, typename>
+  friend class Expected;
+
+  E error_;
+};
+
+Unexpected(const char*) -> Unexpected<std::string>;
+
+template <typename T, typename E>
+constexpr Expected<T, E>::Expected(Unexpected<E> u)
+    : data_(std::move(u.error_)) {}
 
 template <typename T>
 class ErrorOr : public Expected<T, Error> {
@@ -531,7 +598,7 @@ class RemainingArgs : public internal::RemainingArgsBase {
     std::optional<T> value = ArgDecoding<T>::Decode(
         args()->types[idx], args()->args[idx], diagnostic);
     if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
-      return Unexpected(Error(ErrorCode::kInternal, diagnostic.Result()));
+      return Unexpected(Error::Internal(diagnostic.Result()));
     }
 
     return *value;
@@ -607,7 +674,7 @@ class RemainingResults : public internal::RemainingResultsBase {
     std::optional<Result<T>> value = RetDecoding<T>::Decode(
         rets()->types[idx], rets()->rets[idx], diagnostic);
     if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
-      return Unexpected(Error(ErrorCode::kInternal, diagnostic.Result()));
+      return Unexpected(Error::Internal(diagnostic.Result()));
     }
 
     return *value;
@@ -677,6 +744,49 @@ struct AttrDecoding<Pointer<T>> {
     static_assert(sizeof(uintptr_t) == sizeof(int64_t));
     uintptr_t ptr = *reinterpret_cast<uintptr_t*>(scalar->value);
     return reinterpret_cast<Type>(ptr);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing dictionary attributes.
+//===----------------------------------------------------------------------===//
+
+class Dictionary : public internal::DictionaryBase {
+ public:
+  using internal::DictionaryBase::DictionaryBase;
+
+  template <typename T>
+  ErrorOr<T> get(std::string_view name) const {
+    DiagnosticEngine diagnostic;
+    std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
+    if (!value.has_value()) {
+      return Unexpected(Error::Internal(diagnostic.Result()));
+    }
+    return *value;
+  }
+};
+
+// Decode `AttrsTag` (all attributes) into a `Dictionary`.
+template <>
+struct internal::Decode<internal::AttrsTag<Dictionary>> {
+  static std::optional<Dictionary> call(DecodingOffsets& offsets,
+                                        DecodingContext& ctx,
+                                        DiagnosticEngine& diagnostic) {
+    return Dictionary(&ctx.call_frame->attrs);
+  }
+};
+
+// Decode individual attribute into `Dictionary` type.
+template <>
+struct AttrDecoding<Dictionary> {
+  using Type = Dictionary;
+  static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
+                                          DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
+    }
+    return Dictionary(reinterpret_cast<XLA_FFI_Attrs*>(attr));
   }
 };
 
