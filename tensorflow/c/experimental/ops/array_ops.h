@@ -18,8 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace ops {
