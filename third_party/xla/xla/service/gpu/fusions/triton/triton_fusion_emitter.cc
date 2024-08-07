@@ -1507,7 +1507,7 @@ class MatMulEmitterHelper {
             }
           }
         }
-        CHECK(to_order.insert(current).second);
+        to_order.insert(current);
         to_add.pop();
       }
     }
