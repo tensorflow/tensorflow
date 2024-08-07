@@ -129,40 +129,9 @@ class RewriteClusterToIfrtCallPass
              << " is missing";
     int num_cores_per_replica = num_cores_per_replica_attr.getInt();
 
-    // TODO(b/355508052): remove DeviceAssignment after verification.
-    std::optional<xla::DeviceAssignmentProto> xla_device_assignment;
-    auto topology_attr = cluster_func->getAttrOfType<mlir::StringAttr>(
-        tensorflow::kTopologyAttr);
-    // Get device assignment.
-    auto device_assignment_attr = cluster_func->getAttrOfType<mlir::ArrayAttr>(
-        tensorflow::kDeviceAssignmentAttr);
-    if (topology_attr && device_assignment_attr && !topology_attr.empty() &&
-        !device_assignment_attr.empty()) {
-      auto device_coordinates =
-          tensorflow::GetDeviceCoordinates(device_assignment_attr);
-      if (!device_coordinates.ok())
-        return cluster_func.emitError()
-               << "error in parsing tpu device coordinates: "
-               << device_coordinates.status().message();
-
-      absl::StatusOr<xla::DeviceAssignmentProto>
-          xla_device_assignment_from_device_assignment_attr =
-              tensorflow::GetXlaDeviceAssignmentProto(
-                  topology_attr.getValue(), num_replicas, num_cores_per_replica,
-                  *device_coordinates);
-      if (!xla_device_assignment_from_device_assignment_attr.ok()) {
-        return cluster_func.emitError()
-               << "error in getting xla device assignment: "
-               << xla_device_assignment_from_device_assignment_attr.status()
-                      .message();
-      }
-      xla_device_assignment =
-          *xla_device_assignment_from_device_assignment_attr;
-    }
-
     return mlir::TFTPU::SetMetadataProtoFromClusterFuncOp(
         cluster_func, num_replicas, num_cores_per_replica,
-        std::move(xla_device_assignment), metadata);
+        /*xla_device_assignment=*/std::nullopt, metadata);
   }
 
   void Rewrite(mlir::SymbolTable &symbol_table,
@@ -202,6 +171,8 @@ class RewriteClusterToIfrtCallPass
         return signalPassFailure();
       }
 
+      // For better debuggability, attach attributes such as
+      // tpu_compile_metadata and device_assignment to IfrtCallOp.
       ifrt_call_op->setAttr(kMetadataTextAttrName, metadata_attr);
       ifrt_call_op->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
 
@@ -263,8 +234,8 @@ class RewriteClusterToIfrtCallPass
     // hoisting pass.
     ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
     ifrt_call_op.setProgramId(program_id);
-    // Additionally attach tpu_compile_metadata to IfrtCallOp. Some subsequent
-    // pass such as SinkVariableAsNamedArrayPass relies on this attribute.
+    // For better debuggability, attach attributes such as tpu_compile_metadata
+    // and device_assignment to IfrtCallOp.
     ifrt_call_op->setAttr(kMetadataTextAttrName,
                           builder.getStringAttr(serialized_metadata));
     ifrt_call_op->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
