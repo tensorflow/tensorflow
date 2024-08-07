@@ -137,6 +137,7 @@ struct SchedulerConfig {
   bool resource_serializing = false;
   bool depth_based_memory_pressure_reduction = false;
   bool enable_selective_resources = false;
+  int64_t max_hops_to_closest_selective_overlap = 0;
   int64_t rerun = 0;
 };
 
@@ -284,6 +285,9 @@ class AsyncTracker {
   // Returns whether the provided node releases a selective resource.
   bool ReleasesSelectiveResource(const HloGraphNode* node) const;
 
+  // Returns whether the provided node occupies a selective resource.
+  bool OccupiesSelectiveResource(const HloGraphNode* node) const;
+
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
     return get_canonical_async_op_(hlo);
   }
@@ -385,6 +389,17 @@ class HloGraphNode {
   }
   bool ReleasesSelectiveResource() const {
     return releases_selective_resource_;
+  }
+  bool OccupiesSelectiveResource() const {
+    return occupies_selective_resource_;
+  }
+  int64_t GetNumHopsToClosestSelectiveResourceOccupier() const {
+    return num_hops_to_closest_selective_resource_occupier_;
+  }
+  void SetNumHopsToClosestSelectiveResourceOccupier(
+      int64_t num_hops_to_closest_selective_resource_occupier) {
+    num_hops_to_closest_selective_resource_occupier_ =
+        num_hops_to_closest_selective_resource_occupier;
   }
 
   ResourcesVector GetResources() const { return resources_; }
@@ -525,6 +540,11 @@ class HloGraphNode {
   bool valuable_for_selective_overlap_ = true;
   // Whether this node releases a selective resource.
   bool releases_selective_resource_ = false;
+  // Whether this node occupies a selective resource.
+  bool occupies_selective_resource_ = false;
+  // Nums hops to closest selective resource occupier.
+  int64_t num_hops_to_closest_selective_resource_occupier_ =
+      std::numeric_limits<int64_t>::max();
 };
 
 // Schedule graph that can be used to drive scheduling
@@ -920,7 +940,6 @@ class DefaultSchedulerCore : public SchedulerCore {
   virtual absl::StatusOr<HloGraphNode*> FindAndExtractBestNodeAvailable(
       SchedulingState& sched_state,
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
-  bool DoesNodeReleaseSelectiveResource(const HloGraphNode* node) const;
   void DumpLatencyHidingSchedule(
       const HloComputation* computation, const HloScheduleGraph& schedule_graph,
       const std::vector<HloInstruction*>& instructions,

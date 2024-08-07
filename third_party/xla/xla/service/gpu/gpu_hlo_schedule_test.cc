@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -54,6 +55,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
@@ -1478,6 +1480,49 @@ TEST_F(GpuHloSchedulePostProcessTest, PostProcessAsyncCollectives) {
   for (int i = 0; i < result.size(); ++i) {
     EXPECT_EQ(expected_sequence[i], result.instructions()[i]->name());
   }
+}
+
+TEST_F(GpuHloScheduleTest, AsyncOps) {
+  const char* hlo_text = R"(
+  HloModule m
+
+  op1 {
+    p0 = f32[2,2] parameter(0)
+    ROOT add = f32[2,2] add(p0, p0)
+  }
+
+  op2 {
+    p0 = f32[2,2] parameter(0)
+    ROOT add = f32[2,2] add(p0, p0)
+  }
+
+  ENTRY main {
+    p0 = f32[2,2] parameter(0)
+    // The `async-start` blocks should be moved up, and the `async-done` blocks
+    // should be moved down.
+    acc1_start = ((f32[2,2]), f32[2,2], s32[]) fusion-start(p0),
+        kind=kLoop, calls=op1
+    acc1_done = f32[2,2] fusion-done(acc1_start)
+    acc2_start = ((f32[2,2]), f32[2,2], s32[]) fusion-start(p0),
+        kind=kLoop, calls=op2
+    acc2_done = f32[2,2] fusion-done(acc2_start)
+    ROOT done = f32[2,2] add(acc1_done, acc2_done)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::VerifiedHloModule> module,
+      ParseAndReturnVerifiedModule(hlo_text, HloModuleConfig{}));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  std::vector<HloOpcode> opcodes;
+  for (HloInstruction* instruction :
+       order.SequentialOrder(*module->entry_computation())->instructions()) {
+    opcodes.push_back(instruction->opcode());
+  }
+  EXPECT_THAT(opcodes,
+              ElementsAre(HloOpcode::kParameter, HloOpcode::kAsyncStart,
+                          HloOpcode::kAsyncStart, HloOpcode::kAsyncDone,
+                          HloOpcode::kAsyncDone, HloOpcode::kAdd));
 }
 
 }  // namespace gpu
