@@ -13,23 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_PREVENT_MMAV3_LOOP_UNROLLING_H_
-#define XLA_SERVICE_GPU_FUSIONS_TRITON_PREVENT_MMAV3_LOOP_UNROLLING_H_
+#include "xla/service/gpu/fusions/triton/passes.h"
 
-#include <memory>
-
-#include "mlir/Pass/Pass.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Visitors.h"
 
 namespace xla::gpu {
+namespace {
 
-// This pass is a result of b/344841434:
-// PTX sometimes unrolls wgmma loops that can cause a 1000x slow down in
-// compilation time. Most unrolling has already been done before PTX,
-// this pragma prevents ptxas from doing more.
-std::unique_ptr<mlir::Pass> CreatePreventMmaV3LoopUnrollingPass();
+using ::mlir::WalkResult;
 
-void RegisterPreventMmaV3LoopUnrollingPass();
+}  // namespace
+
+bool ContainsOp(mlir::Operation* op,
+                llvm::function_ref<bool(mlir::Operation*)> fn) {
+  return op
+      ->walk([&](mlir::Operation* nested_op) {
+        return fn(nested_op) ? WalkResult::interrupt() : WalkResult::advance();
+      })
+      .wasInterrupted();
+}
 
 }  // namespace xla::gpu
-
-#endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_PREVENT_MMAV3_LOOP_UNROLLING_H_
