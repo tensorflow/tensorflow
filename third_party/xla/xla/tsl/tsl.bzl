@@ -1,7 +1,6 @@
 """Provides build configuration for TSL"""
 
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
-load("@pywrap_compat//:pywrap_compat.bzl", "use_pywrap_rules")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
@@ -31,10 +30,14 @@ load(
     "cc_shared_library",
 )
 load(
+    "@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "use_pywrap_rules",
+    _pybind_extension = "pybind_extension",
+)
+load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
-load("@local_tsl//third_party/py/rules_pywrap:pywrap_compat.bzl", "pywrap_pybind_extension")
 
 # Internally this loads a macro, but in OSS this is a function
 # buildifier: disable=out-of-order-load
@@ -824,4 +827,4 @@ def tsl_extra_config_settings_targets():
     return []
 
 # TODO(b/356020232): remove after migration is done
-tsl_pybind_extension = pywrap_pybind_extension if use_pywrap_rules() else tsl_pybind_extension_opensource
+tsl_pybind_extension = _pybind_extension if use_pywrap_rules() else tsl_pybind_extension_opensource

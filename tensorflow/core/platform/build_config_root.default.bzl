@@ -1,6 +1,6 @@
 """TODO(jakeharmon): Write module docstring."""
 
-load("@pywrap_compat//:pywrap_compat.bzl", "use_pywrap_rules")
+load("@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
 
 # unused in TSL
 def tf_additional_plugin_deps():

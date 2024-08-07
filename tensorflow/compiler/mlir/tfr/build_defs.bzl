@@ -1,6 +1,6 @@
 """BUILD extension for TF composition project."""
 
-load("@pywrap_compat//:pywrap_compat.bzl", "use_pywrap_rules")
+load("@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")

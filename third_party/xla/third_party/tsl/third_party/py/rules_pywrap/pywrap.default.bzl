@@ -1,7 +1,14 @@
 # TODO(b/356020232): remove entire file and all usages after migration is done
-load("//third_party/py/rules_pywrap:pywrap.bzl", "pybind_extension")
+load("@python_version_repo//:py_version.bzl", "USE_PYWRAP_RULES")
+load(
+    "//third_party/py/rules_pywrap:pywrap.bzl",
+    _pybind_extension = "pybind_extension",
+    _pywrap_library = "pywrap_library",
+    _pywrap_common_library = "pywrap_common_library",
+    _stripped_cc_info = "stripped_cc_info",
+)
 
-def pywrap_pybind_extension(
+def pybind_extension(
         name, # original
         deps, # original
         srcs = [], # original
@@ -73,7 +80,7 @@ def pywrap_pybind_extension(
         actual_deps = deps
         actual_default_deps = []
 
-    pybind_extension(
+    _pybind_extension(
         name = name,
         deps = actual_deps,
         srcs = actual_srcs,
@@ -89,23 +96,72 @@ def pywrap_pybind_extension(
         **kwargs,
     )
 
-def _pywrap_compat_init_impl(repository_ctx):
-    repository_ctx.file("BUILD", "")
-    use_pywrap_rules = bool(
-        repository_ctx.os.environ.get("USE_PYWRAP_RULES", False))
-
-    if use_pywrap_rules:
-        print("!!!Using pywrap rules instead of directly creating .so objects!!!")
-
-    repository_ctx.file(
-        "pywrap_compat.bzl",
-"""
 def use_pywrap_rules():
-    return {}
-""".format(use_pywrap_rules),
-    )
+    return USE_PYWRAP_RULES
 
-pywrap_compat_init = repository_rule(
-    implementation = _pywrap_compat_init_impl,
-    environ = ["USE_PYWRAP_RULES"],
-)
+def pywrap_library(name, **kwargs):
+    if use_pywrap_rules():
+        _pywrap_library(
+            name = name,
+            **kwargs
+        )
+
+def pywrap_common_library(name, **kwargs):
+    if use_pywrap_rules():
+        _pywrap_common_library(
+            name = name,
+            **kwargs,
+        )
+
+def stripped_cc_info(name, **kwargs):
+    if use_pywrap_rules():
+        _stripped_cc_info(
+            name = name,
+            **kwargs,
+        )
+
+def pywrap_aware_filegroup(name, **kwargs):
+    if use_pywrap_rules():
+        pass
+    else:
+        native.filegroup(
+            name = name,
+            **kwargs,
+        )
+
+def pywrap_aware_genrule(name, **kwargs):
+    if use_pywrap_rules():
+        pass
+    else:
+        native.genrule(
+            name = name,
+            **kwargs,
+        )
+
+def pywrap_aware_cc_import(name, **kwargs):
+    if use_pywrap_rules():
+        pass
+    else:
+        native.cc_import(
+            name = name,
+            **kwargs,
+        )
+
+def pywrap_aware_py_strict_library(
+        name,
+        srcs = None,
+        deps = None,
+        visibility = None,
+        **kwargs):
+    if use_pywrap_rules():
+        native.py_library(
+            name = name,
+            srcs = [],
+            deps = [],
+            **kwargs,
+        )
+    else:
+        native.py_library(
+            name = name,
+            **kwargs,
+        )

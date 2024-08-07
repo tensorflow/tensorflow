@@ -25,13 +25,10 @@ load(
     "if_mkldnn_openmp",
     "onednn_v3_define",
 )
-load("@pywrap_compat//:pywrap_compat.bzl", "use_pywrap_rules")
-load("@local_tsl//third_party/py/rules_pywrap:pywrap_compat.bzl", "pywrap_pybind_extension")
 load(
-    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
-    _pywrap_library = "pywrap_library",
-    _pywrap_common_library = "pywrap_common_library",
-    _stripped_cc_info = "stripped_cc_info",
+    "@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "use_pywrap_rules",
+    _pybind_extension = "pybind_extension"
 )
 
 #
@@ -3335,7 +3332,7 @@ def pybind_extension_opensource(
     )
 
 # Export open source version of pybind_extension under base name as well.
-pybind_extension = pywrap_pybind_extension if use_pywrap_rules() else pybind_extension_opensource
+pybind_extension = _pybind_extension if use_pywrap_rules() else pybind_extension_opensource
 
 # Note: we cannot add //third_party/tf_runtime:__subpackages__ here,
 # because that builds all of tf_runtime's packages, and some of them
@@ -3489,7 +3486,7 @@ def tf_python_pybind_extension_opensource(
     )
 
 # Export open source version of tf_python_pybind_extension under base name as well.
-tf_python_pybind_extension = pywrap_pybind_extension if use_pywrap_rules() else tf_python_pybind_extension_opensource
+tf_python_pybind_extension = _pybind_extension if use_pywrap_rules() else tf_python_pybind_extension_opensource
 
 def tf_pybind_cc_library_wrapper_opensource(name, deps, visibility = None, **kwargs):
     """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension_opensource.
@@ -3693,79 +3690,12 @@ def replace_with_portable_tf_lib_when_required(non_portable_tf_deps, use_lib_wit
 def tf_python_framework_friends():
     return ["//tensorflow:__subpackages__"]
 
-# TODO(b/356020232): remove all of these and their usages after migration is done
-def pywrap_library(name, **kwargs):
-    if use_pywrap_rules():
-        _pywrap_library(
-            name = name,
-            **kwargs
-        )
-
-def pywrap_common_library(name, **kwargs):
-    if use_pywrap_rules():
-        _pywrap_common_library(
-            name = name,
-            **kwargs,
-        )
-
-def stripped_cc_info(name, **kwargs):
-    if use_pywrap_rules():
-        _stripped_cc_info(
-            name = name,
-            **kwargs,
-        )
-
-def pywrap_aware_filegroup(name, **kwargs):
-    if use_pywrap_rules():
-        pass
-    else:
-        native.filegroup(
-            name = name,
-            **kwargs,
-        )
-
-def pywrap_aware_genrule(name, **kwargs):
-    if use_pywrap_rules():
-        pass
-    else:
-        native.genrule(
-            name = name,
-            **kwargs,
-        )
-
-def pywrap_aware_cc_import(name, **kwargs):
-    if use_pywrap_rules():
-        pass
-    else:
-        native.cc_import(
-            name = name,
-            **kwargs,
-        )
-
+# TODO(b/356020232): remove completely after migration is done
 def pywrap_aware_tf_cc_shared_object(name, **kwargs):
     if use_pywrap_rules():
         pass
     else:
         tf_cc_shared_object(
-            name = name,
-            **kwargs,
-        )
-
-def pywrap_aware_py_strict_library(
-        name,
-        srcs = None,
-        deps = None,
-        visibility = None,
-        **kwargs):
-    if use_pywrap_rules():
-        native.py_library(
-            name = name,
-            srcs = [],
-            deps = [],
-            **kwargs,
-        )
-    else:
-        native.py_library(
             name = name,
             **kwargs,
         )

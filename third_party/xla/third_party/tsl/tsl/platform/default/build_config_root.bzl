@@ -3,7 +3,7 @@
 # be separate to avoid cyclic references.
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
-load("@pywrap_compat//:pywrap_compat.bzl", "use_pywrap_rules")
+load("@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
 
 # RBE settings for tests that require a GPU. This is used in exec_properties of rules
 # that need GPU access.

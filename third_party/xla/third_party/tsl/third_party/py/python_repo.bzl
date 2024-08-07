@@ -55,6 +55,12 @@ Please check python_init_repositories() in your WORKSPACE file.
             merged_requirements_content,
         )
 
+    use_pywrap_rules = bool(
+        ctx.os.environ.get("USE_PYWRAP_RULES", False))
+
+    if use_pywrap_rules:
+        print("!!!Using pywrap rules instead of directly creating .so objects!!!")
+
     ctx.file(
         "py_version.bzl",
         """
@@ -64,12 +70,14 @@ WHEEL_NAME = "{wheel_name}"
 WHEEL_COLLAB = "{wheel_collab}"
 REQUIREMENTS = "{requirements}"
 REQUIREMENTS_WITH_LOCAL_WHEELS = "{requirements_with_local_wheels}"
+USE_PYWRAP_RULES = {use_pywrap_rules}
 """.format(
             version = version,
             wheel_name = wheel_name,
             wheel_collab = wheel_collab,
             requirements = str(requirements),
             requirements_with_local_wheels = requirements_with_local_wheels,
+            use_pywrap_rules = use_pywrap_rules,
         ),
     )
 
@@ -200,6 +208,7 @@ python_repository = repository_rule(
         "HERMETIC_PYTHON_VERSION",
         "WHEEL_NAME",
         "WHEEL_COLLAB",
+        "USE_PYWRAP_RULES"
     ],
     local = True,
 )

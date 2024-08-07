@@ -6,7 +6,6 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
-load("@local_tsl//third_party/py/rules_pywrap:pywrap_compat.bzl", "pywrap_compat_init")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
@@ -938,9 +937,6 @@ def _tf_repositories():
     )
 
 def workspace():
-    # TODO(b/356020232): remove after migration is done
-    pywrap_compat_init(name = "pywrap_compat")
-
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.
     versions.check("1.0.0")

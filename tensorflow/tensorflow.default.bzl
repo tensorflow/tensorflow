@@ -45,15 +45,16 @@ load(
     _tfcompile_dfsan_abilists = "tfcompile_dfsan_abilists",
     _tfcompile_dfsan_enabled = "tfcompile_dfsan_enabled",
     _tfcompile_target_cpu = "tfcompile_target_cpu",
+    _pywrap_aware_tf_cc_shared_object = "pywrap_aware_tf_cc_shared_object",
+)
+load("@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl",
     _pywrap_aware_filegroup = "pywrap_aware_filegroup",
     _pywrap_aware_genrule = "pywrap_aware_genrule",
     _pywrap_aware_cc_import = "pywrap_aware_cc_import",
-    _pywrap_aware_tf_cc_shared_object = "pywrap_aware_tf_cc_shared_object",
     _pywrap_aware_py_strict_library = "pywrap_aware_py_strict_library",
     _pywrap_library = "pywrap_library",
     _pywrap_common_library = "pywrap_common_library",
     _stripped_cc_info = "stripped_cc_info",
-
 )
 
 clean_dep = _clean_dep
@@ -102,10 +103,10 @@ internal_tfrt_deps = _internal_tfrt_deps
 tf_disable_ptxas_warning_flags = _tf_disable_ptxas_warning_flags
 replace_with_portable_tf_lib_when_required = _replace_with_portable_tf_lib_when_required
 tf_python_framework_friends = _tf_python_framework_friends
+pywrap_aware_tf_cc_shared_object = _pywrap_aware_tf_cc_shared_object
 pywrap_aware_filegroup = _pywrap_aware_filegroup
 pywrap_aware_genrule = _pywrap_aware_genrule
 pywrap_aware_cc_import = _pywrap_aware_cc_import
-pywrap_aware_tf_cc_shared_object = _pywrap_aware_tf_cc_shared_object
 pywrap_aware_py_strict_library = _pywrap_aware_py_strict_library
 pywrap_library = _pywrap_library
 pywrap_common_library = _pywrap_common_library
