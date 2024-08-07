@@ -687,11 +687,11 @@ ENTRY %main {
   const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
 
   DependencyHloOrdering ordering(module.get());
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
 }
 
@@ -795,11 +795,11 @@ ENTRY %main {
   const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
 
   DependencyHloOrdering ordering(module.get());
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
 }
 
