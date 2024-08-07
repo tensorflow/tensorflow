@@ -541,7 +541,7 @@ void TraceEventsToJson(const JsonTraceOptions& options,
       separator.Add();
       output->Append(R"({"args":{"name":)", JsonEscape(device.name()),
                      R"(},"name":"process_name","ph":"M","pid":)", device_id,
-                     "}");
+                     R"(,"thread_count":)", device.resources_size(), "}");
     }
     separator.Add();
     output->Append(R"({"args":{"sort_index":)", device_id,
