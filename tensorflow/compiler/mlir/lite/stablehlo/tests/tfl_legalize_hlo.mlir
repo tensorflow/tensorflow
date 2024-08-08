@@ -1949,6 +1949,27 @@ func.func @maxpool_same_channel_first(%arg0: tensor<4x3x16x16xf32>) -> tensor<4x
 
 // -----
 
+//===------------------------------------------------------------------------===
+// mhlo.reduce_window -> tfl.cumsum
+//===------------------------------------------------------------------------===
+
+// CHECK-LABEL: reduce_window_sum
+func.func @reduce_window_sum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.add %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[3, 0], [0, 0]]> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<[4, 1]> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
+  func.return %1 : tensor<4x12xf32>
+}
+
+// CHECK: %[[AXIS:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK: "tfl.cumsum"(%arg0, %[[AXIS]]) <{exclusive = false, reverse = false}> : (tensor<4x12xf32>, tensor<i32>) -> tensor<4x12xf32>
+
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // mhlo.slice
 //===----------------------------------------------------------------------===//
