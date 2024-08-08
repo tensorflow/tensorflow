@@ -2035,3 +2035,29 @@ func.func @dynamic_slice_splat_sizes(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>,
 // CHECK:     %[[PACK:.*]] = "tfl.pack"(%[[MIN_1]], %[[MIN_2]]) <{axis = 0 : i32, values_count = 2 : i32}> : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
 // CHECK:     %[[SLICE_SIZE:.*]] = arith.constant dense<2> : tensor<2xi64>
 // CHECK:     "tfl.slice"(%arg0, %[[PACK]], %[[SLICE_SIZE]]) : (tensor<7x3xf32>, tensor<2xi32>, tensor<2xi64>) -> tensor<2x2xf32>
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.if
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: if
+func.func @if(%arg0: tensor<i1>) -> (tensor<i32>) {
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %cst_1 = arith.constant dense<1000> : tensor<i32>
+  %1 = "mhlo.if"(%arg0) ({
+    "mhlo.return"(%cst_0) : (tensor<i32>) -> ()
+  }, {
+    "mhlo.return"(%cst_1) : (tensor<i32>) -> ()
+  }) : (tensor<i1>) -> tensor<i32>
+  func.return %1: tensor<i32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK: %[[CST_0:.*]] = arith.constant dense<1000> : tensor<i32>
+// CHECK: %[[VAL_0:.*]] = "tfl.if"(%arg0) ({
+// CHECK:   "tfl.yield"(%[[CST]]) : (tensor<i32>) -> ()
+// CHECK: }, {
+// CHECK:   "tfl.yield"(%[[CST_0]]) : (tensor<i32>) -> ()
+// CHECK: }) : (tensor<i1>) -> tensor<i32>
+// CHECK: return %[[VAL_0]] : tensor<i32>

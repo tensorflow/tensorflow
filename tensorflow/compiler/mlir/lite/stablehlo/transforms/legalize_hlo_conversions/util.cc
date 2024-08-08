@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -29,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -212,6 +212,21 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   }
   return rewriter.create<TFL::CastOp>(
       loc, UnrankedTensorType::get(new_ele_type), val);
+}
+
+// Replaces `region`'s terminator to TFL::Yield.
+void ReplaceReturnOp(Region& region, PatternRewriter& rewriter) {
+  OpBuilder::InsertionGuard guard(rewriter);
+
+  for (auto& block : region.getBlocks()) {
+    Operation* terminator = block.getTerminator();
+    auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
+    if (return_op == nullptr) continue;
+
+    rewriter.setInsertionPoint(return_op);
+    rewriter.replaceOpWithNewOp<TFL::YieldOp>(return_op,
+                                              return_op->getOperands());
+  }
 }
 
 }  // namespace odml
