@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "third_party/protobuf/io/tokenizer.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/message.h"
+#include "third_party/protobuf/text_format.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
