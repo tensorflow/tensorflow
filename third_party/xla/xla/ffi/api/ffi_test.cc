@@ -874,7 +874,7 @@ TEST(FfiTest, ScratchAllocator) {
       CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
 
   CallOptions options;
-  options.allocator = &allocator;
+  options.backend_options = CallOptions::GpuOptions{nullptr, &allocator};
 
   auto status = Call(*handler, call_frame, options);
 

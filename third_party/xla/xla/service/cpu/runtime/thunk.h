@@ -208,14 +208,12 @@ class Thunk {
         const ExecutableRunOptions* run_options);
 
     int32_t device_ordinal;
-    stream_executor::Stream* stream = nullptr;
-    stream_executor::DeviceMemoryAllocator* allocator = nullptr;
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
 
    private:
     CustomCallExecuteParams(int32_t device_ordinal,
-                            stream_executor::Stream* stream,
-                            stream_executor::DeviceMemoryAllocator* allocator,
+                            const Eigen::ThreadPoolDevice* intra_op_thread_pool,
                             const ffi::ExecutionContext* ffi_execution_context);
   };
 

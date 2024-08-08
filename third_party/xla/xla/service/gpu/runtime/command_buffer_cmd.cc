@@ -1835,8 +1835,9 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
           execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
             ffi::CallOptions options = {
                 execute_params.buffer_allocations->device_ordinal(),
-                execute_params.stream,
-                execute_params.buffer_allocations->memory_allocator(),
+                ffi::CallOptions::GpuOptions{
+                    execute_params.stream,
+                    execute_params.buffer_allocations->memory_allocator()},
                 /*called_computation=*/nullptr,  // TODO(b/342285364)
                 execute_params.ffi_execution_context};
             return ffi::Call(handler_, call_frame, options);

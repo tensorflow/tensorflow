@@ -686,7 +686,7 @@ TEST(FfiTest, RunOptionsCtx) {
   };
 
   CallOptions options;
-  options.stream = expected;
+  options.backend_options = CallOptions::GpuOptions{expected};
 
   auto handler = Ffi::Bind().Ctx<Stream>().To(fn);
   auto status = Call(*handler, call_frame, options);

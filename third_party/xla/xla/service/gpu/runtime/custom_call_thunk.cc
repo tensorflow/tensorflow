@@ -198,9 +198,9 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
-  CallOptions options = {device_ordinal,    stream,
-                         allocator,         called_computation_,
-                         execution_context, execution_state_.get()};
+  CallOptions options = {
+      device_ordinal, CallOptions::GpuOptions{stream, allocator},
+      called_computation_, execution_context, execution_state_.get()};
   return Call(handler, call_frame, options, stage);
 }
 

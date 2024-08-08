@@ -140,18 +140,16 @@ Thunk::CustomCallExecuteParams::Create(
           ? run_options->device_ordinal()
           : run_options->stream()->parent()->device_ordinal();
 
-  return CustomCallExecuteParams{device_ordinal, run_options->stream(),
-                                 run_options->allocator(),
+  return CustomCallExecuteParams{device_ordinal,
+                                 run_options->intra_op_thread_pool(),
                                  run_options->ffi_execution_context()};
 }
 
 Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
-    int32_t device_ordinal, stream_executor::Stream* stream,
-    stream_executor::DeviceMemoryAllocator* allocator,
+    int32_t device_ordinal, const Eigen::ThreadPoolDevice* intra_op_thread_pool,
     const ffi::ExecutionContext* ffi_execution_context)
     : device_ordinal(device_ordinal),
-      stream(stream),
-      allocator(allocator),
+      intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEventSingleton() {

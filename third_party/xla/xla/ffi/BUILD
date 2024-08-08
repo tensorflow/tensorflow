@@ -149,6 +149,7 @@ cc_library(
         ":execution_context",
         ":execution_state",
         ":type_id_registry",
+        "//xla:executable_run_options",
         "//xla:util",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
