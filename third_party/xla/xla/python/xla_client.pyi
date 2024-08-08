@@ -222,12 +222,16 @@ class GatherDimensionNumbers:
   collapsed_slice_dims: list[int]
   start_index_map: list[int]
   index_vector_dim: int
+  operand_batching_dims: list[int]
+  start_indices_batching_dims: list[int]
 
 class ScatterDimensionNumbers:
   update_window_dims: list[int]
   inserted_window_dims: list[int]
   scatter_dims_to_operand_dims: list[int]
   index_vector_dim: int
+  input_batching_dims: list[int]
+  scatter_indices_batching_dims: list[int]
 
 class ReplicaGroup:
   replica_ids: list[int]
