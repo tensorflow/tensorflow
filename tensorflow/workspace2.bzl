@@ -57,7 +57,6 @@ load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
-load("//third_party/uv:workspace.bzl", uv = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 
 def _initialize_third_party():
@@ -93,7 +92,6 @@ def _initialize_third_party():
     vulkan_headers()
     tensorrt()
     triton()
-    uv()
 
     # copybara: tsl vendor
 
