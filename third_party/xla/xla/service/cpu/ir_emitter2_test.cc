@@ -104,22 +104,22 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
-    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !align ![[ALIGNMENT:.+]]
+    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.*]], !align ![[ALIGNMENT:.+]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 1, i32 0
-    CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !align ![[ALIGNMENT]]
+    CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 2, i32 0
-    CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !align ![[ALIGNMENT]]
+    CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 3, i32 0
-    CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !align ![[ALIGNMENT]]
+    CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
     CHECK-NEXT: %[[PTR0:.+]] = getelementptr inbounds float, ptr %[[ARG0]]
     CHECK:      load float, ptr %[[PTR0]], align 4,
@@ -143,7 +143,7 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK: }
 
     #0 = { uwtable "frame-pointer"="all" "prefer-vector-width"="256" }
-
+    CHECK-DAG: ![[DEREF_BYTES]] = !{i64 32}
     CHECK-DAG: ![[ALIGNMENT]] = !{i64 16}
     CHECK-DAG: ![[SCOPE0]] = !{}
     CHECK-DAG: ![[SCOPE1]] = !{![[RES0:.+]], ![[RES1:.+]]}

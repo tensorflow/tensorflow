@@ -715,6 +715,10 @@ llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
   // emit metadata to allow LLVM to use that information for optimization.
   llvm_ir::SetAlignmentMetadataForLoad(data, cpu_function_runtime::MinAlign());
 
+  // All buffers pointers passed to host kernels are expected to be
+  // dereferenceable.
+  IrEmitter::AttachDereferenceableMetadataForLoad(data, ByteSizeOf(shape));
+
   return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
 }
 
@@ -1034,6 +1038,13 @@ absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
   TF_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
                          .EmitLoop(llvm_ir::IrName(instr)));
   return se::ThreadDim();
+}
+
+// This is a convenience function taken from IrEmitter, it uses module_ class
+// field. If there will be more functions that use module_, we should consider
+// refactoring (like we did for compute_function_ and builder_).
+int64_t IrEmitter2::ByteSizeOf(const Shape& shape) const {
+  return llvm_ir::ByteSizeOf(shape, module_->getDataLayout());
 }
 
 }  // namespace xla::cpu

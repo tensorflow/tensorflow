@@ -240,6 +240,9 @@ class IrEmitter2 {
 
   bool fast_min_max() const;
 
+  // Returns the number of bytes within the shape.
+  int64_t ByteSizeOf(const Shape& shape) const;
+
   const HloModule& hlo_module_;
   llvm::Module* module_;
 
