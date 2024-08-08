@@ -3570,13 +3570,23 @@ HloGatherInstruction::HloGatherInstruction(
   AppendJoin(printer, dim_numbers.collapsed_slice_dims(), ",");
   printer->Append("}, start_index_map={");
   AppendJoin(printer, dim_numbers.start_index_map(), ",");
+  if (dim_numbers.operand_batching_dims_size()) {
+    printer->Append("}, operand_batching_dims={");
+    AppendJoin(printer, dim_numbers.operand_batching_dims(), ",");
+  }
+  if (dim_numbers.start_indices_batching_dims_size()) {
+    printer->Append("}, start_indices_batching_dims={");
+    AppendJoin(printer, dim_numbers.start_indices_batching_dims(), ",");
+  }
   AppendCat(printer, "}, index_vector_dim=", dim_numbers.index_vector_dim());
 }
 
 /* static */ GatherDimensionNumbers HloGatherInstruction::MakeGatherDimNumbers(
     absl::Span<const int64_t> offset_dims,
     absl::Span<const int64_t> collapsed_slice_dims,
-    absl::Span<const int64_t> start_index_map, int64_t index_vector_dim) {
+    absl::Span<const int64_t> start_index_map, int64_t index_vector_dim,
+    absl::Span<const int64_t> operand_batching_dims,
+    absl::Span<const int64_t> start_indices_batching_dims) {
   GatherDimensionNumbers gather_dim_numbers;
   for (int64_t output_window_dim : offset_dims) {
     gather_dim_numbers.add_offset_dims(output_window_dim);
@@ -3586,6 +3596,13 @@ HloGatherInstruction::HloGatherInstruction(
   }
   for (int64_t gather_dim_to_input_dim : start_index_map) {
     gather_dim_numbers.add_start_index_map(gather_dim_to_input_dim);
+  }
+  for (int64_t operand_batching_dim : operand_batching_dims) {
+    gather_dim_numbers.add_operand_batching_dims(operand_batching_dim);
+  }
+  for (int64_t start_indices_batching_dim : start_indices_batching_dims) {
+    gather_dim_numbers.add_start_indices_batching_dims(
+        start_indices_batching_dim);
   }
 
   gather_dim_numbers.set_index_vector_dim(index_vector_dim);
@@ -3671,6 +3688,14 @@ HloScatterInstruction::HloScatterInstruction(
   AppendJoin(printer, dim_numbers.inserted_window_dims(), ",");
   printer->Append("}, scatter_dims_to_operand_dims={");
   AppendJoin(printer, dim_numbers.scatter_dims_to_operand_dims(), ",");
+  if (dim_numbers.input_batching_dims_size()) {
+    printer->Append("}, input_batching_dims={");
+    AppendJoin(printer, dim_numbers.input_batching_dims(), ",");
+  }
+  if (dim_numbers.scatter_indices_batching_dims_size()) {
+    printer->Append("}, scatter_indices_batching_dims={");
+    AppendJoin(printer, dim_numbers.scatter_indices_batching_dims(), ",");
+  }
   AppendCat(printer, "}, index_vector_dim=", dim_numbers.index_vector_dim());
 }
 
@@ -3679,7 +3704,8 @@ HloScatterInstruction::MakeScatterDimNumbers(
     absl::Span<const int64_t> update_window_dims,
     absl::Span<const int64_t> inserted_window_dims,
     absl::Span<const int64_t> scatter_dims_to_operand_dims,
-    int64_t index_vector_dim) {
+    int64_t index_vector_dim, absl::Span<const int64_t> input_batching_dims,
+    absl::Span<const int64_t> scatter_indices_batching_dims) {
   ScatterDimensionNumbers scatter_dim_numbers;
   for (int64_t update_window_dim : update_window_dims) {
     scatter_dim_numbers.add_update_window_dims(update_window_dim);
@@ -3690,6 +3716,13 @@ HloScatterInstruction::MakeScatterDimNumbers(
   for (int64_t scatter_dim_to_operand_dim : scatter_dims_to_operand_dims) {
     scatter_dim_numbers.add_scatter_dims_to_operand_dims(
         scatter_dim_to_operand_dim);
+  }
+  for (int64_t input_batching_dim : input_batching_dims) {
+    scatter_dim_numbers.add_input_batching_dims(input_batching_dim);
+  }
+  for (int64_t scatter_indices_batching_dim : scatter_indices_batching_dims) {
+    scatter_dim_numbers.add_scatter_indices_batching_dims(
+        scatter_indices_batching_dim);
   }
   scatter_dim_numbers.set_index_vector_dim(index_vector_dim);
   return scatter_dim_numbers;

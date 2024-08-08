@@ -2346,7 +2346,9 @@ class HloGatherInstruction : public HloInstruction {
   static GatherDimensionNumbers MakeGatherDimNumbers(
       absl::Span<const int64_t> offset_dims,
       absl::Span<const int64_t> collapsed_slice_dims,
-      absl::Span<const int64_t> start_index_map, int64_t index_vector_dim);
+      absl::Span<const int64_t> start_index_map, int64_t index_vector_dim,
+      absl::Span<const int64_t> operand_batching_dims = {},
+      absl::Span<const int64_t> start_indices_batching_dims = {});
   // Returns the dump string of the given gather dimension numbers.
   static std::string GatherDimensionNumbersToString(
       const GatherDimensionNumbers& dim_numbers);
@@ -2411,7 +2413,9 @@ class HloScatterInstruction : public HloInstruction {
       absl::Span<const int64_t> update_window_dims,
       absl::Span<const int64_t> inserted_window_dims,
       absl::Span<const int64_t> scatter_dims_to_operand_dims,
-      int64_t index_vector_dim);
+      int64_t index_vector_dim,
+      absl::Span<const int64_t> input_batching_dims = {},
+      absl::Span<const int64_t> scatter_indices_batching_dims = {});
   // Returns the dump string of the given scatter dimension numbers.
   static std::string ScatterDimensionNumbersToString(
       const ScatterDimensionNumbers& dim_numbers);
