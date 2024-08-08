@@ -37,9 +37,11 @@ function build_python_from_src() {
     tar xvf "Python-${_ver}.tgz" && rm -rf "Python-${_ver}.tgz"
     cd Python-${_ver}/
         ./configure --enable-optimizations
-        make altinstall -j4
+        make -j4
+        make altinstall
 
     ln -sf "/usr/local/bin/python${_ver%.*}" /usr/bin/python3
+    ln -sf "/usr/local/bin/python${_ver%.*}" /usr/bin/python
     ln -sf "/usr/local/bin/pip${_ver%.*}" /usr/bin/pip3
     ln -sf "/usr/local/lib/python${_ver%.*}" /usr/lib/tf_python
     cd -
@@ -67,11 +69,25 @@ if (source /etc/os-release && [[ ${UBUNTU_CODENAME} == noble ]]) && [[ ${VERSION
             libbz2-dev libreadline-dev libsqlite3-dev curl git \
             libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
         build_python_from_src $1 $2
+
+        # Install pip
+        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+        python3 get-pip.py
+        ln -sf "/usr/local/bin/pip${_ver%.*}" /usr/bin/pip3
+        python3 -m pip install --no-cache-dir --upgrade pip
+        python3 -m pip install -U setuptools
 elif (source /etc/os-release && [[ ${UBUNTU_CODENAME} == jammy ]]) && [[ ${VERSION} == 3.10 ]]; then
         apt update; apt install -y build-essential libssl-dev zlib1g-dev \
             libbz2-dev libreadline-dev libsqlite3-dev curl git \
             libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
         build_python_from_src $1 $2
+
+        # Install pip
+        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+        python3 get-pip.py
+        ln -sf "/usr/local/bin/pip${_ver%.*}" /usr/bin/pip3
+        python3 -m pip install --no-cache-dir --upgrade pip
+        python3 -m pip install -U setuptools
 else
         echo "Install python from deadsnakes"
         add-apt-repository -y 'ppa:deadsnakes/ppa'
@@ -90,17 +106,19 @@ EOF
         python3 get-pip.py
         python3 -m pip install --no-cache-dir --upgrade pip
         python3 -m pip install -U setuptools
+
+
+        # Setup links for TensorFlow to compile.
+        # Referenced in devel.usertools/*.bazelrc
+        ln -sf /usr/bin/$PY_VERSION /usr/bin/python3
+        ln -sf /usr/bin/$PY_VERSION /usr/bin/python
+        ln -sf /usr/lib/$PY_VERSION /usr/lib/tf_python
+
 fi # end of Ubuntu version check
-
-
-# Setup links for TensorFlow to compile.
-# Referenced in devel.usertools/*.bazelrc
-ln -sf /usr/bin/$PY_VERSION /usr/bin/python3
-ln -sf /usr/bin/$PY_VERSION /usr/bin/python
-ln -sf /usr/lib/$PY_VERSION /usr/lib/tf_python
-
 fi # end of conditional check of various distros
 
+which python3
+python3 --version
 
 # Python 3.10 include headers fix:
 # sysconfig.get_path('include') incorrectly points to /usr/local/include/python
