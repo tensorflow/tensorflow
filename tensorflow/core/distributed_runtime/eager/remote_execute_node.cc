@@ -91,8 +91,7 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
         if (status.ok()) {
           VLOG(3) << "Completed successfully: " << rpc_description;
         } else {
-          VLOG(3) << "Failed: " << rpc_description << " with status "
-                  << status.ToString();
+          VLOG(3) << "Failed: " << rpc_description << " with status " << status;
         }
         for (size_t i = 0; i < retvals.size(); ++i) {
           if (status.ok()) {
@@ -107,9 +106,8 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
             if (!s.ok()) {
               LOG(ERROR) << "Ignoring an error encountered when setting "
                             "remote shape of tensor handle: "
-                         << retvals[i]
-                         << " with execute status: " << status.ToString()
-                         << " and SetRemoteShape status: " << s.ToString()
+                         << retvals[i] << " with execute status: " << status
+                         << " and SetRemoteShape status: " << s
                          << "\nThis should never happen. "
                             "Please file an issue with the TensorFlow Team.";
             }
