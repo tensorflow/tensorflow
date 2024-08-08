@@ -469,10 +469,10 @@ TfrtCpuClient::TfrtCpuClient(
     owned_memory_spaces_.push_back(std::move(memory_space));
   }
 
-  LOG(INFO) << "TfrtCpuClient created.";
+  VLOG(1) << "TfrtCpuClient created.";
 }
 
-TfrtCpuClient::~TfrtCpuClient() { LOG(INFO) << "TfrtCpuClient destroyed."; }
+TfrtCpuClient::~TfrtCpuClient() { VLOG(1) << "TfrtCpuClient destroyed."; }
 
 absl::StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(
     xla::PjRtGlobalDeviceId global_device_id) const {
