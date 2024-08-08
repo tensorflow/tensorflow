@@ -1,15 +1,655 @@
+diff --git a/docs/sdy_export_passes.md b/docs/sdy_export_passes.md
+index 7a7e3ef..add024c 100755
+--- a/docs/sdy_export_passes.md
++++ b/docs/sdy_export_passes.md
+@@ -12,12 +12,3 @@ the edge), and replaces the op with its input.
+ 
+ TODO(tomnatan): consider moving the sharding to all targets that can have a
+ sharding attached.
+-### `-sdy-update-non-divisible-input-output-shardings`
+-
+-_Makes FuncOp inputs/outputs evenly sharded, removing any need for padding due to non-divisible shardings._
+-
+-Users of Shardy expect the function inputs/outputs to be evenly
+-divisible/shardable to avoid requiring padding their tensors. Propagation
+-may make inputs/outputs have non-divisible shardings, so this pass updates
+-them to the largest dimension sharding prefix of the original sharding that
+-is evenly sharded.
+diff --git a/shardy/dialect/sdy/ir/dialect.cc b/shardy/dialect/sdy/ir/dialect.cc
+index aaa33c5..f6f88bc 100644
+--- a/shardy/dialect/sdy/ir/dialect.cc
++++ b/shardy/dialect/sdy/ir/dialect.cc
+@@ -28,7 +28,6 @@ limitations under the License.
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OperationSupport.h"
+@@ -431,8 +430,7 @@ TensorShardingPerValueAttr TensorShardingPerValueAttr::getFullyOpen(
+   for (Type type : types) {
+     int64_t rank = 0;
+     // TODO(tomnatan): remove mlir:: once Attribute::dyn_cast is removed.
+-    if (auto tensorType = mlir::dyn_cast<ShapedType>(type)) {
+-      assert(tensorType.hasStaticShape());
++    if (auto tensorType = mlir::dyn_cast<RankedTensorType>(type)) {
+       rank = tensorType.getRank();
+     }
+     shardingPerResult.push_back(
+diff --git a/shardy/dialect/sdy/ir/ops.td b/shardy/dialect/sdy/ir/ops.td
+index 9478d7b..ca67f51 100644
+--- a/shardy/dialect/sdy/ir/ops.td
++++ b/shardy/dialect/sdy/ir/ops.td
+@@ -135,12 +135,12 @@ def Sdy_ManualComputationOp : Sdy_Op<"manual_computation",
+   }];
+ 
+   let arguments = (ins
+-    Variadic<AnyRankedTensor>:$tensors,
++    Variadic<AnyTensor>:$tensors,
+     Sdy_TensorShardingPerValue:$in_shardings,
+     Sdy_TensorShardingPerValue:$out_shardings,
+     Sdy_ManualAxes:$manual_axes
+   );
+-  let results = (outs Variadic<AnyRankedTensor>:$results);
++  let results = (outs Variadic<AnyTensor>:$results);
+   let regions = (region SizedRegion<1>:$body);
+ 
+   let assemblyFormat = [{
+@@ -249,6 +249,27 @@ def Sdy_ConstantOp : Sdy_Op<"constant",
+   }];
+ }
+ 
++//===----------------------------------------------------------------------===//
++// IdentityOp
++//===----------------------------------------------------------------------===//
++
++def IdentityOp : Sdy_Op<"identity",
++  [Pure, Elementwise, SameOperandsAndResultType]> {
++  let summary = "Identity operation";
++
++  let description = [{
++    An identity op that outputs the same value that it takes as input. This is
++    useful, to break a pattern where a block argument is directly used in the
++    block's terminator, which could result in canonicalization removing that
++    block argument, e.g., a block argument of a while op that could be replaced
++    with the corresponding operand as a free variable.
++  }];
++
++  let arguments = (ins AnyTensor:$input);
++  let results = (outs AnyTensor:$result);
++  let assemblyFormat = "attr-dict $input `:` type($input)";
++}
++
+ //===----------------------------------------------------------------------===//
+ // DataFlowEdgeOp
+ //===----------------------------------------------------------------------===//
+@@ -316,10 +337,10 @@ def DataFlowEdgeOp : Sdy_Op<"data_flow_edge",
+   }];
+ 
+   let arguments = (ins
+-    AnyShaped:$input,
++    AnyRankedTensor:$input,
+     OptionalAttr<Sdy_TensorSharding>:$sharding);
+ 
+-  let results = (outs AnyShaped:$result);
++  let results = (outs AnyRankedTensor:$result);
+ 
+   let assemblyFormat = "$input (`sharding````=``` $sharding^)? attr-dict `:` type($result)";
+ 
+@@ -360,10 +381,10 @@ def PropagationBarrierOp : Sdy_Op<"propagation_barrier",
+   }];
+ 
+   let arguments = (ins
+-    AnyRankedTensor:$input,
++    AnyTensor:$input,
+     Sdy_PropagationDirection:$allowed_direction
+   );
+-  let results = (outs AnyRankedTensor:$result);
++  let results = (outs AnyTensor:$result);
+   let assemblyFormat = "$input `allowed_direction````=```$allowed_direction attr-dict `:` type($input)";
+   let hasVerifier = 1;
+ }
+diff --git a/shardy/dialect/sdy/ir/test/data_flow_edge_verification.mlir b/shardy/dialect/sdy/ir/test/data_flow_edge_verification.mlir
+index b247d79..c2a355d 100644
+--- a/shardy/dialect/sdy/ir/test/data_flow_edge_verification.mlir
++++ b/shardy/dialect/sdy/ir/test/data_flow_edge_verification.mlir
+@@ -12,15 +12,6 @@ func.func @invalid_sharding(%arg0 : tensor<8xf32>) -> tensor<8xf32> {
+ 
+ // -----
+ 
+-func.func @dynamic_shaped_type(%arg0: tensor<?x?xf32>)
+-    -> (tensor<?x?xf32>, tensor<?x?xf32>) {
+-  // expected-error @+1 {{expected sdy.data_flow_edge to have a static-shaped result}}
+-  %0 = sdy.data_flow_edge %arg0 : tensor<?x?xf32>
+-  return %arg0, %0 : tensor<?x?xf32>, tensor<?x?xf32>
+-}
+-
+-// -----
+-
+ func.func @input_has_multiple_users(%arg0: tensor<32x96xf32>)
+     -> (tensor<32x96xf32>, tensor<32x96xf32>) {
+   // expected-error @+1 {{expected input of sdy.data_flow_edge to have a single user}}
+diff --git a/shardy/dialect/sdy/ir/test/sharding_rule_verification.mlir b/shardy/dialect/sdy/ir/test/sharding_rule_verification.mlir
+index e64c43c..9fc6e87 100644
+--- a/shardy/dialect/sdy/ir/test/sharding_rule_verification.mlir
++++ b/shardy/dialect/sdy/ir/test/sharding_rule_verification.mlir
+@@ -16,22 +16,6 @@ func.func @sharding_rule_wrong_attr_type(%arg0: tensor<8xf32>) -> tensor<8xf32>
+ 
+ // -----
+ 
+-func.func @unranked_tensor_type(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+-  // expected-error@+1 {{operand 0 - expected a ranked tensor with a static shape}}
+-  %0 = stablehlo.add %arg0, %arg0 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j])->([i, j]) {i=2, j=4}>} : tensor<*xf32>
+-  return %0 : tensor<*xf32>
+-}
+-
+-// -----
+-
+-func.func @dynamic_shaped_tensor_type(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+-  // expected-error@+1 {{operand 0 - expected a ranked tensor with a static shape}}
+-  %0 = stablehlo.add %arg0, %arg0 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j])->([i, j]) {i=2, j=4}>} : tensor<?x?xf32>
+-  return %0 : tensor<?x?xf32>
+-}
+-
+-// -----
+-
+ func.func @operand_mappings_wrong_rank(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
+   // expected-error@+1 {{operand 1 - mapping rank must match: 1 != 2}}
+   %0 = stablehlo.add %arg0, %arg0 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i])->([i, j]) {i=2, j=4}>} : tensor<2x4xf32>
+diff --git a/shardy/dialect/sdy/ir/test/tensor_sharding_verification.mlir b/shardy/dialect/sdy/ir/test/tensor_sharding_verification.mlir
+index 540ce8d..50394d1 100644
+--- a/shardy/dialect/sdy/ir/test/tensor_sharding_verification.mlir
++++ b/shardy/dialect/sdy/ir/test/tensor_sharding_verification.mlir
+@@ -2,7 +2,7 @@
+ 
+ sdy.mesh @mesh = <"a"=2>
+ 
+-// expected-error @+1 {{'func.func' op arg 0 - non-shaped tensors can only have a sharding with rank 0 and no replicated axes}}
++// expected-error @+1 {{'func.func' op arg 0 - non-ranked tensors can only have a sharding with rank 0 and no replicated axes}}
+ func.func @token_sharding_rank_non_zero(%arg0: !stablehlo.token {sdy.sharding=#sdy.sharding<@mesh, [{}]>}) -> !stablehlo.token {
+   return %arg0 : !stablehlo.token
+ }
+@@ -11,31 +11,13 @@ func.func @token_sharding_rank_non_zero(%arg0: !stablehlo.token {sdy.sharding=#s
+ 
+ sdy.mesh @mesh = <"a"=2>
+ 
+-// expected-error @+1 {{'func.func' op arg 0 - non-shaped tensors can only have a sharding with rank 0 and no replicated axes}}
++// expected-error @+1 {{'func.func' op arg 0 - non-ranked tensors can only have a sharding with rank 0 and no replicated axes}}
+ func.func @token_sharding_with_replicated_axes(%arg0: !stablehlo.token {sdy.sharding=#sdy.sharding<@mesh, [], replicated={"a"}>}) -> !stablehlo.token {
+   return %arg0 : !stablehlo.token
+ }
+ 
+ // -----
+ 
+-sdy.mesh @mesh = <"a"=2>
+-
+-// expected-error @+1 {{'func.func' op arg 0 - only ranked tensors with a static shape can have a sharding}}
+-func.func @unranked_tensor_with_sharding(%arg0: tensor<*xf32> {sdy.sharding=#sdy.sharding<@mesh, []>}) -> tensor<*xf32> {
+-  return %arg0 : tensor<*xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <"a"=2>
+-
+-// expected-error @+1 {{'func.func' op arg 0 - only ranked tensors with a static shape can have a sharding}}
+-func.func @dynamic_shaped_tensor_with_sharding(%arg0: tensor<*xf32> {sdy.sharding=#sdy.sharding<@mesh, [{}, {}]>}) -> tensor<?x?xf32> {
+-  return %arg0 : tensor<*xf32>
+-}
+-
+-// -----
+-
+ sdy.mesh @mesh = <"a"=2, "b"=2>
+ 
+ func.func @dim_shardings_rank_mismatch(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<8xf32> {
+diff --git a/shardy/dialect/sdy/ir/utils.cc b/shardy/dialect/sdy/ir/utils.cc
+index b184794..8831d58 100644
+--- a/shardy/dialect/sdy/ir/utils.cc
++++ b/shardy/dialect/sdy/ir/utils.cc
+@@ -28,7 +28,6 @@ limitations under the License.
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+@@ -92,37 +91,26 @@ std::string operationToString(Operation* op) {
+   return mlirToString(op);
+ }
+ 
+-std::string valueToString(Value value) { return mlirToString(&value); }
+-
+-ShapedType dynCastStaticShapedType(Type type) {
+-  if (auto shapedType = dyn_cast<ShapedType>(type);
+-      shapedType && shapedType.hasStaticShape()) {
+-    return shapedType;
+-  }
+-  return nullptr;
+-}
+-
+-bool isStaticShapedType(Type type) {
+-  return dynCastStaticShapedType(type) != nullptr;
++std::string valueToString(Value value) {
++  return mlirToString(&value);
+ }
+ 
+ ArrayRef<int64_t> getTensorShape(Value value) {
+-  if (auto tensorType = dyn_cast<ShapedType>(value.getType())) {
++  if (auto tensorType = dyn_cast<RankedTensorType>(value.getType())) {
+     return tensorType.getShape();
+   }
+   return {};
+ }
+ 
+ int64_t getTensorRank(Value value) {
+-  if (auto tensorType = dyn_cast<ShapedType>(value.getType())) {
++  if (auto tensorType = dyn_cast<RankedTensorType>(value.getType())) {
+     return tensorType.getRank();
+   }
+   return 0;
+ }
+ 
+ int64_t isScalar(Value value) {
+-  if (auto tensorType = dyn_cast<ShapedType>(value.getType());
+-      tensorType && tensorType.hasRank()) {
++  if (auto tensorType = dyn_cast<RankedTensorType>(value.getType())) {
+     return tensorType.getRank() == 0;
+   }
+   return false;
+diff --git a/shardy/dialect/sdy/ir/utils.h b/shardy/dialect/sdy/ir/utils.h
+index c151955..d0868a7 100644
+--- a/shardy/dialect/sdy/ir/utils.h
++++ b/shardy/dialect/sdy/ir/utils.h
+@@ -26,7 +26,6 @@ limitations under the License.
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/PatternMatch.h"
+@@ -66,23 +65,12 @@ std::string operationToString(Operation* op);
+ // Converts `value` to string with location information.
+ std::string valueToString(Value value);
+ 
+-// If the given `type` is a `ShapedType` with a static shape, returns it,
+-// otherwise returns nullptr.
+-ShapedType dynCastStaticShapedType(Type type);
+-
+-// Returns true if the given `type` is a `ShapedType` with a static shape.
+-bool isStaticShapedType(Type type);
+-
+-// Returns the shape of the given `value` if its type is a `ShapeTensor`,
++// Returns the shape of the given `value` if its type is a `RankedTensorType`,
+ // otherwise returns an empty array.
+-//
+-// Assumes the `ShapeTensor` has a rank.
+ ArrayRef<int64_t> getTensorShape(Value value);
+ 
+-// Returns the rank of the given `value` if its type is a `ShapeTensor`,
++// Returns the rank of the given `value` if its type is a `RankedTensorType`,
+ // otherwise returns 0.
+-//
+-// Assumes the `ShapeTensor` has a rank.
+ int64_t getTensorRank(Value value);
+ 
+ // Returns true if the value is a tensor with rank 0.
+diff --git a/shardy/dialect/sdy/ir/verifiers.cc b/shardy/dialect/sdy/ir/verifiers.cc
+index 61fd0e0..015e10f 100644
+--- a/shardy/dialect/sdy/ir/verifiers.cc
++++ b/shardy/dialect/sdy/ir/verifiers.cc
+@@ -30,7 +30,6 @@ limitations under the License.
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/SymbolTable.h"
+@@ -200,11 +199,11 @@ LogicalResult emitBoundAxisInManualComputationError(EmitErrorFn emitError,
+ 
+ // Verifies the following for `shardingAttr`:
+ //
+-// If `type` isn't a `ShapedType`, the sharding must have rank 0 and no
++// If `type` isn't a `RankedTensorType`, the sharding must have rank 0 and no
+ // replicated axes.
+ //
+-// - The tensor should have a rank and static shape.
+-// - The number of dimension shardings is equal to the rank of the tensor.
++// - The number of dimension shardings is equal to the rank of the tensor
++//   (specified by `type`, which should be a `RankedTensorType`).
+ // - Dimensions of size 0 aren't sharded.
+ // - Replicated axes are ordered w.r.t. `mesh` (see
+ //   AxisRefAttr::getMeshComparator).
+@@ -221,22 +220,17 @@ LogicalResult verifyTensorShardingAttr(
+     TensorShardingAttr shardingAttr, Type type, MeshAttr mesh,
+     EmitErrorFn emitError,
+     ManualAxisToOwner alreadyManualAxes = ManualAxisToOwner()) {
+-  auto tensorType = dyn_cast<ShapedType>(type);
++  auto tensorType = dyn_cast<RankedTensorType>(type);
+   if (!tensorType) {
+     if (shardingAttr.getRank() != 0 ||
+         !shardingAttr.getReplicatedAxes().empty()) {
+       return emitError(
+-                 "non-shaped tensors can only have a sharding with rank 0 ")
++                 "non-ranked tensors can only have a sharding with rank 0 ")
+              << "and no replicated axes. type: " << type
+              << ", sharding: " << shardingAttr;
+     }
+     return success();
+   }
+-  if (!tensorType.hasStaticShape()) {
+-    return emitError(
+-               "only ranked tensors with a static shape can have a sharding. ")
+-           << "type: " << type;
+-  }
+   int64_t rank = tensorType.getRank();
+   if (shardingAttr.getRank() != rank) {
+     return emitError("sharding doesn't match tensor rank: ")
+@@ -432,6 +426,7 @@ LogicalResult verifyShardingRuleMapping(Operation* op, TypeRange types,
+     // doesn't reuse the same factor.
+     BitVector valueSeenFactorIndices(factorSizes.size());
+     auto [type, mapping] = typeAndMapping;
++    auto tensorType = cast<RankedTensorType>(type);
+ 
+     EmitErrorFn valueEmitError = getEmitValueInRangeErrorFn(
+         [op, valueKindStr](StringRef msg) {
+@@ -439,13 +434,6 @@ LogicalResult verifyShardingRuleMapping(Operation* op, TypeRange types,
+         },
+         types.size(), index);
+ 
+-    auto tensorType = dynCastStaticShapedType(type);
+-    if (!tensorType) {
+-      return valueEmitError(
+-                 "expected a ranked tensor with a static shape. type: ")
+-             << type;
+-    }
+-
+     if (mapping.getRank() != tensorType.getRank()) {
+       return valueEmitError("mapping rank must match: ")
+              << mapping.getRank() << " != " << tensorType.getRank();
+@@ -571,11 +559,6 @@ LogicalResult ReshardOp::verify() {
+ }
+ 
+ LogicalResult DataFlowEdgeOp::verify() {
+-  if (!getType().hasStaticShape()) {
+-    return emitOpError(
+-               "expected sdy.data_flow_edge to have a static-shaped result. ")
+-           << "type: " << getType();
+-  }
+   if (!getInput().hasOneUse()) {
+     return emitOpError(
+         "expected input of sdy.data_flow_edge to have a single user");
+@@ -682,8 +665,8 @@ LogicalResult verifyManualComputationValue(
+   for (auto [valueIndex, valueEntry] : llvm::enumerate(llvm::zip_equal(
+            globalTypes, localTypes, shardingPerValueAttr.getShardings()))) {
+     auto [globalType, localType, sharding] = valueEntry;
+-    auto globalRankedType = cast<RankedTensorType>(globalType);
+-    auto localRankedType = cast<RankedTensorType>(localType);
++    auto globalRankedType = globalType.template cast<RankedTensorType>();
++    auto localRankedType = localType.template cast<RankedTensorType>();
+ 
+     // 5. Verify the manual axes come before any free axes in each dim sharding.
+     for (auto [dim, dimSharding] :
+@@ -710,7 +693,7 @@ LogicalResult verifyManualComputationValue(
+                             accumulatedManualAxesSize(op, dimSharding.getAxes(),
+                                                       manualAxes, mesh));
+     }
+-    auto expectedLocalRankedType =
++    RankedTensorType expectedLocalRankedType =
+         RankedTensorType::get(newDimSizes, globalRankedType.getElementType());
+     if (expectedLocalRankedType != localRankedType) {
+       return op->emitOpError(valueKindStr)
+diff --git a/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc b/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
+index 22c4269..6a4d05c 100644
+--- a/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
++++ b/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
+@@ -23,7 +23,6 @@ limitations under the License.
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/TypeRange.h"
+ #include "mlir/IR/Value.h"
+@@ -59,7 +58,8 @@ namespace {
+ //   - [{"y","x"}] : tensor<4xf32> -> [{"y","x":(1)2}] : tensor<4xf32>
+ // See update_non_divisible_input_output_shardings.mlir for more examples.
+ TensorShardingAttr getEvenlySharded(TensorShardingAttr sharding,
+-                                    ShapedType type, func::FuncOp funcOp) {
++                                    RankedTensorType type,
++                                    func::FuncOp funcOp) {
+   StringRef meshName = sharding.getMeshName();
+   MeshAttr mesh = getMeshAttr(funcOp, meshName);
+   assert(mesh && "unknown mesh");
+@@ -130,7 +130,7 @@ void updateValueShardings(
+     func::FuncOp funcOp) {
+   for (auto [index, type] : llvm::enumerate(types)) {
+     TensorShardingAttr sharding = getSharding(index);
+-    if (auto tensorType = dynCastStaticShapedType(type);
++    if (auto tensorType = dyn_cast<RankedTensorType>(type);
+         sharding && tensorType) {
+       setSharding(index, getEvenlySharded(sharding, tensorType, funcOp));
+     }
+diff --git a/shardy/dialect/sdy/transforms/import/add_data_flow_edges.cc b/shardy/dialect/sdy/transforms/import/add_data_flow_edges.cc
+index 91b5acb..b67c18c 100644
+--- a/shardy/dialect/sdy/transforms/import/add_data_flow_edges.cc
++++ b/shardy/dialect/sdy/transforms/import/add_data_flow_edges.cc
+@@ -47,8 +47,8 @@ struct AddDataFlowEdgesPass
+       ValueRange edgeRoots = getDataFlowEdgeRoots(op);
+       rewriter.setInsertionPointAfter(op);
+       for (Value edgeRoot : edgeRoots) {
+-        if (!isStaticShapedType(edgeRoot.getType())) {
+-          // Skip non-static-shaped tensors, e.g., tokens.
++        if (!isa<RankedTensorType>(edgeRoot.getType())) {
++          // Skip non-tensor values, e.g., tokens.
+           continue;
+         }
+         TensorShardingAttr sharding = nullptr;
+diff --git a/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir b/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
+index 67cede6..f31387d 100644
+--- a/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
+@@ -66,16 +66,6 @@ func.func @optimization_barrier(%arg0: tensor<32x96xf32>, %arg1: tensor<32x96xf3
+   return %0#0, %0#1 : tensor<32x96xf32>, tensor<32x96xf32>
+ }
+ 
+-// CHECK-LABEL: func @optimization_barrier
+-func.func @optimization_barrier_dynamic_shaped_tensor_skipped(%arg0: tensor<32x96xf32>, %arg1: tensor<?x?xf32>)
+-    -> (tensor<32x96xf32>, tensor<?x?xf32>) {
+-  // CHECK-NEXT: %[[OPT_BARRIER:.*]]:2 = stablehlo.optimization_barrier %arg0, %arg1
+-  // CHECK:      %[[EDGE_1:.*]] = sdy.data_flow_edge %[[OPT_BARRIER]]#0
+-  // CHECK-NEXT: return %[[EDGE_1]], %[[OPT_BARRIER]]#1
+-  %0:2 = stablehlo.optimization_barrier %arg0, %arg1 : tensor<32x96xf32>, tensor<?x?xf32>
+-  return %0#0, %0#1 : tensor<32x96xf32>, tensor<?x?xf32>
+-}
+-
+ // CHECK-LABEL: func @while_unused_result
+ func.func @while_unused_result(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
+   // CHECK:      %[[C0:.*]] = stablehlo.constant dense<0>
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+index 8117426..eff74a3 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+@@ -28,7 +28,6 @@ limitations under the License.
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
+-#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OpDefinition.h"
+@@ -46,6 +45,7 @@ limitations under the License.
+ #include "shardy/dialect/sdy/ir/data_flow_utils.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
++#include "shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h"
+ #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.h"
+@@ -328,9 +328,9 @@ LogicalResult propagateFuncResults(FuncOp funcOp,
+                                    const FactorPropagation& factorPropagation) {
+   for (OpOperand& returnOperand : getBodyTerminatorOpOperands(funcOp)) {
+     Value returnValue = returnOperand.get();
+-    auto tensorType = dynCastStaticShapedType(returnValue.getType());
++    auto tensorType = dyn_cast<RankedTensorType>(returnValue.getType());
+     if (!tensorType) {
+-      // Skip non-static-shaped tensors, e.g., tokens.
++      // Skip non-tensor values, e.g., tokens.
+       continue;
+     }
+     int64_t resNum = returnOperand.getOperandNumber();
+@@ -436,7 +436,7 @@ class PropagateDataFlowEdgeOp : public OpRewritePattern<DataFlowEdgeOp> {
+     return propagateTensorShardings(
+         sources, dataFlowEdgeOp.getResult(),
+         createIdentityShardingRule(
+-            cast<ShapedType>(dataFlowEdgeOp.getType()), sources.size()),
++            cast<RankedTensorType>(dataFlowEdgeOp.getType()), sources.size()),
+         dataFlowEdgeOp, rewriter, factorPropagation);
+   }
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.cc b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.cc
+index 3763581..2b8ff59 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.cc
++++ b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.cc
+@@ -23,7 +23,6 @@ limitations under the License.
+ #include <optional>
+ 
+ #include "llvm/ADT/STLExtras.h"
+-#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+@@ -88,12 +87,12 @@ OpShardingRuleBuilder::OpShardingRuleBuilder(
+   resultMappings.reserve(resultTypes.size());
+   int64_t maxRank = 0;
+   for (Type operandType : operandTypes) {
+-    int64_t rank = cast<ShapedType>(operandType).getRank();
++    int64_t rank = cast<RankedTensorType>(operandType).getRank();
+     maxRank = std::max(maxRank, rank);
+     operandMappings.push_back(TensorMapping(rank));
+   }
+   for (Type resultType : resultTypes) {
+-    int64_t rank = cast<ShapedType>(resultType).getRank();
++    int64_t rank = cast<RankedTensorType>(resultType).getRank();
+     maxRank = std::max(maxRank, rank);
+     resultMappings.push_back(TensorMapping(rank));
+   }
+@@ -126,7 +125,7 @@ OpShardingRuleAttr OpShardingRuleBuilder::build() {
+ OpShardingRuleAttr OpShardingRuleBuilder::buildPointwise(Operation* op) {
+   // All results should have the same shape, so we look at the first.
+   ArrayRef<int64_t> shape =
+-      cast<ShapedType>(op->getResultTypes().front()).getShape();
++      cast<RankedTensorType>(op->getResultTypes().front()).getShape();
+ 
+   OpShardingRuleBuilder builder(op);
+ 
+@@ -201,7 +200,7 @@ OpShardingRuleBuilder& OpShardingRuleBuilder::addPointwiseIfDimSizesMatch(
+   return *this;
+ }
+ 
+-OpShardingRuleAttr createIdentityShardingRule(ShapedType type,
++OpShardingRuleAttr createIdentityShardingRule(RankedTensorType type,
+                                               size_t numOperands,
+                                               size_t numResults) {
+   return OpShardingRuleBuilder(SmallVector<Type>(numOperands, type),
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h
+index 5130827..5d0b5a8 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h
++++ b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h
+@@ -22,7 +22,6 @@ limitations under the License.
+ #include <functional>
+ #include <optional>
+ 
+-#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+@@ -119,7 +118,7 @@ class OpShardingRuleBuilder {
+ // i.e., all operands/results have the same mapping.
+ //
+ // NOTE: an empty rule {([])->([])} will be created for scalar ops.
+-OpShardingRuleAttr createIdentityShardingRule(ShapedType type,
++OpShardingRuleAttr createIdentityShardingRule(RankedTensorType type,
+                                               size_t numOperands = 1,
+                                               size_t numResults = 1);
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
+index 98fa7a1..80e4933 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
++++ b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
+@@ -144,8 +144,8 @@ OpShardingRuleAttr getOrCreateShardingRule(Operation* op,
+ OpShardingRuleAttr createOpShardingRule(Operation* op,
+                                         const bool conservativePropagation) {
+   return TypeSwitch<Operation*, OpShardingRuleAttr>(op)
+-      .Case<ShardingConstraintOp, stablehlo::AbsOp, stablehlo::AddOp,
+-            stablehlo::AllGatherOp, stablehlo::AllReduceOp,
++      .Case<IdentityOp, ShardingConstraintOp, stablehlo::AbsOp,
++            stablehlo::AddOp, stablehlo::AllGatherOp, stablehlo::AllReduceOp,
+             stablehlo::AllToAllOp, stablehlo::AndOp, stablehlo::Atan2Op,
+             stablehlo::CbrtOp, stablehlo::CeilOp, stablehlo::ClzOp,
+             stablehlo::CollectivePermuteOp, stablehlo::CompareOp,
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/basic_propagation.mlir b/shardy/dialect/sdy/transforms/propagation/test/basic_propagation.mlir
+index ef26c90..7ac46ab 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/basic_propagation.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/basic_propagation.mlir
+@@ -581,28 +581,17 @@ func.func @func_out_sharding(%arg0: tensor<8x8xf32>, %arg1: tensor<8x16xf32>)
+   return %0 : tensor<8x16xf32>
+ }
+ 
+-// CHECK-LABEL: func @token_func_output_skipped(
++// CHECK-LABEL: func @token_func_output_token_skipped(
+ // CHECK-SAME:      %arg0: !stablehlo.token,
+ // CHECK-SAME:      %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {"b", ?}]>})
+ // CHECK-SAME:  -> (!stablehlo.token, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {"b"}]>}) {
+-func.func @token_func_output_skipped(%arg0: !stablehlo.token, %arg1: tensor<8x16xf32>)
++func.func @token_func_output_token_skipped(%arg0: !stablehlo.token, %arg1: tensor<8x16xf32>)
+     -> (!stablehlo.token, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {"b"}]>}) {
+   // CHECK-NEXT: stablehlo.add %arg1, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {"b", ?}]>]>}
+   %0 = stablehlo.add %arg1, %arg1 : tensor<8x16xf32>
+   return %arg0, %0 : !stablehlo.token, tensor<8x16xf32>
+ }
+ 
+-// CHECK-LABEL: func @dynamic_shaped_func_output_skipped(
+-// CHECK-SAME:      %arg0: tensor<?x?xf32>,
+-// CHECK-SAME:      %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {"b", ?}]>})
+-// CHECK-SAME:  -> (tensor<?x?xf32>, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {"b"}]>}) {
+-func.func @dynamic_shaped_func_output_skipped(%arg0: tensor<?x?xf32>, %arg1: tensor<8x16xf32>)
+-    -> (tensor<?x?xf32>, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {"b"}]>}) {
+-  // CHECK-NEXT: stablehlo.add %arg1, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {"b", ?}]>]>}
+-  %0 = stablehlo.add %arg1, %arg1 : tensor<8x16xf32>
+-  return %arg0, %0 : tensor<?x?xf32>, tensor<8x16xf32>
+-}
+-
+ // CHECK-LABEL: func @func_result_intermediate_op_both_updated(
+ // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {"b", ?}]>})
+ // CHECK-SAME:  -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {"b", ?}]>}) {
+diff --git a/shardy/integrations/python/ir/__init__.py b/shardy/integrations/python/ir/__init__.py
+index 97e8a3b..89a06ba 100644
+--- a/shardy/integrations/python/ir/__init__.py
++++ b/shardy/integrations/python/ir/__init__.py
+@@ -17,6 +17,7 @@
+ # pylint: disable=g-multiple-import,g-importing-member,unused-import,useless-import-alias
+ from ._sdy_ops_gen import (
+     ConstantOp as ConstantOp,
++    IdentityOp as IdentityOp,
+     ManualComputationOp as ManualComputationOp,
+     MeshOp as MeshOp,
+     ReshardOp as ReshardOp,
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 87df7e6..0d420ba 100644
+index 0d420ba..88869a4 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "2f28378317827afed81db1c2ce33c187ee6582a0"
--    LLVM_SHA256 = "0b5136734047524571be232aa95b5c00f90d83c962492785d72d8000e8b0e8bd"
-+    LLVM_COMMIT = "41491c77231e9d389ef18593be1fab4f4e810e88"
-+    LLVM_SHA256 = "10b17d9f8304eb7c9fb91f7b13f73e9e5ca81984aa692eac91b82d19db311547"
+-    LLVM_COMMIT = "41491c77231e9d389ef18593be1fab4f4e810e88"
+-    LLVM_SHA256 = "10b17d9f8304eb7c9fb91f7b13f73e9e5ca81984aa692eac91b82d19db311547"
++    LLVM_COMMIT = "0c25f85e5b88102363c0cd55e1946053d5827e99"
++    LLVM_SHA256 = "851d958e60193edfb54d6eb8644785179eeb604edae8c026ac1819e82c059f6c"
  
      tf_http_archive(
          name = name,
