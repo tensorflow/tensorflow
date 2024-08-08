@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/nvptx_compiler.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <fstream>
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 #include "xla/service/gpu/gpu_sort_rewriter.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/target_constants.h"
@@ -94,6 +96,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/nvjitlink.h"
+#include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compilation_method.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
@@ -531,6 +535,8 @@ HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() const {
   return &CanShareBufferHint;
 }
 
+constexpr const uint8_t kPtxPrefix[] = {'P', 'T', 'X', ':', ' '};
+
 absl::StatusOr<GpuCompiler::BackendCompileResult>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
@@ -568,6 +574,20 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
   }
 
+  TF_ASSIGN_OR_RETURN(se::PtxLinkingMethod linking_method,
+                      ChooseLinkingMethod(module_config.debug_options()));
+
+  if (linking_method == se::PtxLinkingMethod::kNvJitLink && relocatable) {
+    VLOG(2) << "Deferring the PTX to CUBIN compilation of the relocatable "
+               "module to the linking step.";
+    std::vector<uint8_t> binary;
+    binary.reserve(sizeof(kPtxPrefix) + ptx.size() + 1);
+    binary.insert(binary.end(), kPtxPrefix, kPtxPrefix + sizeof(kPtxPrefix));
+    binary.insert(binary.end(), ptx.begin(), ptx.end());
+    binary.emplace_back('\0');
+    return BackendCompileResult{std::move(ptx), std::move(binary)};
+  }
+
   absl::StatusOr<std::vector<uint8_t>> maybe_cubin =
       CompileGpuAsmOrGetCachedResult(
           ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
@@ -587,6 +607,9 @@ std::vector<PtxCompilationMethod> GetSupportedCompilationMethods() {
   std::vector<PtxCompilationMethod> methods;
   if (se::IsLibNvPtxCompilerSupported()) {
     methods.emplace_back(PtxCompilationMethod::kNvPtxCompiler);
+  }
+  if (se::IsLibNvJitLinkSupported()) {
+    methods.emplace_back(PtxCompilationMethod::kNvJitLink);
   }
   methods.emplace_back(PtxCompilationMethod::kPtxas);
   return methods;
@@ -608,9 +631,24 @@ absl::StatusOr<PtxCompilationMethod> ChooseCompilationMethod(
     }
   };
 
+  if (!debug_options.xla_gpu_enable_libnvjitlink()) {
+    VLOG(3) << "Discarding NvJitLink since it is disabled.";
+    remove_compilation_method(PtxCompilationMethod::kNvJitLink);
+  }
   if (!debug_options.xla_gpu_enable_libnvptxcompiler()) {
     VLOG(3) << "Discarding NvPtxCompiler since it is disabled.";
     remove_compilation_method(PtxCompilationMethod::kNvPtxCompiler);
+  }
+
+  VLOG(2) << "Supported and enabled compilation methods: "
+          << absl::StrJoin(compilation_methods, ", ");
+
+  if (relocatable && absl::c_linear_search(compilation_methods,
+                                           PtxCompilationMethod::kNvJitLink)) {
+    // NvJitLink can't produce relocatable CUBINs.
+    VLOG(3) << "Discarding NvJitLink since it can't produce the requested "
+               "relocatable CUBIN.";
+    remove_compilation_method(PtxCompilationMethod::kNvJitLink);
   }
 
   VLOG(2) << "Considered compilation methods: "
@@ -655,6 +693,16 @@ static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
 
   absl::StatusOr<std::vector<uint8_t>> maybe_cubin = [&] {
     switch (compilation_method) {
+      case PtxCompilationMethod::kNvJitLink:
+        return se::CompileAndLinkUsingLibNvJitLink(
+            cc.major, cc.minor,
+            {se::NvJitLinkInput{
+                se::NvJitLinkInput::Type::kPtx,
+                absl::Span<const uint8_t>{
+                    reinterpret_cast<const uint8_t*>(ptx.c_str()),
+                    ptx.size() + 1 /* We need the null terminator. */}}},
+            ptxas_config, cancel_if_reg_spill);
+
       case PtxCompilationMethod::kNvPtxCompiler:
         return se::CompileGpuAsmUsingLibNvPtxCompiler(
             cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
@@ -815,6 +863,12 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
   std::string& preferred_cuda_dir = ptxas_config.preferred_cuda_dir;
 
   using LinkingMethod = se::PtxLinkingMethod;
+
+  if (stream_executor::IsLibNvJitLinkSupported() &&
+      debug_options.xla_gpu_enable_libnvjitlink()) {
+    return se::PtxLinkingMethod::kNvJitLink;
+  }
+
   TF_ASSIGN_OR_RETURN(auto asm_compiler_version,
                       GetAsmCompilerVersion(debug_options, preferred_cuda_dir));
 
@@ -859,28 +913,60 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 }
 
 absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
-    se::GpuComputeCapability cc, se::StreamExecutor* stream_exec,
-    std::vector<std::vector<uint8_t>> modules,
+    se::GpuComputeCapability compute_capability,
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
     const DebugOptions& debug_options) {
   if (modules.empty()) return std::vector<uint8_t>{};
+
+  auto cc =
+      std::get<stream_executor::CudaComputeCapability>(compute_capability);
 
   TF_ASSIGN_OR_RETURN(se::PtxLinkingMethod linking_method,
                       ChooseLinkingMethod(debug_options));
   VLOG(1) << "Linking " << modules.size()
           << " modules with linking method: " << linking_method;
 
-  std::vector<stream_executor::CubinOrPTXImage> images;
-  images.reserve(modules.size());
-  for (std::vector<uint8_t>& module : modules) {
-    images.push_back({"", std::move(module)});
+  if (linking_method == se::PtxLinkingMethod::kNvJitLink) {
+    const auto module_contains_ptx =
+        [](const std::vector<uint8_t>& module) -> bool {
+      return module.size() >= sizeof(kPtxPrefix) &&
+             std::equal(std::begin(kPtxPrefix), std::end(kPtxPrefix),
+                        std::begin(module));
+    };
+
+    std::vector<stream_executor::NvJitLinkInput> nvjitlink_inputs;
+    nvjitlink_inputs.reserve(modules.size());
+    for (std::vector<uint8_t>& module : modules) {
+      if (module_contains_ptx(module)) {
+        nvjitlink_inputs.push_back(
+            {se::NvJitLinkInput::Type::kPtx,
+             absl::Span<const uint8_t>(module).subspan(sizeof(kPtxPrefix))});
+      } else {
+        nvjitlink_inputs.push_back({se::NvJitLinkInput::Type::kCubin, module});
+      }
+    }
+
+    se::GpuAsmOpts ptxas_config = PtxOptsFromDebugOptions(debug_options);
+    return stream_executor::CompileAndLinkUsingLibNvJitLink(
+        cc.major, cc.minor, nvjitlink_inputs, ptxas_config,
+        /*cancel_if_reg_spill=*/false);
   }
+
+  std::vector<stream_executor::CubinOrPTXImage> cubin_images;
+  cubin_images.reserve(modules.size());
+  for (std::vector<uint8_t>& module : modules) {
+    {
+      std::string profile = absl::StrCat("sm_", cc.major, cc.minor);
+      cubin_images.push_back({std::move(profile), std::move(module)});
+    }
+  }
+
   auto context = se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context();
   if (linking_method == se::PtxLinkingMethod::kNvLink) {
-    return LinkUsingNvlink(std::get<se::CudaComputeCapability>(cc),
-                           debug_options.xla_gpu_cuda_data_dir(), context,
-                           images);
+    return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(), context,
+                           cubin_images);
   }
-  return LinkGpuAsm(std::get<se::CudaComputeCapability>(cc), context, images);
+  return LinkGpuAsm(cc, context, cubin_images);
 }
 
 }  // namespace gpu

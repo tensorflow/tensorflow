@@ -880,7 +880,10 @@ message DebugOptions {
   // but potentially higher the performance.
   int32 xla_gpu_cudnn_gemm_max_plans = 318;
 
-  // Next id: 319
+  // If enabled, uses the libnvjitlink library for PTX compilation and linking
+  bool xla_gpu_enable_libnvjitlink = 319;
+
+  // Next id: 320
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
