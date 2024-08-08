@@ -37,6 +37,10 @@ def LowerCbrt : Pat<(MHLO_CbrtOp $opr),
       TFL_AF_None)),
       [(F32Tensor $opr)]>;
 
+def : Pat<(MHLO_ShiftRightArithmeticOp $l, $r), (TFL_RightShiftOp $l, $r)>;
+def : Pat<(MHLO_ShiftRightLogicalOp $l, $r), (TFL_RightShiftOp $l, $r)>;
+def : Pat<(MHLO_RemOp $l, $r), (TFL_FloorModOp $l, $r)>;
+
 
 //===----------------------------------------------------------------------===//
 // logical and bitwise ops

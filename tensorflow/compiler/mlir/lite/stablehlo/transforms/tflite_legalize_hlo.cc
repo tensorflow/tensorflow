@@ -81,7 +81,9 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
-  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
+  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp,
+                      mhlo::ShiftRightArithmeticOp, mhlo::ShiftRightLogicalOp,
+                      mhlo::RemOp>();
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
 
   PopulatePadPatterns(context, patterns, target);

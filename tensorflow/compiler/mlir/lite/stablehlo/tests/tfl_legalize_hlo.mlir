@@ -2115,3 +2115,37 @@ func.func @not_ui32(%arg0: tensor<7x9x11xui32>) -> tensor<7x9x11xui32> {
 
 // CHECK: %cst = arith.constant dense<4294967295> : tensor<ui32>
 // CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui32>, tensor<ui32>) -> tensor<7x9x11xui32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// binary ops
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: remainder
+func.func @remainder(%arg0: tensor<10x8xi32>, %arg1: tensor<10x8xi32>) -> tensor<10x8xi32> {
+  %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xi32>
+  func.return %0 : tensor<10x8xi32>
+}
+
+// CHECK: %0 = "tfl.floor_mod"(%arg0, %arg1) : (tensor<10x8xi32>, tensor<10x8xi32>) -> tensor<10x8xi32>
+
+// -----
+
+// CHECK-LABEL: shift_right_arith
+func.func @shift_right_arith(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK: %0 = "tfl.right_shift"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+// -----
+
+// CHECK-LABEL: shift_right_logical
+func.func @shift_right_logical(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.shift_right_logical %arg0, %arg1 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK: %0 = "tfl.right_shift"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
