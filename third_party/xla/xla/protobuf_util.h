@@ -55,17 +55,6 @@ class ProtobufHashWrapper {
     return ProtobufHash(m);
   }
 };
-// Writes the given message in binary proto to the path formed by joining
-// 'directory/file_name.pb'. The 'directory' is recursively created if it
-// doesn't already exist, and the 'file_name' is sanitized by replacing
-// illegal characters with underscore '_'.
-//
-// If 'full_name' is not null then it is set to the name of the file the
-// protobuf was written to.
-absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
-                                  const std::string& directory,
-                                  const std::string& file_name,
-                                  std::string* full_path = nullptr);
 
 // Registers a function that may either expand a dirpath or forward the original
 // dirpath along as-is.
