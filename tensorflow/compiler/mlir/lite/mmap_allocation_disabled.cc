@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <cassert>
 
-#include "tensorflow/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 
 namespace tflite {
 
