@@ -785,11 +785,13 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
         PjRtGlobalDeviceId device_id((*device_assignment)(replica, partition));
-        if (UnpackCpuProcessIndex(device_id) != process_index()) {
+        absl::StatusOr<PjRtDevice*> device_s = LookupDevice(device_id);
+        if (UnpackCpuProcessIndex(device_id) != process_index() ||
+            !device_s.ok()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
+        PjRtDevice* device = *device_s;
         PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
         logica_device_ids.replica = replica;
         logica_device_ids.partition = partition;

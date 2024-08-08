@@ -444,7 +444,7 @@ absl::Status ExecuteThunks(
   ResourceRequests resource_requests;
 
   {  // Collect resource requirements from thunks.
-    Thunk::PrepareParams prepare_params{&collective_params};
+    Thunk::PrepareParams prepare_params{&collective_params, mock_collectives};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Prepare"; });
     TF_RETURN_IF_ERROR(

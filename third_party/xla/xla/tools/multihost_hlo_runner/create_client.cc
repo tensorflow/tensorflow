@@ -55,7 +55,6 @@ static absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
   }
 
   if (enable_mock_nccl) {
-    CHECK_GT(num_nodes, 1);
     return CreateMockGpuClient(num_nodes);
   }
 

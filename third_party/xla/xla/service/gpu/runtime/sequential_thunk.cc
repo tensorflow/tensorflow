@@ -59,6 +59,9 @@ std::string SequentialThunk::ToString(int indent) const {
 absl::Status SequentialThunk::Prepare(const PrepareParams& params,
                                       ResourceRequests& resource_requests) {
   for (auto& thunk : thunks_) {
+    if (params.mock_collectives && thunk->IsCollective()) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
   }
   return absl::OkStatus();

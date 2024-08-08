@@ -172,12 +172,9 @@ xla_test(
     name = "functional_hlo_runner_test",
     srcs = ["functional_hlo_runner_test.cc"],
     backend_tags = {
-        # This test is tagged "manual" because it requires multiple (2) GPUs.
         "gpu": [
-            "manual",
-            "multi_gpu",
+            "multi_gpu_h100",
             "no_oss",
-            "notap",
         ],
     },
     backends = [
@@ -190,6 +187,7 @@ xla_test(
         "data/sharded_2_devices.hlo",
         "data/single_device.hlo",
         "data/single_device_tupled.hlo",
+        "data/spmd_8_devices.hlo",
     ],
     tags = ["nomac"],
     deps = [

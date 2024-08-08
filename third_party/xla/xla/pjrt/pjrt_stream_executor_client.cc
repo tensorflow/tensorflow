@@ -2382,9 +2382,13 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
             << device_assignment_->ToString();
     CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
 
+    bool mock_gpu_collectives =
+        client_ && client_->gpu_run_options() &&
+        client_->gpu_run_options()->enable_mock_nccl_collectives();
+
     if ((device_assignment_->replica_count() > 1 ||
          device_assignment_->computation_count() > 1) &&
-        IsAllZeros(*device_assignment_)) {
+        IsAllZeros(*device_assignment_) && !mock_gpu_collectives) {
       // This code path should only be triggered when we intentionally compile
       // an HLO without having enough devices to actually run it. See the
       // "--run=false" option in
@@ -2393,7 +2397,7 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
       LOG(INFO)
           << "A workaround is in effect to allow compiling multi-device "
              "HLOs on machines with fewer devices. Don't run this executable.";
-    } else {
+    } else if (!mock_gpu_collectives) {
       CHECK_LE(addressable_devices_.size(), client_->addressable_device_count())
           << "Inconsistent local device count.";
     }
@@ -3440,12 +3444,12 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
         int64_t device_id = (*device_assignment)(replica, partition);
         PjRtGlobalDeviceId global_device_id(device_id);
 
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                            LookupDevice(global_device_id));
-        if (device->process_index() != process_index()) {
+        absl::StatusOr<PjRtDevice*> device_s = LookupDevice(global_device_id);
+        if (!device_s.ok() || (*device_s)->process_index() != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
+        PjRtDevice* device = *device_s;
         PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
         logica_device_ids.replica = replica;
         logica_device_ids.partition = partition;
@@ -3464,6 +3468,7 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
           addressable_devices.front()->local_hardware_id().value());
     }
   }
+
   return extras;
 }
 

@@ -290,6 +290,7 @@ class Thunk {
   struct PrepareParams {
     // Parameters for executing collective operations.
     const CollectiveExecuteParams* collective_params = nullptr;
+    bool mock_collectives = false;
   };
 
   //===--------------------------------------------------------------------===//
