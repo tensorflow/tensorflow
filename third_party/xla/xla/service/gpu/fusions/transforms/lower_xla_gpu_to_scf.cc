@@ -50,7 +50,7 @@ namespace {
 
 #define GEN_PASS_DEF_LOWERXLAGPUTOSCFPASS
 #define GEN_PASS_DEF_LOWERXLAGPULOOPSTOSCFPASS
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
+#include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 using mlir::ImplicitLocOpBuilder;
 using mlir::Location;

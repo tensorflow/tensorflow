@@ -40,7 +40,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
-#include "xla/service/gpu/fusions/mlir/passes.h"
+#include "xla/service/gpu/fusions/transforms/passes.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -52,7 +52,7 @@ using ma::SelectOp;
 using mlir::Value;
 
 #define GEN_PASS_DEF_EXPANDFLOATOPSPASS
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
+#include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 namespace {
 

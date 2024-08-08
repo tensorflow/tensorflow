@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_PASSES_TD_
-#define XLA_SERVICE_GPU_FUSIONS_MLIR_PASSES_TD_
+#ifndef XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_
+#define XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_
 
 include "mlir/Pass/PassBase.td"
 
@@ -316,4 +316,4 @@ def UnswitchLoopsPass :
   let constructor = "CreateUnswitchLoopsPass()";
 }
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_MLIR_PASSES_TD_
+#endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_

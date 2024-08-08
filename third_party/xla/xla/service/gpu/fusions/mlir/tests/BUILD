@@ -9,10 +9,11 @@ package(
 xla_cc_binary(
     name = "mlir_fusions_opt",
     srcs = ["mlir_fusions_opt.cc"],
+    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
         "//xla/mlir_hlo",
-        "//xla/service/gpu/fusions/mlir:passes",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
+        "//xla/service/gpu/fusions/transforms:passes",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ComplexDialect",

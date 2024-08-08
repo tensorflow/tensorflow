@@ -70,7 +70,7 @@ namespace {
 
 #define GEN_PASS_DECL_LOWERTENSORSPASS
 #define GEN_PASS_DEF_LOWERTENSORSPASS
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
+#include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 using mlir::failure;
 using mlir::Location;

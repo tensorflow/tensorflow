@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_PASSES_H_
-#define XLA_SERVICE_GPU_FUSIONS_MLIR_PASSES_H_
+#ifndef XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_H_
+#define XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_H_
 
 #include <memory>
 #include <optional>
@@ -27,7 +27,7 @@ namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DECL
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
+#include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 // Returns the range of a given value, if it can be statically determined.
 std::optional<Interval> GetRange(mlir::Value value);
@@ -55,9 +55,9 @@ std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass();
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass();
 
 #define GEN_PASS_REGISTRATION
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
+#include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_MLIR_PASSES_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_H_

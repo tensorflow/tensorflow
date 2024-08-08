@@ -46,7 +46,7 @@ namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_VECTORIZELOADSANDSTORESPASS
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
+#include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 namespace {
 

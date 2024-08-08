@@ -40,7 +40,7 @@ namespace gpu {
 namespace {
 
 #define GEN_PASS_DEF_PEELLOOPSPASS
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
+#include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 using mlir::Location;
 using mlir::OpBuilder;

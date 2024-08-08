@@ -30,7 +30,7 @@ namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_MERGEPOINTERSTOSAMESLICEPASS
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
+#include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 namespace {
 
