@@ -345,8 +345,9 @@ GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
     const GpuPerformanceModelOptions& config,
     absl::Span<const HloInstruction* const> fused_consumers,
     bool multi_output) {
-  EstimateRunTimeData producer_runtime = EstimateRunTimeForInstructionCached(
-      producer, device_info, cost_analysis, config);
+  auto cache_result = config.gpu_performance_model_cache->Get(*producer);
+  CHECK(cache_result.has_value());
+  EstimateRunTimeData producer_runtime = *cache_result;
 
   absl::Duration time_unfused =
       kKernelLaunchOverhead * (fused_consumers.size() + 1) +
@@ -357,8 +358,10 @@ GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
   for (auto fused_consumer : fused_consumers) {
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
 
-    EstimateRunTimeData consumer_runtime = EstimateRunTimeForInstructionCached(
-        fused_consumer, device_info, cost_analysis, config);
+    auto cache_result =
+        config.gpu_performance_model_cache->Get(*fused_consumer);
+    CHECK(cache_result.has_value());
+    EstimateRunTimeData consumer_runtime = *cache_result;
 
     time_unfused += consumer_runtime.exec_time;
 
