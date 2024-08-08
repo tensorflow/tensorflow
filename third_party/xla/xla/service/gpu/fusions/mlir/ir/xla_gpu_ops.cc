@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"  // IWYU pragma: keep
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -54,6 +55,7 @@ namespace {
 using llvm::ArrayRef;
 using mlir::AffineExpr;
 using mlir::AffineMap;
+using mlir::Block;
 using mlir::failure;
 using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
@@ -70,6 +72,7 @@ using mlir::Region;
 using mlir::SmallVector;
 using mlir::success;
 using mlir::Type;
+using mlir::TypeRange;
 using mlir::Value;
 using mlir::ValueRange;
 
@@ -584,6 +587,49 @@ void SyncThreadsOp::getAsmResultNames(
 //===----------------------------------------------------------------------===//
 // LoopOp
 //===----------------------------------------------------------------------===//
+
+void LoopOp::build(OpBuilder& builder, OperationState& result,
+                   IndexingMapAttr indexing_map_attr, ValueRange dims,
+                   ValueRange inits, BodyBuilderFn bodyBuilder) {
+  OpBuilder::InsertionGuard guard(builder);
+
+  int64_t num_ivs = indexing_map_attr.getRangeVars().size();
+  result.addOperands(dims);
+  result.addOperands(inits);
+  result.addTypes(TypeRange(inits));
+  Block* body_block = builder.createBlock(result.addRegion());
+  // Add induction variables block args.
+  for (int i = 0; i < num_ivs; ++i) {
+    body_block->addArgument(builder.getIndexType(), result.location);
+  }
+  // Add iteration arguments block args.
+  for (auto init_type : TypeRange(inits)) {
+    body_block->addArguments(init_type, result.location);
+  }
+
+  mlir::OperationName opname(LoopOp::getOperationName(), builder.getContext());
+  result.addAttribute(LoopOp::getIndexingMapAttrAttrName(opname),
+                      indexing_map_attr);
+  result.addAttribute(
+      LoopOp::getOperandSegmentSizesAttrName(opname),
+      builder.getDenseI32ArrayAttr({static_cast<int32_t>(dims.size()),
+                                    static_cast<int32_t>(inits.size())}));
+  if (bodyBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(body_block);
+    bodyBuilder(builder, result.location,
+                body_block->getArguments().take_front(num_ivs),
+                body_block->getArguments().drop_front(num_ivs));
+  }
+}
+
+void LoopOp::build(OpBuilder& builder, OperationState& result,
+                   const IndexingMap& indexing_map, ValueRange dims,
+                   ValueRange inits, BodyBuilderFn bodyBuilder) {
+  build(builder, result,
+        IndexingMapAttr::get(builder.getContext(), indexing_map), dims, inits,
+        bodyBuilder);
+}
 
 mlir::ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
   SmallVector<OpAsmParser::Argument, 4> region_args, ivs, iter_args;

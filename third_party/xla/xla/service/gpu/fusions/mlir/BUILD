@@ -290,6 +290,7 @@ cc_library(
         "lower_xla_gpu_to_scf.cc",
         "merge_pointers_to_same_slice.cc",
         "optimize_loops.cc",
+        "peel_loops.cc",
         "propagate_slice_indices.cc",
         "simplify_affine.cc",
         "simplify_arith.cc",

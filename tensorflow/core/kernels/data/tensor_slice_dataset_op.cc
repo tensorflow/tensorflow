@@ -55,7 +55,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         replicate_on_split_(replicate_on_split) {
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
-      gtl::InlinedVector<int64_t, 4> element_dim_sizes;
+      absl::InlinedVector<int64_t, 4UL> element_dim_sizes;
       // Handle scalar here. Check that everyone matches here? Or fail
       // at runtime?
       for (int i = 1; i < t.dims(); ++i) {

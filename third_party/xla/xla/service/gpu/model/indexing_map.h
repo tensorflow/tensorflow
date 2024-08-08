@@ -369,6 +369,9 @@ class IndexingMap {
       llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
       llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
 
+  // Returns true if there is a constraint on the given symbol.
+  bool IsSymbolConstrained(int64_t symbol_id) const;
+
   // Returns true if the domain is empty. If it returns false, that does not
   // mean that the domain is not effectively empty.
   // For example, if there are two constraints 0 <= d0 mod 7 <= 0 and

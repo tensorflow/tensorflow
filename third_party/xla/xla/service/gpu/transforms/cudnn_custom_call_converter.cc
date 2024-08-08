@@ -37,17 +37,18 @@ class CustomCallVisitor : public DfsHloRewriteVisitor {
     if (hlo->custom_call_target() != kCuDnnFusionKind) {
       return absl::OkStatus();
     }
+    HloComputation *computation = hlo->GetModule()->AddEmbeddedComputation(
+        hlo->called_computations()[0]->Clone());
     HloInstruction *fusion =
         hlo->parent()->AddInstruction(HloInstruction::CreateFusion(
             hlo->shape(), HloInstruction::FusionKind::kCustom, hlo->operands(),
-            hlo->called_computations()[0]));
+            computation));
     GpuBackendConfig gpu_config;
     FusionBackendConfig &backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(hlo->custom_call_target());
     TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, fusion));
-    MarkAsChanged();
     return absl::OkStatus();
   }
 };

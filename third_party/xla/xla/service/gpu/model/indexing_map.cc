@@ -1113,6 +1113,20 @@ SmallVector<int64_t, 4> IndexingMap::Evaluate(
   return eval.getConstantResults();
 }
 
+bool IndexingMap::IsSymbolConstrained(int64_t symbol_id) const {
+  for (const auto& [expr, _] : constraints_) {
+    bool result = false;
+    expr.walk([&](mlir::AffineExpr leaf) {
+      auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf);
+      if (sym && sym.getPosition() == symbol_id) {
+        result = true;
+      }
+    });
+    if (result) return true;
+  }
+  return false;
+}
+
 RangeEvaluator::RangeEvaluator(const IndexingMap& indexing_map,
                                MLIRContext* mlir_context, bool use_constraints)
     : mlir_context_(mlir_context),

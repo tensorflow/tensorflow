@@ -1516,20 +1516,6 @@ absl::Status SubgraphToMlirFunction(
 
 namespace {
 
-bool IsSymbolConstrained(const IndexingMap& map, int symbol_id) {
-  for (const auto& [expr, _] : map.GetConstraints()) {
-    bool result = false;
-    expr.walk([&](mlir::AffineExpr leaf) {
-      auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf);
-      if (sym && sym.getPosition() == symbol_id) {
-        result = true;
-      }
-    });
-    if (result) return true;
-  }
-  return false;
-}
-
 ValueRange EmitLoopNestImpl(
     ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
     const IndexingMap& indexing_map,
@@ -1626,7 +1612,7 @@ ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
        sym_index >= 0 && cumulative_loop_size < 64; --sym_index) {
     auto& bound = indexing_map.GetSymbolBound(sym_index);
     cumulative_loop_size *= bound.GetLoopTripCount();
-    if (!IsSymbolConstrained(indexing_map, sym_index)) continue;
+    if (!indexing_map.IsSymbolConstrained(sym_index)) continue;
 
     IndexingMap peeled_map = indexing_map;
     if (bound.upper == bound.lower) continue;
@@ -1635,7 +1621,7 @@ ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
     peeled_map.Simplify();
 
     // If the symbol is still constrained, peeling does not help.
-    if (IsSymbolConstrained(peeled_map, sym_index)) continue;
+    if (peeled_map.IsSymbolConstrained(sym_index)) continue;
 
     auto first_results = EmitLoopNestImpl(b, dim_values, iter_args_inits,
                                           peeled_map, create_body, vectorize);

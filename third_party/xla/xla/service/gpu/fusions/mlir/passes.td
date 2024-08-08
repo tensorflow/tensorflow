@@ -240,6 +240,17 @@ def VectorizeLoadsAndStoresPass :
   let constructor = "CreateVectorizeLoadsAndStoresPass()";
 }
 
+def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
+  let summary = "Peels xla_gpu.loop.";
+  let description = [{
+      Attempts to split each loop dimension [0, NUM_ITERATIONS)
+      as [0, NUM_ITERATIONS - 1) and [NUM_ITERATIONS - 1, NUM_ITERATIONS)
+      if it removes a constraint.
+  }];
+  let dependentDialects = ["xla::gpu::XlaGpuDialect"];
+  let constructor = "CreatePeelLoopsPass()";
+}
+
 def OptimizeLoopsPass :
    Pass<"xla-gpu-optimize-loops", "mlir::func::FuncOp"> {
   let summary = "Unrolls and pipelines loops.";
