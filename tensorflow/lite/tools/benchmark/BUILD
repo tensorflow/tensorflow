@@ -162,6 +162,7 @@ cc_library(
         ":benchmark_model_lib",
         ":benchmark_utils",
         ":profiling_listener",
+        "//tensorflow/core/example:foo_cc_proto",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:simple_memory_arena_debug_dump",
         "//tensorflow/lite:string_util",
