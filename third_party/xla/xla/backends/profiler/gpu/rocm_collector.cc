@@ -618,7 +618,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   const std::vector<RocmTracerEvent> ApiActivityInfoExchange()
       TF_EXCLUSIVE_LOCKS_REQUIRED(event_maps_mutex_);
 
-  absl::flat_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
+  absl::node_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
 };
 //==========
 
