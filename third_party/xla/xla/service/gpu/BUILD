@@ -4572,6 +4572,7 @@ xla_cc_test(
         ":backend_configs_cc",
         ":stream_attribute_annotator",
         "//xla/hlo/ir:hlo",
+        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",

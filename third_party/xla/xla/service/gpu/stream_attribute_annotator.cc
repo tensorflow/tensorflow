@@ -120,6 +120,12 @@ absl::StatusOr<bool> WrapIntoFusionAndAnnotateStreamAttributes(
       fusion_instruction->fused_instructions_computation(),
       absl::StrCat("wrapped_", wrapped_opcode, "_computation"));
   if (module->has_schedule()) {
+    // Update the scheduling names of the fusion and its root instruction
+    // to match their newly assigned instruction names during creation.
+    fusion_instruction->set_metadata_scheduling_name(
+        fusion_instruction->name());
+    HloInstruction* root = fusion_instruction->fused_expression_root();
+    root->set_metadata_scheduling_name(root->name());
     module->schedule().replace_instruction(computation, instruction,
                                            fusion_instruction);
   }

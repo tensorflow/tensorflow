@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -211,21 +212,24 @@ TEST_F(StreamAttributeAnnotatorTest, CopyStartIsAnnotated) {
 
 TEST_F(StreamAttributeAnnotatorTest, DynamicUpdateSliceWrappedAndAnnotated) {
   constexpr absl::string_view kHloString = R"(
-  HloModule ModuleWithAsyncDynamicUpdateSlice
+  HloModule ModuleWithAsyncDynamicUpdateSlice, is_scheduled=true
 
   ENTRY entry (param_0: f32[256,128,128], param_1: f32[1,128,128]) -> f32[256,128,128] {
-    param_0 = f32[256,128,128]{2,1,0:S(5)} parameter(0)
-    param_1 = f32[1,128,128]{2,1,0} parameter(1)
-    izero = s32[] constant(0)
+    param_0 = f32[256,128,128]{2,1,0:S(5)} parameter(0), metadata={scheduling_name="param_0"}
+    param_1 = f32[1,128,128]{2,1,0} parameter(1), metadata={scheduling_name="param_1"}
+    izero = s32[] constant(0), metadata={scheduling_name="izero"}
     dynamic-update-slice-start.2 = ((f32[256,128,128]{2,1,0:S(5)}, f32[1,128,128]{2,1,0}, s32[], s32[], s32[]), f32[256,128,128]{2,1,0:S(5)}, u32[])
-        dynamic-update-slice-start(param_0, param_1, izero, izero, izero)
+        dynamic-update-slice-start(param_0, param_1, izero, izero, izero),
+        metadata={scheduling_name="dynamic-update-slice-start.2"}
     ROOT dynamic-update-slice-done.2 = f32[256,128,128]{2,1,0:S(5)}
-        dynamic-update-slice-done(dynamic-update-slice-start.2)
+        dynamic-update-slice-done(dynamic-update-slice-start.2),
+        metadata={scheduling_name="dynamic-update-slice-done.2"}
   }
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_TRUE(module->has_schedule());
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           StreamAttributeAnnotator().Run(module.get()));
@@ -245,25 +249,51 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicUpdateSliceWrappedAndAnnotated) {
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           fusion->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.operation_queue_id(), 1);
+  // Check if the schedule name the same as the instruction name
+  for (const auto* comp : module->computations()) {
+    for (const auto* instruction : comp->instructions()) {
+      if (!instruction->metadata().scheduling_name().empty()) {
+        EXPECT_EQ(instruction->name(),
+                  instruction->metadata().scheduling_name());
+      }
+    }
+  }
+  constexpr absl::string_view kExpectedSchedulingName = R"(
+// CHECK: %wrapped_dynamic-update-slice_computation
+// CHECK: ROOT %[[DYNAMIC_UPDATE_SLICE:.+]] = f32[256,128,128]{2,1,0:S(5)} dynamic-update-slice(
+// CHECK-SAME: metadata={scheduling_name="[[DYNAMIC_UPDATE_SLICE]]"}
+// CHECK: %[[DYNAMIC_UPDATE_SLICE_START:.+]] = {{.*}} fusion-start(
+// CHECK-SAME: calls=%wrapped_dynamic-update-slice_computation
+// CHECK-SAME: metadata={scheduling_name="[[DYNAMIC_UPDATE_SLICE_START]]"}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matches,
+      RunFileCheck(
+          module->ToString(HloPrintOptions().set_print_operand_shape(false)),
+          kExpectedSchedulingName));
+  EXPECT_TRUE(filecheck_matches);
 }
 
 TEST_F(StreamAttributeAnnotatorTest, DynamicSliceWrappedAndAnnotated) {
   constexpr absl::string_view kHloString = R"(
-  HloModule ModuleWithAsyncDynamicSlice
+  HloModule ModuleWithAsyncDynamicSlice, is_scheduled=true
 
   ENTRY entry (param_0: f32[256,128,128]) -> f32[1,128,128] {
-    param_0 = f32[256,128,128]{2,1,0:S(5)} parameter(0)
-    izero = s32[] constant(0)
+    param_0 = f32[256,128,128]{2,1,0:S(5)} parameter(0), metadata={scheduling_name="param_0"}
+    izero = s32[] constant(0), metadata={scheduling_name="izero"}
     dynamic-slice-start.2 = ((f32[256,128,128]{2,1,0:S(5)}, s32[], s32[], s32[]), f32[1,128,128]{2,1,0}, u32[])
-        dynamic-slice-start(param_0, izero, izero, izero), dynamic_slice_sizes={1,128,128}
+        dynamic-slice-start(param_0, izero, izero, izero), dynamic_slice_sizes={1,128,128},
+        metadata={scheduling_name="dynamic-slice-start.2"}
     ROOT dynamic-slice-done.2 = f32[1,128,128]{2,1,0}
-        dynamic-slice-done(dynamic-slice-start.2)
+        dynamic-slice-done(dynamic-slice-start.2),
+        metadata={scheduling_name="dynamic-slice-done.2"}
   }
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
+  EXPECT_TRUE(module->has_schedule());
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           StreamAttributeAnnotator().Run(module.get()));
   EXPECT_TRUE(changed);
@@ -282,6 +312,29 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicSliceWrappedAndAnnotated) {
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           fusion->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.operation_queue_id(), 1);
+  // Check if the schedule name the same as the instruction name
+  for (const auto* comp : module->computations()) {
+    for (const auto* instruction : comp->instructions()) {
+      if (!instruction->metadata().scheduling_name().empty()) {
+        EXPECT_EQ(instruction->name(),
+                  instruction->metadata().scheduling_name());
+      }
+    }
+  }
+  constexpr absl::string_view kExpectedSchedulingName = R"(
+// CHECK: %wrapped_dynamic-slice_computation
+// CHECK: ROOT %[[DYNAMIC_SLICE:.+]] = f32[1,128,128]{2,1,0} dynamic-slice(
+// CHECK-SAME: metadata={scheduling_name="[[DYNAMIC_SLICE]]"}
+// CHECK: %[[DYNAMIC_SLICE_START:.+]] = {{.*}} fusion-start(
+// CHECK-SAME: calls=%wrapped_dynamic-slice_computation
+// CHECK-SAME: metadata={scheduling_name="[[DYNAMIC_SLICE_START]]"}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matches,
+      RunFileCheck(
+          module->ToString(HloPrintOptions().set_print_operand_shape(false)),
+          kExpectedSchedulingName));
+  EXPECT_TRUE(filecheck_matches);
 }
 }  // namespace
 }  // namespace xla::gpu

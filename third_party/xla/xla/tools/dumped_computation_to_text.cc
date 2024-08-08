@@ -21,16 +21,21 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/client/client.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/service.h"
-#include "xla/types.h"
+#include "xla/service/local_service.h"
+#include "xla/shape.h"
+#include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace tools {
