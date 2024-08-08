@@ -10092,7 +10092,8 @@ TEST_F(AlgebraicSimplifierTest, ReplaceReduceSumOfConstantBroadcast) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
   int64_t reduce_count =
       absl::c_count_if(m->entry_computation()->instructions(),
                        HloPredicateIsOp<HloOpcode::kReduce>);
@@ -11765,6 +11766,35 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfConstantBroadcastBF16) {
                        HloPredicateIsOp<HloOpcode::kReduce>);
   // Expect no Reduce operation after simplification.
   EXPECT_EQ(0, reduce_count);
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceOfNonScalarBroadcast) {
+  const std::string hlo_string = R"(
+    HloModule module
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    ENTRY test {
+        a = f32[64,1001] parameter(0)
+        broadcast = f32[64,7,7,1001] broadcast(a), dimensions={0,3}
+        zero = f32[] constant(0)
+        ROOT reduce = f32[64,7,1001] reduce(broadcast, zero), dimensions={2},
+                  to_apply=add
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
+  // Expect no Reduce operation after simplification.
+  EXPECT_EQ(0, reduce_count);
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Multiply())));
 }
 
 TEST_F(AlgebraicSimplifierTest, RemoveConvertConstant) {

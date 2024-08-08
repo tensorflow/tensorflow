@@ -438,7 +438,7 @@ REGISTER_OP("_BatchFunctionFallback")
     // BatchFunction in core/ops/batch_ops.cc.
     .Attr(
         "batch_padding_policy: "
-        "{'PAD_UP'} = 'PAD_UP'")
+        "{'PAD_UP', 'BATCH_DOWN', 'MINIMIZE_TPU_COST_PER_REQUEST'} = 'PAD_UP'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
