@@ -23,6 +23,7 @@ set -xe
 function build_python_from_src() {
     VERSION=$1
     REQUIREMENTS=$2
+    _pyver="python${VERSION}"
     local python_map
     declare -A python_map=(
         [python3.8]='3.8.12'
@@ -31,23 +32,24 @@ function build_python_from_src() {
         [python3.11]='3.11.2'
         [python3.12]='3.12.4'
     )
-    local _ver=${python_map[$VERSION]}
+    local _ver=${python_map[$_pyver]}
     wget https://www.python.org/ftp/python/${_ver}/Python-${_ver}.tgz
     tar xvf "Python-${_ver}.tgz" && rm -rf "Python-${_ver}.tgz"
-    pushd Python-${_ver}/
-	./configure --enable-optimizations
-	make altinstall -j16
+    cd Python-${_ver}/
+        ./configure --enable-optimizations
+        make altinstall -j4
 
     ln -sf "/usr/local/bin/python${_ver%.*}" /usr/bin/python3
     ln -sf "/usr/local/bin/pip${_ver%.*}" /usr/bin/pip3
     ln -sf "/usr/local/lib/python${_ver%.*}" /usr/lib/tf_python
-    popd
+    cd -
 }
 
 if (source /etc/os-release && [[ ${NAME} == SLES ]]); then
     build_python_from_src $1 $2
 else
 
+##UBUNTU
 source ~/.bashrc
 VERSION=$1
 REQUIREMENTS=$2
@@ -57,7 +59,22 @@ PY_VERSION="python${VERSION}"
 DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update
 DEBIAN_FRONTEND=noninteractive apt install -y wget software-properties-common
 DEBIAN_FRONTEND=noninteractive apt-get clean all
-add-apt-repository -y 'ppa:deadsnakes/ppa'
+
+
+if (source /etc/os-release && [[ ${UBUNTU_CODENAME} == noble ]]) && [[ ${VERSION} == 3.12 ]]; then
+        echo "Ubuntu 24.04 and python 3.12 (native)"
+        apt update; apt install -y build-essential libssl-dev zlib1g-dev \
+            libbz2-dev libreadline-dev libsqlite3-dev curl git \
+            libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+        build_python_from_src $1 $2
+elif (source /etc/os-release && [[ ${UBUNTU_CODENAME} == jammy ]]) && [[ ${VERSION} == 3.10 ]]; then
+        apt update; apt install -y build-essential libssl-dev zlib1g-dev \
+            libbz2-dev libreadline-dev libsqlite3-dev curl git \
+            libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+        build_python_from_src $1 $2
+else
+        echo "Install python from deadsnakes"
+        add-apt-repository -y 'ppa:deadsnakes/ppa'
 
 # Install Python packages for this container's version
 cat >pythons.txt <<EOF
@@ -66,7 +83,15 @@ $PY_VERSION-dev
 $PY_VERSION-venv
 $PY_VERSION-distutils
 EOF
-/setup.packages.sh pythons.txt
+        ./setup.packages.sh pythons.txt
+
+        # Install pip
+        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+        python3 get-pip.py
+        python3 -m pip install --no-cache-dir --upgrade pip
+        python3 -m pip install -U setuptools
+fi # end of Ubuntu version check
+
 
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc
@@ -84,11 +109,6 @@ if [[ ! -f "/usr/local/include/$PY_VERSION" ]]; then
   ln -sf /usr/include/$PY_VERSION /usr/local/include/$PY_VERSION
 fi
 
-# Install pip
-curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-python3 get-pip.py
-python3 -m pip install --no-cache-dir --upgrade pip
-python3 -m pip install -U setuptools
 
 if [[ $3 ]]; then
     echo "Runtime mode"
