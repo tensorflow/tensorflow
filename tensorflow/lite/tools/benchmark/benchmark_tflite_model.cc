@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
+#include "tensorflow/core/example/foo.pb.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/kernels/register.h"
@@ -155,6 +156,9 @@ class OutputSaver : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override {
     std::string path = params_->Get<std::string>("output_filepath");
     if (path.empty()) return;
+
+    tensorflow::Foo foo;
+    foo.set_name("foo");
 
     std::ofstream ofs(path, std::ofstream::out);
     if (ofs.good()) {

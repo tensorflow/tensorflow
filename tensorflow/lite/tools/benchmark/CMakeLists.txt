@@ -47,6 +47,7 @@ list(APPEND TFLITE_BENCHMARK_LIBS
 
 list(APPEND TFLITE_BENCHMARK_LIBS
   profiling_info_proto
+  foo_proto
   protobuf::libprotobuf
 )
 
