@@ -225,7 +225,6 @@ py_strict_library(
         "//tensorflow_models:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/mlperf:__subpackages__",
-        "//third_party/proto_splitter:__subpackages__",  # TODO(b/277279227): remove this dep from proto_splitter
         "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
@@ -301,7 +300,7 @@ py_strict_library(
 py_strict_library(
     name = "gfile",
     srcs = ["gfile.py"],
-    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
+    visibility = visibility,
     deps = [
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:deprecation",
