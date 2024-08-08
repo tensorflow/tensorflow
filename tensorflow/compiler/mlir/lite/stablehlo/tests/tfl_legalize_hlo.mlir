@@ -2239,6 +2239,349 @@ func.func @floor_div_broadcast_cst(%arg0: tensor<10x8xf32>) -> tensor<10x8xf32> 
 // -----
 
 //===----------------------------------------------------------------------===//
+// unary elementwise
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: convert_i32_f32
+func.func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
+  %0 = "mhlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.cast
+
+// -----
+
+// CHECK-LABEL: abs
+func.func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.abs
+
+// -----
+
+// CHECK-LABEL: abs_dynamic
+func.func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.abs
+
+// -----
+
+// CHECK-LABEL: ceil
+func.func @ceil(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.ceil"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.ceil
+
+// -----
+
+// CHECK-LABEL: ceil_dynamic
+func.func @ceil_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.ceil"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.ceil
+
+// -----
+
+// CHECK-LABEL: complex_abs
+func.func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
+  %0 = "mhlo.abs"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK-NOT: tfl
+
+// -----
+
+func.func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {
+  %0 = "mhlo.is_finite"(%arg0) : (tensor<2xf32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: %0 = tfl.sub %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<2xf32>
+// CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK: %1 = "tfl.equal"(%0, %cst) : (tensor<2xf32>, tensor<f32>) -> tensor<2xi1>
+// CHECK: return %1 : tensor<2xi1>
+
+// -----
+
+func.func @is_finite_dynamic(%arg0: tensor<?xf32>) -> tensor<?xi1> {
+  %0 = "mhlo.is_finite"(%arg0) : (tensor<?xf32>) -> tensor<?xi1>
+  func.return %0 : tensor<?xi1>
+}
+
+// CHECK: %0 = tfl.sub %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<?xf32>
+// CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK: %1 = "tfl.equal"(%0, %cst) : (tensor<?xf32>, tensor<f32>) -> tensor<?xi1>
+
+// -----
+
+// CHECK-LABEL: cos
+func.func @cos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.cosine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.cos
+
+// -----
+
+// CHECK-LABEL: cos_dynamic
+func.func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.cosine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.cos
+
+// -----
+
+// CHECK-LABEL: logistic
+func.func @logistic(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.logistic"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.logistic
+
+// -----
+
+// CHECK-LABEL: exp
+func.func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.exp
+
+// -----
+
+// CHECK-LABEL: exp_dynamic
+func.func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.exponential"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.exp
+
+// -----
+
+// CHECK-LABEL: expm1
+func.func @expm1(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.exponential_minus_one"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: %0 = "tfl.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+// CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK: %1 = tfl.sub(%0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+
+// -----
+
+// CHECK-LABEL: floor
+func.func @floor(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.floor"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.floor
+
+// -----
+
+// CHECK-LABEL: floor_dynamic
+func.func @floor_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.floor"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.floor
+
+// -----
+
+// CHECK-LABEL: log
+func.func @log(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.log"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.log
+
+// -----
+
+// CHECK-LABEL: log_dynamic
+func.func @log_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.log"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.log
+
+// -----
+
+// CHECK-LABEL: log1p
+func.func @log1p(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+// CHECK: %1 = "tfl.log"(%0) : (tensor<2xf32>) -> tensor<2xf32>
+
+// -----
+
+// CHECK-LABEL: log1p_dynamic
+func.func @log1p_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
+// CHECK: %1 = "tfl.log"(%0) : (tensor<?xf32>) -> tensor<?xf32>
+
+// -----
+
+// CHECK-LABEL: neg
+func.func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.negate"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.neg
+
+// -----
+
+// CHECK-LABEL: neg_dynamic
+func.func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.negate"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.neg
+
+// -----
+
+// CHECK-LABEL: sin
+func.func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.sine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.sin
+
+// -----
+
+// CHECK-LABEL: sin_dynamic
+func.func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.sine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.sin
+
+// -----
+
+// CHECK-LABEL: rsqrt
+func.func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.rsqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.rsqrt
+
+// -----
+
+// CHECK-LABEL: rsqrt_dynamic
+func.func @rsqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.rsqrt
+
+// -----
+
+// CHECK-LABEL: @sqrt
+func.func @sqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.sqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.sqrt
+
+// -----
+
+// CHECK-LABEL: sqrt_dynamic
+func.func @sqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.sqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.sqrt
+
+// -----
+
+// CHECK-LABEL: tanh
+func.func @tanh(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.tanh"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.tanh
+
+// -----
+
+// CHECK-LABEL: tanh_dynamic
+func.func @tanh_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.tanh"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.tanh
+
+// -----
+
+// CHECK-LABEL: bitcast
+func.func @bitcast(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.bitcast
+
+// -----
+
+// CHECK-LABEL: bitcast_dynamic
+func.func @bitcast_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.bitcast
+
+// -----
+
+// CHECK-LABEL: bitcast_same_widths
+func.func @bitcast_same_widths(%arg0: tensor<2xf32>) -> tensor<2xi32> {
+  %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<2xf32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// CHECK: tfl.bitcast
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // logical and bitwise ops
 //===----------------------------------------------------------------------===//
 

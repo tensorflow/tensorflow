@@ -93,6 +93,7 @@ third_party/remote_config/remote_platform_configure.bzl:
 third_party/repo.bzl:
 third_party/six.BUILD:
 third_party/snappy.BUILD:
+third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
 third_party/systemlibs/BUILD.tpl:
 third_party/systemlibs/BUILD:
 third_party/systemlibs/absl_py.BUILD:
