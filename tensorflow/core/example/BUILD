@@ -110,7 +110,10 @@ tf_proto_library(
         "feature.proto",
     ],
     cc_api_version = 2,
-    make_default_target_header_only = True,
+    make_default_target_header_only = select({
+        "//conditions:default": True,  # Default to True (header-only)
+        "//tensorflow:android_arm64": False,  # Set to False for Android builds
+    }),
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
 )
 
