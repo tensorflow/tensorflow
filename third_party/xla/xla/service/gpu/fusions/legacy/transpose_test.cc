@@ -71,7 +71,7 @@ TEST_F(TransposeTest, ThreadIndexing021) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
@@ -134,7 +134,7 @@ TEST_F(TransposeTest, ThreadIndexing201) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
@@ -198,7 +198,7 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
@@ -264,7 +264,7 @@ TEST_F(TransposeTest, SameInputIndexingForRealHeroAndSideOutput) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
@@ -294,7 +294,7 @@ TEST_F(TransposeTest, ThreadIndexingSideOutput) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;

@@ -1698,7 +1698,7 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
   const se::DeviceDescription& device_info =
       ir_emitter_context_->gpu_device_info();
   const HloFusionAnalysis fusion_analysis =
-      HloFusionAnalysis::Create(instr, &device_info);
+      HloFusionAnalysis::Create(*instr, device_info);
 
   std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(HloFusionInfo(
       fusion_analysis, instr, &ir_emitter_context_->buffer_assignment()));

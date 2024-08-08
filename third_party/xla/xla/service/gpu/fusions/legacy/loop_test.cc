@@ -78,7 +78,7 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetFusion(analysis));
   auto thread_id_to_output_indexing =
@@ -121,7 +121,7 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetFusion(analysis));
   auto thread_id_to_output_indexing =
@@ -174,7 +174,7 @@ TEST_F(LoopTest, Broadcast) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetFusion(analysis));
   auto thread_id_to_output_indexing =

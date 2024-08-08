@@ -211,7 +211,7 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  auto fusion_analysis = AnalyzeFusion(
+  auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
       GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
@@ -247,7 +247,7 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  auto fusion_analysis = AnalyzeFusion(
+  auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
       GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
@@ -276,7 +276,7 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  auto fusion_analysis = AnalyzeFusion(
+  auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
       GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);

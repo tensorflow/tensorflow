@@ -74,7 +74,7 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
   )"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis_fused = AnalyzeFusion(*root, device_info_);
+  auto analysis_fused = HloFusionAnalysis::Create(*root, device_info_);
 
   auto emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
@@ -128,7 +128,7 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ProduceConsumerFusion) {
   auto* root = module->entry_computation()->root_instruction();
 
   auto analysis_fused =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info_);
+      HloFusionAnalysis::Create(*root->operand(0), *root, device_info_);
 
   auto emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});

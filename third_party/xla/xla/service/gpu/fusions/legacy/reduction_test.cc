@@ -69,7 +69,7 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   ReductionFusion fusion(analysis);
 
   EXPECT_THAT(
@@ -134,7 +134,7 @@ TEST_F(ReductionTest, TwoGroups) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   ReductionFusion fusion(analysis);
 
   EXPECT_THAT(fusion.reduction_info().GetGroups().grouped_roots,
@@ -165,7 +165,7 @@ TEST_F(ReductionTest, OneGroup) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   ReductionFusion fusion(analysis);
 
   EXPECT_THAT(fusion.reduction_info().GetGroups().grouped_roots, SizeIs(2));

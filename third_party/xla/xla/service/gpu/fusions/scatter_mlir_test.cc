@@ -77,7 +77,7 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
   thread_id_printer_.SetSymbolName(2, "index_id");
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirScatterFusion fusion(analysis);
 
   constexpr auto kUpdatesIndexing = R"(

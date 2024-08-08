@@ -178,7 +178,7 @@ static bool IsCommand(const HloInstruction* hlo,
     const auto& custom_config = backend_config.custom_fusion_config();
     if (custom_config.name() == "address_computation") {
       auto fusion_analysis =
-          HloFusionAnalysis::Create(fusion, &config.device_description);
+          HloFusionAnalysis::Create(*hlo, config.device_description);
       const HloFusionAdaptor& adaptor = fusion_analysis.fusion();
       auto custom_call_adaptor = HloBfsFindIf(
           adaptor.GetRoots(), adaptor,

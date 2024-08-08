@@ -46,7 +46,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   thread_id_printer_.SetSymbolName(1, "unroll_id");
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirLoopFusion fusion(analysis);
   auto thread_id_to_output_indexing =
       fusion.ComputeThreadIdToOutputIndexing(/*root_index=*/0, &mlir_context_);
@@ -88,7 +88,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingNotUnrolled) {
   thread_id_printer_.SetSymbolName(1, "unroll_id");
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirLoopFusion fusion(analysis);
   auto thread_id_to_output_indexing =
@@ -140,7 +140,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
   thread_id_printer_.SetSymbolName(1, "unroll_id");
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirLoopFusion fusion(analysis);
   auto thread_id_to_output_indexing =

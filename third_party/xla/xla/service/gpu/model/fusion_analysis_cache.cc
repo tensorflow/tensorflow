@@ -33,7 +33,8 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
     }
   }
 
-  HloFusionAnalysis analysis = AnalyzeFusion(instruction, device_info_);
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(instruction, device_info_);
   absl::MutexLock lock(&mutex_);
 
   // If some other thread created an entry for this key concurrently, return
@@ -59,7 +60,7 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
   }
 
   HloFusionAnalysis analysis =
-      AnalyzeProducerConsumerFusion(producer, consumer, device_info_);
+      HloFusionAnalysis::Create(producer, consumer, device_info_);
   absl::MutexLock lock(&mutex_);
 
   // If some other thread created an entry for this key concurrently, return

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -604,7 +605,7 @@ TEST_F(MlirMultiRowReductionTest, TwoGroups) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirMultiRowReductionFusion fusion(analysis);
 
   EXPECT_THAT(fusion.GetGroups().grouped_roots,
@@ -635,7 +636,7 @@ TEST_F(MlirMultiRowReductionTest, OneGroup) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirMultiRowReductionFusion mlir_fusion(analysis);
   EXPECT_THAT(mlir_fusion.GetGroups().grouped_roots, SizeIs(1));
@@ -680,7 +681,7 @@ TEST_F(MlirColumnReductionTest, ColumnReduction) {
 
   auto module = ParseAndReturnVerifiedModule(kHloString).value();
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirColumnReductionFusion fusion(analysis);
   EXPECT_THAT(
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),

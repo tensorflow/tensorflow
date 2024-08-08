@@ -56,7 +56,7 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
 
   auto* root = module->entry_computation()->root_instruction();
 
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirInPlaceDynamicUpdateSliceFusion fusion(analysis);
 
   auto thread_id_update_indexing = fusion.ComputeThreadIdToInputIndexing(

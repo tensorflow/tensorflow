@@ -82,7 +82,7 @@ absl::StatusOr<std::string> MlirEmitterTestBaseImpl::EmitIR(
   TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   auto fusion_emitter = GetEmitter(analysis);
 

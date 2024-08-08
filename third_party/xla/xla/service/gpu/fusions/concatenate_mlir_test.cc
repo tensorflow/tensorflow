@@ -52,7 +52,7 @@ TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
   thread_id_printer_.SetSymbolName(1, "unroll_id");
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirConcatenateFusion fusion(analysis);
 
   constexpr auto kIndexing = R"(

@@ -44,7 +44,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
   )"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
   EXPECT_THAT(
@@ -101,7 +101,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
     })"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirTransposeFusion fusion(analysis);
 
   EXPECT_THAT(
@@ -158,7 +158,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized021) {
   )"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
   EXPECT_THAT(
@@ -212,7 +212,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized210) {
     })"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirTransposeFusion fusion(analysis);
 
   EXPECT_THAT(
@@ -627,7 +627,7 @@ TEST_F(MlirTransposeFusionTest, SameInputIndexingForRealHeroAndSideOutput) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
@@ -657,7 +657,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingSideOutput) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
   mlir::MLIRContext mlir_context;

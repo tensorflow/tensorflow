@@ -56,7 +56,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   // TODO(jreiffers): Remove this once all callers use a cache.
   std::optional<HloFusionAnalysis> local_analysis;
   if (!config.fusion_analysis_cache) {
-    local_analysis = AnalyzeFusion(*instr, device_info);
+    local_analysis = HloFusionAnalysis::Create(*instr, device_info);
   }
   const auto& fusion_analysis = config.fusion_analysis_cache
                                     ? config.fusion_analysis_cache->Get(*instr)
@@ -144,7 +144,7 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     // TODO(jreiffers): Remove this once all callers use a cache.
     std::optional<HloFusionAnalysis> local_analysis;
     if (!config.fusion_analysis_cache) {
-      local_analysis = AnalyzeFusion(*fused_consumer, device_info);
+      local_analysis = HloFusionAnalysis::Create(*fused_consumer, device_info);
     }
     const auto& analysis_unfused =
         config.fusion_analysis_cache
@@ -193,7 +193,7 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   std::optional<HloFusionAnalysis> local_analysis_fused;
   if (!config.fusion_analysis_cache) {
     local_analysis_fused =
-        AnalyzeProducerConsumerFusion(*producer, *consumer, device_info);
+        HloFusionAnalysis::Create(*producer, *consumer, device_info);
   }
   const auto& fusion_analysis =
       config.fusion_analysis_cache
@@ -296,8 +296,8 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
 
     std::optional<HloFusionAnalysis> local_analysis_fused;
     if (!config.fusion_analysis_cache) {
-      local_analysis_fused = AnalyzeProducerConsumerFusion(
-          *producer, *fused_consumer, device_info);
+      local_analysis_fused =
+          HloFusionAnalysis::Create(*producer, *fused_consumer, device_info);
     }
     const auto& analysis_fused =
         config.fusion_analysis_cache

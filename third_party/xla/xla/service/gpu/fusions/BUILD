@@ -662,6 +662,7 @@ xla_test(
         ":mlir_emitter_test_base",
         ":reduction_mlir",
         "//xla:error_spec",
+        "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",

@@ -74,7 +74,7 @@ TEST_F(ConcatenateTest, ThreadIndexing) {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis_fused = AnalyzeFusion(*root, device_info);
+  auto analysis_fused = HloFusionAnalysis::Create(*root, device_info);
 
   auto emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
