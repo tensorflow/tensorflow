@@ -19,13 +19,13 @@ limitations under the License.
 #include <utility>
 
 #include "xla/service/cpu_gpu_shape_verifier.h"
-#include "xla/service/gpu/fusion_merger.h"
 #include "xla/service/gpu/horizontal_input_fusion.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/instruction_fusion.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/multi_output_fusion.h"
 #include "xla/service/gpu/priority_fusion.h"
+#include "xla/service/gpu/transforms/fusion_merger.h"
 #include "xla/service/gpu/variadic_op_splitter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
