@@ -1,7 +1,7 @@
 # TODO(b/356020232): remove entire file and all usages after migration is done
 load("@python_version_repo//:py_version.bzl", "USE_PYWRAP_RULES")
 load(
-    "//third_party/py/rules_pywrap:pywrap.bzl",
+    "//third_party/py/rules_pywrap:pywrap.impl.bzl",
     _pybind_extension = "pybind_extension",
     _pywrap_library = "pywrap_library",
     _pywrap_common_library = "pywrap_common_library",

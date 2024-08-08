@@ -30,7 +30,7 @@ load(
     "cc_shared_library",
 )
 load(
-    "@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
 )

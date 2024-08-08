@@ -47,7 +47,7 @@ load(
     _tfcompile_target_cpu = "tfcompile_target_cpu",
     _pywrap_aware_tf_cc_shared_object = "pywrap_aware_tf_cc_shared_object",
 )
-load("@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl",
+load("@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
     _pywrap_aware_filegroup = "pywrap_aware_filegroup",
     _pywrap_aware_genrule = "pywrap_aware_genrule",
     _pywrap_aware_cc_import = "pywrap_aware_cc_import",

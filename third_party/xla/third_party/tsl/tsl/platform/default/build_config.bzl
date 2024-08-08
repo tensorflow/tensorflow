@@ -2,7 +2,7 @@
 
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("@local_tsl//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
+load("@local_tsl//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
     "clean_dep",
