@@ -66,9 +66,10 @@ tf_cc_tests(
     ],
     deps = [
         ":ctc_beam_search_lib",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/log",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -84,7 +85,11 @@ cc_library(
         ":ctc_loss_util_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3_test",
     ],
 )
 

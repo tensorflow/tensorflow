@@ -21,6 +21,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/toco_port.h"
 

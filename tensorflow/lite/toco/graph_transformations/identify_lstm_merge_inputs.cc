@@ -18,8 +18,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/string_view.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
