@@ -104,13 +104,13 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
     // Propagate empty tensor if input is empty
     return kTfLiteOk;
   }
-  const int row_bytes = value->bytes / row_size;
+  const int64_t row_bytes = value->bytes / row_size;
 
   char* output_raw = GetTensorData<char>(output);
   const char* value_raw = GetTensorData<char>(value);
   const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
-    int idx = lookup_data[i];
+    int64_t idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
       TF_LITE_KERNEL_LOG(context,
                          "Embedding Lookup: index out of bounds. "
