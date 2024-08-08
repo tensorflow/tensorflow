@@ -178,7 +178,8 @@ class BatchResource : public serving::BatchResourceBase {
                   /*mixed_priority_batching_policy=*/
                   serving::MixedPriorityBatchingPolicy::
                       kLowPriorityPaddingWithMaxBatchSize,
-                  enable_large_batch_splitting, resource);
+                  enable_large_batch_splitting,
+                  /*batch_padding_policy=*/"PAD_UP", resource);
   }
 
   static Status Create(
@@ -191,7 +192,7 @@ class BatchResource : public serving::BatchResourceBase {
       int32_t low_priority_max_enqueued_batches,
       const std::vector<int32>& low_priority_allowed_batch_sizes,
       serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
-      bool enable_large_batch_splitting,
+      bool enable_large_batch_splitting, absl::string_view batch_padding_policy,
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = num_batch_threads;
@@ -204,8 +205,7 @@ class BatchResource : public serving::BatchResourceBase {
             num_batch_threads, max_execution_batch_size, batch_timeout_micros,
             max_enqueued_batches, allowed_batch_sizes,
             enable_large_batch_splitting,
-            /*disable_padding=*/false,
-            /*batch_padding_policy=*/serving::kPadUpPolicy,
+            /*disable_padding=*/false, batch_padding_policy,
             low_priority_max_batch_size, low_priority_batch_timeout_micros,
             low_priority_max_enqueued_batches, low_priority_allowed_batch_sizes,
             mixed_priority_batching_policy),
@@ -441,7 +441,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           low_priority_batch_timeout_micros_,
           low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
           mixed_priority_batching_policy, enable_large_batch_splitting_,
-          &new_resource));
+          batch_padding_policy_, &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);
       }

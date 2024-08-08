@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -90,6 +93,7 @@ class SharedBatchFunctionTestState : public OpsTestBase {
   // Create common batch function op for testing.
   absl::StatusOr<NodeDefBuilder> CreateBatchFunctionBuilder(
       const std::vector<int> &allowed_batch_sizes, int max_batch_size,
+      absl::string_view padding_policy,
       const TensorShape &expected_output_shape) {
     NameAttrList f;
     f.set_name("ShapeEnforcingFunction");
@@ -114,13 +118,15 @@ class SharedBatchFunctionTestState : public OpsTestBase {
 
     std::vector<NodeDefBuilder::NodeOut> inputs(
         {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
-    return NodeDefBuilder("BatchTPUInput", "BatchFunction")
+    return NodeDefBuilder(absl::StrCat("BatchTPUInput", padding_policy),
+                          "BatchFunction")
         .Attr("max_batch_size", max_batch_size)
         .Attr("num_batch_threads", 8)
         .Attr("allowed_batch_sizes", allowed_batch_sizes)
         .Attr("batch_timeout_micros", 1000000)
         .Attr("max_enqueued_batches", 10)
         .Attr("enable_large_batch_splitting", true)
+        .Attr("batch_padding_policy", padding_policy)
         .Attr("Tin", {DataType::DT_INT64})
         .Input(inputs)
         .Attr("Tcaptured", std::vector<DataType>{})
@@ -144,7 +150,7 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
     const TensorShape expected_output_shape({expected_batch_size, 2});
     TF_ASSIGN_OR_RETURN(
         NodeDefBuilder builder,
-        CreateBatchFunctionBuilder({4, 8}, 8, expected_output_shape));
+        CreateBatchFunctionBuilder({4, 8}, 8, "PAD_UP", expected_output_shape));
     TF_RETURN_IF_ERROR(builder
                            .Attr("low_priority_max_batch_size",
                                  enable_low_priority_queue ? 8 : 0)
@@ -592,7 +598,7 @@ class BatchFunctionKernelParallelWarmupTestState
     TF_ASSIGN_OR_RETURN(
         NodeDefBuilder builder,
         CreateBatchFunctionBuilder({2, 4, 8}, enable_splitting ? 16 : 8,
-                                   expected_output_shape));
+                                   "PAD_UP", expected_output_shape));
     TF_RETURN_IF_ERROR(builder.Finalize(node_def()));
 
     return OpsTestBase::InitOp();
@@ -664,6 +670,81 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
 INSTANTIATE_TEST_SUITE_P(BatchFunctionKernelParallelWarmupTestSuite,
                          BatchFunctionKernelParallelWarmupTest,
                          ::testing::Bool());
+
+class BatchFunctionKernelPaddingTestState
+    : public SharedBatchFunctionTestState {
+ public:
+  // Init test fixture with a batch kernel instance.
+  absl::Status Init(absl::string_view padding_policy, int expected_batch_size) {
+    static auto *const cpu_device = []() {
+      auto device =
+          DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
+      return device.release();
+    }();
+
+    // Override the per-test/per-op device with a global device so that it can
+    // be shared between ops.
+    device_ = cpu_device;
+
+    const TensorShape expected_output_shape({expected_batch_size, 2});
+    TF_RETURN_IF_ERROR(CreateBatchFunctionBuilder({4, 8}, 8, padding_policy,
+                                                  expected_output_shape)
+                           ->Finalize(node_def()));
+
+    return OpsTestBase::InitOp();
+  }
+
+  void TestBody() override {}
+};
+
+class BatchFunctionKernelPaddingTest
+    : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(BatchFunctionKernelPaddingTest, PadUp) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  // Send 5 requests in parallel and check that the given batch padding
+  // policy behaves as expected.
+  int64_t num_requests = 5;
+  int64_t expected_batch_size = 0;
+  std::string padding_policy = GetParam();
+  if (padding_policy == "PAD_UP") {
+    expected_batch_size = 8;
+  } else if (padding_policy == "BATCH_DOWN") {
+    expected_batch_size = 4;
+  } else if (padding_policy == "MINIMIZE_TPU_COST_PER_REQUEST") {
+    expected_batch_size = 8;
+  } else {
+    FAIL() << "Unsupported padding policy: " << padding_policy;
+  }
+
+  {
+    tsl::BlockingCounter blocking_counter(num_requests);
+    for (int i = 0; i < num_requests; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        BatchFunctionKernelPaddingTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_CHECK_OK(test_state.Init(padding_policy, expected_batch_size));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({123, 456}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    blocking_counter.Wait();
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(BatchFunctionKernelPaddingTestSuite,
+                         BatchFunctionKernelPaddingTest,
+                         ::testing::Values("PAD_UP", "BATCH_DOWN",
+                                           "MINIMIZE_TPU_COST_PER_REQUEST"));
 
 }  // namespace
 }  // namespace tensorflow
