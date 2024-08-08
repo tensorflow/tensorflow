@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_TILING_UTIL_H_
-#define XLA_SERVICE_GPU_FUSIONS_TILING_UTIL_H_
+#ifndef XLA_SERVICE_GPU_FUSIONS_LEGACY_TILING_UTIL_H_
+#define XLA_SERVICE_GPU_FUSIONS_LEGACY_TILING_UTIL_H_
 
 #include <cstdint>
 #include <functional>
@@ -27,6 +27,9 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -177,7 +180,36 @@ absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
     llvm::IRBuilder<>* builder, const Tiling& tiling, llvm::Type* index_ty,
     const TileGenerator& tile_element_generator);
 
+// Creates an indexing map from thread and block IDs to elements of the tiled
+// shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
+// are thread indices (currently only 0 is used), dimensions 3 to 5 are block
+// indices (currently only 3 is used).
+mlir::AffineMap GetBlockOffsetsForTiling(
+    absl::Span<const int64_t> num_blocks,
+    absl::Span<const int64_t> tile_sizes_per_block, int64_t rank,
+    mlir::MLIRContext* mlir_context);
+mlir::AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
+                                         mlir::MLIRContext* mlir_context);
+mlir::AffineMap GetThreadOffsetsForTiling(
+    absl::Span<const int64_t> num_threads,
+    absl::Span<const int64_t> tile_sizes_per_thread, int64_t rank,
+    mlir::MLIRContext* mlir_context);
+mlir::AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
+                                          mlir::MLIRContext* mlir_context);
+
+// Convenience functions for the two functions above
+// (`GetBlockOffsestsForTiling` + `GetThreadOffsetsForTiling`). Also sets up
+// the ranges of dimensions and symbols.
+IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
+                                    mlir::MLIRContext* mlir_context);
+IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
+                                    mlir::AffineMap thread_offsets,
+                                    int64_t threads_per_block,
+                                    int64_t num_blocks,
+                                    absl::Span<const int64_t> thread_tile_sizes,
+                                    absl::Span<const int64_t> tiled_shape);
+
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_TILING_UTIL_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_LEGACY_TILING_UTIL_H_

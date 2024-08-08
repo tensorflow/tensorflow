@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_TRANSPOSE_H_
-#define XLA_SERVICE_GPU_FUSIONS_TRANSPOSE_H_
+#ifndef XLA_SERVICE_GPU_FUSIONS_LEGACY_TRANSPOSE_H_
+#define XLA_SERVICE_GPU_FUSIONS_LEGACY_TRANSPOSE_H_
 
 #include <cstdint>
 #include <optional>
@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/tiling_util.h"
+#include "xla/service/gpu/fusions/legacy/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -88,4 +88,4 @@ class TransposeFusion : public KernelFusionEmitterBase {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_TRANSPOSE_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_LEGACY_TRANSPOSE_H_

@@ -35,10 +35,9 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/concatenate.h"
-#include "xla/service/gpu/fusions/loop.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
@@ -51,6 +50,16 @@ namespace {
 using llvm::SmallVector;
 using mlir::Value;
 using mlir::ValueRange;
+
+const Shape& GetLargestConcatOperandShape(const HloFusionAnalysis& analysis) {
+  const HloInstruction& concat = analysis.fusion_hero(0).instruction();
+  int64_t dim = concat.concatenate_dimension();
+  auto less = [&](const HloInstruction* lhs, const HloInstruction* rhs) {
+    return lhs->shape().dimensions(dim) < rhs->shape().dimensions(dim);
+  };
+  HloInstruction* operand = *absl::c_max_element(concat.operands(), less);
+  return operand->shape();
+}
 
 // Computes the unroll factor that divides concat dimension of all operands.
 int ComputeUnrollFactor(const HloFusionAnalysis& analysis,

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_INPUT_SLICES_H_
-#define XLA_SERVICE_GPU_FUSIONS_INPUT_SLICES_H_
+#ifndef XLA_SERVICE_GPU_FUSIONS_LEGACY_INPUT_SLICES_H_
+#define XLA_SERVICE_GPU_FUSIONS_LEGACY_INPUT_SLICES_H_
 
 #include <cstdint>
 #include <optional>
@@ -76,4 +76,4 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_INPUT_SLICES_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_LEGACY_INPUT_SLICES_H_

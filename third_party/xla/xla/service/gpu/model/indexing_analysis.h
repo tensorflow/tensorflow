@@ -18,7 +18,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_INDEXING_ANALYSIS_H_
 
 #include <cstdint>
-#include <functional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -31,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -144,35 +142,6 @@ IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
 // layout.
 IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
     const Shape& shape, mlir::MLIRContext* mlir_context);
-
-// Creates an indexing map from thread and block IDs to elements of the tiled
-// shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
-// are thread indices (currently only 0 is used), dimensions 3 to 5 are block
-// indices (currently only 3 is used).
-mlir::AffineMap GetBlockOffsetsForTiling(
-    absl::Span<const int64_t> num_blocks,
-    absl::Span<const int64_t> tile_sizes_per_block, int64_t rank,
-    mlir::MLIRContext* mlir_context);
-mlir::AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
-                                         mlir::MLIRContext* mlir_context);
-mlir::AffineMap GetThreadOffsetsForTiling(
-    absl::Span<const int64_t> num_threads,
-    absl::Span<const int64_t> tile_sizes_per_thread, int64_t rank,
-    mlir::MLIRContext* mlir_context);
-mlir::AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
-                                          mlir::MLIRContext* mlir_context);
-
-// Convenience functions for the two functions above
-// (`GetBlockOffsestsForTiling` + `GetThreadOffsetsForTiling`). Also sets up
-// the ranges of dimensions and symbols.
-IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
-                                    mlir::MLIRContext* mlir_context);
-IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
-                                    mlir::AffineMap thread_offsets,
-                                    int64_t threads_per_block,
-                                    int64_t num_blocks,
-                                    absl::Span<const int64_t> thread_tile_sizes,
-                                    absl::Span<const int64_t> tiled_shape);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);

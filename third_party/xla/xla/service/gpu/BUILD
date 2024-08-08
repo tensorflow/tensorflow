@@ -703,6 +703,7 @@ cc_library(
     name = "reduction_utils",
     srcs = ["reduction_utils.cc"],
     hdrs = ["reduction_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":ir_emission_utils",
@@ -3064,6 +3065,7 @@ cc_library(
     name = "hlo_fusion_analysis",
     srcs = ["hlo_fusion_analysis.cc"],
     hdrs = ["hlo_fusion_analysis.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":backend_configs_cc",
         ":hlo_traversal",
@@ -3198,10 +3200,13 @@ cc_library(
     name = "gpu_fusible",
     srcs = ["gpu_fusible.cc"],
     hdrs = ["gpu_fusible.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":backend_configs_cc",
+        ":hlo_fusion_analysis",
         ":hlo_traversal",
         ":ir_emission_utils",
+        ":launch_dimensions",
         ":reduction_utils",
         "//xla:permutation_util",
         "//xla:shape_util",

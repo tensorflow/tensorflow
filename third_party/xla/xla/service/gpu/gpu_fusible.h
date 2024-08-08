@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -225,6 +227,12 @@ bool IsGenericTritonFusion(const HloInstruction& instr);
 // Whether the fusion will likely behave poorly with vectorization due to the
 // instructions it contains.
 bool MayPreventVectorization(const HloFusionAdaptor& fusion);
+
+LaunchDimensionsConfig ComputeLoopFusionConfig(
+    const HloFusionAnalysis& analysis);
+
+LaunchDimensionsConfig ComputeLoopFusionConfig(
+    const HloFusionAnalysis& analysis, const Shape& shape);
 
 }  // namespace gpu
 }  // namespace xla

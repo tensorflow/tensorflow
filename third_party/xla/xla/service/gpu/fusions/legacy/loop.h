@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_LOOP_H_
-#define XLA_SERVICE_GPU_FUSIONS_LOOP_H_
+#ifndef XLA_SERVICE_GPU_FUSIONS_LEGACY_LOOP_H_
+#define XLA_SERVICE_GPU_FUSIONS_LEGACY_LOOP_H_
 
 #include <cstdint>
 #include <optional>
@@ -59,13 +59,7 @@ class LoopFusion : public KernelFusionEmitterBase {
   LaunchDimensionsConfig config_;
 };
 
-LaunchDimensionsConfig ComputeLoopFusionConfig(
-    const HloFusionAnalysis& analysis);
-
-LaunchDimensionsConfig ComputeLoopFusionConfig(
-    const HloFusionAnalysis& analysis, const Shape& shape);
-
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_LOOP_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_LEGACY_LOOP_H_

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/scatter.h"
+#include "xla/service/gpu/fusions/legacy/scatter.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -36,7 +36,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
-#include "xla/service/gpu/fusions/loop.h"
+#include "xla/service/gpu/fusions/legacy/loop.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
