@@ -10,8 +10,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core/platform:statusor",
         "@com_google_fuzztest//fuzztest",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -25,8 +25,8 @@ cc_library(
         ":tensor_shape_domains",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
+        "@com_google_absl//absl/log",
         "@com_google_fuzztest//fuzztest",
         "@local_tsl//tsl/platform:errors",
     ],

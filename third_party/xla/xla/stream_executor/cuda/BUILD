@@ -10,6 +10,7 @@ load(
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+    "if_cuda_newer_than",
 )
 load(
     "//xla:xla.bzl",
@@ -629,7 +630,11 @@ cc_library(
         "//conditions:default": [
             "LIBNVJITLINK_SUPPORT=false",
         ],
-    }),
+    }) + if_cuda_newer_than(
+        "12_0",
+        ["CUDA_SUPPORTS_NVJITLINK=true"],
+        ["CUDA_SUPPORTS_NVJITLINK=false"],
+    ),
 )
 
 cc_library(
@@ -672,13 +677,25 @@ cc_library(
     ],
 )
 
+# Since select() can't be nested, we need to wrap the cuda_newer_than check in a separate
+# library target.
+cc_library(
+    name = "nvjitlink_cuda_supported",
+    # Even though the macro is called `*_newer_than`, it does a greater-than-or-equal-to comparison.
+    deps = if_cuda_newer_than(
+        "12_0",
+        [":nvjitlink_impl"],
+        [":nvjitlink_stub"],
+    ),
+)
+
 cc_library(
     name = "nvjitlink",
     hdrs = [
         "nvjitlink.h",
     ],
     deps = select({
-        ":libnvjitlink_support_enabled": [":nvjitlink_impl"],
+        ":libnvjitlink_support_enabled": [":nvjitlink_cuda_supported"],
         "//conditions:default": [":nvjitlink_stub"],
     }) + [
         "//xla/stream_executor/gpu:gpu_asm_opts",
