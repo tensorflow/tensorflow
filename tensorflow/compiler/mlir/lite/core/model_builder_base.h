@@ -40,10 +40,10 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 #include "tensorflow/compiler/mlir/lite/core/macros.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/verifier.h"
 
 namespace tflite {
