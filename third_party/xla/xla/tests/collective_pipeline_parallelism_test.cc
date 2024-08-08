@@ -212,7 +212,7 @@ std::string GetModuleStrWithCommonComputations(
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch4Replica4) {
+XLA_TEST_F(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) parameter(0)
@@ -329,7 +329,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch4Replica4) {
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch5Replica4) {
+XLA_TEST_F(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[16], u32[]) parameter(0)
@@ -447,7 +447,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveDFSMicrobatch5Replica4) {
 //
 // Every stage of the pipeline is a single linear layer.
 XLA_TEST_F(CollectivePipelineParallelismTest,
-           NaiveDFSMicrobatch4CircularRepeat2Replica4) {
+           NaiveBFSMicrobatch4CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) parameter(0)
@@ -567,7 +567,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
 //
 // Every stage of the pipeline is a single linear layer.
 XLA_TEST_F(CollectivePipelineParallelismTest,
-           NaiveDFSMicrobatch5CircularRepeat2Replica4) {
+           NaiveBFSMicrobatch5CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
@@ -705,7 +705,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
 //
 // Every stage of the pipeline is a single linear layer.
 XLA_TEST_F(CollectivePipelineParallelismTest,
-           NaiveWoDirectBufferDependencyDFSMicrobatch5CircularRepeat2Replica4) {
+           NaiveWoDirectBufferDependencyBFSMicrobatch5CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
