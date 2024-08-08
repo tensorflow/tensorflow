@@ -201,6 +201,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:backend",
         "//xla/service:computation_layout",
         "//xla/service:hlo_module_util",

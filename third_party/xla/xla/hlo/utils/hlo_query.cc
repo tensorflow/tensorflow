@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -269,22 +271,46 @@ HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
   return gte;
 }
 
-bool IsBeforeInComputation(const HloComputation* computation,
-                           absl::string_view inst1, absl::string_view inst2) {
-  int index1 = -1;
-  int index2 = -1;
+HloComputation* FindComputation(HloModule* module, absl::string_view name) {
+  auto computations = module->computations();
+  auto it = absl::c_find_if(
+      computations, [&](HloComputation* c) { return c->name() == name; });
+  if (it == computations.end()) {
+    return nullptr;
+  }
+  return *it;
+}
+
+std::pair<HloInstruction*, int> FindInstruction(
+    const HloComputation* computation, absl::string_view name) {
   int current_index = 0;
   for (auto instruction : computation->instructions()) {
-    if (instruction->name() == inst1) {
-      index1 = current_index;
-    }
-    if (instruction->name() == inst2) {
-      index2 = current_index;
+    if (instruction->name() == name) {
+      return {instruction, current_index};
+      break;
     }
     current_index++;
   }
-  current_index++;
-  return index1 < index2;
+  return {nullptr, -1};
+}
+
+std::pair<HloInstruction*, int> FindInstruction(
+    const HloComputation* computation, HloOpcode opcode) {
+  int current_index = 0;
+  for (auto instruction : computation->instructions()) {
+    if (instruction->opcode() == opcode) {
+      return {instruction, current_index};
+      break;
+    }
+    current_index++;
+  }
+  return {nullptr, -1};
+}
+
+bool IsBeforeInComputation(const HloComputation* computation,
+                           absl::string_view inst1, absl::string_view inst2) {
+  return FindInstruction(computation, inst1).second <
+         FindInstruction(computation, inst2).second;
 }
 }  // namespace hlo_query
 }  // namespace xla
