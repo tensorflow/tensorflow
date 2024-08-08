@@ -223,7 +223,6 @@ cc_library(
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deps = [
-        "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
