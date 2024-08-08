@@ -366,7 +366,7 @@ inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
 }  // namespace
 
 bool OneDnnContractionRewriter::ShouldRewriteDot(
-    const HloInstruction* dot_instr) {
+    const HloInstruction* dot_instr, bool before_layout_assignment) {
   // Currently, blocking control dependencies
   if (dot_instr->HasControlDependencies()) return false;
   if (!IsSupportedType(dot_instr->shape().element_type())) return false;
@@ -398,12 +398,13 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
 
   // Layout should be row-major, contraction dimensions captures transpose
   // scenarios in last two dimensions.
-  // Col-major layouts are corrected to row-majow for BatchDot operation as
-  // part of the layout-pass.
-  if (!IsBatchDot(*dot_instr) &&
-      (!IsRowMajor(lhs_shape) || !IsRowMajor(rhs_shape) ||
-       !IsRowMajor(output_shape))) {
-    return false;
+  // Col-major layouts are corrected to row-major for BatchDot operation as
+  // part of the layout-assignment pass.
+  // Skip row-major layout check before layout-assignment pass
+  if (!before_layout_assignment) {
+    bool row_major = IsRowMajor(lhs_shape) && IsRowMajor(rhs_shape) &&
+                     IsRowMajor(output_shape);
+    if (!row_major) return false;
   }
 
   auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
@@ -467,8 +468,10 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
 
     TF_RETURN_IF_ERROR(
         ValidateDotDimensionNumbers(dot_instr->dot_dimension_numbers()));
-    if (!OneDnnContractionRewriter::ShouldRewriteDot(dot_instr))
+    if (!OneDnnContractionRewriter::ShouldRewriteDot(dot_instr)) {
+      TF_RETURN_IF_ERROR(UpcastDotToF32(dot_instr));
       return absl::OkStatus();
+    }
     TF_ASSIGN_OR_RETURN(dot_instr, ReconfigureDotDimensions(dot_instr));
     auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
     const Shape& lhs_shape = dot_instr->operand(0)->shape();
@@ -1014,6 +1017,34 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
 
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
     return adjusted_dot;
+  }
+
+  // This function upcasts BF16 dots to F32 if we are unable to rewrite them to
+  // oneDNN custom calls.
+  absl::Status UpcastDotToF32(HloInstruction* dot_instr) {
+    if (dot_instr->shape().element_type() != BF16) return absl::OkStatus();
+    std::vector<HloInstruction*> new_operands;
+    auto bf16_operands = dot_instr->operands();
+
+    std::for_each(
+        bf16_operands.begin(), bf16_operands.end(),
+        [&new_operands](HloInstruction* instr) {
+          new_operands.push_back(
+              instr->AddInstruction(HloInstruction::CreateConvert(
+                  ShapeUtil::ChangeElementType(instr->shape(), F32), instr)));
+        });
+
+    HloInstruction* f32_dot =
+        dot_instr->AddInstruction(dot_instr->CloneWithNewOperands(
+            ShapeUtil::ChangeElementType(dot_instr->shape(), F32),
+            new_operands));
+
+    HloInstruction* replacement_instr =
+        f32_dot->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(f32_dot->shape(), BF16), f32_dot));
+
+    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
+    return absl::OkStatus();
   }
 };
 
