@@ -16,5 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 
 namespace stream_executor {
-bool IsLibNvJitLinkSupported() { return LIBNVJITLINK_SUPPORT; }
+bool IsLibNvJitLinkSupported() {
+  return LIBNVJITLINK_SUPPORT && CUDA_SUPPORTS_NVJITLINK;
+}
 }  // namespace stream_executor
