@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -242,6 +243,10 @@ class IrEmitter2 {
 
   // Returns the number of bytes within the shape.
   int64_t ByteSizeOf(const Shape& shape) const;
+
+  // Given a load instruction, annotate the load's result with the invariant
+  // load metadata.
+  void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* instr) const;
 
   const HloModule& hlo_module_;
   llvm::Module* module_;

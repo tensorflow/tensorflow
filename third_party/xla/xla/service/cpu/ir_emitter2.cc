@@ -719,6 +719,11 @@ llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
   // dereferenceable.
   IrEmitter::AttachDereferenceableMetadataForLoad(data, ByteSizeOf(shape));
 
+  // All buffers pointers passed to host kernels are expected to be invariant
+  // over the whole program. Note the metadata is attached only to loading
+  // buffer pointers, not to loading actual buffers.
+  AttachInvariantLoadMetadataForLoad(data);
+
   return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
 }
 
@@ -1045,6 +1050,12 @@ absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
 // refactoring (like we did for compute_function_ and builder_).
 int64_t IrEmitter2::ByteSizeOf(const Shape& shape) const {
   return llvm_ir::ByteSizeOf(shape, module_->getDataLayout());
+}
+
+void IrEmitter2::AttachInvariantLoadMetadataForLoad(
+    llvm::LoadInst* instr) const {
+  nested_ir_emitter_->AttachInvariantLoadMetadataForLoad(instr,
+                                                         hlo_module_.config());
 }
 
 }  // namespace xla::cpu

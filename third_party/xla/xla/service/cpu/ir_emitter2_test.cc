@@ -104,26 +104,26 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
-    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.*]], !align ![[ALIGNMENT:.+]]
+    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0:.+]], !dereferenceable ![[DEREF_BYTES:.*]], !align ![[ALIGNMENT:.+]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 1, i32 0
-    CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
+    CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 2, i32 0
-    CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
+    CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 3, i32 0
-    CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
+    CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
     CHECK-NEXT: %[[PTR0:.+]] = getelementptr inbounds float, ptr %[[ARG0]]
     CHECK:      load float, ptr %[[PTR0]], align 4,
-    CHECK-SAME:                            !invariant.load ![[SCOPE0:.+]],
+    CHECK-SAME:                            !invariant.load ![[SCOPE0]],
     CHECK-SAME:                            !noalias ![[SCOPE1:.+]]
 
     CHECK-NEXT: %[[PTR1:.+]] = getelementptr inbounds float, ptr %[[ARG1]]
