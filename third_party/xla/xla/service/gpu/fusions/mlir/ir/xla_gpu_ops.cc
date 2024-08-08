@@ -741,6 +741,76 @@ IndexingMap LoopOp::getIndexingMap() {
   return getIndexingMapAttr().getIndexingMap();
 }
 
+//===----------------------------------------------------------------------===//
+// MaterializeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MaterializeOp::verify() {
+  IndexingMap map_in = getMap().getIndexingMap();
+  IndexingMap map_out =
+      getResult().getType().getIndexingMapAttr().getIndexingMap();
+  if (getIndices().size() != map_in.GetDimVarsCount()) {
+    return emitOpError() << "number of indices must match number of dimensions "
+                            "of indexing map";
+  }
+
+  // The thread dimension must have the same domain (range and constraints)
+  if (map_in.GetDimVarsCount() == 0 || map_out.GetDimVarsCount() == 0) {
+    return emitOpError()
+           << "must have thread_id dimension in both indexing maps";
+  }
+  if (map_in.GetDimVars(0) != map_out.GetDimVars(0)) {
+    return emitOpError() << "thread_id dimension must have the same bounds in "
+                            "both indexing maps";
+  }
+  auto thread_id_constraints_in = map_in.GetConstraintsForDim(0);
+  auto thread_id_constraints_out = map_out.GetConstraintsForDim(0);
+  if (thread_id_constraints_in != thread_id_constraints_out) {
+    return emitOpError() << "constraints of indexing maps must be equal for "
+                         << "the thread_id dimension";
+  }
+
+  // The two maps must have the same symbols and they must have the same domain
+  if (map_in.GetRangeVarsCount() != map_out.GetRangeVarsCount()) {
+    return emitOpError()
+           << "number of symbols in both indexing_maps must match";
+  }
+  for (auto const& [range_in, range_out] :
+       llvm::zip(map_in.GetRangeVars(), map_out.GetRangeVars())) {
+    if (range_in.range != range_out.range) {
+      return emitOpError() << "domain of symbols of indexing_maps must match";
+    }
+  }
+  for (int symbol_id = 0; symbol_id < map_in.GetRangeVarsCount(); ++symbol_id) {
+    auto constraints_in = map_in.GetConstraintsForSymbol(symbol_id);
+    auto constraints_out = map_out.GetConstraintsForSymbol(symbol_id);
+    if (constraints_in != constraints_out) {
+      return emitOpError()
+             << "constraints of indexing maps must be equal for all symbols";
+    }
+  }
+
+  // The vector mapping indices must not depend on the block ID
+  if (map_out.GetDimVarsCount() > 1) {
+    for (auto expr : map_out.GetAffineMap().getResults()) {
+      if (expr.isFunctionOfDim(1)) {
+        return emitOpError() << "vector mapping indices must not depend on the "
+                             << "block ID";
+      }
+    }
+  }
+  // If there are constraints on the block ID, they must be the same in both
+  // maps
+  auto block_id_constraints_in = map_in.GetConstraintsForDim(1);
+  auto block_id_constraints_out = map_out.GetConstraintsForDim(1);
+  if (block_id_constraints_in != block_id_constraints_out) {
+    return emitOpError() << "constraints of indexing maps must be equal for "
+                         << "the block_id dimension";
+  }
+
+  return success();
+}
+
 }  // namespace gpu
 }  // namespace xla
 

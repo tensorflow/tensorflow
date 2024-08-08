@@ -346,6 +346,7 @@ def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize", [AttrSizedOperandSegments]> 
                        FlatSymbolRefAttr:$callee,
                        XLAGPU_IndexingMapAttr:$map);
   let results = (outs XLAGPU_IndexedVectorType:$result);
+  let hasVerifier = 1;
   let assemblyFormat = [{
     $callee `(` $input `)` `at` $map `(` $indices `)` attr-dict `:` functional-type($input, results)
   }];
