@@ -84,6 +84,7 @@ xla_cc_binary(
     testonly = True,
     tags = [
         "gpu",
+        "no_rocm",
         "nomac",
     ] + tf_gpu_tests_tags(),
     deps = [

@@ -129,12 +129,6 @@ cc_library(
 xla_test(
     name = "dynamic_slice_fusion_test",
     srcs = if_cuda_is_configured(["dynamic_slice_fusion_test.cc"]),
-    backend_tags = {
-        "gpu": [
-            "multi_gpu",
-            "no_oss",
-        ],
-    },
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [

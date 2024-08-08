@@ -1179,6 +1179,8 @@ absl::Status RunPostFusionVerificationPasses(
 absl::Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config) {
+  tsl::profiler::TraceMe traceme("GpuCompiler::OptimizeHloModule");
+
   CheckNotScheduled(hlo_module);
   LogDebugOptions(hlo_module);
 
@@ -2062,6 +2064,8 @@ GpuCompiler::CompileToBackendResult(
     HloModule* module, llvm::LLVMContext* llvm_context,
     se::StreamExecutor* executor, const CompileOptions& options,
     const se::DeviceDescription& gpu_device_info) {
+  tsl::profiler::TraceMe traceme("GpuCompiler::CompileToBackendResult");
+
   TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor));
   TF_ASSIGN_OR_RETURN(
       ScheduleMetadata schedule_metadata,

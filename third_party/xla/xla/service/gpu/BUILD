@@ -2840,6 +2840,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
     ],
 )
