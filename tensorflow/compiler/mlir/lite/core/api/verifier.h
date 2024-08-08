@@ -15,9 +15,25 @@ limitations under the License.
 /// \file
 ///
 /// Abstract interface for verifying a model.
-#ifndef TENSORFLOW_LITE_CORE_API_VERIFIER_H_
-#define TENSORFLOW_LITE_CORE_API_VERIFIER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_CORE_API_VERIFIER_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_CORE_API_VERIFIER_H_
 
-#include "tensorflow/compiler/mlir/lite/core/api/verifier.h"
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 
-#endif  // TENSORFLOW_LITE_CORE_API_VERIFIER_H_
+namespace tflite {
+
+/// Abstract interface that verifies whether a given model is legit.
+/// It facilitates the use-case to verify and build a model without loading it
+/// twice.
+/// (See also "tensorflow/lite/tools/verifier.h".)
+class TfLiteVerifier {
+ public:
+  /// Returns true if the model is legit.
+  virtual bool Verify(const char* data, int length,
+                      ErrorReporter* reporter) = 0;
+  virtual ~TfLiteVerifier() {}
+};
+
+}  // namespace tflite
+
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_CORE_API_VERIFIER_H_
