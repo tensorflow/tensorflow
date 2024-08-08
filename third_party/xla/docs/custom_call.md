@@ -152,6 +152,21 @@ auto handler = Ffi::Bind().RemainingArgs().RemainingRets().To(
     });
 ```
 
+Variadic arguments and results can be declared after regular arguments and
+results, however binding regular arguments and results after variadic one is
+illegal.
+
+```c++
+auto handler =
+    Ffi::Bind()
+        .Arg<AnyBuffer>()
+        .RemainingArgs()
+        .Ret<AnyBuffer>()
+        .RemainingRets()
+        .To([](AnyBuffer arg, RemainingArgs args, AnyBuffer ret,
+               RemainingRets results) -> Error { return Error::Success(); });
+```
+
 ### Attributes
 
 XLA FFI supports automatic decoding of `mlir::DictionaryAttr` passed as a
