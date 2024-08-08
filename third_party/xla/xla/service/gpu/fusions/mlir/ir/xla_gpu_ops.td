@@ -304,7 +304,22 @@ def LoopOp : XLAGPU_Op<"loop", [
   let results = (outs Variadic<AnyType>);
   let regions = (region SizedRegion<1>:$region);
 
+  let builders = [
+    OpBuilder<(ins "IndexingMapAttr":$indexing_map_attr,
+      "mlir::ValueRange":$dims, "mlir::ValueRange":$inits,
+      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, mlir::ValueRange, mlir::ValueRange)>",
+           "nullptr">)>,
+    OpBuilder<(ins "const IndexingMap&":$indexing_map,
+      "mlir::ValueRange":$dims, "mlir::ValueRange":$inits,
+      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, mlir::ValueRange, mlir::ValueRange)>",
+           "nullptr">)>
+  ];
+
   let extraClassDeclaration = [{
+    using BodyBuilderFn =
+        llvm::function_ref<void(mlir::OpBuilder&, mlir::Location,
+                                mlir::ValueRange, mlir::ValueRange)>;
+
     // Returns the indexing map constructed from IndexingMapAttr.
     xla::gpu::IndexingMap getIndexingMap();
     int64_t getNumInductionVars() {

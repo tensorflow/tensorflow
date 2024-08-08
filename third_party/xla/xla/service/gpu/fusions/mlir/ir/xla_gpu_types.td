@@ -38,8 +38,9 @@ def XLAGPU_IndexedVectorType : XLAGPU_Type<"IndexedVector", "indexed_vector",
   let hasCustomAssemblyFormat = 1;
   let extraClassDeclaration = [{
     IndexedVectorType cloneWith(std::optional<llvm::ArrayRef<int64_t>> shape,
-                          mlir::Type elementType) const {
-        return IndexedVectorType::get(getContext(), shape.value_or(getShape()), elementType, getIndexingMapAttr());
+                                mlir::Type elementType) const {
+        return IndexedVectorType::get(getContext(), shape.value_or(getShape()),
+                                      elementType, getIndexingMapAttr());
     }
 
     bool hasRank() const { return true; }
