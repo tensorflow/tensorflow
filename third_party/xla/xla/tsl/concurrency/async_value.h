@@ -21,16 +21,17 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <memory>
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/concurrent_vector.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/mem.h"
 
 namespace tsl {
@@ -164,8 +165,8 @@ class AsyncValue {
   // process. This is intended for debugging/assertions only, and shouldn't be
   // used for mainline logic in the runtime.
   static size_t GetNumAsyncValueInstances() {
-    assert(AsyncValueAllocationTrackingEnabled() &&
-           "AsyncValue instance tracking disabled!");
+    DCHECK(AsyncValueAllocationTrackingEnabled())
+        << "AsyncValue instance tracking disabled!";
     return total_allocated_async_values_.load(std::memory_order_relaxed);
   }
 
@@ -569,7 +570,7 @@ class ConcreteAsyncValue : public AsyncValue {
 
   // Return the underlying error. IsError() must return true.
   const absl::Status& GetError() const {
-    assert(IsError());
+    DCHECK(IsError());
     return data_store_.error();
   }
 
@@ -579,12 +580,12 @@ class ConcreteAsyncValue : public AsyncValue {
   }
 
   const T& get() const {
-    assert(HasData());
+    DCHECK(HasData());
     return data_store_.data();
   }
 
   T& get() {
-    assert(HasData());
+    DCHECK(HasData());
     return data_store_.data();
   }
 
@@ -629,7 +630,7 @@ class ConcreteAsyncValue : public AsyncValue {
     }
 
     void SetError(State s, absl::Status status) {
-      assert(s == State::kUnconstructed || s == State::kConstructed);
+      DCHECK(s == State::kUnconstructed || s == State::kConstructed);
       if (s == State::kConstructed) {
         data_.~T();
       }
@@ -677,13 +678,13 @@ class ConcreteAsyncValue : public AsyncValue {
     }
 
     void SetError(State s, absl::Status status) {
-      assert(!error_);
+      DCHECK(!error_);
       error_ = std::make_unique<absl::Status>(std::move(status));
     }
 
     template <typename... Args>
     void EmplaceData(Args&&... args) {
-      assert(!HasData());
+      DCHECK(!HasData());
       new (&data_) T(std::forward<Args>(args)...);
       has_data_ = true;
     }
@@ -807,8 +808,8 @@ class TypedIndirectAsyncValue : public IndirectAsyncValue {
 };
 
 inline AsyncValue::~AsyncValue() {
-  assert(waiters_and_state_.load().waiter() == nullptr &&
-         "An async value with waiters should never have refcount of zero");
+  DCHECK_EQ(waiters_and_state_.load().waiter(), nullptr)
+      << "An async value with waiters should never have refcount of zero";
   if (AsyncValueAllocationTrackingEnabled() && is_refcounted_)
     total_allocated_async_values_.fetch_sub(1, std::memory_order_relaxed);
 
@@ -853,7 +854,7 @@ inline AsyncValue* AsyncValue::AddRef(uint32_t count) {
 #endif
 
   if (count > 0) {
-    assert(refcount_.load(std::memory_order_relaxed) > 0);
+    DCHECK_GT(refcount_.load(std::memory_order_relaxed), 0);
     // Increasing the reference counter can always be done with
     // memory_order_relaxed: New references to an object can only be formed from
     // an existing reference, and passing an existing reference from one thread
@@ -871,7 +872,7 @@ inline void AsyncValue::DropRef(uint32_t count) {
   if (!is_refcounted_) return;
 #endif
 
-  assert(refcount_.load(std::memory_order_relaxed) > 0);
+  DCHECK_GT(refcount_.load(std::memory_order_relaxed), 0);
   // We expect that `count` argument will often equal the actual reference count
   // here; optimize for that. If `count` == reference count, only an acquire
   // barrier is needed to prevent the effects of the deletion from leaking
@@ -894,8 +895,8 @@ template <typename T>
 const T& AsyncValue::GetConcreteValue() const {
   // Make sure both T (the stored type) and BaseT have vtable_ptr or
   // neither have the vtable_ptr.
-  assert(std::is_polymorphic<T>::value == has_vtable_);
-  assert(IsTypeIdCompatible<T>() && "Incorrect accessor");
+  DCHECK_EQ(std::is_polymorphic<T>::value, has_vtable_);
+  DCHECK(IsTypeIdCompatible<T>()) << "Incorrect accessor";
 
   const char* this_ptr = reinterpret_cast<const char*>(this);
   return *reinterpret_cast<const T*>(this_ptr + AsyncValue::kDataOffset);
@@ -909,32 +910,27 @@ const T& AsyncValue::get() const {
   switch (kind()) {
     case Kind::kConcrete:
 #ifndef NDEBUG
-      // TODO(ezhulenev): Use `DLOG_IF` when absl logging is available.
       if (!GetTypeInfo().has_data(this)) {
-        std::cerr << "Cannot call get() when ConcreteAsyncValue"  // Crash OK
-                  << " isn't constructed; state: " << s.DebugString() << ","
-                  << " error message: "
-                  << (IsError() ? GetError().message() : "None");
-        std::abort();
+        LOG(FATAL) << "Cannot call get() when ConcreteAsyncValue"
+                   << " isn't constructed; state: " << s.DebugString() << ","
+                   << " error message: "
+                   << (IsError() ? GetError().message() : "None");
       }
 #endif  // NDEBUG
       return GetConcreteValue<T>();
     case Kind::kIndirect:
 #ifndef NDEBUG
-      // TODO(ezhulenev): Use `DLOG_IF` when absl logging is available.
       if (s != State::kConcrete) {
-        std::cerr << "Cannot call get() when IndirectAsyncValue"  // Crash OK
-                  << " isn't concrete; state: " << s.DebugString() << ","
-                  << " error message: "
-                  << (IsError() ? GetError().message() : "None");
-        std::abort();
+        LOG(FATAL) << "Cannot call get() when IndirectAsyncValue"
+                   << " isn't concrete; state: " << s.DebugString() << ","
+                   << " error message: "
+                   << (IsError() ? GetError().message() : "None");
       }
 #endif  // NDEBUG
       auto* iv_value = static_cast<const IndirectAsyncValue*>(this)->value_;
-      assert(iv_value && "Indirect value not resolved");
+      DCHECK(iv_value) << "Indirect value not resolved";
       return iv_value->get<T>();
   }
-  assert(false && "unexpected AsyncValue kind");
 }
 
 template <typename T>
@@ -943,14 +939,14 @@ T& AsyncValue::get() {
 }
 
 inline void AsyncValue::SetStateConcrete() {
-  assert(IsConstructed() && kind() == Kind::kConcrete);
+  DCHECK(IsConstructed() && kind() == Kind::kConcrete);
   NotifyAvailable(State::kConcrete);
 }
 
 template <typename T, typename... Args>
 void AsyncValue::emplace(Args&&... args) {
-  assert(GetTypeId<T>() == type_id_ && "Incorrect accessor");
-  assert(IsUnconstructed() && kind() == Kind::kConcrete);
+  DCHECK_EQ(GetTypeId<T>(), type_id_) << "Incorrect accessor";
+  DCHECK(IsUnconstructed() && kind() == Kind::kConcrete);
 
   static_cast<internal::ConcreteAsyncValue<T>*>(this)->emplace(
       std::forward<Args>(args)...);
@@ -968,7 +964,7 @@ inline const absl::Status* AsyncValue::GetErrorIfPresent() const {
       // Unresolved IndirectAsyncValues are not errors.
       if (!iv_value) return nullptr;
 
-      assert(iv_value->kind() != Kind::kIndirect);
+      DCHECK(iv_value->kind() != Kind::kIndirect);
       return iv_value->GetErrorIfPresent();
     }
   }
@@ -976,7 +972,7 @@ inline const absl::Status* AsyncValue::GetErrorIfPresent() const {
 
 inline const absl::Status& AsyncValue::GetError() const {
   auto* result = GetErrorIfPresent();
-  assert(result && "Cannot call GetError() when error isn't available.");
+  DCHECK(result) << "Cannot call GetError() when error isn't available.";
   return *result;
 }
 
@@ -988,7 +984,7 @@ void AsyncValue::AndThen(Waiter&& waiter) {
   auto old_value = waiters_and_state_.load(std::memory_order_acquire);
   if (old_value.state() == State::kConcrete ||
       old_value.state() == State::kError) {
-    assert(old_value.waiter() == nullptr);
+    DCHECK_EQ(old_value.waiter(), nullptr);
     waiter();
     return;
   }
@@ -1003,7 +999,7 @@ void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
   auto old_value = waiters_and_state_.load(std::memory_order_acquire);
   if (old_value.state() == State::kConcrete ||
       old_value.state() == State::kError) {
-    assert(old_value.waiter() == nullptr);
+    DCHECK_EQ(old_value.waiter(), nullptr);
     executor.Execute(std::forward<Waiter>(waiter));
     return;
   }
@@ -1018,7 +1014,7 @@ inline void AsyncValue::Destroy() {
   // Copy `is_refcounted` flag before destroying the async value object.
   bool was_ref_counted = is_refcounted_;
 
-  if (kind() == Kind::kIndirect) {
+  if (ABSL_PREDICT_FALSE(kind() == Kind::kIndirect)) {
     // Depending on what the benchmarks say, it might make sense to remove this
     // explicit check and instead make ~IndirectAsyncValue go through the
     // GetTypeInfo().destructor case below.
