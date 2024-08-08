@@ -5004,7 +5004,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const dnn::FMHAMaskKind mask_type) {
   using cudnn_frontend::graph::Tensor_attributes;
 
-#if CUDNN_VERSION >= 8904
+#if CUDNN_VERSION >= 90000
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\n bmm1_lhs(q): " << q_descriptor.ToString()
             << "\n bmm1_rhs(k): " << k_descriptor.ToString()
@@ -5154,7 +5154,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   return cudnnGraph;
 #else
   return absl::UnimplementedError(
-      "Cudnn flash attention only supported with Cudnn >= 8.9.4");
+      "Cudnn flash attention only supported with Cudnn >= 9.0.0");
 #endif
 }
 
@@ -5170,7 +5170,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_bias, dnn::FMHAMaskKind mask_type,
     bool force_deterministic) {
-#if CUDNN_VERSION >= 8904
+#if CUDNN_VERSION >= 90000
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\n bmm1_grad_gemm1_rhs(q): " << q_desc.ToString()
             << "\n bmm1_grad_gemm2_rhs(k): " << k_desc.ToString()
@@ -5373,7 +5373,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   return cudnnGraph;
 #else
   return absl::UnimplementedError(
-      "Cudnn flash attention only supported with Cudnn >= 8.9.4");
+      "Cudnn flash attention only supported with Cudnn >= 9.0.0");
 #endif
 }
 
@@ -7143,7 +7143,7 @@ CudnnSupport::FusedMHARunnerFromDesc(
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     dnn::FMHAMaskKind mask_type) {
-#if CUDNN_VERSION >= 8904
+#if CUDNN_VERSION >= 90000
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   bool use_dropout = dropout_rate && *dropout_rate > 0.0;
   std::vector<int64_t> intermediate_shape;
@@ -7189,8 +7189,8 @@ CudnnSupport::FusedMHARunnerFromDesc(
       std::move(runner))};
 #else
   return absl::UnimplementedError(
-      "Cudnn flash attention are only supported with Cudnn >= 8.9.4");
-#endif  // CUDNN_VERSION >= 8904
+      "Cudnn flash attention are only supported with Cudnn >= 9.0.0");
+#endif  // CUDNN_VERSION >= 90000
 }
 
 absl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
@@ -7210,7 +7210,7 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     dnn::FMHAMaskKind mask_type, bool force_deterministic) {
-#if CUDNN_VERSION >= 8904
+#if CUDNN_VERSION >= 90000
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   bool use_dropout = dropout_rate && *dropout_rate > 0.0;
@@ -7260,8 +7260,8 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
 #else
   return absl::UnimplementedError(
       "Cudnn flash attention bwd are only "
-      "supported with Cudnn >= 8.9.4");
-#endif  // CUDNN_VERSION >= 8904
+      "supported with Cudnn >= 9.0.0");
+#endif  // CUDNN_VERSION >= 90000
 }
 
 bool CudnnSupport::GetRnnAlgorithms(

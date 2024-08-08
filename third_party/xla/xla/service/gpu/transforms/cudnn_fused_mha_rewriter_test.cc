@@ -80,7 +80,7 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
     // Fake a supported compute capability to run tests,
     // we don't run any kernels in these tests so they should be safe
     // to run anywhere.
-    return se::dnn::VersionInfo(8, 9, 4);
+    return se::dnn::VersionInfo(9, 0, 0);
   }
 
   CudnnFusedMhaRewriterTestHloTest()
@@ -1714,94 +1714,6 @@ ENTRY main {
   EXPECT_THAT(m->entry_computation()->root_instruction(), GmockMatch(m::Dot()));
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest,
-       F16TrainingBmm1ScaleBiasSoftmaxBmm2NonContractingDimNotDivisibleBy64) {
-  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-  const char* module_str = R"(
-HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,64,100]{3,2,1,0},f16[2,6,64,100]{3,2,1,0},f16[2,6,100,64]{3,2,1,0},f16[2,6,100,64]{3,2,1,0})->(f16[2,6,100,64]{3,2,1,0}, f16[2,6,100,64]{3,2,1,0}, f16[2,6,64,100]{3,2,1,0}, f16[2,6,100,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
-
-region_0.21 {
-  Arg_0.22 = f16[] parameter(0)
-  Arg_1.23 = f16[] parameter(1)
-  ROOT maximum = f16[] maximum(Arg_0.22, Arg_1.23)
-}
-
-region_1.33 {
-  Arg_0.34 = f32[] parameter(0)
-  Arg_1.35 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0.34, Arg_1.35)
-}
-
-region_2.55 {
-  Arg_0.56 = f16[] parameter(0)
-  Arg_1.57 = f16[] parameter(1)
-  ROOT add.1 = f16[] add(Arg_0.56, Arg_1.57)
-}
-
-ENTRY main.82 {
-  Arg_0.1 = f16[2,6,64,100]{3,2,1,0} parameter(0), sharding={replicated}
-  Arg_1.2 = f16[2,6,64,100]{3,2,1,0} parameter(1), sharding={replicated}
-  dot.17 = f16[2,6,100,100]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-  constant.22 = f16[] constant(2)
-  broadcast.24 = f16[2,6,100,100]{3,2,1,0} broadcast(constant.22), dimensions={}
-  multiply.2 = f16[2,6,100,100]{3,2,1,0} multiply(dot.17, broadcast.24)
-  constant.19 = f16[] constant(1)
-  broadcast.13 = f16[2,6,100,100]{3,2,1,0} broadcast(constant.19), dimensions={}
-  add.3 = f16[2,6,100,100]{3,2,1,0} add(multiply.2, broadcast.13)
-  constant.21 = f16[] constant(0)
-  constant.15 = f16[] constant(-inf)
-  reduce.25 = f16[2,6,100]{2,1,0} reduce(add.3, constant.15), dimensions={3}, to_apply=region_0.21
-  broadcast.17 = f16[2,6,100,100]{3,2,1,0} broadcast(reduce.25), dimensions={0,1,2}
-  subtract.1 = f16[2,6,100,100]{3,2,1,0} subtract(add.3, broadcast.17)
-  exponential.1 = f16[2,6,100,100]{3,2,1,0} exponential(subtract.1)
-  convert.5 = f32[2,6,100,100]{3,2,1,0} convert(exponential.1)
-  constant.17 = f32[] constant(0)
-  reduce.37 = f32[2,6,100]{2,1,0} reduce(convert.5, constant.17), dimensions={3}, to_apply=region_1.33
-  convert.9 = f16[2,6,100]{2,1,0} convert(reduce.37)
-  broadcast.26 = f16[2,6,100,100]{3,2,1,0} broadcast(convert.9), dimensions={0,1,2}
-  divide.5 = f16[2,6,100,100]{3,2,1,0} divide(exponential.1, broadcast.26)
-  Arg_2.3 = f16[2,6,100,64]{3,2,1,0} parameter(2), sharding={replicated}
-  dot.46 = f16[2,6,100,64]{3,2,1,0} dot(divide.5, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-  Arg_3.4 = f16[2,6,100,64]{3,2,1,0} parameter(3), sharding={replicated}
-  dot.49 = f16[2,6,100,100]{3,2,1,0} dot(Arg_3.4, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
-  divide.4 = f16[2,6,100,100]{3,2,1,0} divide(dot.49, broadcast.26)
-  broadcast.20 = f16[2,6,100]{2,1,0} broadcast(constant.19), dimensions={}
-  multiply.3 = f16[2,6,100]{2,1,0} multiply(convert.9, convert.9)
-  divide.3 = f16[2,6,100]{2,1,0} divide(broadcast.20, multiply.3)
-  broadcast.21 = f16[2,6,100,100]{3,2,1,0} broadcast(divide.3), dimensions={0,1,2}
-  multiply.4 = f16[2,6,100,100]{3,2,1,0} multiply(dot.49, broadcast.21)
-  multiply.5 = f16[2,6,100,100]{3,2,1,0} multiply(multiply.4, exponential.1)
-  reduce.59 = f16[2,6,100]{2,1,0} reduce(multiply.5, constant.21), dimensions={3}, to_apply=region_2.55
-  negate.2 = f16[2,6,100]{2,1,0} negate(reduce.59)
-  broadcast.25 = f16[2,6,100,100]{3,2,1,0} broadcast(negate.2), dimensions={0,1,2}
-  add.5 = f16[2,6,100,100]{3,2,1,0} add(divide.4, broadcast.25)
-  multiply.8 = f16[2,6,100,100]{3,2,1,0} multiply(add.5, exponential.1)
-  multiply.9 = f16[2,6,100,100]{3,2,1,0} multiply(multiply.8, broadcast.24)
-  dot.80 = f16[2,6,100,64]{3,2,1,0} dot(multiply.9, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
-  dot = f16[2,6,64,100]{3,2,1,0} dot(Arg_0.1, multiply.9), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-  dot.1 = f16[2,6,100,64]{3,2,1,0} dot(divide.5, Arg_3.4), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-  ROOT tuple.81 = (f16[2,6,100,64]{3,2,1,0}, f16[2,6,100,64]{3,2,1,0}, f16[2,6,64,100]{3,2,1,0}, f16[2,6,100,64]{3,2,1,0}) tuple(dot.46, dot.80, dot, dot.1)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-                                         GetCudnnVersion()};
-  const auto status_or = RunHloPass(&fusedMhaRewriter, m.get());
-  TF_ASSERT_OK(status_or.status());
-  EXPECT_FALSE(status_or.value());
-
-  HloDCE dce;
-  TF_ASSERT_OK(RunHloPass(&dce, m.get()).status());
-
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape());
-
-  SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Tuple(m::Dot(), m::Dot(), m::Dot(), m::Dot())));
-}
-
 TEST_F(CudnnFusedMhaRewriterTestHloTest, F16TrainingBmm2Grad1IncorrectPattern) {
   if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
@@ -2975,80 +2887,6 @@ ENTRY main.164_spmd {
               }))))));
 }
 
-constexpr absl::string_view hlo_head_dim_not_multiple_of_64 = R"(
-HloModule jit__reference, entry_computation_layout={(f16[4,48,1024,16]{3,2,1,0}, f16[4,48,1024,16]{3,2,1,0}, f16[4,48,1024,16]{3,2,1,0})->f16[4,48,1024,16]{3,2,1,0}}
-
-region_0.26 {
-  Arg_0.27 = f32[] parameter(0)
-  Arg_1.28 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(Arg_0.27, Arg_1.28)
-}
-
-region_1.37 {
-  Arg_0.38 = f32[] parameter(0)
-  Arg_1.39 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0.38, Arg_1.39)
-}
-
-ENTRY main.49 {
-  iota.2 = s32[1024,1024]{1,0} iota(), iota_dimension=0
-  iota.3 = s32[1024,1024]{1,0} iota(), iota_dimension=1
-  compare = pred[1024,1024]{1,0} compare(iota.2, iota.3), direction=GE
-  broadcast.4 = pred[4,48,1024,1024]{3,2,1,0} broadcast(compare), dimensions={2,3}
-  Arg_0.1 = f16[4,48,1024,16]{3,2,1,0} parameter(0)
-  Arg_1.2 = f16[4,48,1024,16]{3,2,1,0} parameter(1)
-  dot.9 = f16[4,48,1024,1024]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
-  constant.4 = f16[] constant(0.5)
-  broadcast.6 = f16[4,48,1024,1024]{3,2,1,0} broadcast(constant.4), dimensions={}
-  multiply = f16[4,48,1024,1024]{3,2,1,0} multiply(dot.9, broadcast.6)
-  convert.1 = f32[4,48,1024,1024]{3,2,1,0} convert(multiply)
-  constant.7 = f32[] constant(-inf)
-  reduce.30 = f32[4,48,1024]{2,1,0} reduce(convert.1, constant.7), dimensions={3}, to_apply=region_0.26
-  broadcast.8 = f32[4,48,1024,1024]{3,2,1,0} broadcast(reduce.30), dimensions={0,1,2}
-  subtract = f32[4,48,1024,1024]{3,2,1,0} subtract(convert.1, broadcast.8)
-  exponential = f32[4,48,1024,1024]{3,2,1,0} exponential(subtract)
-  constant.6 = f32[] constant(0)
-  reduce.41 = f32[4,48,1024]{2,1,0} reduce(exponential, constant.6), dimensions={3}, to_apply=region_1.37
-  broadcast.9 = f32[4,48,1024,1024]{3,2,1,0} broadcast(reduce.41), dimensions={0,1,2}
-  divide = f32[4,48,1024,1024]{3,2,1,0} divide(exponential, broadcast.9)
-  convert.2 = f16[4,48,1024,1024]{3,2,1,0} convert(divide)
-  Arg_2.3 = f16[4,48,1024,16]{3,2,1,0} parameter(2)
-  ROOT dot.48 = f16[4,48,1024,16]{3,2,1,0} dot(convert.2, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-} // main.49
-)";
-
-TEST_F(CudnnFusedMhaRewriterTestHloTest, HeadDimNotMultipleOf64) {
-  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(hlo_head_dim_not_multiple_of_64,
-                                           GetModuleConfig()));
-  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-                                         GetCudnnVersion()};
-  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-
-  // head dim not a multiple of 64 should not be lowered with cuDNN < 8.9.6
-  SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(m->entry_computation()->root_instruction(), GmockMatch(m::Dot()));
-
-  // should be lowered with cuDNN >= 8.9.6
-  CudnnFusedMHARewriter fusedMhaRewriterWithcuDNN8907{
-      GetCudaComputeCapability(), se::dnn::VersionInfo(8, 9, 7)};
-  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriterWithcuDNN8907, m.get()).status());
-  const HloInstruction* fmha;
-
-  SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(
-      m->entry_computation()->root_instruction(),
-      GmockMatch(m::GetTupleElement(
-                     m::CustomCall(&fmha, {kCudnnfMHASoftmaxCallTarget}), 0)
-                     .WithShape(F16, {4, 48, 1024, 16})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          fmha->backend_config<GpuBackendConfig>());
-  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
-  EXPECT_EQ(config.fmha_scale(), 0.5);
-  EXPECT_EQ(config.dropout_rate(), 0.0);
-}
-
 constexpr absl::string_view hlo_BF16Bmm1BiasSoftmaxBmm2Pattern_dbias = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})->(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
 
@@ -3131,7 +2969,7 @@ TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1BiasSoftmaxBmm2PatternDbias) {
       ParseAndReturnVerifiedModule(hlo_BF16Bmm1BiasSoftmaxBmm2Pattern_dbias));
   // require cudnn 8.9.6 + hopper for dbias
   CudnnFusedMHARewriter fusedMhaRewriter{se::CudaComputeCapability(9, 0),
-                                         se::dnn::VersionInfo(8, 9, 6)};
+                                         se::dnn::VersionInfo(9, 0, 0)};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
 
   ComputationLayout computation_layout(

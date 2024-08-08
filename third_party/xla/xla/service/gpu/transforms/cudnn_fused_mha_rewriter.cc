@@ -292,10 +292,7 @@ bool IsComputeCapabilityAndCudnnSupported(
     stream_executor::CudaComputeCapability cc,
     stream_executor::dnn::VersionInfo cudnn_version,
     stream_executor::dnn::VersionInfo supported_cudnn_version) {
-  // Enforce capability minor == 0 because hardware with a non-zero minor
-  // number typically has insufficient shared memory for cuDNN FMHA.
-  if (cc.IsAtLeastAmpere() && cc.minor == 0 &&
-      cudnn_version >= supported_cudnn_version) {
+  if (cc.IsAtLeastAmpere() && cudnn_version >= supported_cudnn_version) {
     return true;
   }
   VLOG(2) << absl::StrFormat(
@@ -1636,7 +1633,7 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
         !IsComputeCapabilityAndCudnnSupported(
             compute_capability_, cudnn_version,
-            stream_executor::dnn::VersionInfo(8, 9, 4))) {
+            stream_executor::dnn::VersionInfo(9, 0, 0))) {
       return false;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
@@ -1723,9 +1720,8 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
         }
         if (matched_bwd_result.matched_dbias &&
             !(compute_capability_.IsAtLeastHopper() &&
-              compute_capability_.minor == 0 &&
-              cudnn_version >= stream_executor::dnn::VersionInfo(8, 9, 6))) {
-          VLOG(2) << "Flash attention dbias requires cudnn 8.9.6 + hopper.";
+              cudnn_version >= stream_executor::dnn::VersionInfo(9, 0, 0))) {
+          VLOG(2) << "Flash attention dbias requires cudnn 9.0.0 + hopper.";
           // restore fwd graph if bwd pattern match failed
           TF_RETURN_IF_ERROR(
               RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,
