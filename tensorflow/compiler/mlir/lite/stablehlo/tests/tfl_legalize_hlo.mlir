@@ -2035,3 +2035,78 @@ func.func @dynamic_slice_splat_sizes(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>,
 // CHECK:     %[[PACK:.*]] = "tfl.pack"(%[[MIN_1]], %[[MIN_2]]) <{axis = 0 : i32, values_count = 2 : i32}> : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
 // CHECK:     %[[SLICE_SIZE:.*]] = arith.constant dense<2> : tensor<2xi64>
 // CHECK:     "tfl.slice"(%arg0, %[[PACK]], %[[SLICE_SIZE]]) : (tensor<7x3xf32>, tensor<2xi32>, tensor<2xi64>) -> tensor<2x2xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.compare
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: greater_unsupported_compare_type
+func.func @greater_unsupported_compare_type(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<comparison_type TOTALORDER>, comparison_direction = #mhlo<comparison_direction GT>} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK-NOT: tfl
+// CHECK:     mhlo.compare
+
+// -----
+
+// CHECK-LABEL: equal
+func.func @equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.equal
+
+// -----
+
+// CHECK-LABEL: notequal
+func.func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.not_equal
+
+// -----
+
+// CHECK-LABEL: greater
+func.func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.greater
+
+// -----
+
+// CHECK-LABEL: greater_equal
+func.func @greater_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GE>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.greater_equal
+
+// -----
+
+// CHECK-LABEL: less
+func.func @less(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.less
+
+// -----
+
+// CHECK-LABEL: less_equal
+func.func @less_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LE>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.less_equal

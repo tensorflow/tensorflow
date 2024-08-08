@@ -53,6 +53,15 @@ namespace {
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
+bool SupportedComparisonType(mhlo::ComparisonTypeAttr comp_type) {
+  if (!comp_type) return true;
+  auto c_ty = comp_type.getValue();
+  return c_ty == mhlo::ComparisonType::FLOAT ||
+         c_ty == mhlo::ComparisonType::SIGNED ||
+         c_ty == mhlo::ComparisonType::UNSIGNED ||
+         c_ty == mhlo::ComparisonType::NOTYPE;
+}
+
 class LegalizeHloToTfLitePass
     : public impl::LegalizeHloToTfLitePassBase<LegalizeHloToTfLitePass> {
  public:
@@ -63,6 +72,10 @@ class LegalizeHloToTfLitePass
 
 std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
   return !op.getType().getElementType().isF32();
+}
+
+bool IsCompareLegal(mhlo::CompareOp op) {
+  return !SupportedComparisonType(op.getCompareTypeAttr());
 }
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
@@ -78,6 +91,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
+  target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
 
   PopulatePadPatterns(context, patterns, target);
   PopulateReducePatterns(context, patterns, target);

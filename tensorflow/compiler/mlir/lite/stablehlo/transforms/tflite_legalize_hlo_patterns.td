@@ -35,3 +35,28 @@ def LowerCbrt : Pat<(MHLO_CbrtOp $opr),
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
       TFL_AF_None)),
       [(F32Tensor $opr)]>;
+
+
+//===----------------------------------------------------------------------===//
+// comparison ops
+//===----------------------------------------------------------------------===//
+
+def HasSupportedComparisonType : AttrConstraint<
+  CPred<"!$_self || SupportedComparisonType($_self.cast<mhlo::ComparisonTypeAttr>())">>;
+
+class MHLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<MHLO_ComparisonDirectionAttr,
+    "::mlir::mhlo::ComparisonDirection::" # enumStr>;
+
+foreach p = [
+  [TFL_EqualOp,        MHLO_ComparisonDirectionValue<"EQ">],
+  [TFL_NotEqualOp,     MHLO_ComparisonDirectionValue<"NE">],
+  [TFL_GreaterEqualOp, MHLO_ComparisonDirectionValue<"GE">],
+  [TFL_LessEqualOp,    MHLO_ComparisonDirectionValue<"LE">],
+  [TFL_GreaterOp,      MHLO_ComparisonDirectionValue<"GT">],
+  [TFL_LessOp,         MHLO_ComparisonDirectionValue<"LT">]]
+in {
+def : Pat<
+  (MHLO_CompareOp $l, $r, p[1], HasSupportedComparisonType:$type),
+  (p[0] $l, $r)>;
+}
