@@ -17,6 +17,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mhlo/IR/hlo_ops.td"
 include "mlir/IR/CommonAttrConstraints.td"
+include "mlir/IR/CommonTypeConstraints.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
@@ -35,3 +36,51 @@ def LowerCbrt : Pat<(MHLO_CbrtOp $opr),
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
       TFL_AF_None)),
       [(F32Tensor $opr)]>;
+
+
+//===----------------------------------------------------------------------===//
+// logical and bitwise ops
+//===----------------------------------------------------------------------===//
+
+class GetRankedScalarAttr<string prefix, int width, string signed, string value> :
+  NativeCodeCall<"DenseElementsAttr::get<" # prefix # "int" # width # "_t>("
+    "RankedTensorType::get({}, $_builder.getIntegerType("
+      # width # signed # "))," # value # ")">;
+
+def : Pat<(MHLO_NotOp I1Tensor:$input), (TFL_LogicalNotOp $input)>;
+
+// TFL does not support bitwise negation. not(x) is equivalant to xor(x, y) if
+// y has a 1 in every bit position (xor(1, 1) = 0 and xor(0, 1) = 1).
+
+// Signed: The 2s complement of -1 has a 1 in every bit position.
+def : Pat<(MHLO_NotOp I8Tensor:$input),
+            (TFL_BitwiseXorOp $input,
+              (Arith_ConstantOp
+                (GetRankedScalarAttr<"", 8, "", "-1">)))>;
+
+def : Pat<(MHLO_NotOp I16Tensor:$input),
+            (TFL_BitwiseXorOp $input,
+              (Arith_ConstantOp
+                (GetRankedScalarAttr<"", 16, "", "-1">)))>;
+
+def : Pat<(MHLO_NotOp I32Tensor:$input),
+            (TFL_BitwiseXorOp $input,
+              (Arith_ConstantOp
+                (GetRankedScalarAttr<"", 32, "", "-1">)))>;
+
+
+// Unsigned: 0xFFF... has a 1 in every bit position.
+def : Pat<(MHLO_NotOp TensorOf<[UI8]>:$input),
+            (TFL_BitwiseXorOp $input,
+              (Arith_ConstantOp
+                (GetRankedScalarAttr<"u", 8, ", false", "0xFFU">)))>;
+
+def : Pat<(MHLO_NotOp TensorOf<[UI16]>:$input),
+            (TFL_BitwiseXorOp $input,
+              (Arith_ConstantOp
+                (GetRankedScalarAttr<"u", 16, ", false", "0xFFFFU">)))>;
+
+def : Pat<(MHLO_NotOp TensorOf<[UI32]>:$input),
+            (TFL_BitwiseXorOp $input,
+              (Arith_ConstantOp
+                (GetRankedScalarAttr<"u", 32, ", false", "0xFFFFFFFFUL">)))>;

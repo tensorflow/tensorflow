@@ -2035,3 +2035,83 @@ func.func @dynamic_slice_splat_sizes(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>,
 // CHECK:     %[[PACK:.*]] = "tfl.pack"(%[[MIN_1]], %[[MIN_2]]) <{axis = 0 : i32, values_count = 2 : i32}> : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
 // CHECK:     %[[SLICE_SIZE:.*]] = arith.constant dense<2> : tensor<2xi64>
 // CHECK:     "tfl.slice"(%arg0, %[[PACK]], %[[SLICE_SIZE]]) : (tensor<7x3xf32>, tensor<2xi32>, tensor<2xi64>) -> tensor<2x2xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// logical and bitwise ops
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: not
+func.func @not(%arg0: tensor<5x3x1xi1>) -> tensor<5x3x1xi1> {
+  %0 = "mhlo.not"(%arg0): (tensor<5x3x1xi1>) -> (tensor<5x3x1xi1>)
+  func.return %0 : tensor<5x3x1xi1>
+}
+
+// CHECK: %0 = "tfl.logical_not"(%arg0) : (tensor<5x3x1xi1>) -> tensor<5x3x1xi1>
+
+// -----
+
+// CHECK-LABEL: not_i8
+func.func @not_i8(%arg0: tensor<7x9x11xi8>) -> tensor<7x9x11xi8> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xi8>) -> (tensor<7x9x11xi8>)
+  func.return %0 : tensor<7x9x11xi8>
+}
+
+// CHECK: %cst = arith.constant dense<-1> : tensor<i8>
+// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xi8>, tensor<i8>) -> tensor<7x9x11xi8>
+
+// -----
+
+// CHECK-LABEL: not_i16
+func.func @not_i16(%arg0: tensor<7x9x11xi16>) -> tensor<7x9x11xi16> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xi16>) -> (tensor<7x9x11xi16>)
+  func.return %0 : tensor<7x9x11xi16>
+}
+
+// CHECK: %cst = arith.constant dense<-1> : tensor<i16>
+// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xi16>, tensor<i16>) -> tensor<7x9x11xi16>
+
+// -----
+
+// CHECK-LABEL: not_i32
+func.func @not_i32(%arg0: tensor<7x9x11xi32>) -> tensor<7x9x11xi32> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xi32>) -> (tensor<7x9x11xi32>)
+  func.return %0 : tensor<7x9x11xi32>
+}
+
+// CHECK: %cst = arith.constant dense<-1> : tensor<i32>
+// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xi32>, tensor<i32>) -> tensor<7x9x11xi32>
+
+// -----
+
+// CHECK-LABEL: not_ui8
+func.func @not_ui8(%arg0: tensor<7x9x11xui8>) -> tensor<7x9x11xui8> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xui8>) -> (tensor<7x9x11xui8>)
+  func.return %0 : tensor<7x9x11xui8>
+}
+
+// CHECK: %cst = arith.constant dense<255> : tensor<ui8>
+// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui8>, tensor<ui8>) -> tensor<7x9x11xui8>
+
+// -----
+
+// CHECK-LABEL: not_ui16
+func.func @not_ui16(%arg0: tensor<7x9x11xui16>) -> tensor<7x9x11xui16> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xui16>) -> (tensor<7x9x11xui16>)
+  func.return %0 : tensor<7x9x11xui16>
+}
+
+// CHECK: %cst = arith.constant dense<65535> : tensor<ui16>
+// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui16>, tensor<ui16>) -> tensor<7x9x11xui16>
+
+// -----
+
+// CHECK-LABEL: not_ui32
+func.func @not_ui32(%arg0: tensor<7x9x11xui32>) -> tensor<7x9x11xui32> {
+  %0 = "mhlo.not"(%arg0): (tensor<7x9x11xui32>) -> (tensor<7x9x11xui32>)
+  func.return %0 : tensor<7x9x11xui32>
+}
+
+// CHECK: %cst = arith.constant dense<4294967295> : tensor<ui32>
+// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui32>, tensor<ui32>) -> tensor<7x9x11xui32>
