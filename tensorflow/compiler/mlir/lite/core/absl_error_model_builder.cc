@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdio>
 
 #include "absl/log/log.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 
 namespace mlir::TFL {
 
