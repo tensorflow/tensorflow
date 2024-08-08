@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <type_traits>
 #include <utility>
 
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/concurrent_vector.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -419,8 +419,9 @@ class AsyncValue {
  private:
   // Information about a ConcreteAsyncValue<T> subclass.
   struct TypeInfo {
-    // Destructor returns the size of the derived AsyncValue to be deallocated.
-    using DestructorFn = size_t (*)(AsyncValue*);
+    // Destructor returns the size and alignment of the derived AsyncValue to
+    // be deallocated.
+    using DestructorFn = std::pair<size_t, std::align_val_t> (*)(AsyncValue*);
     using GetErrorFn = const absl::Status& (*)(const AsyncValue*);
     using SetErrorFn = void (*)(AsyncValue*, absl::Status);
     using HasDataFn = bool (*)(const AsyncValue*);
@@ -434,9 +435,9 @@ class AsyncValue {
   template <typename Derived>
   static TypeInfo MakeTypeInfo() {
     return TypeInfo{
-        [](AsyncValue* v) {
+        [](AsyncValue* v) -> std::pair<size_t, std::align_val_t> {
           static_cast<Derived*>(v)->~Derived();
-          return sizeof(Derived);
+          return {sizeof(Derived), std::align_val_t{alignof(Derived)}};
         },
         [](const AsyncValue* v) -> const absl::Status& {
           return static_cast<const Derived*>(v)->GetError();
@@ -455,13 +456,16 @@ class AsyncValue {
   template <typename T>
   const T& GetConcreteValue() const;
 
-  // Get the TypeInfo instance for this AsyncValue.
-  const TypeInfo& GetTypeInfo() const;
-
-  using TypeInfoTable = internal::ConcurrentVector<TypeInfo>;
-
   // Returns the TypeInfoTable instance (there is one per process).
+  using TypeInfoTable = internal::ConcurrentVector<TypeInfo>;
   static TypeInfoTable* GetTypeInfoTableSingleton();
+
+  // Get the TypeInfo instance for this AsyncValue.
+  const TypeInfo& GetTypeInfo() const {
+    TypeInfoTable* type_info_table = AsyncValue::GetTypeInfoTableSingleton();
+    DCHECK_NE(type_id_, 0) << "TypeId must be set";
+    return (*type_info_table)[type_id_ - 1];
+  }
 
   void EnqueueWaiter(absl::AnyInvocable<void()> waiter,
                      WaitersAndState old_value);
@@ -1019,12 +1023,25 @@ inline void AsyncValue::Destroy() {
     // explicit check and instead make ~IndirectAsyncValue go through the
     // GetTypeInfo().destructor case below.
     static_cast<IndirectAsyncValue*>(this)->~IndirectAsyncValue();
-    if (was_ref_counted) port::AlignedFree(this);
+    if (was_ref_counted) {
+#if defined(__cpp_sized_deallocation)
+      ::operator delete(this, sizeof(IndirectAsyncValue),
+                        std::align_val_t{alignof(IndirectAsyncValue)});
+#else   // defined(__cpp_sized_deallocation)
+      ::operator delete(this, std::align_val_t{alignof(IndirectAsyncValue)});
+#endif  // defined(__cpp_sized_deallocation)
+    }
     return;
   }
 
-  GetTypeInfo().destructor(this);
-  if (was_ref_counted) port::AlignedFree(this);
+  auto [size, alignment] = GetTypeInfo().destructor(this);
+  if (was_ref_counted) {
+#if defined(__cpp_sized_deallocation)
+    ::operator delete(this, size, alignment);
+#else   // defined(__cpp_sized_deallocation)
+    ::operator delete(this, alignment);
+#endif  // defined(__cpp_sized_deallocation)
+  }
 }
 
 inline bool AsyncValue::IsUnique() const {

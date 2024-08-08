@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <new>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -135,7 +135,7 @@ class AsyncValueRef {
   // Return true if the AsyncValue contains a concrete value.
   bool IsConcrete() const { return value_->IsConcrete(); }
 
-  // Return true if state is kUnconstructed.
+  // Return true if state is `kUnconstructed`.
   bool IsUnconstructed() const { return value_->IsUnconstructed(); }
 
   // Return the stored value. The AsyncValueRef must be available.
@@ -876,7 +876,7 @@ T* PlacementConstruct(void* buf, Args&&... args) {
 
 template <typename T, typename... Args>
 T* AllocateAndConstruct(Args&&... args) {
-  void* buf = port::AlignedMalloc(sizeof(T), alignof(T));
+  void* buf = ::operator new(sizeof(T), std::align_val_t{alignof(T)});
   return PlacementConstruct<T, Args...>(buf, std::forward<Args>(args)...);
 }
 
