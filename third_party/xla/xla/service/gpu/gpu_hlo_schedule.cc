@@ -74,6 +74,9 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
       return !IsSyncCollective(&instr);
+    case HloOpcode::kAsyncStart:
+      // Start async ops as early as possible to allow more concurrency.
+      return true;
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() ==
@@ -95,6 +98,10 @@ bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kCollectivePermuteDone:
       return ShouldScheduleAsEarlyAsPossible(*instr.operand(0));
+    case HloOpcode::kAsyncDone:
+      // Schedule as many other ops as possible before blocking on the
+      // completion of async ops.
+      return true;
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() == CustomCallSchedule::SCHEDULE_LATEST;

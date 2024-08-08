@@ -1288,6 +1288,10 @@ bool InferenceContext::RelaxHandleShapesAndMergeTypes(
 
 bool InferenceContext::RelaxOutputHandleShapesAndMergeTypes(
     int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+  CHECK_GE(idx, 0) << "idx must be non-negative. Got idx: " << idx << ".";
+  CHECK_LT(idx, output_handle_shapes_and_types_.size())
+      << "Got idx: " << idx << " but only "
+      << output_handle_shapes_and_types_.size() << " inputs.";
   if (output_handle_shapes_and_types_[idx] == nullptr) {
     output_handle_shapes_and_types_[idx].reset(
         new std::vector<ShapeAndType>(shapes_and_types));
@@ -1299,6 +1303,10 @@ bool InferenceContext::RelaxOutputHandleShapesAndMergeTypes(
 
 bool InferenceContext::RelaxInputHandleShapesAndMergeTypes(
     int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+  CHECK_GE(idx, 0) << "idx must be non-negative. Got idx: " << idx << ".";
+  CHECK_LT(idx, input_handle_shapes_and_types_.size())
+      << "Got idx: " << idx << " but only "
+      << input_handle_shapes_and_types_.size() << " inputs.";
   if (input_handle_shapes_and_types_[idx] == nullptr) {
     input_handle_shapes_and_types_[idx].reset(
         new std::vector<ShapeAndType>(shapes_and_types));
