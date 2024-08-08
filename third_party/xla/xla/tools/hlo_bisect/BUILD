@@ -84,6 +84,7 @@ cc_library(
         "//xla:protobuf_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:dump",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
