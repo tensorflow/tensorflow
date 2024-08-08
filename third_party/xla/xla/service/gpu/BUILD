@@ -2457,6 +2457,7 @@ cc_library(
         "//xla/service/gpu/transforms:collective_permute_cycle_decomposer",
         "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
         "//xla/service/gpu/transforms:command_buffer_scheduling",
+        "//xla/service/gpu/transforms:cudnn_custom_call_converter",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:collective_permute_motion",
         "//xla/service:algebraic_simplifier",
