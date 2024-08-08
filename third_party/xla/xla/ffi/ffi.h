@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
@@ -63,6 +64,7 @@ struct DeviceOrdinal {};      // binds `int32_t` with device ordinal
 struct Allocator {};          // binds `se::DeviceMemoryAllocator*`
 struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
 struct CalledComputation {};  // binds `HloComputation*`
+struct IntraOpThreadPool {};  // binds `const Eigen::ThreadPoolDevice*`
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -481,7 +483,7 @@ struct CtxDecoding<Allocator> {
                                     DiagnosticEngine&) {
     void* device_allocator =
         api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
-    return reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator);
+    return reinterpret_cast<Type>(device_allocator);
   }
 };
 
@@ -512,6 +514,19 @@ struct CtxDecoding<CalledComputation> {
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
+  }
+};
+
+template <>
+struct CtxDecoding<IntraOpThreadPool> {
+  using Type = const Eigen::ThreadPoolDevice*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    void* intra_op_thread_pool =
+        api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(ctx);
+    return reinterpret_cast<Type>(intra_op_thread_pool);
   }
 };
 
