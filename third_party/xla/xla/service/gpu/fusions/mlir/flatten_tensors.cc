@@ -79,12 +79,25 @@ RankedTensorType GetFlattenedType(RankedTensorType tensor_type) {
                                tensor_type.getElementType());
 }
 
+bool IsScalarOrFlat(Type type) {
+  auto tensor_type = mlir::dyn_cast<RankedTensorType>(type);
+  if (!tensor_type) return true;
+  return tensor_type.getRank() < 2;
+}
+
 bool HasOnlyFlatTensorsOrScalars(TypeRange types) {
-  return llvm::all_of(types, [](Type ty) {
-    auto tensor_type = mlir::dyn_cast<RankedTensorType>(ty);
-    if (!tensor_type) return true;
-    return tensor_type.getRank() < 2;
-  });
+  return llvm::all_of(types, IsScalarOrFlat);
+}
+
+Value Flatten(Value value, PatternRewriter& rewriter) {
+  auto tensor_type = mlir::dyn_cast<RankedTensorType>(value.getType());
+  if (!tensor_type || tensor_type.getRank() < 2) {
+    return value;
+  }
+  auto flat_type = GetFlattenedType(tensor_type);
+  return rewriter
+      .create<UnrealizedConversionCastOp>(value.getLoc(), flat_type, value)
+      .getResult(0);
 }
 
 struct RewriteFunctionSignatures : OpRewritePattern<FuncOp> {
@@ -109,20 +122,9 @@ struct RewriteFunctionSignatures : OpRewritePattern<FuncOp> {
     rewriter.setInsertionPoint(terminator);
 
     for (Value result : terminator->getOperands()) {
-      auto tensor_type = mlir::dyn_cast<RankedTensorType>(result.getType());
-      if (!tensor_type) {
-        new_result_types.push_back(result.getType());
-        new_results.push_back(result);
-        continue;
-      }
-      auto new_result_type = GetFlattenedType(tensor_type);
-      new_result_types.push_back(new_result_type);
-
-      Value result_1d =
-          rewriter
-              .create<UnrealizedConversionCastOp>(loc, new_result_type, result)
-              .getResult(0);
-      new_results.push_back(result_1d);
+      Value flattened = Flatten(result, rewriter);
+      new_results.push_back(flattened);
+      new_result_types.push_back(flattened.getType());
     }
     rewriter.replaceOpWithNewOp<ReturnOp>(terminator, new_results);
 
@@ -130,16 +132,14 @@ struct RewriteFunctionSignatures : OpRewritePattern<FuncOp> {
     SmallVector<Type> new_operand_types(input_types);
     rewriter.setInsertionPointToStart(entry_block);
     for (auto&& [index, operand_type] : llvm::enumerate(new_operand_types)) {
-      if (auto tensor_type = mlir::dyn_cast<RankedTensorType>(operand_type)) {
-        if (tensor_type.getRank() > 1) {
-          mlir::BlockArgument func_argument = op.getArgument(index);
-          auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
-              loc, operand_type, func_argument);
-          func_argument.replaceAllUsesExcept(cast_to_orig_type.getResult(0),
-                                             cast_to_orig_type);
-          operand_type = GetFlattenedType(tensor_type);
-        }
-      }
+      if (IsScalarOrFlat(operand_type)) continue;
+      mlir::BlockArgument func_argument = op.getArgument(index);
+      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
+          loc, operand_type, func_argument);
+      func_argument.replaceAllUsesExcept(cast_to_orig_type.getResult(0),
+                                         cast_to_orig_type);
+      operand_type =
+          GetFlattenedType(mlir::cast<RankedTensorType>(operand_type));
     }
     // Replace the function arguments with the new types.
     for (auto [arg, arg_type] :
@@ -148,6 +148,51 @@ struct RewriteFunctionSignatures : OpRewritePattern<FuncOp> {
     }
     // Update function signature.
     op.setType(rewriter.getFunctionType(new_operand_types, new_result_types));
+    return mlir::success();
+  }
+};
+
+struct RewritePureCall : OpRewritePattern<PureCallOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PureCallOp op,
+                                PatternRewriter& rewriter) const override {
+    if (HasOnlyFlatTensorsOrScalars(op.getOperandTypes()) &&
+        HasOnlyFlatTensorsOrScalars(op.getResultTypes())) {
+      return rewriter.notifyMatchFailure(op, "nothing to flatten");
+    }
+    SmallVector<Value> flat_operands;
+    flat_operands.reserve(op.getNumOperands());
+    for (Value operand : op.getOperands()) {
+      flat_operands.push_back(Flatten(operand, rewriter));
+    }
+    SmallVector<Type> flat_result_types;
+    flat_result_types.reserve(op.getNumResults());
+    llvm::SmallBitVector results_to_update(op.getNumResults(), false);
+    for (auto [index, result_type] : llvm::enumerate(op.getResultTypes())) {
+      if (IsScalarOrFlat(result_type)) {
+        flat_result_types.push_back(result_type);
+        continue;
+      }
+      results_to_update.set(index);
+      flat_result_types.push_back(
+          GetFlattenedType(mlir::cast<RankedTensorType>(result_type)));
+    }
+    Location loc = op.getLoc();
+    auto new_call_op = rewriter.create<PureCallOp>(
+        loc, flat_result_types, op.getCalleeAttr(), flat_operands);
+    SmallVector<Value> new_results;
+    new_results.reserve(op.getNumResults());
+    for (auto [index, new_result] : llvm::enumerate(new_call_op.getResults())) {
+      if (results_to_update.test(index)) {
+        new_results.push_back(new_result);
+        continue;
+      }
+      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
+          loc, op.getResult(index).getType(), new_result);
+      new_results.push_back(cast_to_orig_type.getResult(0));
+    }
+    rewriter.replaceOp(op, new_results);
     return mlir::success();
   }
 };
@@ -173,6 +218,25 @@ Value LinearizeIndex(TypedValue<mlir::RankedTensorType> tensor,
                                          ValueRange{}, linearized_map);
   return result.front();
 }
+
+struct RewriteAllocateShared : OpRewritePattern<AllocateSharedOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(AllocateSharedOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor_type = op.getResult().getType();
+    if (IsScalarOrFlat(tensor_type)) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+    auto flat_type = GetFlattenedType(tensor_type);
+    Location loc = op.getLoc();
+    Value new_op = rewriter.create<AllocateSharedOp>(op.getLoc(), flat_type);
+    auto cast_to_orig_type =
+        rewriter.create<UnrealizedConversionCastOp>(loc, tensor_type, new_op);
+    rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
+    return mlir::success();
+  }
+};
 
 struct RewriteTensorExtract : OpRewritePattern<ExtractOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -262,7 +326,7 @@ std::optional<Value> GetDelinearizedTensor(Value value) {
   return cast->getOperand(0);
 }
 
-struct RewriteForOp : public OpRewritePattern<ForOp> {
+struct RewriteFor : public OpRewritePattern<ForOp> {
   using OpRewritePattern<ForOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ForOp op,
@@ -337,7 +401,7 @@ struct RewriteForOp : public OpRewritePattern<ForOp> {
   }
 };
 
-struct RewriteIfOp : public OpRewritePattern<IfOp> {
+struct RewriteIf : public OpRewritePattern<IfOp> {
   using OpRewritePattern<IfOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(IfOp op,
@@ -405,6 +469,49 @@ struct RewriteIfOp : public OpRewritePattern<IfOp> {
   }
 };
 
+struct RewriteSyncThreads : OpRewritePattern<SyncThreadsOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SyncThreadsOp op,
+                                PatternRewriter& rewriter) const override {
+    auto types = op.getResultTypes();
+    if (HasOnlyFlatTensorsOrScalars(types)) {
+      return rewriter.notifyMatchFailure(op, "nothing to flatten");
+    }
+
+    auto loc = op.getLoc();
+
+    SmallVector<Value> new_operands;
+    new_operands.reserve(op.getNumOperands());
+    llvm::SmallBitVector results_to_update(op.getNumResults(), false);
+    for (auto& operand : op->getOpOperands()) {
+      auto tensor_type = cast<RankedTensorType>(operand.get().getType());
+      if (tensor_type.getRank() < 2) continue;
+      results_to_update.set(operand.getOperandNumber());
+      new_operands.push_back(
+          rewriter
+              .create<UnrealizedConversionCastOp>(
+                  loc, GetFlattenedType(tensor_type), operand.get())
+              .getResult(0));
+    }
+    auto new_op = rewriter.create<SyncThreadsOp>(loc, TypeRange(new_operands),
+                                                 new_operands);
+    SmallVector<Value> new_results;
+    new_results.reserve(op.getNumResults());
+    for (auto [index, result] : llvm::enumerate(new_op.getResults())) {
+      if (!results_to_update.test(index)) {
+        new_results.push_back(result);
+        continue;
+      }
+      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
+          loc, result.getType(), result);
+      new_results.push_back(cast_to_orig_type.getResult(0));
+    }
+    rewriter.replaceOp(op, new_results);
+    return mlir::success();
+  }
+};
+
 class FlattenTensorsPass
     : public impl::FlattenTensorsPassBase<FlattenTensorsPass> {
  public:
@@ -414,10 +521,13 @@ class FlattenTensorsPass
     mlir::RewritePatternSet patterns(mlir_context);
     // clang-format off
     patterns.add<
+        RewriteAllocateShared,
         RewriteAtomicRMW,
-        RewriteForOp,
+        RewriteFor,
         RewriteFunctionSignatures,
-        RewriteIfOp,
+        RewriteIf,
+        RewritePureCall,
+        RewriteSyncThreads,
         RewriteTensorExtract,
         RewriteTensorInsert
     >(mlir_context);

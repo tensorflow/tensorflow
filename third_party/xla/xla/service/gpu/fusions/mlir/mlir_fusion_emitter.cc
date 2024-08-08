@@ -323,6 +323,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   // opportunities for LICM. This would not be necessary if LICM also moved
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+  pm.addPass(CreateFlattenTensorsPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateVectorizeLoadsAndStoresPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateOptimizeLoopsPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertPureCallOpsPass());
