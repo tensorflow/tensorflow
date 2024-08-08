@@ -280,7 +280,7 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
                                 "is not currently supported."));
       previous_batch_index = next_batch_index;
     }
-    gtl::InlinedVector<int64_t, 8> std_order(dense_shape->NumElements(), 0);
+    absl::InlinedVector<int64_t, 8UL> std_order(dense_shape->NumElements(), 0);
     TensorShape shape;
     OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(
                             dense_shape->vec<int64_t>(), &shape));
