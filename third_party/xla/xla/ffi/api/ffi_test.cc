@@ -882,6 +882,19 @@ TEST(FfiTest, ScratchAllocator) {
   EXPECT_EQ(allocator.count, 0);
 }
 
+TEST(FfiTest, ScratchAllocatorUnimplemented) {
+  auto fn = [&](ScratchAllocator scratch_allocator) {
+    auto mem = scratch_allocator.Allocate(1024);
+    EXPECT_FALSE(mem.has_value());
+    return Error::Success();
+  };
+  auto handler = Ffi::Bind().Ctx<ScratchAllocator>().To(fn);
+  CallFrame call_frame =
+      CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
