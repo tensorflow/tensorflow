@@ -91,7 +91,7 @@ ttn::WGMMAEltType getMmaOperandType(Value, bool);
 namespace xla::gpu {
 namespace {
 
-#define GEN_PASS_DEF_SPARSEADDDOTENCODINGPASS
+#define GEN_PASS_DEF_SPARSEADDENCODINGPASS
 #define GEN_PASS_DEF_SPARSEBLOCKEDTOMMAPASS
 #define GEN_PASS_DEF_SPARSEDOTOPTOLLVMPASS
 #define GEN_PASS_DEF_SPARSELOCALLOADTOLLVMPASS
@@ -100,7 +100,7 @@ namespace {
 #include "xla/service/gpu/fusions/triton/passes.h.inc"
 
 // Add sparse encoding for all the arguments of a SparseDotOp.
-struct AddSparseEncoding
+struct SparseAddEncoding
     : public OpConversionPattern<triton::gpu::SparseDotOp> {
   using OpConversionPattern<triton::gpu::SparseDotOp>::OpConversionPattern;
 
@@ -193,16 +193,16 @@ struct AddSparseEncoding
   }
 };
 
-struct SparseAddDotEncodingPass
-    : public impl::SparseAddDotEncodingPassBase<SparseAddDotEncodingPass> {
-  using impl::SparseAddDotEncodingPassBase<
-      SparseAddDotEncodingPass>::SparseAddDotEncodingPassBase;
+struct SparseAddEncodingPass
+    : public impl::SparseAddEncodingPassBase<SparseAddEncodingPass> {
+  using impl::SparseAddEncodingPassBase<
+      SparseAddEncodingPass>::SparseAddEncodingPassBase;
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     TritonGPUTypeConverter type_converter(context, num_warps_,
                                           threads_per_warp_, num_ctas_);
-    auto pattern = std::make_unique<AddSparseEncoding>(type_converter, context);
+    auto pattern = std::make_unique<SparseAddEncoding>(type_converter, context);
     RewritePatternSet patterns(context, std::move(pattern));
     TritonGPUConversionTarget target(*context, type_converter);
     target.addDynamicallyLegalOp<triton::gpu::SparseDotOp>(
@@ -976,14 +976,14 @@ struct SparseWGMMAOpToLLVMPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateSparseAddDotEncodingPass(int32_t num_warps,
-                                                     int32_t threads_per_warp,
-                                                     int32_t num_ctas) {
-  SparseAddDotEncodingPassOptions options;
+std::unique_ptr<Pass> CreateSparseAddEncodingPass(int32_t num_warps,
+                                                  int32_t threads_per_warp,
+                                                  int32_t num_ctas) {
+  SparseAddEncodingPassOptions options;
   options.num_warps_ = num_warps;
   options.threads_per_warp_ = threads_per_warp;
   options.num_ctas_ = num_ctas;
-  return std::make_unique<SparseAddDotEncodingPass>(options);
+  return std::make_unique<SparseAddEncodingPass>(options);
 }
 
 std::unique_ptr<Pass> CreateSparseBlockedToMMAPass() {

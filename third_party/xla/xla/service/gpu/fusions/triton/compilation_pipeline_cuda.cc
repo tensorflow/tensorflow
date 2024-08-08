@@ -64,9 +64,9 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       absl::StrFormat("cuda:%u", ccAsInt), block_level_parameters.num_warps,
       threadsPerWarp, block_level_parameters.num_ctas));
-  pm.addPass(CreateSparseAddDotEncodingPass(block_level_parameters.num_warps,
-                                            threadsPerWarp,
-                                            block_level_parameters.num_ctas));
+  pm.addPass(CreateSparseAddEncodingPass(block_level_parameters.num_warps,
+                                         threadsPerWarp,
+                                         block_level_parameters.num_ctas));
   pm.addPass(mt::gpu::createTritonGPUCoalesce());
   if (ccCuda.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createTritonGPUF32DotTC());

@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def SparseAddDotEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
+def SparseAddEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
   let summary = "Adds sparse dot encoding.";
   let options = [
     Option<"num_warps_", "num-warps", "int32_t", /*default=*/"4",
@@ -31,7 +31,7 @@ def SparseAddDotEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
   let dependentDialects = [
     "triton::gpu::TritonGPUDialect",
   ];
-  let constructor = "CreateSparseAddDotEncodingPass()";
+  let constructor = "CreateSparseAddEncodingPass()";
 }
 
 def SparseBlockedToMMAPass : Pass<"sparse-blocked-to-mma", "mlir::ModuleOp"> {

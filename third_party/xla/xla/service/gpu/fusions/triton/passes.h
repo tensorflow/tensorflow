@@ -28,7 +28,7 @@ namespace xla::gpu {
 #define GEN_PASS_DECL
 #include "xla/service/gpu/fusions/triton/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateSparseAddDotEncodingPass(
+std::unique_ptr<mlir::Pass> CreateSparseAddEncodingPass(
     int32_t num_warps = 4, int32_t threads_per_warp = 32, int32_t num_ctas = 1);
 std::unique_ptr<mlir::Pass> CreateSparseBlockedToMMAPass();
 std::unique_ptr<mlir::Pass> CreateSparseRemoveLayoutConversionPass();
