@@ -262,7 +262,7 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by remote Recv op: "
-                       << status.ToString()
+                       << status
                        << "\nThis should never happen. "
                           "Please file an issue with the TensorFlow Team.";
           }
@@ -412,7 +412,7 @@ void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by SendPackedHadnle rpc: "
-                       << status.ToString();
+                       << status;
           }
         } else {
           captured_state->dst()->PoisonRemote(s, recv_device, context_view_id);
@@ -465,7 +465,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by SendTensor rpc: "
-                       << status.ToString();
+                       << status;
           }
         } else {
           captured_state->dst()->PoisonRemote(s, recv_device, context_view_id);

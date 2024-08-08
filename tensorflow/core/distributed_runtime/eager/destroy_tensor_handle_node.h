@@ -59,7 +59,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
             LOG_EVERY_N_SEC(WARNING, 60)
                 << "Ignoring an error encountered when deleting "
                    "remote tensors handles: "
-                << s.ToString();
+                << s;
           }
           done(absl::OkStatus());
           delete response;

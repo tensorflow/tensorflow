@@ -394,8 +394,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       std::move(rendezvous_creator), cluster_flr, std::move(remote_mgr),
       std::move(session_destroyer));
   if (!s.ok()) {
-    VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
-            << s.ToString();
+    VLOG(1) << "EagerContext::InitializeRemoteWorker failed with " << s;
     return s;
   }
 
@@ -522,7 +521,7 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   Status s = ctx->UpdateRemoteWorker(std::move(remote_eager_workers),
                                      remote_workers, request->context_id());
   if (!s.ok()) {
-    VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s.ToString();
+    VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s;
     return s;
   }
 
