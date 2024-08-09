@@ -123,7 +123,10 @@ absl::StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
       ScalarLike(w_tr, kFudgeFactor * std::numeric_limits<float>::epsilon());
   auto off_diag_is_tiny = Le(Abs(w_tr), Mul(tiny, Min(Abs(w_tl), Abs(w_br))));
   t = Select(off_diag_is_tiny, ZerosLike(t), t);
-  auto c = Rsqrt(one + Square(t));
+  auto tmp = one + Square(t);
+  auto c = Rsqrt(tmp);
+  // Take a Newton-Raphson step to improve the accuracy of c.
+  c = c * (ScalarLike(c, 1.5) - ((c * ScalarLike(c, 0.5)) * tmp) * c);
   auto s = t * c;
 
   auto rt1 = w_tl - t * w_tr;
