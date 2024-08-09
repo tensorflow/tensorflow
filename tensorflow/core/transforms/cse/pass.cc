@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
