@@ -2956,3 +2956,56 @@ func.func @test_broadcast_to_i48(%arg0: tensor<1x1x13x1xi48>) -> (tensor<7x7x13x
   %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<1x1x13x1xi48>, tensor<4xi64>) -> tensor<7x7x13x7xi48>
   return %1 : tensor<7x7x13x7xi48>
 }
+
+// -----
+
+// CHECK-LABEL: test_mul_with_unequal_ranks_qi8(
+// CHECK: %[[VAL_0:.*]]: tensor<1x192x192x3x!quant.uniform<i8:f32, 1.000000e+00:-128>>) -> tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<127> : tensor<i8>}> : () -> tensor<!quant.uniform<i8:f32, 3.0757404601899907E-5:-128>>
+// CHECK: %[[VAL_2:.*]] = tosa.reshape %[[VAL_1]] {new_shape = array<i64: 1, 1, 1, 1>} : (tensor<!quant.uniform<i8:f32, 3.0757404601899907E-5:-128>>) -> tensor<1x1x1x1x!quant.uniform<i8:f32, 3.0757404601899907E-5:-128>>
+// CHECK: %[[VAL_3:.*]] = tosa.rescale %[[VAL_0]] {double_round = true, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>} : (tensor<1x192x192x3x!quant.uniform<i8:f32, 1.000000e+00:-128>>) -> tensor<1x192x192x3xi32>
+// CHECK: %[[VAL_4:.*]] = tosa.rescale %[[VAL_2]] {double_round = true, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>} : (tensor<1x1x1x1x!quant.uniform<i8:f32, 3.0757404601899907E-5:-128>>) -> tensor<1x1x1x1xi32>
+// CHECK: %[[VAL_5:.*]] = tosa.mul %[[VAL_3]], %[[VAL_4]] {shift = 0 : i8} : (tensor<1x192x192x3xi32>, tensor<1x1x1x1xi32>) -> tensor<1x192x192x3xi32>
+// CHECK: %[[VAL_6:.*]] = tosa.rescale %[[VAL_5]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 1077952640>, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i8: 38>} : (tensor<1x192x192x3xi32>) -> tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>
+// CHECK: return %[[VAL_6]] : tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>
+func.func @test_mul_with_unequal_ranks_qi8(%arg0: tensor<1x192x192x3x!quant.uniform<i8:f32, 1.000000e+00:-128>>) -> tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>> {
+    %0 = "tfl.pseudo_qconst"() {qtype = tensor<!quant.uniform<i8:f32, 3.0757404601899907E-5:-128>>, value = dense<127> : tensor<i8>} : () -> tensor<!quant.uniform<i8:f32, 3.0757404601899907E-5:-128>>
+    %1 = tfl.mul(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<1x192x192x3x!quant.uniform<i8:f32, 1.000000e+00:-128>>, tensor<!quant.uniform<i8:f32, 3.0757404601899907E-5:-128>>) -> tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>
+    func.return %1 : tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>
+}
+
+// -----
+
+// CHECK-LABEL: test_sub_with_unequal_ranks_qi8
+// CHECK: %[[VAL_0:.*]]: tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>) -> tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<127> : tensor<i8>}> : () -> tensor<!quant.uniform<i8:f32, 0.0039215688593685627:-128>>
+// CHECK: %[[VAL_2:.*]] = tosa.reshape %[[VAL_1]] {new_shape = array<i64: 1, 1, 1, 1>} : (tensor<!quant.uniform<i8:f32, 0.0039215688593685627:-128>>) -> tensor<1x1x1x1x!quant.uniform<i8:f32, 0.0039215688593685627:-128>>
+// CHECK: %[[VAL_3:.*]] = tosa.rescale %[[VAL_0]] {double_round = true, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>} : (tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>) -> tensor<1x192x192x3xi32>
+// CHECK: %[[VAL_4:.*]] = tosa.rescale %[[VAL_2]] {double_round = true, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>} : (tensor<1x1x1x1x!quant.uniform<i8:f32, 0.0039215688593685627:-128>>) -> tensor<1x1x1x1xi32>
+// CHECK: %[[VAL_5:.*]] = tosa.rescale %[[VAL_4]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 32>} : (tensor<1x1x1x1xi32>) -> tensor<1x1x1x1xi32>
+// CHECK: %[[VAL_6:.*]] = tosa.sub %[[VAL_3]], %[[VAL_5]] : (tensor<1x192x192x3xi32>, tensor<1x1x1x1xi32>) -> tensor<1x192x192x3xi32>
+// CHECK: %[[VAL_7:.*]] = tosa.rescale %[[VAL_6]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 49>} : (tensor<1x192x192x3xi32>) -> tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>>
+// CHECK: return %[[VAL_7]] : tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>>
+func.func @test_sub_with_unequal_ranks_qi8(%arg0: tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>) -> tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>> {
+    %0 = "tfl.pseudo_qconst"() {qtype = tensor<!quant.uniform<i8:f32, 0.0039215688593685627:-128>>, value = dense<127> : tensor<i8>} : () -> tensor<!quant.uniform<i8:f32, 0.0039215688593685627:-128>>
+    %1 = tfl.sub(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-128>>, tensor<!quant.uniform<i8:f32, 0.0039215688593685627:-128>>) -> tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>>
+    func.return %1 : tensor<1x192x192x3x!quant.uniform<i8:f32, 0.0078431377187371254:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: test_add_with_unequal_ranks_qi8
+// CHECK: %[[VAL_0:.*]]: tensor<48x48x17x!quant.uniform<i8:f32, 0.24252831935882568:-128>>) -> tensor<48x48x17x!quant.uniform<i8:f32, 0.24958714842796326:-128>>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<127> : tensor<i8>}> : () -> tensor<!quant.uniform<i8:f32, 0.0070588234812021255:-128>>
+// CHECK: %[[VAL_2:.*]] = tosa.reshape %[[VAL_1]] {new_shape = array<i64: 1, 1, 1>} : (tensor<!quant.uniform<i8:f32, 0.0070588234812021255:-128>>) -> tensor<1x1x1x!quant.uniform<i8:f32, 0.0070588234812021255:-128>>
+// CHECK: %[[VAL_3:.*]] = tosa.rescale %[[VAL_0]] {double_round = true, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>} : (tensor<48x48x17x!quant.uniform<i8:f32, 0.24252831935882568:-128>>) -> tensor<48x48x17xi32>
+// CHECK: %[[VAL_4:.*]] = tosa.rescale %[[VAL_2]] {double_round = true, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>} : (tensor<1x1x1x!quant.uniform<i8:f32, 0.0070588234812021255:-128>>) -> tensor<1x1x1xi32>
+// CHECK: %[[VAL_5:.*]] = tosa.rescale %[[VAL_4]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 2000090782>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>} : (tensor<1x1x1xi32>) -> tensor<1x1x1xi32>
+// CHECK: %[[VAL_6:.*]] = tosa.add %[[VAL_3]], %[[VAL_5]] : (tensor<48x48x17xi32>, tensor<1x1x1xi32>) -> tensor<48x48x17xi32>
+// CHECK: %[[VAL_7:.*]] = tosa.rescale %[[VAL_6]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 2086748470>, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>} : (tensor<48x48x17xi32>) -> tensor<48x48x17x!quant.uniform<i8:f32, 0.24958714842796326:-128>>
+// CHECK: return %[[VAL_7]] : tensor<48x48x17x!quant.uniform<i8:f32, 0.24958714842796326:-128>>
+func.func @test_add_with_unequal_ranks_qi8(%arg0: tensor<48x48x17x!quant.uniform<i8:f32, 0.24252831935882568:-128>>) -> tensor<48x48x17x!quant.uniform<i8:f32, 0.24958714842796326:-128>> {
+    %0 = "tfl.pseudo_qconst"() {qtype = tensor<!quant.uniform<i8:f32, 0.0070588234812021255:-128>>, value = dense<127> : tensor<i8>} : () -> tensor<!quant.uniform<i8:f32, 0.0070588234812021255:-128>>
+    %1 = tfl.add(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<48x48x17x!quant.uniform<i8:f32, 0.24252831935882568:-128>>, tensor<!quant.uniform<i8:f32, 0.0070588234812021255:-128>>) -> tensor<48x48x17x!quant.uniform<i8:f32, 0.24958714842796326:-128>>
+    func.return %1 : tensor<48x48x17x!quant.uniform<i8:f32, 0.24958714842796326:-128>>
+}
