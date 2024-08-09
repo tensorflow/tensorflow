@@ -104,7 +104,12 @@ def make_gpu_client(
 ) -> Client:
   ...
 
-def make_tfrt_tpu_c_api_client(options: _NameValueMapping | None = None) -> Client:
+def make_tfrt_tpu_c_api_client(
+    options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient | None = None,
+    node_id: int | None = None,
+    num_nodes: int | None  = None,
+) -> Client:
   ...
 
 def make_tfrt_tpu_c_api_device_topology(
@@ -119,7 +124,10 @@ def get_topology_for_devices(devices: list[Device]) -> DeviceTopology:
   ...
 
 def make_tpu_client(
-    library_path: str | None, options: _NameValueMapping | None = None
+    library_path: str | None, options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient | None = None,
+    node_id: int | None = None,
+    num_nodes: int | None  = None,
 ) -> Client:
   ...
 
@@ -127,6 +135,8 @@ def make_c_api_client(
     plugin_name: str,
     options: _NameValueMapping | None = None,
     distributed_client: DistributedRuntimeClient | None = None,
+    node_id: int | None = None,
+    num_nodes: int | None = None,
 ) -> Client:
   ...
 

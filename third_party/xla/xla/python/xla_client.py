@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 280
+_version = 281
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -123,13 +123,19 @@ def make_gpu_client(
   )
 
 
-def make_tfrt_tpu_c_api_client(options: _NameValueMapping | None = None):
+def make_tfrt_tpu_c_api_client(
+    options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient = None,
+    node_id: int | None = None,
+    num_nodes: int | None = None,
+):
   assert pjrt_plugin_loaded('tpu')
   if not pjrt_plugin_initialized('tpu'):
     initialize_pjrt_plugin('tpu')
   if options is None:
     options = {}
-  return _xla.get_c_api_client('tpu', options)
+  return _xla.get_c_api_client('tpu', options, distributed_client, node_id,
+                               num_nodes)
 
 
 DeviceTopology = _xla.DeviceTopology
@@ -181,6 +187,8 @@ def make_c_api_client(
     plugin_name: str,
     options: _NameValueMapping | None = None,
     distributed_client: _xla.DistributedRuntimeClient | None = None,
+    node_id: int | None = None,
+    num_nodes: int | None = None,
 ):
   """Creates a PJRT C API client for a PJRT plugin.
 
@@ -191,23 +199,31 @@ def make_c_api_client(
      plugin_name: the name of the PJRT plugin.
      options: extra platform-specific options.
      distributed_client: distributed client.
+     node_id: node id
+     num_nodes: number of nodes (e.g. accelerator hosts)
 
   Returns:
      A PJRT C API client for plugin_name.
   """
   if options is None:
     options = {}
-  return _xla.get_c_api_client(plugin_name, options, distributed_client)
+  return _xla.get_c_api_client(plugin_name, options, distributed_client,
+                               node_id, num_nodes)
 
 
 def make_tpu_client(
-    library_path: str | None = None, options: _NameValueMapping | None = None
+    library_path: str | None = None, options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient | None = None,
+    node_id: int | None = None,
+    num_nodes: int | None = None,
 ):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
     c_api = load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
     profiler.register_plugin_profiler(c_api)
-  return make_tfrt_tpu_c_api_client(options)
+  return make_tfrt_tpu_c_api_client(
+      options, distributed_client, node_id, num_nodes
+  )
 
 
 def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:

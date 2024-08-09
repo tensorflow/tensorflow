@@ -366,9 +366,10 @@ NB_MODULE(xla_extension, m_nb) {
   m_nb.def(
       "get_c_api_client",
       [](std::string platform_name,
-         const absl::flat_hash_map<std::string, PjRtValueType>& options,
-         std::shared_ptr<DistributedRuntimeClient> distributed_client)
-          -> nb_class_ptr<PyClient> {
+         absl::flat_hash_map<std::string, PjRtValueType>& options,
+         std::shared_ptr<DistributedRuntimeClient> distributed_client,
+         std::optional<int64_t> node_id,
+         std::optional<int64_t> num_nodes) -> nb_class_ptr<PyClient> {
         std::unique_ptr<ifrt::PjRtClient> ifrt_client;
         {
           nb::gil_scoped_release gil_release;
@@ -378,15 +379,32 @@ NB_MODULE(xla_extension, m_nb) {
                 distributed_client,
                 /*key_prefix=*/absl::StrCat(platform_name, ":"));
           }
+          ifrt::PjRtClient::CreateOptions ifrt_options;
+          // TODO(b/353788247): Integrate with other platforms.
+          if (distributed_client != nullptr && platform_name == "tpu") {
+            // Specify PJRT options.
+            options["process_index"] = *node_id;
+            // Specify IFRT options.
+            ifrt_options.kv_store = kv_store;
+            ifrt_options.process_id = *node_id;
+            ifrt_options.num_processes = *num_nodes;
+          }
+          // Create PjRt client.
           std::unique_ptr<PjRtClient> c_api_client = xla::ValueOrThrow(
               GetCApiClient(platform_name, options, kv_store));
-          ifrt_client = ifrt::PjRtClient::Create(std::move(c_api_client));
+          // Create IFRT client.
+          ifrt_options.pjrt_client =
+              std::shared_ptr<PjRtClient>(std::move(c_api_client));
+          ifrt_client = xla::ValueOrThrow(
+              ifrt::PjRtClient::Create(std::move(ifrt_options)));
         }
         return PyClient::Make(std::move(ifrt_client));
       },
       nb::arg("platform_name"),
       nb::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>(),
-      nb::arg("distributed_client").none() = nullptr);
+      nb::arg("distributed_client").none() = nullptr,
+      nb::arg("node_id").none() = std::nullopt,
+      nb::arg("num_nodes").none() = std::nullopt);
   // TODO(b/322357665): Delete this method after TPU plugin changes to use the
   // standard registration.
   m_nb.def("get_default_c_api_topology",

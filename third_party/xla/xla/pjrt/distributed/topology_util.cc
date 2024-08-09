@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -174,7 +173,10 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
     LocalTopologyProto* topology = global_topology->add_nodes();
     *topology = local_topology;
     for (DeviceProto& device : *topology->mutable_devices()) {
-      device.set_global_device_id(device.local_device_ordinal());
+      // If global device id is unset, overwrite with local device ordinal.
+      if (device.global_device_id() == 0) {
+        device.set_global_device_id(device.local_device_ordinal());
+      }
     }
     return absl::OkStatus();
   }

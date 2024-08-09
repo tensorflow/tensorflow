@@ -590,6 +590,8 @@ def get_c_api_client(
     platform_name: str,
     options: Dict[str, Union[str, int, List[int], float, bool]],
     distributed_client: Optional[DistributedRuntimeClient] = ...,
+    node_id: Optional[int] = ...,
+    num_nodes: Optional[int] = ...,
 ) -> Client: ...
 def get_default_c_api_topology(
     platform_name: str,
