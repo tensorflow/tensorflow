@@ -2046,7 +2046,7 @@ def TFL_LessOp : TFL_Op<"less", [
   }];
 }
 
-def TFL_LogicalAndOp : TFL_Op<"logical_and", [Pure]> {
+def TFL_LogicalAndOp : TFL_Op<"logical_and", [ResultsBroadcastableShape, Pure]> {
   let summary = "Logical AND operator";
 
   let description = [{
@@ -2085,7 +2085,7 @@ def TFL_LogicalNotOp : TFL_Op<"logical_not", [
   let results = (outs TFL_BoolTensor:$output);
 }
 
-def TFL_LogicalOrOp : TFL_Op<"logical_or", [Pure]> {
+def TFL_LogicalOrOp : TFL_Op<"logical_or", [ResultsBroadcastableShape, Pure]> {
   let summary = "Logical OR operator";
 
   let description = [{
@@ -4080,6 +4080,7 @@ def TFL_BitcastOp : TFL_Op<"bitcast", [Pure]> {
 }
 
 def TFL_BitwiseXorOp : TFL_Op<"bitwise_xor", [
+    ResultsBroadcastableShape,
     Commutative,
     SameOperandsAndResultElementType,
     Pure]> {
@@ -4121,6 +4122,7 @@ def TFL_RightShiftOp : TFL_Op<"right_shift", [
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//
+
 def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
   let summary = "Dequantize operator";
 

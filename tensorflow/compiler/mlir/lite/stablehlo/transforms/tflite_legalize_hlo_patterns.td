@@ -17,10 +17,14 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mhlo/IR/hlo_ops.td"
 include "mlir/IR/CommonAttrConstraints.td"
+include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/CommonTypeConstraints.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
+
+
+def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 
 def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
@@ -41,6 +45,12 @@ def : Pat<(MHLO_ShiftRightArithmeticOp $l, $r), (TFL_RightShiftOp $l, $r)>;
 def : Pat<(MHLO_ShiftRightLogicalOp $l, $r), (TFL_RightShiftOp $l, $r)>;
 def : Pat<(MHLO_RemOp $l, $r), (TFL_FloorModOp $l, $r)>;
 
+def LegalizeReshape : Pat<(MHLO_ReshapeOp:$output $input),
+          (TFL_ReshapeOp $input, 
+            (CreateTFLCastToInt32Op (ShapeToConst $output)))>;
+
+def LegalizeDynamicReshape : Pat<(MHLO_DynamicReshapeOp $input, $shape),
+          (TFL_ReshapeOp $input, (CreateTFLCastToInt32Op $shape))>;
 
 //===----------------------------------------------------------------------===//
 // logical and bitwise ops
@@ -88,3 +98,18 @@ def : Pat<(MHLO_NotOp TensorOf<[UI32]>:$input),
             (TFL_BitwiseXorOp $input,
               (Arith_ConstantOp
                 (GetRankedScalarAttr<"u", 32, ", false", "0xFFFFFFFFUL">)))>;
+
+foreach pair = [
+  [MHLO_AndOp, TFL_LogicalAndOp],
+  [MHLO_OrOp, TFL_LogicalOrOp]] 
+in {
+  def : Pat<
+    (pair[0] TFL_BoolTensor:$l, TFL_BoolTensor:$r),
+    (pair[1] $l, $r)>;
+}
+
+def LegalizeXor : Pat<
+  (MHLO_XorOp 
+    TFL_IntTensor:$l,
+    TFL_IntTensor:$r),
+  (TFL_BitwiseXorOp $l, $r)>;
