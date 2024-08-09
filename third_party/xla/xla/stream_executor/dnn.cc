@@ -67,16 +67,13 @@ bool ProtoMapsEqual(const google::protobuf::Map<int64_t, int64_t>& x,
 }  // namespace
 
 constexpr DataType ToDataType<tsl::float8_e4m3fn>::value;
-constexpr DataType ToDataType<tsl::float8_e4m3fnuz>::value;
 constexpr DataType ToDataType<tsl::float8_e5m2>::value;
-constexpr DataType ToDataType<tsl::float8_e5m2fnuz>::value;
 constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;
 constexpr DataType ToDataType<Eigen::bfloat16>::value;
 constexpr DataType ToDataType<int8_t>::value;
 constexpr DataType ToDataType<int32_t>::value;
-constexpr DataType ToDataType<int64_t>::value;
 constexpr DataType ToDataType<std::complex<float>>::value;
 constexpr DataType ToDataType<std::complex<double>>::value;
 

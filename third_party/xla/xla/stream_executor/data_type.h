@@ -45,13 +45,9 @@ struct ToDataType<tsl::float8_e5m2> {
   static constexpr DataType value = DataType::kF8E5M2;
 };
 template <>
-struct ToDataType<tsl::float8_e4m3fnuz> {
-  static constexpr DataType value = DataType::kF8E4M3FNUZ;
-};
+struct ToDataType<tsl::float8_e4m3fnuz> {};
 template <>
-struct ToDataType<tsl::float8_e5m2fnuz> {
-  static constexpr DataType value = DataType::kF8E5M2FNUZ;
-};
+struct ToDataType<tsl::float8_e5m2fnuz> {};
 template <>
 struct ToDataType<float> {
   static constexpr DataType value = DataType::kFloat;
@@ -77,9 +73,7 @@ struct ToDataType<int32_t> {
   static constexpr DataType value = DataType::kInt32;
 };
 template <>
-struct ToDataType<int64_t> {
-  static constexpr DataType value = DataType::kInt64;
-};
+struct ToDataType<int64_t> {};
 template <>
 struct ToDataType<std::complex<float>> {
   static constexpr DataType value = DataType::kComplexFloat;
