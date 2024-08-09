@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"

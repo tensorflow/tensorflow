@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/step_intersection.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {

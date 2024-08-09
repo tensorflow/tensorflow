@@ -21,12 +21,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+
 #if GOOGLE_CUDA
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #endif
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
 
 namespace tensorflow {

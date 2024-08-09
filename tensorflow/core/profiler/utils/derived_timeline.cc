@@ -22,9 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/host_offload_utils.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tsl/profiler/convert/xla_op_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/group_events.h"
+#include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/tf_op_utils.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tsl/profiler/utils/timespan.h"
