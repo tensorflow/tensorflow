@@ -126,11 +126,15 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/attributes.h"
+#include "absl/meta/type_traits.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
 
 // Must come after the import for absl::string_view.
 #ifdef ABSL_HAVE_STD_STRING_VIEW
