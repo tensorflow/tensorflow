@@ -146,6 +146,28 @@ Node* GraphFloat32::NewNode() {
   return node;
 }
 
+absl::Status GraphFloat32::InsertNodeBefore(NodeId id, Node** new_node) {
+  if (id >= nodes_.size()) {
+    return absl::OutOfRangeError("NodeId is out of range");
+  }
+  int idx = 0;
+  while (idx < execution_plan_.size()) {
+    if (execution_plan_[idx] == id) break;
+    ++idx;
+  }
+  if (idx == execution_plan_.size()) {
+    return absl::OutOfRangeError("NodeId not in execution plan");
+  }
+
+  const NodeId new_id = nodes_.size();
+  NodeDef def;
+  def.node = absl::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
+  *new_node = def.node.get();
+  nodes_[new_id] = std::move(def);
+  execution_plan_.insert(execution_plan_.begin() + idx, new_id);
+  return absl::OkStatus();
+}
+
 absl::Status GraphFloat32::InsertNodeAfter(NodeId id, Node** new_node) {
   if (id >= nodes_.size()) {
     return absl::OutOfRangeError("NodeId is out of range");
