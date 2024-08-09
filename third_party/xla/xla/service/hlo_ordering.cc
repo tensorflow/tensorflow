@@ -464,11 +464,12 @@ bool HloOrdering::LiveRangeStrictlyBefore(
     }
   }
 
-  // All uses of 'a' must be before 'b' is defined.
+  // All uses of 'a', excluding token, must be before 'b' is defined.
   std::vector<const HloUse*> uses;
   for (const HloUse& use : a.GetUses()) {
     if (dataflow.DoesNotUseOperandBuffer(a.instruction(), a.index(),
-                                         use.instruction)) {
+                                         use.instruction) ||
+        use.instruction->shape().IsToken()) {
       continue;
     }
     uses.push_back(&use);
