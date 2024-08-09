@@ -758,6 +758,18 @@ class PjRtClient {
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) = 0;
 
+  // Variant of CreateBuffersForAsyncHostToDevice with device Layout and
+  // PjRtMemmorySpace. It is used when non-compact layout is preferred.
+  virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    absl::Span<const Layout> device_layouts,
+                                    PjRtMemorySpace* memory_space) {
+    return absl::UnimplementedError(
+        absl::StrCat("CreateBuffersForAsyncHostToDevice with device layout is "
+                     "not implemented on platform: ",
+                     platform_name()));
+  }
+
   // Creates a shapeless buffer on the device that can be partitioned into
   // multiple PjRtBuffer. This class is an Arena version of
   // `AsyncHostToDeviceTransferManager`.
