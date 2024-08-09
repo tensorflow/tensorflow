@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
@@ -130,6 +131,9 @@ absl::Status AddResultToFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
     return absl::OkStatus();
   }
 
+  tsl::Env* default_env = tsl::Env::Default();
+  TF_RETURN_IF_ERROR(CreateDirIfNeeded(std::string(cache_dir), default_env));
+
   TF_ASSIGN_OR_RETURN(const std::string file_path,
                       GetCacheFilePath(cache_dir, key));
 
@@ -145,7 +149,6 @@ absl::Status AddResultToFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
   // file. Also avoids reading incomplete files. (This may not work on all file
   // systems.)
   std::string temp_file_path = tsl::io::GetTempFilename(".textproto");
-  tsl::Env* default_env = tsl::Env::Default();
   TF_RETURN_IF_ERROR(
       tsl::WriteStringToFile(default_env, temp_file_path, result_str));
   return default_env->RenameFile(temp_file_path, file_path);
