@@ -13,15 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/cc/client/client_session.h"
-#include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradient_checker.h"
-#include "tensorflow/cc/framework/testutil.h"
-#include "tensorflow/cc/gradients/grad_testutil.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

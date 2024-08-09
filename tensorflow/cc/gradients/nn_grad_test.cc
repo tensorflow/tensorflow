@@ -15,15 +15,19 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/cc/framework/grad_op_registry.h"
+#include <gtest/gtest.h>
 #include "tensorflow/cc/framework/gradient_checker.h"
-#include "tensorflow/cc/framework/testutil.h"
-#include "tensorflow/cc/gradients/grad_testutil.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/random.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
