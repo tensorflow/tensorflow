@@ -7,7 +7,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_jspb_proto_library",
@@ -15,6 +15,7 @@ load(
     "tf_pyclif_proto_library",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -184,4 +185,17 @@ exports_files(
     visibility = [
         "//tensorflow/core:__pkg__",
     ],
+)
+
+proto_library(
+    name = "foo_proto",
+    srcs = ["foo.proto"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "foo_cc_proto",
+    compatible_with = get_compatible_with_portable(),
+    deps = [":foo_proto"],
 )
