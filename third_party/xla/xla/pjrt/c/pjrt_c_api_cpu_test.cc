@@ -14,15 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/c/pjrt_c_api_cpu.h"
 
+#include <optional>
+
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
 namespace pjrt {
 namespace {
 
-const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
-                                                  /*platform_name=*/"cpu"),
-                      true);
+void InitializeExpectedOutputsAndRegister() {
+  const ExpectedOutputs expected_outputs =
+      ExpectedOutputs{/*device_debug_string=*/"TFRT_CPU_0",
+                      /*device_to_string=*/"CpuDevice(id=0)"};
+
+  RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
+                              /*platform_name=*/"cpu", expected_outputs);
+}
+
+const bool kUnused = (InitializeExpectedOutputsAndRegister(), true);
 
 }  // namespace
 }  // namespace pjrt
