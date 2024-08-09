@@ -226,11 +226,7 @@ xla_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
     backends = ["gpu"],
-    tags = [
-        # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-        "gpu",
-        "no_rocm",
-    ],
+    tags = ["no_rocm"],
     deps = [
         ":cuda_driver",
         ":cuda_status",

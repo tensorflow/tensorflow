@@ -109,7 +109,6 @@ xla_test(
         "gpu",
     ],
     tags = [
-        "gpu",
         "no_rocm",
         "nomac",
     ],
@@ -280,7 +279,6 @@ xla_test(
     name = "autotuner_compile_util_test",
     srcs = ["autotuner_compile_util_test.cc"],
     backends = ["gpu"],
-    tags = ["gpu"],
     deps = [
         ":autotuner_compile_util",
         ":autotuner_util",
@@ -302,7 +300,6 @@ xla_test(
         "gpu_v100",
         "gpu_amd_any",
     ],
-    tags = ["gpu"],
     deps = [
         ":autotuner_util",
         ":gemm_algorithm_picker",
@@ -393,7 +390,6 @@ xla_test(
         "gpu_amd_any",
     ],
     tags = [
-        "gpu",
         "noasan",
         "nomsan",
     ],
@@ -470,10 +466,7 @@ xla_test(
     backends = [
         "gpu",
     ],
-    tags = [
-        "gpu",
-        "no_rocm",
-    ],
+    tags = ["no_rocm"],
     deps = [
         ":autotuner_util",
         ":custom_kernel_fusion_autotuner",

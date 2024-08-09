@@ -1628,7 +1628,6 @@ xla_test(
     srcs = ["gpu_compiler_test.cc"],
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
-    tags = ["gpu"],
     deps = [
         ":gpu_compiler",
         ":gpu_hlo_schedule",
@@ -1848,7 +1847,6 @@ xla_test(
         "gpu_a100",
     ],
     tags = [
-        "gpu",
         "no_rocm",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],
@@ -1887,7 +1885,6 @@ xla_test(
         "gpu",
     ],
     tags = [
-        "gpu",
         "no_rocm",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],

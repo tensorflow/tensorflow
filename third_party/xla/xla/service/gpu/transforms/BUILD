@@ -2861,7 +2861,6 @@ xla_test(
         "requires-gpu-sm80",
     ]},
     backends = ["gpu"],
-    tags = ["gpu"],
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",

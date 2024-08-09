@@ -556,8 +556,6 @@ xla_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
     backends = ["gpu"],
-    # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-    tags = ["gpu"],
     deps = [
         ":gpu_asm_opts",
         ":gpu_init",
@@ -603,11 +601,7 @@ xla_test(
     name = "gpu_cudamallocasync_allocator_test",
     srcs = ["gpu_cudamallocasync_allocator_test.cc"],
     backends = ["gpu_any"],
-    tags = [
-        # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-        "gpu",
-        "no_rocm",
-    ],
+    tags = ["no_rocm"],
     deps = [
         ":gpu_cudamallocasync_allocator",
         ":gpu_stream",
@@ -739,8 +733,6 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-    tags = ["gpu"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
@@ -764,8 +756,6 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-    tags = ["gpu"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor/host:host_platform",
@@ -788,8 +778,6 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-    tags = ["gpu"],
     deps = [
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
