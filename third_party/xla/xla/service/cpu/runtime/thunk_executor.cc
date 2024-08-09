@@ -176,6 +176,12 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
     return std::move(state->execute_event);
   }
 
+  // If execution already completed (all kernels executed in the caller thread),
+  // immediately return the result to avoid wasteful reference counting below.
+  if (ABSL_PREDICT_TRUE(state->execute_event.IsAvailable())) {
+    return std::move(state->execute_event);
+  }
+
   // Move execute state to the execute event callback to ensure that it is kept
   // alive while thunk executor has pending tasks.
   auto execute_event = state->execute_event;
