@@ -41,9 +41,9 @@ RUN echo $CACHEBUSTER
 
 # Setup Python environment. PYTHON_VERSION is e.g. "python3.8"
 ARG PYTHON_VERSION
-COPY setup.python.sh /setup.python.sh
+COPY setup.build-python_ubuntu.sh /setup.build-python_ubuntu.sh
 COPY devel.requirements.txt /devel.requirements.txt
-RUN /setup.python.sh $PYTHON_VERSION devel.requirements.txt
+RUN /setup.build-python_ubuntu.sh $PYTHON_VERSION devel.requirements.txt
 
 ARG TF_WHEEL_URL
 RUN if [ -n "${TF_WHEEL_URL}" ]; then pip install "${TF_WHEEL_URL}"; fi
