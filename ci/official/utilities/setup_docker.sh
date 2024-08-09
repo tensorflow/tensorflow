@@ -47,7 +47,6 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
     sed -iE 's|^TFCI_OUTPUT_DIR=.*|TFCI_OUTPUT_DIR='"$_TFCI_OUTPUT_DIR_WIN"'|g' $env_file
     WORKING_DIR=$(replace_drive_letter_with_c "$TFCI_GIT_DIR")
     echo "GCE_METADATA_HOST=$IP_ADDR" > $env_file
-    # Allow requests from the container.
   fi
 
   docker run $TFCI_DOCKER_ARGS --name tf -w "$WORKING_DIR" -itd --rm \
@@ -58,8 +57,9 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
 
   if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
     # Allow requests from the container.
-    CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' tf)
-    netsh advfirewall firewall add rule name="Allow Metadata Proxy" dir=in action=allow protocol=TCP localport=80 remoteip="$CONTAINER_IP"
+    # Additional setup is contained in ci/official/envs/rbe.
+    CONTAINER_IP_ADDR=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' tf)
+    netsh advfirewall firewall add rule name="Allow Metadata Proxy" dir=in action=allow protocol=TCP localport=80 remoteip="$CONTAINER_IP_ADDR"
   fi
 
 fi
