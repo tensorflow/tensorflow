@@ -36,15 +36,9 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-#include "xla/stream_executor/gpu/redzone_allocator.h"
-#endif
 
 namespace xla {
 namespace gpu {

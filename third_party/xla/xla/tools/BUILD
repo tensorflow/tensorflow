@@ -858,7 +858,6 @@ xla_test(
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/gpu:gpu_symbol_repository",
-        "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_macros_header",
@@ -875,7 +874,9 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_tsl//tsl/protobuf:status_proto_cc",
-    ] + if_google(["@com_google_protobuf//:duration_cc_proto"]),
+    ] + if_google(["@com_google_protobuf//:duration_cc_proto"]) + if_gpu_is_configured([
+        "//xla/service/gpu/autotuning:autotuner_util",
+    ]),
 )
 
 xla_test(
