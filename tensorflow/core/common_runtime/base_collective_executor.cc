@@ -331,11 +331,12 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // Run on an unbounded work queue that can handle blocking work so as to not
   // starve executor threads.
   col_impl->Ref();
-  profiler::TraceMeProducer producer("BaseCollectiveExecutor::ExecuteAsync");
+  tsl::profiler::TraceMeProducer producer(
+      "BaseCollectiveExecutor::ExecuteAsync");
   RunClosure([col_impl, col_ctx, done_safe, ctx,
               context_id = producer.GetContextId()]() {
     core::ScopedUnref unref(col_impl);
-    profiler::TraceMeConsumer consumer(
+    tsl::profiler::TraceMeConsumer consumer(
         [ctx, col_ctx] {
           string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
                                           ctx->op_kernel().type_string_view());
