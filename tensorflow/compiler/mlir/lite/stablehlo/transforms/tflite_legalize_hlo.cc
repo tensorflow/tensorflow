@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // The kept headers are provided for the included file `passes.h.inc`.
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -50,6 +51,15 @@ namespace mlir {
 namespace odml {
 namespace {
 
+// Returns the shape of the given value in a Constant Op.
+arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
+  ArrayRef<int64_t> shape = mlir::cast<ShapedType>(value.getType()).getShape();
+  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
+                                         rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, shape);
+  return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
+}
+
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
@@ -69,6 +79,19 @@ bool IsNotOpLegal(mhlo::NotOp op) {
   return op.getType().getElementType().isInteger(64);
 }
 
+// mhlo "bitwise ops" can be both bitwise (floats/ints) or logical (bools).
+// TFL ops are only one of logical or bitwise.
+void SetBinaryBitwiseLegal(ConversionTarget& target) {
+  auto is_logical = [](Operation* op) {
+    return llvm::cast<ShapedType>(op->getResultTypes()[0])
+        .getElementType()
+        .isInteger(1);
+  };
+  auto is_bitwise = [&](Operation* op) { return !is_logical(op); };
+  target.addDynamicallyLegalOp<mhlo::OrOp, mhlo::AndOp>(is_bitwise);
+  target.addDynamicallyLegalOp<mhlo::XorOp>(is_logical);
+}
+
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext* context = &getContext();
@@ -77,14 +100,21 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   populateWithGenerated(patterns);
 
   ConversionTarget target(*context);
+
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
+
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
+  target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
+
+  SetBinaryBitwiseLegal(target);
+
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp,
                       mhlo::ShiftRightArithmeticOp, mhlo::ShiftRightLogicalOp,
-                      mhlo::RemOp>();
-  target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
+                      mhlo::RemOp, mhlo::ReshapeOp, mhlo::DynamicReshapeOp,
+                      mhlo::MaxOp, mhlo::MinOp, mhlo::MulOp, mhlo::DivOp,
+                      mhlo::PowOp, mhlo::Atan2Op, mhlo::SubtractOp>();
 
   PopulatePadPatterns(context, patterns, target);
   PopulateReducePatterns(context, patterns, target);
