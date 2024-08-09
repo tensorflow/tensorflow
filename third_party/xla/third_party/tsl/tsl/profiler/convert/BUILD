@@ -60,6 +60,8 @@ cc_library(
         "//tsl/profiler/utils:timestamp_utils",
         "//tsl/profiler/utils:xplane_schema",
         "//tsl/profiler/utils:xplane_utils",
+        "//tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -89,7 +91,6 @@ tsl_cc_test(
     srcs = ["trace_container_test.cc"],
     deps = [
         ":trace_container",
-        "//tsl/platform:protobuf",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/profiler/protobuf:trace_events_proto_cc",
@@ -138,6 +139,7 @@ tsl_cc_test(
     size = "small",
     srcs = ["xplane_to_trace_events_test.cc"],
     deps = [
+        ":trace_container",
         ":xplane_to_trace_events",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
