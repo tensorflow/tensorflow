@@ -417,6 +417,17 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    copts = tflite_copts(),
+    deps = [
+        ":utils",
+        "//tensorflow/lite/c:common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "model_loader",
     srcs = ["model_loader.cc"],
