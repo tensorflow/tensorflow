@@ -82,7 +82,7 @@ def DenseToSparsePass : Pass<"tfl-dense-to-sparse", "mlir::func::FuncOp"> {
 }
 
 def IdentifyDilatedConvPass : Pass<"tfl-identify-dilated-conv", "mlir::func::FuncOp"> {
-  let summary = "Convert dense tensor to sparse format.";
+  let summary = "Identify dilated conv and fuse them.";
   let constructor = "CreateIdentifyDilatedConvPass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
