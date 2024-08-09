@@ -19,10 +19,9 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "tsl/platform/test.h"
-#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tsl/profiler/utils/xplane_builder.h"
