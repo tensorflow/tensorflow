@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
@@ -135,6 +136,162 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
     return debug_options;
   }
 };
+
+TEST_F(TritonTest, Int4NonMinorContractingDim) {
+  // We prove that triton can handle int4 dot with non minor
+  // lhs_contracting_dim.
+  const std::string kHloText = R"ir(
+    HloModule t
+
+    triton_computation {
+      lhs = s4[10, 8]{1,0} parameter(0)
+      lhs_converted = bf16[10, 8]{1,0} convert(lhs)
+      rhs = bf16[10,10]{1,0} parameter(1)
+      ROOT dot = bf16[8,10]{1,0} dot(lhs_converted, rhs),
+        lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      lhs = s4[10, 8]{1,0} parameter(0)
+      rhs = bf16[10,10]{1,0} parameter(1)
+      ROOT dot = bf16[8,10]{1,0} fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )ir";
+  auto module_or_status = ParseAndReturnVerifiedModule(kHloText);
+  EXPECT_OK(module_or_status.status());
+  auto module = std::move(module_or_status).value();
+  Literal rhs = LiteralUtil::MakeScalarMatrixR2(10, bfloat16(1.0));
+  const auto fake_arguments = MakeFakeArguments(module.get()).value();
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+  fake_argument_ptrs[1] = &rhs;
+
+  for (const auto* literal : fake_argument_ptrs) {
+    LOG(ERROR) << "argument literal: " << literal->ToString();
+  }
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs,
+                                       ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
+                                       nullptr));
+}
+
+TEST_F(TritonTest, Int4MinorContractingDim) {
+  // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
+  const std::string kHloText = R"(
+    HloModule t
+
+    triton_computation {
+      lhs = s4[8,10]{1,0} parameter(0)
+      lhs_converted = bf16[8,10]{1,0} convert(lhs)
+      rhs = bf16[10,4]{1,0} parameter(1)
+      ROOT dot = bf16[8,4]{1,0} dot(lhs_converted, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      lhs = s4[8,10]{1,0} parameter(0)
+      rhs = bf16[10,4]{1,0} parameter(1)
+      ROOT dot = bf16[8,4]{1,0} fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+// bf16[16,4256,256]{2,1,0} dot(s4[16,8512,4256]{2,1,0},
+// bf16[8512,16,256]{2,1,0}), lhs_batch_dims={0}, lhs_contracting_dims={1},
+// rhs_batch_dims={1}, rhs_contracting_dims={0}
+//
+// This test is disabled because Int4 support cannot handle this case.
+TEST_F(TritonTest, DISABLED_LHSInt4TestWithBatchDimAndRHSBatchDim1) {
+  const std::string kHloText = R"(
+    HloModule t
+
+    triton_computation {
+      lhs = s4[16,512,4256]{2,1,0} parameter(0)
+      lhs_converted = bf16[16,512,4256]{2,1,0} convert(lhs)
+      rhs =  bf16[512,16,256]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,4256,256]{2,1,0} dot(lhs_converted, rhs),
+          lhs_batch_dims={0},
+          lhs_contracting_dims={1},
+          rhs_batch_dims={1},
+          rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      lhs = s4[16,512,4256]{2,1,0} parameter(0)
+      rhs = bf16[512,16,256]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,4256,256] fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+// bf16[16,8512,256]{2,0,1} dot(s4[16,4256,8512]{2,1,0},
+// bf16[16,256,4256]{1,2,0}), lhs_batch_dims={0}, lhs_contracting_dims={1},
+// rhs_batch_dims={0}, rhs_contracting_dims={2}
+//
+// This test is disabled because Int4 support cannot handle this case.
+TEST_F(TritonTest, DISABLED_LHSInt4TestWithBatchDimAndRHSContractingDim2) {
+  const std::string kHloText = R"(
+    HloModule t
+
+    triton_computation {
+      lhs = s4[16,4256,512]{2,1,0} parameter(0)
+      lhs_converted = bf16[16,4256,512]{2,1,0} convert(lhs)
+      rhs =  bf16[16,256,4256]{1,2,0} parameter(1)
+      ROOT dot = bf16[16,512,256] dot(lhs_converted, rhs),
+          lhs_batch_dims={0},
+          lhs_contracting_dims={1},
+          rhs_batch_dims={0},
+          rhs_contracting_dims={2}
+    }
+
+    ENTRY main {
+      lhs = s4[16,4256,512]{2,1,0} parameter(0)
+      rhs = bf16[16,256,4256]{1,2,0} parameter(1)
+      ROOT dot = bf16[16,512,256] fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+// bf16[2048,8512]{1,0} dot(bf16[2048,8512]{1,0}, s4[8512,8512]{1,0}),
+// lhs_contracting_dims={1}, rhs_contracting_dims={0}
+TEST_F(TritonTest, RHSInt4TestWithMinorContractingDim) {
+  const std::string kHloText = R"(
+    HloModule t
+
+    triton_computation {
+      lhs = bf16[2048,512]{1,0} parameter(0)
+      rhs = s4[512,512]{1,0} parameter(1)
+      rhs_converted = bf16[512,512]{1,0} convert(rhs)
+      ROOT dot = bf16[2048,512] dot(lhs, rhs_converted), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      lhs = bf16[2048,512]{1,0} parameter(0)
+      rhs = s4[512,512]{1,0} parameter(1)
+      ROOT dot = bf16[2048,512] fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+}
 
 TEST_F(TritonTest, TestGemm) {
   const std::string kHloText = R"(

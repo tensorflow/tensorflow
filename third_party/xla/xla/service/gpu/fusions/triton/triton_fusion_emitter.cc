@@ -187,6 +187,7 @@ absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
     case PRED:
       return b.getI1Type();
     case S8:
+    case S4:  // The unpacking to U8 is supported by the emitter.
       return b.getI8Type();
     case F8E5M2:
       return b.getFloat8E5M2Type();
@@ -1014,6 +1015,65 @@ absl::StatusOr<Value> EmitTiledScope(
   return values[tiled_computation.GetRoot()];
 }
 
+Value EmitUnpackInt4NotMinorContractingDim(ImplicitLocOpBuilder& b,
+                                           const HloInstruction* hlo,
+                                           Value& value) {
+  VLOG(6) << "EmitUnpackInt4NotMinorContractingDim";
+  auto input_type = mlir::cast<mlir::RankedTensorType>(value.getType());
+  // We use shifts instead the mask because we need to keep the sign bit.
+  Value shift4 =
+      Splat(b, CreateConst(b, b.getI8Type(), 4), input_type.getShape());
+  Value lo = b.create<ma::ShRSIOp>(b.create<ma::ShLIOp>(value, shift4), shift4);
+  Value hi = b.create<ma::ShRSIOp>(value, shift4);
+  Value combined = b.create<mt::JoinOp>(hi, lo);
+  // We unpacked the values and got M x N x 2 matrix.
+  // Now we need to transpose it to 2M * N matrix where lo and hi are
+  // interleaved along the M dimension. We do that by transposing the matrix
+  // and then reshaping it to 2M * N.
+  Value transposed =
+      b.create<mt::TransOp>(combined, b.getDenseI32ArrayAttr({0, 2, 1}));
+  SmallVector<int64_t> result_shape(input_type.getShape());
+  result_shape[result_shape.size() - 2] *= 2;
+  auto result_type = mlir::RankedTensorType::get(result_shape, b.getI8Type());
+  Value unpacked =
+      b.create<mt::ReshapeOp>(result_type, transposed, /*allow_reorder=*/false);
+  return unpacked;
+}
+
+Value EmitUnpackInt4MinorContractingDim(ImplicitLocOpBuilder& b,
+                                        const HloInstruction* hlo,
+                                        Value& value) {
+  VLOG(6) << "EmitUnpackInt4MinorContractingDim";
+  auto input_type = mlir::cast<mlir::RankedTensorType>(value.getType());
+  Value shift4 =
+      Splat(b, CreateConst(b, b.getI8Type(), 4), input_type.getShape());
+  Value lo = b.create<ma::ShRSIOp>(b.create<ma::ShLIOp>(value, shift4), shift4);
+  Value hi = b.create<ma::ShRSIOp>(value, shift4);
+  Value combined = b.create<mt::JoinOp>(hi, lo);
+  // We unpacked the values and got M x N x 2 matrix.
+  // Now we need to reshape it to M * 2N matrix where lo and hi are
+  // interleaved along the N dimension. Reshape is enough for that because the
+  // physical layout of the matrix is the same.
+  SmallVector<int64_t> result_shape(input_type.getShape());
+  result_shape[result_shape.size() - 1] *= 2;
+  auto result_type = mlir::RankedTensorType::get(result_shape, b.getI8Type());
+  Value unpacked =
+      b.create<mt::ReshapeOp>(result_type, combined, /*allow_reorder=*/false);
+  return unpacked;
+}
+
+// Emit sequence of operations for unpacking 2xi4 -> i8.
+Value EmitUnpackInt4(ImplicitLocOpBuilder& b, const HloInstruction* hlo,
+                     TritonFusionAnalysis::Scope scope,
+                     absl::Span<const DimProperties> tiled_dimensions,
+                     Value& value) {
+  if (scope == TritonFusionAnalysis::Scope::LHS &&
+      tiled_dimensions[1].index == 0) {
+    return EmitUnpackInt4NotMinorContractingDim(b, hlo, value);
+  }
+  return EmitUnpackInt4MinorContractingDim(b, hlo, value);
+}
+
 // Emit sequence of instructions using compatible tiling ordered producers
 // before consumers.
 absl::StatusOr<Value> EmitScope(
@@ -1036,6 +1096,10 @@ absl::StatusOr<Value> EmitScope(
         continue;
       }
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
+      if (hlo->shape().element_type() == S4) {
+        values[hlo] =
+            EmitUnpackInt4(b, hlo, scope, tiled_dimensions, values[hlo]);
+      }
       continue;
     } else if (hlo->opcode() == HloOpcode::kConstant) {
       TF_ASSIGN_OR_RETURN(Value constant, EmitConstant(b, *hlo));
@@ -1551,6 +1615,7 @@ class MatMulEmitterHelper {
     Value base;
     std::vector<Value> bounds;
     std::vector<Value> strides;
+    std::vector<int32_t> strides_sizes;  // We use it to detect the minor dim.
     // Offsets from tensor origin, same for all thread blocks.
     std::vector<Value> tensor_offsets;
     std::vector<int32_t> block_dims;
@@ -1605,8 +1670,10 @@ class MatMulEmitterHelper {
             Cst32(-fragment.slice_start + fragment.sliced_count));
       }
 
+      // concat_dim_pid_offset = pid * block_size.
       concat_dim_pid_offset =
           b_.create<ma::MulIOp>(properties.pid, Cst32(properties.block_size));
+
       TF_ASSIGN_OR_RETURN(base, EmitMultiSelect(b_, concat_dim_pid_offset,
                                                 concat_boundaries, bases));
     } else {
@@ -1641,7 +1708,9 @@ class MatMulEmitterHelper {
       for (const HloInstruction* input : inputs) {
         specs.push_back(
             analysis_.IterSpec(side.scope, input, properties.index));
-        input_strides.push_back(Cst64(specs.back()->at(0).stride));
+        const auto stride = specs.back()->at(0).stride;
+        strides_sizes.push_back(stride);
+        input_strides.push_back(Cst64(stride));
         input_offsets.push_back(b_.create<ma::AddIOp>(
             pid_offset, Cst32(specs.back()->at(0).slice_start)));
         input_bounds.push_back(Cst64(specs.back()->at(0).count));
@@ -1816,9 +1885,15 @@ class MatMulEmitterHelper {
     if (has_batch_offset) {
       Value pid_batch =
           b_.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
+
+      // pid_offset_batch = (offset_batch + pid_batch) * batch_stride
       Value pid_offset_batch = b_.create<ma::MulIOp>(
           b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
           batch_stride);
+
+      if (hlo->shape().element_type() == PrimitiveType::S4) {
+        pid_offset_batch = b_.create<ma::DivSIOp>(pid_offset_batch, Cst(2));
+      }
       base = AddPtr(b_, base, pid_offset_batch);
     }
 
@@ -1836,6 +1911,18 @@ class MatMulEmitterHelper {
     if (block_dims.empty()) {
       // Load of a scalar.
       return base;
+    }
+    if (hlo->shape().element_type() == PrimitiveType::S4) {
+      // Divide the stride by 2 for S4 inputs except for the minor dimension.
+      for (int i = 0; i < strides.size(); ++i) {
+        // We assume that the pack happens along the minor dimension.
+        if (strides_sizes[i] == 1) {  // minor dimension
+          auto s4_bound = b_.create<ma::DivSIOp>(bounds[i], Cst64(2));
+          bounds[i] = s4_bound;
+          continue;
+        }
+        strides[i] = b_.create<ma::DivSIOp>(strides[i], Cst64(2));
+      }
     }
     auto tensor_ptr = mlir::cast<Value>(
         b_.create<mt::MakeTensorPtrOp>(base, bounds, strides, tensor_offsets,
@@ -2245,29 +2332,55 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
 
   auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
 
+  // noncontracting_program_id_dim
   auto pid_nc =
       b.create<mt::GetProgramIdOp>(launch_config.noncontracting_program_id_dim);
+
   Value pid_k = (split_k > 1)
                     ? b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::Z)
                     : Value{};
 
+  // group_id = pid_nc / width
   auto group_id = b.create<ma::DivSIOp>(pid_nc, c32(width));
+
+  // group_m = 8
   ma::ConstantOp group_m_op = c32(group_m);
+
+  // first_pid_m = group_id * group_m
   auto first_pid_m = b.create<ma::MulIOp>(group_id, group_m_op);
+
+  // sub0 = grid_m - first_pid_m
   auto sub0 = b.create<ma::SubIOp>(c32(launch_config.grid_m), first_pid_m);
+
+  // group_size = min(sub0, group_m_op)
   auto group_size = b.create<ma::SelectOp>(
       b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, sub0, group_m_op), sub0,
       group_m_op);
 
+  // pid_m = first_pid_m + pid_nc % group_size
   auto pid_m = b.create<ma::AddIOp>(first_pid_m,
                                     b.create<ma::RemSIOp>(pid_nc, group_size));
+
+  // pid_n = (pid_nc % width) / group_size
   auto pid_n = b.create<ma::DivSIOp>(b.create<ma::RemSIOp>(pid_nc, c32(width)),
                                      group_size);
 
   TF_ASSIGN_OR_RETURN(mlir::FloatType acc_ty, emitter.GetDotAccumulatorType());
 
+  // accumulator_init = {block_m, block_n}
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});
+
+  // Determine whether the scope parameters are int4.
+  auto is_int4_param = [&](TritonFusionAnalysis::Scope scope) {
+    const ConstHloInstructionSet& params = analysis.ScopeParameters(scope);
+    const HloInstruction* first = *params.cbegin();
+    return params.size() == 1 && first->shape().element_type() == S4;
+  };
+  bool lhs_int4 = is_int4_param(TritonFusionAnalysis::Scope::LHS);
+  bool lhs_int4_minor = lhs_int4 && dims.lhs_contracting_dim_idx == 1;
+  bool lhs_int4_not_minor = lhs_int4 && dims.lhs_contracting_dim_idx == 0;
+  bool rhs_int4 = is_int4_param(TritonFusionAnalysis::Scope::RHS);
 
   // Parameters are passed to the loop in non-trivial order, these maps help
   // finding them and their attributes.
@@ -2276,16 +2389,19 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
 
   Side lhs{TritonFusionAnalysis::Scope::LHS,
            /*tiled_dims=*/
-           {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m, block_m,
+           {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m,
+                          block_m / (1 + lhs_int4_not_minor),
                           /*split_value=*/1),
             DimProperties(dims.lhs_contracting_dim_idx, pid_k,
-                          block_k / (1 + is_sparse), split_k)},
+                          block_k / (1 + is_sparse) / (1 + lhs_int4_minor),
+                          split_k)},
            dims.lhs_batch_dim_idx};
   Side rhs{
       TritonFusionAnalysis::Scope::RHS,
       /*tiled_dims=*/
       {DimProperties(dims.rhs_contracting_dim_idx, pid_k, block_k, split_k),
-       DimProperties(dims.rhs_noncontracting_dim_idx, pid_n, block_n,
+       DimProperties(dims.rhs_noncontracting_dim_idx, pid_n,
+                     block_n / (1 + rhs_int4),
                      /*split_value=*/1)},
       dims.rhs_batch_dim_idx};
   Side out{TritonFusionAnalysis::Scope::OUTPUT,
@@ -2756,7 +2872,7 @@ absl::Status CreateInternalError(std::string_view message,
   os << message << "\n";
   os << fusion->fused_instructions_computation()->ToString() << "\n";
   os << "triton_module: \n";
-  triton_module->print(os);
+  triton_module->print(os, mlir::OpPrintingFlags().enableDebugInfo(true, true));
   return absl::InternalError(err);
 }
 
@@ -2837,10 +2953,13 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
         "Failed to create Triton module for fusion:", fusion, *triton_module);
   }
 
-  VLOG(6) << llvm_ir::DumpToString(*triton_module);
+  std::string triton_ir;
+  llvm::raw_string_ostream os(triton_ir);
+  triton_module->print(os, mlir::OpPrintingFlags().enableDebugInfo(true, true));
+  VLOG(6) << triton_ir;
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir", "ttir",
-                            llvm_ir::DumpToString(*triton_module));
+                            triton_ir);
   }
 
   return std::move(triton_module);

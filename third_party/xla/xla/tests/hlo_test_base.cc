@@ -535,8 +535,22 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
-  return RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs, error,
-                                  reference_preprocessor);
+  auto assertion_result = RunAndCompareNoHloPasses(
+      std::move(module), fake_argument_ptrs, error, reference_preprocessor);
+  if (!assertion_result) {
+    for (const auto& literal : fake_arguments) {
+      uint64_t total_elements = 1;
+      absl::c_for_each(literal.shape().dimensions(),
+                       [&](int64_t dim) { total_elements *= dim; });
+      if (total_elements > 1000) {
+        LOG(ERROR) << "argument literal is too large to print: "
+                   << literal.shape().ToString();
+        continue;
+      }
+      LOG(ERROR) << "argument literal: " << literal.ToString();
+    }
+  }
+  return assertion_result;
 }
 
 ::testing::AssertionResult HloTestBase::Run(std::unique_ptr<HloModule> module,

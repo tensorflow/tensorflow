@@ -204,6 +204,7 @@ xla_test(
     deps = [
         ":triton_fusion_emitter",
         ":triton_test_utils",
+        "//base:vlog",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
         "//xla:literal",
@@ -219,6 +220,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:filecheck",
+        "//xla/tests:test_utils",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",

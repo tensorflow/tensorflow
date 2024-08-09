@@ -109,6 +109,7 @@ bool IsTritonSupportedDataType(PrimitiveType type,
   }
   switch (type) {
     case PRED:
+    case S4:
     case S8:
     case S16:
     case S32:
