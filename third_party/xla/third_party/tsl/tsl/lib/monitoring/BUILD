@@ -71,7 +71,6 @@ cc_library(
     deps = [
         ":collection_registry",
         ":metric_def",
-        "//tsl/lib/histogram",
         "//tsl/platform",
         "//tsl/platform:macros",
         "//tsl/platform:mutex",
@@ -81,6 +80,7 @@ cc_library(
         "//tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/lib/histogram",
     ],
 )
 

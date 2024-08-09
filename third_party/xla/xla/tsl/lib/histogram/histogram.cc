@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/lib/histogram/histogram.h"
+#include "xla/tsl/lib/histogram/histogram.h"
 
 #include <float.h>
 #include <math.h>
