@@ -40,9 +40,11 @@ cc_library(
         ":exact_uniform_int",
         ":philox_random",
         ":random_distributions_utils",
+        "//tsl/platform:bfloat16",
         "//tsl/platform:logging",
         "//tsl/platform:macros",
         "//tsl/platform:types",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
@@ -87,6 +89,7 @@ cc_library(
         "//tsl/platform:logging",
         "//tsl/platform:macros",
         "//tsl/platform:types",
+        "@com_google_absl//absl/log:check",
     ],
     alwayslink = 1,
 )
@@ -159,11 +162,13 @@ tsl_cc_test(
     srcs = ["distribution_sampler_test.cc"],
     deps = [
         ":philox",
+        ":philox_random",
         "//tsl/platform:macros",
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",
         "//tsl/platform:types",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -175,10 +180,9 @@ tsl_cc_test(
         ":philox",
         ":philox_random",
         ":philox_random_test_utils",
-        "//tsl/platform:logging",
-        "//tsl/platform:random",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "//tsl/platform:types",
     ],
 )
 
@@ -191,10 +195,11 @@ tsl_cc_test(
         ":philox_random",
         ":philox_random_test_utils",
         "//tsl/lib/math:math_util",
+        "//tsl/platform:bfloat16",
         "//tsl/platform:logging",
-        "//tsl/platform:random",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "//tsl/platform:types",
     ],
 )
 
@@ -204,6 +209,7 @@ tsl_cc_test(
     srcs = ["simple_philox_test.cc"],
     deps = [
         ":philox",
+        ":philox_random",
         "//tsl/platform:logging",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
@@ -217,6 +223,7 @@ tsl_cc_test(
     srcs = ["weighted_picker_test.cc"],
     deps = [
         ":philox",
+        ":philox_random",
         ":weighted_picker",
         "//tsl/platform:logging",
         "//tsl/platform:macros",

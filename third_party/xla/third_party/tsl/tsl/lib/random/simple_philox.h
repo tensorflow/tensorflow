@@ -23,6 +23,8 @@ limitations under the License.
 
 #include "tsl/lib/random/philox_random.h"
 #include "tsl/lib/random/random_distributions.h"
+#include "tsl/lib/random/random_distributions_utils.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace random {
