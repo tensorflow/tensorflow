@@ -1,6 +1,16 @@
 // RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text -verify-diagnostics %s | FileCheck %s
 // RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text -verify-diagnostics --via-builder=true %s | FileCheck %s
 
+// CHECK: HloModule foo
+// CHECK: ENTRY %main
+module @foo {
+  func.func @main(%arg: tensor<i1>) -> tensor<i1> {
+    func.return %arg : tensor<i1>
+  }
+}
+
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<2xi1>) -> tensor<2xi1> {
   %0 = "mhlo.add"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
