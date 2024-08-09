@@ -22,6 +22,17 @@ cc_library(
     deps = [],
 )
 
+exports_files(["verifier.h"])
+
+cc_library(
+    name = "verifier",
+    hdrs = ["verifier.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = ["//visibility:public"],
+    deps = [":error_reporter"],
+)
+
 tf_cc_test(
     name = "error_reporter_test",
     size = "small",

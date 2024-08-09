@@ -92,11 +92,17 @@ cc_library(
 
 cc_library(
     name = "verifier",
-    hdrs = ["verifier.h"],
+    hdrs = [
+        "verifier.h",
+        "//tensorflow/compiler/mlir/lite/core/api:verifier.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = ["//visibility:public"],
-    deps = [":error_reporter"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/compiler/mlir/lite/core/api:verifier",
+    ],
 )
 
 cc_library(
