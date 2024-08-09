@@ -621,7 +621,8 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
             "Expected 1 input & output each from Dequantize, got: %d, %d",
             num_inputs, num_outputs));
       }
-      if (op_sig.inputs[0].type == kTfLiteInt16) {
+      if (op_sig.inputs[0].type == kTfLiteInt16 ||
+          op_sig.inputs[0].type == kTfLiteInt4) {
         return absl::UnimplementedError("Unsupported dequantization type.");
       }
       return absl::OkStatus();
