@@ -28,8 +28,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/service/hlo_pass_pipeline.h"
 
 namespace xla {
+
+// Config for unroll thresholds.
+struct UnrollConfig {
+  int64_t trip_count_threshold = 64;
+  int64_t instruction_count_threshold = 800;
+  int64_t expand_factor_threshold = 10000;
+};
 
 // Config for unrollable while loops.
 struct WhileLoopConfig {
@@ -78,9 +86,13 @@ class WhileLoopUnroller : public HloModulePass {
 
   // Default unroll_factor of -1 indicates full unrolling
   explicit WhileLoopUnroller(int64_t unroll_factor = -1,
-                             bool wrap_in_trivial_loop = false)
+                             bool wrap_in_trivial_loop = false,
+                             UnrollConfig config = UnrollConfig(),
+                             HloPassPipeline* before_unroll_pipeline = nullptr)
       : unroll_factor_(unroll_factor),
-        wrap_in_trivial_loop_(wrap_in_trivial_loop) {}
+        wrap_in_trivial_loop_(wrap_in_trivial_loop),
+        unroll_config_(config),
+        before_unroll_pipeline_(before_unroll_pipeline) {}
 
   absl::string_view name() const override { return "while_loop_unroller"; }
 
@@ -122,6 +134,8 @@ class WhileLoopUnroller : public HloModulePass {
   int64_t unroll_factor_;
   // Whether to wrap the unrolled computation in a loop with trip count of one.
   bool wrap_in_trivial_loop_;
+  UnrollConfig unroll_config_;
+  HloPassPipeline* before_unroll_pipeline_;
 };
 
 }  // namespace xla

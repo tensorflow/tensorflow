@@ -65,9 +65,9 @@ namespace {
 using hlo_query::ContainsInstrWithOpcode;
 
 // Parameters for the unroller that can be adjusted.
-const int kUnrollTripCountThreshold = 64;
-const int kUnrollInstructionCountThreshold = 800;
-const int kUnrollExpandFactorThreshold = 10000;
+int kUnrollTripCountThreshold = 64;
+int kUnrollInstructionCountThreshold = 800;
+int kUnrollExpandFactorThreshold = 10000;
 
 // Helper function to create a condition for a single iteration while loop in
 // the form of 'i <= init_value' where i is the induction variable.
@@ -231,8 +231,7 @@ bool InitialFeasibilityCheck(HloInstruction* while_op, WhileLoopConfig config) {
 
   VLOG(5) << "Trying to unroll " << while_op->ToShortString();
 
-  // TODO(b/291628533): Extract this parameter to the unroller config. We don't
-  // attempt to unroll loops where the body has more than
+  // We don't attempt to unroll loops where the body has more than
   // kUnrollInstructionCountThreshold instructions.
   if (while_op->while_body()->instruction_count() >
       kUnrollInstructionCountThreshold) {
@@ -242,8 +241,7 @@ bool InitialFeasibilityCheck(HloInstruction* while_op, WhileLoopConfig config) {
     return false;
   }
 
-  // TODO(b/291628533): Extract this parameter to the an unroller config. We
-  // only unroll loops up to a threshold.
+  // We only unroll loops up to a threshold.
   if (config.trip_count > kUnrollTripCountThreshold) {
     VLOG(5) << absl::StrCat(
         "Cannot unroll while loop. The tip count is greater "
@@ -252,8 +250,7 @@ bool InitialFeasibilityCheck(HloInstruction* while_op, WhileLoopConfig config) {
     return false;
   }
 
-  // TODO(b/291628533): Extract this parameter to the unroller config. We don't
-  // unroll loops that increase the instruction count by more than
+  // We don't unroll loops that increase the instruction count by more than
   // kUnrollExpandFactorThreshold.
   if (config.trip_count * while_op->while_body()->instruction_count() >
       kUnrollExpandFactorThreshold) {
@@ -737,7 +734,10 @@ absl::StatusOr<bool> WhileLoopUnroller::Run(
   }
   XLA_VLOG_LINES(3, "WhileLoopUnroller::Run(), before:\n" + module->ToString());
   bool changed = false;
-
+  // Allow user provided thresholds.
+  kUnrollTripCountThreshold = unroll_config_.trip_count_threshold;
+  kUnrollInstructionCountThreshold = unroll_config_.instruction_count_threshold;
+  kUnrollExpandFactorThreshold = unroll_config_.expand_factor_threshold;
   // Make sure all the necessary passes are executed before unrolling in order
   // to unroll every possible loop.
   TF_ASSIGN_OR_RETURN(changed,
@@ -759,6 +759,10 @@ absl::StatusOr<bool> WhileLoopUnroller::Run(
 
   VLOG(3) << "Number of while instructions in the module to unroll: "
           << unrollable_while_ops.size();
+  // Run pass pipeline specified by user immediately before unroll.
+  if (before_unroll_pipeline_) {
+    TF_RETURN_IF_ERROR(before_unroll_pipeline_->Run(module).status());
+  }
 
   bool unrolled = false;
   for (auto& [while_op, config] : unrollable_while_ops) {
