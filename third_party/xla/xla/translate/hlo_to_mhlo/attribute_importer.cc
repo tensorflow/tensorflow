@@ -65,12 +65,18 @@ mlir::mhlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
                                    dnums.offset_dims().end());
   std::vector<int64_t> collapsed_slice_dims(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
+  std::vector<int64_t> operand_batching_dims(
+      dnums.operand_batching_dims().begin(),
+      dnums.operand_batching_dims().end());
+  std::vector<int64_t> start_indices_batching_dims(
+      dnums.start_indices_batching_dims().begin(),
+      dnums.start_indices_batching_dims().end());
   std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
                                        dnums.start_index_map().end());
   return mlir::mhlo::GatherDimensionNumbersAttr::get(
       builder->getContext(), offset_dims, collapsed_slice_dims,
-      /*operandBatchingDims=*/{}, /*startIndicesBatchingDims=*/{},
-      start_index_map, dnums.index_vector_dim());
+      operand_batching_dims, start_indices_batching_dims, start_index_map,
+      dnums.index_vector_dim());
 }
 
 mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
@@ -79,12 +85,17 @@ mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
                                           dnums.update_window_dims().end());
   std::vector<int64_t> inserted_window_dims(
       dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
+  std::vector<int64_t> input_batching_dims(dnums.input_batching_dims().begin(),
+                                           dnums.input_batching_dims().end());
+  std::vector<int64_t> scatter_indices_batching_dims(
+      dnums.scatter_indices_batching_dims().begin(),
+      dnums.scatter_indices_batching_dims().end());
   std::vector<int64_t> scatter_dims_to_operand_dims(
       dnums.scatter_dims_to_operand_dims().begin(),
       dnums.scatter_dims_to_operand_dims().end());
   return mlir::mhlo::ScatterDimensionNumbersAttr::get(
       builder->getContext(), update_window_dims, inserted_window_dims,
-      /*inputBatchingDims=*/{}, /*scatterIndicesBatchingDims=*/{},
+      input_batching_dims, scatter_indices_batching_dims,
       scatter_dims_to_operand_dims, dnums.index_vector_dim());
 }
 

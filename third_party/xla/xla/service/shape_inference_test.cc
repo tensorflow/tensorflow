@@ -3481,6 +3481,27 @@ TEST_P(ScatterShapeInferenceTest, TfScatterWithUpdatesBiggerThanInputV2) {
       << statusor.status();
 }
 
+TEST_P(ScatterShapeInferenceTest,
+       TfScatterBatchingDimsWithUpdatesBiggerThanInput) {
+  const auto shapes = CreateShapes({100, 64, 48}, s64_tensor({100, 32}),
+                                   {100, 65, 32}, types());
+  const absl::StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      shapes.ptrs, to_apply(types()),
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{1},
+          /*inserted_window_dims=*/{2},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/2,
+          /*input_batching_dims=*/{0},
+          /*scatter_indices_batching_dims=*/{0}));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().message(),
+      HasSubstr("Bounds of the window dimensions of updates must not exceed "
+                "the bounds of the corresponding dimensions of operand."))
+      << statusor.status();
+}
+
 TEST_P(ScatterShapeInferenceTest, TfScatterWithUpdatesNotMatchingIndices) {
   const auto shapes = CreateShapes({64, 48}, s64_vector(32), {64, 31}, types());
   const absl::StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
