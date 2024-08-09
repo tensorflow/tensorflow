@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -26,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
@@ -33,7 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/transforms/passes.h"
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::DLTIDialect, mlir::tensor::TensorDialect,
                   mlir::func::FuncDialect, mlir::affine::AffineDialect,
@@ -48,6 +52,25 @@ int main(int argc, char **argv) {
   mlir::registerCSEPass();
   mlir::registerInliner();
   xla::gpu::registerGpuFusionTransformsPasses();
+  mlir::registerPassPipeline(
+      "xla-gpu-test-to-inline",
+      "Test pipeline of passes up to inlining. No vectorization, also does not "
+      "lower xla_gpu. Intended to simplify IR in tests.",
+      [=](mlir::OpPassManager& pm, llvm::StringRef options,
+          llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)>
+              errorHandler) {
+        if (!options.empty()) return mlir::failure();
+
+        pm.addNestedPass<mlir::func::FuncOp>(
+            xla::gpu::CreateSimplifyArithPass());
+        pm.addPass(xla::gpu::CreateEraseDeadFunctionsPass());
+        pm.addPass(mlir::createCSEPass());
+        pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
+          pm.addPass(mlir::createCSEPass());
+        }));
+        return mlir::success();
+      },
+      [](llvm::function_ref<void(const mlir::detail::PassOptions&)>) {});
 
   return mlir::failed(
       MlirOptMain(argc, argv, "XLA MLIR Fusion Pass Driver\n", registry));

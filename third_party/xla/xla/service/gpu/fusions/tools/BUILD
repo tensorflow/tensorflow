@@ -1,4 +1,3 @@
-load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.bzl", "xla_cc_binary")
 
 package(
@@ -14,6 +13,7 @@ xla_cc_binary(
         "//xla/mlir_hlo",
         "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/transforms:passes",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ComplexDialect",
@@ -25,6 +25,7 @@ xla_cc_binary(
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:NVVMDialect",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
@@ -33,12 +34,80 @@ xla_cc_binary(
     ],
 )
 
-lit_test_suite(
-    name = "tests",
-    srcs = glob(["*.mlir"]),
-    cfg = "//xla:lit.cfg.py",
-    tools = [
-        ":mlir_fusions_opt",
-        "@llvm-project//llvm:FileCheck",
+cc_library(
+    name = "test_lib",
+    testonly = 1,
+    srcs = ["test_lib.cc"],
+    hdrs = ["test_lib.h"],
+    deps = [
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/fusions",
+        "//xla/service/gpu/fusions/ir:xla_gpu",
+        "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
+        "//xla/stream_executor:device_description",
+        "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:DLTIDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
+    ],
+)
+
+xla_cc_binary(
+    name = "fusion_to_mlir",
+    testonly = 1,
+    srcs = ["fusion_to_mlir.cc"],
+    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    deps = [
+        ":test_lib",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_binary(
+    name = "test_correctness",
+    testonly = 1,
+    srcs = ["test_correctness.cc"],
+    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    deps = [
+        ":test_lib",
+        "//xla:debug_options_flags",
+        "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla/service:gpu_plugin",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/model:indexing_analysis",
+        "//xla/service/gpu/model:indexing_test_utils",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

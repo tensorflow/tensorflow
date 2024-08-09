@@ -1,0 +1,40 @@
+// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-simplify-arith -xla-erase-dead-functions -inline -canonicalize | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce1:0 --bijection_inputs=reduce2:0 --bijection_outputs=reduce1 --bijection_outputs=reduce2
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+
+fused_computation {
+  param_0 = f32[8,1024] parameter(0)
+  c0 = f32[] constant(0)
+  c1 = f32[] constant(1)
+  reduce1 = f32[8] reduce(param_0, c0), dimensions={1}, to_apply=add
+  reduce2 = f32[8] reduce(param_0, c1), dimensions={1}, to_apply=mul
+  log = f32[8] log(reduce1)
+  abs = f32[8] abs(reduce1)
+  neg = f32[8] negate(reduce2)
+  ROOT tuple = (f32[8], f32[8], f32[8]) tuple(log, neg, abs)
+}
+
+// CHECK-DAG: shuffle_reduce @add_add
+// CHECK-DAG: shuffle_reduce @mul_mul
+// CHECK: allocate_shared
+// CHECK: allocate_shared
+// CHECK: sync_threads
+// CHECK-DAG: %[[ADDED:.*]] = xla_gpu.shuffle_reduce @add_add
+// CHECK-DAG: %[[MULTIPLIED:.*]] = xla_gpu.shuffle_reduce @mul_mul
+// CHECK-DAG: %[[LOG:.*]] = math.log %[[ADDED]]
+// CHECK-DAG: %[[ABS:.*]] = math.absf %[[ADDED]]
+// CHECK-DAG: %[[NEG:.*]] = arith.negf %[[MULTIPLIED]]
+// CHECK-DAG: xla_gpu.predicated_insert %[[LOG]]
+// CHECK-DAG: xla_gpu.predicated_insert %[[ABS]]
+// CHECK-DAG: xla_gpu.predicated_insert %[[NEG]]
