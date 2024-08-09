@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/aggregate_ops.h"
 
+#include <utility>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -52,7 +55,7 @@ class AddNOp : public OpKernel {
 
     // Try to forward and accumulate the result in one of the input buffers.
     int reused_input = -1;
-    gtl::InlinedVector<int, 8> input_indices(num);
+    absl::InlinedVector<int, 8> input_indices(num);
     std::iota(input_indices.begin(), input_indices.end(), 0);
     Tensor* output = nullptr;
     for (int input_idx = 0; input_idx < num; ++input_idx) {
@@ -172,8 +175,8 @@ class AddNOp<Device, Variant> : public OpKernel {
   // the inputs into temp at the lowest levels of the summation tree.
   static inline Status AddVariantTo(OpKernelContext* ctx, const int lhs_ix,
                                     const int rhs_ix,
-                                    gtl::InlinedVector<Variant, 4>* temp,
-                                    gtl::InlinedVector<bool, 4>* temp_filled) {
+                                    absl::InlinedVector<Variant, 4>* temp,
+                                    absl::InlinedVector<bool, 4>* temp_filled) {
     Variant tmp;
     if (temp_filled->at(lhs_ix)) tmp = std::move(temp->at(lhs_ix));
     const Variant& a = temp_filled->at(lhs_ix)
@@ -186,7 +189,7 @@ class AddNOp<Device, Variant> : public OpKernel {
     TF_RETURN_IF_ERROR(
         BinaryOpVariants<Device>(ctx, ADD_VARIANT_BINARY_OP, a, b, c));
     temp_filled->at(lhs_ix) = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
