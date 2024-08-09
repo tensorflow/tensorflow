@@ -287,6 +287,14 @@ class AlgebraicSimplifierOptions {
     executing_on_cpu_ = executing_on_cpu;
   }
 
+  // Option to disable conversion of dynamic-slice to slice.
+  void set_disable_dynamic_slice_to_slice_conversion(bool disable) {
+    disable_dynamic_slice_to_slice_conversion_ = disable;
+  }
+  bool disable_dynamic_slice_to_slice_conversion() const {
+    return disable_dynamic_slice_to_slice_conversion_;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -325,6 +333,7 @@ class AlgebraicSimplifierOptions {
   bool raise_slice_and_reduce_through_dot_{false};
   double raise_slice_and_reduce_through_dot_threshold_{2.0};
   bool use_convert_constant_folding_{false};
+  bool disable_dynamic_slice_to_slice_conversion_{false};
   Metadata metadata_;
 };
 
