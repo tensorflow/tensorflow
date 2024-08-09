@@ -35,10 +35,6 @@ inline llvm::StringRef AsStringRef(absl::string_view str) {
   return llvm::StringRef(str.data(), str.size());
 }
 
-inline absl::string_view AsStringView(llvm::StringRef str) {
-  return absl::string_view(str.data(), str.size());
-}
-
 template <typename T>
 llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
   return llvm::ArrayRef<T>(vec.data(), vec.size());

@@ -52,23 +52,8 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::AllocaInst* Alloca(Args&&... args) {
-    return mixin_builder()->CreateAlloca(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
   llvm::Value* And(Args&&... args) {
     return mixin_builder()->CreateAnd(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* AtomicCmpXchg(Args&&... args) {
-    return mixin_builder()->CreateAtomicCmpXchg(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* AtomicRMW(Args&&... args) {
-    return mixin_builder()->CreateAtomicRMW(std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -88,14 +73,6 @@ class IrBuilderMixin {
     return mixin_builder()->CreateCall(func_callee, args, name, fp_math_tag);
   }
 
-  llvm::CallInst* Call(llvm::FunctionType* func_type, llvm::Value* callee,
-                       llvm::ArrayRef<llvm::Value*> args = std::nullopt,
-                       const llvm::Twine& name = "",
-                       llvm::MDNode* fp_math_tag = nullptr) {
-    return mixin_builder()->CreateCall(func_type, callee, args, name,
-                                       fp_math_tag);
-  }
-
   template <class... Args>
   llvm::BranchInst* CondBr(Args&&... args) {
     return mixin_builder()->CreateCondBr(std::forward<Args>(args)...);
@@ -104,12 +81,6 @@ class IrBuilderMixin {
   template <class... Args>
   llvm::Value* ConstInBoundsGEP1_32(Args&&... args) {
     return mixin_builder()->CreateConstInBoundsGEP1_32(
-        std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* ConstInBoundsGEP1_64(Args&&... args) {
-    return mixin_builder()->CreateConstInBoundsGEP1_64(
         std::forward<Args>(args)...);
   }
 
@@ -140,11 +111,6 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::Value* ICmpULE(Args&&... args) {
-    return mixin_builder()->CreateICmpULE(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
   llvm::Value* ICmpULT(Args&&... args) {
     return mixin_builder()->CreateICmpULT(std::forward<Args>(args)...);
   }
@@ -164,11 +130,6 @@ class IrBuilderMixin {
                            llvm::ArrayRef<unsigned> idxs,
                            const llvm::Twine& name = "") {
     return mixin_builder()->CreateInsertValue(agg, val, idxs, name);
-  }
-
-  template <class... Args>
-  llvm::Value* IntToPtr(Args&&... args) {
-    return mixin_builder()->CreateIntToPtr(std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -207,16 +168,6 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::Value* PointerCast(Args&&... args) {
-    return mixin_builder()->CreatePointerCast(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* PtrToInt(Args&&... args) {
-    return mixin_builder()->CreatePtrToInt(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
   llvm::Value* SDiv(Args&&... args) {
     return mixin_builder()->CreateSDiv(std::forward<Args>(args)...);
   }
@@ -249,11 +200,6 @@ class IrBuilderMixin {
   template <class... Args>
   llvm::Value* VectorSplat(Args&&... args) {
     return mixin_builder()->CreateVectorSplat(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* ZExtOrTrunc(Args&&... args) {
-    return mixin_builder()->CreateZExtOrTrunc(std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -309,11 +255,6 @@ class IrBuilderMixin {
   template <class... Args>
   llvm::Value* FCmpUNO(Args&&... args) {
     return mixin_builder()->CreateFCmpUNO(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* FCmpUGE(Args&&... args) {
-    return mixin_builder()->CreateFCmpUGE(std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -377,11 +318,6 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::Value* MemSet(Args&&... args) {
-    return mixin_builder()->CreateMemSet(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
   llvm::Value* Neg(Args&&... args) {
     return mixin_builder()->CreateNeg(std::forward<Args>(args)...);
   }
@@ -389,21 +325,6 @@ class IrBuilderMixin {
   template <class... Args>
   llvm::Value* Not(Args&&... args) {
     return mixin_builder()->CreateNot(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::PHINode* PHI(Args&&... args) {
-    return mixin_builder()->CreatePHI(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* RetVoid(Args&&... args) {
-    return mixin_builder()->CreateRetVoid(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* SExtOrTrunc(Args&&... args) {
-    return mixin_builder()->CreateSExtOrTrunc(std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -429,11 +350,6 @@ class IrBuilderMixin {
   template <class... Args>
   llvm::Value* UIToFP(Args&&... args) {
     return mixin_builder()->CreateUIToFP(std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::Value* Unreachable(Args&&... args) {
-    return mixin_builder()->CreateUnreachable(std::forward<Args>(args)...);
   }
 
   template <class... Args>
