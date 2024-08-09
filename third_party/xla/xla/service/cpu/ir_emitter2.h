@@ -88,6 +88,8 @@ class IrEmitter2 {
     llvm::Value* z;
   };
 
+  // TODO(abanas): KernelPrototype should be private? It seems like an
+  // implementation detail.
   // A kernel function prototype with all the LLVM values that might be needed
   // to emit the actual kernel body.
   struct KernelPrototype {
@@ -103,13 +105,23 @@ class IrEmitter2 {
     // read and write data from/to leaf arrays.
     std::vector<llvm_ir::IrArray> arguments;
     std::vector<llvm_ir::IrArray> results;
+
+    // TODO(abanas): It seems like this doesn't belong here. But what's the
+    // alternative? Pass only indexes?
+    // Set containing all read-only buffers (i.e. not aliased with any output).
+    absl::flat_hash_set<BufferAllocation::Slice> readonly_buffers;
   };
 
   // Emitted kernel information that defines how to launch it at run time.
   struct KernelInfo {
+    explicit KernelInfo(KernelPrototype prototype,
+                        const se::BlockDim& block_dims,
+                        const se::ThreadDim& thread_dims);
+
     std::string name;
     se::BlockDim block_dims;
     se::ThreadDim thread_dims;
+    absl::flat_hash_set<BufferAllocation::Slice> readonly_buffers;
   };
 
   // Emitted comparator function information (for sort operation).

@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/stream_attribute_annotator.h"
+#include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_rematerialization.h"

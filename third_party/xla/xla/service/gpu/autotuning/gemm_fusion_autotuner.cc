@@ -63,16 +63,16 @@ limitations under the License.
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/instruction_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/priority_fusion.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
+#include "xla/service/gpu/transforms/instruction_fusion.h"
+#include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -363,7 +363,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
       constexpr int64_t kPointerSize = 8;
       return ShapeUtil::ByteSizeOf(shape, kPointerSize);
     };
-    GpuPriorityFusion priority_fusion(
+    PriorityFusion priority_fusion(
         /*thread_pool=*/nullptr, gpu_device_info,
         GpuHloCostAnalysis::Options{/*shape_size=*/shape_size_function,
                                     /*per_second_rates=*/{},

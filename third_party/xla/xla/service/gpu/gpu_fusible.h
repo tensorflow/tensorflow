@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
-// GpuInstructionFusion, FusionMerger, and GpuMultiOutputFusion.
+// GpuInstructionFusion, FusionMerger, and MultiOutputFusion.
 
 namespace xla {
 namespace gpu {

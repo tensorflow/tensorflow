@@ -55,8 +55,9 @@ class AddF32HostKernel : public Thunk::FunctionRegistry {
 };
 
 TEST(KernelThunkTest, CheckAlignment) {
-  auto thunk = KernelThunk::Create({"test"}, {}, {}, "test", se::ThreadDim(),
-                                   /*min_alignment=*/3);
+  auto thunk =
+      KernelThunk::Create({"test"}, {}, {}, "test", se::ThreadDim(), {},
+                          /*min_alignment=*/3);
   EXPECT_TRUE(absl::StrContains(thunk.status().message(),
                                 "minimum alignment 3 is not a power of 2"));
 }
@@ -80,7 +81,36 @@ TEST(KernelThunkTest, AddF32) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice},
-                                      "add_f32", se::ThreadDim(4)));
+                                      "add_f32", se::ThreadDim(4), {in_slice}));
+
+  AddF32HostKernel host_kernels;
+  Thunk::ExecuteParams params = {&host_kernels, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
+
+  std::vector<float> expected = {2.0, 4.0, 6.0, 8.0};
+  EXPECT_EQ(out, expected);
+}
+
+TEST(KernelThunkTest, AddF32Inline) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> in_out = {1.0, 2.0, 3.0, 4.0};
+
+  size_t size_in_bytes = in_out.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation in_out_alloc(0, size_in_bytes, 0);
+
+  BufferAllocation::Slice in_out_slice(&in_out_alloc, 0, size_in_bytes);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      KernelThunk::Create({"add_f32"}, {in_out_slice}, {in_out_slice},
+                          "add_f32", se::ThreadDim(4), {}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -90,7 +120,117 @@ TEST(KernelThunkTest, AddF32) {
   ASSERT_FALSE(execute_event.IsError());
 
   std::vector<float> expected = {2.0, 4.0, 6.0, 8.0};
-  EXPECT_EQ(out, expected);
+  EXPECT_EQ(in_out, expected);
+}
+
+// TODO(abanas): Turn off all KernelThunkReadOnlyBuffersTest in optimized build.
+TEST(KernelThunkReadOnlyBuffersTest, MissingBuffer) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> in = {1.0, 2.0, 3.0, 4.0};
+  std::vector<float> out(4, 0.0);
+
+  size_t size_in_bytes = in.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(in.data(), size_in_bytes));
+  buffers.emplace_back(se::DeviceMemoryBase(out.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation in_alloc(0, size_in_bytes, 0);
+  BufferAllocation out_alloc(1, size_in_bytes, 0);
+
+  BufferAllocation::Slice in_slice(&in_alloc, 0, size_in_bytes);
+  BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
+
+  // Read-only buffer set is incorrect - should include in_slice, but is empty.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice},
+                                      "add_f32", se::ThreadDim(4), {}));
+
+  AddF32HostKernel host_kernels;
+  Thunk::ExecuteParams params = {&host_kernels, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_TRUE(execute_event.IsError());
+
+  auto status = execute_event.GetError();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Mismatch in read-only buffers metadata"));
+}
+
+TEST(KernelThunkReadOnlyBuffersTest, ExtraInputOutputBuffer) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> in_out = {1.0, 2.0, 3.0, 4.0};
+
+  size_t size_in_bytes = in_out.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation in_out_alloc(0, size_in_bytes, 0);
+
+  BufferAllocation::Slice in_out_slice(&in_out_alloc, 0, size_in_bytes);
+
+  // Read-only buffer set is incorrect - should be empty, but contains input
+  // buffer that's not read-only.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      KernelThunk::Create({"add_f32"}, {in_out_slice}, {in_out_slice},
+                          "add_f32", se::ThreadDim(4), {in_out_slice}));
+
+  AddF32HostKernel host_kernels;
+  Thunk::ExecuteParams params = {&host_kernels, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_TRUE(execute_event.IsError());
+
+  auto status = execute_event.GetError();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Mismatch in read-only buffers metadata"));
+}
+
+TEST(KernelThunkReadOnlyBuffersTest, ExtraIncorrectBuffer) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> in = {1.0, 2.0, 3.0, 4.0};
+  std::vector<float> out(4, 0.0);
+  std::vector<float> unrelated(4, 0.0);
+
+  size_t size_in_bytes = in.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(in.data(), size_in_bytes));
+  buffers.emplace_back(se::DeviceMemoryBase(out.data(), size_in_bytes));
+  buffers.emplace_back(se::DeviceMemoryBase(unrelated.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation in_alloc(0, size_in_bytes, 0);
+  BufferAllocation out_alloc(1, size_in_bytes, 0);
+  BufferAllocation unrelated_alloc(2, size_in_bytes, 0);
+
+  BufferAllocation::Slice in_slice(&in_alloc, 0, size_in_bytes);
+  BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
+  BufferAllocation::Slice unrelated_slice(&unrelated_alloc, 0, size_in_bytes);
+
+  // Read-only buffer set contains all read-only buffers, but still it is
+  // incorrect - it contains a buffer that's unrelated to the kernel.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
+                          se::ThreadDim(4), {in_slice, unrelated_slice}));
+
+  AddF32HostKernel host_kernels;
+  Thunk::ExecuteParams params = {&host_kernels, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_TRUE(execute_event.IsError());
+
+  auto status = execute_event.GetError();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Mismatch in read-only buffers metadata"));
 }
 
 }  // namespace

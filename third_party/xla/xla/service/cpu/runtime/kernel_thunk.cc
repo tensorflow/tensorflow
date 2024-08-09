@@ -109,9 +109,11 @@ template <int64_t num_arguments, int64_t num_results>
 KernelThunk<num_arguments, num_results>::KernelThunk(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
+    absl::flat_hash_set<BufferAllocation::Slice> readonly_buffers,
     std::string kernel_name, se::ThreadDim thread_dim,
     std::optional<uint64_t> min_alignment)
     : Thunk(Kind::kKernel, std::move(info)),
+      readonly_buffers_(std::move(readonly_buffers)),
       num_kernel_args_(arguments_buffers.size() + results_buffers.size()),
       kernel_name_(std::move(kernel_name)),
       thread_dim_(thread_dim),
@@ -192,10 +194,12 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
     VlogKernelArgs(arguments_buffers_, results_buffers_, kernel_args);
   }
 
-  // Сheck that all resolved buffers are properly aligned.
+  // Сheck that all resolved buffers are properly aligned, and that invariant
+  // property holds.
   if constexpr (ShouldCheckBufferSlices()) {
     TF_RETURN_IF_ERROR(
         CheckBufferAlignment(info(), min_alignment_.value_or(0), kernel_args));
+    TF_RETURN_IF_ERROR(CheckInvariantBuffers());
   }
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
@@ -236,6 +240,42 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 }
 
 template <int64_t num_arguments, int64_t num_results>
+absl::Status KernelThunk<num_arguments, num_results>::CheckInvariantBuffers()
+    const {
+  // Verify all argument buffers.
+  for (const BufferAllocation::Slice& buffer : arguments_buffers_) {
+    if (readonly_buffers_.contains(buffer)) {
+      // This argument should be read only, i.e. not one of the results.
+      if (absl::c_contains(results_buffers_, buffer)) {
+        return Internal(
+            "Mismatch in read-only buffers metadata, read-only buffer %s "
+            "should not be one of the results",
+            buffer.ToString());
+      }
+    } else {
+      // For completeness, we check that a read write buffer is one of the
+      // results.
+      if (!absl::c_contains(results_buffers_, buffer)) {
+        return Internal(
+            "Mismatch in read-only buffers metadata, read-write buffer %s "
+            "is not one of the results",
+            buffer.ToString());
+      }
+    }
+  }
+
+  // Verify that there are no extra buffers in read-only buffers set.
+  for (auto& buffer : readonly_buffers_) {
+    if (!absl::c_contains(arguments_buffers_, buffer)) {
+      return Internal(
+          "Mismatch in read-only buffers metadata, unknown buffer found: %s",
+          buffer.ToString());
+    }
+  }
+  return absl::OkStatus();
+}
+
+template <int64_t num_arguments, int64_t num_results>
 Thunk::BufferUses KernelThunk<num_arguments, num_results>::buffer_uses() const {
   return KernelBufferUses(arguments_buffers_, results_buffers_);
 }
@@ -259,6 +299,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
     std::string kernel_name, se::ThreadDim thread_dim,
+    absl::flat_hash_set<BufferAllocation::Slice> readonly_buffers,
     std::optional<uint64_t> min_alignment) {
   if (min_alignment.has_value() && !absl::has_single_bit(*min_alignment)) {
     return Internal("Host kernel %s minimum alignment %d is not a power of 2",
@@ -269,7 +310,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     return absl::WrapUnique(
         new SmallKernelThunk<num_arguments(), num_results()>(
             std::move(info), arguments_buffers, results_buffers,
-            std::move(kernel_name), thread_dim, min_alignment));
+            std::move(readonly_buffers), std::move(kernel_name), thread_dim,
+            min_alignment));
   };
 
   static constexpr auto _0 = std::integral_constant<size_t, 0>{};
@@ -295,7 +337,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
   // Return a generic KernelThunk for dynamic numbers of arguments and results.
   return absl::WrapUnique(
       new KernelThunk(std::move(info), arguments_buffers, results_buffers,
-                      std::move(kernel_name), thread_dim, min_alignment));
+                      std::move(readonly_buffers), std::move(kernel_name),
+                      thread_dim, min_alignment));
 }
 
 }  // namespace xla::cpu

@@ -23,8 +23,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/instruction_fusion.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/transforms/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 

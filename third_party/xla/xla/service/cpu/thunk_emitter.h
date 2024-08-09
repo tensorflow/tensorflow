@@ -195,6 +195,13 @@ class ThunkEmitter {
       absl::Span<const HloInstruction* const> operands,
       absl::Span<const PrimitiveType> supported_types);
 
+  // Convenience function that creates a thunk sequence containing given kernel.
+  static absl::StatusOr<ThunkSequence> MakeThunkSequence(
+      const HloInstruction* instruction,
+      const ThunkEmitter::HostKernelAllocationSlices& buffers,
+      const IrEmitter2::KernelInfo& kernel,
+      std::optional<uint64_t> min_alignment = std::nullopt);
+
   IrEmitter2& ir_emitter_;
   const BufferAssignment& buffer_assignment_;
 
