@@ -549,6 +549,61 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
       )")));
 }
 
+TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReductionOfSplittedAxis) {
+  // A split reshape of a reverse creates a sum of strided symbols.
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    computation {
+      p0 = f32[18] parameter(0)
+      bitcast = f32[9,2] bitcast(p0)
+      c0 = f32[] constant(0)
+      reduce_0 = f32[9] reduce(bitcast, c0), dimensions={1}, to_apply=add
+      ROOT reduce_1 = f32[] reduce(reduce_0, c0), dimensions={0}, to_apply=add
+    }
+
+    ENTRY e {
+      p0 = f32[18] parameter(0)
+      ROOT fusion = f32[] fusion(p0), kind=kLoop, calls=computation
+    }
+  )"));
+
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: () -> (0)
+        size_map: () -> (18)
+        stride_map: () -> (1)
+      )")));
+}
+
+TEST_F(SymbolicTileTest, CanPropagateTileThroughSummationOfSymbols) {
+  // Such an indexing map is representative of a sequence of HLOs containing a
+  // bitcast followed by two sequential reductions of the split axis, i.e.
+  // something like
+  //   p0 = f32[18] parameter(0)
+  //   bitcast = f32[9,2] bitcast(p0)
+  //   reduce_0 = f32[9] reduce(bitcast), dimensions={1}
+  //   reduce_1 = f32[] reduce(reduce_0), dimensions={0}
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("()[s0, s1] -> (s1 * 2 + s0)", &mlir_context_), {},
+      {2, 9});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: () -> (0)
+        size_map: () -> (18)
+        stride_map: () -> (1)
+      )")));
+}
+
 TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughSliceOfSplitReshape) {
   // TODO(b/349487906): constraints should allow us to unblock this use case.
