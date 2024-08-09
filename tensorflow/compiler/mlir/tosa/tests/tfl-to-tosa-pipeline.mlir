@@ -2868,6 +2868,39 @@ func.func @test_squared_difference_f32(%arg0: tensor<1x197x768xf32>, %arg1: tens
 
 // -----
 
+// CHECK-LABEL: test_squared_difference_with_unequal_ranks_qi8
+// CHECK: %[[VAL_0:.*]]: tensor<1x304x1x44x!quant.uniform<i8:f32, 0.6395336389541626:-2>>
+// CHECK: %[[VAL_1:.*]]: tensor<44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>) -> tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>>
+// CHECK: %[[VAL_2:.*]] = tosa.reshape %[[VAL_1]] {new_shape = array<i64: 1, 1, 1, 44>} : (tensor<44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>) -> tensor<1x1x1x44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>
+// CHECK: %[[VAL_3:.*]] = tosa.rescale %[[VAL_0]] {double_round = true, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 23>} : (tensor<1x304x1x44x!quant.uniform<i8:f32, 0.6395336389541626:-2>>) -> tensor<1x304x1x44xi32>
+// CHECK: %[[VAL_4:.*]] = tosa.rescale %[[VAL_2]] {double_round = true, input_zp = -16 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 23>} : (tensor<1x1x1x44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>) -> tensor<1x1x1x44xi32>
+// CHECK: %[[VAL_5:.*]] = tosa.rescale %[[VAL_3]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 31>} : (tensor<1x304x1x44xi32>) -> tensor<1x304x1x44xi32>
+// CHECK: %[[VAL_6:.*]] = tosa.rescale %[[VAL_4]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 1091903658>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 38>} : (tensor<1x1x1x44xi32>) -> tensor<1x1x1x44xi32>
+// CHECK: %[[VAL_7:.*]] = tosa.sub %[[VAL_5]], %[[VAL_6]] : (tensor<1x304x1x44xi32>, tensor<1x1x1x44xi32>) -> tensor<1x304x1x44xi32>
+// CHECK: %[[VAL_8:.*]] = tosa.mul %[[VAL_7]], %[[VAL_7]] {shift = 0 : i8} : (tensor<1x304x1x44xi32>, tensor<1x304x1x44xi32>) -> tensor<1x304x1x44xi32>
+// CHECK: %[[VAL_9:.*]] = tosa.rescale %[[VAL_8]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 2132442608>, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i8: 49>} : (tensor<1x304x1x44xi32>) -> tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>>
+// CHECK: return %[[VAL_9]] : tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>>
+func.func @test_squared_difference_with_unequal_ranks_qi8(%arg0: tensor<1x304x1x44x!quant.uniform<i8:f32, 0.6395336389541626:-2>>, %arg1: tensor<44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>) -> tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x304x1x44x!quant.uniform<i8:f32, 0.6395336389541626:-2>>, tensor<44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>) -> tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>>
+  func.return %0 : tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>>
+}
+
+// -----
+
+// CHECK-LABEL: test_squared_difference_with_unequal_ranks_f32
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x304x1x44xf32>,
+// CHECK-SAME: %[[VAL_1:.*]]: tensor<44xf32>) -> tensor<1x304x1x44xf32>
+// CHECK: %[[VAL_2:.*]] = tosa.reshape %[[VAL_1]] {new_shape = array<i64: 1, 1, 1, 44>} : (tensor<44xf32>) -> tensor<1x1x1x44xf32>
+// CHECK: %[[VAL_3:.*]] = tosa.sub %[[VAL_0]], %[[VAL_2]] : (tensor<1x304x1x44xf32>, tensor<1x1x1x44xf32>) -> tensor<1x304x1x44xf32>
+// CHECK: %[[VAL_4:.*]] = tosa.mul %[[VAL_3]], %[[VAL_3]] {shift = 0 : i8} : (tensor<1x304x1x44xf32>, tensor<1x304x1x44xf32>) -> tensor<1x304x1x44xf32>
+// CHECK: return %[[VAL_4]] : tensor<1x304x1x44xf32>
+func.func @test_squared_difference_with_unequal_ranks_f32(%arg0: tensor<1x304x1x44xf32>, %arg1: tensor<44xf32>) -> tensor<1x304x1x44xf32> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x304x1x44xf32>, tensor<44xf32>) -> tensor<1x304x1x44xf32>
+  func.return %0 : tensor<1x304x1x44xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_broadcast_to_f32
 // CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<-0.000000e+00> : tensor<3x3x13x7xf32>}
 // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 13, 1>} : (tensor<13x1xf32>)
