@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/lib/arithmetic.h"
@@ -32,17 +32,14 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
-#include "xla/literal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/ops_util.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {

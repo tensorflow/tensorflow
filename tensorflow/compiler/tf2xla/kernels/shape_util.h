@@ -19,6 +19,8 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
