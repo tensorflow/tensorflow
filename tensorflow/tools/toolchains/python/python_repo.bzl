@@ -5,6 +5,7 @@ Version can be set via build parameter "--repo_env=TF_PYTHON_VERSION=3.10"
 Defaults to 3.10.
 
 To set wheel name, add "--repo_env=WHEEL_NAME=tensorflow_cpu"
+To set output path, add "--repo_env=OUTPUT_PATH=/tf/pkg"
 """
 
 VERSIONS = ["3.9", "3.10", "3.11", "3.12"]
@@ -21,6 +22,7 @@ TF_PYTHON_VERSION = "{}"
 HERMETIC_PYTHON_VERSION = "{}"
 WHEEL_NAME = "{}"
 WHEEL_COLLAB = "{}"
+OUTPUT_PATH = "{}"
 """
 
 def _python_repository_impl(repository_ctx):
@@ -28,15 +30,16 @@ def _python_repository_impl(repository_ctx):
     version = repository_ctx.os.environ.get("TF_PYTHON_VERSION", "")
     wheel_name = repository_ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = repository_ctx.os.environ.get("WHEEL_COLLAB", False)
+    output_path = repository_ctx.os.environ.get("OUTPUT_PATH", None)
     if version not in VERSIONS:
         print(WARNING)  # buildifier: disable=print
         version = DEFAULT_VERSION
     repository_ctx.file(
         "py_version.bzl",
-        content.format(version, version, wheel_name, wheel_collab),
+        content.format(version, version, wheel_name, wheel_collab, output_path),
     )
 
 python_repository = repository_rule(
     implementation = _python_repository_impl,
-    environ = ["TF_PYTHON_VERSION", "WHEEL_NAME", "WHEEL_COLLAB"],
+    environ = ["TF_PYTHON_VERSION", "WHEEL_NAME", "WHEEL_COLLAB", "OUTPUT_PATH"],
 )

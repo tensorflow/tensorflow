@@ -23,17 +23,18 @@ Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 6) `--xla_aot` - paths to files that should be in xla_aot directory. 
 """
 
-load("@python_version_repo//:py_version.bzl", "WHEEL_COLLAB", "WHEEL_NAME")
+load("@python_version_repo//:py_version.bzl", "WHEEL_COLLAB", "WHEEL_NAME", "OUTPUT_PATH")
 load("//tensorflow:tensorflow.bzl", "VERSION")
 
 def _tf_wheel_impl(ctx):
     executable = ctx.executable.wheel_binary
 
     output = ctx.actions.declare_directory("wheel_house")
+    output_path = OUTPUT_PATH if OUTPUT_PATH else output.path
     args = ctx.actions.args()
     args.add("--project-name", WHEEL_NAME)
     args.add("--collab", str(WHEEL_COLLAB))
-    args.add("--output-name", output.path)
+    args.add("--output-name", output_path)
     args.add("--version", VERSION)
 
     headers = ctx.files.headers[:]
