@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <atomic>
 #include <cstddef>
+#include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -24,47 +26,117 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tsl/platform/macros.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
 namespace profiler {
 
-// Returns the annotation data for the given generation.
-static auto GetAnnotationData(const std::atomic<int>& atomic) {
-  static thread_local struct {
-    int generation = 0;
-    std::vector<size_t> stack;
-    std::string string;
-  } data;
-  int generation = atomic.load(std::memory_order_acquire);
-  if (generation != data.generation) {
-    data = {generation};
+namespace {
+
+constexpr std::string_view kAnnotationDelimiter = "::";
+
+struct StringGeneratorAndView {
+  AnnotationStack::Generator generator;
+  std::optional<std::string_view> view;
+
+  explicit StringGeneratorAndView(std::function<std::string_view()>&& gen)
+      : generator(std::move(gen)) {}
+
+  std::string_view GetStringView() {
+    if (!view.has_value()) {
+      view = generator();
+    }
+    return *view;
   }
-  return std::make_pair(&data.stack, &data.string);
 };
 
-void AnnotationStack::PushAnnotation(std::string_view name) {
-  auto [stack, string] = GetAnnotationData(generation_);
-  stack->push_back(string->size());
-  if (!string->empty()) {
-    return absl::StrAppend(
-        string, "::", absl::string_view(name.data(), name.size())  // NOLINT
-    );
+struct AnnotationStackData {
+  int generation = 0;
+  std::vector<StringGeneratorAndView> stack;
+  std::string string;
+
+  void RebuildString() {
+    string.clear();
+    for (auto& level : stack) {
+      auto level_str = level.GetStringView();
+      if (level_str.empty()) continue;
+      if (!string.empty()) {
+        absl::StrAppend(&string, kAnnotationDelimiter, level_str);
+      } else {
+        string.assign(level_str);
+      }
+    }
   }
-  string->assign(name);
+
+  void AppendStringWithStackTop() {
+    if (TF_PREDICT_FALSE(stack.empty())) return;
+    std::string_view back_str = stack.back().GetStringView();
+    if (TF_PREDICT_FALSE(back_str.empty())) return;
+    if (!string.empty()) {
+      absl::StrAppend(&string, kAnnotationDelimiter, back_str);
+    } else {
+      string.assign(back_str);
+    }
+  }
+
+  void PopStringByStackTop() {
+    if (TF_PREDICT_FALSE(stack.empty())) return;
+    std::string_view back_str = stack.back().GetStringView();
+    if (TF_PREDICT_FALSE(back_str.empty())) return;
+    size_t shrink_size = kAnnotationDelimiter.size() + back_str.size();
+    size_t remained_size =
+        (shrink_size <= string.size() ? (string.size() - shrink_size) : 0);
+    string.resize(remained_size);
+  }
+};
+
+// Returns the annotation data for the given generation.
+AnnotationStackData& GetStackData() {
+  static thread_local AnnotationStackData data;
+  return data;
+}
+
+};  // namespace
+
+// Note the life cycle of the name, it must be always valid before the
+// annotation is popped.
+void AnnotationStack::PushAnnotationGenerator(
+    std::function<std::string_view()> generator) {
+  auto& data = GetStackData();
+  data.stack.emplace_back(std::move(generator));
+
+  int target_generation = generation_.load(std::memory_order_acquire);
+  if (target_generation != data.generation) {
+    if (target_generation & 1) {
+      data.RebuildString();
+    }
+    data.generation = target_generation;
+  } else {
+    if (target_generation & 1) {
+      data.AppendStringWithStackTop();
+    }
+  }
 }
 
 void AnnotationStack::PopAnnotation() {
-  auto [stack, string] = GetAnnotationData(generation_);
-  if (stack->empty()) {
-    return string->clear();
+  auto& data = GetStackData();
+  if (data.stack.empty()) return;
+  int target_generation = generation_.load(std::memory_order_acquire);
+  if ((target_generation & 1) && target_generation == data.generation) {
+    data.PopStringByStackTop();
   }
-  string->resize(stack->back());
-  stack->pop_back();
+  data.stack.pop_back();
 }
 
 const string& AnnotationStack::Get() {
-  return *std::get<std::string*>(GetAnnotationData(generation_));
+  auto& data = GetStackData();
+  int target_generation = generation_.load(std::memory_order_acquire);
+  if ((target_generation & 1) && target_generation != data.generation) {
+    data.RebuildString();
+    data.generation = target_generation;
+  }
+  return data.string;
 }
 
 void AnnotationStack::Enable(bool enable) {
