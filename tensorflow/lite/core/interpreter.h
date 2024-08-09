@@ -335,21 +335,25 @@ class Interpreter {
   }
 
   /// \brief Returns a pointer to the SignatureRunner instance to run the part
-  /// of the graph identified by a SignatureDef. The nullptr is returned if the
-  /// given signature key is not valid.
+  /// of the graph identified by a SignatureDef.  If the model does not have any
+  /// signature defs, pass nullptr as signature_key and a SignatureRunner will
+  /// be created using the primary subgraph (0).  A nullptr is returned if the
+  /// given signature_key is not valid.  Note, the returned SignatureRunner
+  /// instance is owned by and has the same lifetime as the Interpreter object;
+  /// additionally, class SignatureRunner is *not* thread-safe.
   /// If you need to specify delegates, you have to do that before calling this
   /// function. This function will additionally apply default delegates. Thus,
   /// applying delegates after that might lead to undesirable behaviors.
-  /// Note, the pointed instance has lifetime same as the Interpreter object
-  /// and the SignatureRunner class is *not* thread-safe.
   SignatureRunner* GetSignatureRunner(const char* signature_key);
 
-  /// \warning Experimental interface, subject to change. \n
-  /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
-  /// part of the graph identified by a SignatureDef. The nullptr is returned if
-  /// the given signature key is not valid.
-  /// if the model does not have signature def, pass nullptr to signature_key
-  /// and AsyncSignatureRunner will be created using primary subgraph (0).
+  /// \warning Experimental interface, subject to change. \n \brief Returns a
+  /// pointer to the AsyncSignatureRunner instance to run the part of the graph
+  /// identified by a SignatureDef.  If the model does not have any signature
+  /// defs, pass nullptr as signature_key and an AsyncSignatureRunner will be
+  /// created using the primary subgraph (0).  A nullptr is returned if the
+  /// given signature_key is not valid.  Note, the returned AsyncSignatureRunner
+  /// instance is owned by and has the same lifetime as the Interpreter object;
+  /// additionally, class AsyncSignatureRunner is *not* thread-safe.
   /// The async delegate should be applied before calling this function.
   async::AsyncSignatureRunner* GetAsyncSignatureRunner(
       const char* signature_key);
@@ -905,6 +909,10 @@ class Interpreter {
 
   TfLiteStatus ApplyOptionsImpl(InterpreterOptions* options);
 
+  std::unique_ptr<internal::SignatureDef> CreatePlaceholderSignatureDef();
+  std::pair<const char*, bool> ReplaceWithPlaceholderSignatureKeyIfNeeded(
+      const char* signature_key);
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -963,6 +971,13 @@ class Interpreter {
 
   // List of SignatureDefs obtained from the model.
   std::vector<internal::SignatureDef> signature_defs_;
+
+  // Default signature key to use when the model has no signatures.
+  static constexpr char kPlaceholderSignatureDefKey[] =
+      "<placeholder signature>";
+
+  // Placeholder SignatureDef for legacy models with no signatures.
+  std::unique_ptr<internal::SignatureDef> placeholder_signature_def_;
 
   // Map of signature key to its corresponding SignatureRunner object.
   // A SignatureRunner is basically a wrapper of the Subgraph corresponding to

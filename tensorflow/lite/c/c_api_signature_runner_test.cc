@@ -24,6 +24,94 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+TEST(SignatureRunnerTest, TestNoSignatures) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/no_signatures.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreate(model, /*optional_options=*/nullptr);
+  ASSERT_NE(interpreter, nullptr);
+
+  int nun_signatures = TfLiteInterpreterGetSignatureCount(interpreter);
+  ASSERT_EQ(nun_signatures, 0);
+
+  ASSERT_EQ(TfLiteInterpreterGetSignatureRunner(interpreter, "foo"), nullptr);
+
+  TfLiteSignatureRunner* runner =
+      TfLiteInterpreterGetSignatureRunner(interpreter, nullptr);
+  ASSERT_NE(runner, nullptr);
+
+  int num_interpreter_inputs =
+      TfLiteInterpreterGetInputTensorCount(interpreter);
+  int num_runner_inputs = TfLiteSignatureRunnerGetInputCount(runner);
+  ASSERT_EQ(num_runner_inputs, num_interpreter_inputs);
+
+  for (int i = 0; i < num_interpreter_inputs; ++i) {
+    auto* interpreter_input_tensor =
+        TfLiteInterpreterGetInputTensor(interpreter, i);
+    ASSERT_NE(interpreter_input_tensor, nullptr);
+    auto* interpreter_input_name = TfLiteTensorName(interpreter_input_tensor);
+    ASSERT_NE(interpreter_input_name, nullptr);
+    auto* runner_input_name = TfLiteSignatureRunnerGetInputName(runner, i);
+    ASSERT_NE(runner_input_name, nullptr);
+    EXPECT_STREQ(runner_input_name, interpreter_input_name);
+    auto* runner_input_tensor =
+        TfLiteSignatureRunnerGetInputTensor(runner, interpreter_input_name);
+    ASSERT_NE(runner_input_tensor, nullptr);
+    ASSERT_EQ(runner_input_tensor, interpreter_input_tensor);
+  }
+
+  int num_interpreter_outputs =
+      TfLiteInterpreterGetOutputTensorCount(interpreter);
+  int num_runner_outputs = TfLiteSignatureRunnerGetOutputCount(runner);
+  ASSERT_EQ(num_runner_outputs, num_interpreter_outputs);
+
+  for (int i = 0; i < num_interpreter_outputs; ++i) {
+    auto* interpreter_output_tensor =
+        TfLiteInterpreterGetOutputTensor(interpreter, i);
+    ASSERT_NE(interpreter_output_tensor, nullptr);
+    auto* interpreter_output_name = TfLiteTensorName(interpreter_output_tensor);
+    ASSERT_NE(interpreter_output_name, nullptr);
+    auto* runner_output_name = TfLiteSignatureRunnerGetOutputName(runner, i);
+    ASSERT_NE(runner_output_name, nullptr);
+    EXPECT_STREQ(runner_output_name, interpreter_output_name);
+    auto* runner_output_tensor =
+        TfLiteSignatureRunnerGetOutputTensor(runner, interpreter_output_name);
+    ASSERT_NE(runner_output_tensor, nullptr);
+    ASSERT_EQ(runner_output_tensor, interpreter_output_tensor);
+  }
+
+  std::array<int, 1> input_dims{2};
+  ASSERT_EQ(TfLiteSignatureRunnerResizeInputTensor(
+                runner, "x1", input_dims.data(), input_dims.size()),
+            kTfLiteOk);
+  ASSERT_EQ(TfLiteSignatureRunnerResizeInputTensor(
+                runner, "x2", input_dims.data(), input_dims.size()),
+            kTfLiteOk);
+  ASSERT_EQ(TfLiteSignatureRunnerAllocateTensors(runner), kTfLiteOk);
+  TfLiteTensor* input1 = TfLiteSignatureRunnerGetInputTensor(runner, "x1");
+  ASSERT_NE(input1, nullptr);
+  TfLiteTensor* input2 = TfLiteSignatureRunnerGetInputTensor(runner, "x2");
+  ASSERT_NE(input2, nullptr);
+  ASSERT_EQ(TfLiteSignatureRunnerGetInputTensor(runner, "foo"), nullptr);
+  const TfLiteTensor* output =
+      TfLiteSignatureRunnerGetOutputTensor(runner, "Identity");
+  ASSERT_NE(output, nullptr);
+  ASSERT_EQ(TfLiteSignatureRunnerGetOutputTensor(runner, "foo"), nullptr);
+  input1->data.f[0] = -8;
+  input1->data.f[1] = 0.5;
+  input2->data.f[0] = -1;
+  input2->data.f[1] = 1.5;
+  ASSERT_EQ(TfLiteSignatureRunnerInvoke(runner), kTfLiteOk);
+  ASSERT_EQ(output->data.f[0], 0);
+  ASSERT_EQ(output->data.f[1], 2);
+
+  TfLiteSignatureRunnerDelete(runner);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+}
+
 TEST(SignatureRunnerTest, TestMultiSignatures) {
   TfLiteModel* model = TfLiteModelCreateFromFile(
       "tensorflow/lite/testdata/multi_signatures.bin");
