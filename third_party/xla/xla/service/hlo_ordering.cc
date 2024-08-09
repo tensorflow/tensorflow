@@ -269,6 +269,13 @@ bool HloOrdering::UsesBeforeValueDefinition(
               << "  use is value def, and instruction can share use buffer.";
           return true;
         }
+
+        // The use at a custom host compute call occurs before values that are
+        // defined in the called computation of the wrapped instruction.
+        if (use.instruction->IsCustomCall("HostExecute")) {
+          return true;
+        }
+
         break;
       }
       case HloOrdering::ExecutionConstraint::kRunExclusiveAfter:
@@ -371,6 +378,20 @@ bool HloOrdering::UsesBeforeValueDefinition(
       if (call_graph_->InstructionIsNestedIn(
               value.defining_instruction(),
               async->async_wrapped_instruction()->to_apply())) {
+        VLOG(4) << "  use is async " << use.instruction->name()
+                << " and def is in called computation";
+        return true;
+      }
+    }
+    // The use at an async host offloaded call occurs before values that are
+    // defined in the called computation of the async wrapped instruction.
+    if (use.instruction->IsAsynchronous() &&
+        use.instruction->async_execution_thread() ==
+            HloInstruction::kHostThread) {
+      HloComputation* called_computation =
+          use.instruction->async_wrapped_computation();
+      if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                             called_computation)) {
         VLOG(4) << "  use is async " << use.instruction->name()
                 << " and def is in called computation";
         return true;
