@@ -1085,6 +1085,11 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 #endif  // GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
                       BuildGpuTopology(global_topology));
+
+  if (enable_mock_nccl) {
+    // Only use the first device when mocking NCCL calls.
+    devices.resize(1);
+  }
   return std::make_pair(std::move(devices), gpu_topology);
 }
 
@@ -1207,7 +1212,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.begin()->second->executor());
 
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
   if (options.enable_mock_nccl) {
     gpu_run_options->set_enable_mock_nccl_collectives();

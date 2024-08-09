@@ -482,6 +482,14 @@ FunctionalHloRunner::LoadHloModuleAndArguments(absl::string_view hlo_file,
   return hlo_module_and_arguments;
 }
 
+static DeviceAssignment DummyDeviceAssignment(const CompileOptions& options) {
+  int num_replicas = options.executable_build_options.num_replicas();
+  int num_partitions = options.executable_build_options.num_partitions();
+  DeviceAssignment assignment(num_replicas, num_partitions);
+  assignment.Fill(0);
+  return assignment;
+}
+
 absl::Status FunctionalHloRunner::LoadAndRunAndDump(
     PjRtClient& client, const DebugOptions& debug_options,
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
@@ -494,6 +502,16 @@ absl::Status FunctionalHloRunner::LoadAndRunAndDump(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
                                                 task_id, num_nodes, kv_store));
+
+  if (client.addressable_device_count() <
+      compile_options.executable_build_options.num_replicas() *
+          compile_options.executable_build_options.num_partitions()) {
+    LOG(INFO)
+        << "Not enough addressable devices, populating with dummy assignment";
+    compile_options.executable_build_options.set_device_assignment(
+        DummyDeviceAssignment(compile_options));
+  }
+
   TF_ASSIGN_OR_RETURN(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
       FunctionalHloRunner::LoadAndRun(client, debug_options, preproc_options,
@@ -546,17 +564,13 @@ absl::Status FunctionalHloRunner::LoadAndCompile(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
                                                 task_id, num_nodes, kv_store));
-
-  int num_replicas = compile_options.executable_build_options.num_replicas();
-  int num_partitions =
-      compile_options.executable_build_options.num_partitions();
-  int needed_devices = num_replicas * num_partitions;
-  if (client.addressable_device_count() < needed_devices) {
-    LOG(INFO) << "Applying a workaround to allow compiling multi-device HLOs "
-                 "on machines with fewer devices.";
-    DeviceAssignment assignment(num_replicas, num_partitions);
-    assignment.Fill(0);
-    compile_options.executable_build_options.set_device_assignment(assignment);
+  if (client.addressable_device_count() <
+      compile_options.executable_build_options.num_replicas() *
+          compile_options.executable_build_options.num_partitions()) {
+    LOG(INFO)
+        << "Not enough addressable devices, populating with dummy assignment";
+    compile_options.executable_build_options.set_device_assignment(
+        DummyDeviceAssignment(compile_options));
   }
 
   TF_ASSIGN_OR_RETURN(

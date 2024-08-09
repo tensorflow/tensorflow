@@ -237,6 +237,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:compilation_environments",
+        "//xla/service:dump",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:redzone_allocator",

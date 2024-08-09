@@ -190,6 +190,7 @@ xla_test(
         "data/sharded_2_devices.hlo",
         "data/single_device.hlo",
         "data/single_device_tupled.hlo",
+        "data/spmd_8_devices.hlo",
     ],
     tags = ["nomac"],
     deps = [

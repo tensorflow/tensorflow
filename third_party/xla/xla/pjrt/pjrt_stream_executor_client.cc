@@ -2382,9 +2382,13 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
             << device_assignment_->ToString();
     CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
 
+    bool mock_collectives =
+        client_ && client_->gpu_run_options() &&
+        client_->gpu_run_options()->enable_mock_nccl_collectives();
+
     if ((device_assignment_->replica_count() > 1 ||
          device_assignment_->computation_count() > 1) &&
-        IsAllZeros(*device_assignment_)) {
+        IsAllZeros(*device_assignment_) && !mock_collectives) {
       // This code path should only be triggered when we intentionally compile
       // an HLO without having enough devices to actually run it. See the
       // "--run=false" option in
@@ -2393,7 +2397,7 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
       LOG(INFO)
           << "A workaround is in effect to allow compiling multi-device "
              "HLOs on machines with fewer devices. Don't run this executable.";
-    } else {
+    } else if (!mock_collectives) {
       CHECK_LE(addressable_devices_.size(), client_->addressable_device_count())
           << "Inconsistent local device count.";
     }
@@ -3464,6 +3468,12 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
           addressable_devices.front()->local_hardware_id().value());
     }
   }
+
+  if (gpu_run_options_ && gpu_run_options_->enable_mock_nccl_collectives()) {
+    addressable_devices.resize(1);
+    addressable_device_logical_ids.resize(1);
+  }
+
   return extras;
 }
 

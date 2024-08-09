@@ -279,6 +279,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override {
+    if (gpu_run_options_ && gpu_run_options_->enable_mock_nccl_collectives()) {
+      return addressable_devices()[0];
+    }
     auto it = id_to_device_.find(global_device_id.value());
     if (it != id_to_device_.end()) {
       return it->second;

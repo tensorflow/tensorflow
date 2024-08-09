@@ -1,0 +1,8 @@
+HloModule module, entry_computation_layout={(f32[8,16]{0,1}, f32[16,24]{1,0})->f32[8,24]{1,0}}
+
+ENTRY main {
+    %p0 = f32[8,16]  parameter(0), sharding={devices=[1,8]<=[8]}
+    %p1 = f32[16,24] parameter(1), sharding={devices=[8,1]<=[8]}
+    ROOT %dot = f32[8,24] dot(%p0, %p1), lhs_contracting_dims={1},
+     rhs_contracting_dims={0}
+}

@@ -341,6 +341,32 @@ TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
       InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectivesSingleNode) {
+  // This test corresponds to:
+  // --use_spmd_partitioning=true --num_replicas=1 --num_partitions=16
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.spmd_mode =
+      FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 8;
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          CreateMockGpuClient(1));
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("spmd_8_devices.hlo")}, InputFormat::kText));
+}
+
 }  // namespace
 }  // namespace xla
 
