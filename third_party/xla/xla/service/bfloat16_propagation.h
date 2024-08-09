@@ -154,6 +154,10 @@ class BFloat16Propagation : public HloModulePass {
   // by the given HLO.
   void AdjustCalledComputationRoot(HloInstruction* hlo);
 
+  // Ensures that if any instruction is to be changed to BF16 and does not
+  // support mixed precision, all of its operands must also be changed to BF16.
+  void ResolveForSupportOfMixedPrecision();
+
   // ***************************
   // Functions called after changes in changes_to_bf16_ are applied.
 
