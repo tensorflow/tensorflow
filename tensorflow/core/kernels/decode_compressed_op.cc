@@ -47,7 +47,7 @@ class MemoryInputStream : public io::InputStreamInterface {
       s = errors::OutOfRange("reached end of file");
     }
     if (bytes > 0) {
-      result->resize(bytes);
+      result->resize_uninitialized(bytes);
       memcpy(&(*result)[0], &buf_[pos_], bytes);
       pos_ += bytes;
     }
@@ -107,6 +107,8 @@ class DecodeCompressedOp : public OpKernel {
                 input_stream.get(), static_cast<size_t>(kBufferSize),
                 static_cast<size_t>(kBufferSize), zlib_options));
         tstring output_string;
+        // Compressed size will almost certainly be >= compressed size.
+        output_string.reserve(bytes_flat(i).size());
         Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
         OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
         output_flat(i) = std::move(output_string);
