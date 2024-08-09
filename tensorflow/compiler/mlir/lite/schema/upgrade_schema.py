@@ -31,7 +31,7 @@ import subprocess
 import sys
 import tempfile
 
-import tensorflow as tf
+from tensorflow.compat import v1 as tf1
 from tensorflow.python.platform import resource_loader
 
 parser = argparse.ArgumentParser(
@@ -343,4 +343,4 @@ def main(argv):
 
 if __name__ == "__main__":
   FLAGS, unparsed = parser.parse_known_args()
-  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
