@@ -142,7 +142,7 @@ class AllocationValue {
     std::vector<HloPosition> aliases;
     // The sync copy instruction that produced the allocation value that this
     // use is consuming.
-    HloInstruction* copy_source = nullptr;
+    HloInstruction* original_sync_instruction = nullptr;
 
     bool operator==(const Use& other) const {
       return hlo_use == other.hlo_use && time == other.time &&
@@ -402,13 +402,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Given an HloValue, returns a group of HloValues that are connected to it by
   // replaceable sync copy candidates that feed into or follow from that value.
-  std::vector<const HloValue*> GetJointProcessedValuesForSyncCopyReplacement(
+  std::vector<const HloValue*> GetJointProcessedValuesForSyncReplacement(
       const HloValue* entrance_value) const;
 
   // Updates sorted_sync_copy_replacement_candidates_ with synchronous copy
   // instructions that connect the given joint processed values, and meet the
   // conditions in IsReplaceableSyncCopyCandidate().
-  void UpdateSyncCopyCandidatesForJointProcessedValues(
+  void UpdateSyncCandidatesForJointProcessedValues(
       const std::vector<const HloValue*>& joint_processed_values);
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
@@ -514,6 +514,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     absl::Span<const int64_t> all_use_times;
     // See the comment for require_copy_allocation
     HloInstruction* required_copy_allocation_for;
+    bool required_copy_for_slice;
+    AllocationValue* queuing_allocation_value;
     // Data structure that contains the options for making window prefetched
     // allocations.
     const WindowPrefetchedAllocation::Options* window_prefetch_options =
@@ -764,7 +766,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // 1. Layout-changing copies
   // 2. Copied value appears in more than one position
   // 3. Instruction operand or output has a pre-specified memory space
+  bool IsReplaceableSyncCandidate(const HloInstruction* instruction) const;
+
   bool IsReplaceableSyncCopyCandidate(const HloInstruction* instruction) const;
+
+  bool IsReplaceableSyncSliceCandidate(const HloInstruction* instruction) const;
 
   // Allocates buffers for instructions that need reserved scoped allocations in
   // the alternate memory space.
@@ -825,9 +831,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // account instruction schedules, operation type (e.g., sequential vs.
   // non-sequential calls), and prior usage patterns.
   AllocationRequest CreateAllocationRequest(
-      AllocationValue& allocation_value, const AllocationValue::Use& use,
-      const AllocationValue::Use* previous_use, AliasedOffset* preferred_offset,
-      int64_t definition_time, bool require_no_copy_alternate_mem_allocation,
+      AllocationValue& allocation_value,
+      AllocationValue& queuing_allocation_value,
+      const AllocationValue::Use& use, const AllocationValue::Use* previous_use,
+      AliasedOffset* preferred_offset, int64_t definition_time,
+      bool require_no_copy_alternate_mem_allocation,
       const std::vector<int64_t>& all_use_times);
 
   // Finds allocations for allocation values generated from colocated intervals.
@@ -1034,7 +1042,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                          int64_t copy_done_schedule_before_time,
                          AllocationSequence* allocations,
                          AliasedOffset* aliased_offset, float resource,
-                         std::optional<int> cross_program_prefetch_index);
+                         std::optional<int> cross_program_prefetch_index,
+                         bool is_async_slice);
 
   // Adds an asynchronous copy to allocations.
   void AddAsyncCopy(
@@ -1043,7 +1052,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       int64_t end_time, int64_t copy_done_schedule_before_time,
       AllocationSequence* allocations, AliasedOffset* aliased_offset,
       float resource,
-      std::optional<int> cross_program_prefetch_index = std::nullopt);
+      std::optional<int> cross_program_prefetch_index = std::nullopt,
+      bool is_async_slice = false, HloInstruction* sync_instruction = nullptr);
 
   // For prefetching, adds a SlicedCopyAllocation to allocations. Also updates
   // asynchronous copy data structures, prefetch_interval_tree_, and aliasing
@@ -1099,6 +1109,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // value.
   void CreateAllocationValuesForJointProcessedIntervals(
       const std::vector<const HloValue*>& joint_processed_values,
+      std::vector<AllocationValue>& joint_allocation_values,
+      std::vector<std::vector<const MsaBufferInterval*>>&
+          joint_colocated_intervals);
+
+  void UpdateAllocationValuesAndColocatedIntervalsForInterval(
+      MsaBufferInterval& interval,
+      std::vector<const HloValue*>& joint_processed_values,
       std::vector<AllocationValue>& joint_allocation_values,
       std::vector<std::vector<const MsaBufferInterval*>>&
           joint_colocated_intervals);
@@ -1228,8 +1245,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::flat_hash_set<const HloValue*> finalized_values_;
   // Set of sync copy instructions that we failed/succeeded in replacing with
   // asynchronous copies.
-  absl::flat_hash_set<const HloInstruction*> failed_copy_replacements_set_;
-  absl::flat_hash_set<const HloInstruction*> successful_copy_replacements_set_;
+  absl::flat_hash_set<const HloInstruction*> failed_async_conversion_set_;
+  absl::flat_hash_set<const HloInstruction*> successful_async_conversion_set_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;

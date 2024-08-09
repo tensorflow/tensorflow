@@ -94,6 +94,8 @@ class PrefetchIntervalPicker {
   // Returns the latest time the prefetch interval picker will have pick.
   virtual int64_t latest_time() const = 0;
 
+  virtual void SetShapeOverride(const Shape& shape_override) = 0;
+
   // The retry number can be used to modify the interval picking policies. The
   // first attempt will have a retry_number of 0, then 1, etc.
   virtual void SetRetryNumber(int retry_number) {
@@ -164,6 +166,10 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   float GetLogicalIntervalElapsed(int64_t start_time,
                                   int64_t end_time) const override;
 
+  void SetShapeOverride(const Shape& shape_override) override {
+    shape_override_ = shape_override;
+  }
+
   void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
              std::optional<int64_t> preferred_time) override;
 
@@ -181,6 +187,7 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t max_overlap_count_;
   int64_t end_time_;
   int64_t current_prefetch_time_;
+  std::optional<Shape> shape_override_;
 };
 
 // Prefetch interval picker that uses cost analysis to overlap asynchronous
@@ -247,6 +254,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   std::optional<float> BufferIntervalAlternateMemoryBenefit(
       const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
       const override;
+
+  void SetShapeOverride(const Shape& shape_override) override {
+    shape_override_ = shape_override;
+  }
 
  private:
   // Finds the minimum nest level in the given interval.
