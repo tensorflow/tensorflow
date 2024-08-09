@@ -586,9 +586,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_glog_glog",
-        sha256 = "f28359aeba12f30d73d9e4711ef356dc842886968112162bc73002645139c39c",
-        strip_prefix = "glog-0.4.0",
-        urls = tf_mirror_urls("https://github.com/google/glog/archive/refs/tags/v0.4.0.tar.gz"),
+        sha256 = "375106b5976231b92e66879c1a92ce062923b9ae573c42b56ba28b112ee4cc11",
+        strip_prefix = "glog-0.7.0",
+        urls = tf_mirror_urls("https://github.com/google/glog/archive/refs/tags/v0.7.0.tar.gz"),
     )
 
 # buildifier: disable=unnamed-macro
