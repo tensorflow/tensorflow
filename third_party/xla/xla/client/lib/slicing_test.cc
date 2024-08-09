@@ -35,10 +35,6 @@ xla::Array2D<float> BValsRight() {
   return {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}};
 }
 
-xla::Array2D<float> BValsLeft() {
-  return {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}};
-}
-
 xla::Array2D<float> AValsFull() {
   return {{2, 0, 1, 2}, {3, 6, 0, 1}, {4, 7, 9, 0}, {5, 8, 10, 11}};
 }

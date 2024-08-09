@@ -54,12 +54,6 @@ class ArithmeticTest : public ClientLibraryTestBase {
               /*is_min=*/is_min);
     ComputeAndCompareR1<NativeT>(&builder, expected_output, {});
   }
-
-  template <typename NativeT>
-  void TestArgMinMaxImpl(
-      std::initializer_list<std::initializer_list<NativeT>> input,
-      absl::Span<NativeT const> expected_output,
-      std::function<void(XlaOp, PrimitiveType)> MinMaxImpl) {}
 };
 
 XLA_TEST_F(ArithmeticTest, ArgMinR2Axis0) {

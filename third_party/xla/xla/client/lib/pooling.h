@@ -31,24 +31,14 @@ class TensorFormat {
  public:
   TensorFormat(int batch_dimension, int feature_dimension,
                absl::Span<const int64_t> spatial_dimensions)
-      : batch_dimension_(batch_dimension),
-        feature_dimension_(feature_dimension),
-        spatial_dimensions_(spatial_dimensions.begin(),
+      : spatial_dimensions_(spatial_dimensions.begin(),
                             spatial_dimensions.end()) {}
-
-  int batch_dimension() const { return batch_dimension_; }
-
-  int feature_dimension() const { return feature_dimension_; }
 
   int spatial_dimension(int dim) const { return spatial_dimensions_[dim]; }
 
   int num_spatial_dims() const { return spatial_dimensions_.size(); }
 
  private:
-  // The number of the dimension that represents the batch.
-  int batch_dimension_;
-  // The number of the dimension that represents the features.
-  int feature_dimension_;
   // The dimension numbers for the spatial dimensions.
   absl::InlinedVector<int, 4> spatial_dimensions_;
 };
