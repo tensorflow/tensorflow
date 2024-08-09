@@ -14,7 +14,5 @@ those to this list.
 """
 
 temporary_patch_list = [
-    "//third_party/triton:temporary/cuda11-temporary.patch",
-    "//third_party/triton:temporary/undo_tesla_gpu.patch",
     # Add new patches just above this line
 ]

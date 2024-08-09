@@ -273,9 +273,9 @@ index d74e0a224..4e45f7c4c 100644
 +  return op->hasTrait<OpTrait::DotLike>() || isa<ttg::SparseDotOp>(op);
 +}
 +
- // Replace the ForOp's yield with a new one with the given operands appended.
- static void appendToYield(scf::ForOp forOp, ArrayRef<Value> newOperands) {
-   // Fix up the yield op.
+ static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
+                             Value insertIdx, Value extractIdx,
+                             tt::CoarseSchedule &schedule,
 @@ -248,19 +252,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
