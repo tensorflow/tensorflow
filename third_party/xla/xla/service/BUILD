@@ -826,6 +826,7 @@ cc_library(
     deps = [
         ":hlo_pass",
         "//xla/hlo/ir:hlo",
+        "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
