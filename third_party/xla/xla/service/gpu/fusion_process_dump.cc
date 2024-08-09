@@ -100,35 +100,6 @@ absl::string_view GetProducerName(const FusionStep& step) {
 
 }  // namespace
 
-absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromFile(
-    const std::string& path) {
-  std::string format = std::string(tsl::io::Extension(path));
-  std::string data;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
-  return FusionProcessDump::LoadFromData(data, format);
-}
-
-absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromData(
-    const std::string& data, absl::string_view format) {
-  FusionProcessDumpProto fusion_process_dump_proto;
-  if (format == "txt" || format == "pbtxt") {
-    if (!tsl::protobuf::TextFormat::ParseFromString(
-            data, &fusion_process_dump_proto)) {
-      return InvalidArgument("Failed to parse input as HLO protobuf text");
-    }
-  } else if (format == "pb") {
-    if (!fusion_process_dump_proto.ParseFromString(data)) {
-      return InvalidArgument("Failed to parse input as HLO protobuf binary");
-    }
-  } else {
-    return InvalidArgument(
-        "Invalid format from file extension: '%s'. Expected: txt, pb, or pbtxt",
-        format);
-  }
-
-  return FusionProcessDump::LoadFromProto(fusion_process_dump_proto);
-}
-
 absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromProto(
     const FusionProcessDumpProto& fusion_process_dump_proto) {
   TF_ASSIGN_OR_RETURN(
@@ -155,34 +126,6 @@ absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromProto(
 HloComputation* FusionProcessDump::GetCurrentComputation() {
   return instruction_name_to_computation_map_.at(
       GetProducerName(CurrentStep()));
-}
-
-HloInstruction* FusionProcessDump::GetInstructionWithName(
-    absl::string_view name) {
-  return instruction_name_to_computation_map_[name]->GetInstructionWithName(
-      name);
-}
-
-HloInstruction* FusionProcessDump::GetProducer() {
-  return GetInstructionWithName(GetProducerName(CurrentStep()));
-}
-
-absl::InlinedVector<HloInstruction*, 2> FusionProcessDump::GetConsumers() {
-  auto& step = CurrentStep();
-
-  if (step.has_fusion()) {
-    return {GetInstructionWithName(step.fusion().consumer_name())};
-  }
-
-  if (step.has_update_priority()) {
-    absl::InlinedVector<HloInstruction*, 2> consumers;
-    for (const auto& consumer_name : step.update_priority().consumer_names()) {
-      consumers.push_back(GetInstructionWithName(consumer_name));
-    }
-    return consumers;
-  }
-
-  return {};
 }
 
 const FusionStep& FusionProcessDump::CurrentStep() {
