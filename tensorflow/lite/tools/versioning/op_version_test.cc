@@ -1355,18 +1355,26 @@ TEST(OpVersionTest, VersioningBroadcastToTest) {
 }
 
 TEST(OpVersionTest, VersioningGeluTest) {
-  OpSignature fake_op_sig;
-  fake_op_sig.op = BuiltinOperator_GELU;
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_GELU,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
-
-  fake_op_sig.op = BuiltinOperator_GELU;
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  fake_op_sig = {
+      .op = BuiltinOperator_GELU,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+  };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-
-  fake_op_sig.op = BuiltinOperator_GELU;
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8);
+  fake_op_sig = {
+      .op = BuiltinOperator_GELU,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8),
+  };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+  fake_op_sig = {
+      .op = BuiltinOperator_GELU,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningUnidirectionalLstmTest) {
