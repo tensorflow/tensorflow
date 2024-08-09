@@ -48,9 +48,10 @@ function build_python_from_src() {
 }
 
 if (source /etc/os-release && [[ ${NAME} == SLES ]]); then
+    ## Build Python for SLES
     build_python_from_src $1 $2
 else
-    ##UBUNTU
+    ## Build Python for Ubuntu
     source ~/.bashrc
     VERSION=$1
     REQUIREMENTS=$2
@@ -65,7 +66,6 @@ else
                                            libncursesw5-dev xz-utils tk-dev libxml2-dev \
 					   libxmlsec1-dev libffi-dev liblzma-dev
     DEBIAN_FRONTEND=noninteractive apt-get clean all
-
 
     build_python_from_src $1 $2
 
