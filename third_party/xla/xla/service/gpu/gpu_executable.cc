@@ -604,9 +604,10 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
 absl::StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
 GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   se::StreamExecutor* executor = stream->parent();
+  auto executor_and_stream = std::make_pair(executor, stream);
 
   absl::MutexLock lock(&module_handle_mutex_);
-  auto it = module_globals_.find(executor);
+  auto it = module_globals_.find(executor_and_stream);
   if (it != module_globals_.end()) {
     return it->second.get();
   }
@@ -681,9 +682,9 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
     TF_CHECK_OK(stream->BlockHostUntilDone());
   }
 
-  module_handles_.emplace(executor,
+  module_handles_.emplace(executor_and_stream,
                           se::ScopedModuleHandle(executor, module_handle));
-  return module_globals_.emplace(executor, std::move(globals))
+  return module_globals_.emplace(executor_and_stream, std::move(globals))
       .first->second.get();
 }
 
@@ -863,20 +864,22 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     // Useful for identify in user's model if it is command buffer perf friendly
     // (no command buffer update cost).
     absl::MutexLock lock(&module_handle_mutex_);
-    if (module_allocations_.find(executor) == module_allocations_.end()) {
+    auto executor_and_stream = std::make_pair(executor, run_options->stream());
+    if (module_allocations_.find(executor_and_stream) ==
+        module_allocations_.end()) {
       std::vector<se::DeviceMemoryBase> allocs_addr;
       allocs_addr.reserve(buffer_allocations.size());
       for (int i = 0; i < buffer_allocations.size(); i++) {
         allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
       }
-      module_allocations_[executor] = std::move(allocs_addr);
+      module_allocations_[executor_and_stream] = std::move(allocs_addr);
     } else {
       for (int i = 0; i < buffer_allocations.size(); i++) {
-        if (module_allocations_[executor][i].IsSameAs(
+        if (module_allocations_[executor_and_stream][i].IsSameAs(
                 buffer_allocations.GetDeviceAddress(i))) {
           continue;
         }
-        module_allocations_[executor][i] =
+        module_allocations_[executor_and_stream][i] =
             buffer_allocations.GetDeviceAddress(i);
         VLOG(5) << "Gpu address changed for module " << module_name_
                 << ", allocation info: \n"

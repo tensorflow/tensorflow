@@ -264,16 +264,17 @@ class GpuExecutable : public Executable {
   absl::Mutex module_handle_mutex_;
   // Cache of module handles. Required to keep loaded modules alive until this
   // executable is destroyed.
-  absl::flat_hash_map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
+  absl::flat_hash_map<std::pair<stream_executor::StreamExecutor*, se::Stream*>,
+                      se::ScopedModuleHandle>
       module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
   // Cache of constant buffer allocation maps used by `ResolveConstantGlobals`.
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
+  absl::flat_hash_map<std::pair<stream_executor::StreamExecutor*, se::Stream*>,
                       std::unique_ptr<BufferAllocToDeviceMemoryMap>>
       module_globals_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   // Cache previous memory allocations for current module, this is used to help
   // identify if user's model have unstable pointers by turning on VLOG(5).
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
+  absl::flat_hash_map<std::pair<stream_executor::StreamExecutor*, se::Stream*>,
                       std::vector<se::DeviceMemoryBase>>
       module_allocations_ ABSL_GUARDED_BY(module_handle_mutex_);
 
