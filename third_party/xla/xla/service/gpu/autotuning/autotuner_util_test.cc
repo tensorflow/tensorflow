@@ -293,7 +293,6 @@ class FileBasedCacheTest : public AutotunerUtilTest {
     tsl::Env* default_env = tsl::Env::Default();
     std::string cache_dir;
     CHECK(default_env->LocalTempFilename(&cache_dir));
-    CHECK_OK(default_env->CreateDir(cache_dir));
     return cache_dir;
   }();
   AutotuneConfig config_ = AutotuneConfig(DeviceConfig{executor_}, [&] {
