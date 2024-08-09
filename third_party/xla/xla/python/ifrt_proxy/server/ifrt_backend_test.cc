@@ -17,6 +17,7 @@
 #include <sys/types.h>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,11 +28,13 @@
 #include <gtest/gtest.h>
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -44,8 +47,10 @@
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/basic_device_allocation.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -87,6 +92,7 @@ namespace {
 using ::testing::_;
 using ::testing::ByMove;
 using ::testing::DoAll;
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::Invoke;
@@ -95,6 +101,7 @@ using ::testing::NotNull;
 using ::testing::Optional;
 using ::testing::Pointee;
 using ::testing::Return;
+using ::testing::ReturnPointee;
 using ::testing::ReturnRef;
 using ::testing::SizeIs;
 using ::testing::StrEq;
@@ -236,42 +243,119 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
         std::make_unique<TestCompileOptionsSerDes>());
   }
 
-  void SetUp() override {
-    auto mock_client = std::make_unique<xla::ifrt::MockClient>();
+  // Internal state of a client for device tests.
+  struct DeviceTestClientState {
+    Client* client;
 
-    std::vector<xla::ifrt::Device*> raw_device_ptrs;
-    for (int i = 0; i < 2; ++i) {
-      auto mock_device = std::make_unique<xla::ifrt::MockDevice>();
-      ON_CALL(*mock_device, Id()).WillByDefault(Return(DeviceId(i)));
-      raw_device_ptrs.push_back(mock_device.get());
-      mock_devices_.push_back(std::move(mock_device));
+    // Shared MemoryKind objects.
+    MemoryKind mock_memory_kind;
+
+    // Mapping from a memory ID to the mock memory object.
+    absl::flat_hash_map<MemoryId, std::unique_ptr<Memory>> memory_map;
+    std::vector<Memory*> memories;
+    std::vector<absl::Span<Device* const>> memory_devices;
+
+    // Mapping from a device ID to the mock device object.
+    absl::flat_hash_map<DeviceId, std::unique_ptr<Device>> device_map;
+    // Raw pointers to mock devices.
+    std::vector<Device*> devices;
+    std::vector<Device*> addressable_devices;
+    std::vector<absl::Span<Memory* const>> device_memories;
+
+    std::vector<AttributeMap> device_attributes;
+  };
+
+  void SetUp() override {
+    const int num_devices = 2;
+    const int num_addressable_devices = 1;
+
+    auto state = std::make_shared<DeviceTestClientState>();
+
+    state->mock_memory_kind = MemoryKind("mock");
+
+    state->memory_map.reserve(num_devices);
+    state->memories.reserve(num_devices);
+    state->memory_devices.resize(num_devices);
+
+    state->device_map.reserve(num_devices);
+    state->devices.reserve(num_devices);
+    state->addressable_devices.reserve(num_addressable_devices);
+    state->device_memories.resize(num_devices);
+    state->device_attributes.reserve(num_devices);
+
+    for (int i = 0; i < num_devices; ++i) {
+      const bool addressable = i < num_addressable_devices;
+      auto memory = std::make_unique<MockMemory>();
+      ON_CALL(*memory, Id).WillByDefault(Return(MemoryId(i)));
+      ON_CALL(*memory, Kind).WillByDefault(ReturnRef(state->mock_memory_kind));
+      // memory_devices will be filled in at the end of the loop.
+      ON_CALL(*memory, Devices)
+          .WillByDefault(ReturnPointee(&state->memory_devices[i]));
+      state->memories.push_back(memory.get());
+      state->memory_map.insert({MemoryId(i), std::move(memory)});
+
+      auto device = std::make_unique<MockDevice>();
+      // client will be filled in at the end of the loop.
+      ON_CALL(*device, client).WillByDefault(ReturnPointee(&state->client));
+      ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i)));
+      ON_CALL(*device, Kind).WillByDefault(Return("mock"));
+      ON_CALL(*device, IsAddressable).WillByDefault(Return(addressable));
+      ON_CALL(*device, DebugString)
+          .WillByDefault(Return(absl::StrCat("device(", i, ")")));
+      ON_CALL(*device, DefaultMemory).WillByDefault(Return(state->memories[i]));
+      // device_memories will be filled in at the end of the loop.
+      ON_CALL(*device, Memories)
+          .WillByDefault(ReturnPointee(&state->device_memories[i]));
+      state->devices.push_back(device.get());
+      if (addressable) {
+        state->addressable_devices.push_back(device.get());
+      }
+
+      AttributeMap::Map map;
+      map.insert(
+          {"name", AttributeMap::StringValue(absl::StrCat("device", i))});
+      state->device_attributes.push_back(AttributeMap(std::move(map)));
+      ON_CALL(*device, Attributes())
+          .WillByDefault(ReturnRef(state->device_attributes[i]));
+
+      state->device_map.insert({DeviceId(i), std::move(device)});
+
+      state->device_memories[i] = absl::MakeConstSpan(&state->memories[i], 1);
+      state->memory_devices[i] = absl::MakeConstSpan(&state->devices[i], 1);
     }
 
-    ON_CALL(*mock_client, devices()).WillByDefault(Return(raw_device_ptrs));
-    ON_CALL(*mock_client, LookupDevice(_))
+    auto client = std::make_shared<MockClient>();
+    state->client = client.get();
+    ON_CALL(*client, devices)
         .WillByDefault(
-            Invoke([this](DeviceId id) -> absl::StatusOr<xla::ifrt::Device*> {
-              if (id.value() < 0 || id.value() >= mock_devices_.size()) {
-                return absl::NotFoundError(
-                    absl::StrCat("Unknown device id: ", id.value()));
-              }
-              return mock_devices_[id.value()].get();
-            }));
+            [state]() -> absl::Span<Device* const> { return state->devices; });
+    ON_CALL(*client, addressable_devices)
+        .WillByDefault([state]() -> absl::Span<Device* const> {
+          return state->addressable_devices;
+        });
+    ON_CALL(*client, LookupDevice)
+        .WillByDefault([state](DeviceId device_id) -> absl::StatusOr<Device*> {
+          auto it = state->device_map.find(device_id);
+          if (it == state->device_map.end()) {
+            return absl::InvalidArgumentError(
+                absl::StrFormat("Unexpected device id: %d", device_id.value()));
+          }
+          return it->second.get();
+        });
+
+    EXPECT_CALL(*client, GetDefaultCompiler)
+        .WillRepeatedly(Return(&mock_compiler_));
 
     // Remembering a raw pointer to the mock client here is OK, since most tests
     // anyway have to make the basic and tacit assumption that the backend will
     // call into the mock client --and thus keep it alive-- for the duration of
     // the test.
-    mock_client_ = mock_client.get();
-
-    EXPECT_CALL(*mock_client_, GetDefaultCompiler)
-        .WillRepeatedly(Return(&mock_compiler_));
+    mock_client_ = client.get();
 
     host_buffer_store_ = std::make_shared<HostBufferStore>();
     TF_ASSERT_OK_AND_ASSIGN(
-        backend_,
-        IfrtBackend::Create(Version(), kSessionId, std::move(mock_client),
-                            host_buffer_store_));
+        backend_, IfrtBackend::Create(Version(), kSessionId, std::move(client),
+                                      host_buffer_store_));
   }
 
   absl::StatusOr<std::shared_ptr<IfrtResponse>> CallBackend(
@@ -352,7 +436,6 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
 
   xla::ifrt::MockClient* mock_client_;
   xla::ifrt::MockCompiler mock_compiler_;
-  std::vector<std::unique_ptr<xla::ifrt::MockDevice>> mock_devices_;
   std::shared_ptr<HostBufferStore> host_buffer_store_;
 
  private:
@@ -373,47 +456,6 @@ TEST_P(IfrtBackendHandlerTest, Init) {
   EXPECT_CALL(*mock_client_, process_index()).WillRepeatedly(Return(1));
   EXPECT_CALL(*mock_client_, runtime_type())
       .WillRepeatedly(Return("ifrt-service"));
-
-  std::vector<std::vector<xla::ifrt::Device*>> mock_memory_devices;
-  mock_memory_devices.reserve(mock_devices_.size());
-  for (const auto& mock_device : mock_devices_) {
-    mock_memory_devices.push_back({mock_device.get()});
-  }
-
-  std::vector<MockMemory> mock_memories(mock_devices_.size());
-  MemoryKind kind("mock");
-  for (int i = 0; i < mock_memories.size(); ++i) {
-    MockMemory& memory = mock_memories[i];
-    EXPECT_CALL(memory, Devices())
-        .WillRepeatedly(Return(mock_memory_devices[i]));
-    EXPECT_CALL(memory, Id()).WillRepeatedly(Return(MemoryId(i)));
-    EXPECT_CALL(memory, Kind()).WillRepeatedly(ReturnRef(kind));
-  }
-
-  std::vector<std::vector<Memory*>> device_memories;
-  device_memories.reserve(mock_devices_.size());
-  for (int i = 0; i < mock_devices_.size(); ++i) {
-    device_memories.push_back({&mock_memories[i]});
-  }
-
-  std::vector<AttributeMap> device_attributes;
-  device_attributes.reserve(mock_devices_.size());
-
-  for (int i = 0; i < mock_devices_.size(); ++i) {
-    AttributeMap::Map map;
-    map.insert({"name", AttributeMap::StringValue(absl::StrCat("device", i))});
-    device_attributes.push_back(AttributeMap(std::move(map)));
-
-    MockDevice& mock_device = *mock_devices_[i];
-    // TODO(b/314368788): Clean up PJRT device ID APIs.
-    EXPECT_CALL(mock_device, Kind()).WillRepeatedly(Return("mock"));
-    EXPECT_CALL(mock_device, Memories())
-        .WillRepeatedly(Return(device_memories[i]));
-    EXPECT_CALL(mock_device, DefaultMemory())
-        .WillRepeatedly(Return(&mock_memories[i]));
-    EXPECT_CALL(mock_device, Attributes())
-        .WillRepeatedly(ReturnRef(device_attributes[i]));
-  }
 
   auto request = NewIfrtRequest(NewOpId());
   request->mutable_init_request();
@@ -1500,6 +1542,136 @@ TEST_P(IfrtBackendHandlerTest,
 
   EXPECT_THAT(CallBackend(std::move(request)),
               StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
+}
+
+TEST_P(IfrtBackendHandlerTest, AllocateDevicesSuccess) {
+  if (Version().protocol_version() <= 4) {
+    GTEST_SKIP() << "AllocateDevices is not requested in protocol version <= 4";
+  }
+
+  EXPECT_CALL(*mock_client_, AllocateDevices(_, _))
+      .WillOnce(Invoke(
+          [this](absl::string_view name, AttributeMap constraints)
+              -> absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceAllocation>> {
+            auto it = constraints.map().find(Client::kIfrtDeviceIds);
+            if (it == constraints.map().end()) {
+              return absl::UnimplementedError("No device ids");
+            }
+            const auto& device_ids =
+                std::get<AttributeMap::Int64ListValue>(it->second).value;
+            DeviceList::Devices devices;
+            devices.reserve(device_ids.size());
+            for (int64_t device_id : device_ids) {
+              TF_ASSIGN_OR_RETURN(Device * device, mock_client_->LookupDevice(
+                                                       DeviceId(device_id)));
+              devices.push_back(device);
+            }
+            return BasicDeviceAllocation::Create(
+                DeviceList(std::move(devices)));
+          }));
+
+  auto devices = mock_client_->devices();
+  std::vector<int64_t> device_ids;
+  device_ids.reserve(devices.size());
+  for (const auto& device : devices) {
+    device_ids.push_back(device->Id().value());
+  }
+  auto addressable_devices = mock_client_->addressable_devices();
+
+  auto request = NewIfrtRequest(NewOpId());
+  auto* allocate_devices_request = request->mutable_allocate_devices_request();
+  allocate_devices_request->set_name("abc");
+  AttributeMap constraints{
+      AttributeMap::Map({{std::string(Client::kIfrtDeviceIds),
+                          AttributeMap::Int64ListValue(device_ids)}})};
+  *allocate_devices_request->mutable_constraints() = constraints.ToProto();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(request)));
+  ASSERT_TRUE(response->has_allocate_devices_response());
+  const AllocateDevicesResponse& allocate_devices_response =
+      response->allocate_devices_response();
+
+  auto lookup_device = absl::bind_front(&Client::LookupDevice, mock_client_);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto allocated_device_list,
+      DeviceList::FromProto(lookup_device,
+                            allocate_devices_response.device_list()));
+  EXPECT_THAT(allocated_device_list.devices(), ElementsAreArray(devices));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto allocated_addressable_device_list,
+      DeviceList::FromProto(
+          lookup_device, allocate_devices_response.addressable_device_list()));
+  EXPECT_THAT(allocated_addressable_device_list.devices(),
+              ElementsAreArray(addressable_devices));
+
+  EXPECT_EQ(allocate_devices_response.default_memory_kind(), "mock");
+  EXPECT_THAT(allocate_devices_response.all_memory_kinds(),
+              ElementsAre("mock"));
+}
+
+TEST_P(IfrtBackendHandlerTest, AllocateDevicesFailsIfTheBackendFails) {
+  if (Version().protocol_version() <= 4) {
+    GTEST_SKIP() << "AllocateDevices is not requested in protocol version <= 4";
+  }
+
+  EXPECT_CALL(*mock_client_, AllocateDevices(_, _))
+      .WillOnce(Invoke(
+          [](absl::string_view name, AttributeMap constraints)
+              -> absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceAllocation>> {
+            return absl::UnknownError("injected error");
+          }));
+
+  auto request = NewIfrtRequest(NewOpId());
+  request->mutable_allocate_devices_request();
+
+  EXPECT_THAT(CallBackend(std::move(request)),
+              StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
+}
+
+TEST_P(IfrtBackendHandlerTest, DestructDeviceAllocationTest) {
+  if (Version().protocol_version() <= 4) {
+    GTEST_SKIP() << "AllocateDevices and DestructDeviceAllocation are not "
+                    "requested in protocol version <= 4";
+  }
+
+  EXPECT_CALL(*mock_client_, AllocateDevices(_, _))
+      .WillOnce(Invoke(
+          [this](absl::string_view name, AttributeMap constraints)
+              -> absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceAllocation>> {
+            return BasicDeviceAllocation::Create(
+                DeviceList(DeviceList::Devices(mock_client_->devices().begin(),
+                                               mock_client_->devices().end())));
+          }));
+
+  uint64_t device_allocation_handle;
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    request->mutable_allocate_devices_request();
+
+    TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(request)));
+    ASSERT_TRUE(response->has_allocate_devices_response());
+    const AllocateDevicesResponse& allocate_devices_response =
+        response->allocate_devices_response();
+
+    device_allocation_handle =
+        allocate_devices_response.device_allocation_handle();
+  }
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  ifrt_request->mutable_destruct_device_allocation_request()
+      ->set_device_allocation_handle(device_allocation_handle);
+  TF_ASSERT_OK_AND_ASSIGN(auto ifrt_resp, CallBackend(std::move(ifrt_request)));
+  EXPECT_TRUE(ifrt_resp->has_destruct_device_allocation_response());
+
+  // Retrying DestructDeviceAllocation should fail. And, this establishes that:
+  // (1) the handle no longer exists on the server, (2) DestructDeviceAllocation
+  // fails for non-existent device allocations and (3) DestructDeviceAllocation
+  // is not idempotent.
+  ifrt_request = NewIfrtRequest(NewOpId());
+  ifrt_request->mutable_destruct_device_allocation_request()
+      ->set_device_allocation_handle(device_allocation_handle);
+  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -28,6 +28,7 @@
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
@@ -161,6 +162,11 @@ class IfrtBackend final : public BackendInterface {
   absl::StatusOr<Response> HandleGetDefaultDeviceAssignmentRequest(
       std::unique_ptr<IfrtRequest> request);
 
+  absl::StatusOr<BackendInterface::Response> HandleAllocateDevicesRequest(
+      std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<BackendInterface::Response>
+  HandleDestructDeviceAllocationRequest(std::unique_ptr<IfrtRequest> request);
+
   //////////////////////////////////////////////////////////////////////
   // Convenient methods for object lookups
   //
@@ -179,6 +185,10 @@ class IfrtBackend final : public BackendInterface {
   const uint64_t session_id_;
   const std::shared_ptr<xla::ifrt::Client> client_;
   const std::shared_ptr<HostBufferStore> host_buffer_store_;
+
+  absl::Mutex device_allocations_mutex_;
+  absl::flat_hash_map<uint64_t, tsl::RCReference<xla::ifrt::DeviceAllocation>>
+      device_allocations_ ABSL_GUARDED_BY(device_allocations_mutex_);
 
   absl::Mutex futures_mutex_;
   absl::flat_hash_map<uint64_t, Future<>> futures_

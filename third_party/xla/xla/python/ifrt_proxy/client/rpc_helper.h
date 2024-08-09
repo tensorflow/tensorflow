@@ -85,6 +85,11 @@ class RpcHelper {
   ResponseFuture<GetDefaultDeviceAssignmentResponse> GetDefaultDeviceAssignment(
       std::unique_ptr<GetDefaultDeviceAssignmentRequest> req);
 
+  ResponseFuture<AllocateDevicesResponse> AllocateDevices(
+      std::unique_ptr<AllocateDevicesRequest> req);
+  ResponseFuture<DestructDeviceAllocationResponse> DestructDeviceAllocation(
+      std::unique_ptr<DestructDeviceAllocationRequest> req);
+
   ResponseFuture<CheckFutureResponse> CheckFuture(
       std::unique_ptr<CheckFutureRequest> req);
   ResponseFuture<CheckValueReadyResponse> CheckValueReady(

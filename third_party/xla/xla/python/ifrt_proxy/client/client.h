@@ -103,6 +103,10 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   }
   PlatformId platform_id() const override { return platform_id_; }
   const AttributeMap& Attributes() const override { return attributes_; }
+
+  absl::StatusOr<tsl::RCReference<DeviceAllocation>> AllocateDevices(
+      absl::string_view name, AttributeMap constraints) override;
+
   int device_count() const override { return devices().size(); }
   int addressable_device_count() const override {
     return addressable_devices().size();

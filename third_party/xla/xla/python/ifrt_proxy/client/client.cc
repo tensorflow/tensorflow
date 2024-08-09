@@ -25,10 +25,12 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/bind_front.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -36,6 +38,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -45,6 +48,7 @@
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/device.h"
+#include "xla/python/ifrt_proxy/client/device_allocation.h"
 #include "xla/python/ifrt_proxy/client/memory.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -299,6 +303,52 @@ xla::ifrt::Future<> Client::GetReadyFuture(
   futures.push_back(Future<>(std::move(promise)));
 
   return JoinFutures(futures);
+}
+
+absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceAllocation>>
+Client::AllocateDevices(absl::string_view name, AttributeMap constraints) {
+  if (rpc_helper_->version().protocol_version() <= 4) {
+    return absl::UnimplementedError(
+        "AllocateDevices is not supported for the IFRT proxy server version <= "
+        "4.");
+  }
+
+  // TODO(hyeontaek): Since IFRT Proxy may serve a backend that uses a dynamic
+  // set of devices, we need to update the client proxy to also handle device
+  // addition and removal.
+  auto req = std::make_unique<AllocateDevicesRequest>();
+  req->set_name(std::string(name));
+  *req->mutable_constraints() = constraints.ToProto();
+
+  auto future = rpc_helper_->AllocateDevices(std::move(req));
+  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+
+  TF_ASSIGN_OR_RETURN(
+      auto device_list,
+      DeviceList::FromProto(absl::bind_front(&Client::LookupDevice, this),
+                            response->device_list()));
+  TF_ASSIGN_OR_RETURN(
+      auto addressable_device_list,
+      DeviceList::FromProto(absl::bind_front(&Client::LookupDevice, this),
+                            response->addressable_device_list()));
+  MemoryKind default_memory_kind;
+  if (response->has_default_memory_kind()) {
+    default_memory_kind = MemoryKind(response->default_memory_kind());
+  }
+  std::vector<MemoryKind> all_memory_kinds;
+  all_memory_kinds.reserve(response->all_memory_kinds_size());
+  for (const auto& memory_kind_proto : response->all_memory_kinds()) {
+    all_memory_kinds.push_back(MemoryKind(memory_kind_proto));
+  }
+
+  TF_ASSIGN_OR_RETURN(auto attributes,
+                      AttributeMap::FromProto(response->attributes()));
+
+  return tsl::MakeRef<DeviceAllocation>(
+      this, rpc_helper_, std::string(name),
+      response->device_allocation_handle(), std::move(device_list),
+      std::move(addressable_device_list), default_memory_kind,
+      std::move(all_memory_kinds), attributes, response->debug_string());
 }
 
 absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(

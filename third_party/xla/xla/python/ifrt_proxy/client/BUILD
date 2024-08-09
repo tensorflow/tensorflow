@@ -115,6 +115,7 @@ cc_library(
         ":array",
         ":compiler",
         ":device",
+        ":device_allocation",
         ":memory",
         ":rpc_helper",
         "//xla:xla_data_proto_cc",
@@ -130,6 +131,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -183,6 +185,22 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "device_allocation",
+    srcs = ["device_allocation.cc"],
+    hdrs = ["device_allocation.h"],
+    deps = [
+        ":rpc_helper",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
     ],
 )

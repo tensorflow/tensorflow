@@ -138,6 +138,8 @@ void RpcHelper::Disconnect() {
 
 RPC(Init, init);
 RPC(GetDefaultDeviceAssignment, get_default_device_assignment);
+RPC(AllocateDevices, allocate_devices);
+RPC(DestructDeviceAllocation, destruct_device_allocation);
 RPC(CheckFuture, check_future);
 RPC(CheckValueReady, check_value_ready);
 RPC(MakeArrayFromHostBuffer, make_array_from_host_buffer);

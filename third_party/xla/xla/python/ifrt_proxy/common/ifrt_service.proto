@@ -19,6 +19,7 @@ package xla.ifrt.proxy;
 import "google/protobuf/any.proto";
 import "xla/pjrt/execute_options.proto";
 import "xla/python/ifrt/attribute_map.proto";
+import "xla/python/ifrt/device.proto";
 import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
@@ -39,6 +40,10 @@ message IfrtRequest {
 
   oneof request {
     InitRequest init_request = 2;
+
+    // ===== Device =====
+    AllocateDevicesRequest allocate_devices_request = 25;
+    DestructDeviceAllocationRequest destruct_device_allocation_request = 26;
 
     // ===== Future =====
     CheckFutureRequest check_future_request = 3;
@@ -86,6 +91,10 @@ message IfrtResponse {
 
   oneof response {
     InitResponse init_response = 2;
+
+    // ===== Device =====
+    AllocateDevicesResponse allocate_devices_response = 25;
+    DestructDeviceAllocationResponse destruct_device_allocation_response = 26;
 
     // ===== Future =====
     CheckFutureResponse check_future_response = 3;
@@ -239,6 +248,29 @@ message InitResponse {
 
   repeated Memory memories = 9;
 }
+
+// ================ Device-related operations ================
+
+message AllocateDevicesRequest {
+  string name = 1;
+  AttributeMapProto constraints = 2;
+}
+
+message AllocateDevicesResponse {
+  fixed64 device_allocation_handle = 1;
+  DeviceListProto device_list = 2;
+  DeviceListProto addressable_device_list = 3;
+  optional string default_memory_kind = 4;
+  repeated string all_memory_kinds = 5;
+  AttributeMapProto attributes = 6;
+  string debug_string = 7;
+}
+
+message DestructDeviceAllocationRequest {
+  fixed64 device_allocation_handle = 1;
+}
+
+message DestructDeviceAllocationResponse {}
 
 // ================ Future-related operations ================
 
