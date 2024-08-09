@@ -16,9 +16,11 @@ cc_library(
     name = "nnapi_delegate_no_nnapi_implementation",
     srcs = select({
         "//tensorflow:ios": [
+            "nnapi_delegate_c_api_disabled.cc",
             "nnapi_delegate_disabled.cc",
         ],
         "//tensorflow:windows": [
+            "nnapi_delegate_c_api_disabled.cc",
             "nnapi_delegate_disabled.cc",
         ],
         "//conditions:default": [
@@ -209,10 +211,6 @@ cc_test(
     size = "small",
     srcs = [
         "nnapi_delegate_c_api_test.cc",
-    ],
-    tags = [
-        "no_windows",
-        "tflite_not_portable_ios",
     ],
     visibility = ["//visibility:private"],
     deps = [
