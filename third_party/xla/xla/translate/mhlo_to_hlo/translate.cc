@@ -123,6 +123,8 @@ absl::Status ConvertMlirHloToHloViaBuilder(
                 mlir::cast<mlir::BoolAttr>(b).getValue());
 
   auto hlo_module = computation.proto();
+  mlir::StringRef module_name = module.getName() ? *module.getName() : "main";
+  hlo_module.set_name(module_name);
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
   return absl::OkStatus();

@@ -147,6 +147,14 @@ constexpr char kMhloSpmdParametersShardings[] =
     "mhlo.spmd_parameters_shardings";
 constexpr char kMhloUseAutoSpmdPartitioning[] =
     "mhlo.use_auto_spmd_partitioning";
+constexpr char kMhloXlaEntryComputationParameterLayouts[] =
+    "mhlo.xla_entry_computation_parameter_layouts";
+constexpr char kMhloXlaEntryComputationParameterTiles[] =
+    "mhlo.xla_entry_computation_parameter_tiles";
+constexpr char kMhloXlaEntryComputationResultLayout[] =
+    "mhlo.xla_entry_computation_result_layout";
+constexpr char kMhloXlaEntryComputationResultTiles[] =
+    "mhlo.xla_entry_computation_result_tiles";
 
 // Miscellaneous string literals.
 constexpr char kArgEmptyTuple[] = "arg_empty_tuple";
@@ -3845,9 +3853,20 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   xla::XlaBuilder module_builder(kMain);
   ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
-  auto hlo_module = converter.ConsumeMainProto();
+  xla::HloModuleProto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
+  int root_index = -1;
+  auto find_root_instruction_index = [&]() {
+    for (const auto& [i, instruction] :
+         llvm::enumerate(hlo_module.computations(0).instructions())) {
+      if (instruction.id() == hlo_module.mutable_computations(0)->root_id()) {
+        root_index = i;
+        break;
+      }
+    }
+    return root_index;
+  };
   if (auto cross_program_prefetches =
           module->getAttrOfType<mlir::ArrayAttr>(kMhloCrossProgramPrefetches)) {
     for (const auto& prefetch :
@@ -3885,6 +3904,218 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     for (const auto& sharding : spmd_parameters_sharding.getValue()) {
       *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
           mlir::cast<mlir::StringAttr>(sharding).getValue());
+    }
+  }
+  if (auto xla_entry_computation_parameter_layout =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationParameterLayouts)) {
+    for (auto [i, parameter_layout] :
+         llvm::enumerate(xla_entry_computation_parameter_layout)) {
+      if (auto tuple_parameter_layout =
+              mlir::dyn_cast<mlir::ArrayAttr>(parameter_layout)) {
+        for (auto [j, tuple_element_parameter_layout] :
+             llvm::enumerate(tuple_parameter_layout.getValue())) {
+          auto parameter_layout_attr =
+              mlir::dyn_cast_or_null<mlir::DenseIntElementsAttr>(
+                  tuple_element_parameter_layout);
+          if (!parameter_layout_attr) {
+            return absl::InvalidArgumentError(
+                "Multi-level nested parameter layout is not supported.");
+          }
+          std::vector<int64_t> layout_dims =
+              ConvertDenseIntAttr(parameter_layout_attr);
+          hlo_module.mutable_host_program_shape()
+              ->mutable_parameters()
+              ->at(i)
+              .mutable_tuple_shapes(j)
+              ->mutable_layout()
+              ->mutable_minor_to_major()
+              ->Assign(layout_dims.begin(), layout_dims.end());
+          hlo_module.mutable_computations(0)
+              ->mutable_program_shape()
+              ->mutable_parameters()
+              ->at(i)
+              .mutable_tuple_shapes(j)
+              ->mutable_layout()
+              ->mutable_minor_to_major()
+              ->Assign(layout_dims.begin(), layout_dims.end());
+          hlo_module.mutable_computations(0)
+              ->mutable_instructions(i)
+              ->mutable_shape()
+              ->mutable_tuple_shapes(j)
+              ->mutable_layout()
+              ->mutable_minor_to_major()
+              ->Assign(layout_dims.begin(), layout_dims.end());
+        }
+      } else {
+        std::vector<int64_t> layout_dims = ConvertDenseIntAttr(
+            mlir::cast<mlir::DenseIntElementsAttr>(parameter_layout));
+        hlo_module.mutable_host_program_shape()
+            ->mutable_parameters()
+            ->at(i)
+            .mutable_layout()
+            ->mutable_minor_to_major()
+            ->Assign(layout_dims.begin(), layout_dims.end());
+        hlo_module.mutable_computations(0)
+            ->mutable_program_shape()
+            ->mutable_parameters()
+            ->at(i)
+            .mutable_layout()
+            ->mutable_minor_to_major()
+            ->Assign(layout_dims.begin(), layout_dims.end());
+        hlo_module.mutable_computations(0)
+            ->mutable_instructions(i)
+            ->mutable_shape()
+            ->mutable_layout()
+            ->mutable_minor_to_major()
+            ->Assign(layout_dims.begin(), layout_dims.end());
+      }
+    }
+  }
+  if (auto xla_entry_computation_parameter_tiles =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationParameterTiles)) {
+    for (auto [i, parameter_tile_wrapper] :
+         llvm::enumerate(xla_entry_computation_parameter_tiles)) {
+      if (auto parameter_tile =
+              mlir::cast<mlir::ArrayAttr>(parameter_tile_wrapper);
+          !parameter_tile.empty()) {
+        if (auto tuple_parameter_tile =
+                mlir::dyn_cast<mlir::ArrayAttr>(parameter_tile[0])) {
+          for (auto [j, tuple_element_parameter_tile_wrapper] :
+               llvm::enumerate(parameter_tile)) {
+            if (!mlir::cast<mlir::ArrayAttr>(
+                     tuple_element_parameter_tile_wrapper)
+                     .empty()) {
+              auto parameter_tile_attr =
+                  mlir::dyn_cast_or_null<mlir::DenseIntElementsAttr>(
+                      mlir::cast<mlir::ArrayAttr>(
+                          tuple_element_parameter_tile_wrapper)[0]);
+              if (!parameter_tile_attr) {
+                return absl::InvalidArgumentError(
+                    "Multi-level nested parameter tile is not supported.");
+              }
+              std::vector<int64_t> tile_dims =
+                  ConvertDenseIntAttr(parameter_tile_attr);
+              xla::TileProto tile;
+              tile.mutable_dimensions()->Assign(tile_dims.begin(),
+                                                tile_dims.end());
+              *hlo_module.mutable_host_program_shape()
+                   ->mutable_parameters()
+                   ->at(i)
+                   .mutable_tuple_shapes(j)
+                   ->mutable_layout()
+                   ->mutable_tiles()
+                   ->Add() = tile;
+              *hlo_module.mutable_computations(0)
+                   ->mutable_program_shape()
+                   ->mutable_parameters()
+                   ->at(i)
+                   .mutable_tuple_shapes(j)
+                   ->mutable_layout()
+                   ->mutable_tiles()
+                   ->Add() = tile;
+              *hlo_module.mutable_computations(0)
+                   ->mutable_instructions(i)
+                   ->mutable_shape()
+                   ->mutable_tuple_shapes(j)
+                   ->mutable_layout()
+                   ->mutable_tiles()
+                   ->Add() = tile;
+            }
+          }
+        } else {
+          std::vector<int64_t> tile_dims = ConvertDenseIntAttr(
+              mlir::cast<mlir::DenseIntElementsAttr>(parameter_tile[0]));
+          xla::TileProto tile;
+          tile.mutable_dimensions()->Assign(tile_dims.begin(), tile_dims.end());
+          *hlo_module.mutable_host_program_shape()
+               ->mutable_parameters()
+               ->at(i)
+               .mutable_layout()
+               ->mutable_tiles()
+               ->Add() = tile;
+          *hlo_module.mutable_computations(0)
+               ->mutable_program_shape()
+               ->mutable_parameters()
+               ->at(i)
+               .mutable_layout()
+               ->mutable_tiles()
+               ->Add() = tile;
+          *hlo_module.mutable_computations(0)
+               ->mutable_instructions(i)
+               ->mutable_shape()
+               ->mutable_layout()
+               ->mutable_tiles()
+               ->Add() = tile;
+        }
+      }
+    }
+  }
+  if (auto xla_entry_computation_result_layout =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationResultLayout)) {
+    return absl::InvalidArgumentError("Multi-result layout is not supported.");
+  }
+  if (auto xla_entry_computation_result_layout =
+          module->getAttrOfType<mlir::DenseIntElementsAttr>(
+              kMhloXlaEntryComputationResultLayout)) {
+    std::vector<int64_t> layout_dims =
+        ConvertDenseIntAttr(xla_entry_computation_result_layout);
+    hlo_module.mutable_host_program_shape()
+        ->mutable_result()
+        ->mutable_layout()
+        ->mutable_minor_to_major()
+        ->Assign(layout_dims.begin(), layout_dims.end());
+    hlo_module.mutable_computations(0)
+        ->mutable_program_shape()
+        ->mutable_result()
+        ->mutable_layout()
+        ->mutable_minor_to_major()
+        ->Assign(layout_dims.begin(), layout_dims.end());
+
+    // ROOT is the result of the computation, so assign the layout to it.
+    if (root_index == -1) {
+      find_root_instruction_index();
+    }
+    hlo_module.mutable_computations(0)
+        ->mutable_instructions(root_index)
+        ->mutable_shape()
+        ->mutable_layout()
+        ->mutable_minor_to_major()
+        ->Assign(layout_dims.begin(), layout_dims.end());
+  }
+  if (auto xla_entry_computation_result_tiles =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationResultTiles)) {
+    if (!xla_entry_computation_result_tiles.empty()) {
+      std::vector<int64_t> arr =
+          ConvertDenseIntAttr(mlir::cast<mlir::DenseIntElementsAttr>(
+              xla_entry_computation_result_tiles[0]));
+      xla::TileProto tile;
+      tile.mutable_dimensions()->Assign(arr.begin(), arr.end());
+      *hlo_module.mutable_host_program_shape()
+           ->mutable_result()
+           ->mutable_layout()
+           ->mutable_tiles()
+           ->Add() = tile;
+      *hlo_module.mutable_computations(0)
+           ->mutable_program_shape()
+           ->mutable_result()
+           ->mutable_layout()
+           ->mutable_tiles()
+           ->Add() = tile;
+
+      // ROOT is the result of the computation, so assign the tile to it.
+      if (root_index == -1) {
+        find_root_instruction_index();
+      }
+      *hlo_module.mutable_computations(0)
+           ->mutable_instructions(root_index)
+           ->mutable_shape()
+           ->mutable_layout()
+           ->mutable_tiles()
+           ->Add() = tile;
     }
   }
 
