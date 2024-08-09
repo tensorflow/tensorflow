@@ -19,12 +19,14 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -79,6 +81,40 @@ namespace xla {
 
 namespace {
 
+class CompileOnlyMemory
+    : public llvm::RTTIExtends<CompileOnlyMemory, ifrt::Memory> {
+ public:
+  explicit CompileOnlyMemory(
+      int id, const PjRtMemorySpaceDescription* memory_description,
+      ifrt::Device* device)
+      : id_(id),
+        kind_(memory_description->kind()),
+        debug_string_(absl::StrFormat("CompileOnlyMemory(id=%d, kind=%s)", id,
+                                      memory_description->kind())),
+        device_(device) {}
+
+  ifrt::MemoryId Id() const override { return ifrt::MemoryId(id_); }
+
+  const ifrt::MemoryKind& Kind() const override { return kind_; }
+
+  absl::string_view ToString() const override { return debug_string_; }
+  absl::string_view DebugString() const override { return debug_string_; }
+
+  absl::Span<ifrt::Device* const> Devices() const override {
+    return absl::Span<ifrt::Device* const>{&device_, 1};
+  }
+
+  static char ID;  // NOLINT
+
+ private:
+  int id_;
+  ifrt::MemoryKind kind_;
+  std::string debug_string_;
+  ifrt::Device* device_;
+};
+
+[[maybe_unused]] char CompileOnlyMemory::ID = 0;
+
 class CompileOnlyDevice
     : public llvm::RTTIExtends<CompileOnlyDevice, ifrt::Device> {
  public:
@@ -108,16 +144,31 @@ class CompileOnlyDevice
     return description_->DebugString();
   }
 
-  absl::Span<ifrt::Memory* const> Memories() const override { return {}; }
+  absl::Span<ifrt::Memory* const> Memories() const override {
+    return unowned_memories_;
+  }
   absl::StatusOr<ifrt::Memory*> DefaultMemory() const override {
+    if (default_memory_) {
+      return default_memory_;
+    }
     return Unimplemented("DefaultMemory is not supported");
   }
 
   const ifrt::AttributeMap& Attributes() const override { return attributes_; }
 
+  void AttachMemory(std::unique_ptr<ifrt::Memory> memory) {
+    unowned_memories_.push_back(memory.get());
+    owned_memories_.push_back(std::move(memory));
+  }
+
+  void SetDefaultMemory(ifrt::Memory* memory) { default_memory_ = memory; }
+
  private:
   const PjRtDeviceDescription* description_;
   ifrt::AttributeMap attributes_;
+  ifrt::Memory* default_memory_ = nullptr;
+  std::vector<ifrt::Memory*> unowned_memories_;
+  std::vector<std::unique_ptr<ifrt::Memory>> owned_memories_;
 };
 
 class InvalidIfrtCompiler final
@@ -153,10 +204,24 @@ class CompileOnlyIfRtClient final
       : topology_(std::move(topology)),
         descriptions_(topology_->DeviceDescriptions()),
         attributes_(ifrt::AttributeMap::Map()) {
+    int offset = 0;
     for (auto& description : descriptions_) {
       owned_devices_.push_back(
           std::make_unique<CompileOnlyDevice>(description.get()));
-      devices_.push_back(owned_devices_.back().get());
+      auto* device = owned_devices_.back().get();
+      devices_.push_back(device);
+      if (description->process_index() == process_index()) {
+        auto default_memory = description->default_memory_space();
+        for (auto* memory_description : description->memory_spaces()) {
+          auto memory = std::make_unique<CompileOnlyMemory>(
+              offset, memory_description, device);
+          if (default_memory.ok() && memory_description == *default_memory) {
+            device->SetDefaultMemory(memory.get());
+          }
+          device->AttachMemory(std::move(memory));
+          ++offset;
+        }
+      }
     }
   }
 
