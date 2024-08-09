@@ -16,9 +16,12 @@ limitations under the License.
 
 #include <limits>
 
+#include "base/types.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace {
