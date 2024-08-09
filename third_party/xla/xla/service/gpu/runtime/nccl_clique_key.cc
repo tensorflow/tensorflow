@@ -117,8 +117,4 @@ absl::StatusOr<NcclCliqueId> NcclCliqueId::FromString(std::string_view str) {
 
 absl::Span<const char> NcclCliqueId::data() const { return data_; }
 
-std::string NcclCliqueId::ToString() const {
-  return std::string(data_.data(), data_.size());
-}
-
 }  // namespace xla::gpu
