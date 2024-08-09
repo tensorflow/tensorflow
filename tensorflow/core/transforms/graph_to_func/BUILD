@@ -16,12 +16,12 @@ cc_library(
     hdrs = ["graph_to_func.h"],
     deps = [
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
