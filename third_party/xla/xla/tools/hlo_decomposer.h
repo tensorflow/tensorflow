@@ -45,11 +45,6 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
 std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
     const std::vector<HloInstruction*>& instructions);
 
-// Extracts producer and consumer HLO instruction into a new HLO module
-// replacing its operands with parameter instructions.
-std::unique_ptr<HloModule> ExtractProducerConsumerIntoNewModule(
-    const HloInstruction& producer, const HloInstruction& consumer);
-
 // Extracts an HLO computation into a new HLO module, using its clone as the
 // root computation.
 std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
