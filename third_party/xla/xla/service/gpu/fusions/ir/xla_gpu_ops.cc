@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -745,6 +744,22 @@ IndexingMap LoopOp::getIndexingMap() {
 // MaterializeOp
 //===----------------------------------------------------------------------===//
 
+VariableConstraints GetConstraintsForVariables(const IndexingMap& map) {
+  VariableConstraints result;
+  result.constraints_for_dims.resize(map.GetDimensionCount());
+  result.constraints_for_symbols.resize(map.GetSymbolCount());
+  for (const auto& constraint : map.GetConstraints()) {
+    constraint.first.walk([&](mlir::AffineExpr leaf) {
+      if (auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(leaf)) {
+        result.constraints_for_dims[dim.getPosition()].push_back(constraint);
+      } else if (auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf)) {
+        result.constraints_for_symbols[sym.getPosition()].push_back(constraint);
+      }
+    });
+  }
+  return result;
+}
+
 LogicalResult MaterializeOp::verify() {
   IndexingMap map_in = getMap().getIndexingMap();
   IndexingMap map_out =
@@ -763,9 +778,11 @@ LogicalResult MaterializeOp::verify() {
     return emitOpError() << "thread_id dimension must have the same bounds in "
                             "both indexing maps";
   }
-  auto thread_id_constraints_in = map_in.GetConstraintsForDim(0);
-  auto thread_id_constraints_out = map_out.GetConstraintsForDim(0);
-  if (thread_id_constraints_in != thread_id_constraints_out) {
+
+  auto variable_constraints_in = GetConstraintsForVariables(map_in);
+  auto variable_constraints_out = GetConstraintsForVariables(map_out);
+  if (variable_constraints_in.constraints_for_dims[0] !=
+      variable_constraints_out.constraints_for_dims[0]) {
     return emitOpError() << "constraints of indexing maps must be equal for "
                          << "the thread_id dimension";
   }
@@ -781,13 +798,10 @@ LogicalResult MaterializeOp::verify() {
       return emitOpError() << "domain of symbols of indexing_maps must match";
     }
   }
-  for (int symbol_id = 0; symbol_id < map_in.GetRangeVarsCount(); ++symbol_id) {
-    auto constraints_in = map_in.GetConstraintsForSymbol(symbol_id);
-    auto constraints_out = map_out.GetConstraintsForSymbol(symbol_id);
-    if (constraints_in != constraints_out) {
-      return emitOpError()
-             << "constraints of indexing maps must be equal for all symbols";
-    }
+  if (variable_constraints_in.constraints_for_symbols !=
+      variable_constraints_out.constraints_for_symbols) {
+    return emitOpError()
+           << "constraints of indexing maps must be equal for all symbols";
   }
 
   // The vector mapping indices must not depend on the block ID
@@ -801,9 +815,18 @@ LogicalResult MaterializeOp::verify() {
   }
   // If there are constraints on the block ID, they must be the same in both
   // maps
-  auto block_id_constraints_in = map_in.GetConstraintsForDim(1);
-  auto block_id_constraints_out = map_out.GetConstraintsForDim(1);
-  if (block_id_constraints_in != block_id_constraints_out) {
+  if (map_in.GetDimVarsCount() > 1 && map_out.GetDimVarsCount() > 1) {
+    if (variable_constraints_in.constraints_for_dims[1] !=
+        variable_constraints_out.constraints_for_dims[1]) {
+      return emitOpError() << "constraints of indexing maps must be equal for "
+                           << "the block_id dimension";
+    }
+  } else if (map_in.GetDimVarsCount() > 1 &&
+             !variable_constraints_in.constraints_for_dims[1].empty()) {
+    return emitOpError() << "constraints of indexing maps must be equal for "
+                         << "the block_id dimension";
+  } else if (map_out.GetDimVarsCount() > 1 &&
+             !variable_constraints_out.constraints_for_dims[1].empty()) {
     return emitOpError() << "constraints of indexing maps must be equal for "
                          << "the block_id dimension";
   }

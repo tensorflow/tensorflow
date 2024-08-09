@@ -139,3 +139,17 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_test(
+    name = "xla_gpu_ops_test",
+    srcs = ["xla_gpu_ops_test.cc"],
+    deps = [
+        ":xla_gpu",
+        "//xla/service/gpu/model:indexing_analysis",
+        "//xla/service/gpu/model:indexing_test_utils",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
