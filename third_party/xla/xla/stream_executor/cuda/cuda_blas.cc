@@ -243,13 +243,6 @@ bool CUDABlas::SetStream(Stream *stream) {
   return true;
 }
 
-cudaStream_t CUDABlas::CUDAStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
-  gpu::ScopedActivateExecutorContext sac{parent_};
-  return AsGpuStreamValue(stream);
-}
-
 namespace {
 
 // Helper functions transforming blas arguments into cuBLAS arguments.
@@ -308,9 +301,7 @@ struct CUDADataType<Eigen::bfloat16> {
 #endif  // CUDA_VERSION >= 11000
 
 template <>
-struct CUDADataType<std::complex<Eigen::half>> {
-  static constexpr cudaDataType_t type = CUDA_C_16F;
-};
+struct CUDADataType<std::complex<Eigen::half>> {};
 
 template <>
 struct CUDADataType<float> {
@@ -333,29 +324,19 @@ struct CUDADataType<std::complex<double>> {
 };
 
 template <>
-struct CUDADataType<int> {
-  static constexpr cudaDataType_t type = CUDA_R_32I;
-};
+struct CUDADataType<int> {};
 
 template <>
-struct CUDADataType<int8_t> {
-  static constexpr cudaDataType_t type = CUDA_R_8I;
-};
+struct CUDADataType<int8_t> {};
 
 template <>
-struct CUDADataType<std::complex<int8_t>> {
-  static constexpr cudaDataType_t type = CUDA_C_8I;
-};
+struct CUDADataType<std::complex<int8_t>> {};
 
 template <>
-struct CUDADataType<uint8_t> {
-  static constexpr cudaDataType_t type = CUDA_R_8U;
-};
+struct CUDADataType<uint8_t> {};
 
 template <>
-struct CUDADataType<std::complex<uint8_t>> {
-  static constexpr cudaDataType_t type = CUDA_C_8U;
-};
+struct CUDADataType<std::complex<uint8_t>> {};
 
 }  // namespace
 
