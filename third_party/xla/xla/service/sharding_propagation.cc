@@ -1956,19 +1956,22 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     case HloOpcode::kCustomCall: {
       bool compatible_shapes = ShapeUtil::CompatibleIgnoringElementType(
           instruction.shape(), user.shape());
-      if (!compatible_shapes) {
-        // Incompatible shapes, we will not propagate sharding.
+      if (compatible_shapes) {
+        if (!sharding_helper) {
+          // No available sharding helper and shapes are compatible, we will
+          // propagate sharding.
+          return user.sharding();
+        }
+        if (sharding_helper->CanPropagateShardingToOperands(&user)) {
+          return user.sharding();
+        }
+      }
+
+      if (!sharding_helper) {
         return std::nullopt;
       }
-      if (!sharding_helper) {
-        // No available sharding helper and shapes are compatible, we will
-        // propagate sharding.
-        return user.sharding();
-      }
-      if (sharding_helper->CanPropagateShardingToOperands(&user)) {
-        return user.sharding();
-      }
-      return std::nullopt;
+      return sharding_helper->InferOperandShardingFromOtherOperands(
+          &user, &instruction);
     }
     default: {
       // If the user output shape is compatible with the current instruction
