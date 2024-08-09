@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -114,6 +115,10 @@ class DeviceList {
 
   // Constructor with a pre-populated `devices`.
   explicit DeviceList(Devices devices);
+  DeviceList(std::initializer_list<Device*> devices)
+      : DeviceList(Devices(devices.begin(), devices.end())) {}
+  explicit DeviceList(absl::Span<Device* const> devices)
+      : DeviceList(Devices(devices.begin(), devices.end())) {}
 
   DeviceList(const DeviceList& other);
   DeviceList(DeviceList&& other);
