@@ -41,10 +41,6 @@ absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
 // Are the AType & BType TF32?
 bool HasTf32InputType(PrecisionConfig::Algorithm algorithm);
 
-// Checks if the algorithm uses fast accumulation as in
-// CUBLASLT_MATMUL_DESC_FAST_ACCUM.
-bool HasFastAccum(PrecisionConfig::Algorithm algorithm);
-
 // Checks if we support the given algorithm using cuBLAS or cuBLASLt.
 //
 // It's clear that those libraries could support more, but we only list the ones
