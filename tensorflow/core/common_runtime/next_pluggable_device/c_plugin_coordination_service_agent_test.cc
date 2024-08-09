@@ -183,7 +183,7 @@ class CPluginCoordinationServiceAgentTest : public ::testing::Test {
     TF_ASSERT_OK(impl_->Initialize(
         tsl::Env::Default(), /*job_name=*/"test_job",
         /*task_id=*/0, config, std::move(client_),
-        /*error_fn=*/[](Status s) {
+        /*error_fn=*/[](absl::Status s) {
           LOG(ERROR) << "Coordination agent is set to error: " << s;
         }));
   }
