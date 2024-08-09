@@ -107,6 +107,9 @@ class CalibrationWrapper {
   // in the quantization field.
   PyObject* Calibrate();
 
+  // Returns the names of the operators that are quantized.
+  PyObject* GetOpNames();
+
  private:
   // CalibrationWrapper is not copyable or assignable. We avoid the use of
   // CalibrationWrapper() = delete here for SWIG compatibility.
