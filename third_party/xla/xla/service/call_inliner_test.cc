@@ -15,25 +15,23 @@ limitations under the License.
 
 #include "xla/service/call_inliner.h"
 
+#include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
-#include <utility>
-#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/service/hlo_pass_fix.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
