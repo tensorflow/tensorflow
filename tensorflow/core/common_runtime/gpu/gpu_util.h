@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_UTIL_H_
 
+#include "xla/stream_executor/device_memory.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
