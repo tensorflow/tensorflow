@@ -275,6 +275,13 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
 
   auto operands = instruction->operands();
   for (size_t i = 0; i < operands.size(); ++i) {
+    // Skip the first and last operands of Clamp if they are scalar constants.
+    if (instruction->opcode() == HloOpcode::kClamp && (i == 0 || i == 2) &&
+        ShapeUtil::IsScalar(operands[i]->shape())) {
+      VLOG(3) << "Skip updating operand #" << i
+              << " of clamp: " << operands[i]->ToString(print_no_metadata);
+      continue;
+    }
     VLOG(3) << "Updating operand #" << i << ": "
             << operands[i]->ToString(print_no_metadata);
     TF_ASSIGN_OR_RETURN(operands[i],
