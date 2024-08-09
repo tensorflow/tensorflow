@@ -61,7 +61,7 @@ else
     # See: https://github.com/pyenv/pyenv/wiki#suggested-build-environment
     DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update
     DEBIAN_FRONTEND=noninteractive apt install -y wget software-properties-common
-    DEBIAN_FRONTEND=noninteractive apt-get install build-essential libssl-dev zlib1g-dev \
+    DEBIAN_FRONTEND=noninteractive apt-get -y install build-essential libssl-dev zlib1g-dev \
 	                                   libbz2-dev libreadline-dev libsqlite3-dev curl git \
                                            libncursesw5-dev xz-utils tk-dev libxml2-dev \
 					   libxmlsec1-dev libffi-dev liblzma-dev
