@@ -41,9 +41,6 @@ class NcclIdStore {
         device_to_node_(std::move(device_to_node)),
         kv_store_(std::move(kv_store)) {}
 
-  absl::StatusOr<gpu::NcclCliqueId> GetNcclUniqueId(
-      const gpu::NcclCliqueKey& key);
-
  private:
   const int node_id_;
   const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
