@@ -38,7 +38,7 @@ index a87e1c44a..456a4f224 100644
  }
  
 +def TTNG_SparseDotOp : TTG_Op<"sparse_dot", [
-+        Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>,
++        Pure, DotLike, DeclareOpInterfaceMethods<InferTypeOpInterface>,
 +        TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
 +    let summary = "sparse dot";
 +
@@ -265,17 +265,6 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b
 index d74e0a224..4e45f7c4c 100644
 --- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
-@@ -51,6 +51,10 @@ struct LoadInfo {
- 
- } // namespace
- 
-+static bool isDotLikeOp(Operation* op) {
-+  return op->hasTrait<OpTrait::DotLike>() || isa<ttg::SparseDotOp>(op);
-+}
-+
- // Replace the ForOp's yield with a new one with the given operands appended.
- static void appendToYield(scf::ForOp forOp, ArrayRef<Value> newOperands) {
-   // Fix up the yield op.
 @@ -248,19 +252,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
@@ -317,24 +306,6 @@ index d74e0a224..4e45f7c4c 100644
      }
      // Check that the shared encodings needed by the users are compatible.
      if (attr != nullptr && attr != tempAttr) {
-@@ -369,7 +382,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
-       };
- 
-   for (Operation &op : forOp.getBody()->without_terminator()) {
--    if (!op.hasTrait<OpTrait::DotLike>())
-+    if (!isDotLikeOp(&op))
-       continue;
-     seen.clear();
-     dfs(&op, 0, &op);
-@@ -446,7 +459,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
-         continue;
-     }
- 
--    if (use->hasTrait<OpTrait::DotLike>()) {
-+    if (isDotLikeOp(use)) {
-       loadInfo.usedByDot = true;
-       if (loadIsMMAv3(op)) {
-         loadInfo.loadIsMMAV3 = true;
 @@ -472,7 +485,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          // The codegen bug is caught by an assertion, so if you think you've
          // fixed it, feel free to delete this code and see if the assert still
@@ -357,15 +328,6 @@ index fb0e7f6fd..37795c20c 100644
          return WalkResult::advance();
        OpBuilder builder(op);
        auto a = op->getOperand(0);
-@@ -79,7 +79,7 @@ private:
-     static DenseSet<std::pair<Operation *, unsigned>> trace;
-     auto op = operand.getDefiningOp();
-     // avoid redundant insertion
--    if (op && op->hasTrait<OpTrait::DotLike>())
-+    if (op && (op->hasTrait<OpTrait::DotLike>() || isa<ttg::SparseDotOp>(op)))
-       return false;
-     // reach convertlayout
-     if (op && isa<ttg::LocalAllocOp>(op) &&
 diff --git a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
 index 7affd8840..52aa2c131 100644
 --- a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
@@ -412,4 +374,4 @@ index f2742218e..4cb1fae93 100644
 +    addLegalOp<triton::gpu::SparseDotOp>();  // Rewritten in a separate pass.
    }
  };
-
+ 
