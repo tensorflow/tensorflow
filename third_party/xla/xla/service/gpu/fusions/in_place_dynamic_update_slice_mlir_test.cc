@@ -112,6 +112,8 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, SimpleDUS) {
     // CHECK-DAG:   %[[C_15:.*]] = arith.constant 15
     // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
     // CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
+
+    // CHECK:     xla_gpu.loop
     // CHECK:       %[[INPUT_INDEX_0:.*]] = xla_gpu.apply_indexing #[[MAP_1]](%[[THREAD_ID]])
     // CHECK:       %[[INPUT_INDEX_1:.*]] = xla_gpu.apply_indexing #[[MAP_2]](%[[THREAD_ID]])
     // CHECK:       %[[I0:.*]] = xla_gpu.pure_call @fused_computation_i0
@@ -125,8 +127,8 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, SimpleDUS) {
     // CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
     // CHECK:       %[[ADD1:.*]] = arith.addi %[[INPUT_INDEX_1]], %[[MAX1]]
     // CHECK:       %[[UPDATE:.*]] = xla_gpu.pure_call @fused_computation_updates
-    // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %arg4[%[[ADD0]], %[[ADD1]]]
-    // CHECK:       return %[[INSERT]]
+    // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %{{[a-z0-9]+}}[%[[ADD0]], %[[ADD1]]]
+    // CHECK:       xla_gpu.yield %[[INSERT]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -162,6 +164,7 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OutOfBoundDUS) {
     // CHECK-DAG:   %[[C_5:.*]] = arith.constant 5
     // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
     // CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
+    // CHECK:     xla_gpu.loop
     // CHECK:       %[[INPUT_INDEX_0:.*]] = xla_gpu.apply_indexing #[[MAP_1]](%[[THREAD_ID]])
     // CHECK:       %[[INPUT_INDEX_1:.*]] = xla_gpu.apply_indexing #[[MAP_2]](%[[THREAD_ID]])
     // CHECK:       %[[I0:.*]] = xla_gpu.pure_call @fused_computation_i0
@@ -175,8 +178,8 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OutOfBoundDUS) {
     // CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
     // CHECK:       %[[ADD1:.*]] = arith.addi %[[INPUT_INDEX_1]], %[[MAX1]]
     // CHECK:       %[[UPDATE:.*]] = xla_gpu.pure_call @fused_computation_updates
-    // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %arg4[%[[ADD0]], %[[ADD1]]]
-    // CHECK:       return %[[INSERT]]
+    // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %{{[a-z0-9]+}}[%[[ADD0]], %[[ADD1]]]
+    // CHECK:       xla_gpu.yield %[[INSERT]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -271,6 +274,7 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OperandSubgraphWithTwoRoots) {
     // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
     // CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
     // CHECK:       %[[BLOCK_ID:.*]] = gpu.block_id  x
+    // CHECK:     xla_gpu.loop
     // CHECK:       %[[I0:.*]] = xla_gpu.pure_call @dus_fusion_param_2_plus_one
     // CHECK:       %[[I1:.*]] = xla_gpu.pure_call @dus_fusion_param_3_plus_one
     // CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
@@ -282,8 +286,8 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OperandSubgraphWithTwoRoots) {
     // CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
     // CHECK:       %[[ADD1:.*]] = arith.addi %[[THREAD_ID]], %[[MAX1]]
     // CHECK:       %[[UPDATE:.*]] = xla_gpu.pure_call @dus_fusion_param_1_10
-    // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %[[ARG4]][%[[ADD0]], %[[ADD1]]]
-    // CHECK:       return %[[INSERT]]
+    // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %{{[a-z0-9]+}}[%[[ADD0]], %[[ADD1]]]
+    // CHECK:       xla_gpu.yield %[[INSERT]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-6}));
 }

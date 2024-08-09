@@ -312,6 +312,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreatePeelLoopsPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaGpuLoopsToScfPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
@@ -475,8 +476,8 @@ SmallVector<Value> MlirFusionEmitterBase::EmitThreadLoopNest(
         SmallVector<Value>(ValueRange outputs_tensors, ValueRange dim_values,
                            ValueRange symbol_values)>& create_body,
     bool vectorize) const {
-  return mlir_converter::EmitLoopNest(b, EmitThreadAndBlockIds(b), outputs,
-                                      indexing_map, create_body, vectorize);
+  return mlir_converter::EmitXlaLoopOp(b, EmitThreadAndBlockIds(b), outputs,
+                                       indexing_map, create_body, vectorize);
 }
 
 absl::Status MlirFusionEmitterBase::EmitMlir(

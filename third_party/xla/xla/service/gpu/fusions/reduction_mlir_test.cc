@@ -400,19 +400,14 @@ TEST_F(MlirRowReductionTest, NonPowerOfTwoRowReduction) {
       ROOT fusion = f32[100] fusion(a, c), kind=kInput, calls=fused_computation
     })";
   TF_EXPECT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-DAG: #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0] -> ((d1 mod 64) * 2 + s0 * 128 + d0), domain: d0 in [0, 1], d1 in [0, 255], s0 in [0, 3]>
-    // CHECK-DAG: #[[MAP2:.*]] = #xla_gpu.indexing_map<(d0, d1) -> ((d1 mod 64) * 2 + d0 + 512), domain: d0 in [0, 1], d1 in [0, 255]>
-    // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-    // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-    // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
-    // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : index
-    // CHECK: %[[FULL_TILES:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
-    // CHECK-NEXT: scf.for %[[J:.*]] = %[[C0]] to %[[C2]] step %[[C1]]
-    // CHECK-NOT: scf.if
-    // CHECK: xla_gpu.apply_indexing #[[MAP1]](%[[J]], %thread_id_x)[%[[I]]]
-    // CHECK: scf.for %[[J:.*]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%{{.*}} = %[[FULL_TILES]])
-    // CHECK: scf.if
-    // CHECK: xla_gpu.apply_indexing #[[MAP2]](%[[J]], %thread_id_x)
+    // CHECK-DAG: #[[MAP0:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (0, d3 * 4 + d0 floordiv 64, d0 mod 64 + s1 * 64, s2), domain: d0 in [0, 255], d1 in [0, 0], d2 in [0, 0], d3 in [0, 24], d4 in [0, 1], d5 in [0, 0], s0 in [0, 0], s1 in [0, 4], s2 in [0, 1], d0 mod 64 + s1 * 64 in [0, 283]>
+    // CHECK-DAG: #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0] -> ((d1 mod 64) * 2 + s0 * 128 + d0), domain: d0 in [0, 1], d1 in [0, 255], s0 in [0, 4]>
+    // CHECK-DAG: #[[MAP2:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 4 + d0 floordiv 64), domain: d0 in [0, 255], d1 in [0, 24]>
+    // CHECK: %[[TH_X:.*]] = gpu.thread_id x
+    // CHECK: %[[BL_X:.*]] = gpu.block_id x
+    // CHECK: %[[FULL_TILES:.*]] = xla_gpu.loop ({{.*}})[%{{.*}}, %[[I:.*]], %[[J:.*]]] in #[[MAP0]]
+    // CHECK-DAG: xla_gpu.apply_indexing #[[MAP1]](%[[J]], %[[TH_X]])[%[[I]]]
+    // CHECK-DAG: xla_gpu.apply_indexing #[[MAP2]](%[[TH_X]], %[[BL_X]])
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -464,8 +459,7 @@ TEST_F(MlirRowReductionTest, SideOutputIndexing) {
 TEST_F(MlirRowReductionTest, SideOutputIr) {
   TF_ASSERT_OK(EmitAndCheckIR(kRowReductionSideOutput, R"(
     // CHECK: @fused_computation
-    // CHECK: scf.for
-    // CHECK: scf.for
+    // CHECK: xla_gpu.loop
     // CHECK: %[[SIDE_OUTPUT:.*]] = xla_gpu.pure_call @fused_computation_exp
     // CHECK-NEXT: tensor.insert %[[SIDE_OUTPUT]]
   )"));

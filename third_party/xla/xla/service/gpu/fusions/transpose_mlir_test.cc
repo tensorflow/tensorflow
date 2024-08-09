@@ -270,25 +270,21 @@ TEST_F(MlirTransposeFusionTest, FusedTranspose021) {
     }
   )";
   TF_EXPECT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-DAG: #[[MAP0:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d3 floordiv 30, ((d3 floordiv 6) mod 5) * 32 + s0 * 4 + d0 floordiv 32, (d3 mod 6) * 32 + d0 mod 32), domain: d0 in [0, 127], d1 in [0, 0], d2 in [0, 0], d3 in [0, 599], d4 in [0, 0], d5 in [0, 0], s0 in [0, 7], s1 in [0, 0], (d3 mod 6) * 32 + d0 mod 32 in [0, 169]>
+    // CHECK-DAG: #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d3 floordiv 30, (d3 mod 6) * 32 + s0 * 4 + d0 floordiv 32, ((d3 floordiv 6) mod 5) * 32 + d0 mod 32), domain: d0 in [0, 127], d1 in [0, 0], d2 in [0, 0], d3 in [0, 599], d4 in [0, 0], d5 in [0, 0], s0 in [0, 7], s1 in [0, 0], (d3 mod 6) * 32 + s0 * 4 + d0 floordiv 32 in [0, 169]>
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:   }, %[[OUT:.*]]: tensor<20x170x160xf32>
-    //
-    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
-    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
-    // CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
 
     // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<1x32x33xf32>
-    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = scf.for
-    // CHECK-SAME:     %[[C0]] to %[[C8]] step %[[C1]]
-    // CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
+    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla_gpu.loop
+    // CHECK-SAME:     in #[[MAP0]] iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
     // CHECK:        %[[EXP:.*]] = xla_gpu.pure_call @fused_computation_exp
     // CHECK:        tensor.insert %[[EXP]] into %[[SHMEM_]]
 
     // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
 
-    // CHECK:      scf.for
-    // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
-    // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
+    // CHECK:      xla_gpu.loop
+    // CHECK-SAME:     in #[[MAP1]] iter_args(%[[OUT_:.*]] = %[[OUT]])
     // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation__epilogue__
     // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]
   )"));
@@ -310,35 +306,24 @@ TEST_F(MlirTransposeFusionTest, FusedTranspose102) {
     }
   )";
   TF_EXPECT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-DAG: #[[MAP0:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> ((d3 floordiv 6) * 32 + s0 * 4 + d0 floordiv 32, (d3 mod 6) * 32 + d0 mod 32, s2), domain: d0 in [0, 127], d1 in [0, 0], d2 in [0, 0], d3 in [0, 29], d4 in [0, 0], d5 in [0, 0], s0 in [0, 7], s1 in [0, 0], s2 in [0, 2], (d3 mod 6) * 32 + d0 mod 32 in [0, 169]>
+    // CHECK-DAG: #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> ((d3 mod 6) * 32 + s0 * 4 + d0 floordiv 32, (d3 floordiv 6) * 32 + d0 mod 32, s2), domain: d0 in [0, 127], d1 in [0, 0], d2 in [0, 0], d3 in [0, 29], d4 in [0, 0], d5 in [0, 0], s0 in [0, 7], s1 in [0, 0], s2 in [0, 2], (d3 mod 6) * 32 + s0 * 4 + d0 floordiv 32 in [0, 169]>
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:   }, %[[OUT:.*]]: tensor<170x160x3xi8>
-    //
-    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
-    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
-    // CHECK-DAG:  %[[C3:.*]] = arith.constant 3 : index
-    // CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
 
     // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<32x33x3xi8>
-    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = scf.for
-    // CHECK-SAME:     %[[C0]] to %[[C8]] step %[[C1]]
-    // CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
-    // CHECK:      %[[SHMEM_WITH_VALS2:.*]] = scf.for
-    // CHECK-SAME:     %[[C0]] to %[[C3]] step %[[C1]]
-    // CHECK-SAME:     iter_args(%[[SHMEM2_:.*]] = %[[SHMEM_]])
+    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla_gpu.loop
+    // CHECK-SAME:     in #[[MAP0]] iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
     // CHECK:        %[[P0:.*]] = xla_gpu.pure_call @fused_computation_p0
-    // CHECK:        tensor.insert %[[P0]] into %[[SHMEM2_]]
+    // CHECK:        tensor.insert %[[P0]] into %[[SHMEM_]]
 
     // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
 
-    // CHECK:      scf.for
-    // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
-    // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
-    // CHECK:      scf.for
-    // CHECK-SAME:    %[[C0]] to %[[C3]] step %[[C1]]
-    // CHECK-SAME:    iter_args(%[[OUT2_:.*]] = %[[OUT_]])
+    // CHECK:      xla_gpu.loop
+    // CHECK-SAME:    in #[[MAP1]] iter_args(%[[OUT_:.*]] = %[[OUT]])
     // CHECK:       %[[EXTRACTED:.*]] = tensor.extract %[[SYNC]]
     // CHECK:       %[[RES:.*]] = xla_gpu.pure_call @fused_computation__epilogue__transpose
-    // CHECK:       tensor.insert %[[RES]] into %[[OUT2_]]
+    // CHECK:       tensor.insert %[[RES]] into %[[OUT_]]
   )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
@@ -361,26 +346,22 @@ TEST_F(MlirTransposeFusionTest, FusedTranspose210) {
     }
   )";
   TF_EXPECT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-DAG: #[[MAP0:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d0 floordiv 32 + s0 * 4, d3 floordiv 6, (d3 mod 6) * 32 + d0 mod 32), domain: d0 in [0, 127], d1 in [0, 0], d2 in [0, 0], d3 in [0, 959], d4 in [0, 0], d5 in [0, 0], s0 in [0, 4], s1 in [0, 0], (d3 mod 6) * 32 + d0 mod 32 in [0, 169]>
+    // CHECK-DAG: #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1] -> ((d3 mod 6) * 32 + s0 * 4 + d0 floordiv 32, d3 floordiv 6, d0 mod 32), domain: d0 in [0, 127], d1 in [0, 0], d2 in [0, 0], d3 in [0, 959], d4 in [0, 0], d5 in [0, 0], s0 in [0, 7], s1 in [0, 0], (d3 mod 6) * 32 + s0 * 4 + d0 floordiv 32 in [0, 169], d0 mod 32 in [0, 19]>
+
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:   }, %[[OUT:.*]]: tensor<170x160x20xf32>
     //
-    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
-    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
-    // CHECK-DAG:  %[[C5:.*]] = arith.constant 5 : index
-    // CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
-
     // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<32x1x33xf32>
-    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = scf.for
-    // CHECK-SAME:     %[[C0]] to %[[C5]] step %[[C1]]
-    // CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
+    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla_gpu.loop
+    // CHECK-SAME:     in #[[MAP0]] iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
     // CHECK:        %[[EXP:.*]] = xla_gpu.pure_call @fused_computation_exp
     // CHECK:        tensor.insert %[[EXP]] into %[[SHMEM_]]
 
     // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
 
-    // CHECK:      scf.for
-    // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
-    // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
+    // CHECK:      xla_gpu.loop
+    // CHECK-SAME:    in #[[MAP1]] iter_args(%[[OUT_:.*]] = %[[OUT]])
     // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation__epilogue__
     // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]
   )"));
@@ -405,22 +386,16 @@ TEST_F(MlirTransposeFusionTest, Transpose021_Parameter) {
   TF_EXPECT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:   }, %[[OUT:.*]]: tensor<20x170x160xf32>
-    //
-    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
-    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
-    // CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
 
     // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<1x32x33xf32>
-    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = scf.for
-    // CHECK-SAME:     %[[C0]] to %[[C8]] step %[[C1]]
+    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla_gpu.loop
     // CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
     // CHECK:        %[[EXP:.*]] = xla_gpu.pure_call @fused_computation_p0
     // CHECK:        tensor.insert %[[EXP]] into %[[SHMEM_]]
 
     // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
 
-    // CHECK:      scf.for
-    // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
+    // CHECK:      xla_gpu.loop
     // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
     // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation__epilogue__
     // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]
