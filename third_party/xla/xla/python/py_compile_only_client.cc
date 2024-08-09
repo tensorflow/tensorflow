@@ -160,6 +160,8 @@ class CompileOnlyIfRtClient final
     }
   }
 
+  void ShutDown() override {}
+
   absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeArrayFromHostBuffer(
       const void* data, ifrt::DType dtype, ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,

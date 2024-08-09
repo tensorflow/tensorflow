@@ -705,6 +705,7 @@ PyType_Slot PyClient::slots_[] = {
       .def("live_arrays", &PyClient::LiveArrays)
       .def("live_buffers", &PyClient::LiveArrays)
       .def("process_index", &PyClient::process_index)
+      .def("shut_down", &PyClient::ShutDown)
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)
       .def(
