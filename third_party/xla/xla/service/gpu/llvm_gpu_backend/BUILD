@@ -106,3 +106,16 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+xla_cc_test(
+    name = "gpu_backend_lib_test",
+    size = "small",
+    srcs = ["gpu_backend_lib_test.cc"],
+    deps = [
+        ":llvm_gpu_backend",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",
+        "@llvm-project//llvm:Core",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
