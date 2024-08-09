@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/flatbuffer_to_mlir.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 #include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
 #include "tensorflow/lite/toco/model.h"
@@ -309,7 +309,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool enable_variable_quantization,
                             bool disable_per_channel_for_dense_layers,
                             PyObject* debug_options_proto_txt_raw) {
-  using tflite::interpreter_wrapper::PythonErrorReporter;
+  using tflite_migration::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -399,7 +399,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
 }
 
 PyObject* MlirSparsifyModel(PyObject* data) {
-  using tflite::interpreter_wrapper::PythonErrorReporter;
+  using tflite_migration::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);

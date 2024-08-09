@@ -318,6 +318,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "stateful_error_reporter",
+    hdrs = ["stateful_error_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
+)
+
 gentbl_cc_library(
     name = "tensorflow_lite_canonicalize_inc_gen",
     compatible_with = get_compatible_with_portable(),
