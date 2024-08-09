@@ -94,11 +94,17 @@ class KernelThunk : public Thunk {
   KernelThunk(Info info,
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
               absl::Span<const BufferAllocation::Slice> results_buffers,
+              absl::flat_hash_set<BufferAllocation::Slice> readonly_buffers,
               std::string kernel_name, se::ThreadDim thread_dim,
               std::optional<uint64_t> min_alignment);
 
+  absl::Status CheckInvariantBuffers() const;
+
   ArgumentsBuffers arguments_buffers_;
   ResultsBuffers results_buffers_;
+
+  // TODO(abanas): readonly_arguments_?
+  absl::flat_hash_set<BufferAllocation::Slice> readonly_buffers_;
 
   size_t num_kernel_args_;
 
@@ -149,6 +155,7 @@ class KernelThunk final : public internal::KernelThunk<> {
       absl::Span<const BufferAllocation::Slice> arguments_buffers,
       absl::Span<const BufferAllocation::Slice> results_buffers,
       std::string kernel_name, se::ThreadDim thread_dim,
+      absl::flat_hash_set<BufferAllocation::Slice> readonly_buffers,
       std::optional<uint64_t> min_alignment = std::nullopt);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(

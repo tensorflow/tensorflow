@@ -244,5 +244,121 @@ TEST_F(IrEmitter2Test, EmitParallelKernel) {
   )"));
 }
 
+using IrEmitter2ReadOnlyBuffersTest = HloTestBase;
+
+TEST_F(IrEmitter2ReadOnlyBuffersTest, AllReadOnlyBuffers) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      ROOT add.0 = f32[2,2] add(p0, p0)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* add = FindInstruction(hlo_module.get(), "add.0");
+  ASSERT_NE(add, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssigner::Run(
+          hlo_module.get(),
+          std::make_unique<DependencyHloOrdering>(hlo_module.get()),
+          backend().compiler()->BufferSizeBytesFunction(),
+          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+
+  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
+      [](int64_t size) { return 1; });
+
+  IrEmitter nested_ir_emitter(nullptr, *hlo_module, *buffer_assignment,
+                              module.get(), {}, {}, {}, &target_machine, false);
+
+  IrEmitter2 ir_emitter(*hlo_module, module.get(), &nested_ir_emitter);
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          ir_emitter.EmitElementalHostKernel(add));
+
+  ASSERT_EQ(kernel.readonly_buffers.size(), 1);
+}
+
+TEST_F(IrEmitter2ReadOnlyBuffersTest, NoReadOnlyBuffers) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m, input_output_alias={ {}: (0, {}, must-alias) }
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      ROOT add.0 = f32[2,2] add(p0, p0)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* add = FindInstruction(hlo_module.get(), "add.0");
+  ASSERT_NE(add, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssigner::Run(
+          hlo_module.get(),
+          std::make_unique<DependencyHloOrdering>(hlo_module.get()),
+          backend().compiler()->BufferSizeBytesFunction(),
+          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+
+  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
+      [](int64_t size) { return 1; });
+
+  IrEmitter nested_ir_emitter(nullptr, *hlo_module, *buffer_assignment,
+                              module.get(), {}, {}, {}, &target_machine, false);
+
+  IrEmitter2 ir_emitter(*hlo_module, module.get(), &nested_ir_emitter);
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          ir_emitter.EmitElementalHostKernel(add));
+
+  ASSERT_EQ(kernel.readonly_buffers.size(), 0);
+}
+
+TEST_F(IrEmitter2ReadOnlyBuffersTest, ReadOnlyAndReadWriteBuffersMixed) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m, input_output_alias={ {}: (1, {}, must-alias) }
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      p1 = f32[2,2] parameter(1)
+      ROOT add.0 = f32[2,2] add(p0, p1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* add = FindInstruction(hlo_module.get(), "add.0");
+  ASSERT_NE(add, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssigner::Run(
+          hlo_module.get(),
+          std::make_unique<DependencyHloOrdering>(hlo_module.get()),
+          backend().compiler()->BufferSizeBytesFunction(),
+          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+
+  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
+      [](int64_t size) { return 1; });
+
+  IrEmitter nested_ir_emitter(nullptr, *hlo_module, *buffer_assignment,
+                              module.get(), {}, {}, {}, &target_machine, false);
+
+  IrEmitter2 ir_emitter(*hlo_module, module.get(), &nested_ir_emitter);
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          ir_emitter.EmitElementalHostKernel(add));
+
+  // TODO(abanas): Maybe verify also which buffer is read-only, not only the
+  // count.
+  ASSERT_EQ(kernel.readonly_buffers.size(), 1);
+}
+
 }  // namespace
 }  // namespace xla::cpu
