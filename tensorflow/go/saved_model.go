@@ -17,12 +17,11 @@ limitations under the License.
 package tensorflow
 
 import (
-	"fmt"
 	"runtime"
 	"unsafe"
 
-	"google.golang.org/protobuf/proto"
 	corepb "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto"
+	"google.golang.org/protobuf/proto"
 )
 
 // #include <stdlib.h>
@@ -58,18 +57,19 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 		return nil, err
 	}
 	cExportDir := C.CString(exportDir)
-	if len(tags) == 0 {
-		return nil, fmt.Errorf("empty tags are not allowed")
-	}
 	cTags := make([]*C.char, len(tags))
 	for i := range tags {
 		cTags[i] = C.CString(tags[i])
+	}
+	var tagsPtr **C.char = nil
+	if len(tags) != 0 {
+		tagsPtr = (**C.char)(unsafe.Pointer(&cTags[0]))
 	}
 	graph := NewGraph()
 	metaGraphDefBuf := C.TF_NewBuffer()
 	defer C.TF_DeleteBuffer(metaGraphDefBuf)
 	// TODO(jhseu): Add support for run_options and meta_graph_def.
-	cSess := C.TF_LoadSessionFromSavedModel(cOpt, nil, cExportDir, (**C.char)(unsafe.Pointer(&cTags[0])), C.int(len(cTags)), graph.c, metaGraphDefBuf, status.c)
+	cSess := C.TF_LoadSessionFromSavedModel(cOpt, nil, cExportDir, tagsPtr, C.int(len(cTags)), graph.c, metaGraphDefBuf, status.c)
 	for i := range cTags {
 		C.free(unsafe.Pointer(cTags[i]))
 	}

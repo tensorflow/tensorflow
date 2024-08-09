@@ -95,8 +95,14 @@ func TestSavedModelWithEmptyTags(t *testing.T) {
 		options   = new(SessionOptions)
 	)
 
-	_, err := LoadSavedModel(exportDir, tags, options)
-	if err == nil {
-		t.Fatalf("LoadSavedModel() should return an error if tags are empty")
+	m, err := LoadSavedModel(exportDir, tags, options)
+	if err != nil {
+		t.Fatalf("LoadSavedModel() failed with an empty tags set: %v", err)
 	}
+
+	if op := m.Graph.Operation("x"); op == nil {
+		t.Fatalf("\"x\" not found in graph")
+	}
+
+	t.Logf("Model loaded successfully with an empty tags set: %+v", m)
 }
