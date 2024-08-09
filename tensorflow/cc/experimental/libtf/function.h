@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/cc/experimental/libtf/object.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tf {
