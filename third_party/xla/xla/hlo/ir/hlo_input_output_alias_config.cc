@@ -244,12 +244,6 @@ absl::Status HloInputOutputAliasConfig::Verify(
   });
 }
 
-std::ostream& operator<<(std::ostream& out,
-                         const HloInputOutputAliasConfig& config) {
-  out << config.ToString();
-  return out;
-}
-
 absl::Status HloBufferDonorConfig::AddBufferDonor(
     int64_t param_number, const ShapeIndex& param_index) {
   TF_RET_CHECK(param_number >= 0) << param_number;
@@ -345,12 +339,6 @@ absl::Status HloBufferDonorConfig::Verify(const HloModule& module) const {
   // Since buffer_donor_ is a set, we do not need to check if one input has
   // registered as a buffer donor many times.
   return absl::OkStatus();
-}
-
-std::ostream& operator<<(std::ostream& out,
-                         const HloBufferDonorConfig& config) {
-  out << config.ToString();
-  return out;
 }
 
 }  // namespace xla
