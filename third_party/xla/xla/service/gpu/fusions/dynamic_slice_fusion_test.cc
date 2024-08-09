@@ -86,6 +86,14 @@ class DynamicSliceFusionTest : public HloTestBase {
     return config;
   }
 
+  HloModuleConfig GetModuleConfigWithDeterministicOps() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_deterministic_ops(true);
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return config;
+  }
+
   std::vector<HloComputation*> GetAddressComputations(const HloModule& module) {
     std::vector<HloComputation*> computations;
     for (auto computation : module.computations()) {
@@ -264,8 +272,10 @@ TEST_F(DynamicSliceFusionTest, CublasGemmWithWorkspace) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
-                                      /*run_hlo_passes=*/false));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo_ref, hlo_opt, GetModuleConfigWithDeterministicOps(),
+      GetModuleConfigWithDeterministicOps(), error_spec,
+      /*run_hlo_passes=*/false));
 }
 
 TEST_F(DynamicSliceFusionTest, ContiguousSlice) {
@@ -1354,8 +1364,10 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDynamicWithWorkspace) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
-                                      /*run_hlo_passes=*/false));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo_ref, hlo_opt, GetModuleConfigWithDeterministicOps(),
+      GetModuleConfigWithDeterministicOps(), error_spec,
+      /*run_hlo_passes=*/false));
 }
 
 TEST_F(DynamicSliceFusionTest, DynamicContiguousSlice) {
@@ -2183,8 +2195,10 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
-                                      /*run_hlo_passes=*/false));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo_ref, hlo_opt, GetModuleConfigWithDeterministicOps(),
+      GetModuleConfigWithDeterministicOps(), error_spec,
+      /*run_hlo_passes=*/false));
 }
 
 TEST_F(DynamicSliceFusionTest, CublasGemmDUSWorkspaceIgnored) {
@@ -2268,8 +2282,10 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWorkspaceIgnored) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
-                                      /*run_hlo_passes=*/false));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo_ref, hlo_opt, GetModuleConfigWithDeterministicOps(),
+      GetModuleConfigWithDeterministicOps(), error_spec,
+      /*run_hlo_passes=*/false));
 }
 
 TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetS32NotConstant) {
@@ -2462,8 +2478,10 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetOOB) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
-                                      /*run_hlo_passes=*/false));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo_ref, hlo_opt, GetModuleConfigWithDeterministicOps(),
+      GetModuleConfigWithDeterministicOps(), error_spec,
+      /*run_hlo_passes=*/false));
 }
 
 TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
