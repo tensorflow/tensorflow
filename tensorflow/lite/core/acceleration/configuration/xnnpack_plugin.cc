@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
