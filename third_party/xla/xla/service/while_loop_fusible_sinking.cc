@@ -136,10 +136,6 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   }
 
   bool changed = false;
-
-  absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>
-      conditional_gte_index_to_insts =
-          WhileUtil::GetGTEsMapForWhileConditional(*while_cond);
   std::vector<HloInstruction*> invariant_body_gtes =
       WhileUtil::GetInvariantGTEsForWhileBody(*while_body);
   std::vector<int64_t> tuple_indices;

@@ -157,7 +157,6 @@ Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
     offset_i.push_back(strings::StrCat("offset:offset:", i));
     dx_i.push_back(strings::StrCat("dx_", i, ":output:0"));
   }
-  DataTypeVector dtype_list(N, T);
 
   // ConcatGrad(dim, x, dy):
   //   for i in range(N):
