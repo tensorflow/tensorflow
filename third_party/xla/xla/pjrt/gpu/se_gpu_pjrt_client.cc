@@ -562,6 +562,13 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
       shapes, stream_executor_device, this, memory_space);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space,
+    const Layout* layout) {
+  return CreateBuffersForAsyncHostToDevice(shapes, memory_space);
+}
+
 absl::StatusOr<xla::DeviceAssignment>
 StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
                                                     int num_partitions) const {
