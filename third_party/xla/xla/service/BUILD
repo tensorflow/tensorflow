@@ -3559,6 +3559,7 @@ cc_library(
         ":hlo_creation_utils",
         ":hlo_cse",
         ":hlo_pass",
+        ":hlo_pass_pipeline",
         ":hlo_value",
         ":pattern_matcher",
         ":tuple_simplifier",
@@ -3591,6 +3592,7 @@ xla_cc_test(
     name = "while_loop_unroller_test",
     srcs = ["while_loop_unroller_test.cc"],
     deps = [
+        ":hlo_dce",
         ":while_loop_unroller",
         "//xla:literal",
         "//xla/hlo/ir:hlo",
