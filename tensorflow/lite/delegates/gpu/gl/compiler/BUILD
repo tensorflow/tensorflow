@@ -25,6 +25,7 @@ cc_test(
     ],
     deps = [
         ":preprocessor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -36,11 +37,11 @@ cc_library(
     deps = [
         ":preprocessor",
         ":variable_accessor",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:object",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -53,8 +54,10 @@ cc_test(
     ],
     deps = [
         ":object_accessor",
+        ":preprocessor",
         ":variable_accessor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:object",
         "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/types:variant",
         "@com_google_googletest//:gtest_main",
@@ -86,6 +89,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:compiler_options",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "//tensorflow/lite/delegates/gpu/gl:object",
         "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/status",
@@ -140,7 +144,6 @@ cc_library(
     hdrs = ["fuse_inline.h"],
     deps = [
         ":compiled_node",
-        ":shader_code",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -176,12 +179,11 @@ cc_library(
         ":compiled_node",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
-        "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -196,6 +198,9 @@ cc_test(
     deps = [
         ":compiled_node",
         ":fuse_auto_input",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/types:any",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -225,6 +230,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":preprocessor",
         ":variable_accessor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "@com_google_googletest//:gtest_main",
