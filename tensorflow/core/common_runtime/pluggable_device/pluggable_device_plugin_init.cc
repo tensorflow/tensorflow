@@ -17,6 +17,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
@@ -31,9 +33,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
