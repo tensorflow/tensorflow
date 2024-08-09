@@ -111,12 +111,48 @@ struct OptimizationProfileConfig {
           int idx = i + n_inputs_tf;
           VLOG(2) << "Setting shape values for " << name << ", "
                   << ::tensorflow::tensorrt::DebugString(opt[idx]);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
           profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMIN,
                                   min[idx].d, min[idx].nbDims);
           profile->setShapeValues(name, nvinfer1::OptProfileSelector::kOPT,
                                   opt[idx].d, opt[idx].nbDims);
           profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMAX,
                                   max[idx].d, max[idx].nbDims);
+#else
+          std::vector<int32_t> vals32;
+          vals32.resize(min[idx].nbDims);
+          for (int dim = 0; dim < min[idx].nbDims; ++dim) {
+            vals32[dim] = static_cast<int32_t>(min[idx].d[dim]);
+            if (vals32[dim] != min[idx].d[dim]) {
+              return errors::Internal("min value does not fit in int32: ",
+                                      min[idx].d[dim]);
+            }
+          }
+          profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMIN,
+                                  vals32.data(), min[idx].nbDims);
+
+          vals32.resize(opt[idx].nbDims);
+          for (int dim = 0; dim < opt[idx].nbDims; ++dim) {
+            vals32[dim] = static_cast<int32_t>(opt[idx].d[dim]);
+            if (vals32[dim] != opt[idx].d[dim]) {
+              return errors::Internal("opt value does not fit in int32: ",
+                                      opt[idx].d[dim]);
+            }
+          }
+          profile->setShapeValues(name, nvinfer1::OptProfileSelector::kOPT,
+                                  vals32.data(), opt[idx].nbDims);
+
+          vals32.resize(max[idx].nbDims);
+          for (int dim = 0; dim < max[idx].nbDims; ++dim) {
+            vals32[dim] = static_cast<int32_t>(max[idx].d[dim]);
+            if (vals32[dim] != max[idx].d[dim]) {
+              return errors::Internal("max value does not fit in int32: ",
+                                      max[idx].d[dim]);
+            }
+          }
+          profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMAX,
+                                  vals32.data(), max[idx].nbDims);
+#endif
         }
         VLOG(2) << "Setting input dimensions for " << name << ", "
                 << ::tensorflow::tensorrt::DebugString(opt[i]);
@@ -241,7 +277,12 @@ class TrtShapeOptimizationProfile {
   Status CreateExecutionContexts(nvinfer1::ICudaEngine* engine,
                                  std::vector<ExecutionContext>* exec_contexts);
 
-  Status SetInputShapeBinding(int input_index, int binding_index,
+  Status SetInputShapeBinding(int input_index,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                              int binding_index,
+#else
+                              const char* tensor_name,
+#endif
                               nvinfer1::ICudaEngine* cuda_engine,
                               nvinfer1::IExecutionContext* exec_context) const;
 

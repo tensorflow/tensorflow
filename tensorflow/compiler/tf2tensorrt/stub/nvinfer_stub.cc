@@ -56,6 +56,8 @@ void LogFatalSymbolNotFound(const char* symbol_name) {
 #include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_7_0.inc"
 #elif NV_TENSORRT_MAJOR == 8
 #include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_8_0.inc"
+#elif NV_TENSORRT_MAJOR == 10
+#include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_10_0.inc"
 #else
 #error This version of TensorRT is not supported.
 #endif

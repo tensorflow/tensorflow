@@ -1117,7 +1117,7 @@ def _GetTestConfigsV1():
   convert_online, convert_offline = True, False
   dynamic_engine, static_engine = True, False
   use_calibration, no_calibration = True, False
-  implicit_batch = False
+  dynamic_shape = False
 
   # Add all possible test cases and let the derived test class to decide
   # whether to run specific ones with ShouldRunTest().
@@ -1126,11 +1126,11 @@ def _GetTestConfigsV1():
   opts = list(
       itertools.product([FP32, FP16, INT8], [convert_online, convert_offline],
                         [dynamic_engine, static_engine], [no_calibration],
-                        [implicit_batch]))
+                        [dynamic_shape]))
   # We always run calibration with offline tool.
   # TODO(aaroey): static calibration engine is not supported yet.
   opts.append(
-      (INT8, convert_offline, dynamic_engine, use_calibration, implicit_batch))
+      (INT8, convert_offline, dynamic_engine, use_calibration, dynamic_shape))
   return opts
 
 
@@ -1142,6 +1142,11 @@ def _GetTestConfigsV2():
   # TODO(laigd): add support for calibration.
   no_calibration = False
   use_calibration = True
+  dynamic_shape_opts = [False, True]
+
+  if trt_utils.is_loaded_tensorrt_version_greater_equal(10, 0, 0):
+    # Implicit batch mode is not supported since TensorRT 10.0.
+    dynamic_shape_opts = [True]
 
   # Add all possible test cases and let the derived test class to decide
   # whether to run specific ones with ShouldRunTest().
@@ -1154,10 +1159,11 @@ def _GetTestConfigsV2():
   # - INT8 without calibration behaves like FP32/FP16.
   opts = list(
       itertools.product([FP32, FP16], [convert_offline], [dynamic_engine],
-                        [no_calibration], [False, True]))
+                        [no_calibration], dynamic_shape_opts))
   # We always run calibration with offline tool.
-  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, False))
-  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, True))
+  for dynamic_shape in dynamic_shape_opts:
+    opts.append((
+        INT8, convert_offline, dynamic_engine, use_calibration, dynamic_shape))
   return opts
 
 

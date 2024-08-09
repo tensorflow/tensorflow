@@ -70,7 +70,11 @@ void TimingCacheRegistry::Upsert(const string& name, TimingCache* cache) {
     std::copy_n(static_cast<uint8_t*>(memory->data()), memory->size(),
                 mem.begin());
   }
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   memory->destroy();
+#else  // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  delete memory;
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
 #endif  // IS_TRT_VERSION_GE(8, 0, 0, 0)
 }
 
