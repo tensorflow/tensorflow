@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <string>
 
-#include <gmock/gmock.h>
 #include "absl/strings/str_format.h"
 #include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace profiler {
