@@ -349,6 +349,9 @@ cc_library(
 tf_cuda_library(
     name = "framework",
     hdrs = [
+        "@local_xla//xla/tsl/framework:allocator_hdrs",
+        "@local_xla//xla/tsl/framework:cancellation_hdrs",
+        "@local_xla//xla/tsl/framework:device_type.h",
         "//tensorflow/core/example:feature_util.h",
         "//tensorflow/core/framework:allocator.h",
         "//tensorflow/core/framework:allocator_registry.h",
@@ -423,10 +426,7 @@ tf_cuda_library(
         "//tensorflow/core/util:framework_srcs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_group",
-        "//tensorflow/lite/kernels/shim:tf_headers",
-        "@local_xla//xla/tsl/framework:allocator_hdrs",
-        "@local_xla//xla/tsl/framework:cancellation_hdrs",
-        "@local_xla//xla/tsl/framework:device_type.h",
+        # "//tensorflow/lite/kernels/shim:tf_headers",
     ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
