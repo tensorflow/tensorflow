@@ -146,13 +146,6 @@ absl::StatusOr<HloSchedule> ScheduleModule(
     const absl::flat_hash_set<absl::string_view>& execution_threads = {},
     int64_t* peak_memory = nullptr);
 
-// Computes the schedule for a single computation.
-// Currently only used by the GPU backend.
-absl::StatusOr<HloInstructionSequence> ScheduleComputation(
-    HloComputation* computation,
-    const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor);
-
 // A pass which schedules the HLO instructions in a module. The HloModule's
 // schedule field is set to the resulting HloSchedule using
 // HloModule::set_schedule.

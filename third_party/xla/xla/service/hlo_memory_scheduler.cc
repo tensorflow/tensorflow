@@ -815,21 +815,6 @@ absl::StatusOr<HloSchedule> ScheduleModule(
   return std::move(schedule);
 }
 
-absl::StatusOr<HloInstructionSequence> ScheduleComputation(
-    HloComputation* computation, const BufferValue::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor) {
-  CHECK(!computation->IsFusionComputation());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
-                      TuplePointsToAnalysis::Run(computation->parent()));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(computation->parent()));
-  absl::flat_hash_map<const HloComputation*, int64_t> empty_map;
-  return ScheduleComputationHelper(
-      computation, *points_to_analysis, *alias_analysis, size_function,
-      /*algorithm=*/nullptr, empty_map, postprocessor,
-      /*peak_memory=*/nullptr);
-}
-
 HloMemoryScheduler::HloMemoryScheduler(
     const BufferValue::SizeFunction& size_function,
     const ModuleSchedulerAlgorithm& algorithm)
