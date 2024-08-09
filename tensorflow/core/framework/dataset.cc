@@ -1064,7 +1064,8 @@ Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     return errors::InvalidArgument("Empty resouce handle");
   }
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
-  if (ctx->device_name() != handle.device()) {
+  if (!DeviceNameUtils::HaveSameDeviceName(ctx->device_name(),
+                                           handle.device())) {
     return errors::InvalidArgument("Trying to access resource ", handle.name(),
                                    " located in device ", handle.device(),
                                    " from device ", ctx->device_name());

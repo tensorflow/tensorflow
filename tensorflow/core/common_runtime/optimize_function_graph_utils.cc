@@ -315,7 +315,8 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
     int64_t index = attr_value->i();
-    node->set_assigned_device_name(input_devices[index]);
+    node->set_assigned_device_name(
+        DeviceNameUtils::GetRealDeviceName(input_devices[index]));
   }
 
   for (Node* node : ret_nodes) {
@@ -458,7 +459,8 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
       DCHECK_GT(output_devices.size(), index);
       VLOG(3) << "Setting output device to " << output_devices[index]
               << " for return at index " << index;
-      node->set_assigned_device_name(output_devices[index]);
+      node->set_assigned_device_name(
+          DeviceNameUtils::GetRealDeviceName(output_devices[index]));
     }
   }
   return absl::OkStatus();
