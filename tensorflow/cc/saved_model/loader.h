@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tsl/platform/env.h"
 
 namespace tensorflow {
 
@@ -140,7 +141,8 @@ Status LoadSavedModel(const SessionOptions& session_options,
 /// the export directory definitely does not contain a SavedModel. If the method
 /// returns `true`, the export directory may contain a SavedModel but provides
 /// no guarantee that it can be loaded.
-bool MaybeSavedModelDirectory(const std::string& export_dir);
+bool MaybeSavedModelDirectory(const std::string& export_dir,
+                              tsl::Env* env = tsl::Env::Default());
 
 }  // namespace tensorflow
 
