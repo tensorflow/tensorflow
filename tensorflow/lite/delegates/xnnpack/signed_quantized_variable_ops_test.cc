@@ -20,6 +20,7 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/quantized_variable_ops_tester.h"
 
 namespace tflite {
