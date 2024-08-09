@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 
 #include <cstdint>
 #include <optional>
@@ -45,7 +45,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
+#include "xla/service/gpu/fusions/ir/xla_gpu_dialect.cc.inc"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -815,4 +815,4 @@ LogicalResult MaterializeOp::verify() {
 }  // namespace xla
 
 #define GET_OP_CLASSES
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.cc.inc"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.cc.inc"

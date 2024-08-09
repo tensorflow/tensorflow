@@ -23,9 +23,9 @@ include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
-include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.td"
-include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.td"
-include "xla/service/gpu/fusions/mlir/ir/xla_gpu_types.td"
+include "xla/service/gpu/fusions/ir/xla_gpu_dialect.td"
+include "xla/service/gpu/fusions/ir/xla_gpu_attrs.td"
+include "xla/service/gpu/fusions/ir/xla_gpu_types.td"
 
 class XLAGPU_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaGpuDialect, mnemonic, traits> {
@@ -364,4 +364,4 @@ def XLAGPU_InsertOp : XLAGPU_Op<"insert", []> {
   }];
 }
 
-#endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
+#endif // XLA_SERVICE_GPU_FUSIONS_MLIR_OPS

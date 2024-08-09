@@ -17,7 +17,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 
 namespace xla {
 namespace gpu {

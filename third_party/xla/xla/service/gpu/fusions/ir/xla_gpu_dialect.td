@@ -30,4 +30,4 @@ def XlaGpuDialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
-#endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_DIALECT
+#endif // XLA_SERVICE_GPU_FUSIONS_MLIR_DIALECT
