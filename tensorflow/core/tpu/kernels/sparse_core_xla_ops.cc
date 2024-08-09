@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
@@ -67,6 +69,27 @@ namespace {
 absl::StatusOr<int64_t> GetSparseCoresPerChip() {
   return stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoresPerChipFn(
       /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
+}
+
+// Computes square root safely (does not break in the presence of zero inputs).
+// The code still assumes the input is nonnegative.
+xla::XlaOp SafeSqrt(xla::XlaOp x) {
+  xla::XlaOp x_positive = xla::Max(x, xla::FullLike(x, 1e-36));
+  return x * xla::Rsqrt(x_positive);
+}
+xla::XlaOp SafePower(xla::XlaOp x, xla::XlaOp power) {
+  xla::XlaOp x_positive = xla::Max(x, xla::FullLike(x, 1e-36));
+  return xla::Pow(x_positive, power);
+}
+
+// Computes a positive power of a nonnegative number, with a special case for
+// power == .5 (does not break in the presence of zero inputs).
+xla::XlaOp SafePower(xla::XlaOp x, double power) {
+  // power == 0.5 handled separately for better performance.
+  if (power == 0.5f) {
+    return SafeSqrt(x);
+  }
+  return SafePower(x, xla::FullLike(x, power));
 }
 
 // This TensorFlow op performs the embedding lookup on SparseCore. It takes the
@@ -791,11 +814,15 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
       xla::XlaOp learning_rate = xla::Parameter(
           adagrad_optimizer_builder.get(), 3, per_row_shape, "learning_rate");
 
-      xla::XlaOp new_accumulator = accumulator + gradient * gradient;
+      xla::XlaOp grad_squared = gradient * gradient;
 
-      xla::XlaOp updated_embedding_table =
-          embedding_table -
-          learning_rate * gradient / xla::Sqrt(new_accumulator);
+      xla::XlaOp new_accumulator = accumulator + grad_squared;
+
+      xla::XlaOp grad_times_lr = gradient * learning_rate;
+      xla::XlaOp rsqrt_accum = xla::Rsqrt(
+          xla::Max(new_accumulator, xla::FullLike(new_accumulator, 1e-36)));
+      xla::XlaOp w_update = grad_times_lr * rsqrt_accum;
+      xla::XlaOp updated_embedding_table = embedding_table - w_update;
 
       // Apply the weight clipping.
       xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
@@ -893,34 +920,48 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
       // Else:
       //    accumulator(t) = beta_2 * accumulator(t-1) +
       //                    (1-beta_2) * gradient(t) ^ 2
-      xla::XlaOp exponent = xla::ConstantR0(
-          adagrad_momentum_optimizer_builder.get(), 1.0f / exponent_);
-      xla::XlaOp one =
-          xla::ConstantR0(adagrad_momentum_optimizer_builder.get(), 1.0f);
+      xla::XlaOp grad_squared = xla::Square(gradient);
+      xla::XlaOp new_accumulator;
+      if (beta2_ == 1.f) {
+        new_accumulator = accumulator + grad_squared;
+      } else {
+        new_accumulator =
+            (beta2 * accumulator) +
+            (FullLike(grad_squared, 1.0f - beta2_) * grad_squared);
+      }
 
-      xla::XlaOp new_accumulator = xla::Select(
-          xla::Eq(beta2, one), accumulator + gradient * gradient,
-          beta2 * accumulator + (one - beta2) * gradient * gradient);
+      xla::XlaOp accum_new_epsilon = new_accumulator + epsilon;
+
+      xla::XlaOp accum_power;
+      if (exponent_ == 1.f) {
+        accum_power =
+            xla::Div(xla::FullLike(accum_new_epsilon, 1.0f), accum_new_epsilon);
+      } else if (exponent_ == 2.f) {
+        accum_power = xla::Rsqrt(accum_new_epsilon);
+      } else {
+        accum_power =
+            xla::Pow(accum_new_epsilon,
+                     xla::FullLike(accum_new_epsilon, -1.0 / exponent_));
+      }
 
       // scaled_gradient = (accumulator + epsilon)^(-1/k) * gradient
-      xla::XlaOp scaled_gradients =
-          Pow(new_accumulator + epsilon, xla::Neg(exponent)) * gradient;
+      xla::XlaOp scaled_gradients = accum_power * gradient;
 
       // momenta(t) = beta1 * momenta(t-1) + scaled_gradient(t)
-      xla::XlaOp new_momenta = beta1 * momenta + scaled_gradients;
+      xla::XlaOp new_momenta = (beta1 * momenta) + scaled_gradients;
 
       // Table update:
       // non-nesterov: update = momenta_t
       // nesterov:     update = beta_1 * momenta_t + scaled_gradient
       // weights(t) = weights(t-1) - lr * update
-      xla::XlaOp updated_embedding_table;
+      xla::XlaOp update;
       if (use_nesterov_) {
-        updated_embedding_table =
-            embedding_table -
-            learning_rate * (beta1 * new_momenta + scaled_gradients);
+        update = (beta1 * new_momenta) + scaled_gradients;
       } else {
-        updated_embedding_table = embedding_table - learning_rate * new_momenta;
+        update = new_momenta;
       }
+      xla::XlaOp w_update = learning_rate * update;
+      xla::XlaOp updated_embedding_table = embedding_table - w_update;
 
       // Apply the weight clipping.
       xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
@@ -1004,34 +1045,47 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
       xla::XlaOp learning_rate = xla::Parameter(adam_optimizer_builder.get(), 4,
                                                 per_row_shape, "learning_rate");
 
-      xla::XlaOp beta1 = xla::ConstantR0(adam_optimizer_builder.get(), beta1_);
-      xla::XlaOp beta2 = xla::ConstantR0(adam_optimizer_builder.get(), beta2_);
-      xla::XlaOp epsilon =
-          xla::ConstantR0(adam_optimizer_builder.get(), epsilon_);
-
-      // Depending on sum_inside_sqrt, the denominator is either:
-      //     sum_inside_sqrt==true: sqrt(v + eps^2)
-      //     sum_inside_sqrt==false: sqrt(v) + eps
-      // To simplify the for loop below, write the sqrt denominator as:
-      //     sqrt(v + e1) + e2
-      // and set e1 and e2 appropriately:
-      xla::XlaOp zero = xla::ConstantR0(adam_optimizer_builder.get(), 0.0f);
-      xla::XlaOp one = xla::ConstantR0(adam_optimizer_builder.get(), 1.0f);
-      xla::XlaOp e1 = use_sum_inside_sqrt_ ? epsilon * epsilon : zero;
-      xla::XlaOp e2 = use_sum_inside_sqrt_ ? zero : epsilon;
-
       // momentum(t) = beta_1 * momentum(t-1)
       //                      + (1-beta_1)*gradient(t)
-      xla::XlaOp new_momenta = beta1 * momenta + (one - beta1) * gradient;
+      //             = momentum(t-1) +
+      //               (gradient(t)-momentum(t-1))*(1-beta_1)
+      xla::XlaOp grad_minus_m = gradient - momenta;
+      xla::XlaOp momenta_update =
+          grad_minus_m * xla::FullLike(grad_minus_m, 1.f - beta1_);
+      xla::XlaOp new_momenta = momenta + momenta_update;
 
       // velocity(t) = beta_2 * velocity(t-1)
       //                      + (1-beta_2)*gradient(t)*gradient(t)
-      xla::XlaOp new_velocity =
-          beta2 * velocity + (one - beta2) * gradient * gradient;
+      //             = velocity(t-1) +
+      //               (1-beta_2)*(gradient(t)*gradient(t) - velocity(t-1))
+      xla::XlaOp grad_quared = xla::Square(gradient);
+      xla::XlaOp grad_squared_minus_v = grad_quared - velocity;
+      xla::XlaOp velocity_update =
+          grad_squared_minus_v *
+          xla::FullLike(grad_squared_minus_v, 1.f - beta2_);
+      xla::XlaOp new_velocity = velocity + velocity_update;
 
+      // Compute last_item.
+      // 1 / Sqrt(V + epsilon * epsilon): if use_sum_inside_sqrt=True
+      // 1 / (Sqrt(V) + epsilon): if use_sum_inside_sqrt=False
+      xla::XlaOp last_item;
+      if (use_sum_inside_sqrt_) {
+        xla::XlaOp v_add =
+            new_velocity + xla::FullLike(new_velocity, epsilon_ * epsilon_);
+        last_item = xla::Rsqrt(v_add);
+      } else {
+        // Use safe version of square root to avoid a NaN when computing sqrt(0)
+        // and inaccuracies with nearby values.
+        xla::XlaOp v_sqrt = SafeSqrt(new_velocity);
+        // Sqrt(V) + epsilon
+        xla::XlaOp sqrt_v_plus_epsilon =
+            v_sqrt + xla::FullLike(v_sqrt, epsilon_);
+        // 1 / (Sqrt(V) + epsilon)
+        last_item = xla::Div(xla::FullLike(sqrt_v_plus_epsilon, 1.0),
+                             sqrt_v_plus_epsilon);
+      }
       xla::XlaOp updated_embedding_table =
-          embedding_table -
-          learning_rate * new_momenta / (xla::Sqrt(new_velocity + e1) + e2);
+          embedding_table - ((learning_rate * new_momenta) * last_item);
 
       // Apply the weight clipping.
       xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
@@ -1121,25 +1175,14 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
                                                 per_row_shape, "learning_rate");
 
       // accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
-      xla::XlaOp new_accumulator = accumulator + gradient * gradient;
+      xla::XlaOp new_accumulator = accumulator + xla::Square(gradient);
 
-      xla::XlaOp learning_rate_power =
-          xla::ConstantR0(ftrl_optimizer_builder.get(), learning_rate_power_);
-
-      xla::XlaOp power_old = Pow(accumulator, xla::Neg(learning_rate_power));
-      xla::XlaOp power_new =
-          Pow(new_accumulator, xla::Neg(learning_rate_power));
+      xla::XlaOp power_old = SafePower(accumulator, -learning_rate_power_);
+      xla::XlaOp power_new = SafePower(new_accumulator, -learning_rate_power_);
       xla::XlaOp delta_p = power_new - power_old;
-
-      xla::XlaOp zero = xla::ConstantR0(ftrl_optimizer_builder.get(), 0.0f);
-
-      xla::XlaOp two = xla::ConstantR0(ftrl_optimizer_builder.get(), 2.0f);
 
       xla::XlaOp l1_regularization_strength = xla::ConstantR0(
           ftrl_optimizer_builder.get(), l1_regularization_strength_);
-
-      xla::XlaOp l2_regularization_strength = xla::ConstantR0(
-          ftrl_optimizer_builder.get(), l2_regularization_strength_);
 
       xla::XlaOp beta = xla::ConstantR0(ftrl_optimizer_builder.get(), beta_);
 
@@ -1153,7 +1196,7 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
       xla::XlaOp denom;
       if (multiply_linear_by_learning_rate_) {
         new_linear =
-            linear + learning_rate * gradient - delta_p * embedding_table;
+            (linear + (learning_rate * gradient)) - (delta_p * embedding_table);
         // if multiply_linear:
         //   linear(t) = linear(t-1) + lr*g - delta_p * table(t-1)
         //   Update numerator:
@@ -1161,16 +1204,23 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
         //   Update denomninator:
         //      D = power(t) + 2*lr*l2 + beta
         //   table(t) = N / D
-        numer = xla::Select(
-            xla::Eq(l1_regularization_strength, zero), xla::Neg(new_linear),
-            xla::Clamp(xla::Neg(learning_rate * l1_regularization_strength),
-                       new_linear, learning_rate * l1_regularization_strength) -
-                new_linear);
-        denom =
-            power_new + two * learning_rate * l2_regularization_strength + beta;
+        if (l1_regularization_strength_ != 0) {
+          numer = xla::Clamp(
+                      xla::Neg(learning_rate * l1_regularization_strength),
+                      new_linear, learning_rate * l1_regularization_strength) -
+                  new_linear;
+        } else {
+          numer = xla::Neg(new_linear);
+        }
+        xla::XlaOp two_l2_lr =
+            FullLike(learning_rate, beta_) +
+            (FullLike(learning_rate, 2.f * l2_regularization_strength_) *
+             learning_rate);
+        denom = power_new + two_l2_lr;
       } else {
-        new_linear =
-            linear + gradient - delta_p * embedding_table / learning_rate;
+        xla::XlaOp recip_lr = FullLike(learning_rate, 1.0) / learning_rate;
+        xla::XlaOp diff = delta_p * (embedding_table * recip_lr);
+        new_linear = (linear + gradient) - diff;
         // if NOT multiply_linear:
         //   linear(t) = linear(t-1) + g - (1/lr) * delta_p * table(t-1)
         //   Update numerator:
@@ -1178,13 +1228,15 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
         //   Update denomninator:
         //     D = (1/lr) * (power(t) + beta) + 2*l2
         //   table(t) = N / D
-        numer = xla::Select(xla::Eq(l1_regularization_strength, zero),
-                            xla::Neg(new_linear),
-                            xla::Clamp(xla::Neg(l1_regularization_strength),
-                                       new_linear, l1_regularization_strength) -
-                                new_linear);
-        denom = (power_new + beta) / learning_rate +
-                two * l2_regularization_strength;
+        if (l1_regularization_strength_ != 0) {
+          numer = xla::Clamp(xla::Neg(l1_regularization_strength), new_linear,
+                             l1_regularization_strength) -
+                  new_linear;
+        } else {
+          numer = xla::Neg(new_linear);
+        }
+        denom = ((power_new + beta) * recip_lr) +
+                FullLike(learning_rate, 2.f * l2_regularization_strength_);
       }
       xla::XlaOp updated_embedding_table = numer / denom;
 
@@ -1343,7 +1395,9 @@ class XlaSparseCoreAdagradOp : public XlaSparseCoreOptimizerOpBase {
 
     xla::XlaOp table_old = GatherVectors(table, indices);
     xla::XlaOp updates =
-        table_old - learning_rate * gradient / xla::Sqrt(accum_new);
+        table_old -
+        ((learning_rate * gradient) *
+         xla::Rsqrt(xla::Max(accum_new, xla::FullLike(accum_new, 1e-36))));
 
     xla::XlaOp accum_result = ScatterReplace(accum, indices, accum_new);
 
@@ -1394,35 +1448,47 @@ class XlaSparseCoreAdagradMomentumOp : public XlaSparseCoreOptimizerOpBase {
     // Else:
     //    accumulator(t) = beta_2 * accumulator(t-1) +
     //                    (1-beta_2) * gradient(t) ^ 2
-    xla::XlaOp exponent = xla::ConstantR0(builder, 1.0f / exponent_);
+    xla::XlaOp grad_squared = xla::Square(gradient);
     xla::XlaOp accum_new;
-
     if (beta_2_ == 1.0f) {
-      accum_new = accum_old + gradient * gradient;
+      accum_new = accum_old + grad_squared;
     } else {
       xla::XlaOp beta_2 = xla::ConstantR0(builder, beta_2_);
       xla::XlaOp one_m_beta_2 = xla::ConstantR0(builder, 1.0f - beta_2_);
-      accum_new = beta_2 * accum_old + one_m_beta_2 * gradient * gradient;
+      accum_new = (beta_2 * accum_old) + (one_m_beta_2 * grad_squared);
+    }
+
+    xla::XlaOp accum_new_epsilon = accum_new + epsilon;
+    xla::XlaOp accum_power;
+    if (exponent_ == 1.f) {
+      accum_power =
+          xla::Div(xla::FullLike(accum_new_epsilon, 1.0f), accum_new_epsilon);
+    } else if (exponent_ == 2.f) {
+      accum_power = xla::Rsqrt(accum_new_epsilon);
+    } else {
+      accum_power =
+          xla::Pow(accum_new_epsilon,
+                   xla::FullLike(accum_new_epsilon, -1.0 / exponent_));
     }
     // scaled_gradient = (accumulator + epsilon)^(-1/k) * gradient
-    xla::XlaOp scaled_gradients =
-        Pow(accum_new + epsilon, xla::Neg(exponent)) * gradient;
+    xla::XlaOp scaled_gradients = accum_power * gradient;
 
     // momentum(t) = beta_1 * momentum(t-1) + scaled_gradient(t)
-    xla::XlaOp momen_new = beta_1 * momen_old + scaled_gradients;
+    xla::XlaOp momen_new = (beta_1 * momen_old) + scaled_gradients;
 
     // Table update:
     // non-nesterov: update = momentum_t
     // nesterov:     update = beta_1 * momentum_t + scaled_gradient
     // weights(t) = weights(t-1) - lr * update
     xla::XlaOp table_old = GatherVectors(table, indices);
-    xla::XlaOp updates;
+    xla::XlaOp update;
     if (use_nesterov_) {
-      updates =
-          table_old - learning_rate * (beta_1 * momen_new + scaled_gradients);
+      update = (beta_1 * momen_new) + scaled_gradients;
     } else {
-      updates = table_old - learning_rate * momen_new;
+      update = momen_new;
     }
+    xla::XlaOp w_update = learning_rate * update;
+    xla::XlaOp updates = table_old - w_update;
 
     xla::XlaOp accum_result = ScatterReplace(accum, indices, accum_new);
 
@@ -1478,30 +1544,46 @@ class XlaSparseCoreAdamOp : public XlaSparseCoreOptimizerOpBase {
     xla::XlaOp momen_old = GatherVectors(momen, indices);
     xla::XlaOp veloc_old = GatherVectors(veloc, indices);
 
-    // Depending on sum_inside_sqrt, the denominator is either:
-    //     sum_inside_sqrt==true: sqrt(v + eps^2)
-    //     sum_inside_sqrt==false: sqrt(v) + eps
-    // To simplify the for loop below, write the sqrt denominator as:
-    //     sqrt(v + e1) + e2
-    // and set e1 and e2 appropriately:
-    xla::XlaOp zero = xla::ConstantR0(builder, 0.0f);
     xla::XlaOp one = xla::ConstantR0(builder, 1.0f);
-    xla::XlaOp e1 = use_sum_inside_sqrt_ ? epsilon * epsilon : zero;
-    xla::XlaOp e2 = use_sum_inside_sqrt_ ? zero : epsilon;
 
     // momentum(t) = beta_1 * momentum(t-1)
     //                      + (1-beta_1)*gradient(t)
-    xla::XlaOp momen_new = beta_1 * momen_old + (one - beta_1) * gradient;
+    //             = momentum(t-1) +
+    //               (gradient(t)-momentum(t-1))*(1-beta_1)
+    xla::XlaOp grad_minus_m = gradient - momen_old;
+    xla::XlaOp momenta_update = grad_minus_m * (one - beta_1);
+    xla::XlaOp momen_new = momen_old + momenta_update;
 
     // velocity(t) = beta_2 * velocity(t-1)
     //                      + (1-beta_2)*gradient(t)*gradient(t)
-    xla::XlaOp veloc_new =
-        beta_2 * veloc_old + (one - beta_2) * gradient * gradient;
+    //             = velocity(t-1) +
+    //               (1-beta_2)*(gradient(t)*gradient(t) - velocity(t-1))
+    xla::XlaOp grad_quared = xla::Square(gradient);
+    xla::XlaOp grad_squared_minus_v = grad_quared - veloc_old;
+    xla::XlaOp velocity_update = grad_squared_minus_v * (one - beta_2);
+    xla::XlaOp veloc_new = veloc_old + velocity_update;
+
+    // Compute last_item.
+    // 1 / Sqrt(V + epsilon * epsilon): if use_sum_inside_sqrt=True
+    // 1 / (Sqrt(V) + epsilon): if use_sum_inside_sqrt=False
+    xla::XlaOp last_item;
+    if (use_sum_inside_sqrt_) {
+      xla::XlaOp v_add = veloc_new + xla::Square(epsilon);
+      last_item = xla::Rsqrt(v_add);
+    } else {
+      // Use safe version of square root to avoid a NaN when computing sqrt(0)
+      // and inaccuracies with nearby values.
+      xla::XlaOp v_sqrt = SafeSqrt(veloc_new);
+      // Sqrt(V) + epsilon
+      xla::XlaOp sqrt_v_plus_epsilon = v_sqrt + epsilon;
+      // 1 / (Sqrt(V) + epsilon)
+      last_item = xla::Div(xla::FullLike(sqrt_v_plus_epsilon, 1.0),
+                           sqrt_v_plus_epsilon);
+    }
 
     // table(t) = table(t-1) - lr * (m(t) / (sqrt(v(t) + e1) + e2))
     xla::XlaOp table_old = GatherVectors(table, indices);
-    xla::XlaOp updates = table_old - learning_rate * momen_new /
-                                         (xla::Sqrt(veloc_new + e1) + e2);
+    xla::XlaOp updates = table_old - ((learning_rate * momen_new) * last_item);
 
     xla::XlaOp momen_result = ScatterReplace(momen, indices, momen_new);
 
@@ -1555,10 +1637,10 @@ class XlaSparseCoreFtrlOp : public XlaSparseCoreOptimizerOpBase {
     xla::XlaOp linear_old = GatherVectors(linear, indices);
 
     // accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
-    xla::XlaOp accum_new = accum_old + gradient * gradient;
+    xla::XlaOp accum_new = accum_old + xla::Square(gradient);
 
-    xla::XlaOp power_old = Pow(accum_old, -learning_rate_power);
-    xla::XlaOp power_new = Pow(accum_new, -learning_rate_power);
+    xla::XlaOp power_old = SafePower(accum_old, -learning_rate_power);
+    xla::XlaOp power_new = SafePower(accum_new, -learning_rate_power);
     xla::XlaOp delta_p = power_new - power_old;
 
     xla::XlaOp two = xla::ConstantR0(builder, 2.0f);
@@ -1573,7 +1655,8 @@ class XlaSparseCoreFtrlOp : public XlaSparseCoreOptimizerOpBase {
     xla::XlaOp numer;
     xla::XlaOp denom;
     if (multiply_linear_by_learning_rate_) {
-      linear_new = linear_old + learning_rate * gradient - delta_p * table_old;
+      linear_new =
+          (linear_old + (learning_rate * gradient)) - (delta_p * table_old);
       // if multiply_linear:
       //   linear(t) = linear(t-1) + lr*g - delta_p * table(t-1)
       //   Update numerator:
@@ -1581,20 +1664,23 @@ class XlaSparseCoreFtrlOp : public XlaSparseCoreOptimizerOpBase {
       //   Update denomninator:
       //      D = power(t) + 2*lr*l2 + beta
       //   table(t) = N / D
-      if (l1_regularization_strength_ == 0) {
-        numer = -linear_new;
-      } else {
+      if (l1_regularization_strength_ != 0) {
         xla::XlaOp l1_regularization_strength =
             xla::ConstantR0(builder, l1_regularization_strength_);
         numer =
             xla::Clamp(-learning_rate * l1_regularization_strength, linear_new,
                        learning_rate * l1_regularization_strength) -
             linear_new;
+      } else {
+        numer = -linear_new;
       }
-      denom =
-          power_new + two * learning_rate * l2_regularization_strength + beta;
+      xla::XlaOp two_l2_lr =
+          beta + ((two * l2_regularization_strength) * learning_rate);
+      denom = power_new + two_l2_lr;
     } else {
-      linear_new = linear_old + gradient - delta_p * table_old / learning_rate;
+      xla::XlaOp recip_lr = FullLike(learning_rate, 1.0) / learning_rate;
+      xla::XlaOp diff = delta_p * (table_old * recip_lr);
+      linear_new = (linear_old + gradient) - diff;
       // if NOT multiply_linear:
       //   linear(t) = linear(t-1) + g - (1/lr) * delta_p * table(t-1)
       //   Update numerator:
@@ -1602,17 +1688,17 @@ class XlaSparseCoreFtrlOp : public XlaSparseCoreOptimizerOpBase {
       //   Update denomninator:
       //     D = (1/lr) * (power(t) + beta) + 2*l2
       //   table(t) = N / D
-      if (l1_regularization_strength_ == 0) {
-        numer = -linear_new;
-      } else {
+      if (l1_regularization_strength_ != 0) {
         xla::XlaOp l1_regularization_strength =
             xla::ConstantR0(builder, l1_regularization_strength_);
         numer = xla::Clamp(-l1_regularization_strength, linear_new,
                            l1_regularization_strength) -
                 linear_new;
+      } else {
+        numer = -linear_new;
       }
       denom =
-          (power_new + beta) / learning_rate + two * l2_regularization_strength;
+          ((power_new + beta) * recip_lr) + (two * l2_regularization_strength);
     }
     xla::XlaOp updates = numer / denom;
 

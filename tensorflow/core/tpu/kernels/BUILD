@@ -199,6 +199,8 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/client/lib:constants",
+        "@local_xla//xla/client/lib:math",
         "@local_xla//xla/client/lib:slicing",
         "@local_xla//xla/stream_executor/tpu:c_api_decl",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
