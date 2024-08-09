@@ -720,6 +720,7 @@ REGISTER_OP("Const")
     .Output("output: dtype")
     .Attr("value: tensor")
     .Attr("dtype: type")
+    .SetAllowsSharedKernel()
     .SetShapeFn([](InferenceContext* c) {
       const TensorProto* proto = nullptr;
       TF_RETURN_IF_ERROR(c->GetAttr("value", &proto));
@@ -742,6 +743,7 @@ REGISTER_OP("HostConst")
     .Output("output: dtype")
     .Attr("value: tensor")
     .Attr("dtype: type")
+    .SetAllowsSharedKernel()
     .SetShapeFn(shape_inference::UnknownShape);
 
 // Used executing op-by-op to copy constants to the current device without
