@@ -44,10 +44,6 @@ inline absl::string_view AsProtoStringData(
   return s;
 }
 #else
-inline std::string AsProtoStringData(absl::string_view s) {
-  LOG_FIRST_N(WARNING, 5) << "AsProtoStringData(): copying string_view->string";
-  return std::string(s);
-}
 #endif
 
 }  // namespace proxy
