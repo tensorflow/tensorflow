@@ -1788,14 +1788,6 @@ Status ConstantFolding::IsSimplifiableReshape(
   return absl::OkStatus();
 }
 
-#define IS_VALUE_CASE(DTYPE, VALUE)                   \
-  case DTYPE:                                         \
-    return AllValuesAre<EnumToDataType<DTYPE>::Type>( \
-        node.attr().at("value").tensor(), EnumToDataType<DTYPE>::Type(VALUE))
-
-#define IS_ONES_CASE(TYPE) IS_VALUE_CASE(TYPE, 1)
-#define IS_ZEROS_CASE(TYPE) IS_VALUE_CASE(TYPE, 0)
-
 bool ConstantFolding::IsOnes(const NodeDef& node) const {
   if (feed_nodes_.find(node.name()) != feed_nodes_.end()) {
     return false;
@@ -1806,33 +1798,7 @@ bool ConstantFolding::IsOnes(const NodeDef& node) const {
     NodeDef* values = node_map_->GetNode(NodeName(node.input(1)));
     return values != nullptr && IsOnes(*values);
   }
-  if (node.op() != "Const") return false;
-  if (node.attr().count("dtype") == 0) return false;
-  const auto dtype = node.attr().at("dtype").type();
-  switch (dtype) {
-    IS_ONES_CASE(DT_BOOL);
-    IS_ONES_CASE(DT_HALF);
-    IS_ONES_CASE(DT_BFLOAT16);
-    IS_ONES_CASE(DT_FLOAT);
-    IS_ONES_CASE(DT_DOUBLE);
-    IS_ONES_CASE(DT_COMPLEX64);
-    IS_ONES_CASE(DT_COMPLEX128);
-    IS_ONES_CASE(DT_UINT8);
-    IS_ONES_CASE(DT_INT8);
-    IS_ONES_CASE(DT_UINT16);
-    IS_ONES_CASE(DT_INT16);
-    IS_ONES_CASE(DT_INT32);
-    IS_ONES_CASE(DT_INT64);
-    IS_ONES_CASE(DT_QINT32);
-    IS_ONES_CASE(DT_QINT16);
-    IS_ONES_CASE(DT_QUINT16);
-    IS_ONES_CASE(DT_QINT8);
-    IS_ONES_CASE(DT_QUINT8);
-    default:
-      VLOG(1) << "Unsupported type " << DataTypeString(dtype);
-      return false;
-  }
-  return false;
+  return IsOnesNode(node);
 }
 
 bool ConstantFolding::IsZeros(const NodeDef& node) const {
@@ -1845,33 +1811,7 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
     NodeDef* values = node_map_->GetNode(NodeName(node.input(1)));
     return values != nullptr && IsZeros(*values);
   }
-  if (!IsConstant(node)) return false;
-  if (node.attr().count("dtype") == 0) return false;
-  const auto dtype = node.attr().at("dtype").type();
-  switch (dtype) {
-    IS_ZEROS_CASE(DT_BOOL);
-    IS_ZEROS_CASE(DT_HALF);
-    IS_ZEROS_CASE(DT_BFLOAT16);
-    IS_ZEROS_CASE(DT_FLOAT);
-    IS_ZEROS_CASE(DT_DOUBLE);
-    IS_ZEROS_CASE(DT_COMPLEX64);
-    IS_ZEROS_CASE(DT_COMPLEX128);
-    IS_ZEROS_CASE(DT_UINT8);
-    IS_ZEROS_CASE(DT_INT8);
-    IS_ZEROS_CASE(DT_UINT16);
-    IS_ZEROS_CASE(DT_INT16);
-    IS_ZEROS_CASE(DT_INT32);
-    IS_ZEROS_CASE(DT_INT64);
-    IS_ZEROS_CASE(DT_QINT32);
-    IS_ZEROS_CASE(DT_QINT16);
-    IS_ZEROS_CASE(DT_QUINT16);
-    IS_ZEROS_CASE(DT_QINT8);
-    IS_ZEROS_CASE(DT_QUINT8);
-    default:
-      VLOG(1) << "Unsupported type " << DataTypeString(dtype);
-      return false;
-  }
-  return false;
+  return IsZerosNode(node);
 }
 
 bool ConstantFolding::ReplaceOperationWithBroadcastTo(

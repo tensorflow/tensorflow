@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/op_types.h"
 
+#include <algorithm>
+#include <cctype>
+
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -27,8 +34,36 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+namespace {
+template <typename T>
+bool AllValuesAre(const TensorProto& proto, const T& value) {
+  Tensor tensor;
+  if (!tensor.FromProto(proto)) {
+    return false;
+  }
+  auto values = tensor.flat<T>();
+  for (int i = 0; i < tensor.NumElements(); ++i) {
+    if (values(i) != value) {
+      return false;
+    }
+  }
+  return true;
+}
+
+#define IS_VALUE_CASE(DTYPE, VALUE)                   \
+  case DTYPE:                                         \
+    return AllValuesAre<EnumToDataType<DTYPE>::Type>( \
+        tensor, EnumToDataType<DTYPE>::Type(VALUE))
+
+#define IS_ONES_CASE(TYPE) IS_VALUE_CASE(TYPE, 1)
+#define IS_ZEROS_CASE(TYPE) IS_VALUE_CASE(TYPE, 0)
+
+}  // namespace
+
+bool IsAddV2(const NodeDef& node) { return node.op() == "AddV2"; }
+
 bool IsAdd(const NodeDef& node) {
-  if (node.op() == "AddV2") {
+  if (IsAddV2(node)) {
     return true;
   }
   if (node.op() == "Add") {
@@ -997,6 +1032,74 @@ bool NeverForwardsInputs(const NodeDef& node) {
 }
 
 bool IsXlaLaunch(const NodeDef& node) { return node.op() == "XlaLaunch"; }
+
+bool IsZeroTensor(const TensorProto& tensor, const DataType& dtype) {
+  switch (dtype) {
+    IS_ZEROS_CASE(DT_BOOL);
+    IS_ZEROS_CASE(DT_HALF);
+    IS_ZEROS_CASE(DT_BFLOAT16);
+    IS_ZEROS_CASE(DT_FLOAT);
+    IS_ZEROS_CASE(DT_DOUBLE);
+    IS_ZEROS_CASE(DT_COMPLEX64);
+    IS_ZEROS_CASE(DT_COMPLEX128);
+    IS_ZEROS_CASE(DT_UINT8);
+    IS_ZEROS_CASE(DT_INT8);
+    IS_ZEROS_CASE(DT_UINT16);
+    IS_ZEROS_CASE(DT_INT16);
+    IS_ZEROS_CASE(DT_INT32);
+    IS_ZEROS_CASE(DT_INT64);
+    IS_ZEROS_CASE(DT_QINT32);
+    IS_ZEROS_CASE(DT_QINT16);
+    IS_ZEROS_CASE(DT_QUINT16);
+    IS_ZEROS_CASE(DT_QINT8);
+    IS_ZEROS_CASE(DT_QUINT8);
+    default:
+      VLOG(1) << "Unsupported type " << DataTypeString(dtype);
+      return false;
+  }
+  return false;
+}
+
+bool IsZerosNode(const NodeDef& node) {
+  if (!IsConstant(node)) return false;
+  if (node.attr().count("dtype") == 0) return false;
+  return IsZeroTensor(node.attr().at("value").tensor(),
+                      node.attr().at("dtype").type());
+}
+
+bool IsOneTensor(const TensorProto& tensor, const DataType& dtype) {
+  switch (dtype) {
+    IS_ONES_CASE(DT_BOOL);
+    IS_ONES_CASE(DT_HALF);
+    IS_ONES_CASE(DT_BFLOAT16);
+    IS_ONES_CASE(DT_FLOAT);
+    IS_ONES_CASE(DT_DOUBLE);
+    IS_ONES_CASE(DT_COMPLEX64);
+    IS_ONES_CASE(DT_COMPLEX128);
+    IS_ONES_CASE(DT_UINT8);
+    IS_ONES_CASE(DT_INT8);
+    IS_ONES_CASE(DT_UINT16);
+    IS_ONES_CASE(DT_INT16);
+    IS_ONES_CASE(DT_INT32);
+    IS_ONES_CASE(DT_INT64);
+    IS_ONES_CASE(DT_QINT32);
+    IS_ONES_CASE(DT_QINT16);
+    IS_ONES_CASE(DT_QUINT16);
+    IS_ONES_CASE(DT_QINT8);
+    IS_ONES_CASE(DT_QUINT8);
+    default:
+      VLOG(1) << "Unsupported type " << DataTypeString(dtype);
+      return false;
+  }
+  return false;
+}
+
+bool IsOnesNode(const NodeDef& node) {
+  if (!IsConstant(node)) return false;
+  if (node.attr().count("dtype") == 0) return false;
+  const auto dtype = node.attr().at("dtype").type();
+  return IsOneTensor(node.attr().at("value").tensor(), dtype);
+}
 
 }  // namespace grappler
 }  // end namespace tensorflow
