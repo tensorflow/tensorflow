@@ -176,6 +176,15 @@ bool ValueGreaterThanZero(ElementsAttr float_or_int) {
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
+bool SupportedComparisonType(mhlo::ComparisonTypeAttr comp_type) {
+  if (!comp_type) return true;
+  auto c_ty = comp_type.getValue();
+  return c_ty == mhlo::ComparisonType::FLOAT ||
+         c_ty == mhlo::ComparisonType::SIGNED ||
+         c_ty == mhlo::ComparisonType::UNSIGNED ||
+         c_ty == mhlo::ComparisonType::NOTYPE;
+}
+
 class LegalizeHloToTfLitePass
     : public impl::LegalizeHloToTfLitePassBase<LegalizeHloToTfLitePass> {
  public:
@@ -197,12 +206,15 @@ bool IsNotOpLegal(mhlo::NotOp op) {
 // though MhloDialect is explicitly marked legal (which cannot be changed
 // easily).
 void AddRoundingOpsAsUnknown(ConversionTarget& target) {
-  target.addDynamicallyLegalOp<mhlo::CompareOp, mhlo::FloorOp, mhlo::SubtractOp,
-                               mhlo::AndOp, mhlo::SelectOp, mhlo::RemOp,
-                               mhlo::AddOp, mhlo::SignOp, mhlo::MulOp,
-                               mhlo::DivOp, mhlo::OrOp, mhlo::BroadcastInDimOp,
-                               mhlo::ConstantOp, mhlo::RoundOp, mhlo::TupleOp>(
+  target.addDynamicallyLegalOp<
+      mhlo::FloorOp, mhlo::SubtractOp, mhlo::AndOp, mhlo::SelectOp, mhlo::RemOp,
+      mhlo::AddOp, mhlo::SignOp, mhlo::MulOp, mhlo::DivOp, mhlo::OrOp,
+      mhlo::BroadcastInDimOp, mhlo::ConstantOp, mhlo::RoundOp, mhlo::TupleOp>(
       [](Operation* op) { return std::nullopt; });
+}
+
+bool IsCompareLegal(mhlo::CompareOp op) {
+  return !SupportedComparisonType(op.getCompareTypeAttr());
 }
 
 void SetUnaryOpLegal(ConversionTarget& target) {
@@ -236,6 +248,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
                       mhlo::ShiftRightArithmeticOp, mhlo::ShiftRightLogicalOp,
                       mhlo::RemOp, mhlo::ReshapeOp, mhlo::DynamicReshapeOp>();
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
+  target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
 
   AddRoundingOpsAsUnknown(target);
   SetUnaryOpLegal(target);

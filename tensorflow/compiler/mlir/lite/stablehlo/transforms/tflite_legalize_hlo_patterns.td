@@ -93,6 +93,32 @@ def : Pat<(MHLO_NotOp TensorOf<[UI32]>:$input),
                 (GetRankedScalarAttr<"u", 32, ", false", "0xFFFFFFFFUL">)))>;
 
 //===----------------------------------------------------------------------===//
+// comparison ops
+//===----------------------------------------------------------------------===//
+
+// Check implicit bool cast of `$_self` to ensure Attribute is non-null before
+// casting.
+def HasSupportedComparisonType : AttrConstraint<
+  CPred<"!$_self || SupportedComparisonType($_self.cast<mhlo::ComparisonTypeAttr>())">>;
+
+class MHLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<MHLO_ComparisonDirectionAttr,
+    "::mlir::mhlo::ComparisonDirection::" # enumStr>;
+
+foreach p = [
+  [TFL_EqualOp,        MHLO_ComparisonDirectionValue<"EQ">],
+  [TFL_NotEqualOp,     MHLO_ComparisonDirectionValue<"NE">],
+  [TFL_GreaterEqualOp, MHLO_ComparisonDirectionValue<"GE">],
+  [TFL_LessEqualOp,    MHLO_ComparisonDirectionValue<"LE">],
+  [TFL_GreaterOp,      MHLO_ComparisonDirectionValue<"GT">],
+  [TFL_LessOp,         MHLO_ComparisonDirectionValue<"LT">]]
+in {
+  def : Pat<
+    (MHLO_CompareOp $l, $r, p[1], HasSupportedComparisonType),
+    (p[0] $l, $r)>;
+}
+
+//===----------------------------------------------------------------------===//
 // unary element-wise op
 //===----------------------------------------------------------------------===//
 
@@ -160,17 +186,26 @@ def : Pat<
 // rounding
 //===----------------------------------------------------------------------===//
 
-class MHLO_ComparisonDirectionValue<string enumStr> :
-  ConstantAttr<MHLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
-class ValueEquals<string val> : Constraint<CPred<"ValueEquals($0, " # val # ")">>;
-def SameValue : Constraint<CPred<"$0 == $1">>;
-def FloatOrDefaultCompare : Constraint<CPred<
-  "!$0 || $0.getValue() == ::mlir::mhlo::ComparisonType::FLOAT">>;
-def SameTypeOrDefaultCompare : Constraint<CPred<
-  "SameTypeOrDefaultCompare($0, $1)">>;
-def ValueIsReciprocal : Constraint<CPred<"ValueIsReciprocal($0, $1)">>;
-def TensorIsSign : Constraint<CPred<"TensorIsSign($_builder, $0, $1)">>;
-def ValueGreaterThanZero : Constraint<CPred<"ValueGreaterThanZero($0)">>;
+class ValueEquals<string val> :
+  Constraint<CPred<"ValueEquals($0, " # val # ")">>;
+
+def SameValue :
+  Constraint<CPred<"$0 == $1">>;
+
+def FloatOrDefaultCompare :
+  Constraint<CPred<"!$0 || $0.getValue() == ::mlir::mhlo::ComparisonType::FLOAT">>;
+
+def SameTypeOrDefaultCompare :
+  Constraint<CPred<"SameTypeOrDefaultCompare($0, $1)">>;
+
+def ValueIsReciprocal :
+  Constraint<CPred<"ValueIsReciprocal($0, $1)">>;
+
+def TensorIsSign :
+  Constraint<CPred<"TensorIsSign($_builder, $0, $1)">>;
+
+def ValueGreaterThanZero :
+  Constraint<CPred<"ValueGreaterThanZero($0)">>;
 
 
 // Converts a dag of HLOs representing banker rounding (round x.5 to nearest
@@ -519,3 +554,4 @@ def : Pat<(MHLO_RoundOp
            (SameValue $rem, $rem2),
            (FloatOrDefaultCompare $compare_type, $cst_zero),
            (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
+
