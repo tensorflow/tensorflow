@@ -23,7 +23,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace eager {
