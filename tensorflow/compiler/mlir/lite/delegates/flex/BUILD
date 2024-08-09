@@ -2,7 +2,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_mobile",
     "if_not_mobile",
-    "tf_cc_test",
     "tf_features_nolayering_check_if_ios",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -24,12 +23,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files([
-    "delegate.h",
-    "exported_symbols.lds",
-    "version_script.lds",
-])
-
 tflite_flex_cc_library(
     name = "delegate",
     compatible_with = get_compatible_with_portable(),
@@ -49,24 +42,6 @@ cc_library(
     features = tf_features_nolayering_check_if_ios(),
     visibility = internal_visibility_allowlist(),
     deps = if_mobile([
-        "//tensorflow/core:portable_tensorflow_lib_lite",
-    ]) + if_not_mobile([
-        "//tensorflow/core:framework",
-    ]),
-)
-
-tf_cc_test(
-    name = "allowlisted_flex_ops_test",
-    size = "small",
-    srcs = [
-        "allowlisted_flex_ops_test.cc",
-    ],
-    features = tf_features_nolayering_check_if_ios(),
-    deps = [
-        ":allowlisted_flex_ops_lib",
-        ":delegate",
-        "@com_google_googletest//:gtest_main",
-    ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
         "//tensorflow/core:framework",
