@@ -114,18 +114,18 @@ Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
                                  float input_scale, int32_t input_zp,
                                  float output_scale, int32_t output_zp);
 
-// Create a 32-bit float constant operator from a float
+// Create a 32-bit float constant operator from a float of specified rank
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
-                                  float val);
+                                  float val, int rank);
 
-// Create a 32-bit integer constant operator from an int
+// Create a 32-bit integer constant operator from an int of specified rank
 Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
-                                  int32_t val);
+                                  int32_t val, int rank);
 
 // Create an expected bitwidth integer constant operator based on the type
-// parameter.
+// parameter, of specified rank
 Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
-                                  int64_t val);
+                                  int64_t val, int rank);
 
 // Create a vector from a 32-bit value tensor.  Returns vector size on success
 // or -1 on error.

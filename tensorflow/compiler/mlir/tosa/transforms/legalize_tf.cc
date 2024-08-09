@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -300,10 +301,9 @@ LogicalResult ConvertTFCosOp::matchAndRewrite(Operation* op,
 
   // Replace with the equivalent sin operation:
   //   cos(x) = sin(x + π / 2).
-  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
-  auto pi_2 = rewriter.create<ConstOp>(
-      op->getLoc(), fp_scalar_ty,
-      DenseElementsAttr::get(fp_scalar_ty, {static_cast<float>(M_PI_2)}));
+  auto pi_2 = getTosaConstTensorSingleF32(
+      rewriter, op, static_cast<float>(M_PI_2), input_ty.getRank());
+
   auto offset = rewriter.create<AddOp>(op->getLoc(), input_ty, input, pi_2);
 
   CreateReplaceOpAndInfer<TF::SinOp>(rewriter, op, output_ty, offset);
@@ -319,8 +319,10 @@ LogicalResult ConvertTFAddOp::matchAndRewrite(Operation* op,
   // Not a tensor output
   if (!output_type) return failure();
 
-  CreateReplaceOpAndInfer<tosa::AddOp>(rewriter, op, output_type,
-                                       tf_add_op.getX(), tf_add_op.getY());
+  Value x = tf_add_op.getX();
+  Value y = tf_add_op.getY();
+  if (EqualizeRanks(rewriter, op->getLoc(), x, y).failed()) return failure();
+  CreateReplaceOpAndInfer<tosa::AddOp>(rewriter, op, output_type, x, y);
   return success();
 }
 
@@ -333,8 +335,11 @@ LogicalResult ConvertTFAddV2Op::matchAndRewrite(
   // Not a tensor output
   if (!output_type) return failure();
 
-  CreateReplaceOpAndInfer<tosa::AddOp>(rewriter, op, output_type,
-                                       tf_addv2_op.getX(), tf_addv2_op.getY());
+  Value x = tf_addv2_op.getX();
+  Value y = tf_addv2_op.getY();
+  if (EqualizeRanks(rewriter, op->getLoc(), x, y).failed()) return failure();
+
+  CreateReplaceOpAndInfer<tosa::AddOp>(rewriter, op, output_type, x, y);
   return success();
 }
 
@@ -484,13 +489,19 @@ LogicalResult ConvertTFMaximumOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_maximum_op = cast<TF::MaximumOp>(op);
 
+  Value x = tf_maximum_op.getX();
+  Value y = tf_maximum_op.getY();
+
+  RankedTensorType x_type = dyn_cast<RankedTensorType>(x.getType());
+  RankedTensorType y_type = dyn_cast<RankedTensorType>(y.getType());
   TensorType output_type =
       dyn_cast<TensorType>(tf_maximum_op.getResult().getType());
   // Not a tensor output
-  if (!output_type) return failure();
+  if (!output_type || !x_type || !y_type) return failure();
 
-  CreateReplaceOpAndInfer<tosa::MaximumOp>(
-      rewriter, op, output_type, tf_maximum_op.getX(), tf_maximum_op.getY());
+  if (EqualizeRanks(rewriter, op->getLoc(), x, y).failed()) return failure();
+
+  CreateReplaceOpAndInfer<tosa::MaximumOp>(rewriter, op, output_type, x, y);
   return success();
 }
 
@@ -498,13 +509,19 @@ LogicalResult ConvertTFMinimumOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_minimum_op = cast<TF::MinimumOp>(op);
 
+  Value x = tf_minimum_op.getX();
+  Value y = tf_minimum_op.getY();
+
+  RankedTensorType x_type = dyn_cast<RankedTensorType>(x.getType());
+  RankedTensorType y_type = dyn_cast<RankedTensorType>(y.getType());
   TensorType output_type =
       dyn_cast<TensorType>(tf_minimum_op.getResult().getType());
   // Not a tensor output
-  if (!output_type) return failure();
+  if (!output_type || !x_type || !y_type) return failure();
 
-  CreateReplaceOpAndInfer<tosa::MinimumOp>(
-      rewriter, op, output_type, tf_minimum_op.getX(), tf_minimum_op.getY());
+  if (EqualizeRanks(rewriter, op->getLoc(), x, y).failed()) return failure();
+
+  CreateReplaceOpAndInfer<tosa::MinimumOp>(rewriter, op, output_type, x, y);
   return success();
 }
 
@@ -1381,22 +1398,34 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
   // op5 = mul(op4, bscale)
   // op6 = add(op5, boffset)
 
-  RankedTensorType mean_type =
-      dyn_cast<RankedTensorType>(tf_batchnorm_op.getMean().getType());
+  Value mean = tf_batchnorm_op.getMean();
+  Value variance = tf_batchnorm_op.getVariance();
+  Value x = tf_batchnorm_op.getX();
+  Value scale = tf_batchnorm_op.getScale();
+  Value offset = tf_batchnorm_op.getOffset();
+
+  RankedTensorType mean_type = dyn_cast<RankedTensorType>(mean.getType());
   RankedTensorType variance_type =
-      dyn_cast<RankedTensorType>(tf_batchnorm_op.getVariance().getType());
-  if (!variance_type || !mean_type) return failure();
+      dyn_cast<RankedTensorType>(variance.getType());
+  RankedTensorType x_type = dyn_cast<RankedTensorType>(x.getType());
+  RankedTensorType scale_type = dyn_cast<RankedTensorType>(scale.getType());
+  RankedTensorType offset_type = dyn_cast<RankedTensorType>(offset.getType());
+  if (!variance_type || !mean_type || !x_type || !scale_type || !offset_type)
+    return failure();
+
+  auto rank = x_type.getRank();
 
   Value mean_val, variance_val;
 
   if (mean_type.getNumElements() == 0) {
-    mean_val = getTosaConstTensorSingleF32(rewriter, tf_batchnorm_op, 0);
+    mean_val = getTosaConstTensorSingleF32(rewriter, tf_batchnorm_op, 0, rank);
   } else {
     mean_val = tf_batchnorm_op.getMean();
   }
 
   if (variance_type.getNumElements() == 0) {
-    variance_val = getTosaConstTensorSingleF32(rewriter, tf_batchnorm_op, 1.0);
+    variance_val =
+        getTosaConstTensorSingleF32(rewriter, tf_batchnorm_op, 1.0, 1);
   } else {
     variance_val = tf_batchnorm_op.getVariance();
   }
@@ -1405,36 +1434,42 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
       tensorflow::GetTypeFromTFTensorShape({1}, variance_type.getElementType());
   auto epsilon_attr =
       DenseFPElementsAttr::get(epsilon_type, {tf_batchnorm_op.getEpsilon()});
-  auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
+  Value epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
       rewriter, op->getLoc(), epsilon_type, epsilon_attr);
 
-  auto op1_sub_input_mean = CreateOpAndInfer<tosa::SubOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      tf_batchnorm_op.getX(), mean_val);
+  if (EqualizeRanks(rewriter, op->getLoc(), x, mean_val).failed())
+    return failure();
+  Value op1_sub_input_mean = CreateOpAndInfer<tosa::SubOp>(
+      rewriter, op->getLoc(), output_type, x, mean_val);
 
-  auto op2_add_var_epsilon = CreateOpAndInfer<tosa::AddOp>(
+  if (EqualizeRanks(rewriter, op->getLoc(), variance_val, epsilon_const)
+          .failed())
+    return failure();
+  Value op2_add_var_epsilon = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), variance_val.getType(), variance_val,
-      epsilon_const.getResult());
+      epsilon_const);
 
-  auto op3_rsqrt_op2 = CreateOpAndInfer<tosa::RsqrtOp>(
-      rewriter, op->getLoc(), variance_val.getType(),
-      op2_add_var_epsilon.getResult());
+  Value op3_rsqrt_op2 = CreateOpAndInfer<tosa::RsqrtOp>(
+      rewriter, op->getLoc(), variance_val.getType(), op2_add_var_epsilon);
 
-  auto op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(),
-      rewriter.getI8IntegerAttr(0));
+  if (EqualizeRanks(rewriter, op->getLoc(), op1_sub_input_mean, op3_rsqrt_op2)
+          .failed())
+    return failure();
+  Value op4_mul_op1_op3 =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                    op1_sub_input_mean, op3_rsqrt_op2, 0);
 
-  auto op5_mul_op4_scale = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(),
-      rewriter.getI8IntegerAttr(0));
+  if (EqualizeRanks(rewriter, op->getLoc(), op4_mul_op1_op3, scale).failed())
+    return failure();
+  Value op5_mul_op4_scale = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), output_type, op4_mul_op1_op3, scale, 0);
 
-  auto op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op5_mul_op4_scale.getResult(), tf_batchnorm_op.getOffset());
+  if (EqualizeRanks(rewriter, op->getLoc(), op5_mul_op4_scale, offset).failed())
+    return failure();
+  Value op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
+      rewriter, op->getLoc(), output_type, op5_mul_op4_scale, offset);
 
-  rewriter.replaceOp(op, {op6_add_op5_offset.getResult()});
+  rewriter.replaceOp(op, {op6_add_op5_offset});
   return success();
 }
 
@@ -1469,45 +1504,56 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
   // op5 = mul(op4, scale)
   // op6 = add(op5, offset)
 
-  auto op1_sub_input_mean = CreateOpAndInfer<tosa::SubOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      tf_batchnorm_op.getX(), tf_batchnorm_op.getMean());
+  Value x = tf_batchnorm_op.getX();
+  Value mean = tf_batchnorm_op.getMean();
+  if (EqualizeRanks(rewriter, op->getLoc(), x, mean).failed()) return failure();
 
+  Value op1_sub_input_mean = CreateOpAndInfer<tosa::SubOp>(
+      rewriter, op->getLoc(), output_type, x, mean);
+
+  Value variance = tf_batchnorm_op.getVariance();
   RankedTensorType variance_type =
-      dyn_cast<RankedTensorType>(tf_batchnorm_op.getVariance().getType());
+      dyn_cast<RankedTensorType>(variance.getType());
   if (!variance_type) return failure();
 
   auto epsilon_type =
       tensorflow::GetTypeFromTFTensorShape({1}, variance_type.getElementType());
   auto epsilon_attr =
       DenseFPElementsAttr::get(epsilon_type, {tf_batchnorm_op.getEpsilon()});
-  auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
+  Value epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
       rewriter, op->getLoc(), epsilon_type, epsilon_attr);
 
-  auto op2_add_var_epsilon = CreateOpAndInfer<tosa::AddOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getVariance().getType(),
-      tf_batchnorm_op.getVariance(), epsilon_const);
+  if (EqualizeRanks(rewriter, op->getLoc(), variance, epsilon_const).failed())
+    return failure();
+  variance_type = variance.getType().cast<RankedTensorType>();
+  Value op2_add_var_epsilon = CreateOpAndInfer<tosa::AddOp>(
+      rewriter, op->getLoc(), variance_type, variance, epsilon_const);
 
-  auto op3_rsqrt_op2 = CreateOpAndInfer<tosa::RsqrtOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getVariance().getType(),
-      op2_add_var_epsilon.getResult());
+  Value op3_rsqrt_op2 = CreateOpAndInfer<tosa::RsqrtOp>(
+      rewriter, op->getLoc(), variance_type, op2_add_var_epsilon);
 
-  auto op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
+  if (EqualizeRanks(rewriter, op->getLoc(), op1_sub_input_mean, op3_rsqrt_op2)
+          .failed())
+    return failure();
+  Value op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(),
-      rewriter.getI8IntegerAttr(0));
+      op1_sub_input_mean, op3_rsqrt_op2, 0);
 
-  auto op5_mul_op4_scale = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(),
-      rewriter.getI8IntegerAttr(0));
+  Value scale = tf_batchnorm_op.getScale();
+  if (EqualizeRanks(rewriter, op->getLoc(), op4_mul_op1_op3, scale).failed())
+    return failure();
 
-  auto op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
-      rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op5_mul_op4_scale.getResult(), tf_batchnorm_op.getOffset());
+  Value op5_mul_op4_scale = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), output_type, op4_mul_op1_op3, scale, 0);
+
+  Value offset = tf_batchnorm_op.getOffset();
+  if (EqualizeRanks(rewriter, op->getLoc(), op5_mul_op4_scale, offset).failed())
+    return failure();
+  Value op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
+      rewriter, op->getLoc(), output_type, op5_mul_op4_scale, offset);
 
   llvm::SmallVector<Value> replacements = {
-      op6_add_op5_offset.getResult(), tf_batchnorm_op.getMean(),
+      op6_add_op5_offset, tf_batchnorm_op.getMean(),
       tf_batchnorm_op.getVariance(),
       // The last three are reserved spaces and have no purpose currently.
       tf_batchnorm_op.getMean(), tf_batchnorm_op.getVariance(),
@@ -1525,9 +1571,17 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto add_op = CreateOpAndInfer<tosa::AddOp>(
-      rewriter, op->getLoc(), output_type, tf_biasadd_op.getValue(),
-      tf_biasadd_op.getBias());
+  Value x = tf_biasadd_op.getValue();
+  Value bias = tf_biasadd_op.getBias();
+
+  RankedTensorType x_type = dyn_cast<RankedTensorType>(x.getType());
+  RankedTensorType bias_type = dyn_cast<RankedTensorType>(bias.getType());
+  if (!x_type || !bias_type) return failure();
+
+  if (EqualizeRanks(rewriter, op->getLoc(), x, bias).failed()) return failure();
+
+  auto add_op = CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(),
+                                              output_type, x, bias);
 
   rewriter.replaceOp(op, {add_op.getResult()});
   return success();
@@ -2147,11 +2201,12 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
     alpha = tmpAttr.getValueAsDouble();
   }
 
-  Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
+  int rank = output_type.getRank();
+  Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0, rank);
 
   auto a1_mul = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), output_type, tf_leakyrelu_op.getFeatures(),
-      getTosaConstTensorSingleF32(rewriter, op, alpha), 0);
+      getTosaConstTensorSingleF32(rewriter, op, alpha, rank), 0);
 
   auto a2_ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
       rewriter, op->getLoc(), UnrankedTensorType::get(rewriter.getI1Type()),
@@ -2294,9 +2349,17 @@ LogicalResult ConvertTFLeftShiftOp::matchAndRewrite(
       dyn_cast<TensorType>(tf_left_shift_op.getResult().getType());
   if (!output_type) return failure();
 
+  Value x = tf_left_shift_op.getX();
+  Value y = tf_left_shift_op.getY();
+
+  RankedTensorType x_type = dyn_cast<RankedTensorType>(x.getType());
+  RankedTensorType y_type = dyn_cast<RankedTensorType>(y.getType());
+  if (!x_type || !y_type) return failure();
+
+  if (EqualizeRanks(rewriter, op->getLoc(), x, y).failed()) return failure();
+
   CreateReplaceOpAndInfer<tosa::LogicalLeftShiftOp>(rewriter, op, output_type,
-                                                    tf_left_shift_op.getX(),
-                                                    tf_left_shift_op.getY());
+                                                    x, y);
 
   return success();
 }
@@ -2311,6 +2374,15 @@ LogicalResult ConvertTFRightShiftOp::matchAndRewrite(
       dyn_cast<TensorType>(tf_right_shift_op.getResult().getType());
   if (!output_type) return failure();
 
+  Value x = tf_right_shift_op.getX();
+  Value y = tf_right_shift_op.getY();
+
+  RankedTensorType x_type = dyn_cast<RankedTensorType>(x.getType());
+  RankedTensorType y_type = dyn_cast<RankedTensorType>(y.getType());
+  if (!x_type || !y_type) return failure();
+
+  if (EqualizeRanks(rewriter, op->getLoc(), x, y).failed()) return failure();
+
   Type output_element_type = output_type.getElementType();
 
   bool is_signed = false;
@@ -2318,12 +2390,10 @@ LogicalResult ConvertTFRightShiftOp::matchAndRewrite(
 
   if (is_signed) {
     CreateReplaceOpAndInfer<tosa::ArithmeticRightShiftOp>(
-        rewriter, op, output_type, tf_right_shift_op.getX(),
-        tf_right_shift_op.getY(), false);
+        rewriter, op, output_type, x, y, false);
   } else {
-    CreateReplaceOpAndInfer<tosa::LogicalRightShiftOp>(
-        rewriter, op, output_type, tf_right_shift_op.getX(),
-        tf_right_shift_op.getY());
+    CreateReplaceOpAndInfer<tosa::LogicalRightShiftOp>(rewriter, op,
+                                                       output_type, x, y);
   }
 
   return success();
