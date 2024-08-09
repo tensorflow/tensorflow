@@ -68,6 +68,21 @@ TEST_F(RangeOpTest, Simple_D32) {
   test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
 }
 
+TEST_F(RangeOpTest, Simple_Half) {
+  MakeOp(DT_HALF);
+
+  // Feed and run
+  AddInputFromList<Eigen::half, float>(TensorShape({}), {0.5});
+  AddInputFromList<Eigen::half, float>(TensorShape({}), {2});
+  AddInputFromList<Eigen::half, float>(TensorShape({}), {0.3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output
+  Tensor expected(allocator(), DT_HALF, TensorShape({5}));
+  test::FillValues<Eigen::half, float>(&expected, {0.5, 0.8, 1.1, 1.4, 1.7});
+  test::ExpectTensorEqual<Eigen::half>(expected, *GetOutput(0));
+}
+
 TEST_F(RangeOpTest, Simple_Float) {
   MakeOp(DT_FLOAT);
 
