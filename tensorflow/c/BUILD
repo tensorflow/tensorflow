@@ -795,10 +795,13 @@ tf_cuda_library(
         ":tf_status",
         ":tf_status_helper",
         ":tf_tensor_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api_internal",
         "//tensorflow/core/platform:notification",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/c:tsl_status_internal",
     ] + select({
