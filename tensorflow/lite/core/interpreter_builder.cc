@@ -185,20 +185,16 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
 #endif
 
 #if !defined(TFLITE_IS_MOBILE_PLATFORM)
-  // Load TF_AcquireFlexDelegate() from _pywrap_tensorflow_internal.so if it is
+  // Load TF_AcquireFlexDelegate() from _pywrap_tflite.so if it is
   // available.
 #if defined(_WIN32)
-  const wchar_t* filename_pywrap_tensorflow_internal =
-      L"_pywrap_tensorflow_internal.pyd";
+  const wchar_t* filename_pywrap_tflite = L"_pywrap_tflite.pyd";
 #elif defined(__APPLE__)
-  const char* filename_pywrap_tensorflow_internal =
-      "python/_pywrap_tensorflow_internal.so";
+  const char* filename_pywrap_tflite = "python/_pywrap_tflite.so";
 #else
-  const char* filename_pywrap_tensorflow_internal =
-      "_pywrap_tensorflow_internal.so";
+  const char* filename_pywrap_tflite = "_pywrap_tflite.so";
 #endif
-  void* lib_tf_internal =
-      SharedLibrary::LoadLibrary(filename_pywrap_tensorflow_internal);
+  void* lib_tf_internal = SharedLibrary::LoadLibrary(filename_pywrap_tflite);
 #if defined(_WIN32)
   if (lib_tf_internal == nullptr) {
     lib_tf_internal = SharedLibrary::LoadLibrary(
