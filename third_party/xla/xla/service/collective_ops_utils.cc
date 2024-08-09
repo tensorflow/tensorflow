@@ -582,7 +582,7 @@ bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
   return true;
 }
 
-bool IsCollective(const HloInstruction* instruction) {
+bool IsNonFusionCollective(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
@@ -597,22 +597,28 @@ bool IsCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kReduceScatter:
       return true;
-    case HloOpcode::kFusion:
-      if (instruction->IsCustomFusion()) {
-        for (const auto* inner_inst : instruction->fused_instructions()) {
-          if (IsCollective(inner_inst)) {
-            return true;
-          }
-        }
-      }
-      return false;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone:
-      return IsCollective(instruction->async_wrapped_instruction());
+      return IsNonFusionCollective(instruction->async_wrapped_instruction());
     default:
       return false;
   }
+}
+
+bool IsCollective(const HloInstruction* instruction) {
+  if (IsNonFusionCollective(instruction)) {
+    return true;
+  }
+  if (instruction->opcode() == HloOpcode::kFusion &&
+      instruction->IsCustomFusion()) {
+    for (const auto* inner_inst : instruction->fused_instructions()) {
+      if (IsCollective(inner_inst)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {

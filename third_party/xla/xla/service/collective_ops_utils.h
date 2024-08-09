@@ -196,6 +196,10 @@ inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
 inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
     "NopReturnToken";
 
+// Returns true if instruction is a collective op that is not a collective
+// fusion.
+bool IsNonFusionCollective(const HloInstruction* instruction);
+
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);
 
