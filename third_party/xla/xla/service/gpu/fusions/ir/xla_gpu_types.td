@@ -19,8 +19,8 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
-include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.td"
-include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.td"
+include "xla/service/gpu/fusions/ir/xla_gpu_dialect.td"
+include "xla/service/gpu/fusions/ir/xla_gpu_attrs.td"
 
 class XLAGPU_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<XlaGpuDialect, name, traits> {

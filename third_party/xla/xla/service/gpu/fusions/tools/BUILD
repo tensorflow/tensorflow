@@ -12,7 +12,7 @@ xla_cc_binary(
     visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
         "//xla/mlir_hlo",
-        "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
+        "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/transforms:passes",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",

@@ -21,14 +21,14 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.h.inc"
+#include "xla/service/gpu/fusions/ir/xla_gpu_dialect.h.inc"
 #include "xla/service/gpu/model/indexing_map.h"  // IWYU pragma: keep
 #define GET_ATTRDEF_CLASSES
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.h.inc"
+#include "xla/service/gpu/fusions/ir/xla_gpu_attrs.h.inc"
 #undef GET_ATTRDEF_CLASSES
 #define GET_TYPEDEF_LIST
 #define GET_TYPEDEF_CLASSES
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_types.h.inc"
+#include "xla/service/gpu/fusions/ir/xla_gpu_types.h.inc"
 
 namespace xla {
 namespace gpu {

@@ -31,7 +31,7 @@ limitations under the License.
 
 #define GET_ATTRDEF_LIST
 #define GET_ATTRDEF_CLASSES
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_attrs.h.inc"
+#include "xla/service/gpu/fusions/ir/xla_gpu_attrs.h.inc"
 
 namespace xla {
 namespace gpu {

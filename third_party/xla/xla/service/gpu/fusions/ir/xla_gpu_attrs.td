@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_ATTRS
 
 include "mlir/IR/AttrTypeBase.td"
-include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.td"
+include "xla/service/gpu/fusions/ir/xla_gpu_dialect.td"
 
 class XLAGPU_Attr<string name, list<Trait> traits = []> :
       AttrDef<XlaGpuDialect, name, traits> {
