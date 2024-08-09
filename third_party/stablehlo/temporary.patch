@@ -1,1 +1,2043 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -1211,6 +1211,7 @@
+     deps = [
+         ":interpreter_ops",
+         ":reference_api",
++        ":reference_configuration",
+         ":reference_errors",
+         ":reference_ops",
+         ":reference_process_grid",
+diff --ruN a/stablehlo/examples/c++/BUILD.bazel b/stablehlo/examples/c++/BUILD.bazel
+--- stablehlo/examples/c++/BUILD.bazel
++++ stablehlo/examples/c++/BUILD.bazel
+@@ -25,6 +25,7 @@
+     ],
+     deps = [
+         "//:reference_api",
++        "//:reference_configuration",
+         "//:stablehlo_ops",
+         "@llvm-project//mlir:FuncDialect",
+         "@llvm-project//mlir:IR",
+diff --ruN a/stablehlo/examples/c++/ExampleAdd.cpp b/stablehlo/examples/c++/ExampleAdd.cpp
+--- stablehlo/examples/c++/ExampleAdd.cpp
++++ stablehlo/examples/c++/ExampleAdd.cpp
+@@ -12,14 +12,28 @@
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ ==============================================================================*/
++#include <cassert>
++
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/LogicalResult.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Quant/QuantOps.h"
++#include "mlir/IR/Attributes.h"
++#include "mlir/IR/Block.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/MLIRContext.h"
++#include "mlir/IR/OwningOpRef.h"
++#include "mlir/IR/Value.h"
+ #include "mlir/IR/Verifier.h"
++#include "mlir/Support/LLVM.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/reference/Api.h"
++#include "stablehlo/reference/Configuration.h"
+ 
+ int main() {
+   mlir::MLIRContext context;
+diff --ruN a/stablehlo/stablehlo/api/PortableApi.cpp b/stablehlo/stablehlo/api/PortableApi.cpp
+--- stablehlo/stablehlo/api/PortableApi.cpp
++++ stablehlo/stablehlo/api/PortableApi.cpp
+@@ -17,15 +17,16 @@
+ 
+ #include <string>
+ 
++#include "llvm/Support/raw_ostream.h"
+ #include "mlir/Bytecode/BytecodeWriter.h"
+-#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/Parser/Parser.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/Register.h"
+ #include "stablehlo/dialect/Serialization.h"
+-#include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/Version.h"
+-#include "stablehlo/dialect/VhloOps.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
+@@ -18,14 +18,33 @@
+ 
+ #include "stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.h"
+ 
+-#include <algorithm>
+-#include <numeric>
+-#include <string>
+-#include <utility>
++#include <cassert>
++#include <cstdint>
++#include <optional>
+ 
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/Casting.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
++#include "mlir/Dialect/Complex/IR/Complex.h"
++#include "mlir/Dialect/Linalg/IR/Linalg.h"
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
++#include "mlir/IR/Block.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/Operation.h"
++#include "mlir/IR/Types.h"
++#include "mlir/IR/Value.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Support/LLVM.h"
+ #include "stablehlo/dialect/ChloOps.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+@@ -14,7 +14,25 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
++#include <algorithm>
++#include <cassert>
++#include <cstddef>
++#include <cstdint>
++#include <memory>
++#include <optional>
++#include <string>
++#include <utility>
++
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/STLFunctionalExtras.h"
++#include "llvm/ADT/Sequence.h"
++#include "llvm/ADT/SetVector.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/SmallVectorExtras.h"
++#include "llvm/Support/Casting.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
++#include "mlir/Dialect/Arith/Utils/Utils.h"
+ #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
+@@ -26,12 +44,30 @@
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
++#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributeInterfaces.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/ImplicitLocOpBuilder.h"
++#include "mlir/IR/OpDefinition.h"
+ #include "mlir/IR/Operation.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Region.h"
++#include "mlir/IR/TypeRange.h"
++#include "mlir/IR/TypeUtilities.h"
++#include "mlir/IR/Value.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.h"
+-#include "stablehlo/conversions/linalg/transforms/Passes.h"
++#include "stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h"
++#include "stablehlo/conversions/linalg/transforms/Passes.h" // IWYU pragma: keep
+ #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
+ #include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
+@@ -14,13 +14,18 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
+-#include "mlir/Dialect/Arith/IR/Arith.h"
++#include "llvm/ADT/STLFunctionalExtras.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+-#include "stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.h"
++#include "stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h"
+ #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
+-#include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir::stablehlo {
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
+@@ -16,9 +16,33 @@
+ 
+ // Implements logic for lowering StableHLO convolution ops to Linalg dialect.
+ 
++#include <cassert>
++#include <cstddef>
++#include <cstdint>
++#include <numeric>
++#include <optional>
++
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/Sequence.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "mlir/Dialect/Arith/IR/Arith.h"
++#include "mlir/Dialect/Arith/Utils/Utils.h"
++#include "mlir/Dialect/Complex/IR/Complex.h"
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
++#include "mlir/Dialect/Linalg/Utils/Utils.h"
++#include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
++#include "mlir/IR/AffineExpr.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/ImplicitLocOpBuilder.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.h"
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
+@@ -14,8 +14,31 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
++#include <cassert>
++#include <cstddef>
++#include <cstdint>
++#include <string>
++#include <type_traits>
++
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/Casting.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/raw_ostream.h"
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
++#include "mlir/Dialect/Linalg/Utils/Utils.h"
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
++#include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/IR/AffineExpr.h"
++#include "mlir/IR/AffineMap.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/ImplicitLocOpBuilder.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/TypeRange.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.h"
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
+@@ -18,13 +18,29 @@
+ // These patterns are separated out to their own file to save on the compilation
+ // times, given that we instantiate a large number of class templates here.
+ 
++#include <algorithm>
++#include <cstdint>
++
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Linalg/IR/Linalg.h"
++#include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/IR/AffineMap.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/TypeRange.h"
++#include "mlir/IR/TypeUtilities.h"
++#include "mlir/IR/Value.h"
+ #include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.h"
+ #include "stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h"
+ #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
+-#include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir::stablehlo {
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
+@@ -17,8 +17,26 @@
+ // Implements logic for lowering StableHLO random number generation to Linalg
+ // dialect.
+ 
++#include <algorithm>
++#include <array>
++#include <cstdint>
++#include <utility>
++
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/Casting.h"
++#include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
++#include "mlir/Dialect/Linalg/Utils/Utils.h"
++#include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
++#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.h"
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgReduce.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgReduce.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgReduce.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgReduce.cpp
+@@ -18,12 +18,36 @@
+ // These patterns are separated out to their own file to save on the compilation
+ // times.
+ 
++#include <cassert>
++#include <cstdint>
++#include <type_traits>
++
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SetVector.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/Casting.h"
++#include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
++#include "mlir/Dialect/Linalg/Utils/Utils.h"
++#include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/IR/AffineExpr.h"
++#include "mlir/IR/AffineMap.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/OpDefinition.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Region.h"
++#include "mlir/IR/Value.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.h"
+ #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
++#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir::stablehlo {
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+@@ -16,15 +16,21 @@
+ 
+ #include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
+ 
++#include <cassert>
+ #include <optional>
+ 
++#include "llvm/Support/Casting.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Location.h"
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Types.h"
+ #include "mlir/IR/Value.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ 
+ namespace mlir::stablehlo {
+ 
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+@@ -13,17 +13,31 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
+-#include <memory>
++#include <cstddef>
++#include <cstdint>
+ #include <utility>
+ 
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/Dialect/PDL/IR/PDL.h"
++#include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"
+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
++#include "mlir/IR/Attributes.h"
++#include "mlir/IR/Block.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Types.h"
++#include "mlir/IR/Value.h"
+ #include "mlir/Parser/Parser.h"
++#include "mlir/Pass/Pass.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+-#include "stablehlo/conversions/tosa/transforms/Passes.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ #define PASS_NAME "stablehlo-legalize-to-tosa"
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloPrepareForTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloPrepareForTosa.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloPrepareForTosa.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloPrepareForTosa.cpp
+@@ -13,14 +13,14 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
+-#include <memory>
+ #include <utility>
+ 
++#include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+-#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/Operation.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Pass/Pass.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+-#include "stablehlo/conversions/tosa/transforms/Passes.h"
+-#include "stablehlo/dialect/StablehloOps.h"
+ 
+ #define PASS_NAME "stablehlo-prepare-to-tosa"
+ #define DEBUG_TYPE PASS_NAME
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+--- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
++++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+@@ -17,19 +17,27 @@
+ 
+ #include <cassert>
+ #include <cstdint>
++#include <functional>
+ #include <optional>
+ #include <string>
++#include <tuple>
+ 
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/Sequence.h"
+ #include "llvm/ADT/StringExtras.h"
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/Regex.h"
+ #include "llvm/Support/SMLoc.h"
++#include "llvm/Support/raw_ostream.h"
++#include "mlir/IR/Block.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/DialectImplementation.h"
++#include "mlir/IR/OpDefinition.h"
+ #include "mlir/IR/OpImplementation.h"
+ #include "mlir/IR/OperationSupport.h"
+ #include "mlir/IR/Region.h"
+@@ -37,6 +45,7 @@
+ #include "mlir/IR/ValueRange.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
++#include "stablehlo/dialect/Base.h"
+ 
+ #define DEBUG_TYPE "hlo-assembly"
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -16,15 +16,31 @@
+ 
+ #include "stablehlo/dialect/Base.h"
+ 
++#include <algorithm>
++#include <cstddef>
++#include <cstdint>
++#include <functional>
+ #include <optional>
++#include <utility>
+ 
+ #include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/STLExtras.h"
+-#include "llvm/ADT/TypeSwitch.h"
++#include "llvm/ADT/Sequence.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/Quant/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+-#include "mlir/IR/DialectImplementation.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Diagnostics.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/Matchers.h"
++#include "mlir/IR/Operation.h"
+ #include "mlir/IR/TypeUtilities.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Support/LLVM.h"
+ 
+ // Include order matters
+diff --ruN a/stablehlo/stablehlo/dialect/BroadcastUtils.cpp b/stablehlo/stablehlo/dialect/BroadcastUtils.cpp
+--- stablehlo/stablehlo/dialect/BroadcastUtils.cpp
++++ stablehlo/stablehlo/dialect/BroadcastUtils.cpp
+@@ -17,12 +17,21 @@
+ #include "stablehlo/dialect/BroadcastUtils.h"
+ 
+ #include <algorithm>
++#include <cassert>
++#include <cstdint>
+ 
+-#include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/Sequence.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+-#include "stablehlo/dialect/Base.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Location.h"
++#include "mlir/IR/Types.h"
++#include "mlir/IR/Value.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ 
+ namespace mlir {
+ namespace hlo {
+diff --ruN a/stablehlo/stablehlo/dialect/ChloBytecode.cpp b/stablehlo/stablehlo/dialect/ChloBytecode.cpp
+--- stablehlo/stablehlo/dialect/ChloBytecode.cpp
++++ stablehlo/stablehlo/dialect/ChloBytecode.cpp
+@@ -15,11 +15,19 @@
+ 
+ #include "stablehlo/dialect/ChloBytecode.h"
+ 
++#include <cstdint>
++
++#include "llvm/ADT/StringRef.h"
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "llvm/Support/Compiler.h"
+ #include "llvm/Support/Debug.h"
++#include "llvm/Support/raw_ostream.h"
+ #include "mlir/Bytecode/BytecodeImplementation.h"
++#include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Diagnostics.h"
++#include "mlir/IR/Dialect.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/ChloOps.h"
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -16,6 +16,7 @@
+ 
+ #include "stablehlo/dialect/ChloOps.h"
+ 
++#include <cassert>
+ #include <cstdint>
+ #include <optional>
+ 
+@@ -24,9 +25,22 @@
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+ #include "mlir/Dialect/Traits.h"
++#include "mlir/IR/Attributes.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributeInterfaces.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+-#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Dialect.h"
++#include "mlir/IR/DialectImplementation.h"
++#include "mlir/IR/OpDefinition.h"
++#include "mlir/IR/OperationSupport.h"
++#include "mlir/IR/Region.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Support/TypeID.h"
+ #include "mlir/Transforms/InliningUtils.h"
+ #include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/BroadcastUtils.h"
+diff --ruN a/stablehlo/stablehlo/dialect/Register.cpp b/stablehlo/stablehlo/dialect/Register.cpp
+--- stablehlo/stablehlo/dialect/Register.cpp
++++ stablehlo/stablehlo/dialect/Register.cpp
+@@ -18,9 +18,8 @@
+ 
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Quant/QuantOps.h"
+-#include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+-#include "mlir/Dialect/Tensor/IR/Tensor.h"
++#include "mlir/IR/DialectRegistry.h"
+ #include "stablehlo/dialect/ChloOps.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/VhloOps.h"
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
+--- stablehlo/stablehlo/dialect/Serialization.cpp
++++ stablehlo/stablehlo/dialect/Serialization.cpp
+@@ -15,13 +15,13 @@
+ 
+ #include "stablehlo/dialect/Serialization.h"
+ 
+-#include <cstdint>
+-
+ #include "mlir/Bytecode/BytecodeWriter.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/MLIRContext.h"
++#include "mlir/IR/OwningOpRef.h"
+ #include "mlir/Parser/Parser.h"
+ #include "mlir/Pass/PassManager.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/Version.h"
+ #include "stablehlo/dialect/VhloOps.h"
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloBytecode.cpp b/stablehlo/stablehlo/dialect/StablehloBytecode.cpp
+--- stablehlo/stablehlo/dialect/StablehloBytecode.cpp
++++ stablehlo/stablehlo/dialect/StablehloBytecode.cpp
+@@ -15,11 +15,23 @@
+ 
+ #include "stablehlo/dialect/StablehloBytecode.h"
+ 
++#include <cstdint>
++#include <memory>
++
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/StringRef.h"
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "llvm/Support/Compiler.h"
+ #include "llvm/Support/Debug.h"
++#include "llvm/Support/raw_ostream.h"
+ #include "mlir/Bytecode/BytecodeImplementation.h"
++#include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Diagnostics.h"
++#include "mlir/IR/Dialect.h"
++#include "mlir/IR/Location.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
++#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ //===----------------------------------------------------------------------===//
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -24,35 +24,39 @@
+ #include <array>
+ #include <cstdint>
+ #include <functional>
++#include <iterator>
+ #include <numeric>
+ #include <optional>
+ #include <set>
+-#include <unordered_map>
++#include <string>
+ #include <utility>
++#include <vector>
+ 
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/DenseMap.h"
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/STLFunctionalExtras.h"
++#include "llvm/ADT/Sequence.h"
+ #include "llvm/ADT/SmallVector.h"
+-#include "llvm/ADT/StringExtras.h"
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/ADT/StringSet.h"
+-#include "llvm/ADT/Twine.h"
+ #include "llvm/ADT/TypeSwitch.h"
+-#include "llvm/ADT/iterator_range.h"
+-#include "llvm/Support/Casting.h"
+-#include "llvm/Support/FormatVariadic.h"
+-#include "llvm/Support/MathExtras.h"
++#include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/Regex.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
++#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributeInterfaces.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/Dialect.h"
+@@ -64,13 +68,17 @@
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/OperationSupport.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Region.h"
++#include "mlir/IR/SymbolTable.h"
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Types.h"
+ #include "mlir/IR/Value.h"
+-#include "mlir/Interfaces/FunctionInterfaces.h"
++#include "mlir/Interfaces/DataLayoutInterfaces.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
++#include "mlir/Support/TypeID.h"
+ #include "mlir/Transforms/InliningUtils.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
+ #include "stablehlo/dialect/Base.h"
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -24,38 +24,45 @@
+ #include <array>
+ #include <cstdint>
+ #include <functional>
++#include <iterator>
+ #include <numeric>
+ #include <optional>
+-#include <set>
+-#include <unordered_map>
++#include <string>
++#include <type_traits>
+ #include <utility>
++#include <vector>
+ 
+ #include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/BitVector.h"
+-#include "llvm/ADT/DenseMap.h"
++#include "llvm/ADT/DenseSet.h"
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/STLFunctionalExtras.h"
++#include "llvm/ADT/Sequence.h"
+ #include "llvm/ADT/SmallSet.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/ADT/StringExtras.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/ADT/Twine.h"
+ #include "llvm/ADT/iterator_range.h"
+-#include "llvm/Support/Casting.h"
+ #include "llvm/Support/MathExtras.h"
+ #include "llvm/Support/Regex.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Quant/QuantTypes.h"
+ #include "mlir/IR/Attributes.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/Location.h"
+ #include "mlir/IR/Matchers.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/OperationSupport.h"
++#include "mlir/IR/Region.h"
++#include "mlir/IR/SymbolTable.h"
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Types.h"
+ #include "mlir/IR/Value.h"
+@@ -63,6 +70,7 @@
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
++#include "stablehlo/dialect/Base.h"
+ 
+ namespace mlir {
+ namespace hlo {
+diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
+--- stablehlo/stablehlo/dialect/Version.cpp
++++ stablehlo/stablehlo/dialect/Version.cpp
+@@ -16,12 +16,16 @@
+ 
+ #include "stablehlo/dialect/Version.h"
+ 
++#include <array>
+ #include <cstdint>
+ 
++#include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/Regex.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include "mlir/IR/Diagnostics.h"
++#include "mlir/Support/LLVM.h"
+ 
+ namespace mlir {
+ namespace vhlo {
+diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.cpp b/stablehlo/stablehlo/dialect/VhloBytecode.cpp
+--- stablehlo/stablehlo/dialect/VhloBytecode.cpp
++++ stablehlo/stablehlo/dialect/VhloBytecode.cpp
+@@ -16,24 +16,27 @@
+ #include "stablehlo/dialect/VhloBytecode.h"
+ 
+ #include <cassert>
+-
++#include <cstdint>
++#include <utility>
++
++#include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/ArrayRef.h"
+-#include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "llvm/Support/Compiler.h"
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/raw_ostream.h"
+ #include "mlir/Bytecode/BytecodeImplementation.h"
+-#include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
+-#include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+-#include "mlir/IR/OpImplementation.h"
++#include "mlir/IR/Dialect.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/Base.h"  // for readEnumAttribute
+ #include "stablehlo/dialect/VhloOps.h"
++#include "stablehlo/dialect/VhloTypes.h"
+ 
+ //===----------------------------------------------------------------------===//
+ // Debug Trace Helpers
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/dialect/VhloOps.cpp
+--- stablehlo/stablehlo/dialect/VhloOps.cpp
++++ stablehlo/stablehlo/dialect/VhloOps.cpp
+@@ -16,27 +16,32 @@
+ 
+ #include "stablehlo/dialect/VhloOps.h"
+ 
+-#include <cstdint>
++#include <cassert>
++#include <string>
++#include <utility>
+ 
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/ADT/StringExtras.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/ADT/TypeSwitch.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "llvm/Support/Casting.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
+-#include "mlir/IR/BuiltinAttributeInterfaces.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/DialectImplementation.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OpImplementation.h"
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Value.h"
+-#include "mlir/Interfaces/FunctionImplementation.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
++#include "mlir/Support/TypeID.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
++#include "stablehlo/dialect/Version.h"
+ #include "stablehlo/dialect/VhloBytecode.h"
+ #include "stablehlo/dialect/VhloTypes.h"
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
+@@ -15,11 +15,21 @@
+ 
+ #include "stablehlo/dialect/VhloTypes.h"
+ 
++#include <cstdint>
++
++#include "llvm/ADT/SmallVectorExtras.h"
++#include "llvm/ADT/StringRef.h"
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "mlir/Dialect/Quant/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
++#include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+-#include "mlir/IR/DialectImplementation.h"
++#include "mlir/IR/MLIRContext.h"
++#include "mlir/IR/OpDefinition.h"
++#include "mlir/IR/TypeSupport.h"
++#include "mlir/IR/Types.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/integrations/c/ChloAttributes.cpp b/stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
+--- stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
++++ stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
+@@ -15,6 +15,10 @@
+ 
+ #include <optional>
+ 
++#include "llvm/Support/Casting.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "mlir-c/IR.h"
++#include "mlir-c/Support.h"
+ #include "mlir/CAPI/IR.h"
+ #include "mlir/CAPI/Support.h"
+ #include "stablehlo/dialect/ChloOps.h"
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp b/stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
+--- stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
++++ stablehlo/stablehlo/integrations/c/StablehloAttributes.cpp
+@@ -13,6 +13,14 @@
+ 
+ #include "stablehlo/integrations/c/StablehloAttributes.h"
+ 
++#include <cstdint>
++#include <optional>
++
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/Support/Casting.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "mlir-c/IR.h"
++#include "mlir-c/Support.h"
+ #include "mlir/CAPI/IR.h"
+ #include "mlir/CAPI/Support.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloTypes.cpp b/stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
+--- stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
++++ stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
+@@ -13,6 +13,8 @@
+ 
+ #include "stablehlo/integrations/c/StablehloTypes.h"
+ 
++#include "llvm/Support/Casting.h"
++#include "mlir-c/IR.h"
+ #include "mlir/CAPI/IR.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
+--- stablehlo/stablehlo/reference/Api.cpp
++++ stablehlo/stablehlo/reference/Api.cpp
+@@ -15,22 +15,36 @@
+ #include "stablehlo/reference/Api.h"
+ 
+ #include <cstdint>
++#include <iterator>
++#include <queue>
++#include <string>
++#include <utility>
+ 
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallString.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/ADT/StringRef.h"
++#include "llvm/Support/Casting.h"
+ #include "llvm/Support/Error.h"
+ #include "llvm/Support/FileSystem.h"
+ #include "llvm/Support/Path.h"
+ #include "llvm/Support/SourceMgr.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/Dialect/Quant/QuantTypes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/DialectRegistry.h"
+ #include "mlir/IR/Location.h"
++#include "mlir/IR/OwningOpRef.h"
++#include "mlir/IR/SymbolTable.h"
+ #include "mlir/IR/TypeRange.h"
++#include "mlir/IR/TypeUtilities.h"
+ #include "mlir/Parser/Parser.h"
+ #include "mlir/Pass/PassManager.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/Register.h"
+ #include "stablehlo/reference/Configuration.h"
+diff --ruN a/stablehlo/stablehlo/reference/Axes.cpp b/stablehlo/stablehlo/reference/Axes.cpp
+--- stablehlo/stablehlo/reference/Axes.cpp
++++ stablehlo/stablehlo/reference/Axes.cpp
+@@ -15,6 +15,9 @@
+ 
+ #include "stablehlo/reference/Axes.h"
+ 
++#include "llvm/ADT/STLExtras.h"
++#include "mlir/Support/LLVM.h"
++
+ namespace mlir {
+ namespace stablehlo {
+ 
+diff --ruN a/stablehlo/stablehlo/reference/Configuration.cpp b/stablehlo/stablehlo/reference/Configuration.cpp
+--- stablehlo/stablehlo/reference/Configuration.cpp
++++ stablehlo/stablehlo/reference/Configuration.cpp
+@@ -16,6 +16,7 @@
+ #include "stablehlo/reference/Configuration.h"
+ 
+ #include "llvm/Support/Error.h"
++#include "mlir/IR/Operation.h"
+ #include "mlir/Support/DebugStringHelper.h"
+ #include "stablehlo/reference/Errors.h"
+ #include "stablehlo/reference/Process.h"
+diff --ruN a/stablehlo/stablehlo/reference/Element.cpp b/stablehlo/stablehlo/reference/Element.cpp
+--- stablehlo/stablehlo/reference/Element.cpp
++++ stablehlo/stablehlo/reference/Element.cpp
+@@ -15,14 +15,25 @@
+ 
+ #include "stablehlo/reference/Element.h"
+ 
++#include <cmath>
+ #include <complex>
++#include <cstdint>
++#include <cstdlib>
++#include <utility>
+ 
+ #include "llvm/ADT/APFloat.h"
++#include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/APSInt.h"
++#include "llvm/ADT/FloatingPointMode.h"
++#include "llvm/ADT/STLExtras.h"
+ #include "llvm/Support/Error.h"
+-#include "mlir/Dialect/Complex/IR/Complex.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/raw_ostream.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Types.h"
+ #include "mlir/Support/DebugStringHelper.h"
++#include "mlir/Support/LLVM.h"
+ #include "stablehlo/reference/Errors.h"
+ #include "stablehlo/reference/Types.h"
+ 
+diff --ruN a/stablehlo/stablehlo/reference/Errors.cpp b/stablehlo/stablehlo/reference/Errors.cpp
+--- stablehlo/stablehlo/reference/Errors.cpp
++++ stablehlo/stablehlo/reference/Errors.cpp
+@@ -15,6 +15,9 @@
+ 
+ #include "stablehlo/reference/Errors.h"
+ 
++#include <utility>
++
++#include "llvm/ADT/StringRef.h"
+ #include "llvm/Support/Error.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/reference/Index.cpp b/stablehlo/stablehlo/reference/Index.cpp
+--- stablehlo/stablehlo/reference/Index.cpp
++++ stablehlo/stablehlo/reference/Index.cpp
+@@ -15,8 +15,13 @@
+ 
+ #include "stablehlo/reference/Index.h"
+ 
++#include <algorithm>
++#include <cstddef>
++#include <cstdint>
++
+ #include "llvm/ADT/STLExtras.h"
+-#include "llvm/Support/Error.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "mlir/Support/LLVM.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp b/stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
+--- stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
++++ stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
+@@ -15,10 +15,15 @@
+ 
+ #include <string>
+ 
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Location.h"
+ #include "mlir/IR/Value.h"
++#include "mlir/IR/Visitors.h"
+ #include "mlir/Support/LLVM.h"
++#include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/reference/InterpreterOps.h"
+ #include "stablehlo/reference/InterpreterPasses.h"
+ 
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
+--- stablehlo/stablehlo/reference/InterpreterOps.cpp
++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
+@@ -15,24 +15,34 @@
+ 
+ #include "stablehlo/reference/InterpreterOps.h"
+ 
++#include <cstddef>
++#include <cstdint>
++#include <functional>
++#include <future>
+ #include <queue>
+-
++#include <string>
++
++#include "llvm/Support/Casting.h"
+ #include "llvm/Support/Errc.h"
++#include "llvm/Support/Error.h"
+ #include "llvm/Support/FileSystem.h"
+ #include "llvm/Support/Path.h"
+ #include "llvm/Support/ThreadPool.h"
++#include "llvm/Support/raw_ostream.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/Dialect.h"
+ #include "mlir/IR/Region.h"
+ #include "mlir/IR/SymbolTable.h"
+ #include "mlir/Support/DebugStringHelper.h"
+ #include "mlir/Support/LLVM.h"
+-#include "stablehlo/dialect/Base.h"
++#include "mlir/Support/TypeID.h"
+ #include "stablehlo/reference/NumPy.h"
+ #include "stablehlo/reference/Ops.h"
++#include "stablehlo/reference/Process.h"
+ #include "stablehlo/reference/ProcessGrid.h"
+ #include "stablehlo/reference/Value.h"
+ 
+diff --ruN a/stablehlo/stablehlo/reference/NumPy.cpp b/stablehlo/stablehlo/reference/NumPy.cpp
+--- stablehlo/stablehlo/reference/NumPy.cpp
++++ stablehlo/stablehlo/reference/NumPy.cpp
+@@ -16,16 +16,32 @@
+ #include "stablehlo/reference/NumPy.h"
+ 
+ #include <cctype>
++#include <complex>
++#include <cstddef>
++#include <cstdint>
++#include <cstring>
+ #include <fstream>
++#include <functional>
++#include <numeric>
+ #include <regex>
+-
+-#include "llvm/Support/Endian.h"
++#include <sstream>
++#include <string>
++#include <type_traits>
++#include <vector>
++
++#include "llvm/ADT/bit.h"
+ #include "llvm/Support/Errc.h"
+ #include "llvm/Support/Error.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/ErrorOr.h"
+ #include "llvm/Support/FileSystem.h"
+ #include "llvm/Support/raw_ostream.h"
++#include "mlir/IR/AsmState.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Types.h"
++#include "mlir/Support/LLVM.h"
++#include "stablehlo/reference/Tensor.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
+--- stablehlo/stablehlo/reference/Ops.cpp
++++ stablehlo/stablehlo/reference/Ops.cpp
+@@ -16,18 +16,40 @@
+ #include "stablehlo/reference/Ops.h"
+ 
+ #include <algorithm>
++#include <cstddef>
+ #include <cstdint>
+-
+-#include "llvm/ADT/APFloat.h"
++#include <functional>
++#include <numeric>
++#include <optional>
++#include <utility>
++
+ #include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+-#include "llvm/Support/Errc.h"
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/Support/Error.h"
++#include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/Block.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributeInterfaces.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/MLIRContext.h"
++#include "mlir/IR/Operation.h"
++#include "mlir/IR/Region.h"
++#include "mlir/IR/SymbolTable.h"
++#include "mlir/IR/Types.h"
++#include "mlir/IR/Value.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
+ #include "mlir/Support/DebugStringHelper.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
++#include "stablehlo/dialect/Base.h"
++#include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/TypeInference.h"
+ #include "stablehlo/reference/Axes.h"
+ #include "stablehlo/reference/Configuration.h"
+@@ -36,8 +58,11 @@
+ #include "stablehlo/reference/Index.h"
+ #include "stablehlo/reference/Process.h"
+ #include "stablehlo/reference/ProcessGrid.h"
++#include "stablehlo/reference/Scope.h"
++#include "stablehlo/reference/Tensor.h"
+ #include "stablehlo/reference/Token.h"
+ #include "stablehlo/reference/Types.h"
++#include "stablehlo/reference/Value.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+diff --ruN a/stablehlo/stablehlo/reference/Process.cpp b/stablehlo/stablehlo/reference/Process.cpp
+--- stablehlo/stablehlo/reference/Process.cpp
++++ stablehlo/stablehlo/reference/Process.cpp
+@@ -14,6 +14,13 @@
+ ==============================================================================*/
+ 
+ #include "stablehlo/reference/Process.h"
++
++#include <cstdint>
++
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/Support/LLVM.h"
++#include "stablehlo/reference/ProcessGrid.h"
++#include "stablehlo/reference/Tensor.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+diff --ruN a/stablehlo/stablehlo/reference/ProcessGrid.cpp b/stablehlo/stablehlo/reference/ProcessGrid.cpp
+--- stablehlo/stablehlo/reference/ProcessGrid.cpp
++++ stablehlo/stablehlo/reference/ProcessGrid.cpp
+@@ -15,11 +15,21 @@
+ 
+ #include "stablehlo/reference/ProcessGrid.h"
+ 
++#include <chrono>
+ #include <condition_variable>
++#include <cstdint>
++#include <map>
+ #include <mutex>
+ #include <optional>
++#include <queue>
+ #include <utility>
+ 
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/SmallVectorExtras.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/Support/LLVM.h"
+ #include "stablehlo/reference/Tensor.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/reference/Scope.cpp b/stablehlo/stablehlo/reference/Scope.cpp
+--- stablehlo/stablehlo/reference/Scope.cpp
++++ stablehlo/stablehlo/reference/Scope.cpp
+@@ -15,8 +15,18 @@
+ 
+ #include "stablehlo/reference/Scope.h"
+ 
++#include <cassert>
++
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVectorExtras.h"
++#include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/FormatVariadic.h"
++#include "mlir/IR/Value.h"
++#include "mlir/IR/ValueRange.h"
+ #include "mlir/Support/DebugStringHelper.h"
++#include "mlir/Support/LLVM.h"
++#include "stablehlo/reference/Tensor.h"
++#include "stablehlo/reference/Token.h"
+ #include "stablehlo/reference/Value.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
+--- stablehlo/stablehlo/reference/Tensor.cpp
++++ stablehlo/stablehlo/reference/Tensor.cpp
+@@ -15,16 +15,28 @@
+ 
+ #include "stablehlo/reference/Tensor.h"
+ 
++#include <algorithm>
+ #include <complex>
++#include <cstddef>
+ #include <cstdint>
++#include <string>
++#include <utility>
++#include <vector>
+ 
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/APInt.h"
++#include "llvm/ADT/IntrusiveRefCntPtr.h"
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/Support/Error.h"
++#include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/raw_ostream.h"
++#include "mlir/IR/AsmState.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Types.h"
+ #include "mlir/Support/DebugStringHelper.h"
++#include "mlir/Support/LLVM.h"
+ #include "stablehlo/reference/Element.h"
+ #include "stablehlo/reference/Errors.h"
+ #include "stablehlo/reference/Index.h"
+diff --ruN a/stablehlo/stablehlo/reference/Token.cpp b/stablehlo/stablehlo/reference/Token.cpp
+--- stablehlo/stablehlo/reference/Token.cpp
++++ stablehlo/stablehlo/reference/Token.cpp
+@@ -15,7 +15,9 @@
+ 
+ #include "stablehlo/reference/Token.h"
+ 
+-#include "llvm/Support/Error.h"
++#include "llvm/Support/raw_ostream.h"
++#include "mlir/IR/MLIRContext.h"
++#include "mlir/Support/LLVM.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/reference/Types.cpp b/stablehlo/stablehlo/reference/Types.cpp
+--- stablehlo/stablehlo/reference/Types.cpp
++++ stablehlo/stablehlo/reference/Types.cpp
+@@ -15,7 +15,11 @@
+ 
+ #include "stablehlo/reference/Types.h"
+ 
++#include <cstdint>
++
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Types.h"
++#include "mlir/Support/LLVM.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+diff --ruN a/stablehlo/stablehlo/reference/Value.cpp b/stablehlo/stablehlo/reference/Value.cpp
+--- stablehlo/stablehlo/reference/Value.cpp
++++ stablehlo/stablehlo/reference/Value.cpp
+@@ -15,8 +15,17 @@
+ 
+ #include "stablehlo/reference/Value.h"
+ 
+-#include "llvm/Support/ErrorHandling.h"
++#include <cstddef>
++#include <cstdint>
++#include <memory>
++#include <utility>
++#include <variant>
++
++#include "llvm/Support/Error.h"
++#include "llvm/Support/raw_ostream.h"
++#include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Types.h"
++#include "mlir/Support/LLVM.h"
+ #include "stablehlo/reference/Errors.h"
+ #include "stablehlo/reference/Tensor.h"
+ #include "stablehlo/reference/Token.h"
+diff --ruN a/stablehlo/stablehlo/tests/CheckOps.cpp b/stablehlo/stablehlo/tests/CheckOps.cpp
+--- stablehlo/stablehlo/tests/CheckOps.cpp
++++ stablehlo/stablehlo/tests/CheckOps.cpp
+@@ -15,19 +15,37 @@
+ 
+ #include "stablehlo/tests/CheckOps.h"
+ 
++#include <algorithm>
++#include <cassert>
++#include <cinttypes>
++#include <cstddef>
++#include <cstdint>
+ #include <fstream>
+-
+-#define GET_OP_CLASSES
++#include <limits>
++#include <string>
++#include <utility>
++
++#include "llvm/ADT/SmallString.h"
++#include "llvm/Support/Errc.h"
+ #include "llvm/Support/Error.h"
+-#include "llvm/Support/FileSystem.h"
++#include "llvm/Support/ErrorOr.h"
+ #include "llvm/Support/Path.h"
+-#include "mlir/IR/BuiltinTypes.h"
++#include "llvm/Support/raw_ostream.h"
++#include "mlir/IR/BuiltinAttributeInterfaces.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/Dialect.h"
++#include "mlir/IR/MLIRContext.h"
+ #include "mlir/Support/DebugStringHelper.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/TypeID.h"
+ #include "stablehlo/dialect/Base.h"
++#include "stablehlo/reference/Element.h"
+ #include "stablehlo/reference/Errors.h"
+ #include "stablehlo/reference/NumPy.h"
+ #include "stablehlo/reference/Tensor.h"
+ #include "stablehlo/reference/Types.h"
++
++#define GET_OP_CLASSES
+ #include "stablehlo/tests/CheckOps.cpp.inc"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
+--- stablehlo/stablehlo/tests/TestUtils.cpp
++++ stablehlo/stablehlo/tests/TestUtils.cpp
+@@ -16,26 +16,25 @@
+ 
+ #include "stablehlo/tests/TestUtils.h"
+ 
+-#include <cstdint>
+-#include <memory>
+ #include <utility>
+ 
+-#include "llvm/ADT/SmallVector.h"
+-#include "llvm/ADT/StringRef.h"
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/Support/Casting.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
+-#include "mlir/IR/DialectRegistry.h"
++#include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/OperationSupport.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Pass/Pass.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "mlir/Support/TypeID.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+-#include "stablehlo/dialect/AssemblyFormat.h"
+ 
+ namespace mlir {
+ namespace hlo {
+diff --ruN a/stablehlo/stablehlo/tools/StablehloOptMain.cpp b/stablehlo/stablehlo/tools/StablehloOptMain.cpp
+--- stablehlo/stablehlo/tools/StablehloOptMain.cpp
++++ stablehlo/stablehlo/tools/StablehloOptMain.cpp
+@@ -13,8 +13,7 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
+-#include "mlir/Dialect/Tosa/IR/TosaOps.h"
+-#include "mlir/Dialect/Tosa/Transforms/Passes.h"
++#include "llvm/Support/LogicalResult.h"
+ #include "mlir/InitAllDialects.h"
+ #include "mlir/InitAllExtensions.h"
+ #include "mlir/InitAllPasses.h"
+diff --ruN a/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp b/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
+--- stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
++++ stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
+@@ -14,17 +14,25 @@
+ ==============================================================================*/
+ 
+ #include <memory>
++#include <string>
++#include <utility>
+ 
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringRef.h"
++#include "llvm/Support/CommandLine.h"
+ #include "llvm/Support/Error.h"
+ #include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/LogicalResult.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/Dialect/Quant/QuantOps.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/DialectRegistry.h"
+ #include "mlir/IR/OpDefinition.h"
+ #include "mlir/InitAllDialects.h"
+ #include "mlir/Pass/PassManager.h"
+ #include "mlir/Support/DebugStringHelper.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+ #include "mlir/Tools/mlir-translate/Translation.h"
+@@ -34,8 +42,13 @@
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/Version.h"
+ #include "stablehlo/reference/Api.h"
++#include "stablehlo/reference/Configuration.h"
+ #include "stablehlo/reference/Errors.h"
+ #include "stablehlo/reference/InterpreterOps.h"
++#include "stablehlo/reference/Process.h"
++#include "stablehlo/reference/Scope.h"
++#include "stablehlo/reference/Tensor.h"
++#include "stablehlo/reference/Value.h"
+ #include "stablehlo/tests/CheckOps.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -6,6 +6,31 @@
+ 
+ // Implements logic for lowering CHLO ops to StableHLO and Shape dialect ops,
+ // taking care of CHLO's broadcasting semantics
++#include <algorithm>
++#include <array>
++#include <cassert>
++#include <cstddef>
++#include <cstdint>
++#include <limits>
++#include <memory>
++#include <optional>
++#include <utility>
++
++#include "llvm/ADT/APFloat.h"
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/Sequence.h"
++#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "mlir/Dialect/Arith/IR/Arith.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributeInterfaces.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
++#include "stablehlo/dialect/Base.h"
+ #define _USE_MATH_DEFINES
+ #include <cmath>
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/PassPipelines.cpp b/stablehlo/stablehlo/transforms/PassPipelines.cpp
+--- stablehlo/stablehlo/transforms/PassPipelines.cpp
++++ stablehlo/stablehlo/transforms/PassPipelines.cpp
+@@ -13,7 +13,10 @@
+ ==============================================================================*/
+ 
+ #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/TypeRange.h"
+ #include "mlir/Pass/PassManager.h"
++#include "mlir/Pass/PassRegistry.h"
+ #include "mlir/Transforms/Passes.h"
+ #include "stablehlo/dialect/Version.h"
+ #include "stablehlo/transforms/Passes.h"
+diff --ruN a/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
+@@ -20,6 +20,7 @@
+ 
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+@@ -29,7 +30,6 @@
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+-#include "mlir/IR/DialectRegistry.h"
+ #include "mlir/IR/Location.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+@@ -37,10 +37,9 @@
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Value.h"
+ #include "mlir/IR/ValueRange.h"
+-#include "mlir/Pass/Pass.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "mlir/Support/TypeID.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/Passes.h"
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/StablehloAggressiveFolder.cpp
+@@ -12,24 +12,23 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
++#include <cstddef>
+ #include <cstdint>
+ #include <utility>
+ 
+ #include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/APSInt.h"
++#include "llvm/ADT/FloatingPointMode.h"
+ #include "llvm/ADT/STLExtras.h"
+-#include "llvm/ADT/STLFunctionalExtras.h"
+-#include "llvm/ADT/SmallSet.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/Support/ErrorHandling.h"
+-#include "llvm/Support/FormatVariadic.h"
+ #include "mlir/Dialect/CommonFolders.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/Dialect/Utils/IndexingUtils.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/MLIRContext.h"
+@@ -37,16 +36,16 @@
+ #include "mlir/IR/OpDefinition.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Types.h"
+ #include "mlir/IR/Value.h"
+-#include "mlir/IR/ValueRange.h"
+-#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Pass/Pass.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "stablehlo/dialect/Base.h"
+-#include "stablehlo/dialect/ChloOps.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+-#include "stablehlo/dialect/TypeInference.h"
+ #include "stablehlo/transforms/Passes.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+@@ -6,27 +6,46 @@
+ 
+ // Implements optional canonicalization patterns for StableHLO ops.
+ 
++#include <algorithm>
+ #include <cassert>
++#include <cstddef>
++#include <cstdint>
+ #include <functional>
++#include <iterator>
+ #include <numeric>
+-
+-#include "llvm/ADT/APFloat.h"
++#include <optional>
++#include <utility>
++
+ #include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/Sequence.h"
+ #include "llvm/ADT/SmallBitVector.h"
+ #include "llvm/ADT/SmallVector.h"
+-#include "llvm/Support/Casting.h"
++#include "llvm/ADT/SmallVectorExtras.h"
++#include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/CommonFolders.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/IR/Attributes.h"
++#include "mlir/IR/Block.h"
+ #include "mlir/IR/BuiltinAttributeInterfaces.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/Diagnostics.h"
++#include "mlir/IR/IRMapping.h"
++#include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Matchers.h"
++#include "mlir/IR/OpDefinition.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Region.h"
+ #include "mlir/IR/TypeUtilities.h"
+-#include "mlir/Interfaces/FunctionInterfaces.h"
++#include "mlir/IR/Value.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/Passes.h"
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -13,17 +13,26 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
+-#include "llvm/ADT/DenseSet.h"
++#include <cstdint>
++#include <utility>
++
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Matchers.h"
++#include "mlir/IR/PatternMatch.h"
+ #include "mlir/IR/Value.h"
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/Passes.h"
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloConvertToSignless.cpp b/stablehlo/stablehlo/transforms/StablehloConvertToSignless.cpp
+--- stablehlo/stablehlo/transforms/StablehloConvertToSignless.cpp
++++ stablehlo/stablehlo/transforms/StablehloConvertToSignless.cpp
+@@ -13,25 +13,24 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
+-#include <memory>
+ #include <utility>
+ 
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Region.h"
+ #include "mlir/Pass/Pass.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
+-#include "stablehlo/transforms/Passes.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeCompositeToCall.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeCompositeToCall.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeCompositeToCall.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeCompositeToCall.cpp
+@@ -14,8 +14,15 @@
+ ==============================================================================*/
+ 
+ #include <cassert>
++#include <utility>
+ 
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/Pass/Pass.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/Passes.h"
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
+@@ -14,13 +14,23 @@
+ ==============================================================================*/
+ 
+ #include <cassert>
++#include <complex>
+ #include <cstdint>
++#include <memory>
++#include <utility>
+ 
++#include "llvm/Support/ErrorHandling.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Location.h"
++#include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/Passes.h"
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+@@ -18,7 +18,6 @@
+ #include <memory>
+ #include <optional>
+ #include <utility>
+-#include <variant>
+ 
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/STLExtras.h"
+@@ -38,7 +37,6 @@
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/IR/Region.h"
+ #include "mlir/IR/TypeUtilities.h"
+-#include "mlir/Pass/Pass.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
+@@ -13,11 +13,18 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
++#include <utility>
++
++#include "llvm/ADT/STLExtras.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Quant/QuantTypes.h"
+-#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/PatternMatch.h"
+-#include "mlir/Pass/Pass.h"
++#include "mlir/IR/TypeRange.h"
++#include "mlir/IR/TypeUtilities.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"  // Include for TypeConverter
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+@@ -12,11 +12,22 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
++#include <cstdint>
++#include <memory>
++#include <type_traits>
++#include <utility>
++
+ #include "llvm/Support/Debug.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/Attributes.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/VhloOps.h"
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp b/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
+@@ -15,9 +15,9 @@
+ #include <cstdint>
+ #include <memory>
+ #include <string>
+-#include <vector>
+ 
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
+ #include "mlir/AsmParser/AsmParser.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/Attributes.h"
+@@ -35,9 +35,7 @@
+ #include "mlir/Pass/Pass.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+-#include "stablehlo/dialect/TypeInference.h"
+ #include "stablehlo/transforms/Passes.h"
+ #include "stablehlo/transforms/StablehloRefineShapes.h"
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -15,22 +15,19 @@
+ #include "stablehlo/transforms/StablehloRefineShapes.h"
+ 
+ #include <cstdint>
+-#include <memory>
+-#include <string>
+ #include <utility>
+ 
+ #include "llvm/ADT/APInt.h"
+ #include "llvm/ADT/STLExtras.h"
+-#include "llvm/ADT/STLFunctionalExtras.h"
+ #include "llvm/ADT/SmallSet.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/Support/ErrorHandling.h"
+-#include "llvm/Support/FormatVariadic.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Utils/IndexingUtils.h"
++#include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/MLIRContext.h"
+@@ -42,6 +39,8 @@
+ #include "mlir/IR/Value.h"
+ #include "mlir/IR/ValueRange.h"
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "stablehlo/dialect/Base.h"
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -12,15 +12,26 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
++#include <cstdint>
++#include <memory>
++#include <type_traits>
++#include <utility>
++
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringSet.h"
++#include "llvm/Support/AllocatorBase.h"
+ #include "llvm/Support/Casting.h"
+ #include "llvm/Support/Debug.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/Attributes.h"
+-#include "mlir/IR/BuiltinAttributeInterfaces.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
++#include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/VhloOps.h"
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
+--- stablehlo/stablehlo/transforms/VhloToVersion.cpp
++++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
+@@ -12,30 +12,26 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
+-#include <climits>
+-#include <memory>
+-#include <numeric>
++#include <cstdint>
+ #include <utility>
+ 
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringRef.h"
+-#include "llvm/Support/Casting.h"
+ #include "llvm/Support/Debug.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+-#include "mlir/IR/BuiltinAttributeInterfaces.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/Region.h"
++#include "mlir/Rewrite/FrozenRewritePatternSet.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+-#include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/Version.h"
+ #include "stablehlo/dialect/VhloOps.h"
+ #include "stablehlo/dialect/VhloTypes.h"
 
