@@ -1244,9 +1244,8 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
                    }) != participating_tasks.end();
 
   if (!participating_tasks.empty() && !among_participating_tasks) {
-    const std::string task_name = GetTaskName(task);
     absl::Status error = MakeCoordinationError(absl::InvalidArgumentError(
-        absl::StrCat("A non-participating task (", GetTaskName(task),
+        absl::StrCat("A non-participating task (", source_task_name,
                      ") called the barrier: ", barrier_id)));
     {
       absl::MutexLock l(&state_mu_);
@@ -1281,6 +1280,8 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
   auto* barrier = &it->second;
   // Create barrier for the first time.
   if (inserted) {
+    LOG(INFO) << "Barrier(" << barrier_id
+              << ") has been created by task: " << source_task_name;
     // Initialize barrier state.
     barrier->passed = false;
     barrier->initiating_task = task;
@@ -1422,7 +1423,8 @@ void CoordinationServiceStandaloneImpl::PassBarrier(std::string_view barrier_id,
                                                     BarrierState* barrier) {
   barrier->passed = true;
   barrier->result = result;
-  VLOG(3) << "Barrier(" << barrier_id << ") has passed with status: " << result;
+  LOG(INFO) << "Barrier(" << barrier_id
+            << ") has passed with status: " << result;
   // Special hook for device propagation barrier to set global device ids.
   if (barrier_id == device_propagation_barrier_id_) {
     AggregateClusterDevices();
