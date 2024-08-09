@@ -166,7 +166,6 @@ class MemoryBoundLoopOptimizer {
   float CalculateExecutionTime() const;
 
   // Return the LoopValues.
-  const std::vector<LoopValue>& loop_values() const { return loop_values_; }
   std::vector<LoopValue>& loop_values() { return loop_values_; }
 
   // Return the remaining memory vector for each point in time in the loop using
@@ -176,8 +175,6 @@ class MemoryBoundLoopOptimizer {
   }
 
   // The loop start, end, and size accessors.
-  int loop_start() const { return loop_start_; }
-  int loop_end() const { return loop_end_; }
   int loop_size() const { return loop_size_; }
 
  private:
