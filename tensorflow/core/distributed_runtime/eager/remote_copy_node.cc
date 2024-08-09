@@ -22,12 +22,35 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
+#include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace eager {
