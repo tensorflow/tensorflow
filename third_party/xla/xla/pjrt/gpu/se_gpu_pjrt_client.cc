@@ -123,7 +123,8 @@ class AsyncHostToDeviceTransferManager
  public:
   static absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   Create(absl::Span<const Shape> shapes, PjRtStreamExecutorDevice* device,
-         PjRtStreamExecutorClient* client, PjRtMemorySpace* memory_space) {
+         PjRtStreamExecutorClient* client, PjRtMemorySpace* memory_space,
+         const Layout* device_layout) {
     absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers;
     absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs;
     absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
@@ -140,16 +141,21 @@ class AsyncHostToDeviceTransferManager
       // event will block the buffer usage until the transfer is done.
       definition_events.push_back(
           std::make_shared<BufferSequencingEvent>(client->thread_pool()));
-      TF_ASSIGN_OR_RETURN(Shape compact_shape,
-                          client->client()
-                              ->backend()
-                              .transfer_manager()
-                              ->ChooseCompactLayoutForShape(shape));
       LocalDeviceState* local_device = device->local_device_state();
       se::Stream* h2d_stream = local_device->host_to_device_stream();
+      const Shape* device_shape = &shape;
+      std::optional<Shape> compact_shape;
+      if (device_layout == nullptr) {
+        TF_ASSIGN_OR_RETURN(compact_shape,
+                            client->client()
+                                ->backend()
+                                .transfer_manager()
+                                ->ChooseCompactLayoutForShape(shape));
+        device_shape = &*compact_shape;
+      }
       TF_ASSIGN_OR_RETURN(auto buffer,
                           AllocateDestinationBuffer(
-                              compact_shape, device, local_device, h2d_stream,
+                              *device_shape, device, local_device, h2d_stream,
                               /*is_uninitialized_create=*/true, client,
                               definition_events.back(), memory_space));
       // Get a temporary hold just so we can fish out a shared_ptr to the
@@ -167,7 +173,9 @@ class AsyncHostToDeviceTransferManager
 
     return std::make_unique<AsyncHostToDeviceTransferManager>(
         std::move(buffers), std::move(buffer_ptrs),
-        std::move(definition_events), device);
+        std::move(definition_events), device,
+        device_layout != nullptr ? std::make_optional<Layout>(*device_layout)
+                                 : std::nullopt);
   }
 
   AsyncHostToDeviceTransferManager(
@@ -175,13 +183,14 @@ class AsyncHostToDeviceTransferManager
       absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs,
       absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
           definition_events,
-      PjRtStreamExecutorDevice* device)
+      PjRtStreamExecutorDevice* device, std::optional<Layout> device_layout)
       : buffers_(std::move(buffers)),
         buffer_ptrs_(std::move(buffer_ptrs)),
         definition_events_(std::move(definition_events)),
         remaining_buffer_count_(buffer_ptrs_.size()),
         transfers_in_flight_(0),
-        device_(device) {
+        device_(device),
+        device_layout_(std::move(device_layout)) {
     buffer_sizes_.reserve(buffer_ptrs_.size());
     for (const auto& ptr : buffer_ptrs_) {
       DCHECK_EQ(ptr->device_memory().size(), 1);
@@ -229,9 +238,22 @@ class AsyncHostToDeviceTransferManager
 
     TransferManager* transfer_manager =
         se_client->client()->backend().transfer_manager();
-    TF_ASSIGN_OR_RETURN(
-        Shape compact_shape,
-        transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
+    const Shape* shape;
+    std::optional<xla::Shape> compact_shape;
+    if (device_layout_ != std::nullopt) {
+      if (!literal.shape().has_layout() ||
+          literal.shape().layout() != *device_layout_) {
+        return InvalidArgument(
+            "TransferLiteralToBuffer shape %s layout does not match %s",
+            literal.shape().ToString(), device_layout_->ToString());
+      }
+      shape = &literal.shape();
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          compact_shape,
+          transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
+      shape = &*compact_shape;
+    }
 
     std::shared_ptr<TrackedDeviceBuffer> buffer;
     {
@@ -257,13 +279,13 @@ class AsyncHostToDeviceTransferManager
       DCHECK_EQ(buffer->device_memory().size(), 1);
 
       auto& buffer_memory = buffer->device_memory()[0];
-      if (transfer_manager->GetByteSizeRequirement(compact_shape) !=
+      if (transfer_manager->GetByteSizeRequirement(*shape) !=
           buffer_memory.size()) {
         return InvalidArgument(
             "TransferLiteralToBuffer shape %s has size %lld "
             "but buffer has size %lld",
-            ShapeUtil::HumanStringWithLayout(compact_shape),
-            transfer_manager->GetByteSizeRequirement(compact_shape),
+            ShapeUtil::HumanStringWithLayout(*shape),
+            transfer_manager->GetByteSizeRequirement(*shape),
             buffer_memory.size());
       }
       ++transfers_in_flight_;
@@ -274,7 +296,7 @@ class AsyncHostToDeviceTransferManager
     // TODO(misard) assess if it would be preferable to introduce a heuristic to
     // put the transfer into the calling thread for small literals.
     auto transfer_h2d = [this, buffer_index, stream, transfer_manager, literal,
-                         device_buffer = buffer.get(), compact_shape,
+                         device_buffer = buffer.get(), shape = *shape,
                          local_device =
                              std::move(device_->local_device_state()),
                          on_done = std::move(on_done)]() mutable {
@@ -285,7 +307,7 @@ class AsyncHostToDeviceTransferManager
       auto event = local_device->event_pool().AllocateEvent(stream->parent());
 
       // Initiate linearization and transfer of the buffer on the stream.
-      ShapedBuffer buffer = device_buffer->AsShapedBuffer(compact_shape);
+      ShapedBuffer buffer = device_buffer->AsShapedBuffer(shape);
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
           stream, literal, buffer));
       local_device->event_pool().ThenRecordEvent(stream, event.value());
@@ -456,6 +478,7 @@ class AsyncHostToDeviceTransferManager
   int transfers_in_flight_ ABSL_GUARDED_BY(mu_);
 
   PjRtStreamExecutorDevice* device_;  // not owned.
+  const std::optional<Layout> device_layout_;
 
   void CleanUp(int buffer_index, EventPool::Handle event, se::Stream* stream,
                bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
@@ -548,18 +571,27 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
   auto* stream_executor_device =
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
   return xla::AsyncHostToDeviceTransferManager::Create(
-      shapes, stream_executor_device, this, /*memory_space=*/nullptr);
+      shapes, stream_executor_device, this, /*memory_space=*/nullptr,
+      /*device_layout=*/nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space) {
+  return CreateBuffersForAsyncHostToDevice(shapes, memory_space,
+                                           /*device_layout=*/nullptr);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space,
+    const Layout* device_layout) {
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices()[0];
   auto* stream_executor_device =
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
   return xla::AsyncHostToDeviceTransferManager::Create(
-      shapes, stream_executor_device, this, memory_space);
+      shapes, stream_executor_device, this, memory_space, device_layout);
 }
 
 absl::StatusOr<xla::DeviceAssignment>
