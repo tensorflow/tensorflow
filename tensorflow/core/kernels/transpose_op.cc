@@ -133,7 +133,16 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, TensorShapeUtils::IsVector(perm.shape()),
               errors::InvalidArgument("perm must be rank 1, got shape ",
                                       perm.shape().DebugString()));
-
+  // Validation for negative values inside `perm`.
+  auto perm_vector = perm.vec<Tperm>();
+  auto perm_size = perm.NumElements();
+  for (int i = 0; i < perm_size; ++i) {
+    OP_REQUIRES(ctx, perm_vector(i) >= 0, 
+                absl::InvalidArgumentError(absl::StrCat(
+                        "The perm values should be non-negative "
+                        "but found ",
+                        perm_vector(i), " at index ", i)));
+  }
   // Although Tperm may be an int64 type, an int32 is sufficient to hold
   // dimension range values, so the narrowing here should be safe.
   std::vector<int32> permutation;
