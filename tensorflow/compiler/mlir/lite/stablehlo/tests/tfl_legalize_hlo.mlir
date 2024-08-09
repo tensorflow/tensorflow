@@ -1900,7 +1900,6 @@ func.func @maxpool_same_channel_first(%arg0: tensor<4x3x16x16xf32>) -> tensor<4x
 // CHECK:      return
 // CHECK-SAME: tensor<4x3x8x8xf32>
 
-
 // -----
 
 //===----------------------------------------------------------------------===//
@@ -2035,6 +2034,550 @@ func.func @dynamic_slice_splat_sizes(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>,
 // CHECK:     %[[PACK:.*]] = "tfl.pack"(%[[MIN_1]], %[[MIN_2]]) <{axis = 0 : i32, values_count = 2 : i32}> : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
 // CHECK:     %[[SLICE_SIZE:.*]] = arith.constant dense<2> : tensor<2xi64>
 // CHECK:     "tfl.slice"(%arg0, %[[PACK]], %[[SLICE_SIZE]]) : (tensor<7x3xf32>, tensor<2xi32>, tensor<2xi64>) -> tensor<2x2xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// rounding
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: round
+func.func @round(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {
+  %0 = mhlo.constant dense<2.000000e+00> : tensor<8x128xf32>
+  %1 = mhlo.constant dense<5.000000e-01> : tensor<8x128xf32>
+  %2 = mhlo.constant dense<1.000000e+00> : tensor<8x128xf32>
+  %3 = "mhlo.floor"(%arg0) : (tensor<8x128xf32>) -> tensor<8x128xf32>
+  %4 = mhlo.subtract %arg0, %3 : tensor<8x128xf32>
+  %5 = "mhlo.compare"(%4, %1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<8x128xf32>, tensor<8x128xf32>) -> tensor<8x128xi1>
+  %6 = "mhlo.compare"(%4, %1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<8x128xf32>, tensor<8x128xf32>) -> tensor<8x128xi1>
+  %7 = mhlo.multiply %arg0, %1 : tensor<8x128xf32>
+  %8 = "mhlo.floor"(%7) : (tensor<8x128xf32>) -> tensor<8x128xf32>
+  %9 = mhlo.multiply %8, %0 : tensor<8x128xf32>
+  %10 = mhlo.subtract %3, %9 : tensor<8x128xf32>
+  %11 = "mhlo.compare"(%10, %2) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<8x128xf32>, tensor<8x128xf32>) -> tensor<8x128xi1>
+  %12 = mhlo.and %6, %11 : tensor<8x128xi1>
+  %13 = mhlo.or %5, %12 : tensor<8x128xi1>
+  %14 = mhlo.add %3, %2 : tensor<8x128xf32>
+  %15 = "mhlo.select"(%13, %14, %3) : (tensor<8x128xi1>, tensor<8x128xf32>, tensor<8x128xf32>) -> tensor<8x128xf32>
+  func.return %15 : tensor<8x128xf32>
+}
+
+// CHECK: "tfl.round"(%arg0) : (tensor<8x128xf32>) -> tensor<8x128xf32>
+
+// -----
+
+// CHECK-LABEL: floor_mod_float
+func.func @floor_mod_float(%arg0: tensor<192x8xf32>, %arg1: tensor<192x8xf32>) -> tensor<192x8xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<192x8xf32>
+  %1 = mhlo.remainder %arg0, %arg1 : tensor<192x8xf32>
+  %2 = "mhlo.compare"(%1, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xi1>
+  %3 = "mhlo.compare"(%arg1, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xi1>
+  %4 = "mhlo.compare"(%2, %3) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xi1>, tensor<192x8xi1>) -> tensor<192x8xi1>
+  %5 = "mhlo.compare"(%1, %0) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xi1>
+  %6 = mhlo.and %4, %5 : tensor<192x8xi1>
+  %7 = mhlo.add %1, %arg1 : tensor<192x8xf32>
+  %8 = "mhlo.select"(%6, %7, %1) : (tensor<192x8xi1>, tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xf32>
+  func.return %8 : tensor<192x8xf32>
+}
+
+// CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xf32>
+
+// -----
+
+// CHECK-LABEL: floor_mod_int
+func.func @floor_mod_int(%arg0: tensor<192x8xi32>, %arg1: tensor<192x8xi32>) -> tensor<192x8xi32> {
+  %0 = mhlo.constant dense<0> : tensor<192x8xi32>
+  %1 = mhlo.remainder %arg0, %arg1 : tensor<192x8xi32>
+  %2 = "mhlo.compare"(%1, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %3 = "mhlo.compare"(%arg1, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %4 = "mhlo.compare"(%2, %3) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xi1>, tensor<192x8xi1>) -> tensor<192x8xi1>
+  %5 = "mhlo.compare"(%1, %0) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %6 = mhlo.and %4, %5 : tensor<192x8xi1>
+  %7 = mhlo.add %1, %arg1 : tensor<192x8xi32>
+  %8 = "mhlo.select"(%6, %7, %1) : (tensor<192x8xi1>, tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+  func.return %8 : tensor<192x8xi32>
+}
+
+// CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+
+// -----
+
+// CHECK-LABEL: floor_mod_float_cst
+func.func @floor_mod_float_cst(%arg0: tensor<192x8xf32>) -> tensor<192x8xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<192x8xf32>
+  %1 = mhlo.constant dense<2.000000e+00> : tensor<192x8xf32>
+  %2 = mhlo.remainder %arg0, %1 : tensor<192x8xf32>
+  %3 = "mhlo.compare"(%2, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xi1>
+  %4 = "mhlo.compare"(%2, %0) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xi1>
+  %5 = mhlo.and %3, %4 : tensor<192x8xi1>
+  %6 = mhlo.add %2, %1 : tensor<192x8xf32>
+  %7 = "mhlo.select"(%5, %6, %2) : (tensor<192x8xi1>, tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xf32>
+  func.return %7 : tensor<192x8xf32>
+}
+
+// CHECK: %cst = arith.constant dense<2.000000e+00> : tensor<192x8xf32>
+// CHECK: "tfl.floor_mod"(%arg0, %cst) : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xf32>
+
+// -----
+
+// CHECK-LABEL: floor_mod_int_cst
+func.func @floor_mod_int_cst(%arg0: tensor<192x8xi32>) -> tensor<192x8xi32> {
+  %0 = mhlo.constant dense<0> : tensor<192x8xi32>
+  %1 = mhlo.constant dense<2> : tensor<192x8xi32>
+  %2 = mhlo.remainder %arg0, %1 : tensor<192x8xi32>
+  %3 = "mhlo.compare"(%2, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %4 = "mhlo.compare"(%2, %0) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %5 = mhlo.and %3, %4 : tensor<192x8xi1>
+  %6 = mhlo.add %2, %1 : tensor<192x8xi32>
+  %7 = "mhlo.select"(%5, %6, %2) : (tensor<192x8xi1>, tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+  func.return %7 : tensor<192x8xi32>
+}
+
+// CHECK: %cst = arith.constant dense<2> : tensor<192x8xi32>
+// CHECK: "tfl.floor_mod"(%arg0, %cst) : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+
+// -----
+
+// CHECK-LABEL: floor_div
+func.func @floor_div(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<10x10xf32>
+  %1 = mhlo.constant dense<-1.000000e+00> : tensor<10x10xf32>
+  %2 = mhlo.remainder %arg0, %arg1 : tensor<10x10xf32>
+  %3 = "mhlo.compare"(%2, %0) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xi1>
+  %4 = "mhlo.sign"(%arg1) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %5 = "mhlo.sign"(%2) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %6 = "mhlo.compare"(%4, %5) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xi1>
+  %7 = mhlo.and %3, %6 : tensor<10x10xi1>
+  %8 = mhlo.subtract %arg0, %2 : tensor<10x10xf32>
+  %9 = mhlo.divide %8, %arg1 : tensor<10x10xf32>
+  %10 = mhlo.add %9, %1 : tensor<10x10xf32>
+  %11 = "mhlo.select"(%7, %10, %9) : (tensor<10x10xi1>, tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xf32>
+  %12 = "mhlo.round_nearest_afz"(%11) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %13 = "mhlo.tuple"(%12) : (tensor<10x10xf32>) -> tuple<tensor<10x10xf32>>
+  func.return %12 : tensor<10x10xf32>
+}
+
+// CHECK: tfl.floor_div %arg0, %arg1 : tensor<10x10xf32
+
+// -----
+
+// CHECK-LABEL: floor_div_cst
+func.func @floor_div_cst(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  %0 = mhlo.constant dense<2.000000e+00> : tensor<10x10xf32>
+  %1 = mhlo.constant dense<0.000000e+00> : tensor<10x10xf32>
+  %2 = mhlo.constant dense<1.000000e+00> : tensor<10x10xf32>
+  %3 = mhlo.constant dense<5.000000e-01> : tensor<10x10xf32>
+  %4 = mhlo.constant dense<-1.000000e+00> : tensor<10x10xf32>
+  %5 = mhlo.remainder %arg0, %0 : tensor<10x10xf32>
+  %6 = "mhlo.compare"(%5, %1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xi1>
+  %7 = "mhlo.sign"(%5) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %8 = "mhlo.compare"(%2, %7) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xi1>
+  %9 = mhlo.and %6, %8 : tensor<10x10xi1>
+  %10 = mhlo.subtract %arg0, %5 : tensor<10x10xf32>
+  %11 = mhlo.multiply %10, %3 : tensor<10x10xf32>
+  %12 = mhlo.add %11, %4 : tensor<10x10xf32>
+  %13 = "mhlo.select"(%9, %12, %11) : (tensor<10x10xi1>, tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xf32>
+  %14 = "mhlo.round_nearest_afz"(%13) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %15 = "mhlo.tuple"(%14) : (tensor<10x10xf32>) -> tuple<tensor<10x10xf32>>
+  func.return %14 : tensor<10x10xf32>
+}
+
+// CHECK: %[[CST:.*]] = mhlo.constant dense<2.000000e+00> : tensor<10x10xf32>
+// CHECK: tfl.floor_div %arg0, %[[CST]] : tensor<10x10xf32>
+
+// -----
+
+// CHECK-LABEL: floor_div_cst2
+func.func @floor_div_cst2(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<10x10xf32>
+  %1 = mhlo.constant dense<2.000000e+00> : tensor<10x10xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<10x10xf32>
+  %3 = mhlo.constant dense<-1.000000e+00> : tensor<10x10xf32>
+  %4 = mhlo.remainder %arg0, %1 : tensor<10x10xf32>
+  %5 = "mhlo.compare"(%4, %2) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xi1>
+  %6 = "mhlo.sign"(%4) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %7 = "mhlo.compare"(%0, %6) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xi1>
+  %8 = mhlo.and %5, %7 : tensor<10x10xi1>
+  %9 = mhlo.subtract %arg0, %4 : tensor<10x10xf32>
+  %10 = mhlo.divide %9, %1 : tensor<10x10xf32>
+  %11 = mhlo.add %10, %3 : tensor<10x10xf32>
+  %12 = "mhlo.select"(%8, %11, %10) : (tensor<10x10xi1>, tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xf32>
+  %13 = "mhlo.round_nearest_afz"(%12) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %14 = "mhlo.tuple"(%13) : (tensor<10x10xf32>) -> tuple<tensor<10x10xf32>>
+  func.return %13 : tensor<10x10xf32>
+}
+
+// CHECK: %[[CST:.*]] = mhlo.constant dense<2.000000e+00> : tensor<10x10xf32>
+// CHECK: tfl.floor_div %arg0, %[[CST]] : tensor<10x10xf32>
+
+// -----
+
+// CHECK-LABEL: floor_div_broadcast_cst
+func.func @floor_div_broadcast_cst(%arg0: tensor<10x8xf32>) -> tensor<10x8xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<10x8xf32>
+  %1 = mhlo.constant dense<[1.000000e+00, 2.000000e+00, 4.000000e+00, 8.000000e+00, 1.600000e+01, 3.200000e+01, 6.400000e+01, 1.280000e+02]> : tensor<8xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<10x8xf32>
+  %3 = mhlo.constant dense<-1.000000e+00> : tensor<10x8xf32>
+  %5 = "mhlo.broadcast_in_dim"(%1) <{broadcast_dimensions = dense<1> : tensor<1xi64>}> : (tensor<8xf32>) -> tensor<10x8xf32>
+  %6 = mhlo.remainder %arg0, %5 : tensor<10x8xf32>
+  %7 = "mhlo.compare"(%6, %2) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xi1>
+  %8 = "mhlo.sign"(%6) : (tensor<10x8xf32>) -> tensor<10x8xf32>
+  %9 = "mhlo.compare"(%0, %8) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xi1>
+  %10 = mhlo.and %7, %9 : tensor<10x8xi1>
+  %11 = mhlo.subtract %arg0, %6 : tensor<10x8xf32>
+  %12 = mhlo.divide %11, %5 : tensor<10x8xf32>
+  %13 = mhlo.add %12, %3 : tensor<10x8xf32>
+  %14 = "mhlo.select"(%10, %13, %12) : (tensor<10x8xi1>, tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xf32>
+  %15 = "mhlo.round_nearest_afz"(%14) : (tensor<10x8xf32>) -> tensor<10x8xf32>
+  %16 = "mhlo.tuple"(%15) : (tensor<10x8xf32>) -> tuple<tensor<10x8xf32>>
+  func.return %15 : tensor<10x8xf32>
+}
+
+// CHECK: %[[BCAST:.*]] = "mhlo.broadcast_in_dim"(%1)
+// CHECK: tfl.floor_div %arg0, %[[BCAST]] : tensor<10x8xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// unary elementwise
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: convert_i32_f32
+func.func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
+  %0 = "mhlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.cast
+
+// -----
+
+// CHECK-LABEL: abs
+func.func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.abs
+
+// -----
+
+// CHECK-LABEL: abs_dynamic
+func.func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.abs
+
+// -----
+
+// CHECK-LABEL: ceil
+func.func @ceil(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.ceil"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.ceil
+
+// -----
+
+// CHECK-LABEL: ceil_dynamic
+func.func @ceil_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.ceil"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.ceil
+
+// -----
+
+// CHECK-LABEL: complex_abs
+func.func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
+  %0 = "mhlo.abs"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK-NOT: tfl
+
+// -----
+
+func.func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {
+  %0 = "mhlo.is_finite"(%arg0) : (tensor<2xf32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: %0 = tfl.sub %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<2xf32>
+// CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK: %1 = "tfl.equal"(%0, %cst) : (tensor<2xf32>, tensor<f32>) -> tensor<2xi1>
+// CHECK: return %1 : tensor<2xi1>
+
+// -----
+
+func.func @is_finite_dynamic(%arg0: tensor<?xf32>) -> tensor<?xi1> {
+  %0 = "mhlo.is_finite"(%arg0) : (tensor<?xf32>) -> tensor<?xi1>
+  func.return %0 : tensor<?xi1>
+}
+
+// CHECK: %0 = tfl.sub %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<?xf32>
+// CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK: %1 = "tfl.equal"(%0, %cst) : (tensor<?xf32>, tensor<f32>) -> tensor<?xi1>
+
+// -----
+
+// CHECK-LABEL: cos
+func.func @cos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.cosine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.cos
+
+// -----
+
+// CHECK-LABEL: cos_dynamic
+func.func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.cosine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.cos
+
+// -----
+
+// CHECK-LABEL: logistic
+func.func @logistic(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.logistic"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.logistic
+
+// -----
+
+// CHECK-LABEL: exp
+func.func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.exp
+
+// -----
+
+// CHECK-LABEL: exp_dynamic
+func.func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.exponential"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.exp
+
+// -----
+
+// CHECK-LABEL: expm1
+func.func @expm1(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.exponential_minus_one"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: %0 = "tfl.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+// CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK: %1 = tfl.sub(%0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+
+// -----
+
+// CHECK-LABEL: floor
+func.func @floor(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.floor"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.floor
+
+// -----
+
+// CHECK-LABEL: floor_dynamic
+func.func @floor_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.floor"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.floor
+
+// -----
+
+// CHECK-LABEL: log
+func.func @log(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.log"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.log
+
+// -----
+
+// CHECK-LABEL: log_dynamic
+func.func @log_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.log"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.log
+
+// -----
+
+// CHECK-LABEL: log1p
+func.func @log1p(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+// CHECK: %1 = "tfl.log"(%0) : (tensor<2xf32>) -> tensor<2xf32>
+
+// -----
+
+// CHECK-LABEL: log1p_dynamic
+func.func @log1p_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
+// CHECK: %1 = "tfl.log"(%0) : (tensor<?xf32>) -> tensor<?xf32>
+
+// -----
+
+// CHECK-LABEL: neg
+func.func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.negate"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.neg
+
+// -----
+
+// CHECK-LABEL: neg_dynamic
+func.func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.negate"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.neg
+
+// -----
+
+// CHECK-LABEL: sin
+func.func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.sine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.sin
+
+// -----
+
+// CHECK-LABEL: sin_dynamic
+func.func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.sine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.sin
+
+// -----
+
+// CHECK-LABEL: rsqrt
+func.func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.rsqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.rsqrt
+
+// -----
+
+// CHECK-LABEL: rsqrt_dynamic
+func.func @rsqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.rsqrt
+
+// -----
+
+// CHECK-LABEL: @sqrt
+func.func @sqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.sqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.sqrt
+
+// -----
+
+// CHECK-LABEL: sqrt_dynamic
+func.func @sqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.sqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.sqrt
+
+// -----
+
+// CHECK-LABEL: tanh
+func.func @tanh(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.tanh"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.tanh
+
+// -----
+
+// CHECK-LABEL: tanh_dynamic
+func.func @tanh_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.tanh"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.tanh
+
+// -----
+
+// CHECK-LABEL: bitcast
+func.func @bitcast(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: tfl.bitcast
+
+// -----
+
+// CHECK-LABEL: bitcast_dynamic
+func.func @bitcast_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK: tfl.bitcast
+
+// -----
+
+// CHECK-LABEL: bitcast_same_widths
+func.func @bitcast_same_widths(%arg0: tensor<2xf32>) -> tensor<2xi32> {
+  %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<2xf32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// CHECK: tfl.bitcast
 
 // -----
 
