@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
