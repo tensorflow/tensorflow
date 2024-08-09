@@ -37,7 +37,6 @@ libssl-dev
 libtool
 libzmq3-dev
 lld-17
-mlocate
 moreutils
 openjdk-11-jdk
 openjdk-11-jre-headless

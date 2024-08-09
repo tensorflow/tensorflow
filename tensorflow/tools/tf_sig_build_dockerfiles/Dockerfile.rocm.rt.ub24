@@ -1,9 +1,9 @@
 ################################################################################
 ARG DISTRO_IMG
-FROM ${DISTRO_IMG:-'ubuntu:22.04'} as runtime
+FROM ${DISTRO_IMG:-'ubuntu:24.04'} as runtime
 ################################################################################
 
-# Note: Ubuntu jammy has Python 3.10 installed by default
+# Note: Ubuntu Noble as Python 3.12 installed by default
 #
 # Install dependencies
 COPY setup.packages.sh /setup.packages.sh

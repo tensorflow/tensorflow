@@ -31,11 +31,11 @@ if [[ -n $1 ]]; then
     ROCM_VERSION=$1
 fi
 if [[ -n $2 ]]; then
-    if [[ "$2" == "focal" ]] || [[ "$2" == "jammy" ]] || [[ "$2" == "el7" ]] || [[ "$2" == "el8" ]]; then
+    if [[ "$2" == "focal" ]] || [[ "$2" == "jammy" ]] || [[ "$2" == "noble" ]] || [[ "$2" == "el7" ]] || [[ "$2" == "el8" ]]; then
         DISTRO=$2
     else
         echo "Distro not supported"
-        echo "Supported distros are:\n focal\n jammy\n el7\n el8"
+        echo "Supported distros are:\n focal\n jammy\n noble\n el7\n el8"
 	exit 1
     fi
 fi
@@ -49,7 +49,7 @@ else
         ROCM_VERS=$ROCM_VERSION
 fi
 
-if [[ "$DISTRO" == "focal" ]] || [[ "$DISTRO" == "jammy" ]]; then
+if [[ "$DISTRO" == "focal" ]] || [[ "$DISTRO" == "jammy" ]] || [[ "$DISTRO" == "noble" ]]; then
     ROCM_DEB_REPO_HOME=https://repo.radeon.com/rocm/apt/
     AMDGPU_DEB_REPO_HOME=https://repo.radeon.com/amdgpu/
     ROCM_BUILD_NAME=${DISTRO}
