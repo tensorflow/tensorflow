@@ -14197,7 +14197,7 @@ restored.}]>:$tensor_name,
   TF_DerivedResultTypeAttr dt = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RestoreV2Op : TF_Op<"RestoreV2", []> {
+def TF_RestoreV2Op : TF_Op<"RestoreV2", [Pure]> {
   let summary = "Restores tensors from a V2 checkpoint.";
 
   let description = [{
