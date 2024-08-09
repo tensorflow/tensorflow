@@ -614,8 +614,9 @@ def read_meta_graph_file(filename):
     file_content = f.read()
   try:
     meta_graph_def.ParseFromString(file_content)
-    if sys.byteorder == "big":
-      bst.swap_tensor_content_in_graph_function(meta_graph_def, "little", "big")
+    if sys.byteorder == 'big':
+      bst.swap_tensor_content_in_graph(meta_graph_def,
+        "little", "big")
     return meta_graph_def
   except Exception:  # pylint: disable=broad-except
     pass
@@ -623,8 +624,9 @@ def read_meta_graph_file(filename):
   # Next try to read it as a text file.
   try:
     text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
-    if sys.byteorder == "big":
-      bst.swap_tensor_content_in_graph_function(meta_graph_def, "little", "big")
+    if sys.byteorder == 'big':
+      bst.swap_tensor_content_in_graph(meta_graph_def,
+        "little", "big")
   except text_format.ParseError as e:
     raise IOError(f"Cannot parse file {filename}: {str(e)}.")
 

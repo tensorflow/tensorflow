@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Defines utilities involving SavedModel."""
+import sys
+
 from typing import Collection, Dict, Mapping, Optional, Sequence
 
 from absl import logging
@@ -24,6 +26,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import byte_swap_tensor
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
@@ -254,6 +257,10 @@ def _save_function_alias(
     meta_graph_def.meta_info_def.function_aliases[function_name] = (
         function_alias
     )
+
+  if sys.byteorder == "big":
+    byte_swap_tensor.swap_tensor_content_in_saved_model(loader.saved_model,
+                                                        "big", "little")
 
   saved_model_proto_serialized = loader.saved_model.SerializeToString()
 

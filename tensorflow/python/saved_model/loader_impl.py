@@ -24,6 +24,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
+from tensorflow.python.framework import byte_swap_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
@@ -31,7 +32,6 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
-from tensorflow.python.saved_model import utils_impl as saved_model_utils
 # Placeholder for protosplitter merger import.
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import saver as tf_saver
@@ -120,8 +120,11 @@ def parse_saved_model(export_dir):
         f"SavedModel file does not exist at: {export_dir}{os.path.sep}"
         f"{{{constants.SAVED_MODEL_FILENAME_PBTXT}|"
         f"{constants.SAVED_MODEL_FILENAME_PB}}}")
-  return saved_model
 
+  if sys.byteorder == "big":
+    byte_swap_tensor.swap_tensor_content_in_saved_model(saved_model,
+                                                        "little", "big")
+  return saved_model
 
 def get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
   """Gets the asset tensors, if defined in the meta graph def to load.
@@ -424,9 +427,6 @@ class SavedModelLoader(object):
           `tf.import_graph_def` (may be `None`).
     """
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
-    if sys.byteorder == "big":
-      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little",
-                                                     "big")
     with graph.as_default():
       return tf_saver._import_meta_graph_with_return_elements(  # pylint: disable=protected-access
           meta_graph_def, import_scope=import_scope, **saver_kwargs)
