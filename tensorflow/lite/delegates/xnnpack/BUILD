@@ -260,6 +260,7 @@ cc_library(
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
         "@eigen_archive//:eigen3",
+        "@flatbuffers//:runtime_cc",
         "@pthreadpool",
     ],
 )

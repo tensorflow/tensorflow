@@ -32,8 +32,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "flatbuffers/flexbuffers.h"
 #include "xnnpack.h"  // from @XNNPACK
 #include "Eigen/Core"  // from @eigen_archive
+#include "flatbuffers/base.h"  // from @flatbuffers
 #include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -6695,28 +6697,79 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static const float* GetFlexbufferDataPtr(const uint8_t* buffer,
+                                           const size_t size, size_t i) {
+    // Copied over from flexbuffers.h because we need to access the data ptr
+    // itself, rather than just the value. Flexbuffers does not let you
+    // directly access the data ptr from a function.
+
+    // Root
+    auto end = buffer + size;
+    auto byte_width = *--end;
+    auto packed_type = *--end;
+    end -= byte_width;  // The root data item.
+    // Reference
+    auto data_ = end;
+    auto parent_width_ = byte_width;
+    auto byte_width_ = static_cast<uint8_t>(1 << (packed_type & 3));
+    // AsMap
+    data_ = data_ - flexbuffers::ReadUInt64(data_, parent_width_);
+
+    // vector[] -> reference
+    auto len = static_cast<size_t>(
+        flexbuffers::ReadUInt64(data_ - byte_width_, byte_width_));
+    if (i >= len) return nullptr;
+    auto elem = data_ + i * byte_width_;
+
+    // AsDouble
+    TFLITE_DCHECK(byte_width_ == 4);  // float
+    // ReadScalar<float>();
+    return reinterpret_cast<const float*>(elem);
+  }
+
   static TfLiteStatus VisitScaledDotAttentionCompositeNode(
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const uint8_t* buffer,
       const size_t buffer_size,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
-    const float* scale_val = nullptr;
-    // ensure 28 bytes as we expect
-    // TODO(b/339106680): this reading method may not work for every case.
-    if (buffer_size == 28 && sizeof(float) == 4) {
-      // Custom data here is a flexbuffer map.
-      // byte_width is 4 for our map.
-      // First 5 values are "scale", then is the float value, and last is
-      // flexbuffer metadata.
-      if (strcmp("scale", reinterpret_cast<const char*>(buffer)) == 0) {
-        constexpr size_t kScaleValOffset = 20;
-        scale_val = reinterpret_cast<const float*>(buffer + kScaleValOffset);
-      }
+    if (buffer_size == 0)
+      return VisitDotAttentionNode(subgraph, delegate, logging_context,
+                                   node_index, node, tensors, nullptr, nullptr,
+                                   input_output_tensors);
+
+    auto flexbuffer_map = flexbuffers::GetRoot(buffer, buffer_size).AsMap();
+    size_t len = flexbuffer_map.Values().size();
+    float scale_val = len > 0 ? flexbuffer_map["scale"].AsFloat() : 0.0f;
+    float logit_cap_val =
+        len > 1 ? flexbuffer_map["logit_cap"].AsFloat() : 0.0f;
+    int scale_index = 0;
+    int logit_cap_index = 1;
+    if (std::strcmp(flexbuffer_map.Keys()[0].AsString().c_str(), "scale") !=
+        0) {
+      scale_index = 1;
+      logit_cap_index = 0;
     }
 
+    // TODO(b/339106680): Support BigEndian?
+#if !FLATBUFFERS_LITTLEENDIAN
+    TF_LITE_KERNEL_LOG(logging_context,
+                       "sdpa with custom attributes currently only supports "
+                       "little endian. failed to delegate %s node #%d",
+                       "odml.scaled_dot_product_attention", node_index);
+    return kTfLiteError;
+#endif
+
+    // Assumes that first value is scale, second (optional) is logit_cap.
+    auto scale_ptr = GetFlexbufferDataPtr(buffer, buffer_size, scale_index);
+    auto cap_ptr = GetFlexbufferDataPtr(buffer, buffer_size, logit_cap_index);
+
+    // additional verification we got the correct values
+    if (scale_ptr) TFLITE_DCHECK(scale_val == *scale_ptr);
+    if (len > 1 && cap_ptr) TFLITE_DCHECK(logit_cap_val == *cap_ptr);
+
     return VisitDotAttentionNode(subgraph, delegate, logging_context,
-                                 node_index, node, tensors, scale_val,
+                                 node_index, node, tensors, scale_ptr, cap_ptr,
                                  input_output_tensors);
   }
 
@@ -6724,6 +6777,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const float* scale_param,
+      const float* cap_param,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
     const TfLiteTensor& query_proj = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
@@ -6737,10 +6791,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
         logging_context, value_proj, node->inputs->data[2], node_index));
 
-    const TfLiteTensor& atten_mask = tensors[node->inputs->data[3]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, atten_mask, node->inputs->data[3], node_index));
-
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
@@ -6752,18 +6802,25 @@ class Subgraph {
     TF_LITE_ENSURE_EQ(logging_context,
                       query_proj.dims->data[query_proj.dims->size - 1],
                       value_proj.dims->data[value_proj.dims->size - 1]);
-    // Max sequence length match.
-    TF_LITE_ENSURE_EQ(logging_context, key_proj.dims->data[1],
-                      atten_mask.dims->data[atten_mask.dims->size - 1]);
-    TF_LITE_ENSURE_EQ(logging_context, value_proj.dims->data[1],
-                      atten_mask.dims->data[atten_mask.dims->size - 1]);
+
+    // optional mask
+    bool need_mask = node->inputs->size == 4;
+    if (need_mask) {
+      const TfLiteTensor& atten_mask = tensors[node->inputs->data[3]];
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+          logging_context, atten_mask, node->inputs->data[3], node_index));
+      // Max sequence length match.
+      TF_LITE_ENSURE_EQ(logging_context, key_proj.dims->data[1],
+                        atten_mask.dims->data[atten_mask.dims->size - 1]);
+      TF_LITE_ENSURE_EQ(logging_context, value_proj.dims->data[1],
+                        atten_mask.dims->data[atten_mask.dims->size - 1]);
+    }
 
     if (subgraph != nullptr) {
       // constants
       uint32_t query_proj_id = input_output_tensors.at(node->inputs->data[0]);
       uint32_t key_proj_id = input_output_tensors.at(node->inputs->data[1]);
       uint32_t value_proj_id = input_output_tensors.at(node->inputs->data[2]);
-      uint32_t atten_mask_id = input_output_tensors.at(node->inputs->data[3]);
       uint32_t output_id = input_output_tensors.at(node->outputs->data[0]);
       float default_out_min = -std::numeric_limits<float>::infinity();
       float default_out_max = std::numeric_limits<float>::infinity();
@@ -6946,19 +7003,62 @@ class Subgraph {
                               permute_q_out_id, reshape_dims_k_out_id,
                               XNN_INVALID_VALUE_ID, fc_out_id, /*flags=*/0));
       }
-      // TODO(b/323195341): add CapTanh support.
+      if (cap_param != nullptr) {
+        uint32_t cap_val_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, cap_param,
+                                    XNN_INVALID_VALUE_ID, 0, &cap_val_id));
+        uint32_t cap_div_out_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &cap_div_out_id));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_divide(subgraph, default_out_min, default_out_max,
+                              fc_out_id, cap_val_id, cap_div_out_id,
+                              /*flags=*/0));
+        uint32_t cap_tanh_out_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &cap_tanh_out_id));
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_tanh(subgraph, cap_div_out_id,
+                                          cap_tanh_out_id, /*flags=*/0));
+        uint32_t cap_logits_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &cap_logits_id));
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_multiply2(subgraph, default_out_min,
+                                               default_out_max, cap_tanh_out_id,
+                                               cap_val_id, cap_logits_id, 0));
+        fc_out_id = cap_logits_id;
+      }
       // element_add atten_mask and matmul_out
       uint32_t padded_logits_id = XNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_EQ(
-          logging_context, xnn_status_success,
-          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
-                                  /*dims=*/nullptr, nullptr,
-                                  XNN_INVALID_VALUE_ID, 0, &padded_logits_id));
-      TF_LITE_ENSURE_EQ(
-          logging_context, xnn_status_success,
-          xnn_define_add2(subgraph, default_out_min, default_out_max,
-                          atten_mask_id, fc_out_id, padded_logits_id,
-                          /*flags=*/0));
+      if (need_mask) {
+        uint32_t atten_mask_id = input_output_tensors.at(node->inputs->data[3]);
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_tensor_value(
+                              subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                              /*dims=*/nullptr, nullptr, XNN_INVALID_VALUE_ID,
+                              0, &padded_logits_id));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_add2(subgraph, default_out_min, default_out_max,
+                            atten_mask_id, fc_out_id, padded_logits_id,
+                            /*flags=*/0));
+      } else {
+        padded_logits_id = fc_out_id;
+      }
       // softmax(padded_logits)
       uint32_t probs_id = XNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_EQ(
