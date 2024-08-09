@@ -453,6 +453,11 @@ absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
   config.ordinal = ordinal;
   return GetExecutor(config);
 }
+absl::StatusOr<StreamExecutor*> CPlatform::FindExisting(int ordinal) {
+  stream_executor::StreamExecutorConfig config;
+  config.ordinal = ordinal;
+  return executor_cache_.Get(config);
+}
 absl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(

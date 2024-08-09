@@ -64,6 +64,12 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 
+absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
+  StreamExecutorConfig config;
+  config.ordinal = ordinal;
+  return executor_cache_.Get(config);
+}
+
 absl::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   if (config.gpu_stream) {

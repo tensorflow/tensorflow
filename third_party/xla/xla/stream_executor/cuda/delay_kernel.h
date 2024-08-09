@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
 
 namespace stream_executor::gpu {

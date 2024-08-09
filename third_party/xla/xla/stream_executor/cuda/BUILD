@@ -429,7 +429,6 @@ gpu_kernel_library(
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_semaphore",
-        "//xla/stream_executor/gpu:gpu_stream",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -598,6 +597,22 @@ cc_library(
     }) + [
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "cuda_platform_test",
+    srcs = ["cuda_platform_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":cuda_platform",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

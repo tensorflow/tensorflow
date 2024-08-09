@@ -105,6 +105,13 @@ class Platform {
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   DescriptionForDevice(int ordinal) const = 0;
 
+  // Returns a StreamExecutor for the given ordinal if one has already been
+  // created, or an error is returned if none exists.  Does not create a new
+  // context with the device.
+  virtual absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) {
+    return absl::NotFoundError("Not implemented for this platform.");
+  }
+
   // Returns a device with the given ordinal on this platform with a default
   // plugin configuration or, if none can be found with the given ordinal or
   // there is an error in opening a context to communicate with the device, an

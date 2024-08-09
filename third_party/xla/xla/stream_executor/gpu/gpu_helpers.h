@@ -23,16 +23,9 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include <complex>
-#include <cstdint>
-
-#include "xla/stream_executor/gpu/gpu_types.h"
-#include "tsl/platform/logging.h"
+#include "xla/stream_executor/device_memory.h"
 
 namespace stream_executor {
-
-template <typename ElemT>
-class DeviceMemory;
 
 namespace gpu {
 
