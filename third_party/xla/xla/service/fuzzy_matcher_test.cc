@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/fuzzy_matcher.h"
 
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -38,8 +39,46 @@ TEST_F(FuzzyMatcherTest, IgnoreConvert) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto* root = hlo_module->entry_computation()->root_instruction();
-  EXPECT_TRUE(
-      Match(root, fm::Divide(match::Parameter(0), match::Parameter(1))));
+  EXPECT_TRUE(Match(root, fm::Divide(match::Parameter(0), match::Parameter(1),
+                                     HloOpcode::kConvert)));
+}
+
+TEST_F(FuzzyMatcherTest, IgnoreBitcast) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      x = f32[2,3] parameter(0)
+      y = f32[6] parameter(1)
+      exp_x = f32[2,3] exponential(x)
+      exp_y = f32[6] exponential(y)
+      bit = f32[2,3] bitcast(exp_y)
+      ROOT add = f32[2,3] add(exp_x, bit)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(Match(
+      root, match::Add(fm::Exp(match::Parameter(0), HloOpcode::kBitcast),
+                       fm::Exp(match::Parameter(1), HloOpcode::kBitcast))));
+}
+
+TEST_F(FuzzyMatcherTest, IgnoreConvertAndBitcast) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      x = f32[6] parameter(0)
+      y = f64[2,3] parameter(1)
+      convert = f64[6] convert(x)
+      bitcast = f64[6] bitcast(y)
+      ROOT sub = f64[6] subtract(convert, bitcast)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(Match(
+      root, match::Subtract(
+                fm::Parameter(HloOpcode::kBitcast, HloOpcode::kConvert),
+                fm::Parameter(HloOpcode::kBitcast, HloOpcode::kConvert))));
 }
 
 }  // namespace
