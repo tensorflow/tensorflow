@@ -33,7 +33,7 @@ namespace resource {
 class InitializationStatus : public ResourceBase {
  public:
   InitializationStatus() {}
-  InitializationStatus(InitializationStatus&& other) {
+  InitializationStatus(InitializationStatus&& other) noexcept {
     is_initialized_ = other.is_initialized_;
   }
 
