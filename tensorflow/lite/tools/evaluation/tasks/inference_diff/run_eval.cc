@@ -31,6 +31,7 @@ namespace tflite {
 namespace evaluation {
 
 constexpr char kModelFileFlag[] = "model_file";
+constexpr char kRefModelFileFlag[] = "ref_model_file";
 constexpr char kOutputFilePathFlag[] = "output_file_path";
 constexpr char kNumRunsFlag[] = "num_runs";
 constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
@@ -50,6 +51,7 @@ class InferenceDiff : public TaskExecutor {
  private:
   void OutputResult(const EvaluationStageMetrics& latest_metrics) const;
   std::string model_file_path_;
+  std::string ref_model_file_path_;
   std::string output_file_path_;
   std::string delegate_;
   int num_runs_;
@@ -61,6 +63,11 @@ std::vector<Flag> InferenceDiff::GetFlags() {
   std::vector<tflite::Flag> flag_list = {
       tflite::Flag::CreateFlag(kModelFileFlag, &model_file_path_,
                                "Path to test tflite model file."),
+      tflite::Flag::CreateFlag(kRefModelFileFlag, &ref_model_file_path_,
+                               "Path to reference tflite model file. This"
+                               " parameter is optional and if not set the"
+                               " model_file will be used for both - reference"
+                               " and test interpreter."),
       tflite::Flag::CreateFlag(kOutputFilePathFlag, &output_file_path_,
                                "File to output metrics proto to."),
       tflite::Flag::CreateFlag(kNumRunsFlag, &num_runs_,
@@ -95,8 +102,19 @@ std::optional<EvaluationStageMetrics> InferenceDiff::RunImpl() {
     TFLITE_LOG(WARN) << "Unsupported TFLite delegate: " << delegate_;
     return std::nullopt;
   }
+  // Initialize reference evaluation stage. If no reference model was given by
+  // the user, use test model.
+  EvaluationStageConfig ref_eval_config;
+  ref_eval_config.set_name("reference_inference_profiling");
+  auto* ref_inference_params = ref_eval_config.mutable_specification()
+    ->mutable_tflite_inference_params();
+  ref_inference_params->set_invocations_per_run(3);
+  if (!ref_model_file_path_.empty())
+    ref_inference_params->set_model_file_path(ref_model_file_path_);
+  else
+    ref_inference_params->set_model_file_path(model_file_path_);
+  InferenceProfilerStage eval(eval_config, ref_eval_config);
 
-  InferenceProfilerStage eval(eval_config);
   if (eval.Init(&delegate_providers_) != kTfLiteOk) return std::nullopt;
 
   // Run inference & check diff for specified number of runs.
