@@ -43,7 +43,7 @@ class LinearAlgebraOp : public OpKernel {
   void Compute(OpKernelContext* context) override;
 
  protected:
-  using TensorShapes = gtl::InlinedVector<TensorShape, 4>;
+  using TensorShapes = absl::InlinedVector<TensorShape, 4UL>;
   // Returns the number of leading inputs that are to be treated as matrix
   // inputs. By default this is all the inputs. Derived classes can override
   // this to tell the base class to ignore one or more trailing inputs.
@@ -152,8 +152,8 @@ class LinearAlgebraOp : public OpKernel {
                              OutputMatrixMaps* outputs) = 0;
 
  private:
-  using TensorInputs = gtl::InlinedVector<const Tensor*, 4>;
-  using TensorOutputs = gtl::InlinedVector<Tensor*, 4>;
+  using TensorInputs = absl::InlinedVector<const Tensor*, 4UL>;
+  using TensorOutputs = absl::InlinedVector<Tensor*, 4UL>;
   // This function maps 2-d slices (matrices) of the input and output tensors
   // using Eigen::Map and calls ComputeMatrix implemented in terms of the
   // Eigen::MatrixBase API by the derived class.
