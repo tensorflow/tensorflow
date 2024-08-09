@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -1192,10 +1193,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     shift_ops(a.fp8_input, a.commutative_ops);
     shift_ops(b.fp8_input, b.commutative_ops);
 
-    TF_ASSIGN_OR_RETURN(bool a_is_col_major,
-                        MatrixIsColumnMajor(*instr, gemm_backend_config, "a"));
-    TF_ASSIGN_OR_RETURN(bool b_is_col_major,
-                        MatrixIsColumnMajor(*instr, gemm_backend_config, "b"));
+    TF_ASSIGN_OR_RETURN(GemmConfig gemm_config,
+                        GemmConfig::For(instr, gemm_backend_config));
 
     DotDimensionNumbers *dim_nums =
         gemm_backend_config.mutable_dot_dimension_numbers();
@@ -1206,7 +1205,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // non-contracting dimension and transpose the matrix to effectively make it
     // column-major.
     // TODO(philipphack): Remove once cuBLASLt supports A being column-major
-    if (a_is_col_major) {
+    if (gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
       CHECK(a_contracting_dims[0] == batch_dim_offset ||
             a_contracting_dims[0] == batch_dim_offset + 1);
       if (a_contracting_dims[0] == batch_dim_offset) {
@@ -1220,7 +1219,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Similarly, cuBLASLt requires the second operand to be column-major, so
     // make it column-major if it is currently row-major.
-    if (!b_is_col_major) {
+    if (gemm_config.rhs_layout.order == MatrixLayout::Order::kRowMajor) {
       CHECK(b_contracting_dims[0] == batch_dim_offset ||
             b_contracting_dims[0] == batch_dim_offset + 1);
       if (b_contracting_dims[0] == batch_dim_offset) {
@@ -2120,47 +2119,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         output_dtype));
   }
 
-  absl::StatusOr<bool> MatrixIsColumnMajor(
-      const HloInstruction &instr, const GemmBackendConfig &gemm_backend_config,
-      const std::string matrix_name = "output") const {
-    const HloInstruction *lhs = instr.operand(0);
-    const HloInstruction *rhs = instr.operand(1);
-
-    const DotDimensionNumbers &dot_dims =
-        gemm_backend_config.dot_dimension_numbers();
-    // We use ALG_UNSET and kDefaultComputePrecision because we don't care about
-    // the precision, just the layout, since we're just checking if the matrix
-    // is column-major.
-    TF_ASSIGN_OR_RETURN(
-        GemmConfig gemm_config,
-        GemmConfig::For(
-            lhs->shape(), dot_dims.lhs_batch_dimensions(),
-            dot_dims.lhs_contracting_dimensions(), rhs->shape(),
-            dot_dims.rhs_batch_dimensions(),
-            dot_dims.rhs_contracting_dimensions(),
-            /*output_shape=*/instr.shape(), gemm_backend_config.alpha_real(),
-            gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
-            /*precision_algorithm=*/PrecisionConfig::ALG_UNSET,
-            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision,
-            gemm_backend_config.grad_x(), gemm_backend_config.grad_y()));
-
-    if (matrix_name == "lhs" || matrix_name == "a") {
-      return gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor;
-    } else if (matrix_name == "rhs" || matrix_name == "b") {
-      return gemm_config.rhs_layout.order == MatrixLayout::Order::kColumnMajor;
-    } else if (matrix_name == "output" || matrix_name == "d") {
-      return gemm_config.output_layout.order ==
-             MatrixLayout::Order::kColumnMajor;
-    } else {
-      return Internal("Invalid matrix name.");
-    }
-  }
-
   absl::StatusOr<bool> GemmIsSupportedByCublasLt(
       const HloInstruction &instr,
       const GemmBackendConfig &gemm_backend_config) const {
     const HloInstruction *lhs = instr.operand(0);
-    const HloInstruction *rhs = instr.operand(1);
     const Shape &output_shape = instr.shape();
 
     TF_ASSIGN_OR_RETURN(
@@ -2186,9 +2148,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // This is not supported by cublasLt.
       return false;
     }
-
-    TF_ASSIGN_OR_RETURN(bool output_is_column_major,
-                        MatrixIsColumnMajor(instr, gemm_backend_config));
 
     if (auto isrocm = std::get_if<se::RocmComputeCapability>(&gpu_version_);
         isrocm) {
@@ -2217,36 +2176,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return true;
       }
     }
-    // Get the rhs non-contracting dimensions as they will eventually be at the
-    // cublasLt level.
-    std::vector<int64_t> rhs_non_contracting_dims;
-    const DotDimensionNumbers &dot_dims =
-        gemm_backend_config.dot_dimension_numbers();
 
-    if (!output_is_column_major) {
-      // cublasLt's matmul output is column major by default. This gemm requires
-      // the output to be in row major. Later we will swap lhs & rhs (and
-      // transpose each operand) of this gemm. Since we care about the rhs at
-      // the cublasLt level, this swap means that we care about the lhs right
-      // here.
-      TF_ASSIGN_OR_RETURN(
-          rhs_non_contracting_dims,
-          GetNonContractingDims(lhs->shape(), dot_dims.lhs_batch_dimensions(),
-                                dot_dims.lhs_contracting_dimensions()));
-    } else {
-      TF_ASSIGN_OR_RETURN(
-          rhs_non_contracting_dims,
-          GetNonContractingDims(rhs->shape(), dot_dims.rhs_batch_dimensions(),
-                                dot_dims.rhs_contracting_dimensions()));
-    }
-
-    const auto lhs_non_contracting_dimension_size = absl::c_accumulate(
-        rhs_non_contracting_dims, 1, [&](int64_t size, int64_t dim) {
-          return size * lhs->shape().dimensions(dim);
-        });
+    TF_ASSIGN_OR_RETURN(GemmConfig gemm_config,
+                        GemmConfig::For(&instr, gemm_backend_config));
 
     // Check that the size of the non-contracting dimension is not too large.
-    return lhs_non_contracting_dimension_size <= kMaxDimensionSize;
+    return gemm_config.rhs_layout.num_cols <= kMaxDimensionSize;
   }
 
   // Turns an F8 dot with unsupported output type into an F8 dot with F32

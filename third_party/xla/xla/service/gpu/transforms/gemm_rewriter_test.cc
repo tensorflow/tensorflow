@@ -8207,6 +8207,37 @@ ENTRY main {
   )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, C64LhsTooLarge) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  p0 = c64[2000,3000,3]{2,1,0} parameter(0)
+  p1 = c64[3,6]{1,0} parameter(1)
+  ROOT dot = c64[2000,3000,6]{2,1,0} dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+)";
+  // Large lhs is fine for cuBLASlt.
+  MatchOptimizedHlo(hlo_text,
+                    R"(; CHECK: custom_call_target="__cublas$lt$matmul")");
+}
+
+TEST_F(CublasLtGemmRewriteTest, C64RhsTooLarge) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  p0 = c64[6,3]{1,0} parameter(0)
+  p1 = c64[3,2000,3000]{2,1,0} parameter(1)
+  ROOT dot = c64[6,2000,3000]{2,1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  // Rhs with non-contracting dimensions > 4194240 (combined) is not fine for
+  // C64 type.
+  MatchOptimizedHlo(hlo_text,
+                    R"(; CHECK-NOT: custom_call_target="__cublas$lt$matmul")");
+}
+
 class GemmRewriteAllocationTest : public GpuCodegenTest {
  public:
   void CheckNumberOfAllocations(const std::string& hlo,
