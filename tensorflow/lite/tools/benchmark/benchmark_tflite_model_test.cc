@@ -21,13 +21,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
-#include "tensorflow/lite/tools/tool_params.h"
 
 namespace tflite {
 namespace benchmark {

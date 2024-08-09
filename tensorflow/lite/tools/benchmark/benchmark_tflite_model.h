@@ -24,11 +24,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/model_loader.h"
 #include "tensorflow/lite/tools/utils.h"
 

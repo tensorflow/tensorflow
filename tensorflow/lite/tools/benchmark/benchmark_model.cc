@@ -17,6 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/profiling/memory_usage_monitor.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
+
 #ifdef __linux__
 #include <unistd.h>
 #endif  // __linux__
