@@ -188,7 +188,7 @@ Status CTCLossCalculator<T>::CalculateLoss(
                    "target output (CTC works only with shorter target sequence "
                    "than input sequence). You can turn this into a warning by "
                    "using the flag ignore_longer_outputs_than_inputs - "
-                << b << ": " << str_util::Join(labels[b], " ");
+                << b << ": " << absl::StrJoin(labels[b], " ");
         continue;
       }
 
@@ -305,7 +305,7 @@ Status CTCLossCalculator<T>::PopulateLPrimes(
 
     // If debugging: output the labels coming into training.
     //
-    VLOG(2) << "label for batch: " << b << ": " << str_util::Join(label, " ");
+    VLOG(2) << "label for batch: " << b << ": " << absl::StrJoin(label, " ");
 
     // Target indices, length = U.
     std::vector<int> l;
@@ -324,8 +324,8 @@ Status CTCLossCalculator<T>::PopulateLPrimes(
                 "Saw a non-null label (index >= num_classes - 1) "
                 "following a ",
                 "null label, batch: ", b, " num_classes: ", num_classes,
-                " labels: ", str_util::Join(label, ","),
-                " labels seen so far: ", str_util::Join(l, ","));
+                " labels: ", absl::StrJoin(label, ","),
+                " labels seen so far: ", absl::StrJoin(l, ","));
           }
           l.push_back(label[i]);
         }
@@ -336,12 +336,12 @@ Status CTCLossCalculator<T>::PopulateLPrimes(
       if (l_i < 0) {
         return errors::InvalidArgument(
             "All labels must be nonnegative integers, batch: ", b,
-            " labels: ", str_util::Join(l, ","));
+            " labels: ", absl::StrJoin(l, ","));
       } else if (l_i >= num_classes) {
         return errors::InvalidArgument(
             "No label may be greater than num_classes. ",
             "num_classes: ", num_classes, ", batch: ", b,
-            " labels: ", str_util::Join(l, ","));
+            " labels: ", absl::StrJoin(l, ","));
       }
     }
     if (!ignore_longer_outputs_than_inputs) {
