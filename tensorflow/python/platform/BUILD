@@ -16,6 +16,7 @@ visibility = [
     # copybara:uncomment "//learning/brain/mobile/lite/tooling/model_analyzer:__subpackages__",
     # copybara:uncomment "//tensorflow_serving/model_servers:__subpackages__",
     # copybara:uncomment "//third_party/odml/model_customization/quantization:__subpackages__",
+    # copybara:uncomment # "//platforms/darwinn/l2l/tools/tflite_analyzer:__subpackages__",
 ]
 
 package(
