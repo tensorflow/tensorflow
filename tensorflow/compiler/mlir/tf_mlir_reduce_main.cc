@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Reducer/ReductionPatternInterface.h"  // from @llvm-project
 #include "mlir/Tools/mlir-reduce/MlirReduceMain.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 namespace {
 
