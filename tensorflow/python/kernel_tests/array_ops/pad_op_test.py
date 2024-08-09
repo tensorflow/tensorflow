@@ -86,6 +86,15 @@ class PadOpTest(test.TestCase):
             np.array([[0, 1, 2], [3, 4, 9]]),
             [[1, 1], [1, 2]],
             mode="symmetric"))
+    self.assertAllEqual(
+        np.array([[9, 3, 4, 9, 3, 4],
+                  [2, 0, 1, 2, 0, 1],
+                  [9, 3, 4, 9, 3, 4],
+                  [2, 0, 1, 2, 0, 1]]),
+        self._npPad(
+            np.array([[0, 1, 2], [3, 4, 9]]),
+            [[1, 1], [1, 2]],
+            mode="wrap"))
 
   def _testPad(self, np_inputs, paddings, mode, constant_values):
     np_val = self._npPad(np_inputs, paddings, mode=mode,
@@ -128,13 +137,15 @@ class PadOpTest(test.TestCase):
 
   def _testAll(self, np_inputs, paddings, constant_values):
     for mode in ("CONSTANT", "REFLECT", "SYMMETRIC", "reflect", "symmetric",
-                 "constant"):
-      # Zero-sized input is not allowed for REFLECT mode, but we still want
-      # zero-sized input test cases for the other modes.
-      if not np_inputs.size and mode.upper() == "REFLECT":
+                 "constant", "WRAP", "wrap"):
+      # Zero-sized input is not allowed for REFLECT or WRAP mode, but we
+      # still want zero-sized input test cases for the other modes.
+      if not np_inputs.size and mode.upper() in ["REFLECT", "WRAP"]:
         continue
-      # Empty tensor is not allowed for MirrorPad.
-      if 0 in np_inputs.shape and mode.upper() in ["REFLECT", "SYMMETRIC"]:
+      # Empty tensor is not allowed for MirrorPad or WrapPad.
+      if 0 in np_inputs.shape and mode.upper() in ["REFLECT", 
+                                                   "SYMMETRIC", 
+                                                   "WRAP"]:
         continue
       self._testPad(
           np_inputs, paddings, mode=mode, constant_values=constant_values)
@@ -226,6 +237,12 @@ class PadOpTest(test.TestCase):
                       constant_op.constant(
                           [0, 3], shape=[1, 2]),
                       mode="SYMMETRIC").eval()
+      with self.assertRaises(Exception):
+        array_ops.pad(constant_op.constant(
+            [1], shape=[2]),
+                      constant_op.constant(
+                          [2, 0], shape=[1, 2]),
+                      mode="WRAP").eval()
 
   def testInvalid(self):
     with self.cached_session():
@@ -239,7 +256,7 @@ class PadOpTest(test.TestCase):
     paddings = [[1, 0], [2, 0]]
     inputs = np.random.rand(2, 5).astype(np.float32)
     for mode in ("CONSTANT", "REFLECT", "SYMMETRIC", "reflect", "symmetric",
-                 "constant"):
+                 "constant", "WRAP", "wrap"):
       for paddings_dtype in [dtypes.int32, dtypes.int64]:
         np_val = self._npPad(inputs,
                              paddings,
@@ -257,7 +274,7 @@ class PadOpTest(test.TestCase):
         self.assertAllEqual(np_val, out)
         self.assertShapeEqual(np_val, tf_val)
 
-        if mode.upper() != "REFLECT":
+        if mode.upper() not in ["REFLECT", "WRAP"]:
           with ops.Graph().as_default():
             self._testGradient(
                 inputs,
@@ -322,6 +339,8 @@ class PadOpTest(test.TestCase):
                             constant_values="PAD")
     symmetric = array_ops.pad(x, [[1, 0], [0, 1]], mode="SYMMETRIC",
                               constant_values="PAD")
+    wrap = array_ops.pad(x, [[1, 0], [0, 1]], mode="WRAP",
+                         constant_values="PAD")
     with test_util.use_gpu():
       self.assertAllEqual(
           [[b"PAD", b"PAD", b"PAD"], [b"Hello", b"World", b"PAD"],
@@ -333,6 +352,10 @@ class PadOpTest(test.TestCase):
       self.assertAllEqual(
           [[b"Hello", b"World", b"World"], [b"Hello", b"World", b"World"],
            [b"Goodnight", b"Moon", b"Moon"]], self.evaluate(symmetric))
+      self.assertAllEqual([[b"Goodnight", b"Moon", b"Goodnight"],
+                           [b"Hello", b"World", b"Hello"],
+                           [b"Goodnight", b"Moon", b"Goodnight"]],
+                          self.evaluate(wrap)) 
 
   def testShapeFunctionEdgeCases(self):
     # Shape function requires placeholders and a graph

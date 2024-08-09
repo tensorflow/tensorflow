@@ -2577,6 +2577,14 @@ tf_module {
     argspec: "args=[\'fn\', \'signature\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "wrap_pad"
+    argspec: "args=[\'input\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "wrap_pad_grad"
+    argspec: "args=[\'input\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "write_file"
     argspec: "args=[\'filename\', \'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

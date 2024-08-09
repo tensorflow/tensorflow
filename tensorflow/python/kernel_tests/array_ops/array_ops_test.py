@@ -1682,6 +1682,19 @@ class PadTest(test_util.TensorFlowTestCase):
     result = gen_array_ops.mirror_pad_grad(t, paddings, "REFLECT")
     self.assertAllEqual(result, expected)
 
+  def testWrapPadGrad(self):
+    t = np.broadcast_to(np.reshape(np.arange(0, 7), (7, 1)), (1, 4, 7, 1))
+    paddings = constant_op.constant([
+        [0, 0],
+        [1, 1],
+        [2, 2],
+        [0, 0],
+    ])
+    expected = np.broadcast_to(
+        np.reshape(np.array([14, 18, 10]), (3, 1)), (1, 2, 3, 1))
+    result = gen_array_ops.wrap_pad_grad(t, paddings)
+    self.assertAllEqual(result, expected)
+
 
 class InvertPermutationTest(test_util.TensorFlowTestCase):
 

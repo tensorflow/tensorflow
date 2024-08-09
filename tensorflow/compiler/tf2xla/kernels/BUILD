@@ -161,6 +161,7 @@ cc_library(
         ":variable_ops",
         ":where_op",
         ":while_op",
+        ":wrap_pad_op",
         ":xla_broadcast_helper_op",
         ":xla_call_module_op",
         ":xla_conv_op",
@@ -1368,6 +1369,29 @@ tf_kernel_library(
 tf_kernel_library(
     name = "mirror_pad_op",
     srcs = ["mirror_pad_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status:statusor",
+        "@local_xla//xla:literal",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla:util",
+        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/client/lib:constants",
+    ],
+)
+
+tf_kernel_library(
+    name = "wrap_pad_op",
+    srcs = ["wrap_pad_op.cc"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
