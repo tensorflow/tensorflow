@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/core/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
