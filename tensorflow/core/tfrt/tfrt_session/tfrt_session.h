@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/status.h"
@@ -103,6 +104,7 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
   std::unique_ptr<ThreadPoolManager> thread_pool_manager_ TF_GUARDED_BY(mutex_);
   bool enable_mlrt_ TF_GUARDED_BY(mutex_) = false;
   tensorflow::BackendCompiler* backend_compiler_ TF_GUARDED_BY(mutex_);
+  std::unique_ptr<StaticDeviceMgr> device_manager_;
 };
 
 // Configures the TfrtSessionFactory according to `options`. Should not be

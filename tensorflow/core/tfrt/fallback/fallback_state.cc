@@ -20,18 +20,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/tpu/virtual_device.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -64,8 +71,8 @@ absl::StatusOr<std::unique_ptr<FallbackState>> FallbackState::Create(
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
 
-  return std::make_unique<FallbackState>(session_options, std::move(devices),
-                                         fdef_lib);
+  return std::make_unique<FallbackState>(session_options, nullptr,
+                                         std::move(devices), fdef_lib);
 }
 
 absl::StatusOr<std::unique_ptr<FallbackState>>
@@ -77,8 +84,8 @@ FallbackState::CreateWithCpuDevice(
   TF_RETURN_IF_ERROR(DeviceFactory::AddCpuDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
 
-  return std::make_unique<FallbackState>(session_options, std::move(devices),
-                                         fdef_lib);
+  return std::make_unique<FallbackState>(session_options, nullptr,
+                                         std::move(devices), fdef_lib);
 }
 
 absl::StatusOr<std::unique_ptr<FallbackState>>
@@ -95,17 +102,29 @@ FallbackState::CreateWithMockGpuDevice(
   devices.push_back(
       std::make_unique<VirtualDevice>(session_options.env, device_attrs));
 
-  return std::make_unique<FallbackState>(session_options, std::move(devices),
-                                         fdef_lib);
+  return std::make_unique<FallbackState>(session_options, nullptr,
+                                         std::move(devices), fdef_lib);
+}
+
+absl::StatusOr<std::unique_ptr<FallbackState>>
+FallbackState::CreateWithDeviceMgr(
+    const SessionOptions &session_options,
+    const tensorflow::FunctionDefLibrary &fdef_lib,
+    StaticDeviceMgr *device_mgr) {
+  std::vector<std::unique_ptr<Device>> devices;
+  return std::make_unique<FallbackState>(session_options, device_mgr,
+                                         std::move(devices), fdef_lib);
 }
 
 FallbackState::FallbackState(const SessionOptions &session_options,
+                             StaticDeviceMgr *static_device_mgr,
                              std::vector<std::unique_ptr<Device>> devices,
                              const tensorflow::FunctionDefLibrary &fdef_lib)
     : session_options_(session_options),
+      device_manager_ptr_(static_device_mgr),
       device_manager_(std::move(devices)),
       func_lib_def_(OpRegistry::Global(), fdef_lib),
-      pflr_(&device_manager_, session_options.env, &session_options.config,
+      pflr_(&device_manager(), session_options.env, &session_options.config,
             TF_GRAPH_DEF_VERSION, &func_lib_def_,
             session_options.config.graph_options().optimizer_options(),
             /*thread_pool=*/nullptr, /*parent=*/nullptr,
@@ -120,8 +139,12 @@ FallbackState::FallbackState(const SessionOptions &session_options,
     device_set_.AddDevice(d);
   }
 
+  for (auto *d : device_manager_ptr_->ListDevices()) {
+    device_set_.AddDevice(d);
+  }
+
   // client_device is the device for feed and fetch tensors.
-  device_set_.set_client_device(device_manager_.HostCPU());
+  device_set_.set_client_device(device_manager().HostCPU());
 }
 
 absl::StatusOr<std::unique_ptr<GraphExecutionState>>
@@ -143,7 +166,7 @@ FallbackState::CreateGraphExecutionState(GraphDef graph_def,
   return execution_state;
 }
 
-Status FallbackState::AddFunctionDef(const FunctionDef &func_def) {
+absl::Status FallbackState::AddFunctionDef(const FunctionDef &func_def) {
   return func_lib_def_.AddFunctionDef(func_def);
 }
 
