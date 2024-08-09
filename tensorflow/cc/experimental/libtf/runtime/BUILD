@@ -20,10 +20,12 @@ cc_library(
         "runtime.h",
     ],
     deps = [
+        "//tensorflow/c:tensor_interface",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_function",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:graph_function",
@@ -37,8 +39,8 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:status",
     ],
 )
