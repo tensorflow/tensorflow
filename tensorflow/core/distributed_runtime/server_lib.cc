@@ -17,8 +17,15 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

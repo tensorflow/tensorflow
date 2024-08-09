@@ -105,10 +105,17 @@ cc_library(
     deps = [
         ":graph_mgr",
         ":worker_cache",
+        ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_client",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/framework:step_stats_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -171,7 +178,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/activity_watcher",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
@@ -188,13 +200,19 @@ tf_cc_test(
         ":error_payloads",
         ":session_mgr",
         ":worker_env",
+        ":worker_session",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:random",
+        "//tensorflow/core/platform:status",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -218,6 +236,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -251,8 +271,10 @@ tf_cuda_library(
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":call_options",
         ":error_payloads",
         ":graph_mgr",
+        ":message_wrappers",
         ":partial_run_mgr",
         ":recent_request_ids",
         ":rendezvous_mgr_interface",
@@ -260,11 +282,22 @@ tf_cuda_library(
         ":tensor_coding",
         ":worker_interface",
         ":worker_session",
+        "//base:tracer",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/profiler/lib:device_profiler_session",
+        "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -310,7 +343,6 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         ":tensor_coding",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -319,6 +351,11 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_benchmark//:benchmark",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -454,7 +491,7 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:tensorflow_opensource",
     ],
 )
@@ -532,7 +569,9 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -557,6 +596,9 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -569,6 +611,9 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -582,9 +627,20 @@ cc_library(
         ":collective_rma_distributed",
         ":device_resolver_distributed",
         ":worker_cache",
+        ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:random",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -599,12 +655,12 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
