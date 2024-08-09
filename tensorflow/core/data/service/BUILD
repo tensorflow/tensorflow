@@ -680,8 +680,6 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":credentials_factory",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/data:dataset_utils",
     ],
 )
 
