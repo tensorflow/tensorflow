@@ -591,6 +591,22 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/google/glog/archive/refs/tags/v0.4.0.tar.gz"),
     )
 
+    tf_http_archive(
+        name = "spirv_headers",
+        sha256 = "11d835c60297b26532c05c3f3b581ba7a2787b5ae7399e94f72c392169216f11",
+        strip_prefix = "SPIRV-Headers-b73e168ca5e123dcf3dea8a34b19a5130f421ae1",
+        urls = tf_mirror_urls("https://github.com/KhronosGroup/SPIRV-Headers/archive/b73e168ca5e123dcf3dea8a34b19a5130f421ae1.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "spirv_llvm_translator",
+        sha256 = "d499769f4fd1e0ce9d4dbd3622ee7e3e641b5623dcdf811521e3e7c0bdb1e6c2",
+        strip_prefix = "SPIRV-LLVM-Translator-dad1f0eaab8047a4f73c50ed5f3d1694b78aae97",
+        build_file = "//third_party/spirv_llvm_translator:spirv_llvm_translator.BUILD",
+        patch_file = ["//third_party/spirv_llvm_translator:spirv_llvm_translator.patch"],
+        urls = tf_mirror_urls("https://github.com/KhronosGroup/SPIRV-LLVM-Translator/archive/dad1f0eaab8047a4f73c50ed5f3d1694b78aae97.tar.gz"),
+    )
+
 # buildifier: disable=unnamed-macro
 def workspace():
     # Check the bazel version before executing any repository rules, in case

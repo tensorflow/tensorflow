@@ -321,6 +321,7 @@ tf_staging/third_party/remote_config/remote_platform_configure.bzl:
 tf_staging/third_party/repo.bzl:
 tf_staging/third_party/six.BUILD:
 tf_staging/third_party/snappy.BUILD:
+tf_staging/third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
 tf_staging/third_party/sqlite.BUILD:
 tf_staging/third_party/stablehlo/BUILD:
 tf_staging/third_party/systemlibs/BUILD.tpl:
