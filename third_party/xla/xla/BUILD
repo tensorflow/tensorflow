@@ -1260,10 +1260,10 @@ cc_library(
     deps = [
         ":autotune_results_proto_cc",
         ":autotuning_proto_cc",
+        "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
     ],
 )
 

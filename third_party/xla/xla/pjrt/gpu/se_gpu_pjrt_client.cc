@@ -82,7 +82,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
-#include "tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"

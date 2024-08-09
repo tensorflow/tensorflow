@@ -379,6 +379,7 @@ cc_library(
         ":device_memory",
         ":numeric_options",
         "//xla/stream_executor/platform",
+        "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -390,7 +391,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # buildcleaner: keep
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",

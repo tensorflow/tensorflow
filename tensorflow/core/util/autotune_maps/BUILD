@@ -52,8 +52,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
 )
 
@@ -118,7 +118,7 @@ tf_cuda_library(
         "conv_parameters.h",
     ],
     cuda_deps = [
-        "@local_tsl//tsl/lib/strings:proto_serialization",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
     deps = [
         ":conv_parameters_proto_cc",
@@ -182,12 +182,12 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
 )
 

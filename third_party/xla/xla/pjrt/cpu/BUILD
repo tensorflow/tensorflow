@@ -191,6 +191,7 @@ cc_library(
         "//xla/stream_executor",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
@@ -208,7 +209,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:denormal",
         "@local_tsl//tsl/platform:env",
