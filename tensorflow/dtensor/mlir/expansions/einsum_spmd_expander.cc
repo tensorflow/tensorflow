@@ -235,7 +235,6 @@ GetSpecsFromLabelsAndMap(
 
   std::vector<std::string> sharding_specs(layout_rank);
   absl::flat_hash_map<std::string, int> dimension_use_count;
-  absl::flat_hash_set<std::string> dimension_use_set;
   for (const auto& label_and_indices : label_to_index) {
     const auto& loc = label_to_sharding_spec.find(label_and_indices.first);
     if (loc != label_to_sharding_spec.end()) {
