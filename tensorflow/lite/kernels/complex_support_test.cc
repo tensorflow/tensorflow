@@ -27,6 +27,80 @@ namespace tflite {
 namespace {
 
 template <typename T>
+class ComplexOpModel : public SingleOpModel {
+ public:
+  ComplexOpModel(const TensorData& real_input, const TensorData& imag_input,
+                 const TensorData& output) {
+    real_input_ = AddInput(real_input);
+    imag_input_ = AddInput(imag_input);
+
+    output_ = AddOutput(output);
+
+    const std::vector<uint8_t> custom_option;
+    SetBuiltinOp(BuiltinOperator_COMPLEX, BuiltinOptions_NONE, 0);
+
+    BuildInterpreter({GetShape(real_input_), GetShape(imag_input_)});
+  }
+
+  int real_input() { return real_input_; }
+  int imag_input() { return imag_input_; }
+
+  std::vector<std::complex<T>> GetOutput() { return ExtractVector<std::complex<T>>(output_); }
+
+ private:
+  int real_input_;
+  int imag_input_;
+  int output_;
+};
+
+
+TEST(ComplexOpTest, SimpleFloatTest) {
+  ComplexOpModel<float> m({TensorType_FLOAT32, {1, 8}},
+                          {TensorType_FLOAT32, {1, 8}},
+                          {TensorType_COMPLEX64, {}});
+
+  m.PopulateTensor<float>(
+      m.real_input(), {{75.0f, -6.0f, 9.0f, -10.0f, -3.0f, -6.0f, 0.0f, 22.1f}});
+  m.PopulateTensor<float>(m.imag_input(),
+                          {{0.0f, -1.0f, 0.0f, 5.0f, 2.0f, 11.0f, 0.0f, 33.3f}});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(),
+              testing::ElementsAreArray(ArrayComplex64Near({{75.0f, 0.0f},
+                                                        {-6.0f, -1.0f},
+                                                        {9.0f, 0.0f},
+                                                        {-10.0f, 5.0f},
+                                                        {-3.0f, 2.0f},
+                                                        {-6.0f, 11.0f},
+                                                        {0.0f, 0.0f},
+                                                        {22.1f, 33.3f}})));
+}
+
+TEST(ComplexOpTest, SimpleDoubleTest) {
+  ComplexOpModel<double> m({TensorType_FLOAT64, {1, 8}},
+                           {TensorType_FLOAT64, {1, 8}},
+                           {TensorType_COMPLEX128, {}});
+
+  m.PopulateTensor<double>(m.real_input(),
+                          {{75.0, -6.0, 9.0, -10.0, -3.0, -6.0, 0.0, 22.1}});
+  m.PopulateTensor<double>(m.imag_input(),
+                          {{0.0, -1.0, 0.0, 5.0, 2.0, 11.0, 0.0, 33.3}});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(),
+              testing::ElementsAreArray(ArrayComplex64Near({{75.0, 0.0},
+                                                        {-6.0, -1.0},
+                                                        {9.0, 0.0},
+                                                        {-10.0, 5.0},
+                                                        {-3.0, 2.0},
+                                                        {-6.0, 11.0},
+                                                        {0.0, 0.0},
+                                                        {22.1, 33.3}})));
+}
+
+template <typename T>
 class RealOpModel : public SingleOpModel {
  public:
   RealOpModel(const TensorData& input, const TensorData& output) {

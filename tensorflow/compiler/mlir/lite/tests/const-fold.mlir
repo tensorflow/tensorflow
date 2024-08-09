@@ -162,8 +162,8 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   %6 = arith.constant dense<2.0> : tensor<f32>
 
   // CHECK-DAG: [[cst0:%.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-DAG: [[cst1:%.*]] = arith.constant dense<0.841470957> : tensor<f32>
-  // CHECK-DAG: [[cst2:%.*]] = arith.constant dense<0.540302277> : tensor<f32>
+  // CHECK-DAG: [[cst1:%.*]] = arith.constant dense<8.414710e-01> : tensor<f32>
+  // CHECK-DAG: [[cst2:%.*]] = arith.constant dense<0.540302336> : tensor<f32>
   // CHECK-DAG: [[cst3:%.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
   // CHECK-DAG: [[cst4:%.*]] = arith.constant dense<2.000000e+00> : tensor<f32>
   // CHECK-DAG: [[cst5:%.*]] = arith.constant dense<5.000000e-01> : tensor<f32>

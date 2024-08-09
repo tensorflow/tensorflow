@@ -49,6 +49,34 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_shape);
 }
 
+TfLiteStatus PrepareComplex(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+  const TfLiteTensor* real_input = GetInput(context, node, 0);
+  const TfLiteTensor* imag_input = GetInput(context, node, 1);
+
+  // Ensure the real input and the imaginary input are the same types and shapes
+  TF_LITE_ENSURE(context, real_input->type == imag_input->type &&
+                              (real_input->type == kTfLiteFloat32 ||
+                               real_input->type == kTfLiteFloat64));
+  TF_LITE_ENSURE_EQ(context, NumDimensions(real_input), NumDimensions(imag_input));
+  for (auto d = 0; d < NumDimensions(real_input); ++d) {
+    TF_LITE_ENSURE_EQ(context, real_input->dims->data[d], imag_input->dims->data[d]);
+  }
+  
+  TfLiteTensor* output = GetOutput(context, node, 0);
+
+  if (real_input->type == kTfLiteFloat32) {
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteComplex64);
+  } else {
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteComplex128);
+  }
+  
+  TfLiteIntArray* output_shape = TfLiteIntArrayCopy(real_input->dims);
+  return context->ResizeTensor(context, output, output_shape);
+}
+
 template <typename T, typename ExtractF>
 void ExtractData(const TfLiteTensor* input, ExtractF extract_func,
                  TfLiteTensor* output) {
@@ -58,6 +86,54 @@ void ExtractData(const TfLiteTensor* input, ExtractF extract_func,
   for (int i = 0; i < input_size; ++i) {
     *output_data++ = extract_func(*input_data++);
   }
+}
+
+template <typename T>
+void ConvertToComplex(const TfLiteTensor* real_input,
+                      const TfLiteTensor* imag_input, TfLiteTensor* output) {
+  const T* real_input_data = GetTensorData<T>(real_input);
+  const T* imag_input_data = GetTensorData<T>(imag_input);
+  std::complex<T>* output_data = GetTensorData<std::complex<T>>(output);
+  const int input_size = NumElements(real_input);
+  for (auto i = 0; i < input_size; ++i) {
+    output_data[i] = std::complex<T>(real_input_data[i], imag_input_data[i]);
+  }
+}
+
+TfLiteStatus EvalComplex(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* real_input = GetInput(context, node, 0);
+  const TfLiteTensor* imag_input = GetInput(context, node, 1);
+
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  switch (real_input->type) {
+    case kTfLiteFloat32: {
+      ConvertToComplex<float>(
+        real_input,
+        imag_input,
+        output
+      );
+      break;
+    }
+    case kTfLiteFloat64: {
+      ConvertToComplex<double>(
+        real_input,
+        imag_input,
+        output
+      );
+      break;
+    }
+    default: {
+      TF_LITE_KERNEL_LOG(context,
+                         "Unsupported input type, Complex op only supports "
+                         "real valued float32 or float64 inputs, but got: ",
+                         TfLiteTypeGetName(real_input->type), " and ",
+                         TfLiteTypeGetName(imag_input->type));
+      return kTfLiteError;
+    }
+  }
+
+  return kTfLiteOk;
 }
 
 TfLiteStatus EvalReal(TfLiteContext* context, TfLiteNode* node) {
@@ -157,6 +233,11 @@ TfLiteStatus EvalAbs(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace complex
 
+TfLiteRegistration* Register_COMPLEX() {
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+                                  complex::PrepareComplex, complex::EvalComplex};
+  return &r;
+}
 TfLiteRegistration* Register_REAL() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
                                  complex::Prepare, complex::EvalReal};
