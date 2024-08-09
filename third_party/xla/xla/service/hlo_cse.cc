@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "xla/service/hlo_cse.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -29,8 +34,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_domain_map.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -244,6 +252,9 @@ absl::StatusOr<bool> HloCSE::Run(
     return *lhs == *rhs;
   };
 
+  auto cse_hash = [](const CseKey& lhs) {
+    return lhs.hlo->HashForIdenticalComparison();
+  };
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
     return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
         *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
@@ -265,9 +276,9 @@ absl::StatusOr<bool> HloCSE::Run(
     // HLO instructions are grouped into equivalency classes by using the
     // cse_equal predicate defined above. This set holds a representative
     // instruction for each class.
-    absl::flat_hash_set<CseKey, absl::Hash<CseKey>, decltype(cse_equal)>
-        representatives(/*N=*/computation->instruction_count() + 1,
-                        absl::Hash<CseKey>{}, cse_equal);
+    absl::flat_hash_set<CseKey, decltype(cse_hash), decltype(cse_equal)>
+        representatives(/*N=*/computation->instruction_count() + 1, cse_hash,
+                        cse_equal);
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // If the instruction has zero operands (constants, parameters, etc.) skip
       // over it.
