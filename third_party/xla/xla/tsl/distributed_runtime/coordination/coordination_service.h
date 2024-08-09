@@ -103,10 +103,6 @@ class CoordinationServiceInterface {
     return service;
   }
 
-  static CoordinationServiceInterface* GetCoordinationServiceInstance() {
-    return *GetCoordinationServiceInstancePtr();
-  }
-
   // This function is invoked after each task's local devices are appended in a
   // deterministic order during WaitForAllTasks(). This is useful to convert the
   // result into another message, or set global device ids.
