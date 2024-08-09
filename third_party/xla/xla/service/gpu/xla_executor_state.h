@@ -47,14 +47,6 @@ class GpuExecutorXLAState {
   }
 
  private:
-  template <typename T>
-  T *getOrCreate(stream_executor::StreamExecutor *se, std::unique_ptr<T> &ptr) {
-    if (!ptr) {
-      ptr = std::make_unique<T>(se);
-    }
-    return ptr.get();
-  }
-
   absl::Mutex mu_;
   std::unique_ptr<InfeedManager> infeed_manager_ ABSL_GUARDED_BY(mu_);
   std::unique_ptr<OutfeedManager> outfeed_manager_ ABSL_GUARDED_BY(mu_);

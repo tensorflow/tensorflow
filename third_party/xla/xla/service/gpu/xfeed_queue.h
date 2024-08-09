@@ -74,14 +74,6 @@ class XfeedQueue {
     return current_buffer;
   }
 
-  void RegisterOnEmptyCallback(std::function<void()> callback) {
-    on_empty_callbacks_.push_back(std::move(callback));
-  }
-  void RegisterBeforeGetNextDestinationCallback(
-      std::function<void()> callback) {
-    before_get_next_dest_callbacks_.push_back(std::move(callback));
-  }
-
   virtual ~XfeedQueue() = default;
 
  protected:
