@@ -56,8 +56,6 @@ absl::Status CreateTritonPipeline(
     mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
     const BlockLevelParameters& block_level_parameters,
     mt::nvidia_gpu::ClusterInfo& out_cluster_info) {
-  // TODO(ROCm): Check whether value different than 0 can be used.
-  const int ccAsInt = 0;
   // TODO(ROCm): Check why some test fail when threadsPerWarp is set to 64.
   const int threadsPerWarp = 32;
   auto ccRocm = std::get<se::RocmComputeCapability>(cc);
