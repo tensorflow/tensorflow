@@ -1625,9 +1625,10 @@ cc_library(
 
 xla_test(
     name = "gpu_compiler_test",
-    srcs = if_gpu_is_configured(["gpu_compiler_test.cc"]),
+    srcs = ["gpu_compiler_test.cc"],
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
+    tags = ["gpu"],
     deps = [
         ":gpu_compiler",
         ":gpu_hlo_schedule",

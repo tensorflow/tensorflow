@@ -2825,14 +2825,10 @@ cc_library(
 
 cc_library(
     name = "triton_fusion_numerics_verifier",
-    srcs = if_gpu_is_configured(["triton_fusion_numerics_verifier.cc"]),
-    hdrs = if_gpu_is_configured(["triton_fusion_numerics_verifier.h"]),
-    deps = if_gpu_is_configured([
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
+    srcs = ["triton_fusion_numerics_verifier.cc"],
+    hdrs = ["triton_fusion_numerics_verifier.h"],
+    tags = ["gpu"],
+    deps = [
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -2848,18 +2844,24 @@ cc_library(
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:stream",
         "//xla/tools:hlo_decomposer_lib",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ]),
+    ],
 )
 
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
-    srcs = if_gpu_is_configured(["triton_fusion_numerics_verifier_test.cc"]),
+    srcs = ["triton_fusion_numerics_verifier_test.cc"],
     backend_tags = {"gpu": [
         "requires-gpu-sm80",
     ]},
     backends = ["gpu"],
+    tags = ["gpu"],
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",
