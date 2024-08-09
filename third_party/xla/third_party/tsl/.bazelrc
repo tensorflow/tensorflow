@@ -219,13 +219,16 @@ build:mkl_aarch64_threadpool -c opt
 build:cuda --repo_env TF_NEED_CUDA=1
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
+# Default CUDA and CUDNN versions.
+build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
+build:cuda --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29"
+# This flag is needed to include hermetic CUDA libraries for bazel tests.
+test:cuda --@local_config_cuda//cuda:include_hermetic_cuda_libs=true
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 build:cuda_clang --config=cuda
-# Enable TensorRT optimizations https://developer.nvidia.com/tensorrt
-build:cuda_clang --config=tensorrt
-build:cuda_clang --action_env=TF_CUDA_CLANG="1"
 build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
+build:cuda_clang --copt=-Qunused-arguments
 # Select supported compute capabilities (supported graphics cards).
 # This is the same as the official TensorFlow builds.
 # See https://developer.nvidia.com/cuda-gpus#compute
@@ -234,22 +237,22 @@ build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
 # release while SASS is only forward compatible inside the current
 # major release. Example: sm_80 kernels can run on sm_89 GPUs but
 # not on sm_90 GPUs. compute_80 kernels though can also run on sm_90 GPUs.
-build:cuda_clang --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
+build:cuda_clang --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
+# Set lld as the linker.
+build:cuda_clang --host_linkopt="-fuse-ld=lld"
+build:cuda_clang --host_linkopt="-lm"
+build:cuda_clang --linkopt="-fuse-ld=lld"
+build:cuda_clang --linkopt="-lm"
 
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 build:cuda_clang_official --config=cuda_clang
-build:cuda_clang_official --action_env=TF_CUDA_VERSION="12"
-build:cuda_clang_official --action_env=TF_CUDNN_VERSION="8"
-build:cuda_clang_official --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-12.3"
-build:cuda_clang_official --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
+build:cuda_clang_official --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
+build:cuda_clang_official --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29"
 build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
-build:cuda_clang_official --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 build:cuda_clang_official --crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
 
 # Build with nvcc for CUDA and clang for host
 build:nvcc_clang --config=cuda
-# Unfortunately, cuda_configure.bzl demands this for using nvcc + clang
-build:nvcc_clang --action_env=TF_CUDA_CLANG="1"
 build:nvcc_clang --action_env=TF_NVCC_CLANG="1"
 build:nvcc_clang --@local_config_cuda//:cuda_compiler=nvcc
 
@@ -545,10 +548,6 @@ build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
 # For Remote build execution -- GPU configuration
 build:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
-build:rbe_linux_cuda --repo_env=TF_CUDA_CONFIG_REPO="@sigbuild-r2.17-clang_config_cuda"
-build:rbe_linux_cuda --repo_env=TF_TENSORRT_CONFIG_REPO="@sigbuild-r2.17-clang_config_tensorrt"
-build:rbe_linux_cuda --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.17-clang_config_nccl"
-test:rbe_linux_cuda --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 
 build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 build:rbe_linux_cuda_nvcc --config=nvcc_clang
@@ -633,7 +632,6 @@ build:release_cpu_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/cla
 # Test-related settings below this point.
 test:release_linux_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 test:release_linux_base --local_test_jobs=HOST_CPUS
-test:release_linux_base --test_env=LD_LIBRARY_PATH
 # Give only the list of failed tests at the end of the log
 test:release_linux_base --test_summary=short
 
@@ -647,7 +645,6 @@ build:release_gpu_linux --config=release_cpu_linux
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 # Note that linux cpu and cuda builds share the same toolchain now.
 build:release_gpu_linux --config=cuda_clang_official
-test:release_gpu_linux --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 # Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
 test:release_gpu_linux --test_timeout=300,450,1200,3600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
 

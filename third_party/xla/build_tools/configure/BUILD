@@ -33,6 +33,7 @@ py_test(
     data = [
         "testdata/clang.bazelrc",
         "testdata/cuda_clang.bazelrc",
+        "testdata/default_cuda_clang.bazelrc",
         "testdata/gcc.bazelrc",
         "testdata/nvcc_clang.bazelrc",
         "testdata/nvcc_gcc.bazelrc",

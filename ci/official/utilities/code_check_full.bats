@@ -216,6 +216,8 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
+    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
+    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
@@ -237,6 +239,8 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
+    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
+    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
     --define framework_shared_object=false \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
