@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_EagerSession_allocate(
