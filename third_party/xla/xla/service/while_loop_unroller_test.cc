@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/service/hlo_dce.h"
+#include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -689,6 +691,16 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopPartialUnroll) {
   EXPECT_FALSE(WhileLoopUnroller(/*unroll_factor=*/3).Run(m.get()).value());
 }
 
+TEST_F(WhileLoopUnrollerTest, SimpleLoopNoUnrollDueToTripCountThreshold) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/5);
+  UnrollConfig config;
+  config.trip_count_threshold = 0;  // Set the trip count threshold to 0.
+  EXPECT_FALSE(WhileLoopUnroller(/*unroll_factor=*/-1,
+                                 /*wrap_in_trivial_loop=*/false, config)
+                   .Run(m.get())
+                   .value());
+}
+
 TEST_F(WhileLoopUnrollerTest, IndirectBodyInc) {
   std::unique_ptr<HloModule> module =
       MakeModuleWithLoopBodyIndirectInc(/*num_iters=*/5);
@@ -1187,6 +1199,43 @@ TEST_F(WhileLoopUnrollerTest, IsEffectivelyStaticDynamicSlice) {
       EXPECT_FALSE(index.has_value());
     }
   }
+}
+
+TEST_F(WhileLoopUnrollerTest, SimpleLoopWithPassPipeline) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/5);
+
+  // Get the while loop instruction from the module.
+  HloInstruction* while_op = FindInstruction(m.get(), HloOpcode::kWhile);
+  ASSERT_NE(while_op, nullptr);
+
+  // Get the loop body computation.
+  HloComputation* loop_body = while_op->while_body();
+
+  // Find the induction variable in the loop body.
+  HloInstruction* induction_variable =
+      FindInstruction(m.get(), HloOpcode::kGetTupleElement);
+  ASSERT_NE(induction_variable, nullptr);
+
+  // Add a dead multiply instruction to the loop body.
+  Shape multiply_shape = induction_variable->shape();
+  loop_body->AddInstruction(
+      HloInstruction::CreateBinary(multiply_shape, HloOpcode::kMultiply,
+                                   induction_variable, induction_variable));
+
+  // Create a pass pipeline with the HloDCE pass.
+  HloPassPipeline pipeline("pass_pipeline");
+  pipeline.AddPass<HloDCE>();
+
+  // Run the WhileLoopUnroller with the pass pipeline.
+  UnrollConfig config;
+  EXPECT_TRUE(WhileLoopUnroller(/*unroll_factor=*/-1,
+                                /*wrap_in_trivial_loop=*/false, config,
+                                &pipeline)
+                  .Run(m.get())
+                  .value());
+
+  // Check that the dead multiply instruction is removed.
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kMultiply), nullptr);
 }
 
 }  // namespace
