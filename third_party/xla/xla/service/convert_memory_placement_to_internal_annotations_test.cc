@@ -25,10 +25,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -36,6 +40,10 @@ namespace {
 class ConvertMemoryPlacementToInternalAnnotationsTest : public HloTestBase {
  public:
   ConvertMemoryPlacementToInternalAnnotationsTest() = default;
+
+  static bool IsHostComputeCall(const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kCall;
+  }
 };
 
 TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest, ConvertPinnedHostTest) {
@@ -485,30 +493,41 @@ ENTRY main.183 {
   EXPECT_EQ(custom_calls_count, 4);
 }
 
+// Tests that if the only user of a move-to-host custom call is a host compute
+// call, we can just remove the move-to-host custom call.
 TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
-       ConvertOutputPinnedHostTest) {
+       OmitMoveToHostCustomCallIfUsedByHostComputeCall) {
   constexpr std::string_view hlo_string = R"(
   HloModule m, entry_computation_layout={(f32[2,2]{1,0:T(2,128)},f32[2,2]{1,0:T(2,128)})->f32[2,2]{1,0:T(2,128)S(5)}}
+  
+  host_computation {
+    p0 = f32[2,2] parameter(0)
+    p1 = f32[2,2] parameter(1)
+    ROOT a = f32[2,2] add(p0, p1)
+  }
+  
   ENTRY m {
     x = f32[2,2] parameter(0)
     y = f32[2,2] parameter(1)
     crs = f32[2,2] add(x, y)
-    ROOT transfer = f32[2,2] custom-call(crs), custom_call_target="annotate_device_placement", frontend_attributes={_xla_buffer_placement="pinned_host"}
+    transfer = f32[2,2] custom-call(crs), custom_call_target="annotate_device_placement", frontend_attributes={_xla_buffer_placement="pinned_host"}
+    ROOT host_compute_result = f32[2,2] call(transfer, x), to_apply=host_computation
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  bool changed =
-      ConvertMemoryPlacementToInternalAnnotations().Run(module.get()).value();
+  bool changed = ConvertMemoryPlacementToInternalAnnotations(IsHostComputeCall)
+                     .Run(module.get())
+                     .value();
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
   int64_t move_to_host_count = 0;
-  for (auto* c : module->computations()) {
-    for (auto* instr : c->instructions()) {
+  for (HloComputation* c : module->computations()) {
+    for (HloInstruction* instr : c->instructions()) {
       move_to_host_count += instr->IsCustomCall(
           host_memory_offload_annotations::kMoveToHostCustomCallTarget);
     }
   }
-  EXPECT_EQ(move_to_host_count, 1);
+  EXPECT_EQ(move_to_host_count, 0);
 }
 
 }  // namespace

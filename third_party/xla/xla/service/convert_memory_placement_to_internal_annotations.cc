@@ -64,16 +64,25 @@ absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
                 instruction->name(), instruction->operand_count());
           }
           HloInstruction* input = instruction->mutable_operand(0);
-          HloInstruction* move_to_host_custom_call =
-              c->AddInstruction(HloInstruction::CreateCustomCall(
-                  input->shape(), {input},
-                  host_memory_offload_annotations::
-                      kMoveToHostCustomCallTarget));
-          if (instruction->has_sharding()) {
-            move_to_host_custom_call->set_sharding(instruction->sharding());
+
+          if (instruction->users().size() == 1 &&
+              is_host_compute_call_(*instruction->users().front())) {
+            // If the only user is a host compute call, we can just remove the
+            // memory annotation to this host memory annotation instruction.
+            TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(input));
+          } else {
+            HloInstruction* move_to_host_custom_call =
+                c->AddInstruction(HloInstruction::CreateCustomCall(
+                    input->shape(), {input},
+                    host_memory_offload_annotations::
+                        kMoveToHostCustomCallTarget));
+            if (instruction->has_sharding()) {
+              move_to_host_custom_call->set_sharding(instruction->sharding());
+            }
+            TF_RETURN_IF_ERROR(
+                instruction->ReplaceAllUsesWith(move_to_host_custom_call));
           }
-          TF_RETURN_IF_ERROR(
-              instruction->ReplaceAllUsesWith(move_to_host_custom_call));
+
           TF_RETURN_IF_ERROR(
               c->RemoveInstructionAndUnusedOperands(instruction));
           changed = true;
