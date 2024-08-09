@@ -22,18 +22,20 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 namespace {
-constexpr char kConfigNumPartitions[] = "mhlo.num_partitions";
-constexpr char kConfigNumReplicas[] = "mhlo.num_replicas";
+
+constexpr char kMhloNumPartitions[] = "mhlo.num_partitions";
+constexpr char kMhloNumReplicas[] = "mhlo.num_replicas";
+
 }  // namespace
 
 void ExportHloModuleConfig(xla::HloModuleConfig& config,
                            mlir::ModuleOp module) {
   if (auto num_partitions =
-          module->getAttrOfType<mlir::IntegerAttr>(kConfigNumPartitions)) {
+          module->getAttrOfType<mlir::IntegerAttr>(kMhloNumPartitions)) {
     config.set_num_partitions(num_partitions.getInt());
   }
   if (auto num_replicas =
-          module->getAttrOfType<mlir::IntegerAttr>(kConfigNumReplicas)) {
+          module->getAttrOfType<mlir::IntegerAttr>(kMhloNumReplicas)) {
     config.set_replica_count(num_replicas.getInt());
   }
 }

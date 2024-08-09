@@ -19,8 +19,9 @@ limitations under the License.
 #define XLA_TRANSLATE_MHLO_TO_HLO_LAYOUT_UTIL_H_
 
 #include <functional>
-#include <vector>
+#include <optional>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -30,10 +31,10 @@ limitations under the License.
 namespace mlir {
 
 // XLA Layout preferences. Currently, when it comes to TPU, there are two
-// primary layout choices for any XLA argumetns (parameter or resource): (1)
+// primary layout choices for any XLA arguments (parameter or resource): (1)
 // CompactChunkPadded and (2) Linear. CompactChunkPadded is the native TPU
 // layout while Linear is native host (CPU) layout.
-// This enum allows the caller of XLA to progogate layout preference to the XLA
+// This enum allows the caller of XLA to propagate layout preference to the XLA
 // compiler.
 //   kNoPreference: the generic layout where the XLA compiler has the freedom
 //                  to assign any layout.
