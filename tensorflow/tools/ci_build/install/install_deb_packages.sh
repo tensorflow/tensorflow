@@ -48,12 +48,18 @@ apt-get install -y --no-install-recommends \
     autoconf \
     automake \
     build-essential \
+    clang \
     curl \
     ffmpeg \
+    gcc \
     git \
     libcurl4-openssl-dev \
     libtool \
     libssl-dev \
+    libffi-dev \
+    liblapack-dev \
+    libblas-dev \
+    make \
     mlocate \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
@@ -62,6 +68,7 @@ apt-get install -y --no-install-recommends \
     python3-virtualenv \
     python3-dev \
     python3-setuptools \
+    python3-numpy \
     rsync \
     sudo \
     swig \
@@ -70,6 +77,7 @@ apt-get install -y --no-install-recommends \
     wget \
     zip \
     zlib1g-dev
+
 
 # populate the database
 updatedb
