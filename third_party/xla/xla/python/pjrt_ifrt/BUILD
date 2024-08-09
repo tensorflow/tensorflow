@@ -235,6 +235,7 @@ cc_library(
         "//xla/pjrt/distributed:topology_util",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
+        "//xla/python/ifrt:basic_device_allocation",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/service:hlo_proto_cc",
         "//xla/translate/mhlo_to_hlo:type_to_shape",

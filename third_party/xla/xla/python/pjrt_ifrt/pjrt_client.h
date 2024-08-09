@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -186,6 +187,9 @@ class PjRtClient final
   }
 
   const AttributeMap& Attributes() const override;
+
+  absl::StatusOr<tsl::RCReference<DeviceAllocation>> AllocateDevices(
+      absl::string_view name, AttributeMap constraints) override;
 
   int device_count() const override {
     DCHECK(this);

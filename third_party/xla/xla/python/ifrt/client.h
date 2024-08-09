@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -198,6 +199,63 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   //   executables from this client are considered not serializable.
   virtual const AttributeMap& Attributes() const = 0;
 
+  // Creates a `DeviceAllocation` that satisfies all provided `constraints`.
+  //
+  // `name` specifies the name of `DeviceAllocation` that must be unique within
+  //  the instance of `Client`. A `DeviceAllocation` may be identified by its
+  //  name in some `Constraint` (see `DeviceAllocation::Constraints`).
+  //
+  // * If no `constraints` is provided, the allocation will contain all
+  //   available devices.
+  // * If the `constraints` cannot be satisfied, returns an
+  //   `InvalidArgumentError`.
+  // * If there are multiple possible allocation possibilities, the choice is up
+  //   to the implementation.
+  //
+  // Returned `DeviceAllocation` is an RAII object whose lifetime represents the
+  // lifetime of the allocation in the runtime.
+  //
+  // If the client allocates new devices for a new device allocation, these new
+  // devices will not be returned by client-wide device enumeration APIs such as
+  // `devices()`, `addressable_devices()`, and `*_count()` methods. In other
+  // words, these APIs will operate on a static list of devices that is
+  // unaffected by `AllocateDevices()` calls. In contrast, device lookup APIs
+  // such as `LookupDevice()` and `LookupAddressableDevice()` will work for any
+  // device.
+  //
+  //
+  // Standard constraints include:
+  //
+  // * `IFRT_DEVICE_IDS` (Int64ListValue): The devices must be exactly as
+  // specified in the value.
+  //
+  // * `IFRT_PLATFORM_NAME` (StringValue): The platform name of devices must
+  // equal to the value.
+  //
+  // * `IFRT_MESH_SHAPE` (Int64ListValue): The devices must be arranged for
+  // efficient collectives as they will be used as a "mesh" whose shape is
+  // specified in the value. Major-most dimensions see less communication
+  // traffic and minor-most dimensions see more communication traffic. The
+  // devices in the allocation will be flattened in a major-to-minor order.
+  //
+  // * `IFRT_COLOCATION` (StringValue): Devices must be colocated with the
+  // `DeviceAllocation` identified by `name`. Colocation is defined to be close
+  // proximity; it does not necessary mean on the same physical devices.
+  //
+  // IFRT implementations may support additional constraints. For example:
+  //
+  // `GOOGLE_IFRT_TOPOLOGY` (StringValue) takes a serialized
+  // `xla::ifrt::Topology` and produces a `DeviceAllocation` that satisfies the
+  // topology. This is not yet a standard constraint because the serialization
+  // format is defined outside of IFRT and is subject to change.
+  virtual absl::StatusOr<tsl::RCReference<DeviceAllocation>> AllocateDevices(
+      absl::string_view name, AttributeMap constraints) = 0;
+
+  static constexpr absl::string_view kIfrtDeviceIds = "IFRT_DEVICE_IDS";
+  static constexpr absl::string_view kIfrtPlatformName = "IFRT_PLATFORM_NAME";
+  static constexpr absl::string_view kIfrtMeshShape = "IFRT_MESH_SHAPE";
+  static constexpr absl::string_view kIfrtColocation = "IFRT_COLOCATION";
+
   virtual int device_count() const = 0;
   virtual int addressable_device_count() const = 0;
   virtual absl::Span<Device* const> devices() const = 0;
@@ -217,6 +275,8 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual Compiler* GetDefaultCompiler() = 0;
 
   // Returns a topology that covers the provided devices.
+  // TODO(hyeontaek): Deprecate this API in favor of
+  // `DeviceAllocation::GetTopology()`.
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
       const DeviceList& devices) const = 0;
 

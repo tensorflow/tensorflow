@@ -29,6 +29,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -36,6 +37,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -299,6 +301,17 @@ xla::ifrt::Future<> Client::GetReadyFuture(
   futures.push_back(Future<>(std::move(promise)));
 
   return JoinFutures(futures);
+}
+
+absl::StatusOr<tsl::RCReference<DeviceAllocation>> Client::AllocateDevices(
+    absl::string_view name, AttributeMap constraints) {
+  // TODO(hyeontaek): Implement AllocateDevices for simple cases where no new
+  // devices are created.
+  // TODO(hyeontaek): Since IFRT Proxy may serve a backend that uses a dynamic
+  // set of devices, we need to update the client proxy to also handle device
+  // addition and removal.
+  return absl::UnimplementedError(
+      "AllocateDevices is unsupported in IFRT Proxy");
 }
 
 absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(

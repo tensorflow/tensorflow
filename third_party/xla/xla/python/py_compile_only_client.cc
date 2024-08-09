@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -220,6 +221,15 @@ class CompileOnlyIfRtClient final
     return topology_->platform_id();
   }
   const ifrt::AttributeMap& Attributes() const override { return attributes_; }
+
+  absl::StatusOr<tsl::RCReference<ifrt::DeviceAllocation>> AllocateDevices(
+      absl::string_view name, ifrt::AttributeMap constraints) override {
+    // TODO(hyeontaek): Implement `AllocateDevices`. This will provide a way to
+    // compile computations for different target topologies and meshes without
+    // having to recreate compile-only clients.
+    return Unimplemented(
+        "AllocateDevices not available with compile-only client.");
+  }
 
   int device_count() const override { return devices().size(); }
   int addressable_device_count() const override { return 0; }
