@@ -15,6 +15,7 @@ limitations under the License.
 #include "tsl/profiler/backends/cpu/traceme_recorder.h"
 
 #include <atomic>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <utility>
@@ -39,6 +40,39 @@ namespace {
 using ::testing::ElementsAre;
 
 MATCHER_P(Named, name, "") { return arg.name == name; }
+
+TEST(RecorderTest, StartAndStop) {
+  ASSERT_FALSE(TraceMeRecorder::Active());
+  TraceMeRecorder::Start(/*level=*/1);
+  EXPECT_TRUE(TraceMeRecorder::Active(/*level=*/1));
+  EXPECT_FALSE(TraceMeRecorder::Active(/*level=*/2));
+  TraceMeRecorder::Start(/*level=*/2);
+  EXPECT_FALSE(TraceMeRecorder::Active(/*level=*/2));
+  TraceMeRecorder::Stop();
+  EXPECT_FALSE(TraceMeRecorder::Active());
+  TraceMeRecorder::Start(/*level=*/2);
+  EXPECT_TRUE(TraceMeRecorder::Active(/*level=*/1));
+  EXPECT_TRUE(TraceMeRecorder::Active(/*level=*/2));
+  EXPECT_FALSE(TraceMeRecorder::Active(/*level=*/3));
+  TraceMeRecorder::Stop();
+  EXPECT_FALSE(TraceMeRecorder::Active());
+}
+
+TEST(RecorderTest, LevelZero) {
+  // Level 0 should not be used in TraceMe, but can be started and stopped.
+  ASSERT_FALSE(TraceMeRecorder::Active(/*level=*/0));
+  TraceMeRecorder::Start(/*level=*/0);
+  EXPECT_TRUE(TraceMeRecorder::Active(/*level=*/0));
+  EXPECT_FALSE(TraceMeRecorder::Active(/*level=*/1));
+  TraceMeRecorder::Stop();
+  EXPECT_FALSE(TraceMeRecorder::Active(/*level=*/0));
+  // kTracingDisabled is not a valid level, it is treated as zero.
+  TraceMeRecorder::Start(/*level=*/TraceMeRecorder::kTracingDisabled);
+  EXPECT_TRUE(TraceMeRecorder::Active(/*level=*/0));
+  EXPECT_FALSE(TraceMeRecorder::Active(/*level=*/1));
+  TraceMeRecorder::Stop();
+  EXPECT_FALSE(TraceMeRecorder::Active(/*level=*/0));
+}
 
 TEST(RecorderTest, SingleThreaded) {
   int64_t start_time = GetCurrentTimeNanos();

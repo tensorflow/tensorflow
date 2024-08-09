@@ -15,11 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_CONNECTED_TRACEME_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_CONNECTED_TRACEME_H_
 
+#include <cstdint>
 #include <optional>
-#include <string>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -80,7 +79,7 @@ class TraceMeProducer : public TraceMe {
   template <typename NameT>
   explicit TraceMeProducer(NameT&& name,
                            ContextType context_type = ContextType::kGeneric,
-                           std::optional<uint64> context_id = std::nullopt,
+                           std::optional<uint64_t> context_id = std::nullopt,
                            int level = 2)
       : TraceMe(std::forward<NameT>(name), level),
         context_id_(context_id.has_value() ? context_id.value()
@@ -90,16 +89,16 @@ class TraceMeProducer : public TraceMe {
     });
   }
 
-  uint64 GetContextId() const { return context_id_; }
+  uint64_t GetContextId() const { return context_id_; }
 
  private:
-  uint64 context_id_;
+  uint64_t context_id_;
 };
 
 class TraceMeConsumer : public TraceMe {
  public:
   template <typename NameT>
-  TraceMeConsumer(NameT&& name, ContextType context_type, uint64 context_id,
+  TraceMeConsumer(NameT&& name, ContextType context_type, uint64_t context_id,
                   int level = 2)
       : TraceMe(std::forward<NameT>(name), level) {
     AppendMetadata([&] {
@@ -108,7 +107,7 @@ class TraceMeConsumer : public TraceMe {
   }
 
   template <typename NameT>
-  TraceMeConsumer(NameT&& name, uint64 context_id, int level = 2)
+  TraceMeConsumer(NameT&& name, uint64_t context_id, int level = 2)
       : TraceMeConsumer(std::forward<NameT>(name), ContextType::kGeneric,
                         context_id, level) {}
 };
