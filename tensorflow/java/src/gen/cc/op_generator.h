@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/java/src/gen/cc/op_specs.h"
 
 namespace tensorflow {
