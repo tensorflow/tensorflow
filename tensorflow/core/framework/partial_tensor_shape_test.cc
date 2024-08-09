@@ -295,14 +295,14 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
   const PartialTensorShape e;
 
   PartialTensorShape test;
-  EXPECT_EQ(OkStatus(), a.MergeWith(a, &test));
+  EXPECT_EQ(absl::OkStatus(), a.MergeWith(a, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
 
   test = PartialTensorShape();
-  EXPECT_EQ(OkStatus(), a.MergeWith(b, &test));
+  EXPECT_EQ(absl::OkStatus(), a.MergeWith(b, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), 1);
   EXPECT_EQ(test.dim_size(1), 0);
@@ -312,28 +312,28 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
   EXPECT_TRUE(errors::IsInvalidArgument(a.MergeWith(d, &test)));
 
   test = PartialTensorShape();
-  EXPECT_EQ(OkStatus(), a.MergeWith(c, &test));
+  EXPECT_EQ(absl::OkStatus(), a.MergeWith(c, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
 
   test = PartialTensorShape();
-  EXPECT_EQ(OkStatus(), c.MergeWith(a, &test));
+  EXPECT_EQ(absl::OkStatus(), c.MergeWith(a, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
 
   test = PartialTensorShape();
-  EXPECT_EQ(OkStatus(), a.MergeWith(e, &test));
+  EXPECT_EQ(absl::OkStatus(), a.MergeWith(e, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
 
   test = PartialTensorShape();
-  EXPECT_EQ(OkStatus(), e.MergeWith(a, &test));
+  EXPECT_EQ(absl::OkStatus(), e.MergeWith(a, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);

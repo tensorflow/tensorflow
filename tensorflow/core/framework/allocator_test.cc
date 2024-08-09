@@ -236,7 +236,7 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
 
   // Get profiling results
   tensorflow::profiler::XSpace xspace;
-  EXPECT_EQ(OkStatus(), profiler->CollectData(&xspace));
+  EXPECT_EQ(absl::OkStatus(), profiler->CollectData(&xspace));
 
   // Validate the output
   const auto plane = ::tsl::profiler::FindPlaneWithName(

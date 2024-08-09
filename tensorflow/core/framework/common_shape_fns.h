@@ -52,7 +52,7 @@ inline Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &out));
   c->set_output(0, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Transfers shape of input(0) to output(0), after asserting its rank >= <rank>.
@@ -61,7 +61,7 @@ inline Status UnchangedShapeWithRankAtLeast(
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), rank, &out));
   c->set_output(0, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Transfers shape of input(0) to output(0), after asserting its rank <= <rank>.
@@ -70,18 +70,18 @@ inline Status UnchangedShapeWithRankAtMost(shape_inference::InferenceContext* c,
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), rank, &out));
   c->set_output(0, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Shape function for use with ops no outputs.
 inline Status NoOutputs(shape_inference::InferenceContext* c) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Shape function for ops that output a single scalar value.
 inline Status ScalarShape(shape_inference::InferenceContext* c) {
   c->set_output(0, c->Scalar());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Shape function for binary ops where both inputs and the output match.
@@ -89,7 +89,7 @@ inline Status MergeBothInputsShapeFn(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &out));
   c->set_output(0, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Shape function for dataset iterators.
@@ -240,7 +240,7 @@ inline Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c,
   TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
       c, c->input(0), c->input(1), true, &out));
   c->set_output(output_index, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Shape function for binary operators that broadcast their inputs.

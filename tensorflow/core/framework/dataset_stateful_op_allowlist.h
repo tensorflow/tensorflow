@@ -27,12 +27,12 @@ class AllowlistedStatefulOpRegistry {
  public:
   Status Add(string op_name) {
     op_names_.insert(std::move(op_name));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Remove(string op_name) {
     op_names_.erase(op_name);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool Contains(const string& op_name) { return op_names_.count(op_name); }

@@ -151,7 +151,7 @@ Status DeviceFactory::ListAllPhysicalDevices(std::vector<string>* devices) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DeviceFactory::ListPluggablePhysicalDevices(
@@ -163,7 +163,7 @@ Status DeviceFactory::ListPluggablePhysicalDevices(
       TF_RETURN_IF_ERROR(factory->ListPhysicalDevices(devices));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DeviceFactory::GetAnyDeviceDetails(
@@ -223,7 +223,7 @@ Status DeviceFactory::AddCpuDevices(
     return errors::NotFound("No CPU devices are available in this process");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DeviceFactory::AddDevices(
@@ -259,7 +259,7 @@ Status DeviceFactory::AddDevices(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<Device> DeviceFactory::NewDevice(const string& type,
