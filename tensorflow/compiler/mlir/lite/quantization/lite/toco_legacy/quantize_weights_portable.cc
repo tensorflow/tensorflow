@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,28 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/quantize_weights.h"
+// clang-format off
+#include "tensorflow/lite/tools/toco_legacy/quantize_weights.h"
+// clang-format on
 
 #include <algorithm>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
-#include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_weights.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/context.h"
-#include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
-#include "tensorflow/lite/tools/optimize/model_utils.h"
-#include "tensorflow/lite/tools/optimize/quantization_utils.h"
+// #include "tensorflow/lite/context.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
+#include "tensorflow/lite/core/model.h"  // to be replaced with unda's model_builder
 
 namespace tflite {
 namespace optimize {
@@ -57,18 +56,6 @@ struct TensorPerChannel {
 // The default minimum number of elements a weights array must have to be
 // quantized by this transformation.
 const int kWeightsMinNumElementsDefault = 1024;
-
-// Convert the MLIR CustomOpMap from the TFlite CustomOpMap as their member
-// variables differ.
-void ConstructMLIRCustomOpMap(mlir::lite::CustomOpMap& mlir_map,
-                              const CustomOpMap& tflite_map) {
-  for (const auto& entry : tflite_map) {
-    mlir_map[entry.first].quantizable_input_indices =
-        entry.second.quantizable_input_indices;
-    mlir_map[entry.first].is_weight_only = !entry.second.is_hybrid;
-    mlir_map[entry.first].no_side_effect = true;
-  }
-}
 
 // Gets the operators that consume tensor_idx.
 std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
@@ -209,7 +196,7 @@ bool CheckAllOpInputsQuantized(const SubGraphT* subgraph, const OperatorT* op,
 
 // Inserts Tensors for each input tensor of op that should be
 // quantized into tensor_map.
-absl::Status InsertQuantizableInputTensorsFromOperator(
+TfLiteStatus InsertQuantizableInputTensorsFromOperator(
     const ModelT* model, OperatorT* op, uint64_t weights_min_num_elements,
     const CustomOpMap& custom_op_map,
     absl::flat_hash_map<int32_t, TensorPerChannel>* tensor_map,
@@ -236,9 +223,7 @@ absl::Status InsertQuantizableInputTensorsFromOperator(
     }
 
     uint64_t num_elements;
-    if (utils::NumElements(*tensor, &num_elements) != kTfLiteOk) {
-      return absl::InternalError("Error in quantization_utils NumElements");
-    }
+    TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
     if (num_elements < weights_min_num_elements) {
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " because it has fewer than " << weights_min_num_elements
@@ -307,7 +292,7 @@ absl::Status InsertQuantizableInputTensorsFromOperator(
     }
   }
 
-  return absl::OkStatus();
+  return kTfLiteOk;
 }
 
 // Updates operator code versions for the operators with INT8 inputs.
@@ -411,10 +396,13 @@ absl::Status QuantizeWeightsInt8(
     absl::flat_hash_map<int32_t, TensorPerChannel> tensor_map;
     for (int i = 0; i < subgraph->operators.size(); ++i) {
       OperatorT* op = subgraph->operators[i].get();
-      absl::Status status = InsertQuantizableInputTensorsFromOperator(
-          model.get(), op, weights_min_num_elements, custom_op_map, &tensor_map,
-          subgraph_index, use_updated_hybrid_scheme);
-      if (!status.ok()) return status;
+      if (InsertQuantizableInputTensorsFromOperator(
+              model.get(), op, weights_min_num_elements, custom_op_map,
+              &tensor_map, subgraph_index,
+              use_updated_hybrid_scheme) != kTfLiteOk) {
+        return absl::InternalError(
+            "Failed to insert quantizable input tensors from operator");
+      }
     }
 
     for (std::pair<int32_t, TensorPerChannel> tensor_pair : tensor_map) {
@@ -423,13 +411,12 @@ absl::Status QuantizeWeightsInt8(
         if (utils::SymmetricQuantizeTensorPerChannel(
                 model.get(), tensor_pair.second.t,
                 tensor_pair.second.channel_dim, nullptr) != kTfLiteOk) {
-          return absl::InternalError(
-              "SymmetricQuantizeTensorPerChannel failed");
+          return absl::InternalError("Failed to quantize tensor per channel");
         }
       } else {
         if (utils::SymmetricQuantizeTensor(model.get(), tensor_pair.second.t) !=
             kTfLiteOk) {
-          return absl::InternalError("SymmetricQuantizeTensor failed");
+          return absl::InternalError("Failed to quantize tensor");
         }
       }
     }
@@ -446,7 +433,8 @@ absl::Status QuantizeWeightsInt8(
                                             consumer_op_infos, custom_op_map);
         if (tensor_idx < 0) {
           // Error message is already logged by PassQuantizationAndGetConsumers.
-          return absl::InternalError("PassQuantizationAndGetConsumers failed");
+          return absl::InternalError(
+              "Failed to pass quantization and get consumers");
         }
       }
 
@@ -615,12 +603,13 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              uint64_t weights_min_num_elements,
                              bool use_hybrid_evaluation,
                              QuantizerType quantizer_type) {
+  if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
+  }
   // By default we require that only weights with more than
   // kWeightsMinSizeDefault elements are quantized.
-  if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    return mlir::lite::QuantizeWeights(
-        builder, input_model, weights_min_num_elements, use_hybrid_evaluation);
-  }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, use_hybrid_evaluation,
                              weights_min_num_elements, custom_op_map,
@@ -633,8 +622,9 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              uint64_t weights_min_num_elements,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    return mlir::lite::QuantizeWeights(builder, input_model,
-                                       weights_min_num_elements);
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, true,
@@ -646,15 +636,15 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model, BufferType quant_type,
                              bool use_updated_hybrid_scheme,
                              QuantizerType quantizer_type) {
-  // By default we require that only weights with more than
-  // kWeightsMinSizeDefault elements are quantized.
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    return mlir::lite::QuantizeWeights(builder, input_model,
-                                       (mlir::lite::BufferType)quant_type,
-                                       use_updated_hybrid_scheme);
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   switch (quant_type) {
     case BufferType::QUANTIZED_INT8: {
+      // By default we require that only weights with more than
+      // kWeightsMinSizeDefault elements are quantized.
       CustomOpMap custom_op_map;
       return QuantizeWeightsInt8(builder, input_model, true,
                                  kWeightsMinNumElementsDefault, custom_op_map,
@@ -671,10 +661,9 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const CustomOpMap& custom_op_map,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    mlir::lite::CustomOpMap mlir_custom_op_map;
-    ConstructMLIRCustomOpMap(mlir_custom_op_map, custom_op_map);
-    return mlir::lite::QuantizeWeights(
-        builder, input_model, weights_min_num_elements, mlir_custom_op_map);
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   return QuantizeWeightsInt8(builder, input_model, true,
                              weights_min_num_elements, custom_op_map,
@@ -689,11 +678,9 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const flat_hash_set<BuiltinOperator>& op_denylist,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    mlir::lite::CustomOpMap mlir_custom_op_map;
-    ConstructMLIRCustomOpMap(mlir_custom_op_map, custom_op_map);
-    return mlir::lite::QuantizeWeights(
-        builder, input_model, weights_min_num_elements, mlir_custom_op_map,
-        use_updated_hybrid_scheme, op_denylist);
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return absl::InternalError(
+        "Portable targets cannot use the MLIR quantizer.");
   }
   return QuantizeWeightsInt8(builder, input_model,
                              /*use_hybrid_evaluation=*/true,

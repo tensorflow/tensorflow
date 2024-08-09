@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,32 +12,68 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// clang-format off
-#include "tensorflow/lite/tools/optimize/quantize_weights.h"
-// clang-format on
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantize_weights.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
-#include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_weights.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/context.h"
-#include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
-#include "tensorflow/lite/tools/optimize/model_utils.h"
-#include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
-namespace tflite {
-namespace optimize {
-
+namespace mlir {
+namespace lite {
+namespace toco_legacy {
 namespace {
+
+using absl::flat_hash_set;
+using mlir::lite::toco_legacy::
+    CustomOpMap;  // Use this instead of mlir::lite::CustomOpMap because that
+                  // uses mlir::lite::CustomOpInfo in
+                  // tensorflow/compiler/mlir/lite/quantization/lite/quantize_weights.h,
+                  // and we need mlir::lite::toco_legacy::CustomOpInfo, in
+                  // tensorflow/compiler/mlir/lite/quantization/lite/optimize/quantize_weights.h
+using tflite::BufferT;
+using tflite::BuiltinOperator;
+using tflite::BuiltinOperator_BATCH_MATMUL;
+using tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM;
+using tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN;
+using tflite::BuiltinOperator_CONV_2D;
+using tflite::BuiltinOperator_CUSTOM;
+using tflite::BuiltinOperator_DEPTHWISE_CONV_2D;
+using tflite::BuiltinOperator_EMBEDDING_LOOKUP;
+using tflite::BuiltinOperator_FULLY_CONNECTED;
+using tflite::BuiltinOperator_GATHER;
+using tflite::BuiltinOperator_LSTM;
+using tflite::BuiltinOperator_RNN;
+using tflite::BuiltinOperator_SVDF;
+using tflite::BuiltinOperator_TRANSPOSE_CONV;
+using tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM;
+using tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN;
+using tflite::FinishModelBuffer;
+using tflite::GetBuiltinCode;
+using tflite::Model;
+using tflite::ModelT;
+using tflite::OperatorCodeT;
+using tflite::OperatorT;
+using tflite::SubGraphT;
+using tflite::TensorT;
+using tflite::TensorType_FLOAT32;
+using tflite::TensorType_INT8;
 
 struct ConsumerOpInfo {
   OperatorT* op;
@@ -56,6 +92,22 @@ struct TensorPerChannel {
 // The default minimum number of elements a weights array must have to be
 // quantized by this transformation.
 const int kWeightsMinNumElementsDefault = 1024;
+
+// Redefined from tensorflow/lite/core/c/common.h as local const int instead of
+// discouraged #define macro.
+const int kTfLiteOptionalTensor = -1;
+
+// Convert the MLIR CustomOpMap from the TFlite CustomOpMap as their member
+// variables differ.
+void ConstructMLIRCustomOpMap(mlir::lite::CustomOpMap& mlir_map,
+                              const CustomOpMap& tflite_map) {
+  for (const auto& entry : tflite_map) {
+    mlir_map[entry.first].quantizable_input_indices =
+        entry.second.quantizable_input_indices;
+    mlir_map[entry.first].is_weight_only = !entry.second.is_hybrid;
+    mlir_map[entry.first].no_side_effect = true;
+  }
+}
 
 // Gets the operators that consume tensor_idx.
 std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
@@ -98,27 +150,27 @@ std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
              builtin_op_code == BuiltinOperator_TRANSPOSE_CONV) {
     return {1};
   } else if (builtin_op_code == BuiltinOperator_SVDF) {
-    // https://www.tensorflow.org/code/tensorflow/lite/kernels/svdf.cc
+    // tensorflow/lite/kernels/svdf.cc
     return {1, 2};
   } else if (builtin_op_code == BuiltinOperator_LSTM ||
              builtin_op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM) {
-    // https://www.tensorflow.org/code/tensorflow/lite/kernels/lstm.cc
-    // https://www.tensorflow.org/code/tensorflow/lite/kernels/unidirectional_sequence_lstm.cc
+    // tensorflow/lite/kernels/lstm.cc
+    // tensorflow/lite/kernels/unidirectional_sequence_lstm.cc
     return {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16};
   } else if (builtin_op_code == BuiltinOperator_RNN ||
              builtin_op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
-    // https://www.tensorflow.org/code/tensorflow/lite/kernels/basic_rnn.cc
-    // https://www.tensorflow.org/code/tensorflow/lite/kernels/unidirectional_sequence_rnn.cc
+    // tensorflow/lite/kernels/basic_rnn.cc
+    // tensorflow/lite/kernels/unidirectional_sequence_rnn.cc
     return {1, 2};
   } else if (builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM) {
-    // https://www.tensorflow.org/code/tensorflow/lite/kernels/bidirectional_sequence_lstm.cc
+    // tensorflow/lite/kernels/bidirectional_sequence_lstm.cc
     return {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 16, 18, 19, 20, 21,
             22, 23, 24, 25, 26, 27, 28, 33, 40, 41, 42, 43, 44, 45, 46, 47};
   } else if (builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN) {
-    // https://www.tensorflow.org/code/tensorflow/lite/kernels/bidirectional_sequence_rnn.cc
+    // tensorflow/lite/kernels/bidirectional_sequence_rnn.cc
     return {1, 2, 4, 5, 6, 8, 9, 10, 11};
   } else if (builtin_op_code == BuiltinOperator_GATHER) {
-    // https://www.tensorflow.org/code/tensorflow/lite/kernels/gather.cc
+    // tensorflow/lite/kernels/gather.cc
     return {0};
   }
   return {};
@@ -160,9 +212,9 @@ bool IsHybridEvaluationOp(const OperatorT* op, const OperatorCodeT* op_code,
              builtin_op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
     eval_hybrid = true;
   } else if (builtin_op_code == BuiltinOperator_LSTM) {
-    const LSTMOptionsT* options = op->builtin_options.AsLSTMOptions();
+    const tflite::LSTMOptionsT* options = op->builtin_options.AsLSTMOptions();
     // Only lstm kernel_type full supports hybrid evaluation.
-    if (options->kernel_type == LSTMKernelType_FULL) {
+    if (options->kernel_type == tflite::LSTMKernelType_FULL) {
       eval_hybrid = true;
     }
   } else if (builtin_op_code == BuiltinOperator_DEPTHWISE_CONV_2D) {
@@ -196,7 +248,7 @@ bool CheckAllOpInputsQuantized(const SubGraphT* subgraph, const OperatorT* op,
 
 // Inserts Tensors for each input tensor of op that should be
 // quantized into tensor_map.
-TfLiteStatus InsertQuantizableInputTensorsFromOperator(
+absl::Status InsertQuantizableInputTensorsFromOperator(
     const ModelT* model, OperatorT* op, uint64_t weights_min_num_elements,
     const CustomOpMap& custom_op_map,
     absl::flat_hash_map<int32_t, TensorPerChannel>* tensor_map,
@@ -223,7 +275,9 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
     }
 
     uint64_t num_elements;
-    TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
+    if (!mlir::lite::toco_legacy::NumElements(*tensor, &num_elements).ok()) {
+      return absl::InternalError("Error in quantization_utils NumElements");
+    }
     if (num_elements < weights_min_num_elements) {
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " because it has fewer than " << weights_min_num_elements
@@ -292,7 +346,7 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
     }
   }
 
-  return kTfLiteOk;
+  return absl::OkStatus();
 }
 
 // Updates operator code versions for the operators with INT8 inputs.
@@ -367,7 +421,8 @@ PassQuantizationAndGetConsumers(
   const TensorT* input_tensor = subgraph->tensors[input_tensor_idx].get();
   TensorT* output_tensor = subgraph->tensors[output_tensor_idx].get();
   if (!output_tensor->quantization) {
-    output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    output_tensor->quantization =
+        std::make_unique<tflite::QuantizationParametersT>();
   }
   *output_tensor->quantization = *input_tensor->quantization;
   output_tensor->type = TensorType_INT8;
@@ -385,7 +440,7 @@ absl::Status QuantizeWeightsInt8(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
     bool use_hybrid_evaluation, uint64_t weights_min_num_elements,
     const CustomOpMap& custom_op_map, bool use_updated_hybrid_scheme,
-    const flat_hash_set<BuiltinOperator>& op_denylist = {}) {
+    const absl::flat_hash_set<BuiltinOperator>& op_denylist = {}) {
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
@@ -396,27 +451,27 @@ absl::Status QuantizeWeightsInt8(
     absl::flat_hash_map<int32_t, TensorPerChannel> tensor_map;
     for (int i = 0; i < subgraph->operators.size(); ++i) {
       OperatorT* op = subgraph->operators[i].get();
-      if (InsertQuantizableInputTensorsFromOperator(
-              model.get(), op, weights_min_num_elements, custom_op_map,
-              &tensor_map, subgraph_index,
-              use_updated_hybrid_scheme) != kTfLiteOk) {
-        return absl::InternalError(
-            "Failed to insert quantizable input tensors from operator");
-      }
+      absl::Status status = InsertQuantizableInputTensorsFromOperator(
+          model.get(), op, weights_min_num_elements, custom_op_map, &tensor_map,
+          subgraph_index, use_updated_hybrid_scheme);
+      if (!status.ok()) return status;
     }
 
     for (std::pair<int32_t, TensorPerChannel> tensor_pair : tensor_map) {
       // Quantize the tensor.
       if (tensor_pair.second.is_per_channel) {
-        if (utils::SymmetricQuantizeTensorPerChannel(
-                model.get(), tensor_pair.second.t,
-                tensor_pair.second.channel_dim, nullptr) != kTfLiteOk) {
-          return absl::InternalError("Failed to quantize tensor per channel");
+        if (!mlir::lite::toco_legacy::SymmetricQuantizeTensorPerChannel(
+                 model.get(), tensor_pair.second.t,
+                 tensor_pair.second.channel_dim)
+                 .ok()) {
+          return absl::InternalError(
+              "SymmetricQuantizeTensorPerChannel failed");
         }
       } else {
-        if (utils::SymmetricQuantizeTensor(model.get(), tensor_pair.second.t) !=
-            kTfLiteOk) {
-          return absl::InternalError("Failed to quantize tensor");
+        if (!mlir::lite::toco_legacy::SymmetricQuantizeTensor(
+                 model.get(), tensor_pair.second.t)
+                 .ok()) {
+          return absl::InternalError("SymmetricQuantizeTensor failed");
         }
       }
     }
@@ -433,8 +488,7 @@ absl::Status QuantizeWeightsInt8(
                                             consumer_op_infos, custom_op_map);
         if (tensor_idx < 0) {
           // Error message is already logged by PassQuantizationAndGetConsumers.
-          return absl::InternalError(
-              "Failed to pass quantization and get consumers");
+          return absl::InternalError("PassQuantizationAndGetConsumers failed");
         }
       }
 
@@ -477,16 +531,17 @@ absl::Status QuantizeWeightsInt8(
 
       // Create a new tensor to be the output of the dequantize op.
       std::unique_ptr<TensorT> dequantize_output;
-      const string dequant_name = tensor->name + "_dequantize";
-      utils::MakeTensor(dequant_name, tensor->shape, tensor->shape_signature,
-                        TensorType_FLOAT32, &dequantize_output);
+      const std::string dequant_name = tensor->name + "_dequantize";
+      mlir::lite::toco_legacy::MakeTensor(
+          dequant_name, tensor->shape, tensor->shape_signature,
+          TensorType_FLOAT32, &dequantize_output);
       const int32_t dequantize_output_idx = subgraph->tensors.size();
       subgraph->tensors.push_back(std::move(dequantize_output));
 
       // Create the Dequantize operation.
       std::unique_ptr<OperatorT> dequantize_op;
-      utils::MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
-                                    dequantize_output_idx);
+      mlir::lite::toco_legacy::MakeDequantizeOperator(
+          model.get(), &dequantize_op, tensor_idx, dequantize_output_idx);
 
       // Update the op_input of all the ops that need the created dequantize
       // operation.
@@ -551,8 +606,9 @@ absl::Status QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
     // The hash map ensures that we quantize each tensor exactly once.
     for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
       // Quantize the tensor.
-      if (utils::QuantizeTensorFloat16(model.get(), tensor_pair.second) !=
-          kTfLiteOk) {
+      if (!mlir::lite::toco_legacy::QuantizeTensorFloat16(model.get(),
+                                                          tensor_pair.second)
+               .ok()) {
         return absl::InternalError("QuantizeTensorFloat16 failed");
       }
 
@@ -563,16 +619,17 @@ absl::Status QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
 
       // Create a new tensor to be the output of the dequantize op.
       std::unique_ptr<TensorT> dequantize_output;
-      const string dequant_name = tensor->name + "_dequantize";
-      utils::MakeTensor(dequant_name, tensor->shape, tensor->shape_signature,
-                        TensorType_FLOAT32, &dequantize_output);
+      const std::string dequant_name = tensor->name + "_dequantize";
+      mlir::lite::toco_legacy::MakeTensor(
+          dequant_name, tensor->shape, tensor->shape_signature,
+          TensorType_FLOAT32, &dequantize_output);
       const int32_t dequantize_output_idx = subgraph->tensors.size();
       subgraph->tensors.push_back(std::move(dequantize_output));
 
       // Create the Dequantize operation.
       std::unique_ptr<OperatorT> dequantize_op;
-      utils::MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
-                                    dequantize_output_idx);
+      mlir::lite::toco_legacy::MakeDequantizeOperator(
+          model.get(), &dequantize_op, tensor_idx, dequantize_output_idx);
 
       // Update the op_input of all the ops that need the created dequantize
       // operation.
@@ -603,13 +660,12 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              uint64_t weights_min_num_elements,
                              bool use_hybrid_evaluation,
                              QuantizerType quantizer_type) {
-  if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return absl::InternalError(
-        "Portable targets cannot use the MLIR quantizer.");
-  }
   // By default we require that only weights with more than
   // kWeightsMinSizeDefault elements are quantized.
+  if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
+    return mlir::lite::QuantizeWeights(
+        builder, input_model, weights_min_num_elements, use_hybrid_evaluation);
+  }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, use_hybrid_evaluation,
                              weights_min_num_elements, custom_op_map,
@@ -622,9 +678,8 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              uint64_t weights_min_num_elements,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return absl::InternalError(
-        "Portable targets cannot use the MLIR quantizer.");
+    return mlir::lite::QuantizeWeights(builder, input_model,
+                                       weights_min_num_elements);
   }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, true,
@@ -636,16 +691,16 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model, BufferType quant_type,
                              bool use_updated_hybrid_scheme,
                              QuantizerType quantizer_type) {
+  // By default we require that only weights with more than
+  // kWeightsMinSizeDefault elements are quantized.
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return absl::InternalError(
-        "Portable targets cannot use the MLIR quantizer.");
+    return mlir::lite::QuantizeWeights(builder, input_model,
+                                       (mlir::lite::BufferType)quant_type,
+                                       use_updated_hybrid_scheme);
   }
   switch (quant_type) {
     case BufferType::QUANTIZED_INT8: {
-      // By default we require that only weights with more than
-      // kWeightsMinSizeDefault elements are quantized.
-      CustomOpMap custom_op_map;
+      mlir::lite::toco_legacy::CustomOpMap custom_op_map;
       return QuantizeWeightsInt8(builder, input_model, true,
                                  kWeightsMinNumElementsDefault, custom_op_map,
                                  use_updated_hybrid_scheme);
@@ -661,9 +716,10 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const CustomOpMap& custom_op_map,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return absl::InternalError(
-        "Portable targets cannot use the MLIR quantizer.");
+    mlir::lite::CustomOpMap mlir_custom_op_map;
+    ConstructMLIRCustomOpMap(mlir_custom_op_map, custom_op_map);
+    return mlir::lite::QuantizeWeights(
+        builder, input_model, weights_min_num_elements, mlir_custom_op_map);
   }
   return QuantizeWeightsInt8(builder, input_model, true,
                              weights_min_num_elements, custom_op_map,
@@ -678,9 +734,11 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const flat_hash_set<BuiltinOperator>& op_denylist,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
-    return absl::InternalError(
-        "Portable targets cannot use the MLIR quantizer.");
+    mlir::lite::CustomOpMap mlir_custom_op_map;
+    ConstructMLIRCustomOpMap(mlir_custom_op_map, custom_op_map);
+    return mlir::lite::QuantizeWeights(
+        builder, input_model, weights_min_num_elements, mlir_custom_op_map,
+        use_updated_hybrid_scheme, op_denylist);
   }
   return QuantizeWeightsInt8(builder, input_model,
                              /*use_hybrid_evaluation=*/true,
@@ -688,5 +746,6 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              use_updated_hybrid_scheme, op_denylist);
 }
 
-}  // namespace optimize
-}  // namespace tflite
+}  // namespace toco_legacy
+}  // namespace lite
+}  // namespace mlir

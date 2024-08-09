@@ -12,24 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZE_WEIGHTS_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZE_WEIGHTS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_TOCO_LEGACY_QUANTIZE_WEIGHTS_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_TOCO_LEGACY_QUANTIZE_WEIGHTS_H_
 
 #include <cstdint>
-#include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
-#include "tensorflow/lite/context.h"
-#include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 
-namespace tflite {
-namespace optimize {
-using absl::flat_hash_set;
+namespace mlir {
+namespace lite {
+namespace toco_legacy {
+
+using ::tflite::BuiltinOperator;
+using ::tflite::Model;
 
 // Supported resulting types from quantization process.
 enum class BufferType { QUANTIZED_INT8, QUANTIZED_FLOAT16 };
@@ -42,7 +43,7 @@ struct CustomOpInfo {
 };
 
 // Map from custom op code to custom op quantization information.
-using CustomOpMap = std::unordered_map<string, CustomOpInfo>;
+using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 
 // This macro is for internal use for conversions requiring previous behavior.
 #ifdef TFLITE_USE_PREVIOUS_HYBRID_SCHEME
@@ -86,7 +87,7 @@ absl::Status QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
     uint64_t weights_min_num_elements, const CustomOpMap& custom_op_map,
     bool use_updated_hybrid_scheme,
-    const flat_hash_set<BuiltinOperator>& op_denylist = {},
+    const absl::flat_hash_set<BuiltinOperator>& op_denylist = {},
     QuantizerType quantizer_type = QuantizerType::OLD_QUANTIZER);
 
 namespace internal {
@@ -101,7 +102,8 @@ absl::Status QuantizeWeights(
     QuantizerType quantizer_type = QuantizerType::OLD_QUANTIZER);
 }  // namespace internal
 
-}  // namespace optimize
-}  // namespace tflite
+}  // namespace toco_legacy
+}  // namespace lite
+}  // namespace mlir
 
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZE_WEIGHTS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_TOCO_LEGACY_QUANTIZE_WEIGHTS_H_

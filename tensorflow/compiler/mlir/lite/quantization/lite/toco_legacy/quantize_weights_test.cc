@@ -12,52 +12,68 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/quantize_weights.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantize_weights.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <memory>
+#include <string>
+#include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
+#include "xla/tsl/util/command_line_flags.h"
+#include "tensorflow/lite/core/model_builder.h"
+// unda is working on an mlir version of FlatBufferModel
+#include "tsl/platform/init_main.h"
+#include "tsl/platform/path.h"
 
 namespace {
-tensorflow::string* g_test_model_dir = nullptr;
+std::string* g_test_model_dir = nullptr;
 }  // namespace
 
-namespace tflite {
-namespace optimize {
+namespace mlir {
+namespace lite {
+namespace toco_legacy {
 namespace {
 
+using tflite::BuiltinOperator_CONV_2D;
+using tflite::BuiltinOperator_CUSTOM;
+using tflite::BuiltinOperator_DEQUANTIZE;
+using tflite::FlatBufferModel;  // to remove when mlir version is ready, from
+                                // model.h
+using tflite::GetModel;
+using tflite::Model;
+using tflite::TensorType_FLOAT16;
+using tflite::TensorType_FLOAT32;
+using tflite::TensorType_INT8;
+
 std::unique_ptr<FlatBufferModel> ReadTestModel() {
-  auto model_path = tensorflow::io::JoinPath(
+  auto model_path = tsl::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kConvModelWith0Plus10Weights);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 std::unique_ptr<FlatBufferModel> ReadSharedWeightsTestModel() {
-  auto model_path = tensorflow::io::JoinPath(
+  auto model_path = tsl::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kModelWithSharedWeights);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 std::unique_ptr<FlatBufferModel> ReadGatherTestModel() {
-  auto model_path = tensorflow::io::JoinPath(
+  auto model_path = tsl::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kQuantizedWithGather);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 std::unique_ptr<FlatBufferModel> ReadCustomOpTestModel() {
-  auto model_path = tensorflow::io::JoinPath(
+  auto model_path = tsl::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kModelWithCustomOp);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
@@ -69,7 +85,7 @@ std::vector<T> GetAsVector(const flatbuffers::Vector<T>* vec) {
 
 class QuantizeWeightsTest : public testing::Test {
  protected:
-  QuantizeWeightsTest() {}
+  QuantizeWeightsTest() = default;
 
   void LoadBasicModel() {
     input_model_ = ReadTestModel();
@@ -294,9 +310,9 @@ TEST_F(QuantizeWeightsTest, DequantizeConv) {
 TEST_F(QuantizeWeightsTest, DequantizeConvFloat16) {
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
-  ASSERT_TRUE(tflite::optimize::QuantizeWeights(
-                  &builder, model_, BufferType::QUANTIZED_FLOAT16,
-                  kUseUpdatedHybridSchemeDefault, QuantizerType::OLD_QUANTIZER)
+  ASSERT_TRUE(QuantizeWeights(&builder, model_, BufferType::QUANTIZED_FLOAT16,
+                              kUseUpdatedHybridSchemeDefault,
+                              QuantizerType::OLD_QUANTIZER)
                   .ok());
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -446,7 +462,7 @@ TEST_F(QuantizeWeightsTest, VerifyGatherQuantization) {
       const uint32_t op_code_idx = op->opcode_index();
       const auto op_code =
           GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx));
-      if (op_code == BuiltinOperator_GATHER) {
+      if (op_code == tflite::BuiltinOperator_GATHER) {
         uint32_t input_tensor_index = op->inputs()->Get(0);
         const auto weights_tensor =
             quantized_graph->tensors()->Get(input_tensor_index);
@@ -665,23 +681,23 @@ TEST_F(QuantizeWeightsTest, DequantizeConvBlocklisted) {
 }
 
 }  // namespace
-}  // namespace optimize
-}  // namespace tflite
+}  // namespace toco_legacy
+}  // namespace lite
+}  // namespace mlir
 
 int main(int argc, char** argv) {
-  tensorflow::string model_file;
-  const std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("test_model_file", &model_file,
-                       "Path to test tflite model file."),
+  std::string model_file;
+  const std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("test_model_file", &model_file,
+                "Path to test tflite model file."),
   };
 
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  const bool parse_result = tsl::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {
     std::cerr << "Required test_model_file\n";
     std::abort();
   }
-  g_test_model_dir =
-      new tensorflow::string(tensorflow::io::Dirname(model_file));
-  ::tensorflow::port::InitMain(argv[0], &argc, &argv);
+  g_test_model_dir = new std::string(tsl::io::Dirname(model_file));
+  ::tsl::port::InitMain(argv[0], &argc, &argv);
   return RUN_ALL_TESTS();
 }
