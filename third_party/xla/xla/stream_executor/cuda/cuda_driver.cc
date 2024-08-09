@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -27,7 +28,6 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/base/const_init.h"
-#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"

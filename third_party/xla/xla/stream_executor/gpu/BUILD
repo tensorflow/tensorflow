@@ -228,7 +228,6 @@ gpu_only_cc_library(
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -243,8 +242,7 @@ gpu_only_cc_library(
     name = "gpu_helpers_header",
     hdrs = ["gpu_helpers.h"],
     deps = [
-        ":gpu_types_header",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/stream_executor:device_memory",
     ],
 )
 
@@ -377,7 +375,6 @@ gpu_only_cc_library(
         ":gpu_stream",
         ":gpu_types_header",
         "//xla/stream_executor",
-        "//xla/stream_executor:event",
         "//xla/stream_executor:event_based_timer",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
@@ -386,7 +383,6 @@ gpu_only_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/utility",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],

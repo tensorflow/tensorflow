@@ -27,6 +27,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -40,21 +41,24 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "Eigen/Core"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "third_party/gpus/cudnn/cudnn_graph.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
@@ -93,7 +97,6 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn_ops_train.h"
 #endif
 
-#include "third_party/gpus/cudnn/cudnn_backend.h"
 
 #if CUDNN_VERSION >= 8100
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
@@ -107,7 +110,6 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend_Operation.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_OperationGraph.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_PointWiseDesc.h"
-#include "third_party/cudnn_frontend/include/cudnn_frontend_Rng.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_Tensor.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_VariantPack.h"
 #endif  // CUDNN_VERSION >= 8100
