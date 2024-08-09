@@ -78,6 +78,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     const std::string& module_config_cache_key);
 }  // namespace amdgpu
 
+namespace spir {
+// Compiles the argument module and returns it.
+absl::StatusOr<std::vector<uint8_t>> CompileToSpir(
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options);
+}  // namespace spir
+
 }  // namespace gpu
 }  // namespace xla
 
