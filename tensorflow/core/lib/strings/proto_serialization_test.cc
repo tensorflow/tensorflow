@@ -62,7 +62,7 @@ static void BM_ProtoSerializationToBuffer(::testing::benchmark::State& state) {
 
   const size_t size = graph_def.ByteSizeLong();
   for (auto i : state) {
-    gtl::InlinedVector<char, 1024> buf(size);
+    absl::InlinedVector<char, 1024UL> buf(size);
     testing::DoNotOptimize(
         SerializeToBufferDeterministic(graph_def, buf.data(), size));
   }
