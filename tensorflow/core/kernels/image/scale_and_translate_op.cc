@@ -14,9 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/image_ops.cc
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/stringprintf.h"
 #define EIGEN_USE_THREADS
-
-#include "tensorflow/core/kernels/image/scale_and_translate_op.h"
 
 #include <memory>
 
@@ -29,8 +34,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/image/sampling_kernels.h"
+#include "tensorflow/core/kernels/image/scale_and_translate_op.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
