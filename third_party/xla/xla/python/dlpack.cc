@@ -444,11 +444,13 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
+  // TODO(slebedev): Use the memory space from DLPack.
+  auto* memory = device->default_memory_space().value_or(nullptr);
   TF_ASSIGN_OR_RETURN(auto pjrt_buffer,
                       device->client()->CreateViewOfDeviceBuffer(
                           static_cast<char*>(dlmt->dl_tensor.data) +
                               dlmt->dl_tensor.byte_offset,
-                          shape, device, on_delete_callback));
+                          shape, device, memory, on_delete_callback));
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
@@ -519,12 +521,15 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
+  // TODO(slebedev): Use the memory space from DLPack.
+  auto* memory =
+      device->pjrt_device()->default_memory_space().value_or(nullptr);
   TF_ASSIGN_OR_RETURN(
       auto pjrt_buffer,
       device->pjrt_device()->client()->CreateViewOfDeviceBuffer(
           static_cast<char*>(dlmt->dl_tensor.data) +
               dlmt->dl_tensor.byte_offset,
-          shape, device->pjrt_device(), on_delete_callback, stream));
+          shape, device->pjrt_device(), memory, on_delete_callback, stream));
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");

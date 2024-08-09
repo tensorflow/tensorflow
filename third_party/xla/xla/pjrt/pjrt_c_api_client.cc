@@ -64,7 +64,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
@@ -590,7 +589,7 @@ PjRtCApiClient::BufferFromHostBuffer(
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtCApiClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,
-    std::function<void()> on_delete_callback,
+    PjRtMemorySpace* memory, std::function<void()> on_delete_callback,
     std::optional<std::intptr_t> stream) {
   PJRT_Client_CreateViewOfDeviceBuffer_Args args;
   args.struct_size = PJRT_Client_CreateViewOfDeviceBuffer_Args_STRUCT_SIZE;
@@ -621,6 +620,12 @@ PjRtCApiClient::CreateViewOfDeviceBuffer(
     args.on_delete_callback_arg = nullptr;
   }
   args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  if (memory != nullptr) {
+    args.memory =
+        tensorflow::down_cast<PjRtCApiMemorySpace*>(memory)->c_memory();
+  } else {
+    args.memory = nullptr;
+  }
   if (stream.has_value()) {
     args.stream = *stream;
   } else {

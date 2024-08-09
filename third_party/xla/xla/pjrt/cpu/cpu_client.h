@@ -375,7 +375,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
-      std::function<void()> on_delete_callback,
+      PjRtMemorySpace* memory, std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
   absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
