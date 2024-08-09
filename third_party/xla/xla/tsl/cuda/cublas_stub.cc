@@ -30,6 +30,9 @@ limitations under the License.
 // Implements the cuBLAS API by forwarding to cuBLAS loaded from the DSO.
 // Note that it does not implement the v1 interface.
 
+// Note that we do not need this for MSVC because it already uses lazy loading.
+#if !defined(_MSC_VER)
+
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
 void *GetDsoHandle() {
@@ -244,3 +247,4 @@ void _cublas_tramp_resolve(int i) {
 }
 
 }  // extern "C"
+#endif
