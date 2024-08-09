@@ -17,10 +17,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/cc/experimental/libtf/object.h"
 #include "tensorflow/cc/experimental/libtf/value.h"
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tf {
 namespace libtf {
