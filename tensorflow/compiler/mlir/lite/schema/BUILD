@@ -132,7 +132,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/platform:app",
         "//tensorflow/python/platform:resource_loader",
     ],
 )

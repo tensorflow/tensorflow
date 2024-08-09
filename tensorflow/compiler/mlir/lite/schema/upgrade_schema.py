@@ -31,7 +31,7 @@ import subprocess
 import sys
 import tempfile
 
-from tensorflow.compat import v1 as tf1
+from tensorflow.python.platform import app
 from tensorflow.python.platform import resource_loader
 
 parser = argparse.ArgumentParser(
@@ -74,8 +74,8 @@ class Converter:
     # TODO(aselle): make this work in the open source version with better
     # path.
     paths_to_try = [
-        "../../../../flatbuffers/flatc",  # not bazel
-        "../../../../external/flatbuffers/flatc"  # bazel
+        "../../../../../flatbuffers/flatc",  # not bazel
+        "../../../../../external/flatbuffers/flatc"  # bazel
     ]
     for p in paths_to_try:
       self._flatc_path = resource_loader.get_path_to_datafile(p)
@@ -343,4 +343,4 @@ def main(argv):
 
 if __name__ == "__main__":
   FLAGS, unparsed = parser.parse_known_args()
-  tf1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

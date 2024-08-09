@@ -16,7 +16,7 @@
 
 import json
 import tempfile
-from tensorflow.lite.schema import upgrade_schema as upgrade_schema_lib
+from tensorflow.compiler.mlir.lite.schema import upgrade_schema as upgrade_schema_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 
