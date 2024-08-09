@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -403,7 +404,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  absl::flat_hash_map<HloInstruction*,
+  absl::node_hash_map<HloInstruction*,
                       std::pair<UseDefDataflowPaths, DefUseDataflowPaths>>
       matches;
 
