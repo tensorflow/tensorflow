@@ -81,6 +81,9 @@ enum QuantizationTrait { FullyQuantizable = 0, NotQuantizable = 1 };
 inline constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
                                                          "not_quantizable"};
 
+// Used to annotate custom ops if they have no side effects.
+constexpr char kNoSideEffectAttrName[] = "_tfl_no_side_effect";
+
 inline constexpr double kNearZeroTolerance = 1.0e-6;
 
 using QuantParams = QuantizedType;
