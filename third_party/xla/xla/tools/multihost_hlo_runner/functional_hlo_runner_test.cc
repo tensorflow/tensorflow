@@ -201,6 +201,28 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputsWithTupledArguments) {
       InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, UseSpecifiedLayoutForArguments) {
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "Using specified layout is not supported on CPU.";
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  // Options corresponding to:
+  // --num_replicas=1 --num_partitions=1
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.use_argument_layout = true;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
 TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
   // This test corresponds to:
   // --use_spmd_partitioning=true --num_replicas=1 --num_partitions=16
