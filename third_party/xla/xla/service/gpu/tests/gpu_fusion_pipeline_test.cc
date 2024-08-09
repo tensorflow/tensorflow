@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/instruction_fusion.h"
-#include "xla/service/gpu/multi_output_fusion.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/fusion_merger.h"
+#include "xla/service/gpu/transforms/instruction_fusion.h"
+#include "xla/service/gpu/transforms/multi_output_fusion.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/shape.h"
@@ -51,8 +51,7 @@ class GpuFusionPipelineTest : public GpuCodegenTest {
                                            device_info);
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true, device_info);
     pipeline.AddPass<FusionMerger>(device_info, ShapeSizeBytesFunction());
-    pipeline.AddPass<GpuMultiOutputFusion>(device_info,
-                                           ShapeSizeBytesFunction());
+    pipeline.AddPass<MultiOutputFusion>(device_info, ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }
