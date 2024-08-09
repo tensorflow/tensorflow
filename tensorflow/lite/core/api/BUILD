@@ -11,7 +11,6 @@ package(
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
-        ":error_reporter.cc",
         ":error_reporter.h",
         ":op_resolver.cc",
         ":op_resolver.h",
@@ -77,14 +76,18 @@ cc_library(
 
 cc_library(
     name = "error_reporter",
-    srcs = ["error_reporter.cc"],
-    hdrs = ["error_reporter.h"],
+    hdrs = [
+        "error_reporter.h",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//visibility:public",
     ],
-    deps = [],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+    ],
 )
 
 cc_library(
@@ -106,16 +109,6 @@ cc_library(
         "//tensorflow/lite/java/src/main/native:__pkg__",
     ],
     deps = [":op_resolver"],
-)
-
-cc_test(
-    name = "error_reporter_test",
-    size = "small",
-    srcs = ["error_reporter_test.cc"],
-    deps = [
-        ":api",
-        "@com_google_googletest//:gtest_main",
-    ],
 )
 
 cc_test(
