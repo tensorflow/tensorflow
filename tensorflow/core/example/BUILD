@@ -185,3 +185,11 @@ exports_files(
         "//tensorflow/core:__pkg__",
     ],
 )
+
+tf_proto_library(
+    name = "foo_proto",
+    srcs = [
+        "foo.proto",
+    ],
+    cc_api_version = 2,
+)
