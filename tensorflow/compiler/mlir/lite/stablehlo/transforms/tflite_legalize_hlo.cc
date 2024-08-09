@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // The kept headers are provided for the included file `passes.h.inc`.
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -52,6 +53,15 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 namespace {
+
+// Returns the shape of the given value in a Constant Op.
+arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
+  ArrayRef<int64_t> shape = mlir::cast<ShapedType>(value.getType()).getShape();
+  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
+                                         rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, shape);
+  return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
+}
 
 bool IsSign(APInt a, APInt sign) {
   if (a.isZero()) return a == sign;
@@ -224,7 +234,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp,
                       mhlo::ShiftRightArithmeticOp, mhlo::ShiftRightLogicalOp,
-                      mhlo::RemOp>();
+                      mhlo::RemOp, mhlo::ReshapeOp, mhlo::DynamicReshapeOp>();
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
 
   AddRoundingOpsAsUnknown(target);
