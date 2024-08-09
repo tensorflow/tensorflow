@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_sanitize_constant_names.h"
+#include "xla/service/gpu/transforms/sanitize_constant_names.h"
 
 #include <string>
 
@@ -29,7 +29,7 @@ namespace xla {
 
 namespace gpu {
 
-absl::StatusOr<bool> GpuSanitizeConstantNames::Run(
+absl::StatusOr<bool> SanitizeConstantNames::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_conv_rewriter.h"
+#include "xla/service/gpu/transforms/conv_rewriter.h"
 
 #include <optional>
 #include <string>
@@ -45,9 +45,9 @@ namespace {
 
 namespace m = ::xla::match;
 
-class GpuConvRewriterTest : public HloTestBase {
+class ConvRewriterTest : public HloTestBase {
  public:
-  GpuConvRewriterTest()
+  ConvRewriterTest()
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {
     for (int i = 0; i < 2; ++i) {
@@ -103,7 +103,7 @@ class GpuConvRewriterTest : public HloTestBase {
   }
 
   bool RunPass(HloModule* module) {
-    return GpuConvRewriter(GetComputeCapability()).Run(module).value();
+    return ConvRewriter(GetComputeCapability()).Run(module).value();
   }
 
   // A convolution window with stride 1 and zero padding. The size fields are
@@ -113,7 +113,7 @@ class GpuConvRewriterTest : public HloTestBase {
   ConvolutionDimensionNumbers tf_default_dnums_for_backward_input_;
 };
 
-TEST_F(GpuConvRewriterTest, BackwardFilterConvolve) {
+TEST_F(ConvRewriterTest, BackwardFilterConvolve) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -154,8 +154,7 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolve) {
       << md_after_opt.DebugString() << " vs " << metadata.DebugString();
 }
 
-TEST_F(GpuConvRewriterTest,
-       BackwardFilterConvolveEquivalentToForwardConvolution) {
+TEST_F(ConvRewriterTest, BackwardFilterConvolveEquivalentToForwardConvolution) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -186,7 +185,7 @@ TEST_F(GpuConvRewriterTest,
 }
 
 // Extracted from block35 training.
-TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithPaddedActivations) {
+TEST_F(ConvRewriterTest, BackwardFilterConvolveWithPaddedActivations) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -216,7 +215,7 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithPaddedActivations) {
 }
 
 // Extracted from inception v3 training.
-TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithPaddedGradients) {
+TEST_F(ConvRewriterTest, BackwardFilterConvolveWithPaddedGradients) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -245,7 +244,7 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithPaddedGradients) {
                   m::CustomCall({kCudnnConvBackwardFilterCallTarget}), 0)));
 }
 
-TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
+TEST_F(ConvRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -274,7 +273,7 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
                   m::CustomCall({kCudnnConvBackwardFilterCallTarget}), 0)));
 }
 
-TEST_F(GpuConvRewriterTest, BackwardInputConvolveEvenPadding) {
+TEST_F(ConvRewriterTest, BackwardInputConvolveEvenPadding) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -343,7 +342,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveEvenPadding) {
 // Convolve([abc], [x], base_dilation=2)
 //   = Convolve([abc], Reverse([x]), base_dilation=2)
 //   = BackwardInputConvolve([abc], [x], stride=2)
-TEST_F(GpuConvRewriterTest, BackwardInputConvolve1x1Filter) {
+TEST_F(ConvRewriterTest, BackwardInputConvolve1x1Filter) {
   auto builder = HloComputation::Builder(TestName());
   // NHWC dimension order.
   HloInstruction* output =
@@ -381,7 +380,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolve1x1Filter) {
 // BackwardInputConvolve([abc], [x], stride=1) is equivalent to
 // ForwardConvolve([abc], [x], stride=1). No need to fold it into backward input
 // convolution.
-TEST_F(GpuConvRewriterTest,
+TEST_F(ConvRewriterTest,
        BackwardInputConvolve1x1FilterEquivalentToForwardConvolve) {
   auto builder = HloComputation::Builder(TestName());
   // NHWC dimension order.
@@ -427,7 +426,7 @@ TEST_F(GpuConvRewriterTest,
 //                     20x10x10x192
 //
 // Gradients are padded unevenly.
-TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
+TEST_F(ConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -479,7 +478,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
 
 // Similar to BackwardInputConvolveUnevenPadding, but the low padding of the
 // gradients exceeds kernel_size - 1. Therefore, this pattern cannot be fused.
-TEST_F(GpuConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
+TEST_F(ConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -533,7 +532,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
 //
 // We should fuse BC even though padding on activations is uneven, because
 // GpuConvPaddingLegalization will canonicalize the fusion HLO.
-TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
+TEST_F(ConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
   auto builder = HloComputation::Builder(TestName());
   // The gradients are in NCHW layout.
   HloInstruction* output =
@@ -590,7 +589,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
 // We currently don't fuse BC because GpuConvPaddingLegalization
 // doesn't support negative padding on the gradients of backward convolution
 // (b/32744257).
-TEST_F(GpuConvRewriterTest,
+TEST_F(ConvRewriterTest,
        BackwardInputConvolveNegativePaddingHighOnActivations) {
   auto builder = HloComputation::Builder(TestName());
   // The gradients are in NCHW layout.
@@ -632,7 +631,7 @@ TEST_F(GpuConvRewriterTest,
 
 // Check that we will materialize a reversed version of a constant in order to
 // pattern-match a backwards input convolution.
-TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
+TEST_F(ConvRewriterTest, BackwardInputConvolveConstantFilter) {
   Array4D<float> constant_arr(4, 4, 2, 2);
   constant_arr.FillIota(0);
   std::string constant_str =
@@ -659,7 +658,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
                   0)));
 }
 
-TEST_F(GpuConvRewriterTest, TestBackwardFilterPatternMatch) {
+TEST_F(ConvRewriterTest, TestBackwardFilterPatternMatch) {
   // All filter dimensions are larger than the corresponding output dimensions.
   // This must be a backward filter convolution.
   const std::string module_str = absl::StrFormat(R"(
@@ -681,7 +680,7 @@ TEST_F(GpuConvRewriterTest, TestBackwardFilterPatternMatch) {
                   0)));
 }
 
-TEST_F(GpuConvRewriterTest, TestBackwardFilterPatternNoMatch) {
+TEST_F(ConvRewriterTest, TestBackwardFilterPatternNoMatch) {
   // At least one filter dimension is smaller than the corresponding output
   // dimension. This must be a forward convolution.
   const std::string module_str = absl::StrFormat(R"(
@@ -703,7 +702,7 @@ TEST_F(GpuConvRewriterTest, TestBackwardFilterPatternNoMatch) {
                   0)));
 }
 
-TEST_F(GpuConvRewriterTest, TestConv1dBackwardFilterPatternMatch) {
+TEST_F(ConvRewriterTest, TestConv1dBackwardFilterPatternMatch) {
   // There exist one kernel dimension equal to output dimension, regard
   // it as backward filter if conv is 1d.
   const std::string module_str = absl::StrFormat(R"(
@@ -726,7 +725,7 @@ TEST_F(GpuConvRewriterTest, TestConv1dBackwardFilterPatternMatch) {
                   0)));
 }
 
-TEST_F(GpuConvRewriterTest, TestConv1dBackwardInputPatternMatch) {
+TEST_F(ConvRewriterTest, TestConv1dBackwardInputPatternMatch) {
   // For conv1d backward input, filter may reverse first and then reshape.
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test
@@ -749,7 +748,7 @@ TEST_F(GpuConvRewriterTest, TestConv1dBackwardInputPatternMatch) {
                   0)));
 }
 
-TEST_F(GpuConvRewriterTest, TestInvalidTypes) {
+TEST_F(ConvRewriterTest, TestInvalidTypes) {
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
@@ -766,8 +765,7 @@ TEST_F(GpuConvRewriterTest, TestInvalidTypes) {
     TF_ASSERT_OK_AND_ASSIGN(auto m,
                             ParseAndReturnVerifiedModule(module_with_type));
 
-    absl::Status s =
-        GpuConvRewriter(GetComputeCapability()).Run(m.get()).status();
+    absl::Status s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
     EXPECT_THAT(
         s, tsl::testing::StatusIs(
                absl::StatusCode::kUnimplemented,
@@ -780,17 +778,14 @@ TEST_F(GpuConvRewriterTest, TestInvalidTypes) {
       absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fn"}});
   TF_ASSERT_OK_AND_ASSIGN(auto m,
                           ParseAndReturnVerifiedModule(module_with_type));
-  absl::Status s = GpuConvRewriter(se::CudaComputeCapability::Ampere())
-                       .Run(m.get())
-                       .status();
+  absl::Status s =
+      ConvRewriter(se::CudaComputeCapability::Ampere()).Run(m.get()).status();
   EXPECT_THAT(s, tsl::testing::StatusIs(
                      absl::StatusCode::kUnimplemented,
                      ::testing::HasSubstr(
                          "FP8 convolutions are only supported on CUDA "
                          "GPUs with compute capability at least 9.0")));
-  s = GpuConvRewriter(se::RocmComputeCapability{"gfx942"})
-          .Run(m.get())
-          .status();
+  s = ConvRewriter(se::RocmComputeCapability{"gfx942"}).Run(m.get()).status();
   EXPECT_THAT(s, tsl::testing::StatusIs(
                      absl::StatusCode::kUnimplemented,
                      ::testing::HasSubstr(
@@ -799,7 +794,7 @@ TEST_F(GpuConvRewriterTest, TestInvalidTypes) {
   // Test unsupported FP8 type
   module_with_type = absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fnuz"}});
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
-  s = GpuConvRewriter(GetComputeCapability()).Run(m.get()).status();
+  s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
   EXPECT_THAT(s,
               tsl::testing::StatusIs(
                   absl::StatusCode::kUnimplemented,

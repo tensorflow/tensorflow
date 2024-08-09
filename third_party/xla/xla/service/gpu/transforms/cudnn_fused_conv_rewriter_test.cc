@@ -35,11 +35,26 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/algebraic_simplifier.h"
+#include "xla/service/convert_mover.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/transforms/conv_rewriter.h"
+#include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_pass_fix.h"
+#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
+#include "xla/service/reshape_mover.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tests/filecheck.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
@@ -47,22 +62,6 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif  // GOOGLE_CUDA
-
-#include "xla/service/algebraic_simplifier.h"
-#include "xla/service/convert_mover.h"
-#include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/gpu_conv_rewriter.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/hlo_constant_folding.h"
-#include "xla/service/hlo_pass_fix.h"
-#include "xla/service/hlo_pass_pipeline.h"
-#include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/reshape_mover.h"
-#include "xla/tests/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -244,7 +243,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       // On older architectures, disregard layout information and only verify
       // the basic configuration of the convolution Custom Call using the number
       // of operands and the window_size and serialized graph attributes based
-      // on the GpuConvRewriter and CudnnFusedConvRewriter passes.
+      // on the ConvRewriter and CudnnFusedConvRewriter passes.
       std::string::size_type p0 = custom_call_string.find(':');
       std::string::size_type p1 = custom_call_string.find("custom-call");
       custom_call_string.erase(p0 + 1, p1 - p0 - 2);
@@ -254,8 +253,8 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                               ParseAndReturnVerifiedModule(pre_hlo_string));
       TF_ASSERT_OK_AND_ASSIGN(
-          bool changed, RunHloPass(GpuConvRewriter(GetCudaComputeCapability()),
-                                   module.get()));
+          bool changed,
+          RunHloPass(ConvRewriter(GetCudaComputeCapability()), module.get()));
       EXPECT_TRUE(changed);
       RunAndFilecheckHloRewrite(
           module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
@@ -1317,7 +1316,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloat) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1351,7 +1350,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToInt8BiasSideInput) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1392,7 +1391,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestReluAfterConvert) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1446,7 +1445,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloatBiasSideInput) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1492,7 +1491,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1547,7 +1546,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseAlpha) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1587,7 +1586,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1628,7 +1627,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1678,7 +1677,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
   m->mutable_config().set_debug_options(debug_opts);
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   // elu fusion is only active on Ampere+.
   CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0), GetDnnVersion(),
@@ -1727,7 +1726,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
   m->mutable_config().set_debug_options(debug_opts);
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1780,7 +1779,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
   m->mutable_config().set_debug_options(debug_opts);
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   // relu6 fusion is only enabled on Ampere+.
   CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0), GetDnnVersion(),
@@ -1824,7 +1823,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
   m->mutable_config().set_debug_options(debug_opts);
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1872,7 +1871,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
   m->mutable_config().set_debug_options(debug_opts);
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   // Leaky-relu fusion is only enabled on Ampere+.
   CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0), GetDnnVersion(),
@@ -1919,7 +1918,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseLeakyReluIfMultipleUses) {
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
   m->mutable_config().set_debug_options(debug_opts);
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -1967,7 +1966,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseAlphaIfMultipleUsers) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2007,7 +2006,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasIfMultipleUsers) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2046,7 +2045,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputThroughRelu) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2085,7 +2084,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasThroughRelu) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2121,7 +2120,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputIfMultipleUsers) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2158,7 +2157,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseConvertToF16IfMultipleUsers) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2192,7 +2191,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2225,7 +2224,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2252,7 +2251,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2279,7 +2278,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2307,7 +2306,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontRemoveConvertDuetoMultpleUser) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2337,7 +2336,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBias) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2369,7 +2368,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseSideInput) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2412,7 +2411,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseScaledSideInput) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2455,7 +2454,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBiasAndSideInput) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2493,7 +2492,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, EffectiveScalarBias) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2536,7 +2535,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, StrengthReduceF32ToF16) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2583,7 +2582,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BroadcastReshapeTransposeAfterConvert) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2636,7 +2635,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, NoStrengthReduceF32ToF16IfBiasIsF32) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2692,7 +2691,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32Constants) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2746,7 +2745,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32ConstantsNotLosslesslyConvertible) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2810,7 +2809,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseReluBeforeConvert) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};
@@ -2853,7 +2852,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BiasTypeMatchesConvTypeIfFp) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  GpuConvRewriter rewriter{GetCudaComputeCapability()};
+  ConvRewriter rewriter{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser{GetCudaComputeCapability(), GetDnnVersion(),
                                GetToolkitVersion()};

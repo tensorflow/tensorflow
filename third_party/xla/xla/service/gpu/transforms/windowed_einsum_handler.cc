@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_windowed_einsum_handler.h"
+#include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 
 #include <cstdint>
 #include <vector>
@@ -386,7 +386,7 @@ static int64_t GetAgActivationCacheIndex(const HloInstruction* while_loop) {
 }
 
 absl::Status ProcessWindowedEinsumLoopForActivationCaching(
-    GpuWindowedEinsumHandler::WindowedEinsumAgLoops& ag_loop,
+    WindowedEinsumHandler::WindowedEinsumAgLoops& ag_loop,
     HloInstruction* ag_with_shared_operand) {
   HloInstruction* loop = ag_loop.loop;
   // Transform the while body to cache the allgathered result in the
@@ -579,8 +579,7 @@ struct MatchedGemmA2aResult {
 class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
  public:
   explicit WindowedEinsumVisitor(
-      std::vector<GpuWindowedEinsumHandler::WindowedEinsumAgLoops>&
-          all_ag_loops)
+      std::vector<WindowedEinsumHandler::WindowedEinsumAgLoops>& all_ag_loops)
       : all_ag_loops_(all_ag_loops) {}
   absl::StatusOr<bool> MatchA2aGemmWithIntermediateReshapes(
       HloInstruction* dot, HloInstruction** lhs, HloInstruction** rhs) {
@@ -697,8 +696,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
     // to be consumed by the dot. This is advantageous since the chained dot can
     // fully utilize all the resources on the GPU while comm is hidden by the
     // first collective matmul loop.
-    for (GpuWindowedEinsumHandler::WindowedEinsumAgLoops ag_loop :
-         all_ag_loops_) {
+    for (WindowedEinsumHandler::WindowedEinsumAgLoops ag_loop : all_ag_loops_) {
       HloInstruction* loop = ag_loop.loop;
       HloInstruction* ag_operand = nullptr;
 
@@ -1106,16 +1104,16 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  std::vector<GpuWindowedEinsumHandler::WindowedEinsumAgLoops>& all_ag_loops_;
+  std::vector<WindowedEinsumHandler::WindowedEinsumAgLoops>& all_ag_loops_;
 };
 
 }  // namespace
 
-absl::StatusOr<bool> GpuWindowedEinsumHandler::Run(
+absl::StatusOr<bool> WindowedEinsumHandler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      5, "GpuWindowedEinsumHandler::Run(), before:\n" + module->ToString());
+      5, "WindowedEinsumHandler::Run(), before:\n" + module->ToString());
   bool changed = false;
   int64_t stream_id = hlo_query::NextChannelId(*module);
 
@@ -1142,8 +1140,8 @@ absl::StatusOr<bool> GpuWindowedEinsumHandler::Run(
     changed |= visitor.changed();
   }
 
-  XLA_VLOG_LINES(
-      5, "GpuWindowedEinsumHandler::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(5,
+                 "WindowedEinsumHandler::Run(), after:\n" + module->ToString());
   return changed;
 }
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GPU_SORT_REWRITER_H_
-#define XLA_SERVICE_GPU_GPU_SORT_REWRITER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_SORT_REWRITER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_SORT_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -31,9 +31,9 @@ namespace gpu {
 // Only a subset of shapes is supported - either a single tensor with a simple
 // compare function or a pair of tensors where keys are unsigned integers.
 
-class GpuSortRewriter : public HloModulePass {
+class SortRewriter : public HloModulePass {
  public:
-  absl::string_view name() const override { return "gpu-sort-rewriter"; }
+  absl::string_view name() const override { return "sort-rewriter"; }
 
   // CUB radix sort is slower than XLA sort on small shapes, so do not rewrite
   // tensors with sizes below this limit.
@@ -60,4 +60,4 @@ class GpuSortRewriter : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GPU_SORT_REWRITER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_SORT_REWRITER_H_

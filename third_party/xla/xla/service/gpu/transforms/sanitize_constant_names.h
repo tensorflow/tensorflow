@@ -1,4 +1,4 @@
-/* Copyright 2021 The OpenXLA Authors.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GPU_REDUCE_SCATTER_CREATOR_H_
-#define XLA_SERVICE_GPU_GPU_REDUCE_SCATTER_CREATOR_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_SANITIZE_CONSTANT_NAMES_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_SANITIZE_CONSTANT_NAMES_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -25,11 +25,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Transforms dynamic-slice(all-reduce) to a reduce-scatter.
-class ReduceScatterCreator : public HloModulePass {
+// Sanitizes HLO instruction names for the GPU backend. Currently, it only
+// replaces . and - in the HLO constant instruction names with _ to please the
+// LLVM PTX backend.
+class SanitizeConstantNames : public HloModulePass {
  public:
-  ReduceScatterCreator() = default;
-  absl::string_view name() const override { return "reduce-scatter-creator"; }
+  absl::string_view name() const override { return "sanitize-constant-names"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -40,4 +41,4 @@ class ReduceScatterCreator : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GPU_REDUCE_SCATTER_CREATOR_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_SANITIZE_CONSTANT_NAMES_H_

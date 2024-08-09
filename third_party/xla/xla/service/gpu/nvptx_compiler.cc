@@ -62,13 +62,12 @@ limitations under the License.
 #include "xla/service/gpu/gpu_algebraic_simplifier.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/service/gpu/gpu_conv_padding_legalization.h"
-#include "xla/service/gpu/gpu_conv_rewriter.h"
-#include "xla/service/gpu/gpu_sort_rewriter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/gpu/transforms/conv_padding_legalization.h"
+#include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fused_mha_rewriter.h"
@@ -81,6 +80,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_workspace_rewriter.h"
 #include "xla/service/gpu/transforms/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
+#include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/service/gpu/triangular_solve_rewriter.h"
 #include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_cse.h"
@@ -191,7 +191,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
-  // (GpuConvPaddingLegalization). Also expand cuSolver calls.
+  // (ConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
@@ -206,10 +206,10 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>();
-  pipeline.AddPass<GpuConvRewriter>(cuda_compute_capability);
+  pipeline.AddPass<ConvRewriter>(cuda_compute_capability);
   pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability, dnn_version,
                                            GetToolkitVersion());
-  pipeline.AddPass<GpuConvPaddingLegalization>();
+  pipeline.AddPass<ConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
   pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
                                                dnn_version);
@@ -234,7 +234,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // e.g. clean up unnecessary nop `convert`s.
   pipeline.AddPass<CudnnSimplifyPadding>();
 
-  // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
+  // tf2xla bridge, DepthwiseConvolutionConverter, ConvRewriter, and
   // CudnnSimplifyPadding introduce reshapes and transposes.  Run ReshapeMover
   // to a fixed point.  Include algsimp because ReshapeMover relies on it.
   [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
@@ -256,7 +256,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
   }();
 
-  // GpuConvRewriter, GpuConvPaddingLegalization and
+  // ConvRewriter, ConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
@@ -390,7 +390,7 @@ absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
 absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
     HloPassPipeline* pipeline, const DebugOptions& debug_options) {
   if (debug_options.xla_gpu_enable_cub_radix_sort()) {
-    pipeline->AddPass<GpuSortRewriter>();
+    pipeline->AddPass<SortRewriter>();
   }
   return absl::OkStatus();
 }

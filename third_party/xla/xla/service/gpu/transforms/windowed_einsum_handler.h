@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GPU_WINDOWED_EINSUM_HANDLER_H_
-#define XLA_SERVICE_GPU_GPU_WINDOWED_EINSUM_HANDLER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_WINDOWED_EINSUM_HANDLER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_WINDOWED_EINSUM_HANDLER_H_
 
 #include <vector>
 
@@ -35,11 +35,9 @@ namespace xla::gpu {
 // optimize it on GPU by annotating independent gemms with
 // stream ids in the backend config. By running them in different
 // streams, we can practically achieve overlap between gemms too.
-class GpuWindowedEinsumHandler : public HloModulePass {
+class WindowedEinsumHandler : public HloModulePass {
  public:
-  absl::string_view name() const override {
-    return "gpu-windowed-einsum-handler";
-  }
+  absl::string_view name() const override { return "windowed-einsum-handler"; }
 
   struct WindowedEinsumAgLoops {
     explicit WindowedEinsumAgLoops(HloInstruction* loop) : loop(loop) {}
@@ -63,4 +61,4 @@ class GpuWindowedEinsumHandler : public HloModulePass {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_GPU_WINDOWED_EINSUM_HANDLER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_WINDOWED_EINSUM_HANDLER_H_

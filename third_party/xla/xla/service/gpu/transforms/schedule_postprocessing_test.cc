@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_schedule_postprocessing.h"
+#include "xla/service/gpu/transforms/schedule_postprocessing.h"
 
 #include <memory>
 
@@ -32,9 +32,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using GpuSchedulePostprocessingTest = HloTestBase;
+using SchedulePostprocessingTest = HloTestBase;
 
-TEST_F(GpuSchedulePostprocessingTest, SynchronousOpsNotChanged) {
+TEST_F(SchedulePostprocessingTest, SynchronousOpsNotChanged) {
   constexpr absl::string_view kHloString = R"(
   HloModule module, is_scheduled=true
 
@@ -47,12 +47,12 @@ TEST_F(GpuSchedulePostprocessingTest, SynchronousOpsNotChanged) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kHloString)));
-  GpuSchedulePostprocessing pass;
+  SchedulePostprocessing pass;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
-TEST_F(GpuSchedulePostprocessingTest, P2POpsNotChanged) {
+TEST_F(SchedulePostprocessingTest, P2POpsNotChanged) {
   constexpr absl::string_view kHloString = R"(
   HloModule module, is_scheduled=true
 
@@ -71,12 +71,12 @@ TEST_F(GpuSchedulePostprocessingTest, P2POpsNotChanged) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kHloString)));
-  GpuSchedulePostprocessing pass;
+  SchedulePostprocessing pass;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
-TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsChanged) {
+TEST_F(SchedulePostprocessingTest, AsynchronousOpsChanged) {
   constexpr absl::string_view kHloString = R"(
   HloModule module, is_scheduled=true
 
@@ -89,7 +89,7 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsChanged) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kHloString)));
-  GpuSchedulePostprocessing pass;
+  SchedulePostprocessing pass;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -101,7 +101,7 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsChanged) {
   EXPECT_TRUE(collective_backend_config.no_parallel_custom_call());
 }
 
-TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsWithParallelCustomcall) {
+TEST_F(SchedulePostprocessingTest, AsynchronousOpsWithParallelCustomcall) {
   constexpr absl::string_view kHloString = R"(
   HloModule module, is_scheduled=true
 
@@ -115,7 +115,7 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsWithParallelCustomcall) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kHloString)));
-  GpuSchedulePostprocessing pass;
+  SchedulePostprocessing pass;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_FALSE(changed);
 
@@ -127,7 +127,7 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsWithParallelCustomcall) {
   EXPECT_FALSE(collective_backend_config.no_parallel_custom_call());
 }
 
-TEST_F(GpuSchedulePostprocessingTest,
+TEST_F(SchedulePostprocessingTest,
        AsynchronousOpsWithParallelNestedCustomcall) {
   constexpr absl::string_view kHloString = R"(
   HloModule module, is_scheduled=true
@@ -146,7 +146,7 @@ TEST_F(GpuSchedulePostprocessingTest,
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kHloString)));
-  GpuSchedulePostprocessing pass;
+  SchedulePostprocessing pass;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_FALSE(changed);
 

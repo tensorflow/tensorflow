@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/all_reduce_splitter.h"
+#include "xla/service/gpu/transforms/all_reduce_splitter.h"
 
 #include <cstdint>
 #include <optional>

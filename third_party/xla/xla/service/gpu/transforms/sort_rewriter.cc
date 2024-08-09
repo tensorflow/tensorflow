@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_sort_rewriter.h"
+#include "xla/service/gpu/transforms/sort_rewriter.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -203,8 +203,7 @@ bool IsCubCompatibleSort(HloSortInstruction* sort_op) {
     VLOG(2) << "Sort dimension should be the minor one";
     return false;
   }
-  if (Product(operand_shape.dimensions()) <
-      GpuSortRewriter::SortSizeThreshold()) {
+  if (Product(operand_shape.dimensions()) < SortRewriter::SortSizeThreshold()) {
     VLOG(2) << "Tensor shape size is too small to see an improvement";
     return false;
   }
@@ -239,7 +238,7 @@ HloInstruction* UnpackResultPair(HloSortInstruction* sort_op,
 }  // namespace
 
 // Rewrites a single sort instruction with a custom call.
-absl::StatusOr<bool> GpuSortRewriter::RunOnInstruction(
+absl::StatusOr<bool> SortRewriter::RunOnInstruction(
     HloSortInstruction* sort_op) {
   // Get the sort tensor index and direction.
   SortComputationAnalysis sort_config = AnalyzeSortOp(*sort_op).value();
@@ -307,7 +306,7 @@ absl::StatusOr<bool> GpuSortRewriter::RunOnInstruction(
 }
 
 // Rewrites the sorts in the given computation into calls to CUB.
-absl::StatusOr<bool> GpuSortRewriter::RunOnComputation(
+absl::StatusOr<bool> SortRewriter::RunOnComputation(
     HloComputation* computation) {
   std::vector<HloSortInstruction*> sort_ops;
   for (auto* inst : computation->instructions()) {
@@ -325,17 +324,17 @@ absl::StatusOr<bool> GpuSortRewriter::RunOnComputation(
 }
 
 // Replace compatible sort operations with custom calls.
-absl::StatusOr<bool> GpuSortRewriter::Run(
+absl::StatusOr<bool> SortRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(2, "GpuSortRewriter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "SortRewriter::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
-  XLA_VLOG_LINES(2, "GpuSortRewriter::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "SortRewriter::Run(), after:\n" + module->ToString());
   return changed;
 }
 

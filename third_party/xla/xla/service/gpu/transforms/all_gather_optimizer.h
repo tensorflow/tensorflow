@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,34 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_sort_rewriter.h"
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_ALL_GATHER_OPTIMIZER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_ALL_GATHER_OPTIMIZER_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "tsl/platform/statusor.h"
+#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<bool> GpuSortRewriter::RunOnInstruction(
-    HloSortInstruction* sort_op) {
-  return false;
-}
+// Transforms binary_op(all-gather(reduce_scatter(a)),
+// all-gather(reduce_scatter(b))) to allgather(binary_op(reduce_scatter(a),
+// reduce_scatter(b)))
 
-absl::StatusOr<bool> GpuSortRewriter::RunOnComputation(
-    HloComputation* computation) {
-  return false;
-}
+class AllGatherOptimizer : public HloModulePass {
+ public:
+  AllGatherOptimizer() = default;
+  absl::string_view name() const override { return "all-gather-optimizer"; }
 
-absl::StatusOr<bool> GpuSortRewriter::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return false;
-}
+  using HloPassInterface::Run;
+  absl::StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+};
 
 }  // namespace gpu
 }  // namespace xla
+
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_ALL_GATHER_OPTIMIZER_H_

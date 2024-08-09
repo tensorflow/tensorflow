@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GPU_SCHEDULE_POSTPROCESSING_H_
-#define XLA_SERVICE_GPU_GPU_SCHEDULE_POSTPROCESSING_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_SCHEDULE_POSTPROCESSING_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_SCHEDULE_POSTPROCESSING_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -34,11 +34,9 @@ namespace gpu {
 // attribute value untouch for the operations with is_sync=true and for P2P
 // operations, assumming the runtime won't use those values.
 //
-class GpuSchedulePostprocessing : public HloModulePass {
+class SchedulePostprocessing : public HloModulePass {
  public:
-  absl::string_view name() const override {
-    return "gpu-schedule-postprocessing";
-  }
+  absl::string_view name() const override { return "schedule-postprocessing"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -49,4 +47,4 @@ class GpuSchedulePostprocessing : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GPU_SCHEDULE_POSTPROCESSING_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_SCHEDULE_POSTPROCESSING_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GPU_CONV_REWRITER_H_
-#define XLA_SERVICE_GPU_GPU_CONV_REWRITER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_CONV_REWRITER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_CONV_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -34,12 +34,12 @@ namespace gpu {
 // patterns of ops will be matched and fused into the custom call in
 // CudnnFusedConvRewriter.
 
-class GpuConvRewriter : public HloModulePass {
+class ConvRewriter : public HloModulePass {
  public:
-  explicit GpuConvRewriter(const se::GpuComputeCapability& compute_capability)
+  explicit ConvRewriter(const se::GpuComputeCapability& compute_capability)
       : compute_capability_(compute_capability) {};
 
-  absl::string_view name() const override { return "gpu-conv-rewriter"; }
+  absl::string_view name() const override { return "conv-rewriter"; }
 
   static bool ConvIsLowerable(HloInstruction* conv);
 
@@ -55,4 +55,4 @@ class GpuConvRewriter : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GPU_CONV_REWRITER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_CONV_REWRITER_H_
