@@ -178,16 +178,9 @@ class ExecutionEngine {
       std::unique_ptr<llvm::Module> module, Options options,
       absl::Span<const std::string_view> exported);
 
-  // Returns a pointer to the exported function.
-  absl::Span<const ExportedFunctionPtr> exported() const { return exported_; }
-
   ExportedFunctionPtr exported(unsigned ordinal) const {
     return exported_[ordinal];
   }
-
-  // Return a memory buffer with a object file behind this execution engine. Can
-  // be null if execution engine didn't save the compiled object file.
-  std::unique_ptr<llvm::MemoryBuffer> obj_file() const;
 
  private:
   ExecutionEngine(bool enable_gdb_listener, bool enable_perf_listener);
@@ -218,11 +211,6 @@ ExecutionEngine::ExecutionEngine(bool enable_gdb_listener,
     gdb_listener_ = llvm::JITEventListener::createGDBRegistrationListener();
   if (enable_perf_listener)
     perf_listener_ = llvm::JITEventListener::createPerfJITEventListener();
-}
-
-std::unique_ptr<MemoryBuffer> ExecutionEngine::obj_file() const {
-  return obj_file_ ? MemoryBuffer::getMemBuffer(obj_file_->getMemBufferRef())
-                   : nullptr;
 }
 
 static std::string ToString(const llvm::Error &err) {
