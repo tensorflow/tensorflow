@@ -19,6 +19,37 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/log/check.h"
+#include "absl/strings/match.h"
+#include "absl/types/span.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/io/iterator.h"
+#include "tensorflow/core/lib/io/table.h"
+#include "tensorflow/core/lib/io/table_options.h"
+#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_array.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/protobuf/error_codes.pb.h"
+
 #if defined(_WIN32)
 #include <windows.h>
 #endif  // _WIN32
@@ -30,14 +61,10 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"

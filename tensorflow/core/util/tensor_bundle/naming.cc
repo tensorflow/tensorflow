@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 
