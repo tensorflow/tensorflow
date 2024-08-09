@@ -207,6 +207,27 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "sdg_test",
+    size = "small",
+    srcs = ["argminmax_test.py"],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_cuda_asan",  # times out
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  # times out consistently from 2023-08-24
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "argminmax_test",
     size = "small",
     srcs = ["argminmax_test.py"],
