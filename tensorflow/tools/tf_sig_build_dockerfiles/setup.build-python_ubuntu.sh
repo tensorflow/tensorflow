@@ -15,8 +15,9 @@
 # limitations under the License.
 # ==============================================================================
 #
-# setup.python.sh: Install a specific Python version and packages for it.
-# Usage: setup.python.sh <pyversion> <requirements.txt> <runtime mode>
+# setup.build-python_ubuntu.sh: Build python from src for SLES/Ubuntu
+#    and install some TF dependencies
+# Usage: setup.build-python_ubuntu.sh <pyversion> <requirements.txt>
 set -xe
 
 function build_python_from_src() {
@@ -55,7 +56,8 @@ else
     REQUIREMENTS=$2
     PY_VERSION="python${VERSION}"
 
-    # Add deadsnakes repo for Python installation
+    # Install Python build from src dependencies
+    # See: https://github.com/pyenv/pyenv/wiki#suggested-build-environment
     DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update
     DEBIAN_FRONTEND=noninteractive apt install -y wget software-properties-common
     DEBIAN_FRONTEND=noninteractive apt-get install build-essential libssl-dev zlib1g-dev \
@@ -78,12 +80,7 @@ fi # end of conditional check of various distros
 which python3
 python3 --version
 
-if [[ $3 ]]; then
-    echo "Runtime mode"
-    python3 -m pip install --no-cache-dir --no-deps tf-keras-nightly
-else
-    echo "Install Requirements"
-    # Disable the cache dir to save image space, and install packages
-    python3 -m pip install --no-cache-dir -r $REQUIREMENTS -U
-    python3 -m pip install --no-cache-dir --no-deps tf-keras-nightly
-fi
+echo "Install Requirements"
+# Disable the cache dir to save image space, and install packages
+python3 -m pip install --no-cache-dir -r $REQUIREMENTS -U
+python3 -m pip install --no-cache-dir --no-deps tf-keras-nightly
