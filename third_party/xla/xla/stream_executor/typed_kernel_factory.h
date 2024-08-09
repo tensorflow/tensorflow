@@ -73,19 +73,6 @@ class TypedKernelFactory {
 
     return Create(executor, loader_spec);
   }
-
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
-  // an LLVM IR.
-  static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutor *executor, absl::string_view ir,
-      absl::string_view entrypoint, absl::string_view kernel_name,
-      absl::Span<std::string> options) {
-    MultiKernelLoaderSpec loader_spec(
-        TypedKernel<Params...>::kNumberOfParameters);
-    loader_spec.AddLlvmHostKernel(ir, entrypoint, kernel_name, options);
-
-    return Create(executor, loader_spec);
-  }
 };
 
 }  // namespace stream_executor
