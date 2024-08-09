@@ -333,10 +333,16 @@ absl::Status GraphFloat32::MakeExactCopy(GraphFloat32* model) const {
   model->nodes_.clear();
   model->execution_plan_.clear();
   model->values_.clear();
+  model->known_graph_outputs_.clear();
   for (auto& value_def : values_) {
     model->values_.push_back({});
     if (value_def.value) {
       model->values_.back().value = std::make_unique<Value>(*value_def.value);
+      if (std::find(known_graph_outputs_.begin(), known_graph_outputs_.end(),
+                    value_def.value.get()) != known_graph_outputs_.end()) {
+        model->known_graph_outputs_.push_back(
+            model->values_.back().value.get());
+      }
     }
   }
   // Add all nodes first.
