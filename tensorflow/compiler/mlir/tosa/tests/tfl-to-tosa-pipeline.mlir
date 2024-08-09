@@ -2099,7 +2099,7 @@ func.func @test_tanh_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.01567312
 
 // CHECK-LABEL: test_relu_qi8
 // CHECK-DAG: %[[VAR0:.*]] = tosa.rescale %arg0
-// CHECK: %[[VAL_1:.*]] = tosa.clamp %0 {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
+// CHECK: %[[VAL_1:.*]] = tosa.clamp %0 {max_fp = 3.40282347E+38 : f32, max_int = 127 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
 func.func @test_relu_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015685949474573135:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078430203720927238:-128>> {
   %0 = "tfl.relu"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015685949474573135:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0078430203720927238:-128>>
   func.return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 0.0078430203720927238:-128>>

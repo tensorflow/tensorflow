@@ -332,6 +332,7 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
   }
 
   int64_t clamp_min = 0;
+  int64_t clamp_max = std::numeric_limits<int64_t>::max();
   Value clamp_in = tfl_relu_op.getX();
 
   if (output_is_qtype) {
@@ -343,7 +344,9 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
             output_type.getElementType());
 
     clamp_min = output_qtype.getZeroPoint();
+    clamp_max = output_qtype.getStorageTypeMax();
     TrimQuantizedIntegerRangeMin(input_qtype, clamp_min);
+    TrimQuantizedIntegerRangeMax(input_qtype, clamp_max);
 
     clamp_in =
         buildRescale(rewriter, op, output_type, tfl_relu_op.getX(),
@@ -355,7 +358,7 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
   CreateReplaceOpAndInfer<tosa::ClampOp>(
       rewriter, op, output_type, clamp_in,
       rewriter.getI64IntegerAttr(clamp_min),
-      rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
+      rewriter.getI64IntegerAttr(clamp_max),
       rewriter.getF32FloatAttr(0.0f),
       rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
 
