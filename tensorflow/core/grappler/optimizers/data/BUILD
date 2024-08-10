@@ -8,7 +8,6 @@ package(
         "//tensorflow/core/data:__pkg__",
         "//tensorflow/core/data/service:__pkg__",
         "//tensorflow/core/grappler/optimizers/data:__subpackages__",
-        "//tensorflow/core/kernels/data:__pkg__",
         "//tensorflow/core/kernels/data/experimental:__pkg__",
     ],
     licenses = ["notice"],
