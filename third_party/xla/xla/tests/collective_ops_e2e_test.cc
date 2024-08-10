@@ -70,6 +70,31 @@ class CollectiveOpsTestE2E : public HloTestBase {
            GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   }
 
+  void CollectiveOpsVerifyF8Matmul(absl::string_view hlo_text,
+                                   const DebugOptions& options) {
+    if (!HasFp8Support()) {
+      return;
+    }
+    const int64_t kNumReplicas = 1;
+    const int64_t kNumPartitions = 4;
+
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    config.set_debug_options(options);
+    config.set_num_partitions(kNumPartitions);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_text, config));
+
+    TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                            CreateExecutable(std::move(module),
+                                             /*run_hlo_passes=*/true));
+    EXPECT_TRUE(executable->has_module());
+    HloInstruction* gemm_op =
+        FindInstruction(&executable->module(), HloOpcode::kCustomCall);
+    EXPECT_THAT(gemm_op, NotNull());
+    EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
+  }
+
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
                                                          int64_t num_replicas) {
     DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
@@ -825,6 +850,59 @@ ENTRY main.12 {
   // Custom Calls.
   CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
                                           /*disable_dot_merger=*/true);
+
+  // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
+  // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllGatherMultiConsumerF8) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule windowed_einsum_e2e_all_gather_multi_consumer_f8, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, f8e4m3fn[48,192]{1,0}, bf16[], bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  rhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  lhs0 = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs0 = bf16[] parameter(4)
+  scale_rhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_rhs), dimensions={}
+  scale_lhs0_bcast = bf16[48,192]{1,0} broadcast(scale_lhs0), dimensions={}
+  rhs_bf16 = bf16[2,16,48]{2,1,0} convert(rhs)
+  lhs0_bf16 = bf16[48,192]{1,0} convert(lhs0)
+  rhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  lhs0_scaled = bf16[48,192]{1,0} multiply(scale_lhs0_bcast, lhs0_bf16)
+  dot0 = bf16[2,16,192]{2,1,0} dot(rhs_scaled, lhs0_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  lhs1 = f8e4m3fn[48,192]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
+  scale_lhs1 = bf16[] parameter(5)
+  scale_lhs1_bcast = bf16[48,192]{1,0} broadcast(scale_lhs1), dimensions={}
+  lhs1_bf16 = bf16[48,192]{1,0} convert(lhs1)
+  lhs1_scaled = bf16[48,192]{1,0} multiply(scale_lhs1_bcast, lhs1_bf16)
+  dot1 = bf16[2,16,192]{2,1,0} dot(rhs_scaled, lhs1_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT add.8 = bf16[2,16,192]{2,1,0} add(dot0, dot1)
+} // main
+)";
+
+  // Disable the dot merger pass which can prevent the creation of FP8 GEMM
+  // Custom Calls.
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
+  // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
+  // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
@@ -980,19 +1058,7 @@ ENTRY entry {
   opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
   opts.set_xla_gpu_enable_pipelined_collectives(true);
   opts.set_xla_gpu_enable_triton_gemm(false);
-  config.set_debug_options(opts);
-  config.set_num_partitions(kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(std::move(module),
-                                           /*run_hlo_passes=*/true));
-  EXPECT_TRUE(executable->has_module());
-  HloInstruction* gemm_op =
-      FindInstruction(&executable->module(), HloOpcode::kCustomCall);
-  EXPECT_THAT(gemm_op, NotNull());
-  EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
 TEST_F(CollectiveOpsTestE2E,
