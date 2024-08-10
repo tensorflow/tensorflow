@@ -19,6 +19,7 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "tsl/platform/test_benchmark.h"
