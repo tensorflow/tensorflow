@@ -1165,6 +1165,7 @@ cc_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:mutex",
@@ -1182,7 +1183,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/monitoring:cell_reader",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
     ],
 )
