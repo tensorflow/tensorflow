@@ -425,7 +425,6 @@ gpu_kernel_library(
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_semaphore",
-        "//xla/stream_executor/gpu:gpu_stream",
         "@com_google_absl//absl/status:statusor",
     ],
 )

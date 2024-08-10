@@ -17,20 +17,17 @@ limitations under the License.
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <ios>
 #include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
-#include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/numeric/int128.h"
-#include "absl/strings/str_join.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -46,7 +43,6 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -54,7 +50,6 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -75,14 +70,12 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
