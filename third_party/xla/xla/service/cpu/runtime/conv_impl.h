@@ -18,6 +18,8 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include "Eigen/Core"
+#include "Eigen/src/Core/util/EmulateArray.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 

@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/runtime/dot_thunk.h"
-
 template void ::xla::cpu::DotThunk::TypedMatMul<double>(
     const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs,
     int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs,
