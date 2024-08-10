@@ -81,8 +81,9 @@ limitations under the License.
 #include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

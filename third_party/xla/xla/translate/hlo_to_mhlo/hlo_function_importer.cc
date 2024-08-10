@@ -102,7 +102,7 @@ constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
-// direction. Longterm solution is to add a function attribute to maintain the
+// direction. Long-term solution is to add a function attribute to maintain the
 // original HLO naming.
 std::string SanitizeFunctionName(llvm::StringRef name) {
   std::string output(name);

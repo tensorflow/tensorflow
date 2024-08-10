@@ -417,8 +417,8 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    // Don't print async computations when the sytax sugar is enabled since that
-    // is redundant information.
+    // Don't print async computations when the syntax sugar is enabled since
+    // that is redundant information.
     if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation() &&
         computation->CanExpandIntoSingleInstruction()) {
       continue;
@@ -860,7 +860,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
                 outlined_instruction);
 
     // Mark instruction_to_outline an output if it is used outside the
-    // subcomputation or is the output of the original computation (i.e. used
+    // sub-computation or is the output of the original computation (i.e. used
     // externally).
     if (instruction_to_outline->user_count() == 0 ||
         IsUsedOutsideSubcomputation(*instruction_to_outline,
@@ -929,7 +929,7 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   if (computations_.empty()) {
     return {};
   }
-  // First determine all root computations by building a set of nonroot
+  // First determine all root computations by building a set of non-root
   // computations (computations which are called by an instruction in the
   // module).
   absl::flat_hash_set<HloComputation*> nonroot_computations;
