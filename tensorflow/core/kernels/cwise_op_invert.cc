@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

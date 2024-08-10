@@ -13,7 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 namespace tensorflow {
 REGISTER6(UnaryOp, CPU, "Atan", functor::atan, Eigen::half, bfloat16, float,
