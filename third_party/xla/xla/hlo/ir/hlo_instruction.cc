@@ -1262,7 +1262,6 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const xla::OriginalValueProto& original_value_proto =
         proto.original_value();
     auto original_value = std::make_shared<OriginalValue>(shape);
-    std::cerr << __func__ << ", shape: " << shape.ToString() << "\n";
 
     for (const auto& leaf : original_value_proto.leaves()) {
       *original_value->mutable_element(ShapeIndex(leaf.leaf_shape_index())) = {
