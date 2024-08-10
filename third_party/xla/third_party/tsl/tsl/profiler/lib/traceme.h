@@ -146,8 +146,8 @@ class TraceMe {
   }
 
   // Movable.
-  TraceMe(TraceMe&& other) { *this = std::move(other); }
-  TraceMe& operator=(TraceMe&& other) {
+  TraceMe(TraceMe&& other) noexcept { *this = std::move(other); }
+  TraceMe& operator=(TraceMe&& other) noexcept {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(other.start_time_ != kUntracedActivity)) {
       name_.Emplace(std::move(other.name_).Consume());
