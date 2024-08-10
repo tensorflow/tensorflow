@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 import collections
+import dataclasses
 
 from absl.testing import absltest
 
@@ -42,6 +43,15 @@ def from_iterable(state, values):
 
 
 registry.register_node(ExampleType2, ExampleType2.to_iterable, from_iterable)
+
+
+@dataclasses.dataclass
+class Custom:
+  a: int
+  b: str
+
+
+registry.register_dataclass_node(Custom, ["a"], ["b"])
 
 
 class PyTreeTest(absltest.TestCase):
@@ -91,6 +101,15 @@ class PyTreeTest(absltest.TestCase):
     x = registry.flatten(0)[1]
     y = registry.flatten((0, 0))[1]
     self.assertEqual((x.compose(y)).num_leaves, 2)
+
+  def testDataclassMakeFromNodeData(self):
+    c = Custom(1, "a")
+    c_leafs, c_tree = registry.flatten(c)
+    c_tree2 = c_tree.make_from_node_data_and_children(
+        registry, c_tree.node_data(), c_tree.children()
+    )
+    self.assertEqual(c_tree2.unflatten(c_leafs), c)
+    self.assertEqual(str(c_tree2), str(c_tree))
 
 
 if __name__ == "__main__":
