@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 
-#include "absl/strings/str_cat.h"
+#include "absl/log/check.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace grappler {
