@@ -183,6 +183,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_profile_index_map), std::move(assignment)));
 
   executable->jit_ = std::move(jit);
+  executable->jit_->DoneCompiling();
   executable->function_registry_ = FunctionRegistry(executable->jit_.get());
 
   TF_ASSIGN_OR_RETURN(executable->thunks_,
