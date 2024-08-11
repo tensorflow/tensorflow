@@ -1612,30 +1612,16 @@ absl::Status CollectiveCmd::BarrierIfAsync(
 absl::Status CollectiveCmd::Prepare(
     const Thunk::PrepareParams& params,
     Thunk::ResourceRequests& resource_requests) {
-  const Thunk::CollectiveExecuteParams* collectives = params.collective_params;
-
   TF_ASSIGN_OR_RETURN(
-      std::vector<GlobalDeviceId> participants,
-      GetParticipatingDevices(collectives->global_device_id,
-                              *collectives->device_assn,
+      NcclCliqueKey clique_key,
+      GetNcclCliqueKey(*params.collective_params, config().replica_groups,
+                       config().group_mode, nccl_stream_id(),
+                       GetAsyncStreamKind()));
+  TF_ASSIGN_OR_RETURN(
+      size_t num_local_participants,
+      GetNumLocalParticipants(*params.collective_params,
                               config().replica_groups, config().group_mode));
-
-  std::vector<GlobalDeviceId> local_devices;
-  if (collectives->global_device_id_map) {
-    local_devices.reserve(collectives->global_device_id_map->size());
-    for (const auto& entry : *collectives->global_device_id_map) {
-      local_devices.push_back(entry.second);
-    }
-  }
-
-  size_t num_local_participants = GetNumLocalParticipants(
-      participants,
-      collectives->global_device_id_map ? &local_devices : nullptr);
-
-  return resource_requests.AddClique(
-      NcclCliqueKey(std::move(participants), nccl_stream_id(),
-                    GetAsyncStreamKind()),
-      num_local_participants);
+  return resource_requests.AddClique(clique_key, num_local_participants);
 }
 
 absl::Status CollectiveCmd::AddTracedCommandBuffer(
