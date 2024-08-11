@@ -91,4 +91,15 @@ def PreventMmaV3LoopUnrollingPass
   let constructor = "CreatePreventMmaV3LoopUnrollingPass()";
 }
 
+
+def GeneralizeKernelSignaturePass
+    : Pass<"generalize-kernel-signature"> {
+  let summary = "Rewrite kernels to use generic data pointer arguments.";
+  let description = [{
+    Rewrite signatures of kernel functions from global pointers to generic
+    pointers and cast them to global ones within the kernel.
+  }];
+  let constructor = "CreateGeneralizeKernelSignaturePass()";
+}
+
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_PASSES_TD_
