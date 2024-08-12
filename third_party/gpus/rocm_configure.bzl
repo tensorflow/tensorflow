@@ -213,6 +213,8 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
 
     # Support hcc based off clang 10.0.0 (for ROCm 3.3)
     rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
+    if int(rocm_config.rocm_version_number) >= 60200:
+        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/18/include")
     inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
     inc_dirs.append(rocm_toolkit_path + "/hcc/lib/clang/10.0.0/include")
 

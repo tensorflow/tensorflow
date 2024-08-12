@@ -87,7 +87,7 @@ if [[ "$DISTRO" == "focal" ]] || [[ "$DISTRO" == "jammy" ]] || [[ "$DISTRO" == "
     apt-get update --allow-insecure-repositories
 
     wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-    echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/$DISTRO/ llvm-toolchain-$DISTRO-17 main" | tee /etc/apt/sources.list.d/llvm.list
+    echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/$DISTRO/ llvm-toolchain-$DISTRO-18 main" | tee /etc/apt/sources.list.d/llvm.list
     apt-get update --allow-insecure-repositories
 
     # install rocm
@@ -136,6 +136,11 @@ elif [[ "$DISTRO" == "el8" ]]; then
     dnf --enablerepo=extras,epel,elrepo,build_system install -y hipblaslt-devel || true
 fi
 
+function ver { printf "%03d%03d%03d" $(echo "$1" | tr '.' ' '); }
+if [ $(ver "$ROCM_VERSION") -lt $(ver "6.2.0") ]
+then
+  echo "build:rocm --copt=-fclang-abi-compat=17" >> /etc/bazel.bazelrc
+fi
 
 GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100"}
 
