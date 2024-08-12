@@ -40,12 +40,15 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -71,6 +74,10 @@ namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
+
+// Triton forces that all tensor is the program have less than 1048576 elements,
+// otherwise it will fail to compile.
+constexpr int64_t kMaxTensorNumElements = 1048576;
 
 struct OutputTilingInfo {
   // The number of output tiles for each dimension.
@@ -383,12 +390,21 @@ void SortTiledHloInstructionsInPostOrder(
     return std::get<FusionDecision>(constraints_or);
   }
 
+  llvm::DenseSet<mlir::AffineMap> unique_tile_size_maps;
+  for (const auto& tiled_hlo_instruction : tiled_hlo_instructions) {
+    unique_tile_size_maps.insert(
+        tiled_hlo_instruction->symbolic_tile().size_map());
+  }
+
   // Order instructions in def-before-use order.
   SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
 
   return SymbolicTileAnalysis(
       std::move(tiled_hlo_instructions),
-      std::get<ConstraintExpression>(std::move(constraints_or)), ctx);
+      std::get<ConstraintExpression>(std::move(constraints_or)),
+      llvm::SmallVector<mlir::AffineMap, 4>(unique_tile_size_maps.begin(),
+                                            unique_tile_size_maps.end()),
+      ctx);
 }
 
 absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
@@ -399,17 +415,17 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
         "This should never happen.");
   }
 
-  // Handle the unconstrained case.
-  if (constraints_.IsAlwaysSatisfied()) {
-    return true;
-  }
-
   if (tile_parameters.size() != num_tile_parameters()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Failed to check if tile parameters satisfy constraints. Number of "
         "provided parameters doesn't match number of expected parameters "
         "(%d != %d)",
         tile_parameters.size(), num_tile_parameters()));
+  }
+
+  // Handle the unconstrained case.
+  if (constraints_.IsAlwaysSatisfied()) {
+    return true;
   }
 
   // TODO(bchetioui): replace with convenience methods in
@@ -434,21 +450,34 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
   return constraints_are_satisfied;
 }
 
+absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyTritonConstraints(
+    absl::Span<const int64_t> tile_parameters) const {
+  TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
+                      ParametersSatisfyConstraints(tile_parameters));
+
+  if (!constraints_are_satisfied) {
+    return false;
+  }
+
+  // Verify that the tile sizes are not too big.
+  for (const auto& tile_size_map : tile_size_maps_) {
+    int64_t tile_size = 1;
+    for (auto expr : tile_size_map.getResults()) {
+      tile_size *= llvm::PowerOf2Ceil(
+          EvaluateAffineExpr(expr, /*dim_values=*/tile_parameters));
+    }
+
+    if (tile_size > kMaxTensorNumElements) {
+      return false;
+    }
+  }
+  return true;
+}
+
 absl::StatusOr<TiledHloComputation>
 SymbolicTileAnalysis::ComputeTiledHloInstructions(
     absl::Span<const int64_t> tile_parameters,
-    bool constraints_are_known_satisfied,
     bool compute_all_tile_offset_indexing_maps) const {
-  if (!constraints_are_known_satisfied) {
-    TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
-                        ParametersSatisfyConstraints(tile_parameters));
-    if (!constraints_are_satisfied) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Tile parameters ", absl::StrJoin(tile_parameters, ", "),
-          " do not satisfy the SymbolicTileAnalysis's constraints."));
-    }
-  }
-
   // Offset indexing is needed to emit loads/stores and to deduplicate
   // instructions. In some cases, for example in Cost Model, we need to only
   // deduplicate instructions.
@@ -625,7 +654,7 @@ std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
 }  // namespace detail
 
 absl::StatusOr<std::vector<SymbolicTileAnalysis::Tiling>>
-SymbolicTileAnalysis::GetGoodTilings() const {
+SymbolicTileAnalysis::GetGoodTritonTilings() const {
   TF_RET_CHECK(!symbolic_tiled_hlo_instructions_.empty());
   TF_RET_CHECK(symbolic_tiled_hlo_instructions_.back() != nullptr);
 
@@ -643,7 +672,7 @@ SymbolicTileAnalysis::GetGoodTilings() const {
   std::vector<SymbolicTileAnalysis::Tiling> result = detail::GetGoodTilings(
       shape.dimensions(), [&](absl::Span<const int64_t> tile_sizes) {
         absl::StatusOr<bool> is_valid =
-            ParametersSatisfyConstraints(tile_sizes);
+            ParametersSatisfyTritonConstraints(tile_sizes);
         if (!is_valid.ok()) {
           status = is_valid.status();
           return false;

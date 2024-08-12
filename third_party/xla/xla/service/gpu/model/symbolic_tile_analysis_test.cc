@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -126,7 +127,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
                           analysis->ComputeTiledHloInstructions(
                               /*tile_parameters=*/{1, 10},
-                              /*constraints_are_known_satisfied=*/false,
                               /*compute_all_tile_offset_indexing_maps=*/true));
 
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
@@ -274,7 +274,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
                           analysis->ComputeTiledHloInstructions(
                               /*tile_parameters=*/{2, 4, 2},
-                              /*constraints_are_known_satisfied=*/false,
                               /*compute_all_tile_offset_indexing_maps=*/true));
 
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
@@ -321,7 +320,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
                           analysis->ComputeTiledHloInstructions(
                               /*tile_parameters=*/{2, 2},
-                              /*constraints_are_known_satisfied=*/false,
                               /*compute_all_tile_offset_indexing_maps=*/true));
 
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
@@ -503,8 +501,8 @@ ENTRY main {
               StatusIs(absl::StatusCode::kInvalidArgument));
 
   // ... unless we pinky-promise (lie) that they satisfy the constraints ;)
-  TF_EXPECT_OK(analysis->ComputeTiledHloInstructions(
-      impossible_tile_parameters, /*constraints_are_known_satisfied=*/true));
+  TF_EXPECT_OK(
+      analysis->ComputeTiledHloInstructions(impossible_tile_parameters));
 }
 
 TEST_F(SymbolicTileAnalysisTest, ConstraintsAreAggregatedCorrectly) {
@@ -624,7 +622,7 @@ ENTRY main {
   const SymbolicTileAnalysis& analysis = opt_analysis.value();
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<SymbolicTileAnalysis::Tiling> good_tilings,
-      analysis.GetGoodTilings());
+      analysis.GetGoodTritonTilings());
   // The constraint on the 1st dimension is
   //   6 mod s0 in [0, 0] || s0 mod 6 in [0, 0],
   // and only 48, 1, and 2 fulfill it from the set of possible tile sizes
@@ -698,7 +696,7 @@ ENTRY entry_computation {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<SymbolicTileAnalysis::Tiling> good_tilings,
-      analysis.GetGoodTilings());
+      analysis.GetGoodTritonTilings());
   EXPECT_THAT(good_tilings, Not(IsEmpty()));
   LogTilingsIfVlog1(good_tilings);
 }
@@ -762,7 +760,7 @@ ENTRY entry_computation {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<SymbolicTileAnalysis::Tiling> good_tilings,
-      analysis.GetGoodTilings());
+      analysis.GetGoodTritonTilings());
   EXPECT_THAT(good_tilings, Not(IsEmpty()));
   LogTilingsIfVlog1(good_tilings);
 }
@@ -791,7 +789,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
                           analysis->ComputeTiledHloInstructions(
                               /*tile_parameters=*/{1, 1},
-                              /*constraints_are_known_satisfied=*/false,
                               /*compute_all_tile_offset_indexing_maps=*/true));
 
   EXPECT_THAT(*tiled_hlo_computation.GetRoot(),
@@ -840,11 +837,10 @@ ENTRY main {
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      TiledHloComputation tiled_hlo_computation,
-      analysis->ComputeTiledHloInstructions(
-          /*tile_parameters=*/{1, 1}, /*constraints_are_known_satisfied=*/false,
-          /*compute_all_tile_offset_indexing_maps=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tile_parameters=*/{1, 1},
+                              /*compute_all_tile_offset_indexing_maps=*/true));
 
   const TiledHloInstruction* dynamic_slice =
       tiled_hlo_computation.GetRoot()->operand(0);
@@ -875,6 +871,51 @@ ENTRY main {
       hlo: %of3 = s32[] parameter(3)
       (d0, d1, d2) -> ()
   )"));
+}
+
+TEST_F(SymbolicTileAnalysisTest, TritonSpecificConstraintsAreEnforced) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+max_computation {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(param_0, param_1)
+}
+
+fused_computation {
+  param_0 = f32[8192,50304] parameter(0)
+  constant = f32[] constant(-inf)
+  reduce = f32[8192] reduce(param_0, constant), dimensions={1}, to_apply=max_computation
+  broadcast = f32[8192,50304] broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[8192,50304] subtract(param_0, broadcast)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[8192,50304] parameter(0)
+  ROOT fusion = f32[8192,50304] fusion(param_0), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  // The biggest tile in the program has 8 * 65536 = 524288 elements.
+  EXPECT_THAT(analysis->ParametersSatisfyTritonConstraints({8, 128}),
+              IsOkAndHolds(true));
+
+  // The biggest tile in the program is 18 * 50304 = 905472 elements which is
+  // smaller than the limit of 1048576, but since Triton requires all tile sizes
+  // to be a power of 2, the actual tile will be 32 * 65536 = 2097152 elements.
+  EXPECT_THAT(analysis->ParametersSatisfyTritonConstraints({18, 50304}),
+              IsOkAndHolds(false));
+
+  // Because of reduce, we need to load full rows from param_0 and the load tile
+  // will be 1024 * 65536 = 67108864 elements, that is larger than the limit of
+  // 1048576.
+  EXPECT_THAT(analysis->ParametersSatisfyTritonConstraints({1024, 1}),
+              IsOkAndHolds(false));
 }
 
 }  // namespace

@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -66,9 +68,6 @@ class SymbolicTileAnalysis {
 
   // Returns a graph of HLO instructions tiled with the given tile parameters.
   // The provided tile parameters must satisfy the analysis's constraints.
-  // By default, `ComputetiledHloInstructions` performs a check that the
-  // constraints are satisfied by the chosen tiled parameters. Setting
-  // `constraints_are_known_satisfied` to true bypasses this check.
   //
   // If `compute_all_tile_offset_indexing_maps == true`, all
   // TiledHloInstructions will have tile offset indexing maps set. Otherwise,
@@ -76,7 +75,6 @@ class SymbolicTileAnalysis {
   // deduplicate them.
   absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
       absl::Span<const int64_t> tile_parameters,
-      bool constraints_are_known_satisfied = false,
       bool compute_all_tile_offset_indexing_maps = false) const;
 
   // Returns the tiled root instruction.
@@ -110,6 +108,15 @@ class SymbolicTileAnalysis {
   absl::StatusOr<bool> ParametersSatisfyConstraints(
       absl::Span<const int64_t> tile_parameters) const;
 
+  // Returns true if a list of tile parameters satisfies the symbolic tile
+  // analysis's constraints and Triton-specific constraints.
+  //
+  // Returns false if the constraints are not satisfied but can be evaluated
+  // correctly.
+  // Returns an error if the constraints cannot be evaluated correctly.
+  absl::StatusOr<bool> ParametersSatisfyTritonConstraints(
+      absl::Span<const int64_t> tile_parameters) const;
+
   // Return the underlying MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const { return context_; };
 
@@ -119,21 +126,23 @@ class SymbolicTileAnalysis {
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
 
   // Returns a list of tilings for the symbolic tiled HLO computation of the
-  // analysis that are expected to perform well.
+  // analysis that are expected to perform well with Triton.
   //
   // Note: This is an initial implementation where the results may not perform
   // that well, and now we're filtering the tilings with Triton in mind
   // (allowing only powers of 2 or the full dimension size).
-  absl::StatusOr<std::vector<Tiling>> GetGoodTilings() const;
+  absl::StatusOr<std::vector<Tiling>> GetGoodTritonTilings() const;
 
  private:
   SymbolicTileAnalysis(std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
                            symbolic_tiled_hlo_instructions,
                        ConstraintExpression constraints,
+                       llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps,
                        mlir::MLIRContext* context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
         constraints_(std::move(constraints)),
+        tile_size_maps_(std::move(tile_size_maps)),
         context_(context) {}
 
   // The tiled HLO instructions in def-before-use order.
@@ -142,6 +151,15 @@ class SymbolicTileAnalysis {
 
   // See the documentation of GetConstraints().
   ConstraintExpression constraints_;
+
+  // A collection of unique size_maps from all the SymbolicTiledHloInstructions.
+  // Those map are used to verify that given tile parameters will not produce
+  // too big tile sizes inside the program, otherwise an emitter might not be
+  // able to compile the program.
+  //
+  // Different tiled hlo instructions often have the same size map, so we keep a
+  // collection of unique maps to improve compilation time.
+  llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps_;
 
   mlir::MLIRContext* context_;
 };

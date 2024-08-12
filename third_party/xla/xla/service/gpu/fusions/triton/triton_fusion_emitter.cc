@@ -2679,10 +2679,20 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   ImplicitLocOpBuilder b(loc, builder);
 
+  TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
+                      symbolic_tile_analysis.ParametersSatisfyTritonConstraints(
+                          block_level_parameters.output_tile_sizes));
+  if (!constraints_are_satisfied) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Tile parameters ",
+        absl::StrJoin(block_level_parameters.output_tile_sizes, ", "),
+        " do not satisfy the SymbolicTileAnalysis's Triton-specific "
+        "constraints."));
+  }
+
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       symbolic_tile_analysis.ComputeTiledHloInstructions(
                           block_level_parameters.output_tile_sizes,
-                          /*constraints_are_known_satisfied=*/false,
                           /*compute_all_tile_offset_indexing_maps=*/true));
 
   SmallVector<Value, 3> tile_multi_index =

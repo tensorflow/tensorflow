@@ -439,7 +439,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
-  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetGoodTilings());
+  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetGoodTritonTilings());
 
   std::optional<TiledRunTimeData> best_tiled_run_time_data;
 
