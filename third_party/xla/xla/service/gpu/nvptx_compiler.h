@@ -84,9 +84,9 @@ class NVPTXCompiler : public GpuCompiler {
   absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
 
-  absl::Status RunCudnnFusionCompilerPass(
-      HloModule* module, se::StreamExecutor* stream_exec,
-      BinaryMap* dnn_compiled_graphs) override;
+  absl::Status RunCudnnCompilerPasses(HloModule* module,
+                                      se::StreamExecutor* stream_exec,
+                                      BinaryMap* dnn_compiled_graphs) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 

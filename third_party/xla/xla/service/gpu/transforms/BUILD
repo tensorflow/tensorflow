@@ -1124,9 +1124,9 @@ xla_cc_test(
 
 # TODO(b/358278858): Currently lacking test coverage.
 cc_library(
-    name = "cudnn_workspace_rewriter",
-    srcs = if_cuda_is_configured(["cudnn_workspace_rewriter.cc"]),
-    hdrs = if_cuda_is_configured(["cudnn_workspace_rewriter.h"]),
+    name = "cudnn_custom_call_compiler",
+    srcs = if_cuda_is_configured(["cudnn_custom_call_compiler.cc"]),
+    hdrs = if_cuda_is_configured(["cudnn_custom_call_compiler.h"]),
     deps = if_cuda_is_configured([
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -1141,9 +1141,9 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
+        "//xla/service/gpu/runtime:cudnn_thunk",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
-        "//xla/service/gpu:gpu_fused_mha_runner",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:dnn",

@@ -171,10 +171,10 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
-  // Runs cuDNN fusion compiler pass.
-  virtual absl::Status RunCudnnFusionCompilerPass(
-      HloModule* module, se::StreamExecutor* stream_exec,
-      BinaryMap* dnn_compiled_graphs) {
+  // Runs cuDNN fusion and custom call compiler passes.
+  virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
+                                              se::StreamExecutor* stream_exec,
+                                              BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 

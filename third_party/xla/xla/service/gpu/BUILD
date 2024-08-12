@@ -313,7 +313,6 @@ cc_library(
         ":execution_stream_assignment",
         ":gpu_asm_opts_util",
         ":gpu_conv_runner",
-        ":gpu_fused_mha_runner",
         ":gpu_norm_runner",
         ":hlo_fusion_analysis",
         ":ir_emission_utils",
@@ -356,9 +355,9 @@ cc_library(
         "//xla/service/gpu/runtime:conditional_thunk",
         "//xla/service/gpu/runtime:convolution_thunk",
         "//xla/service/gpu/runtime:copy_thunk",
+        "//xla/service/gpu/runtime:cudnn_thunk",
         "//xla/service/gpu/runtime:custom_call_thunk",
         "//xla/service/gpu/runtime:fft_thunk",
-        "//xla/service/gpu/runtime:fused_mha_thunk",
         "//xla/service/gpu/runtime:gemm_thunk",
         "//xla/service/gpu/runtime:gpublas_lt_matmul_thunk",
         "//xla/service/gpu/runtime:infeed_thunk",
@@ -1043,31 +1042,6 @@ cc_library(
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
-)
-
-cc_library(
-    name = "gpu_fused_mha_runner",
-    srcs = ["gpu_fused_mha_runner.cc"],
-    hdrs = ["gpu_fused_mha_runner.h"],
-    deps = [
-        ":backend_configs_cc",
-        ":cublas_cudnn",
-        ":stream_executor_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/stream_executor",
-        "//xla/stream_executor:dnn",
-        "//xla/stream_executor:lazy_op_runner",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:statusor",
-    ],
 )
 
 cc_library(
@@ -1779,6 +1753,7 @@ cc_library(
         "//xla/service/gpu/transforms:conv_padding_legalization",
         "//xla/service/gpu/transforms:conv_rewriter",
         "//xla/service/gpu/transforms:cublas_pad_for_gemms",
+        "//xla/service/gpu/transforms:cudnn_custom_call_compiler",
         "//xla/service/gpu/transforms:cudnn_fused_conv_rewriter",
         "//xla/service/gpu/transforms:cudnn_fused_mha_rewriter",
         "//xla/service/gpu/transforms:cudnn_fused_mha_transpose_fusion",
@@ -1787,7 +1762,6 @@ cc_library(
         "//xla/service/gpu/transforms:cudnn_pad_for_convolutions",
         "//xla/service/gpu/transforms:cudnn_simplify_padding",
         "//xla/service/gpu/transforms:cudnn_vectorize_convolutions",
-        "//xla/service/gpu/transforms:cudnn_workspace_rewriter",
         "//xla/service/gpu/transforms:dot_sparsity_rewriter",
         "//xla/service/gpu/transforms:gpusolver_rewriter",
         "//xla/service/gpu/transforms:sort_rewriter",
