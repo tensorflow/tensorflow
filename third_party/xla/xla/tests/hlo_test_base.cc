@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_parser.h"
@@ -1013,23 +1014,15 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 HloComputation* HloTestBase::FindComputation(HloModule* module,
                                              absl::string_view name) {
-  auto computations = module->computations();
-  auto it = absl::c_find_if(
-      computations, [&](HloComputation* c) { return c->name() == name; });
-  if (it == computations.end()) {
-    return nullptr;
-  }
-  return *it;
+  return hlo_query::FindComputation(module, name);
 }
 
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              absl::string_view name) {
-  for (const HloComputation* c : module->computations()) {
-    auto instructions = c->instructions();
-    auto it = absl::c_find_if(
-        instructions, [&](HloInstruction* i) { return i->name() == name; });
-    if (it != instructions.end()) {
-      return *it;
+  for (const HloComputation* computation : module->computations()) {
+    if (auto instruction = hlo_query::FindFirstInstruction(computation, name);
+        instruction.first != nullptr) {
+      return instruction.first;
     }
   }
   return nullptr;
@@ -1037,12 +1030,10 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
 
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              HloOpcode opcode) {
-  for (const HloComputation* c : module->computations()) {
-    auto instructions = c->instructions();
-    auto it = absl::c_find_if(
-        instructions, [&](HloInstruction* i) { return i->opcode() == opcode; });
-    if (it != instructions.end()) {
-      return *it;
+  for (const HloComputation* computation : module->computations()) {
+    if (auto instruction = hlo_query::FindFirstInstruction(computation, opcode);
+        instruction.first != nullptr) {
+      return instruction.first;
     }
   }
   return nullptr;
