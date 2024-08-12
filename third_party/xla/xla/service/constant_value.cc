@@ -17,6 +17,14 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/literal.h"
+#include "xla/primitive_util.h"
+#include "xla/util.h"
+
 namespace xla {
 
 absl::StatusOr<ConstantValue> ConstantValue::FromLiteral(
