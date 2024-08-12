@@ -163,12 +163,19 @@ func.func @main(
 
 // -----
 
+// CHECK: sdy.mesh @mesh = <"x"=2>
+sdy.mesh @mesh = <"x"=2>
+
 // Test WhileOp with lifted free variables and sinked constants.
 
 // CHECK-LABEL: func @main
-func.func @main(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
+func.func @main(
+    %arg0: tensor<32x96xf32>,
+    %arg1: tensor<32x96xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh, [{}, {}]>"}})
+    -> tensor<32x96xf32> {
   // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
   // CHECK-NEXT: %[[C32:.*]] = sdy.constant dense<32>
+  // CHECK-NEXT: %[[SC:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{?}, {?}]>
   // CHECK-NEXT: %[[WHILE:.*]]:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
   // CHECK-NEXT:   cond {
   // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %[[C32]]
@@ -176,7 +183,7 @@ func.func @main(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
   // CHECK-NEXT: } do {
   // CHECK-DAG:    %[[C1:.*]] = sdy.constant dense<1>
   // CHECK-DAG:    %[[ADD_0:.*]] = mhlo.add %iterArg_0, %[[C1]]
-  // CHECK-DAG:    %[[ADD_1:.*]] = mhlo.add %iterArg, %iterArg
+  // CHECK-DAG:    %[[ADD_1:.*]] = mhlo.add %iterArg, %[[SC]]
   // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]]
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[WHILE]]#0
@@ -189,7 +196,7 @@ func.func @main(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
   } do {
     %3 = sdy.constant dense<1> : tensor<i32>
     %4 = mhlo.add %iterArg_0, %3 : tensor<i32>
-    %5 = mhlo.add %iterArg, %iterArg : tensor<32x96xf32>
+    %5 = mhlo.add %iterArg, %arg1 : tensor<32x96xf32>
     mhlo.return %5, %4 : tensor<32x96xf32>, tensor<i32>
   }
   return %2#0 : tensor<32x96xf32>

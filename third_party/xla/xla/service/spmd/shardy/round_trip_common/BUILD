@@ -48,6 +48,22 @@ cc_library(
 )
 
 cc_library(
+    name = "open_while_free_vars_sharding",
+    srcs = ["open_while_free_vars_sharding.cc"],
+    hdrs = ["open_while_free_vars_sharding.h"],
+    deps = [
+        "//xla/mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+cc_library(
     name = "shard_map_import",
     srcs = ["shard_map_import.cc"],
     hdrs = ["shard_map_import.h"],
@@ -79,6 +95,7 @@ cc_library(
     deps = [
         ":convert_sharding_custom_calls",
         ":import_constants",
+        ":open_while_free_vars_sharding",
         ":shard_map_import",
         "//xla/mlir_hlo:mhlo_passes",
         "@llvm-project//mlir:FuncDialect",
