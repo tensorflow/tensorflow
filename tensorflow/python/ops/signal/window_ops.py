@@ -62,14 +62,16 @@ import tensorflow as tf
 window_length = 16
 beta = 14.0
 
-window = tf.signal.kaiser_window(window_length, beta, dtype=tf.float32, name=None)
+window = tf.signal.kaiser_window(window_length, beta, dtype=tf.float32, 
+name=None)
 print(window)
 
 # tf.Tensor(
 # [7.72686690e-06 1.28406240e-03 1.37837855e-02 6.81537315e-02
 #  2.11134031e-01 4.62716490e-01 7.61509001e-01 9.70435679e-01
 #  9.70435679e-01 7.61509001e-01 4.62716490e-01 2.11134031e-01
-#  6.81537315e-02 1.37837855e-02 1.28406240e-03 7.72686690e-06], shape=(16,), dtype=float32)
+#  6.81537315e-02 1.37837855e-02 1.28406240e-03 7.72686690e-06], 
+shape=(16,), dtype=float32)
 ```
 ```python
 
@@ -104,8 +106,9 @@ print(spectrum)
 ```
   Args:
     window_length: A scalar `Tensor` indicating the window length to generate.
-    beta: A parameter that determines the shape of th Kaiser window, For beta = 0, the shape is rectangular. 
-          For larger `beta` value, the window becomes narrow
+    beta: A parameter that determines the shape of the Kaiser window, 
+          For beta = 0, the shape is rectangular. 
+          For larger `beta` value, the window becomes narrow.
     dtype: The data type to produce. Must be a floating point type.
     name: An optional name for the operation.
 
