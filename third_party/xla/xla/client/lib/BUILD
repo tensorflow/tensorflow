@@ -227,6 +227,7 @@ cc_library(
 
 xla_test(
     name = "math_test",
+    timeout = "long",
     srcs = ["math_test.cc"],
     backend_tags = {
         # Times out.
