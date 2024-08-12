@@ -303,6 +303,7 @@ typedef enum {
   XLA_FFI_ExecutionStage_PREPARE = 1,
   XLA_FFI_ExecutionStage_INITIALIZE = 2,
   XLA_FFI_ExecutionStage_EXECUTE = 3,
+  XLA_FFI_ExecutionStage_VALIDATE = 4,
 } XLA_FFI_ExecutionStage;
 
 struct XLA_FFI_Args {

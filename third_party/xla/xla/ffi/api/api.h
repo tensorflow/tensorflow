@@ -165,6 +165,8 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "initialize";
     case XLA_FFI_ExecutionStage_EXECUTE:
       return os << "execute";
+    case XLA_FFI_ExecutionStage_VALIDATE:
+      return os << "validate";
   }
 }
 
@@ -175,6 +177,7 @@ enum class ExecutionStage : uint8_t {
   kPrepare = XLA_FFI_ExecutionStage_PREPARE,
   kInitialize = XLA_FFI_ExecutionStage_INITIALIZE,
   kExecute = XLA_FFI_ExecutionStage_EXECUTE,
+  kValidate = XLA_FFI_ExecutionStage_VALIDATE,
 };
 
 // Forward declare template defined below.
@@ -235,6 +238,8 @@ class Ffi {
                                          XLA_FFI_Error_Code errc,
                                          std::string message);
 
+  static inline XLA_FFI_Error* Success(const XLA_FFI_Api* api);
+
   static inline XLA_FFI_Error* InvalidArgument(const XLA_FFI_Api* api,
                                                std::string message);
 
@@ -273,6 +278,10 @@ XLA_FFI_Error* Ffi::MakeError(const XLA_FFI_Api* api, XLA_FFI_Error_Code errc,
   args.errc = errc;
   args.message = message.c_str();
   return api->XLA_FFI_Error_Create(&args);
+}
+
+XLA_FFI_Error* Ffi::Success(const XLA_FFI_Api* api) {
+  return MakeError(api, XLA_FFI_Error_Code_OK, std::move(""));
 }
 
 XLA_FFI_Error* Ffi::InvalidArgument(const XLA_FFI_Api* api,
@@ -1214,6 +1223,12 @@ class Handler : public Ffi {
                  XLA_FFI_API_MINOR, ") does not match the framework's API ",
                  "version (", api_version.major_version, ".",
                  api_version.minor_version, ")"));
+    }
+
+    // When validating a handler, we only run the above checks.
+    if (XLA_FFI_PREDICT_FALSE(call_frame->stage ==
+                              XLA_FFI_ExecutionStage_VALIDATE)) {
+      return Success(call_frame->api);
     }
 
     // Check that handler is called during correct execution stage.

@@ -868,6 +868,26 @@ TEST(FfiTest, ApiVersion) {
       << status.message() << "\n";
 }
 
+TEST(FfiTest, ValidateHandler) {
+  auto handler = Ffi::Bind().To([]() {
+    // Make sure the handler doesn't actually get called during validation.
+    return absl::InvalidArgumentError("Oops!");
+  });
+  CallOptions options;
+  // Use an invalid call frame to make sure that the input decoding checks
+  // aren't executed during validation.
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/2);
+  auto call_frame = builder.Build();
+  auto api = GetXlaFfiApi();
+  XLA_FFI_Api api_copy = *api;
+  api_copy.api_version.major_version += 1;
+  auto status = CallWithApi(&api_copy, *handler, call_frame, options,
+                            ExecutionStage::kValidate);
+  EXPECT_TRUE(absl::StrContains(status.message(), "FFI handler's API version"))
+      << "status.message():\n"
+      << status.message() << "\n";
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//

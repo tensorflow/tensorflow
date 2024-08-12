@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -296,6 +297,14 @@ absl::StatusOr<HloSharding> IotaTileHelper(
                    subgroup_types);
 }
 
+absl::Status ValidateHandler(XLA_FFI_Handler* handler) {
+  xla::ffi::CallOptions options;
+  xla::ffi::CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+  return xla::ffi::Call(handler, call_frame, options,
+                        XLA_FFI_ExecutionStage_VALIDATE);
+}
+
 // Registers a 'fn' as a custom call target.
 //
 // `fn` must be a custom call implementation function pointer (XLA_FFI_Handler*
@@ -333,10 +342,11 @@ absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
   if (api_version == 1) {
     nb::capsule capsule;
     if (nb::try_cast<nb::capsule>(fn, capsule)) {
+      auto handler = reinterpret_cast<XLA_FFI_Handler*>(
+          static_cast<void*>(capsule.data()));
+      TF_RETURN_IF_ERROR(ValidateHandler(handler));
       return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
-          xla::ffi::GetXlaFfiApi(), fn_name, platform,
-          reinterpret_cast<XLA_FFI_Handler*>(
-              static_cast<void*>(capsule.data()))));
+          xla::ffi::GetXlaFfiApi(), fn_name, platform, handler));
     }
 
     nb::dict bundle;
@@ -351,7 +361,9 @@ absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
               "PyCapsule fn object for all dict keys");
         }
 
-        return reinterpret_cast<XLA_FFI_Handler*>(capsule.data());
+        auto handler = reinterpret_cast<XLA_FFI_Handler*>(capsule.data());
+        TF_RETURN_IF_ERROR(ValidateHandler(handler));
+        return handler;
       };
 
       XLA_FFI_Handler_Bundle bundle;
