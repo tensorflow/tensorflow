@@ -1207,7 +1207,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.begin()->second->executor());
 
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
   if (options.enable_mock_nccl) {
     gpu_run_options->set_enable_mock_nccl_collectives();
