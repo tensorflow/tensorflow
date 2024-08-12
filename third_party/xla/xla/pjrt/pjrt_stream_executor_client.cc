@@ -3420,7 +3420,9 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
     return std::make_pair(*argument_layouts, result_layout);
   };
 
-  build_options.set_layout_canonicalization_callback(layout_callback);
+  if (build_options.layout_canonicalization_callback() == nullptr) {
+    build_options.set_layout_canonicalization_callback(layout_callback);
+  }
 
   int num_replicas;
   int num_partitions;
@@ -3468,8 +3470,10 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
-                                  CompileOptions options) {
+PjRtStreamExecutorClient::CompileInternal(
+    const XlaComputation& computation,
+    const std::vector<const Shape*>& argument_layout_pointers,
+    CompileOptions options) {
   tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
   VLOG(1) << "PjRtStreamExecutorClient::Compile";
   options.executable_build_options.set_process_index(process_index());
@@ -3487,17 +3491,6 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
   std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
-
-  std::vector<const Shape*> argument_layout_pointers;
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
-      computation,
-      [local_client = client()](Shape shape) {
-        return local_client->backend()
-            .transfer_manager()
-            ->ChooseCompactLayoutForShape(shape);
-      },
-      options.argument_layouts, &options.executable_build_options,
-      &argument_layout_pointers));
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
@@ -3519,8 +3512,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
                                   CompileOptions options) {
   XlaComputation xla_computation;
-  const ExecutableBuildOptions& exec_build_options =
-      options.executable_build_options;
+  ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
@@ -3541,8 +3533,26 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
                       GetOutputMemoryKinds(module));
 
-  // This call will update result_layout in options.executable_build_options
-  // (in addition to returning the argument layouts).
+  // If auto-sharding modifies shapes of arguments and/or result,
+  // we get a callback to restore the layouts. Let us restore the layouts
+  // according to the attributes we parsed from MLIR.
+  auto layout_callback = [local_client = client(), &arg_layout_modes,
+                          &out_layout_modes, &arg_memory_spaces,
+                          &out_memory_spaces](const HloModule& module)
+      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
+    XlaComputation xla_computation(XlaComputation(module.ToProto()));
+    return LayoutModesToXlaShapes(
+        xla_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
+        out_memory_spaces,
+        [local_client](Shape shape) -> absl::StatusOr<Shape> {
+          return local_client->backend()
+              .transfer_manager()
+              ->ChooseCompactLayoutForShape(shape);
+        });
+  };
+  exec_build_options.set_layout_canonicalization_callback(layout_callback);
+
+  // This call will update result_layout in options.executable_build_options.
   TF_ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
                       LayoutModesToXla(
                           xla_computation, arg_layout_modes, out_layout_modes,
@@ -3555,8 +3565,24 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
                           },
                           options.executable_build_options));
 
-  options.argument_layouts = arg_layouts_and_pointers.first;
-  return Compile(xla_computation, options);
+  return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
+                         options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
+                                  CompileOptions options) {
+  std::vector<const Shape*> argument_layout_pointers;
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client()](Shape shape) {
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
+  return CompileInternal(computation, argument_layout_pointers, options);
 }
 
 absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
