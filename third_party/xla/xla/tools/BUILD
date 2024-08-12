@@ -833,13 +833,46 @@ tsl_gpu_library(
 )
 
 xla_test(
-    name = "xla_compile_lib_test",
-    srcs = ["xla_compile_lib_test.cc"],
+    name = "xla_cpu_compile_lib_test",
+    srcs = ["xla_cpu_compile_lib_test.cc"],
+    backends = [
+        "cpu",
+    ],
+    data = [
+        ":data/add.hlo",
+    ],
+    deps = [
+        ":xla_compile_lib",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:platform_util",
+        "//xla/service:symbol_repository",
+        "//xla/service:xla_compile_result_proto_cc_impl",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:env_time",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
+    ] + if_google(["@com_google_protobuf//:duration_cc_proto"]),
+)
+
+xla_test(
+    name = "xla_gpu_compile_lib_test",
+    srcs = ["xla_gpu_compile_lib_test.cc"],
     backend_tags = {
         "gpu": ["requires-gpu-nvidia"] + if_google(["config-cuda-only"]),
     },
     backends = [
-        "cpu",
         "gpu",
     ],
     data = [
@@ -847,9 +880,6 @@ xla_test(
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = [
         ":xla_compile_lib",
         "//xla:util",
@@ -858,25 +888,20 @@ xla_test(
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/gpu:gpu_symbol_repository",
+        "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_time",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_tsl//tsl/protobuf:status_proto_cc",
-    ] + if_google(["@com_google_protobuf//:duration_cc_proto"]) + if_gpu_is_configured([
-        "//xla/service/gpu/autotuning:autotuner_util",
-    ]),
+    ],
 )
 
 xla_test(
