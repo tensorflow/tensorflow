@@ -121,8 +121,7 @@ bool ParseInputNodeQuantSpecs(const absl::string_view node_names,
   }
 
   tensorflow::DataType final_type = tensorflow::DT_FLOAT;
-  if (!inference_type.empty() &&
-      !DataType_Parse(std::string(inference_type), &final_type)) {
+  if (!inference_type.empty() && !DataType_Parse(inference_type, &final_type)) {
     return true;
   }
   return GetInputNodeQuantSpecs(input_nodes, node_mins, node_maxs, final_type,
