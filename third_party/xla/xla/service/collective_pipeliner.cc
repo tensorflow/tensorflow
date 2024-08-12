@@ -445,7 +445,6 @@ std::vector<HloInstruction*> CollectDependenciesToPipeline(
                                                             ops.end());
   formatting_set.insert(source_ops.begin(), source_ops.end());
   std::vector<HloInstruction*> to_return;
-  absl::flat_hash_set<HloInstruction*> already_inserted;
   for (const HloInstruction* op : ops) {
     for (HloInstruction* operand : op->operands()) {
       if (!formatting_set.count(operand)) {
@@ -1380,7 +1379,6 @@ bool IsLoopInvariant(
   // to still visit before visiting the HLO itself.
   std::vector<std::pair<const HloInstruction*, int>> stack(
       1, std::make_pair(instr, 0));
-  absl::flat_hash_set<const HloInstruction*> visited;
   while (!stack.empty()) {
     auto& current = stack.back();
     invariant_cache[std::get<0>(current)] = true;
@@ -2775,8 +2773,6 @@ static absl::Status TransformLoopBackward(
         instruction, false, CollectivePipeliner::PipeliningDirection::kBackward,
         loop_analysis));
   }
-  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
-      loop_cond_replacements;
   auto cond_builder =
       HloComputation::Builder(while_loop->while_condition()->name());
   HloInstruction* new_cond_param =
