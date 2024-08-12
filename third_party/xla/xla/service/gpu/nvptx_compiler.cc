@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/conv_padding_legalization.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
+#include "xla/service/gpu/transforms/cudnn_custom_call_compiler.h"
 #include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fused_mha_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fused_mha_transpose_fusion.h"
@@ -77,7 +78,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/service/gpu/transforms/cudnn_vectorize_convolutions.h"
-#include "xla/service/gpu/transforms/cudnn_workspace_rewriter.h"
 #include "xla/service/gpu/transforms/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/sort_rewriter.h"
@@ -342,9 +342,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
-  if (stream_exec) {
-    post_pipeline.AddPass<CuDnnWorkspaceRewriter>(*stream_exec);
-  }
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
   return absl::OkStatus();
@@ -395,15 +392,17 @@ absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
   return absl::OkStatus();
 }
 
-absl::Status NVPTXCompiler::RunCudnnFusionCompilerPass(
+absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
     HloModule* module, se::StreamExecutor* stream_exec,
     BinaryMap* dnn_compiled_graphs) {
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   });
-  CuDnnFusionCompiler cudnn_compiler(*stream_exec, *dnn_compiled_graphs);
-  return cudnn_compiler.Run(module).status();
+  CuDnnFusionCompiler fusion_compiler(*stream_exec, *dnn_compiled_graphs);
+  TF_RETURN_IF_ERROR(fusion_compiler.Run(module).status());
+  CuDnnCustomCallCompiler call_compiler(*stream_exec, *dnn_compiled_graphs);
+  return call_compiler.Run(module).status();
 }
 
 namespace {
