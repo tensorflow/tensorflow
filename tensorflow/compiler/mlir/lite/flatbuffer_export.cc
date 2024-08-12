@@ -94,7 +94,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/schema/mutable/debug_metadata_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
@@ -122,6 +121,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/tstring.h"
@@ -484,25 +484,6 @@ static std::unique_ptr<::tensorflow::NodeDef> GetTensorFlowNodeDef(
   return std::move(status_or_node_def.value());
 }
 
-// Converts a mlir padding StringRef to TfLitePadding.
-// Returns std::nullopt if conversion fails.
-static std::optional<TfLitePadding> GetTflitePadding(Operation* inst,
-                                                     llvm::StringRef padding) {
-  const tflite::Padding padding_attr =
-      std::move(llvm::StringSwitch<tflite::Padding>(padding)
-                    .Case("SAME", tflite::Padding_SAME)
-                    .Case("VALID", tflite::Padding_VALID));
-  if (padding_attr == tflite::Padding_SAME) {
-    return kTfLitePaddingSame;
-  }
-  if (padding_attr == tflite::Padding_VALID) {
-    return kTfLitePaddingValid;
-  }
-
-  return inst->emitOpError() << "Invalid padding attribute: " << padding,
-         std::nullopt;
-}
-
 // Extracts TfLitePoolParams from a TFL custom op.
 // Template parameter, TFLOp, should be a TFL custom op containing attributes
 // generated from TfLitePoolParams.
@@ -800,6 +781,11 @@ class Translator {
 
   std::optional<BufferOffset<tflite::Operator>> BuildVhloScatterV1Op(
       mlir::vhlo::ScatterOpV1 scatter_op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results,
+      mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
+
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloReduceV1Op(
+      mlir::vhlo::ReduceOpV1 reduce_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
@@ -2197,6 +2183,36 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloScatterV1Op(
       GetOperatorDebugMetadataIndex(scatter_op.getOperation()));
 }
 
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloReduceV1Op(
+    mlir::vhlo::ReduceOpV1 reduce_op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results,
+    mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  std::string op_name =
+      reduce_op.getOperation()->getName().getStringRef().str();
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_REDUCE);
+
+  auto dimensions = builder_.CreateVector(mlir::GetVector<int64_t>(
+      mlir::cast<mlir::vhlo::TensorV1Attr>(reduce_op.getDimensions()),
+      vhlo_type_converter));
+  auto& body = reduce_op.getBody();
+  int32_t subgraph_index =
+      UnnamedRegionToSubgraph(&body, tflite::BuiltinOperator_STABLEHLO_REDUCE);
+  if (subgraph_index < 0) return std::nullopt;
+
+  auto reduce_option = tflite::CreateStablehloReduceOptions(
+      builder_, dimensions, subgraph_index);
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, /*inputs=*/builder_.CreateVector(operands),
+      /*outputs=*/builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, /*custom_options=*/0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
+      /*intermediates=*/0, /*large_custom_options_offset=*/0,
+      /*large_custom_options_size=*/0,
+      tflite::BuiltinOptions2_StablehloReduceOptions, reduce_option.Union());
+}
+
 std::optional<BufferOffset<tflite::Operator>>
 Translator::BuildVhloReduceWindowV1Op(
     mlir::vhlo::ReduceWindowOpV1 reduce_window_op,
@@ -2481,6 +2497,10 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::MulOpV1>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MULTIPLY);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ReduceOpV1>(inst)) {
+      return BuildVhloReduceV1Op(vhlo_op, operands, results,
+                                 vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ReduceWindowOpV1>(inst)) {
       return BuildVhloReduceWindowV1Op(vhlo_op, operands, results,
