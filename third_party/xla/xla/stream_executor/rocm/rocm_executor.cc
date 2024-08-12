@@ -333,58 +333,6 @@ absl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
   return absl::OkStatus();
 }
 
-absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
-                                 const BlockDim& block_dims,
-                                 const Kernel& kernel, const KernelArgs& args) {
-  GpuStreamHandle hipstream = AsGpuStreamValue(stream);
-  const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
-  hipFunction_t hipfunc = rocm_kernel->gpu_function();
-
-  if (rocm_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
-    TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
-        hipfunc, rocm_kernel->GetGpuCacheConfig()));
-  }
-
-  auto launch = [&](const KernelArgsPackedArrayBase& packed) {
-    CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
-             packed.number_of_arguments());
-
-    void** kernel_params =
-        const_cast<void**>(packed.argument_addresses().data());
-
-    return GpuDriver::LaunchKernel(
-        GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x,
-        block_dims.y, block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-        args.number_of_shared_bytes(), hipstream, kernel_params, nullptr);
-  };
-
-  auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
-  if (packed_args) return launch(*packed_args);
-
-  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
-    auto& pack = kernel.args_packing();
-    if (!pack) {
-      return absl::InternalError(
-          "Kernel is missing a custom arguments packing function for device "
-          "memory arguments array");
-    }
-
-    TF_ASSIGN_OR_RETURN(auto packed_args, pack(kernel, *device_mem));
-    return launch(*packed_args);
-  }
-
-  return absl::InternalError("Unsupported kernel arguments type");
-}
-
-absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
-                                 const BlockDim& block_dims,
-                                 const ClusterDim& cluster_dims,
-                                 const Kernel& kernel, const KernelArgs& args) {
-  if (cluster_dims.x != 1 || cluster_dims.y != 1 || cluster_dims.z != 1)
-    return absl::UnimplementedError("Not implemented for ROCm");
-  return Launch(stream, thread_dims, block_dims, kernel, args);
-}
-
 absl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
                                      ModuleHandle* module_handle) {
   // In GpuExecutor we store the pointer to the  HSACO binary  as

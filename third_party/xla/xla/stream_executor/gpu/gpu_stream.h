@@ -34,6 +34,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
@@ -103,8 +105,18 @@ class GpuStream : public StreamCommon {
   void set_name(absl::string_view name) override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
       bool use_delay_kernel) override;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const Kernel& k, const KernelArgs& args) override;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const ClusterDim& cluster_dims, const Kernel& k,
+                      const KernelArgs& args) override;
 
  private:
+  // Helper method to launch a kernel with optional cluster dimensions.
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const std::optional<ClusterDim>& cluster_dims,
+                      const Kernel& kernel, const KernelArgs& args);
+
   GpuExecutor* parent_;         // Executor that spawned this stream.
   GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.
   std::variant<StreamPriority, int> stream_priority_;
