@@ -150,7 +150,7 @@ foreach pair = [
   [MHLO_TanhOp, TFL_TanhOp]
 ] in {
   def : Pat<
-    (pair[0] F32Tensor:$input),
+    (pair[0] $input),
     (pair[1] $input)>;
 }
 
