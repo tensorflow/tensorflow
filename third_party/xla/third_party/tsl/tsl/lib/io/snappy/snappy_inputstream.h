@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "tsl/lib/io/inputstream_interface.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 namespace io {
