@@ -790,14 +790,8 @@ absl::Status UnstackDSFusionPattern(
   HloInstruction* bitcast = mutable_dynamic_slicing_fusion->AddInstruction(
       HloInstruction::CreateBitcast(mutable_dynamic_slicing_fusion->shape(),
                                     new_operand));
-  HloInstruction* bitcast_fusion =
-      mutable_dynamic_slicing_fusion->AddInstruction(
-          HloInstruction::CreateFusion(mutable_dynamic_slicing_fusion->shape(),
-                                       HloInstruction::FusionKind::kLoop,
-                                       bitcast));
-
   return mutable_dynamic_slicing_fusion->ReplaceAllUsesWithDifferentShape(
-      bitcast_fusion);
+      bitcast);
 }
 
 // This function recognizes fusions with the following pattern:
@@ -1430,6 +1424,7 @@ absl::StatusOr<bool> HloUnstacker::Run(
                                   /*force_unroll=*/true, /*prepare=*/false));
     CHECK(unrolled);
   }
+  VLOG(3) << "after unstacking \n" << module->ToString();
   return true;
 }
 

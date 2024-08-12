@@ -34,15 +34,15 @@ namespace {
 
 using UnstackerTest = HloTestBase;
 
-int64_t GetSliceCountInEntry(HloModule* module) {
-  int64_t slice_instrs_count = 0;
+int64_t GetInstrCountWithOpcodeInEntry(HloModule* module, HloOpcode opcode) {
+  int64_t instr_with_opcode_count = 0;
   for (HloInstruction* instr :
        module->entry_computation()->MakeInstructionPostOrder()) {
-    if (instr->opcode() == HloOpcode::kSlice) {
-      slice_instrs_count++;
+    if (instr->opcode() == opcode) {
+      instr_with_opcode_count++;
     }
   }
-  return slice_instrs_count;
+  return instr_with_opcode_count;
 }
 
 TEST_F(UnstackerTest, UnstackDSFusionPattern) {
@@ -63,7 +63,8 @@ TEST_F(UnstackerTest, UnstackDSFusionPattern) {
     p1 = s8[3,128,128] get-tuple-element(wide_p), index=2
     one = s32[] constant(1)
     inc = s32[] add(i, one)
-    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf 
+    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice 
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf 
     ROOT out = (s32[], bf16[8,128], s8[3,128,128]) tuple(inc, conv, p1)
   }
 
@@ -80,7 +81,7 @@ TEST_F(UnstackerTest, UnstackDSFusionPattern) {
     init = s32[] constant(0)
     while.input = (s32[], bf16[8,128], s8[3,128,128]) tuple(init, p1, p0)
     while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body 
-    while_use = s8[3,128,128] get-tuple-element(while.out), index=2 
+    while_use = s8[3,128,128] get-tuple-element(while.out), index=2
     ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
   }
   )";
@@ -90,9 +91,12 @@ TEST_F(UnstackerTest, UnstackDSFusionPattern) {
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 3);
+  // Check that the bitcast is unfused and there are not fusions.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kFusion),
+            0);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
-                                      std::nullopt));
+                                      std::nullopt, false));
 }
 
 TEST_F(UnstackerTest, UnstackReduceFusionPattern) {
@@ -148,7 +152,7 @@ TEST_F(UnstackerTest, UnstackReduceFusionPattern) {
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
-                                      std::nullopt));
+                                      std::nullopt, false));
 }
 
 TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcast) {
@@ -195,10 +199,12 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcast) {
                           ParseAndReturnVerifiedModule(hlo_string));
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
-  std::cout << module->ToString() << std::endl;
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 3);
+  // Check that all the fusions are removed.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kFusion),
+            0);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -249,10 +255,12 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcastKeepFused) {
   auto unfuse = [](HloInstruction* instruction) { return false; };
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked,
                           HloUnstacker(unfuse).Run(module.get()));
-  std::cout << module->ToString() << std::endl;
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 0);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 0);
+  // Check that dynamic-slices are still fused.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kFusion),
+            3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -261,21 +269,21 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternWithDifferentLayout) {
   std::string hlo_string = R"(
   HloModule SimpleLoop
   %fused_computation.30.clone (param_0.153: bf16[32,4,64,64,3], param_1.123: s32[]) -> bf16[64,4,64,3] {
-    %param_0.153 = bf16[32,4,64,64,3]{2,1,4,3,0:T(4,128)(2,1)} parameter(0)
+    %param_0.153 = bf16[32,4,64,64,3]{2,1,4,3,0} parameter(0)
     %param_1.123 = s32[]{:T(128)} parameter(1)
     %constant.227 = s32[]{:T(128)} constant(0)
-    %dynamic-slice.5 = bf16[1,4,64,64,3]{2,1,4,3,0:T(4,128)(2,1)} dynamic-slice(bf16[32,4,64,64,3]{2,1,4,3,0:T(4,128)(2,1)} %param_0.153, s32[]{:T(128)} %param_1.123, s32[]{:T(128)} %constant.227, s32[]{:T(128)} %constant.227, s32[]{:T(128)} %constant.227, /*index=5*/s32[]{:T(128)} %constant.227), dynamic_slice_sizes={1,4,64,64,3}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}]},"used_scoped_memory_configs":[]}
-    ROOT %bitcast.102 = bf16[64,4,64,3]{0,1,3,2:T(4,128)(2,1)} bitcast(bf16[1,4,64,64,3]{2,1,4,3,0:T(4,128)(2,1)} %dynamic-slice.5)
+    %dynamic-slice.5 = bf16[1,4,64,64,3]{2,1,4,3,0} dynamic-slice(bf16[32,4,64,64,3]{2,1,4,3,0} %param_0.153, s32[]{:T(128)} %param_1.123, s32[]{:T(128)} %constant.227, s32[]{:T(128)} %constant.227, s32[]{:T(128)} %constant.227, /*index=5*/s32[]{:T(128)} %constant.227), dynamic_slice_sizes={1,4,64,64,3}
+    ROOT %bitcast.102 = bf16[64,4,64,3]{0,1,3,2} bitcast(bf16[1,4,64,64,3]{2,1,4,3,0} %dynamic-slice.5)
   }
 
   %while.body (wide_param: (s32[], bf16[8,128], bf16[32,4,64,64,3])) -> (s32[], bf16[8,128], bf16[32,4,64,64,3]) {
     wide_p = (s32[], bf16[8,128], bf16[32,4,64,64,3]) parameter(0)
     i = s32[] get-tuple-element(wide_p), index=0
     p0 = bf16[8,128] get-tuple-element(wide_p), index=1
-    p1 = bf16[32,4,64,64,3]{2,1,4,3,0:T(4,128)(2,1)} get-tuple-element(wide_p), index=2
+    p1 = bf16[32,4,64,64,3]{2,1,4,3,0} get-tuple-element(wide_p), index=2
     one = s32[] constant(1)
     inc = s32[] add(i, one)
-    %fusion.67830 = bf16[64,4,64,3]{0,1,3,2:T(4,128)(2,1)} fusion(p1, i), kind=kLoop, calls=%fused_computation.30.clone
+    %fusion.67830 = bf16[64,4,64,3]{0,1,3,2} fusion(p1, i), kind=kLoop, calls=%fused_computation.30.clone
     ROOT out = (s32[], bf16[8,128], bf16[32,4,64,64,3]) tuple(inc, p0, p1)
   }
 
@@ -291,7 +299,7 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternWithDifferentLayout) {
     p1 = bf16[8,128] parameter(1)
     init = s32[] constant(0)
     while.input = (s32[], bf16[8,128], bf16[32,4,64,64,3]) tuple(init, p1, p0)
-    while.out = (s32[], bf16[8,128], bf16[32,4,64,64,3]) while(while.input), condition=%while.cond , body=%while.body 
+    while.out = (s32[], bf16[8,128], bf16[32,4,64,64,3]) while(while.input), condition=%while.cond , body=%while.body
     while_use = bf16[32,4,64,64,3] get-tuple-element(while.out), index=2
     ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
   }
@@ -301,6 +309,12 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternWithDifferentLayout) {
   auto original = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice),
+            32);
+  // Check that dynamic-slices are still fused.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kFusion),
+            0);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt));
 }
@@ -358,7 +372,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPattern) {
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -497,7 +511,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternWithMultipleIndex) {
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions. For each unstacked input, we
   // create 4 slices, 8 in total.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 8);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 8);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -555,7 +569,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternWithDiffereOperandsOrder) {
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -631,7 +645,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternWithSameUnstackingComps) {
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 3);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -765,7 +779,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternSingleNestedLoop) {
   TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 4);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 4);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
@@ -906,7 +920,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternTwoNestedLoops) {
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions. For each loop there is one
   // unstacked input that creates 4 slices, in total 8 slices for two loops.
-  EXPECT_EQ(GetSliceCountInEntry(module.get()), 8);
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 8);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
 }
