@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_SHARDY_SHARDY_CALL_INLINER_H_
 #define XLA_SERVICE_SPMD_SHARDY_SHARDY_CALL_INLINER_H_
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/call_inliner.h"
 
