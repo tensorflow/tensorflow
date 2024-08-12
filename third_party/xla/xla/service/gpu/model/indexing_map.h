@@ -372,14 +372,6 @@ class IndexingMap {
   // Returns true if there is a constraint on the given symbol.
   bool IsSymbolConstrained(int64_t symbol_id) const;
 
-  // Returns the constraints for the given dimension.
-  llvm::DenseMap<mlir::AffineExpr, Interval> GetConstraintsForDim(
-      int dim_id) const;
-
-  // Returns the constraints for the given symbol.
-  llvm::DenseMap<mlir::AffineExpr, Interval> GetConstraintsForSymbol(
-      int symbol_id) const;
-
   // Returns true if the domain is empty. If it returns false, that does not
   // mean that the domain is not effectively empty.
   // For example, if there are two constraints 0 <= d0 mod 7 <= 0 and

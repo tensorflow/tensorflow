@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_IR_XLA_GPU_OPS_H_
 #define XLA_SERVICE_GPU_FUSIONS_IR_XLA_GPU_OPS_H_
 
+#include <utility>
+
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"  // IWYU pragma: keep
@@ -37,5 +40,17 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h.inc"
 #undef GET_OP_CLASSES
+
+namespace xla::gpu {
+
+struct VariableConstraints {
+  llvm::SmallVector<llvm::SmallVector<std::pair<mlir::AffineExpr, Interval>>>
+      constraints_for_dims;
+  llvm::SmallVector<llvm::SmallVector<std::pair<mlir::AffineExpr, Interval>>>
+      constraints_for_symbols;
+};
+VariableConstraints GetConstraintsForVariables(const IndexingMap& map);
+
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_IR_XLA_GPU_OPS_H_

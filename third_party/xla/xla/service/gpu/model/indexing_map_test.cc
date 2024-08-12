@@ -46,8 +46,6 @@ namespace {
 using ::mlir::AffineMap;
 using ::testing::AnyOf;
 using ::testing::ElementsAre;
-using ::testing::Pair;
-using ::testing::UnorderedElementsAre;
 
 class IndexingMapTest : public HloTestBase {
  public:
@@ -1883,74 +1881,6 @@ TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
                   /*instr=*/nullptr, zero_dim_map},
             RTVar{Interval{0, 5},
                   /*instr=*/nullptr, zero_dim_map}})});
-}
-
-TEST_F(IndexingMapTest, GetConstraintsForSymbol) {
-  auto map = IndexingMap::GetUndefined();
-  map.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
-                    Interval{0, 1});
-  map.AddConstraint(ParseAffineExpr("s1 mod 4", &mlir_context_),
-                    Interval{0, 2});
-  map.AddConstraint(ParseAffineExpr("s0 + s1", &mlir_context_), Interval{0, 3});
-  map.AddConstraint(ParseAffineExpr("s1 + d0", &mlir_context_), Interval{0, 4});
-  map.AddConstraint(ParseAffineExpr("d0 mod 4", &mlir_context_),
-                    Interval{0, 5});
-  map.AddConstraint(ParseAffineExpr("d1 mod 32", &mlir_context_),
-                    Interval{0, 6});
-
-  EXPECT_THAT(
-      map.GetConstraintsForSymbol(1),
-      UnorderedElementsAre(
-          Pair(ParseAffineExpr("s1 mod 4", &mlir_context_), Interval{0, 2}),
-          Pair(ParseAffineExpr("s0 + s1", &mlir_context_), Interval{0, 3}),
-          Pair(ParseAffineExpr("s1 + d0", &mlir_context_), Interval{0, 4})));
-
-  EXPECT_THAT(
-      map.GetConstraintsForSymbol(0),
-      UnorderedElementsAre(
-          Pair(ParseAffineExpr("s0 mod 4", &mlir_context_), Interval{0, 1}),
-          Pair(ParseAffineExpr("s0 + s1", &mlir_context_), Interval{0, 3})));
-}
-
-TEST_F(IndexingMapTest, GetConstraintsForSymbolEmpty) {
-  auto map = IndexingMap(AffineMap::get(&mlir_context_), {}, {}, {});
-  EXPECT_THAT(map.GetConstraintsForSymbol(1), UnorderedElementsAre());
-  map.AddConstraint(ParseAffineExpr("d0 mod 4", &mlir_context_),
-                    Interval{0, 5});
-  EXPECT_THAT(map.GetConstraintsForSymbol(1), UnorderedElementsAre());
-}
-
-TEST_F(IndexingMapTest, GetConstraintsForDim) {
-  auto map = IndexingMap(AffineMap::get(&mlir_context_), {}, {}, {});
-  map.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
-                    Interval{0, 1});
-  map.AddConstraint(ParseAffineExpr("s1 mod 4", &mlir_context_),
-                    Interval{0, 2});
-  map.AddConstraint(ParseAffineExpr("s0 + s1", &mlir_context_), Interval{0, 3});
-  map.AddConstraint(ParseAffineExpr("s1 + d1", &mlir_context_), Interval{0, 4});
-  map.AddConstraint(ParseAffineExpr("d0 mod 4", &mlir_context_),
-                    Interval{0, 5});
-  map.AddConstraint(ParseAffineExpr("d1 mod 32", &mlir_context_),
-                    Interval{0, 6});
-
-  EXPECT_THAT(
-      map.GetConstraintsForDim(1),
-      UnorderedElementsAre(
-          Pair(ParseAffineExpr("s1 + d1", &mlir_context_), Interval{0, 4}),
-          Pair(ParseAffineExpr("d1 mod 32", &mlir_context_), Interval{0, 6})));
-
-  EXPECT_THAT(
-      map.GetConstraintsForDim(0),
-      UnorderedElementsAre(
-          Pair(ParseAffineExpr("d0 mod 4", &mlir_context_), Interval{0, 5})));
-}
-
-TEST_F(IndexingMapTest, GetConstraintsForDimEmpty) {
-  auto map = IndexingMap(AffineMap::get(&mlir_context_), {}, {}, {});
-  EXPECT_THAT(map.GetConstraintsForDim(1), UnorderedElementsAre());
-  map.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
-                    Interval{0, 5});
-  EXPECT_THAT(map.GetConstraintsForDim(1), UnorderedElementsAre());
 }
 
 }  // namespace
