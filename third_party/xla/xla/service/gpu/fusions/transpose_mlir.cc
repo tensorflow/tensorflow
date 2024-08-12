@@ -197,7 +197,8 @@ LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
 IndexingMap MlirTransposeFusion::GetSharedMemoryIndexing(
     bool read, mlir::MLIRContext* ctx) const {
   auto thread_offsets =
-      Permute(GetThreadOffsets(ctx), read ? Vector3{0, 1, 2} : permutation_);
+      Permute(GetThreadOffsets(ctx),
+              read ? absl::InlinedVector<int64_t, 3>{0, 1, 2} : permutation_);
   if (MostMinorDimensionUnchanged()) {
     return {mlir::AffineMap::get(6, 3, thread_offsets, ctx),
             DimVarsFromTensorSizes({kNumThreadsPerBlock, 1, 1, 1, 1, 1}),
@@ -405,8 +406,9 @@ IndexingMap MlirTransposeFusion::GetIndexing(bool input,
                                              mlir::MLIRContext* ctx) const {
   auto raw_id = mlir::getAffineDimExpr(
       KernelFusionInterface::kIndexingMapBlockIdxDims[0], ctx);
-  auto block_ids = Permute(DelinearizeInBoundsIndex(raw_id, block_counts_),
-                           input ? Vector3{0, 1, 2} : permutation_);
+  auto block_ids =
+      Permute(DelinearizeInBoundsIndex(raw_id, block_counts_),
+              input ? absl::InlinedVector<int64_t, 3>{0, 1, 2} : permutation_);
   auto thread_offsets = GetThreadOffsets(ctx);
   llvm::SmallVector<AffineExpr, 3> offsets;
   for (auto [block_id, block_size, thread] :

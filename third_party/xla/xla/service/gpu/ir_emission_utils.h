@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -164,16 +165,18 @@ struct TransposeDescription {
   const HloInstruction* instr;
 
   // Normalized transpose dimensions.
-  Vector3 dimensions;
+  absl::InlinedVector<int64_t, 3> dimensions;
 
   // Permutations of normalized transpose dimensions.
-  Vector3 permutation;
+  absl::InlinedVector<int64_t, 3> permutation;
 
-  TransposeDescription(Vector3 dimensions, Vector3 permutation)
+  TransposeDescription(absl::InlinedVector<int64_t, 3> dimensions,
+                       absl::InlinedVector<int64_t, 3> permutation)
       : TransposeDescription(/*instr=*/nullptr, dimensions, permutation) {}
 
-  TransposeDescription(const HloInstruction* instr, Vector3 dimensions,
-                       Vector3 permutation)
+  TransposeDescription(const HloInstruction* instr,
+                       absl::InlinedVector<int64_t, 3> dimensions,
+                       absl::InlinedVector<int64_t, 3> permutation)
       : instr(instr), dimensions(dimensions), permutation(permutation) {}
 
   // Transpose instruction input shape.

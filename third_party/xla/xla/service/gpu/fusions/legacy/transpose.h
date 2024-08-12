@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "mlir/IR/MLIRContext.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -82,7 +82,7 @@ class TransposeFusion : public KernelFusionEmitterBase {
  private:
   const HloFusionAnalysis& analysis_;
   Tiling tiling_;
-  Vector3 permutation_;
+  absl::InlinedVector<int64_t, 3> permutation_;
 };
 
 }  // namespace gpu

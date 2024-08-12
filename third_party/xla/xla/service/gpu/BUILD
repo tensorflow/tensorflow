@@ -686,11 +686,11 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
-        "//xla:util",
         "//xla/hlo/ir:backend_config",
         "//xla/service:buffer_assignment",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 
 #include <algorithm>
-#include <array>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -1982,8 +1981,9 @@ struct ParallelState {
 // Returns the indices of the first elements of all consecutive subarrays of the
 // given array. For example:
 // ConsecutiveSegments({m, m+1, m+2, n, k, k+1}) = {0, 3, 4}
-static std::vector<size_t> ConsecutiveSegments(absl::Span<const int64_t> xs) {
-  std::vector<size_t> is = {0};
+static absl::InlinedVector<size_t, 3> ConsecutiveSegments(
+    absl::Span<const int64_t> xs) {
+  absl::InlinedVector<size_t, 3> is = {0};
   for (size_t i = 1; i < xs.size(); ++i) {
     if (1 != xs[i] - xs[i - 1]) {
       is.push_back(i);
@@ -2010,19 +2010,22 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
                                                   dimensions);
 }
 
-static std::vector<int64_t> MajorToMinorLayout(const Shape& s) {
+static absl::InlinedVector<int64_t, 3> MajorToMinorLayout(const Shape& s) {
   absl::Span<const int64_t> minor_to_major = LayoutUtil::MinorToMajor(s);
-  return std::vector<int64_t>{minor_to_major.rbegin(), minor_to_major.rend()};
+  return absl::InlinedVector<int64_t, 3>{minor_to_major.rbegin(),
+                                         minor_to_major.rend()};
 }
 
-static std::optional<Vector3> GetNormalizedTransposeShapeHelper(
+static std::optional<absl::InlinedVector<int64_t, 3>>
+GetNormalizedTransposeShapeHelper(
     const Shape& input_shape, absl::Span<int64_t const> output_to_input,
-    const Vector3& permutation) {
+    const absl::InlinedVector<int64_t, 3>& permutation) {
   // 'permutation' should not be the identity permutation.
   if (permutation[0] == 0 && permutation[1] == 1 && permutation[2] == 2) {
     return std::nullopt;
   }
-  std::vector<size_t> segments = ConsecutiveSegments(output_to_input);
+  absl::InlinedVector<size_t, 3> segments =
+      ConsecutiveSegments(output_to_input);
   if (segments.size() > 3) {
     return std::nullopt;
   }
@@ -2031,8 +2034,9 @@ static std::optional<Vector3> GetNormalizedTransposeShapeHelper(
       ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
           input_shape);
   Shape normalized_shape = MergeDimensions(segments, normalized_input_shape);
-  std::vector<int64_t> normalized_dims{normalized_shape.dimensions().begin(),
-                                       normalized_shape.dimensions().end()};
+  absl::InlinedVector<int64_t, 3> normalized_dims{
+      normalized_shape.dimensions().begin(),
+      normalized_shape.dimensions().end()};
   if (segments.size() == 2) {
     // If we have two segments, we know that at least one transpose is
     // happening, otherwise we would have only 1 segment.
@@ -2050,9 +2054,9 @@ static std::optional<Vector3> GetNormalizedTransposeShapeHelper(
     normalized_dims.insert(normalized_dims.begin() + untransposed, 1);
   } else if (segments.size() == 3) {
     // Derive the order from the segments.
-    Vector3 segment_order{output_to_input[segments[0]],
-                          output_to_input[segments[1]],
-                          output_to_input[segments[2]]};
+    absl::InlinedVector<int64_t, 3> segment_order{output_to_input[segments[0]],
+                                                  output_to_input[segments[1]],
+                                                  output_to_input[segments[2]]};
     // We expect the same relative order.
     for (int64_t i = 1; i < 3; ++i) {
       if ((segment_order[i] > segment_order[i - 1]) !=
@@ -2062,31 +2066,32 @@ static std::optional<Vector3> GetNormalizedTransposeShapeHelper(
     }
   }
   if (normalized_dims.size() == 3) {
-    return Vector3{normalized_dims[permutation[0]],
-                   normalized_dims[permutation[1]],
-                   normalized_dims[permutation[2]]};
+    return absl::InlinedVector<int64_t, 3>{normalized_dims[permutation[0]],
+                                           normalized_dims[permutation[1]],
+                                           normalized_dims[permutation[2]]};
   }
   return std::nullopt;
 }
 
-/* static */ std::optional<Vector3>
+/* static */ std::optional<absl::InlinedVector<int64_t, 3>>
 ShapeUtil::GetNormalizedLogicalTransposeShape(
     const Shape& input_shape, const Shape& output_shape,
-    absl::Span<int64_t const> dimensions, const Vector3& permutation) {
+    absl::Span<int64_t const> dimensions,
+    const absl::InlinedVector<int64_t, 3>& permutation) {
   if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
       !LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
     // Only works on default layouts.
     return std::nullopt;
   }
   // Drop degenerate dimensions.
-  std::vector<int64_t> delta(input_shape.rank() + 1, 0);
+  absl::InlinedVector<int64_t, 3> delta(input_shape.rank() + 1, 0);
   for (int i = 0; i < input_shape.rank(); ++i) {
     delta[i + 1] = delta[i];
     if (input_shape.dimensions(i) == static_cast<int64_t>(1)) {
       ++delta[i + 1];
     }
   }
-  std::vector<int64_t> new_dimensions;
+  absl::InlinedVector<int64_t, 3> new_dimensions;
   for (int i = 0; i < dimensions.size(); i++) {
     if (output_shape.dimensions(i) != 1) {
       new_dimensions.push_back(dimensions[i] - delta[dimensions[i]]);
@@ -2098,15 +2103,18 @@ ShapeUtil::GetNormalizedLogicalTransposeShape(
       permutation);
 }
 
-/* static */ std::optional<Vector3> ShapeUtil::GetNormalizedTransposeShape(
+/* static */ std::optional<absl::InlinedVector<int64_t, 3>>
+ShapeUtil::GetNormalizedTransposeShape(
     const Shape& input_shape, const Shape& output_shape,
-    const Vector3& permutation) {
+    const absl::InlinedVector<int64_t, 3>& permutation) {
   if (!ShapeUtil::CompatibleIgnoringElementType(input_shape, output_shape)) {
     return std::nullopt;
   }
 
-  std::vector<int64_t> major_to_minor_input = MajorToMinorLayout(input_shape);
-  std::vector<int64_t> major_to_minor_output = MajorToMinorLayout(output_shape);
+  absl::InlinedVector<int64_t, 3> major_to_minor_input =
+      MajorToMinorLayout(input_shape);
+  absl::InlinedVector<int64_t, 3> major_to_minor_output =
+      MajorToMinorLayout(output_shape);
   std::vector<int64_t> output_to_input = ComposePermutations(
       InversePermutation(major_to_minor_output), major_to_minor_input);
 

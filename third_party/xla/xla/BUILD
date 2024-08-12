@@ -516,6 +516,7 @@ xla_cc_test(
         ":test",
         ":util",
         ":xla_data_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

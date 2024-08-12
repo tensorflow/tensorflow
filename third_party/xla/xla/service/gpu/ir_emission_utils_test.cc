@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/literal.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
-#include "xla/util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -41,6 +41,7 @@ namespace gpu {
 using ::tsl::testing::IsOkAndHolds;
 
 using IrEmissionUtilsTest = HloTestBase;
+using InlinedVector = absl::InlinedVector<int64_t, 3>;
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
   const char* hlo = R"(
@@ -59,8 +60,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, Vector3({1, 64, 1536}));
-  EXPECT_EQ(result->permutation, Vector3({0, 2, 1}));
+  EXPECT_EQ(result->dimensions, InlinedVector({1, 64, 1536}));
+  EXPECT_EQ(result->permutation, InlinedVector({0, 2, 1}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogical102Transpose) {
@@ -82,8 +83,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, Vector3({48, 32, 2}));
-  EXPECT_EQ(result->permutation, Vector3({1, 0, 2}));
+  EXPECT_EQ(result->dimensions, InlinedVector({48, 32, 2}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0, 2}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogical102TransposeTooMuchMemoryRequired) {
@@ -125,8 +126,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, Vector3({48, 32, 4}));
-  EXPECT_EQ(result->permutation, Vector3({1, 0, 2}));
+  EXPECT_EQ(result->dimensions, InlinedVector({48, 32, 4}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0, 2}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiled102TransposeTooMuchMemoryRequired) {
@@ -165,8 +166,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*r, *r);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r);
-  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOp) {
@@ -186,8 +187,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
-  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOpS8) {
@@ -344,8 +345,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
-  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithTwoIntermediateBinaryOps) {
@@ -375,8 +376,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0)->operand(0));
-  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest,
@@ -561,8 +562,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, copy);
-  EXPECT_EQ(result->dimensions, Vector3({8, 12, 1100}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({8, 12, 1100}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
@@ -588,8 +589,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, Vector3({8, 12, 1100}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({8, 12, 1100}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledTransposeOtherSwapDimIsSmall) {
@@ -615,8 +616,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, copy);
-  EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
@@ -642,8 +643,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, IsContiguousSlice) {

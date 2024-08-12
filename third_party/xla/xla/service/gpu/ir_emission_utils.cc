@@ -546,37 +546,46 @@ static std::optional<TransposeDescription> FindTiledTranspose(
     return std::nullopt;
   }
 
-  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
-          instr.operand(0)->shape(), instr.shape(), Vector3{0, 2, 1})) {
+  if (std::optional<absl::InlinedVector<int64_t, 3>> tr =
+          ShapeUtil::GetNormalizedTransposeShape(
+              instr.operand(0)->shape(), instr.shape(),
+              absl::InlinedVector<int64_t, 3>{0, 2, 1})) {
     if ((tr->at(1) >= kMinDimensionToTransposeTiled &&
          tr->at(2) >= kMinDimensionToTransposeTiled) ||
         (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, *tr,
-                                  /*permutation=*/Vector3{0, 2, 1}};
+      return TransposeDescription{
+          &instr, *tr,
+          /*permutation=*/absl::InlinedVector<int64_t, 3>{0, 2, 1}};
     }
   }
-  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
-          instr.operand(0)->shape(), instr.shape(), Vector3{2, 1, 0})) {
+  if (std::optional<absl::InlinedVector<int64_t, 3>> tr =
+          ShapeUtil::GetNormalizedTransposeShape(
+              instr.operand(0)->shape(), instr.shape(),
+              absl::InlinedVector<int64_t, 3>{2, 1, 0})) {
     if ((tr->at(0) >= kMinDimensionToTransposeTiled &&
          tr->at(2) >= kMinDimensionToTransposeTiled) ||
         (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, *tr,
-                                  /*permutation=*/Vector3{2, 1, 0}};
+      return TransposeDescription{
+          &instr, *tr,
+          /*permutation=*/absl::InlinedVector<int64_t, 3>{2, 1, 0}};
     }
   }
   if (IsMlirTransposeEmitterEnabled(instr)) {
-    if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
-            instr.operand(0)->shape(), instr.shape(), Vector3{1, 0, 2})) {
+    if (std::optional<absl::InlinedVector<int64_t, 3>> tr =
+            ShapeUtil::GetNormalizedTransposeShape(
+                instr.operand(0)->shape(), instr.shape(),
+                absl::InlinedVector<int64_t, 3>{1, 0, 2})) {
       auto byte_width = primitive_util::ByteWidth(instr.shape().element_type());
       if (byte_width * tr->at(2) <= kMaxBytesInMostMinorDimension &&
           byte_width * tr->at(2) * std::min(tr->at(0), tr->at(1)) >=
               kMinDimensionToTransposeTiled) {
-        return TransposeDescription{&instr, *tr,
-                                    /*permutation=*/Vector3{1, 0, 2}};
+        return TransposeDescription{
+            &instr, *tr,
+            /*permutation=*/absl::InlinedVector<int64_t, 3>{1, 0, 2}};
       }
     }
   }
@@ -591,41 +600,46 @@ static std::optional<TransposeDescription> FindTiledLogicalTranspose(
   }
 
   // TODO(cheshire): avoid code duplication.
-  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
-          instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
-          Vector3{0, 2, 1})) {
+  if (std::optional<absl::InlinedVector<int64_t, 3>> tr =
+          ShapeUtil::GetNormalizedLogicalTransposeShape(
+              instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
+              absl::InlinedVector<int64_t, 3>{0, 2, 1})) {
     if ((tr->at(1) >= kMinDimensionToTransposeTiled &&
          tr->at(2) >= kMinDimensionToTransposeTiled) ||
         (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, *tr,
-                                  /*permutation=*/Vector3{0, 2, 1}};
+      return TransposeDescription{
+          &instr, *tr,
+          /*permutation=*/absl::InlinedVector<int64_t, 3>{0, 2, 1}};
     }
   }
-  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
-          instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
-          Vector3{2, 1, 0})) {
+  if (std::optional<absl::InlinedVector<int64_t, 3>> tr =
+          ShapeUtil::GetNormalizedLogicalTransposeShape(
+              instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
+              absl::InlinedVector<int64_t, 3>{2, 1, 0})) {
     if ((tr->at(0) >= kMinDimensionToTransposeTiled &&
          tr->at(2) >= kMinDimensionToTransposeTiled) ||
         (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, *tr,
-                                  /*permutation=*/Vector3{2, 1, 0}};
+      return TransposeDescription{
+          &instr, *tr,
+          /*permutation=*/absl::InlinedVector<int64_t, 3>{2, 1, 0}};
     }
   }
   if (IsMlirTransposeEmitterEnabled(instr)) {
-    if (std::optional<Vector3> tr =
+    if (std::optional<absl::InlinedVector<int64_t, 3>> tr =
             ShapeUtil::GetNormalizedLogicalTransposeShape(
                 instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
-                Vector3{1, 0, 2})) {
+                absl::InlinedVector<int64_t, 3>{1, 0, 2})) {
       auto byte_width = primitive_util::ByteWidth(instr.shape().element_type());
       if (byte_width * tr->at(2) <= kMaxBytesInMostMinorDimension &&
           byte_width * tr->at(2) * std::min(tr->at(0), tr->at(1)) >=
               kMinDimensionToTransposeTiled) {
-        return TransposeDescription{&instr, *tr,
-                                    /*permutation=*/Vector3{1, 0, 2}};
+        return TransposeDescription{
+            &instr, *tr,
+            /*permutation=*/absl::InlinedVector<int64_t, 3>{1, 0, 2}};
       }
     }
   }

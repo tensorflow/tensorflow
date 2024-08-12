@@ -308,7 +308,6 @@ cc_library(
         ":tiling_util",
         "//xla:permutation_util",
         "//xla:shape_util",
-        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",

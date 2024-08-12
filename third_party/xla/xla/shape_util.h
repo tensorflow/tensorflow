@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -1030,14 +1029,17 @@ class ShapeUtil {
   // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
   // normalized shape of `b` or the 0-2-1 shape. In general, the
   // permutation[0]-permutation[1]-permutation[2] shape is returned.
-  static std::optional<Vector3> GetNormalizedTransposeShape(
+  static std::optional<absl::InlinedVector<int64_t, 3>>
+  GetNormalizedTransposeShape(
       const Shape& input_shape, const Shape& output_shape,
-      const Vector3& permutation);
+      const absl::InlinedVector<int64_t, 3>& permutation);
 
   // Entry point for physical + logical transposition.
-  static std::optional<Vector3> GetNormalizedLogicalTransposeShape(
+  static std::optional<absl::InlinedVector<int64_t, 3>>
+  GetNormalizedLogicalTransposeShape(
       const Shape& input_shape, const Shape& output_shape,
-      absl::Span<int64_t const> dimensions, const Vector3& permutation);
+      absl::Span<int64_t const> dimensions,
+      const absl::InlinedVector<int64_t, 3>& permutation);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
