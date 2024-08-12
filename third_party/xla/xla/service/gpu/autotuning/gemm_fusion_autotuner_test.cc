@@ -618,9 +618,12 @@ ENTRY main {
   pipeline.AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
                                         &thread_pool, key_value_store);
   pipeline.AddPass<CallInliner>();
-  for (bool fp8_rewrite : {true, false}) {
+  for (GemmRewriterOptions::DType dtype :
+       {GemmRewriterOptions::DType::kFp8Only,
+        GemmRewriterOptions::DType::kNonFp8Only}) {
     pipeline.AddPass<GemmRewriter>(autotune_config.GetGpuComputeCapability(),
-                                   GetToolkitVersion(), fp8_rewrite);
+                                   GetToolkitVersion(),
+                                   GemmRewriterOptions{dtype});
   }
 
   TF_EXPECT_OK(HloTestBase::RunHloPass(&pipeline, module.get()));

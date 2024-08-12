@@ -45,12 +45,40 @@ namespace gpu {
 // (we assume transposes are already folded), and rewrites it into a custom call
 // where (A, B, C) are three operands respectively, and `alpha` and `beta` are
 // stored in the backend config.
+
+struct GemmRewriterOptions {
+  // The DType of the GEMM to rewrite.
+  enum class DType { kFp8Only, kNonFp8Only };
+  DType dtype = DType::kNonFp8Only;
+
+  // Disabling bias prevents using the `beta * C` term the GEMM, which can
+  // remove dependencies between multiple matrix multiplications. This, in
+  // turn, can improve the performance of overall computation by allowing
+  // multiple GEMMs to be scheduled in parallel.
+  //
+  // As an example, consider the following computation: `(A * A) + (B * B)`.
+  // With bias enabled, the `GemmRewriter` will emit the following GEMMs:
+  //
+  // AA := GEMM(A * A)
+  // ROOT := GEMM(B * B + AA)
+  //
+  // Because the second GEMM depends on the first, they cannot be scheduled in
+  // parallel. Instead, with bias disabled, the `GemmRewriter` will emit the
+  // following:
+  //
+  // AA := GEMM(A * A)
+  // BB := GEMM(B * B)
+  // ROOT := AA + BB
+  //
+  // In this case, the two GEMMs can be scheduled in parallel.
+  enum class BiasMode { kBias, kNoBias };
+  BiasMode bias_mode = BiasMode::kBias;
+};
+
 class GemmRewriter : public HloModulePass {
  public:
-  // When f8_rewrite is true, only FP8 GEMMs are rewritten. Otherwise, non-FP8
-  // GEMMs are rewritten.
   GemmRewriter(se::GpuComputeCapability gpu_version, int32_t toolkit_version,
-               bool f8_rewrite = false);
+               GemmRewriterOptions options = {});
   absl::string_view name() const override { return "cublas-gemm-rewriter"; }
 
   using HloPassInterface::Run;
@@ -61,7 +89,7 @@ class GemmRewriter : public HloModulePass {
  private:
   se::GpuComputeCapability gpu_version_;
   int32_t toolkit_version_;
-  bool f8_rewrite_;
+  GemmRewriterOptions options_;
 };
 
 }  // namespace gpu

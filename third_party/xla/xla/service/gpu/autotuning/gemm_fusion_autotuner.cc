@@ -400,9 +400,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
         PrecisionConfig::ALG_DOT_F32_F32_F32);
   }
 
-  for (bool fp8 : {true, false}) {
+  for (GemmRewriterOptions::DType dtype :
+       {GemmRewriterOptions::DType::kFp8Only,
+        GemmRewriterOptions::DType::kNonFp8Only}) {
     GemmRewriter rewriter(config.GetGpuComputeCapability(), toolkit_version,
-                          fp8);
+                          GemmRewriterOptions{dtype});
     GpuInstructionFusion fusion_pass(
         /*may_duplicate=*/false, config.GetExecutor()->GetDeviceDescription());
     TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());

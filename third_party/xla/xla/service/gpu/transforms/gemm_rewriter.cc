@@ -551,10 +551,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version,
                                const int32_t toolkit_version,
-                               const bool f8_rewrite)
+                               const GemmRewriterOptions options)
       : gpu_version_(gpu_version),
         toolkit_version_(toolkit_version),
-        f8_rewrite_(f8_rewrite) {}
+        options_(options) {}
 
   absl::Status HandleDot(HloInstruction *instr) override {
     if (!IsMatrixMultiplication(*instr) &&
@@ -619,50 +619,54 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     gemm_backend_config.set_lhs_stride(lhs_stride);
     gemm_backend_config.set_rhs_stride(rhs_stride);
 
-    if (f8_rewrite_) {
-      // Rewrite FP8 GEMMs into a type-specific cublasLT Custom Call.
-      TF_ASSIGN_OR_RETURN(
-          bool supported_by_cublaslt,
-          GemmIsSupportedByCublasLt(*instr, gemm_backend_config));
-      std::optional<MatchedFp8Param> a, b;
-      if (supported_by_cublaslt && instr->opcode() == HloOpcode::kDot &&
-          (a = MatchFp8Param(
-               const_cast<HloInstruction *>(instr->operand(0)))) &&
-          (b = MatchFp8Param(
-               const_cast<HloInstruction *>(instr->operand(1))))) {
-        if (IsRocm(gpu_version_) && toolkit_version_ < 60200 &&
-            instr->shape().element_type() != F16 &&
-            instr->shape().element_type() != F32) {
-          TF_ASSIGN_OR_RETURN(instr,
-                              TurnF8DotWithUnsupportedOutputTypeIntoF32(instr));
+    switch (options_.dtype) {
+      case GemmRewriterOptions::DType::kFp8Only: {
+        // Rewrite FP8 GEMMs into a type-specific cublasLT Custom Call.
+        TF_ASSIGN_OR_RETURN(
+            bool supported_by_cublaslt,
+            GemmIsSupportedByCublasLt(*instr, gemm_backend_config));
+        std::optional<MatchedFp8Param> a, b;
+        if (supported_by_cublaslt && instr->opcode() == HloOpcode::kDot &&
+            (a = MatchFp8Param(
+                 const_cast<HloInstruction *>(instr->operand(0)))) &&
+            (b = MatchFp8Param(
+                 const_cast<HloInstruction *>(instr->operand(1))))) {
+          if (IsRocm(gpu_version_) && toolkit_version_ < 60200 &&
+              instr->shape().element_type() != F16 &&
+              instr->shape().element_type() != F32) {
+            TF_ASSIGN_OR_RETURN(
+                instr, TurnF8DotWithUnsupportedOutputTypeIntoF32(instr));
+          }
+          TF_ASSIGN_OR_RETURN(bool created_call,
+                              CreateF8CustomCall(instr, gpu_backend_config,
+                                                 a.value(), b.value()));
+          if (created_call) {
+            return absl::OkStatus();
+          }
         }
-        TF_ASSIGN_OR_RETURN(bool created_call,
-                            CreateF8CustomCall(instr, gpu_backend_config,
-                                               a.value(), b.value()));
-        if (created_call) {
-          return absl::OkStatus();
+        if (IsF8Type(instr->operand(0))) {
+          // FP8 rewriter couldn't rewrite dot with FP8 inputs into cublasLt
+          // custom call, so turn into an FP16 dot which may be rewritten as an
+          // FP16 Triton, cublas or cublasLt call.
+          TF_ASSIGN_OR_RETURN(instr, TurnF8DotIntoF16Dot(instr));
         }
+        break;
       }
-      if (IsF8Type(instr->operand(0))) {
-        // FP8 rewriter couldn't rewrite dot with FP8 inputs into cublasLt
-        // custom call, so turn into an FP16 dot which may be rewritten as an
-        // FP16 Triton, cublas or cublasLt call.
-        TF_ASSIGN_OR_RETURN(instr, TurnF8DotIntoF16Dot(instr));
-      }
-    } else {
-      // Rewrite non-FP8 GEMMs into a cublas or cublasLT Custom Call.
-      TF_ASSIGN_OR_RETURN(
-          absl::string_view gemm_custom_call_target,
-          GetNonFp8GemmCustomCallTarget(*instr, gemm_backend_config));
-      const Shape &output_shape = instr->shape();
-      HloInstruction *gemm_call =
-          instr->AddInstruction(HloInstruction::CreateCustomCall(
-              output_shape,
-              {instr->mutable_operand(0), instr->mutable_operand(1)},
-              gemm_custom_call_target));
-      TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
-    }
+      case GemmRewriterOptions::DType::kNonFp8Only: {
+        // Rewrite non-FP8 GEMMs into a cublas or cublasLT Custom Call.
+        TF_ASSIGN_OR_RETURN(
+            absl::string_view gemm_custom_call_target,
+            GetNonFp8GemmCustomCallTarget(*instr, gemm_backend_config));
+        const Shape &output_shape = instr->shape();
+        HloInstruction *gemm_call =
+            instr->AddInstruction(HloInstruction::CreateCustomCall(
+                output_shape,
+                {instr->mutable_operand(0), instr->mutable_operand(1)},
+                gemm_custom_call_target));
+        TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
+        TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
+      } break;
+    };
     return absl::OkStatus();
   }
 
@@ -758,6 +762,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   absl::Status HandleAdd(HloInstruction *instr) override {
+    if (options_.bias_mode == GemmRewriterOptions::BiasMode::kNoBias) {
+      // See comments for `GemmRewriterOptions::BiasMode` for details.
+      return absl::OkStatus();
+    }
+
     HloInstruction *bias, *existing_gemm = nullptr;
     HloInstruction *optional_slice = nullptr;
     HloInstruction *optional_convert = nullptr;
@@ -1819,7 +1828,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  private:
   se::GpuComputeCapability gpu_version_;
   int32_t toolkit_version_;
-  bool f8_rewrite_;
+  GemmRewriterOptions options_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
   // be rewritten into.
@@ -2327,8 +2336,8 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
                                       se::GpuComputeCapability gpu_version,
                                       int32_t toolkit_version,
-                                      bool f8_rewrite) {
-  GemmRewriterVisitor visitor(gpu_version, toolkit_version, f8_rewrite);
+                                      GemmRewriterOptions options) {
+  GemmRewriterVisitor visitor(gpu_version, toolkit_version, options);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&workspace_visitor));
@@ -2338,10 +2347,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
 }  // anonymous namespace
 
 GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version,
-                           int32_t toolkit_version, bool f8_rewrite)
+                           int32_t toolkit_version, GemmRewriterOptions options)
     : gpu_version_(gpu_version),
       toolkit_version_(toolkit_version),
-      f8_rewrite_(f8_rewrite) {}
+      options_(options) {}
 
 absl::StatusOr<bool> GemmRewriter::Run(
     HloModule *module,
@@ -2351,7 +2360,7 @@ absl::StatusOr<bool> GemmRewriter::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result,
                         RunOnComputation(computation, gpu_version_,
-                                         toolkit_version_, f8_rewrite_));
+                                         toolkit_version_, options_));
     changed |= result;
   }
   return changed;
