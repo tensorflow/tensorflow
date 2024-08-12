@@ -195,6 +195,7 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
         "//tensorflow/core/kernels/batching_util:batch_scheduler_hdrs",
+        "//tensorflow/core/kernels/batching_util:batch_stats",
         "//tensorflow/core/kernels/batching_util:bounded_executor",
         "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/lib/core:refcount",
