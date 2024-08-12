@@ -76,10 +76,8 @@ static absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
         "[::]:" + std::string(address).substr(address.rfind(':') + 1);
     xla::CoordinationServiceImpl::Options options;
     options.num_nodes = num_nodes;
-    auto status_or =
-        xla::GetDistributedRuntimeService(coordinator_bind_address, options);
-    TF_QCHECK_OK(status_or.status());
-    service = std::move(status_or.value());
+    TF_ASSIGN_OR_RETURN(service, xla::GetDistributedRuntimeService(
+                                     coordinator_bind_address, options));
   }
   xla::DistributedRuntimeClient::Options options;
   options.node_id = node_id;
