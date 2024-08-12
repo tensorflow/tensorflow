@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
@@ -2515,6 +2516,36 @@ ENTRY entry {
       module->input_output_alias_config();
   EXPECT_EQ(input_output_alias_config_before.ToString(),
             input_output_alias_config_after.ToString());
+}
+
+TEST(NormalizeTest, NormalizeHandlesNegativeCosts) {
+  EdgeReshardingCostMatrix edge_cost(2, 2);
+  edge_cost(0, 0).communication_cost = -100;
+  edge_cost(0, 1).communication_cost = 200;
+  edge_cost(1, 0).communication_cost = 300;
+  edge_cost(1, 1).communication_cost = 400;
+
+  const EdgeReshardingCostMatrix normalized_edge_cost = Normalize(edge_cost);
+
+  EXPECT_EQ(normalized_edge_cost(0, 0).communication_cost, 0);
+  EXPECT_EQ(normalized_edge_cost(0, 1).communication_cost, 300);
+  EXPECT_EQ(normalized_edge_cost(1, 0).communication_cost, 400);
+  EXPECT_EQ(normalized_edge_cost(1, 1).communication_cost, 500);
+}
+
+TEST(NormalizeTest, NormalizeHandlesPositiveCosts) {
+  EdgeReshardingCostMatrix edge_cost(2, 2);
+  edge_cost(0, 0).communication_cost = 100;
+  edge_cost(0, 1).communication_cost = 200;
+  edge_cost(1, 0).communication_cost = 300;
+  edge_cost(1, 1).communication_cost = 400;
+
+  const EdgeReshardingCostMatrix normalized_edge_cost = Normalize(edge_cost);
+
+  EXPECT_EQ(normalized_edge_cost(0, 0).communication_cost, 100);
+  EXPECT_EQ(normalized_edge_cost(0, 1).communication_cost, 200);
+  EXPECT_EQ(normalized_edge_cost(1, 0).communication_cost, 300);
+  EXPECT_EQ(normalized_edge_cost(1, 1).communication_cost, 400);
 }
 
 }  // namespace

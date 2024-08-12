@@ -345,6 +345,7 @@ xla_cc_test(
     ],
     deps = [
         ":auto_sharding",
+        ":auto_sharding_cost_graph",
         ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",

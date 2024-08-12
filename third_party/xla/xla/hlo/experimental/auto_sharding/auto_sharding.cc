@@ -1989,6 +1989,7 @@ AutoShardingSolverResult CallSolver(
     request.mutable_max_cost()->set_coeff(*max_cost);
   }
   for (const auto& [edge, edge_cost] : cost_graph.edge_costs_) {
+    const auto normalized_edge_cost = Normalize(edge_cost);
     AutoShardingSolverRequest_Pair raw_edge;
     raw_edge.set_first(edge.first);
     raw_edge.set_second(edge.second);
@@ -1997,8 +1998,8 @@ AutoShardingSolverResult CallSolver(
     AutoShardingSolverRequest_Costs mij;
     for (NodeStrategyIdx i = 0; i < edge_cost.n_; i++) {
       for (NodeStrategyIdx j = 0; j < edge_cost.m_; j++) {
-        rij.add_costs(edge_cost(i, j).communication_cost);
-        mij.add_costs(edge_cost(i, j).memory_cost);
+        rij.add_costs(normalized_edge_cost(i, j).communication_cost);
+        mij.add_costs(normalized_edge_cost(i, j).memory_cost);
       }
     }
     request.mutable_resharding_costs()->Add(std::move(rij));
