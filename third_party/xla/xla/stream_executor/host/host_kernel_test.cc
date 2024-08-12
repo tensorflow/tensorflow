@@ -90,9 +90,9 @@ define ptr @LlvmAddI32(ptr noundef %0) {
 )";
 
 static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
-  StreamExecutorConfig config(/*ordinal=*/0);
   TF_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
-  TF_ASSIGN_OR_RETURN(auto stream_exec, platform->GetExecutor(config));
+  TF_ASSIGN_OR_RETURN(auto stream_exec,
+                      platform->ExecutorForDevice(/*ordinal=*/0));
   return stream_exec;
 }
 

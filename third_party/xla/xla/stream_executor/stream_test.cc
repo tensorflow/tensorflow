@@ -31,8 +31,7 @@ class StreamTest : public ::testing::Test {
  protected:
   StreamExecutor* NewStreamExecutor() {
     Platform* platform = PlatformManager::PlatformWithName("Host").value();
-    StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetExecutor(config).value();
+    return platform->ExecutorForDevice(/*ordinal=*/0).value();
   }
 };
 

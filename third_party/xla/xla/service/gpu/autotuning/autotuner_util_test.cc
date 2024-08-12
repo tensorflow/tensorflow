@@ -114,8 +114,7 @@ results {
   static stream_executor::StreamExecutor* NewStreamExecutor() {
     stream_executor::Platform* platform =
         stream_executor::PlatformManager::PlatformWithName("Host").value();
-    stream_executor::StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetExecutor(config).value();
+    return platform->ExecutorForDevice(/*ordinal=*/0).value();
   }
 
   absl::Status PopulateResultCache() {

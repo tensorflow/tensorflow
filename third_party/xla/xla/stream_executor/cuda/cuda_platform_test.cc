@@ -33,10 +33,8 @@ TEST(CudaPlatformTest, FindExistingWorks) {
     EXPECT_FALSE(platform->FindExisting(i).ok());
   }
   absl::flat_hash_map<int, StreamExecutor*> executors;
-  StreamExecutorConfig config;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
-    config.ordinal = i;
-    TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->GetExecutor(config));
+    TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->ExecutorForDevice(i));
     executors[i] = executor;
   }
   EXPECT_EQ(executors.size(), platform->VisibleDeviceCount());

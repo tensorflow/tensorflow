@@ -29,8 +29,7 @@ class StreamPoolTest : public ::testing::Test {
   se::StreamExecutor* NewStreamExecutor() {
     se::Platform* platform =
         se::PlatformManager::PlatformWithName("Host").value();
-    se::StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetExecutor(config).value();
+    return platform->ExecutorForDevice(/*ordinal=*/0).value();
   }
 };
 
