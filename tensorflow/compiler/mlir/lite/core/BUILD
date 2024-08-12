@@ -33,9 +33,9 @@ cc_library(
     deps = [
         ":macros",
         "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/compiler/mlir/lite/core/api:verifier",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite:allocation",
-        "//tensorflow/lite/core/api:verifier",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
