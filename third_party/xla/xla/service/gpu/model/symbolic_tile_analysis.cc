@@ -437,18 +437,7 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
 absl::StatusOr<TiledHloComputation>
 SymbolicTileAnalysis::ComputeTiledHloInstructions(
     absl::Span<const int64_t> tile_parameters,
-    bool constraints_are_known_satisfied,
     bool compute_all_tile_offset_indexing_maps) const {
-  if (!constraints_are_known_satisfied) {
-    TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
-                        ParametersSatisfyConstraints(tile_parameters));
-    if (!constraints_are_satisfied) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Tile parameters ", absl::StrJoin(tile_parameters, ", "),
-          " do not satisfy the SymbolicTileAnalysis's constraints."));
-    }
-  }
-
   // Offset indexing is needed to emit loads/stores and to deduplicate
   // instructions. In some cases, for example in Cost Model, we need to only
   // deduplicate instructions.

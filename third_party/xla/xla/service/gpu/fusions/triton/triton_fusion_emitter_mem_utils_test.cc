@@ -121,8 +121,7 @@ TritonMakeTensorPtrTest::CreateAndTileParameterHloInstruction(
 
   auto tiled_hlo_computation_or =
       symbolic_tile_analysis.ComputeTiledHloInstructions(
-          tile_sizes, /*constraints_are_known_satisfied=*/true,
-          /*compute_all_tile_offset_indexing_maps=*/true);
+          tile_sizes, /*compute_all_tile_offset_indexing_maps=*/true);
   TF_EXPECT_OK(tiled_hlo_computation_or.status());
   return std::make_pair(std::move(verified_hlo_module),
                         *std::move(tiled_hlo_computation_or));
