@@ -231,16 +231,17 @@ class Ffi {
   template <typename... Args>
   static std::string StrCat(Args... args);
 
-  static inline XLA_FFI_Error* MakeError(const XLA_FFI_Api* api,
-                                         XLA_FFI_Error_Code errc,
-                                         std::string message);
+  static XLA_FFI_Error* Sucess();
 
-  static inline XLA_FFI_Error* InvalidArgument(const XLA_FFI_Api* api,
-                                               std::string message);
+  static XLA_FFI_Error* MakeError(const XLA_FFI_Api* api,
+                                  XLA_FFI_Error_Code errc, std::string message);
 
-  static inline XLA_FFI_Error* CheckStructSize(const XLA_FFI_Api* api,
-                                               std::string_view struct_name,
-                                               size_t expected, size_t actual);
+  static XLA_FFI_Error* InvalidArgument(const XLA_FFI_Api* api,
+                                        std::string message);
+
+  static XLA_FFI_Error* CheckStructSize(const XLA_FFI_Api* api,
+                                        std::string_view struct_name,
+                                        size_t expected, size_t actual);
 };
 
 XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
@@ -265,8 +266,11 @@ std::string Ffi::StrCat(Args... args) {
   return ss.str();
 }
 
-XLA_FFI_Error* Ffi::MakeError(const XLA_FFI_Api* api, XLA_FFI_Error_Code errc,
-                              std::string message) {
+inline XLA_FFI_Error* Ffi::Sucess() { return nullptr; }
+
+inline XLA_FFI_Error* Ffi::MakeError(const XLA_FFI_Api* api,
+                                     XLA_FFI_Error_Code errc,
+                                     std::string message) {
   XLA_FFI_Error_Create_Args args;
   args.struct_size = XLA_FFI_Error_Create_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -275,15 +279,15 @@ XLA_FFI_Error* Ffi::MakeError(const XLA_FFI_Api* api, XLA_FFI_Error_Code errc,
   return api->XLA_FFI_Error_Create(&args);
 }
 
-XLA_FFI_Error* Ffi::InvalidArgument(const XLA_FFI_Api* api,
-                                    std::string message) {
+inline XLA_FFI_Error* Ffi::InvalidArgument(const XLA_FFI_Api* api,
+                                           std::string message) {
   return MakeError(api, XLA_FFI_Error_Code_INVALID_ARGUMENT,
                    std::move(message));
 }
 
-XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
-                                    std::string_view struct_name,
-                                    size_t expected, size_t actual) {
+inline XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
+                                           std::string_view struct_name,
+                                           size_t expected, size_t actual) {
   if (expected != actual) {
     return InvalidArgument(
         api, StrCat("Unexpected ", struct_name, " size: expected ", expected,
@@ -304,6 +308,10 @@ namespace internal {
 // WARNING: A lot of template metaprogramming on top of C++ variadic templates
 // parameter packs. We need this to be able to pattern match FFI handler
 // signature at compile time.
+
+// A type tag for decoding optional argument.
+template <typename T>
+struct OptionalArgTag {};
 
 // A type tag to forward all remaining args as `RemainingArgs`.
 struct RemainingArgsTag {};
@@ -356,12 +364,21 @@ struct NumTagged<Tag, T, Ts...> {
 
 //----------------------------------------------------------------------------//
 
-// Checks if remaining arguments are in the parameter pack.
+template <typename T>
+struct IsOptionalArgTag : std::false_type {};
+template <typename T>
+struct IsOptionalArgTag<OptionalArgTag<T>> : std::true_type {};
+
+// Checks if parameter pack has an optional argument.
+template <typename... Ts>
+using HasOptionalArgTag = std::disjunction<IsOptionalArgTag<Ts>...>;
+
+// Checks if parameter pack has remaining arguments.
 template <typename... Ts>
 using HasRemainingArgsTag =
     std::disjunction<std::is_same<RemainingArgsTag, Ts>...>;
 
-// Checks if remaining results are in the parameter pack.
+// Checks if parameter pack has remaining results.
 template <typename... Ts>
 using HasRemainingRetsTag =
     std::disjunction<std::is_same<RemainingRetsTag, Ts>...>;
@@ -412,11 +429,25 @@ class Binding {
  public:
   template <typename T>
   Binding<stage, Ts..., T> Arg() && {
+    static_assert(!internal::HasOptionalArgTag<Ts...>::value,
+                  "argument can't be passed after optional argument");
+    static_assert(!internal::HasRemainingArgsTag<Ts...>::value,
+                  "argument can't be passed after remaining arguments");
     return {std::move(*this)};
   }
 
   template <typename T>
   Binding<stage, Ts..., internal::RetTag<T>> Ret() && {
+    static_assert(!internal::HasRemainingRetsTag<Ts...>::value,
+                  "result can't be passed after remaining results");
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  Binding<stage, Ts..., internal::OptionalArgTag<T>> OptionalArg() && {
+    static_assert(
+        !internal::HasRemainingArgsTag<Ts...>::value,
+        "optional argument can't be passed after remaining arguments");
     return {std::move(*this)};
   }
 
@@ -899,10 +930,20 @@ struct Decode {
   }
 };
 
-}  // namespace internal
+template <typename T>
+struct Decode<OptionalArgTag<T>> {
+  static std::optional<std::optional<T>> call(DecodingOffsets& offsets,
+                                              DecodingContext& ctx,
+                                              DiagnosticEngine& diagnostic) {
+    if (offsets.args >= ctx.call_frame->args.size) {
+      return std::optional<T>(std::nullopt);
+    }
+    return Decode<T>::call(offsets, ctx, diagnostic);
+  }
+};
 
 template <typename T>
-struct internal::Decode<internal::RetTag<T>> {
+struct Decode<RetTag<T>> {
   static std::optional<Result<T>> call(DecodingOffsets& offsets,
                                        DecodingContext& ctx,
                                        DiagnosticEngine& diagnostic) {
@@ -913,7 +954,7 @@ struct internal::Decode<internal::RetTag<T>> {
 };
 
 template <typename T>
-struct internal::Decode<internal::AttrTag<T>> {
+struct Decode<AttrTag<T>> {
   using R = typename AttrDecoding<T>::Type;
 
   static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
@@ -945,7 +986,7 @@ struct internal::Decode<internal::AttrTag<T>> {
 };
 
 template <typename T>
-struct internal::Decode<internal::CtxTag<T>> {
+struct Decode<CtxTag<T>> {
   using R = typename CtxDecoding<T>::Type;
 
   static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
@@ -954,6 +995,8 @@ struct internal::Decode<internal::CtxTag<T>> {
                                   diagnostic);
   }
 };
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing a variable number of arguments.
@@ -1099,6 +1142,11 @@ struct FnArgType {
   using Type = T;
 };
 
+template <typename T>
+struct FnArgType<internal::OptionalArgTag<T>> {
+  using Type = std::optional<T>;
+};
+
 template <>
 struct FnArgType<internal::RemainingArgsTag> {
   using Type = RemainingArgs;
@@ -1136,6 +1184,9 @@ struct FnArgType<internal::CtxTag<T>> {
 // a special decoding rule defined by template specialization.
 template <typename>
 struct IsTagged : std::false_type {};
+
+template <typename T>
+struct IsTagged<OptionalArgTag<T>> : std::true_type {};
 template <typename T>
 struct IsTagged<RetTag<T>> : std::true_type {};
 template <typename T>
@@ -1144,12 +1195,14 @@ template <typename T>
 struct IsTagged<AttrsTag<T>> : std::true_type {};
 template <typename T>
 struct IsTagged<CtxTag<T>> : std::true_type {};
+
 template <>
 struct IsTagged<RemainingArgsTag> : std::true_type {};
 template <>
 struct IsTagged<RemainingRetsTag> : std::true_type {};
 
-// A template for counting regular arguments in the Ts pack.
+// A template for counting regular arguments in the Ts pack (arguments that are
+// not wrapped into a special tag).
 template <typename... Ts>
 struct NumArgs;
 
@@ -1174,6 +1227,9 @@ class Handler : public Ffi {
   static constexpr int64_t kSize = sizeof...(Ts);
 
   static constexpr int64_t kNumArgs = internal::NumArgs<Ts...>::value;
+
+  static constexpr int64_t kNumOptionalArgs =
+      internal::NumTagged<internal::OptionalArgTag, Ts...>::value;
 
   static constexpr int64_t kNumRets =
       internal::NumTagged<internal::RetTag, Ts...>::value;
@@ -1232,7 +1288,16 @@ class Handler : public Ffi {
         return InvalidArgument(
             call_frame->api,
             StrCat("Wrong number of arguments: expected at least ",
-                   kNumArgs - 1, " but got ", call_frame->args.size));
+                   kNumArgs - kNumOptionalArgs - 1, " but got ",
+                   call_frame->args.size));
+      }
+    } else if constexpr (internal::HasOptionalArgTag<Ts...>::value) {
+      if (XLA_FFI_PREDICT_FALSE(call_frame->args.size < kNumArgs)) {
+        return InvalidArgument(
+            call_frame->api,
+            StrCat("Wrong number of arguments: expected at least ",
+                   kNumArgs - kNumOptionalArgs, " but got ",
+                   call_frame->args.size));
       }
     } else {
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs)) {

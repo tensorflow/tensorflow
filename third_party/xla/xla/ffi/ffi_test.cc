@@ -676,6 +676,67 @@ TEST(FfiTest, RemainingRets) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, OptionalArgs) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  {  // Single optional argument.
+    auto fn = [&](std::optional<AnyBuffer> arg0) {
+      EXPECT_TRUE(arg0.has_value());
+      return absl::OkStatus();
+    };
+
+    auto handler = Ffi::Bind().OptionalArg<AnyBuffer>().To(fn);
+    auto status = Call(*handler, call_frame);
+
+    TF_ASSERT_OK(status);
+  }
+
+  {  // Two optional arguments.
+    auto fn = [&](std::optional<AnyBuffer> arg0,
+                  std::optional<AnyBuffer> arg1) {
+      EXPECT_TRUE(arg0.has_value());
+      EXPECT_FALSE(arg1.has_value());
+      return absl::OkStatus();
+    };
+
+    auto handler =
+        Ffi::Bind().OptionalArg<AnyBuffer>().OptionalArg<AnyBuffer>().To(fn);
+    auto status = Call(*handler, call_frame);
+
+    TF_ASSERT_OK(status);
+  }
+
+  {  // Optional argument after a regular one.
+    auto fn = [&](AnyBuffer arg0, std::optional<AnyBuffer> arg1) {
+      EXPECT_FALSE(arg1.has_value());
+      return absl::OkStatus();
+    };
+
+    auto handler = Ffi::Bind().Arg<AnyBuffer>().OptionalArg<AnyBuffer>().To(fn);
+    auto status = Call(*handler, call_frame);
+
+    TF_ASSERT_OK(status);
+  }
+
+  {  // Remaining arguments after optional one.
+    auto fn = [&](std::optional<AnyBuffer> arg0, RemainingArgs args) {
+      EXPECT_TRUE(arg0.has_value());
+      EXPECT_EQ(args.size(), 0);
+      return absl::OkStatus();
+    };
+
+    auto handler = Ffi::Bind().OptionalArg<AnyBuffer>().RemainingArgs().To(fn);
+    auto status = Call(*handler, call_frame);
+
+    TF_ASSERT_OK(status);
+  }
+}
+
 TEST(FfiTest, RunOptionsCtx) {
   auto call_frame = CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
   auto* expected = reinterpret_cast<se::Stream*>(0x01234567);
