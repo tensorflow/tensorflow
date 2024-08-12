@@ -210,9 +210,6 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape());
   };
-  absl::flat_hash_map<const HloComputation*, int64_t> memory_by_computation;
-  memory_by_computation[cond_computation] = 5;
-  memory_by_computation[body_computation] = 16;
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
       HloAliasAnalysis::Run(module.get()).value();
@@ -221,7 +218,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   // so we don't double count.
   EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, schedule.sequence(entry_computation),
-                    *alias_analysis, size_fn, &memory_by_computation)
+                    *alias_analysis, size_fn)
                     .value());
 }
 

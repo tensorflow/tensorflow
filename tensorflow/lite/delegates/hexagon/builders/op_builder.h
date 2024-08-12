@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "hexagon/hexagon_nn_ops.h"
+#include "hexagon/hexagon_nn.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
