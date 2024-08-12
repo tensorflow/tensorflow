@@ -49,6 +49,7 @@ class XlaInterpreterPlatform : public Platform {
 
   absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
+  absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
   // Returns a device constructed with the options specified in "config" without
   // looking in or storing to the Platform's executor cache.

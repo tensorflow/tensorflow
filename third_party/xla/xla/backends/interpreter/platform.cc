@@ -54,6 +54,13 @@ absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
   return GetExecutor(config);
 }
 
+absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::FindExisting(
+    int ordinal) {
+  StreamExecutorConfig config;
+  config.ordinal = ordinal;
+  return executor_cache_.Get(config);
+}
+
 absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(

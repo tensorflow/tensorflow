@@ -100,6 +100,7 @@ class CPlatform : public Platform {
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
   absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
+  absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
  private:
   // Returns a device constructed with the options specified in "config" without
