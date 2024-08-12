@@ -2490,9 +2490,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
       &b, "__xla_test$$memcpy",
       /*operands=*/
       {DynamicSlice(Parameter(&b, 0, ShapeUtil::MakeShape(S32, {4, 128}), "p0"),
-                    {Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "start0"),
-                     Parameter(&b, 2, ShapeUtil::MakeShape(S32, {}), "start1")},
-                    {2, 128})},
+                    {ConstantR0(&b, 2), ConstantR0(&b, 0)}, {2, 128})},
       ShapeUtil::MakeShape(F32, {2, 128}), /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -2509,7 +2507,6 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
   DynamicSliceFusionRewriter pass(PLATFORM);
@@ -2547,11 +2544,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
                     DynamicSlice(
                         Parameter(&b, 0, ShapeUtil::MakeShape(S32, {4, 128}),
                                   "p0"),
-                        {Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}),
-                                   "start0"),
-                         Parameter(&b, 2, ShapeUtil::MakeShape(S32, {}),
-                                   "start1")},
-                        {3, 128}),
+                        {ConstantR0(&b, 20), ConstantR0(&b, 0)}, {3, 128}),
                 }),
       },
       ShapeUtil::MakeTupleShape({
@@ -2590,6 +2583,15 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
+  EXPECT_TRUE(*RunFileCheck(hlo_opt->ToString(), R"(
+    // CHECK: %address-computation{{.+}} {
+    // CHECK:   {{.+}} = {{.+}} slice
+    // CHECK:   {{.+}} = {{.+}} dynamic-slice
+    // CHECK:   {{.+}} = {{.+}} custom-call
+    // CHECK: ENTRY {{.+}} {
+    // CHECK-NOT: {{.+}} = {{.+}} slice
+    // CHECK-NOT: {{.+}} = {{.+}} dynamic-slice
+  )"));
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
                                       error_spec, /*run_hlo_passes=*/false));
