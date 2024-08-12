@@ -18,6 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_API_VERIFIER_H_
 #define TENSORFLOW_LITE_CORE_API_VERIFIER_H_
 
-#include "tensorflow/compiler/mlir/lite/core/api/verifier.h"
+#include "tensorflow/compiler/mlir/lite/core/api/verifier.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_CORE_API_VERIFIER_H_
