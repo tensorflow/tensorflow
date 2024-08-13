@@ -25,22 +25,35 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
+#include "xla/service/hlo_alias_analysis.h"
+#include "xla/service/hlo_dataflow_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
+using ::testing::ContainerEq;
 using ::testing::HasSubstr;
 using ::testing::StrEq;
 
@@ -2052,6 +2065,20 @@ TEST_F(IntervalTreeTest, BufferIntervalTreeToAsciiArtFreeMemory) {
   std::string output = tree.NodesOverlappingInTimeToAsciiArt(
       /*start=*/0, /*end=*/4, /*group_size=*/10);
   EXPECT_THAT(output, StrEq("No nodes overlapping in time. Memory is free!"));
+}
+
+TEST_F(IntervalTreeTest, BufferIntervalTreeMemoryUsedInInterval) {
+  // Buffer 1: memory block [0, 16), time interval [15, 25]
+  // Buffer 2: memory block [16, 48), time interval [15, 19]
+  // Buffer 3: memory block [32, 64), time interval [20, 22]
+  BufferIntervalTree tree;
+  tree.Add(15, 25, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  tree.Add(15, 19, HeapSimulator::Chunk::FromOffsetEnd(16, 48));
+  tree.Add(20, 22, HeapSimulator::Chunk::FromOffsetEnd(32, 64));
+  std::vector<int64_t> memory_used_by_time = tree.MemoryUsedInInterval(
+      /*start=*/18, /*end=*/23);
+  std::vector<int64_t> expected_memory_used_by_time = {48, 48, 48, 48, 48, 16};
+  EXPECT_THAT(memory_used_by_time, ContainerEq(expected_memory_used_by_time));
 }
 
 class SlicedBufferIntervalTest : public ::testing::Test {
