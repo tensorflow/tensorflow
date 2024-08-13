@@ -56,7 +56,6 @@ namespace xla {
 namespace gpu {
 
 using ::testing::ElementsAre;
-using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 class GpuHloScheduleTest : public HloTestBase {
