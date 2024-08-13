@@ -16,7 +16,8 @@ limitations under the License.
 
 #include <optional>
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
+#include "tensorflow/core/framework/allocator.h"
 
 namespace tensorflow {
 
