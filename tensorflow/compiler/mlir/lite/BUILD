@@ -1546,6 +1546,29 @@ cc_library(
     visibility = ["//tensorflow/lite:__pkg__"],
 )
 
+exports_files(srcs = ["allocation.h"])
+
+cc_library(
+    name = "allocation",
+    srcs = [
+        "allocation.cc",
+    ] + select({
+        ":tflite_mmap_disabled": [
+            "mmap_allocation_disabled.cc",
+        ],
+        "//conditions:default": [
+            "mmap_allocation.cc",
+        ],
+    }),
+    hdrs = [
+        "allocation.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    visibility = ["//tensorflow/lite:__pkg__"],
+    deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
+)
+
 exports_files(srcs = ["utils/control_edges.h"])
 
 cc_library(

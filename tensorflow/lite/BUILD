@@ -141,7 +141,6 @@ filegroup(
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
-        ":allocation.cc",
         ":allocation.h",
         ":array.cc",
         ":array.h",
@@ -482,22 +481,16 @@ cc_library(
 
 cc_library(
     name = "allocation",
-    srcs = [
-        "allocation.cc",
-    ] + select({
-        ":tflite_mmap_disabled": [
-            "mmap_allocation_disabled.cc",
-        ],
-        "//conditions:default": [
-            "mmap_allocation.cc",
-        ],
-    }),
     hdrs = [
         "allocation.h",
+        "//tensorflow/compiler/mlir/lite:allocation.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = ["//tensorflow/lite/core/api:error_reporter"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:allocation",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+    ],
 )
 
 cc_library(
