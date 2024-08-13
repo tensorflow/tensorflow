@@ -8,8 +8,7 @@ func.func @tensor_extract(
       : tensor<2x3xf32, dense<[0, 1]> : tensor<2xi64>>
   func.return %v : f32
 }
-// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 2 + d0),
-// CHECK-SAME:                    domain: d0 in [0, 1], d1 in [0, 2]>
+// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 2 + d0), domain: d0 in [0, 1], d1 in [0, 2]>
 
 // CHECK-LABEL: func.func @tensor_extract(
 // CHECK-SAME:      %[[SRC:.*]]: tensor<6xf32>,
@@ -37,6 +36,26 @@ func.func @tensor_insert(
 
 // -----
 
+func.func @update(%arg0: tensor<10x24xf32>) -> tensor<10x24xf32> {
+  %c1 = arith.constant 1 : index
+  %c42_f32 = arith.constant 42.0 : f32
+  %out = tensor.insert %c42_f32 into %arg0[%c1, %c1] : tensor<10x24xf32>
+  func.return %out : tensor<10x24xf32>
+}
+
+func.func @pure_call(%arg0: tensor<10x24xf32>) -> tensor<10x24xf32> {
+  %updated_tensor = xla_gpu.pure_call @update(%arg0)
+    : (tensor<10x24xf32>) -> (tensor<10x24xf32>)
+  func.return %updated_tensor : tensor<10x24xf32>
+}
+// CHECK-LABEL: func.func @pure_call(
+// CHECK-SAME:      %[[TENSOR:.*]]: tensor<240xf32>) -> tensor<240xf32> {
+// CHECK-NEXT:    xla_gpu.pure_call @update(%[[TENSOR]])
+// CHECK-SAME:      : (tensor<240xf32>) -> tensor<240xf32>
+// CHECK-NEXT:  return
+
+// -----
+
 func.func @atomic_rmw(%in: tensor<2x4xf32>, %i: index, %j: index)
     -> (tensor<2x4xf32>) {
   %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf32> {
@@ -47,9 +66,7 @@ func.func @atomic_rmw(%in: tensor<2x4xf32>, %i: index, %j: index)
   }
   return %ret : tensor<2x4xf32>
 }
-// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 4 + d1),
-// CHECK-SAME:                    domain: d0 in [0, 1], d1 in [0, 3]>
-
+// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 4 + d1), domain: d0 in [0, 1], d1 in [0, 3]>
 // CHECK-LABEL: func.func @atomic_rmw(
 // CHECK-SAME:      %[[TENSOR:.*]]: tensor<8xf32>, %[[I:.*]]: index,
 // CHECK-SAME:      %[[J:.*]]: index) -> tensor<8xf32> {
@@ -74,11 +91,8 @@ func.func @for_loop(%t0: tensor<32x1024xf32>, %t1: tensor<64x8x4xf32>)
   } {some_attr}
     return %for#0, %for#1, %c0_f32 : tensor<32x1024xf32>, tensor<64x8x4xf32>, f32
 }
-
-// CHECK: #[[$MAP0:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 + 1024),
-// CHECK-SAME:                     domain: d0 in [0, 1023]>
-// CHECK: #[[$MAP1:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 * 32 + 5),
-// CHECK-SAME:                     domain: d0 in [0, 63]>
+// CHECK: #[[$MAP0:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 + 1024)
+// CHECK: #[[$MAP1:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 * 32 + 5)
 // CHECK-LABEL: func.func @for_loop(
 // CHECK-SAME:      %[[T0:.*]]: tensor<32768xf32>,
 // CHECK-SAME:      %[[T1:.*]]: tensor<2048xf32>) -> (tensor<32768xf32>, tensor<2048xf32>, f32) {
@@ -98,12 +112,9 @@ func.func @for_loop(%t0: tensor<32x1024xf32>, %t1: tensor<64x8x4xf32>)
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) floordiv 36),
-                              domain: d0 in [0, 127], d1 in [0, 393749]>
-#map1 = #xla_gpu.indexing_map<(d0, d1) -> (((d1 * 128 + d0) floordiv 9) mod 4),
-                              domain: d0 in [0, 127], d1 in [0, 393749]>
-#map2 = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) mod 9),
-                              domain: d0 in [0, 127], d1 in [0, 393749]>
+#map = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) floordiv 36), domain: d0 in [0, 127], d1 in [0, 393749]>
+#map1 = #xla_gpu.indexing_map<(d0, d1) -> (((d1 * 128 + d0) floordiv 9) mod 4), domain: d0 in [0, 127], d1 in [0, 393749]>
+#map2 = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) mod 9), domain: d0 in [0, 127], d1 in [0, 393749]>
 func.func @if_op(%arg0: tensor<4000x4x9xf32>, %arg1: tensor<1400x1xi32>,
     %arg2: tensor<1400x1x4x9xf32>, %arg3: tensor<4000x4x9xf32>)
      -> tensor<4000x4x9xf32> {
@@ -135,6 +146,51 @@ func.func @if_op(%arg0: tensor<4000x4x9xf32>, %arg1: tensor<1400x1xi32>,
 // CHECK:         scf.if %{{.*}} -> (tensor<144000xf32>) {
 // CHECK-COUNT-2:   scf.yield %{{.*}} : tensor<144000xf32>
 // CHECK:         return %{{.*}} : tensor<144000xf32>
+
+// -----
+
+func.func @allocate_shared() -> tensor<10x15xf32> {
+  %shmem = xla_gpu.allocate_shared : tensor<10x15xf32>
+  func.return %shmem : tensor<10x15xf32>
+}
+// CHECK-LABEL: func.func @allocate_shared() -> tensor<150xf32>
+// CHECK:         xla_gpu.allocate_shared : tensor<150xf32>
+// CHECK-NOT:     builtin.unrealized_conversion_cast
+
+// -----
+
+func.func @sync() -> (tensor<8x4xf32>, tensor<8x4xf32>) {
+  %shared1 = xla_gpu.allocate_shared : tensor<8x4xf32>
+  %shared2 = xla_gpu.allocate_shared : tensor<8x4xf32>
+  %sync:2 = xla_gpu.sync_threads %shared1, %shared2
+    : tensor<8x4xf32>, tensor<8x4xf32>
+  return %sync#0, %sync#1 : tensor<8x4xf32>, tensor<8x4xf32>
+}
+// CHECK-LABEL: func.func @sync() -> (tensor<32xf32>, tensor<32xf32>) {
+// CHECK:         %[[SHARED1:.*]] = xla_gpu.allocate_shared : tensor<32xf32>
+// CHECK:         %[[SHARED2:.*]] = xla_gpu.allocate_shared : tensor<32xf32>
+// CHECK:         %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHARED1]], %[[SHARED2]]
+// CHECK-SAME:      : tensor<32xf32>, tensor<32xf32>
+// CHECK-NEXT:    return
+
+// -----
+
+func.func @index_switch(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>,
+    %arg2: tensor<2x3xf32>, %arg3: tensor<2x3xf32>
+    ) -> (tensor<2x3xf32>, tensor<2x3xf32>) {
+  %block_id_y = gpu.block_id  y {xla.range = [0 : index, 1 : index]}
+  %0:2 = scf.index_switch %block_id_y -> tensor<2x3xf32>, tensor<2x3xf32>
+  case 1 {
+    scf.yield %arg0, %arg3 : tensor<2x3xf32>, tensor<2x3xf32>
+  }
+  default {
+    scf.yield %arg1, %arg2 : tensor<2x3xf32>, tensor<2x3xf32>
+  }
+  return %0#0, %0#1: tensor<2x3xf32>, tensor<2x3xf32>
+}
+// CHECK-LABEL: func.func @index_switch
+// CHECK-SAME: -> (tensor<6xf32>, tensor<6xf32>)
+// CHECK-NOT:  builtin.unrealized_conversion_cast
 
 // -----
 
