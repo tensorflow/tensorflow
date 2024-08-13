@@ -732,6 +732,7 @@ xla_cc_test(
         ":indexing_test_utils",
         ":symbolic_tile",
         ":symbolic_tile_analysis",
+        ":symbolic_tiled_hlo_instruction",
         ":tiled_hlo_computation",
         ":tiled_hlo_instruction",
         "//xla:util",
