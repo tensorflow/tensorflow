@@ -844,9 +844,13 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels/data/experimental/sql",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -859,6 +863,8 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:summary_interface",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -868,9 +874,11 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -881,10 +889,14 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:captured_function",
-        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -895,10 +907,14 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
-        "@eigen_archive//:eigen3",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/framework:resource_base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -909,9 +925,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:root_dataset",
-        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -925,6 +941,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
@@ -942,8 +959,12 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "@eigen_archive//:eigen3",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:hash",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -957,6 +978,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
@@ -980,10 +1002,12 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
-        "@eigen_archive//:eigen3",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
