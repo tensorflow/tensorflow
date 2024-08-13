@@ -108,9 +108,37 @@ using ExhaustiveBF16BinaryTest = Exhaustive16BitBinaryTest<BF16>;
   BINARY_TEST_F16(test_name, __VA_ARGS__) \
   BINARY_TEST_BF16(test_name, __VA_ARGS__)
 
+// Can be thought of as an absolute error of
+// `<= |std::numeric_limits::<float>::min()|`.
+double AddCpuBf16AbsErr(xla::bfloat16 left, xla::bfloat16 right) {
+  float output = static_cast<float>(left) + static_cast<float>(right);
+
+  // Hardware flushes subnormal outputs to 0.
+  if (IsSubnormal(output)) {
+    return std::numeric_limits<float>::min();
+  }
+
+  return 0.0;
+}
+
 BINARY_TEST_16BIT(Add, {
-  auto host_add = [](float x, float y) { return x + y; };
-  Run(AddEmptyBroadcastDimension(Add), host_add);
+  ErrorSpecGen error_spec_gen = +[](NativeT, NativeT) {
+    return ErrorSpec::Builder().strict_signed_zeros().build();
+  };
+  if (IsCpu(platform_)) {
+    if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+      error_spec_gen = +[](NativeT left, NativeT right) {
+        return ErrorSpec::Builder()
+            .abs_err(AddCpuBf16AbsErr(static_cast<xla::bfloat16>(left),
+                                      static_cast<xla::bfloat16>(right)))
+            .strict_signed_zeros()
+            .build();
+      };
+    }
+  }
+  Run(
+      AddEmptyBroadcastDimension(Add), [](float x, float y) { return x + y; },
+      error_spec_gen);
 })
 
 BINARY_TEST_16BIT(Sub, {
