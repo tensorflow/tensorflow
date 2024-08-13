@@ -140,6 +140,42 @@ func.func @fold_sequence_sym(%arg0: index, %arg1: index) -> index {
 
 // -----
 
+#indexing_map1 = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 2 + d0 + 8512),
+  domain: d0 in [0, 1], d1 in [0, 607]>
+#indexing_map2 = #xla_gpu.indexing_map<
+  (d0, d1, d2) -> (((d1 floordiv 32 + 1) mod 3) * 64
+                  + (d1 mod 32) * 2 + (d0 floordiv 192) * 192 + d2),
+  domain: d0 in [0, 9407], d1 in [0, 607], d2 in [0, 1]>
+
+func.func @fold_sequence_no_simplification_needed(%i: index) -> index {
+  %thread_id_x = gpu.thread_id  x {xla.range = [0 : index, 607 : index]}
+  %ind0 = xla_gpu.apply_indexing #indexing_map1(%i, %thread_id_x)
+  %ind1 = xla_gpu.apply_indexing #indexing_map2(%ind0, %thread_id_x, %i)
+  func.return %ind1 : index
+}
+// CHECK: xla_gpu.apply_indexing
+// CHECK-NOT: xla_gpu.apply_indexing
+
+// -----
+
+#indexing_map1 = #xla_gpu.indexing_map<(d0) -> (3 * d0),
+  domain: d0 in [0, 9407]>
+#indexing_map2 = #xla_gpu.indexing_map<(d0, d1, d2) -> (d0 floordiv 32 + 1),
+  domain: d0 in [0, 9407], d1 in [0, 607], d2 in [0, 1]>
+#indexing_map3 = #xla_gpu.indexing_map<(d0, d1, d2) -> (d0 floordiv 32 + 2),
+  domain: d0 in [0, 9407], d1 in [0, 607], d2 in [0, 1]>
+
+func.func @no_fold_when_producer_has_two_users(%i: index) -> (index, index) {
+  %thread_id_x = gpu.thread_id  x {xla.range = [0 : index, 607 : index]}
+  %ind0 = xla_gpu.apply_indexing #indexing_map1(%thread_id_x)
+  %ind1 = xla_gpu.apply_indexing #indexing_map2(%ind0, %thread_id_x, %i)
+  %ind2 = xla_gpu.apply_indexing #indexing_map3(%ind0, %thread_id_x, %i)
+  func.return %ind1, %ind2 : index, index
+}
+// CHECK-COUNT-3: xla_gpu.apply_indexing
+
+// -----
+
 func.func @fold_sequence_shared_operands(%arg0: index, %arg1: index) -> index {
   %0 = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1),
     domain: d0 in [0, 5], d1 in [0, 4]>(%arg0, %arg1)

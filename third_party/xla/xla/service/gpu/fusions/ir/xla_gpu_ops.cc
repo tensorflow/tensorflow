@@ -269,6 +269,19 @@ struct FoldApplyIndexingSequence
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
+    SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops;
+    bool all_apply_indexing_operands_have_one_use = true;
+    for (auto& operand : indexing_op->getOpOperands()) {
+      if (auto producer = operand.get().getDefiningOp<ApplyIndexingOp>()) {
+        apply_indexing_ops.push_back({operand.getOperandNumber(), producer});
+        all_apply_indexing_operands_have_one_use &= producer->hasOneUse();
+      }
+    }
+    if (apply_indexing_ops.empty()) {
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         "No apply_indexing sequences found");
+    }
+
     MLIRContext* ctx = indexing_op.getContext();
     int num_dims = indexing_op.getAffineMap().getNumDims();
     int num_syms = indexing_op.getAffineMap().getNumSymbols();
@@ -289,53 +302,44 @@ struct FoldApplyIndexingSequence
     auto new_sym_vars = this_map.GetRangeVars();
 
     mlir::DenseMap<AffineExpr, AffineExpr> replacements;
-    for (auto& operand : indexing_op->getOpOperands()) {
-      if (auto producer = operand.get().getDefiningOp<ApplyIndexingOp>()) {
-        auto producer_map = producer.getIndexingMap();
-        int producer_result_id =
-            mlir::cast<mlir::OpResult>(operand.get()).getResultNumber();
-        int num_producer_dims = producer.getAffineMap().getNumDims();
-        SmallVector<AffineExpr> producer_dim_replacements;
-        SmallVector<AffineExpr> producer_sym_replacements;
-        for (auto& producer_operand : producer->getOpOperands()) {
-          int producer_operand_number = producer_operand.getOperandNumber();
-          bool is_dim = producer_operand_number < num_producer_dims;
-          auto& replacement_expr = operand_exprs[producer_operand.get()];
-          if (!replacement_expr) {
-            if (is_dim) {
-              int dim_num = producer_operand_number;
-              replacement_expr =
-                  getAffineDimExpr(num_dims + added_dim_args.size(), ctx);
-              added_dim_args.push_back(producer_operand.get());
-              new_dim_vars.push_back(producer_map.GetDimVars(dim_num));
-            } else {
-              int sym_num = producer_operand_number -
-                            producer.getAffineMap().getNumDims();
-              replacement_expr =
-                  getAffineSymbolExpr(num_syms + added_sym_args.size(), ctx);
-              added_sym_args.push_back(producer_operand.get());
-              new_sym_vars.push_back(producer_map.GetRangeVar(sym_num));
-            }
-          }
-
+    for (auto& [operand_id, producer] : apply_indexing_ops) {
+      auto producer_map = producer.getIndexingMap();
+      mlir::OpResult producer_result = producer->getOpResult(0);
+      int producer_result_id = producer_result.getResultNumber();
+      int num_producer_dims = producer.getAffineMap().getNumDims();
+      SmallVector<AffineExpr> producer_dim_replacements;
+      SmallVector<AffineExpr> producer_sym_replacements;
+      for (auto& producer_operand : producer->getOpOperands()) {
+        int producer_operand_number = producer_operand.getOperandNumber();
+        bool is_dim = producer_operand_number < num_producer_dims;
+        auto& replacement_expr = operand_exprs[producer_operand.get()];
+        if (!replacement_expr) {
           if (is_dim) {
-            producer_dim_replacements.push_back(replacement_expr);
+            int dim_num = producer_operand_number;
+            replacement_expr =
+                getAffineDimExpr(num_dims + added_dim_args.size(), ctx);
+            added_dim_args.push_back(producer_operand.get());
+            new_dim_vars.push_back(producer_map.GetDimVars(dim_num));
           } else {
-            producer_sym_replacements.push_back(replacement_expr);
+            int sym_num =
+                producer_operand_number - producer.getAffineMap().getNumDims();
+            replacement_expr =
+                getAffineSymbolExpr(num_syms + added_sym_args.size(), ctx);
+            added_sym_args.push_back(producer_operand.get());
+            new_sym_vars.push_back(producer_map.GetRangeVar(sym_num));
           }
         }
-
-        replacements[operand_exprs[operand.get()]] =
-            producer.getAffineMap()
-                .getResult(producer_result_id)
-                .replaceDimsAndSymbols(producer_dim_replacements,
-                                       producer_sym_replacements);
+        if (is_dim) {
+          producer_dim_replacements.push_back(replacement_expr);
+        } else {
+          producer_sym_replacements.push_back(replacement_expr);
+        }
       }
-    }
-
-    if (replacements.empty()) {
-      return rewriter.notifyMatchFailure(indexing_op,
-                                         "No apply_indexing sequences found");
+      replacements[operand_exprs[producer_result]] =
+          producer.getAffineMap()
+              .getResult(producer_result_id)
+              .replaceDimsAndSymbols(producer_dim_replacements,
+                                     producer_sym_replacements);
     }
 
     int new_num_operands = indexing_op->getNumOperands() +
@@ -345,10 +349,12 @@ struct FoldApplyIndexingSequence
         num_syms + added_sym_args.size());
     IndexingMap new_indexing_map(new_affine_map, new_dim_vars, new_sym_vars,
                                  /*rt_vars=*/{});
-    if (!new_indexing_map.Simplify()) {
+    if (!all_apply_indexing_operands_have_one_use &&
+        !new_indexing_map.Simplify()) {
       return rewriter.notifyMatchFailure(
           indexing_op, "Folded indexing map was not simplified");
     }
+
     SmallVector<Value> new_operands;
     new_operands.reserve(new_num_operands);
 
