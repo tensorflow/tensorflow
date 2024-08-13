@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace spmd {
@@ -1096,39 +1095,23 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
   return sharded_dims <= 0;
 }
 
-absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
-    int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh, bool consider_reverse_device_meshes) {
-  if (spec.IsReplicated()) {
-    return std::vector<int64_t>(tensor_shape_rank, -1);
-  }
-  // Check the compatibility of tensor_shape_rank and spec
-  if (tensor_shape_rank != spec.TiledDataRank()) {
-    return absl::InvalidArgumentError(
-        "Tensor shape rank should be equal to the tiled data rank of the input "
-        "spec.");
-  }
-
+absl::StatusOr<std::vector<int64_t>> GetMeshDimPermutationOrderInShardingSpec(
+    const HloSharding& spec, const Array<int64_t>& device_mesh,
+    bool consider_reverse_device_meshes) {
   auto check_mesh =
       [&](const Array<int64_t>& mesh) -> std::optional<std::vector<int64_t>> {
     // Permute the dimensions (or axes in numpy term), find the transform that
     // makes tile_assignment == device_mesh.
     std::vector<int64_t> axes(mesh.num_dimensions());
     absl::c_iota(axes, 0);
-    bool found = false;
     do {
       Array<int64_t> transposed_mesh = Transpose(mesh, axes);
       if (std::equal(transposed_mesh.begin(), transposed_mesh.end(),
                      spec.tile_assignment().array().begin())) {
-        found = true;
-        break;
+        return axes;
       }
     } while (absl::c_next_permutation(axes));
-    if (found) {
-      return std::optional<std::vector<int64_t>>(axes);
-    } else {
-      return std::nullopt;
-    }
+    return std::nullopt;
   };
 
   // This is an expensive search, as we try all possible meshes obtained by
@@ -1136,7 +1119,6 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
   // the somewhat rare kReverse HLO op. The hope therefore is that most calls to
   // the function that reach here will find a mapping within the first iteration
   // of the loop below.
-  bool found = false;
   std::vector<int64_t> axes(device_mesh.num_dimensions());
   size_t num_subsets =
       consider_reverse_device_meshes ? (1 << device_mesh.num_dimensions()) : 1;
@@ -1157,24 +1139,35 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
       *device = device_mesh(original_indices);
     });
     if (auto result = check_mesh(new_mesh); result.has_value()) {
-      axes = result.value();
-      found = true;
-      break;
+      return result.value();
     }
   }
+  return absl::NotFoundError(absl::StrCat("Could not find mapping for ",
+                                          spec.ToString(), " with device mesh ",
+                                          device_mesh.ToString()));
+}
 
-  if (!found) {
-    return absl::NotFoundError(
-        absl::StrCat("Could not find mapping for ", spec.ToString(),
-                     " with device mesh ", device_mesh.ToString()));
+absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
+    int64_t tensor_shape_rank, const HloSharding& spec,
+    const Array<int64_t>& device_mesh, bool consider_reverse_device_meshes) {
+  if (spec.IsReplicated()) {
+    return std::vector<int64_t>(tensor_shape_rank, -1);
   }
-
+  // Check the compatibility of tensor_shape_rank and spec
+  if (tensor_shape_rank != spec.TiledDataRank()) {
+    return absl::InvalidArgumentError(
+        "Tensor shape rank should be equal to the tiled data rank of the input "
+        "spec.");
+  }
   if (!TileAssignmentMatchesMesh(spec, device_mesh)) {
     return absl::InvalidArgumentError(
         "Device mesh and tile assignment need to have the same number of "
         "sharded dims.");
   }
 
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
+                      GetMeshDimPermutationOrderInShardingSpec(
+                          spec, device_mesh, consider_reverse_device_meshes));
   // Transform tile_assignment_dimensions using found transformation (axes).
   std::vector<int64_t> tensor_dim_to_device_dim(tensor_shape_rank, -1);
   int mesh_index = 0;
