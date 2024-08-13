@@ -543,7 +543,9 @@ cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
     deps = [
+        ":runtime_shape",
         ":tensor",
+        "//base:types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -634,6 +636,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":compatibility",
         ":types",
     ],
 )
@@ -642,7 +645,9 @@ cc_test(
     name = "transpose_utils_test",
     srcs = ["transpose_utils_test.cc"],
     deps = [
+        ":runtime_shape",
         ":transpose_utils",
+        ":types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -898,6 +903,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:macros",
         "//tensorflow/lite/core/c:common",
     ],
@@ -1165,6 +1171,7 @@ cc_library(
         "//conditions:default": ["-lm"],
     }),
     deps = [
+        ":compatibility",
         ":types",
     ],
 )
@@ -1183,6 +1190,7 @@ cc_test(
         ":common",
         ":quantization_util",
         ":tensor_utils",
+        ":types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:test_util",
@@ -1286,6 +1294,7 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "//base:types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1301,6 +1310,7 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "//base:types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1313,6 +1323,7 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "//base:types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1328,7 +1339,10 @@ cc_test(
         ":optimized_base",
         ":quantization_util",
         ":reference_base",
+        ":runtime_shape",
         ":test_util",
+        ":types",
+        "//base:types",
         "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1341,7 +1355,9 @@ cc_test(
         "strided_slice_logic_test.cc",
     ],
     deps = [
+        ":runtime_shape",
         ":strided_slice_logic",
+        ":types",
         "@com_google_googletest//:gtest_main",
     ],
 )

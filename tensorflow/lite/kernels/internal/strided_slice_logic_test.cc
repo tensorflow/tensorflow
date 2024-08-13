@@ -17,6 +17,8 @@ limitations under the License.
 #include <initializer_list>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace {

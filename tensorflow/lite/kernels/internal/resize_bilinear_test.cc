@@ -21,9 +21,10 @@ limitations under the License.
 #include <typeinfo>
 #include <vector>
 
+#include "base/types.h"
 #include <gtest/gtest.h>
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
