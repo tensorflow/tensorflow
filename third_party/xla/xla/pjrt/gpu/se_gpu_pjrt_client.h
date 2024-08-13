@@ -216,6 +216,11 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    absl::Span<const Layout> device_layouts,
+                                    PjRtMemorySpace* memory_space) override;
+
   PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, PjRtFuture<void*> dst,
                                       int64_t offset,
                                       int64_t transfer_size) override;
