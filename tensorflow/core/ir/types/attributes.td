@@ -299,7 +299,7 @@ def TFType_FullTypeId : I32EnumAttr<"FullTypeId", "", [
   I32EnumAttrCase<"TFT_LEGACY_VARIANT", 10203, "legacy_variant">
 ]> {
   let cppNamespace = "::mlir::tf_type";
-  string cppType = "int32_t";
+  string cppType = "::mlir::IntegerAttr";
   let genSpecializedAttr = 0;
 }
 
