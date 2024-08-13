@@ -18,12 +18,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {

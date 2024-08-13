@@ -759,6 +759,7 @@ xla_test(
     ]),
     deps = [
         "//xla/stream_executor",
+        "//xla/stream_executor:stream_finder",
         "//xla/stream_executor/host:host_platform",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
