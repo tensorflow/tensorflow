@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <condition_variable>
 
+#include "absl/log/log.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/mutex.h"
