@@ -859,9 +859,9 @@ Status CustomReader::Initialize(Env* env) {
 }
 
 Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&]() { return absl::StrCat(kClassName, kSeparator, "ReadTensors"); },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   if (version_ == 0 || compression_type_ != io::compression::kSnappy) {
     return ReadTensorsV0(read_tensors);
   }
