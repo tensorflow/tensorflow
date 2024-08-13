@@ -26,10 +26,13 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "png.h"  // from @png
+#include "pngconf.h"  // from @png
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/png.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "third_party/zlib/src/zconf.h"
 
 namespace tensorflow {
 namespace png {
