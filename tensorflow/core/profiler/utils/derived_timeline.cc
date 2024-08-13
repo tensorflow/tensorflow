@@ -297,7 +297,7 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
           event_span, stats.group_id);
     }
 
-    if (stats.IsXlaOp()) {
+    if (stats.IsXlaOp() && !stats.hlo_module_name.empty()) {
       auto symbol = symbol_resolver(stats.program_id, stats.hlo_module_name,
                                     stats.hlo_op_names.back());
       hlo_ops.ExpandOrAddEvents(

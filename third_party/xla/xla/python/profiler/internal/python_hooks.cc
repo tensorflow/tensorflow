@@ -123,7 +123,7 @@ std::string PythonTraceEntry::Name() const {
   std::string event_name;
   if (co_filename) {
     return GetEventName(co_filename, co_name, co_firstlineno);
-  } else {
+  } else if (method_def) {
     return GetEventName(method_def, m_module);
   }
   return "<unknown>";
