@@ -47,6 +47,7 @@ cc_test(
     ],
     deps = [
         ":verifier",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:framework",
