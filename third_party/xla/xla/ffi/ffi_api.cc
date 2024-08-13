@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -185,6 +186,26 @@ const ExecutionContext* ScopedExecutionContext::GetCallExecutionContext(
 // XLA FFI registry
 //===----------------------------------------------------------------------===//
 
+static std::string StructSizeErrorMsg(std::string_view struct_name,
+                                      size_t expected, size_t actual) {
+  return absl::StrCat("Unexpected ", struct_name, " size: expected ", expected,
+                      ", got ", actual, ". Check installed software versions. ",
+                      "The framework XLA FFI API version is ",
+                      XLA_FFI_API_MAJOR, ".", XLA_FFI_API_MINOR, ".");
+}
+
+static absl::Status ActualStructSizeIsGreaterOrEqual(
+    std::string_view struct_name, size_t expected, size_t actual) {
+  if (actual < expected) {
+    return InvalidArgument("%s",
+                           StructSizeErrorMsg(struct_name, expected, actual));
+  }
+  if (actual > expected) {
+    VLOG(2) << StructSizeErrorMsg(struct_name, expected, actual);
+  }
+  return absl::OkStatus();
+}
+
 using HandlerKey = std::pair<std::string, std::string>;
 using HandlerRegistry = absl::flat_hash_map<HandlerKey, HandlerRegistration>;
 
@@ -221,6 +242,23 @@ static absl::Status RegisterHandler(std::string_view name,
       name, platform, canonical_platform,
       absl::StrJoin(GetHandlerStages(bundle), ", "),
       IsCommandBufferCompatible(traits));
+
+  TF_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Handler_Bundle", XLA_FFI_Handler_Bundle_STRUCT_SIZE,
+      bundle.struct_size));
+  auto api_version = bundle.api_version;
+  TF_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Api_Version", XLA_FFI_Api_Version_STRUCT_SIZE,
+      api_version.struct_size));
+
+  if (api_version.major_version != XLA_FFI_API_MAJOR ||
+      api_version.minor_version != XLA_FFI_API_MINOR) {
+    return InvalidArgument(
+        "XLA FFI handler for '%s' with platform '%s' has API version (%d.%d) "
+        "which does not match the framework's API version (%d.%d)",
+        name, platform, api_version.major_version, api_version.minor_version,
+        XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR);
+  }
 
   if (bundle.execute == nullptr) {
     return InvalidArgument(
@@ -284,26 +322,6 @@ StaticRegisteredHandlers(std::string_view platform) {
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation
 //===----------------------------------------------------------------------===//
-
-static std::string StructSizeErrorMsg(std::string_view struct_name,
-                                      size_t expected, size_t actual) {
-  return absl::StrCat("Unexpected ", struct_name, " size: expected ", expected,
-                      ", got ", actual, ". Check installed software versions. ",
-                      "The framework XLA FFI API version is ",
-                      XLA_FFI_API_MAJOR, ".", XLA_FFI_API_MINOR, ".");
-}
-
-static absl::Status ActualStructSizeIsGreaterOrEqual(
-    std::string_view struct_name, size_t expected, size_t actual) {
-  if (actual < expected) {
-    return InvalidArgument("%s",
-                           StructSizeErrorMsg(struct_name, expected, actual));
-  }
-  if (actual > expected) {
-    VLOG(2) << StructSizeErrorMsg(struct_name, expected, actual);
-  }
-  return absl::OkStatus();
-}
 
 static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
   switch (errc) {
@@ -389,7 +407,9 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
       args->struct_size));
-
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Handler_Bundle", XLA_FFI_Handler_Bundle_STRUCT_SIZE,
+      args->bundle.struct_size));
   if (auto status = RegisterHandler(
           std::string_view(args->name.ptr, args->name.len),
           std::string_view(args->platform.ptr, args->platform.len),
@@ -655,7 +675,6 @@ static XLA_FFI_Api api = {
         XLA_FFI_API_MAJOR,
         XLA_FFI_API_MINOR,
     },
-
     &internal_api,
 
     XLA_FFI_Error_Create,

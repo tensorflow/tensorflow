@@ -211,6 +211,10 @@ class Ffi {
   virtual ~Ffi() = default;
   virtual XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const = 0;
 
+  static inline XLA_FFI_Handler_Bundle MakeHandlerBundle(
+      XLA_FFI_Handler* instantiate, XLA_FFI_Handler* prepare,
+      XLA_FFI_Handler* initialize, XLA_FFI_Handler* execute);
+
   // Registers FFI handler bundle with an XLA runtime under the given name on a
   // given platform.
   static inline XLA_FFI_Error* RegisterStaticHandler(
@@ -224,7 +228,7 @@ class Ffi {
       XLA_FFI_Handler* execute, XLA_FFI_Handler_Traits traits = 0) {
     return RegisterStaticHandler(
         api, name, platform,
-        XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr, execute}, traits);
+        MakeHandlerBundle(nullptr, nullptr, nullptr, execute), traits);
   }
 
  protected:
@@ -257,6 +261,26 @@ XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
   args.bundle = bundle;
   args.traits = traits;
   return api->XLA_FFI_Handler_Register(&args);
+}
+
+XLA_FFI_Handler_Bundle Ffi::MakeHandlerBundle(XLA_FFI_Handler* instantiate,
+                                              XLA_FFI_Handler* prepare,
+                                              XLA_FFI_Handler* initialize,
+                                              XLA_FFI_Handler* execute) {
+  XLA_FFI_Handler_Bundle bundle;
+  bundle.struct_size = XLA_FFI_Handler_Bundle_STRUCT_SIZE;
+  bundle.priv = nullptr;
+  bundle.api_version = XLA_FFI_Api_Version{
+      XLA_FFI_Api_Version_STRUCT_SIZE,
+      /*priv=*/nullptr,
+      XLA_FFI_API_MAJOR,
+      XLA_FFI_API_MINOR,
+  };
+  bundle.instantiate = instantiate;
+  bundle.prepare = prepare;
+  bundle.initialize = initialize;
+  bundle.execute = execute;
+  return bundle;
 }
 
 template <typename... Args>

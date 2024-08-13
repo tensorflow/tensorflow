@@ -364,11 +364,17 @@ typedef XLA_FFI_Error* XLA_FFI_Handler(XLA_FFI_CallFrame* call_frame);
 
 // XLA FFI handlers for execution stages (see XLA_FFI_ExecutionStage).
 struct XLA_FFI_Handler_Bundle {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_Api_Version api_version;
   XLA_FFI_Handler* instantiate;  // optional
   XLA_FFI_Handler* prepare;      // optional
   XLA_FFI_Handler* initialize;   // optional
   XLA_FFI_Handler* execute;      // required
 };
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Handler_Bundle, execute);
 
 enum XLA_FFI_Handler_TraitsBits {
   // Calls to FFI handler are safe to trace into the command buffer. It means

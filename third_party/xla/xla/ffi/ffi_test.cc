@@ -991,6 +991,20 @@ TEST(FfiTest, ApiVersion) {
       << status.message() << "\n";
 }
 
+TEST(FfiTest, ApiVersionRegistration) {
+  static constexpr auto* func = +[] { return absl::OkStatus(); };
+  XLA_FFI_DEFINE_HANDLER(handler, func, Ffi::Bind());
+  auto bundle = Ffi::MakeHandlerBundle(nullptr, nullptr, nullptr, handler);
+  bundle.api_version.major_version += 1;
+  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(), "api-version-registration", "Host", bundle));
+  EXPECT_TRUE(absl::StrContains(
+      status.message(),
+      "XLA FFI handler for 'api-version-registration' with platform 'Host'"))
+      << "status.message():\n"
+      << status.message() << "\n";
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
