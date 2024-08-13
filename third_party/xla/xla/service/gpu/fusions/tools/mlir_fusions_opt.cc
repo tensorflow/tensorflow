@@ -71,6 +71,25 @@ int main(int argc, char** argv) {
         return mlir::success();
       },
       [](llvm::function_ref<void(const mlir::detail::PassOptions&)>) {});
+  mlir::registerPassPipeline(
+      "xla-gpu-test-vectorize",
+      "Test pipeline for vectorization. Should run after "
+      "xla-gpu-test-to-inline.",
+      [=](mlir::OpPassManager& pm, llvm::StringRef options,
+          llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)>
+              errorHandler) {
+        if (!options.empty()) return mlir::failure();
+        pm.addNestedPass<mlir::func::FuncOp>(
+            xla::gpu::CreateLowerXlaGpuLoopsToScfPass());
+        pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+        pm.addNestedPass<mlir::func::FuncOp>(
+            xla::gpu::CreateUnswitchLoopsPass());
+        pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+        pm.addNestedPass<mlir::func::FuncOp>(
+            xla::gpu::CreateVectorizeLoadsAndStoresPass());
+        return mlir::success();
+      },
+      [](llvm::function_ref<void(const mlir::detail::PassOptions&)>) {});
 
   return mlir::failed(
       MlirOptMain(argc, argv, "XLA MLIR Fusion Pass Driver\n", registry));
