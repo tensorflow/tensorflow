@@ -85,7 +85,6 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
         using_nccl=False,
-        using_tensorrt=False,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
@@ -107,7 +106,6 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
         using_nccl=False,
-        using_tensorrt=False,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
@@ -128,7 +126,6 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.CLANG,
         using_nccl=False,
-        using_tensorrt=False,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
@@ -150,7 +147,6 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
         using_nccl=False,
-        using_tensorrt=False,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
@@ -172,7 +168,6 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
         using_nccl=False,
-        using_tensorrt=False,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
