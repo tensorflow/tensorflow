@@ -564,7 +564,8 @@ class GcsWritableFile : public WritableFile {
   }
 
   Status Name(StringPiece* result) const override {
-    return errors::Unimplemented("GCSWritableFile does not support Name()");
+    *result = object_;
+    return absl::OkStatus();
   }
 
   Status Sync() override {
