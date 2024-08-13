@@ -191,7 +191,7 @@ void MakeCallableHelper(tensorflow::Session* session,
                                              callable_options->length)) {
     tsl::Set_TF_Status_from_Status(
         out_status,
-        absl::InvalidArgumentError("Unparseable CallableOptions proto"));
+        absl::InvalidArgumentError("Unparsable CallableOptions proto"));
     return;
   }
   tensorflow::Session::CallableHandle handle;
