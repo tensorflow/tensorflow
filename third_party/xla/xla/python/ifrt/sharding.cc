@@ -50,6 +50,14 @@ namespace ifrt {
 
 namespace {
 
+// Returns a canonicalized memory kind for the given devices.
+// REQUIRES: !devices.empty()
+MemoryKind CanonicalizeMemoryKindWithDevices(const MemoryKind& memory_kind,
+                                             const DeviceList& devices) {
+  CHECK(!devices.empty());
+  return CanonicalizeMemoryKind(memory_kind, devices.front());
+}
+
 // Returns if `sharding_param` indicates a fully replicated sharding.
 bool ComputeIsFullyReplicated(const ShardingParam& sharding_param) {
   return llvm::all_of(sharding_param.dim_shards(),
@@ -155,6 +163,12 @@ char ShardingParamSharding::ID = 0;
 
 char DeserializeShardingOptions::ID = 0;
 
+Sharding::Sharding(DeviceList devices, MemoryKind memory_kind,
+                   bool is_fully_replicated)
+    : devices_(std::move(devices)),
+      memory_kind_(memory_kind),
+      is_fully_replicated_(is_fully_replicated) {}
+
 bool Sharding::operator==(const Sharding& other) const {
   if (this == &other) {
     return true;
@@ -184,6 +198,7 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
 
 std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
     Device* device, MemoryKind memory_kind) {
+  memory_kind = CanonicalizeMemoryKind(memory_kind, device);
   return std::unique_ptr<SingleDeviceSharding>(
       new SingleDeviceSharding(device, memory_kind));
 }
@@ -247,6 +262,7 @@ std::string SingleDeviceSharding::DebugString() const {
 
 std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceList devices,
                                                        MemoryKind memory_kind) {
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<OpaqueSharding>(
       new OpaqueSharding(std::move(devices), memory_kind));
 }
@@ -318,6 +334,7 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceList devices, MemoryKind memory_kind, Shape shape,
     std::vector<Shape> shard_shapes) {
   CHECK_EQ(devices.size(), shard_shapes.size());
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(
       new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
                            std::move(shard_shapes)));
@@ -327,6 +344,7 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceList devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes) {
   CHECK_EQ(devices.size(), shard_dynamic_shapes.size());
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
       std::move(devices), memory_kind, std::move(dynamic_shape),
       std::move(shard_dynamic_shapes)));
@@ -472,6 +490,7 @@ std::string ConcreteSharding::DebugString() const {
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
     DeviceList devices, MemoryKind memory_kind, Shape shape, Shape shard_shape,
     bool is_fully_replicated) {
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
       std::move(devices), memory_kind, std::move(shape), std::move(shard_shape),
       is_fully_replicated));
@@ -586,6 +605,7 @@ ShardingParamSharding::Create(ShardingParam sharding_param, DeviceList devices,
         "%d",
         device_count, devices.size());
   }
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ShardingParamSharding>(new ShardingParamSharding(
       std::move(sharding_param), std::move(devices), memory_kind));
 }
@@ -595,7 +615,8 @@ ShardingParamSharding::ShardingParamSharding(ShardingParam sharding_param,
                                              DeviceList devices,
                                              MemoryKind memory_kind)
     : llvm::RTTIExtends<ShardingParamSharding, Sharding>(
-          devices, memory_kind, ComputeIsFullyReplicated(sharding_param)),
+          std::move(devices), memory_kind,
+          ComputeIsFullyReplicated(sharding_param)),
       sharding_param_(sharding_param) {}
 
 absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
