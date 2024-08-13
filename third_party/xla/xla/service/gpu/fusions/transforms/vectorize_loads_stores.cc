@@ -192,6 +192,11 @@ std::optional<llvm::SmallVector<mlir::Value>> GetVectorBaseIndices(
                                ? mlir::getAffineDimExpr(index, b.getContext())
                                : mlir::getAffineSymbolExpr(
                                      index - map.getNumDims(), b.getContext());
+    } else if (!operand.getParentRegion()->isProperAncestor(
+                   &loop.getBodyRegion())) {
+      // If the operand is defined inside the loop, we can't hoist the
+      // apply_indexing outside the loop.
+      return std::nullopt;
     }
   }
   if (!induction_var_expr) {
