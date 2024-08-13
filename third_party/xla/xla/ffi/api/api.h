@@ -316,15 +316,19 @@ struct OptionalArgTag {};
 // A type tag to forward all remaining args as `RemainingArgs`.
 struct RemainingArgsTag {};
 
-// A type tag to forward all remaining results as `RemainingRets`.
-struct RemainingRetsTag {};
-
 // A type tag to distinguish parameters tied to results in the `Binding`
 // variadic template. In XLA FFI we use destination passing style APIs and don't
 // return anything from the handler, but instead pass a destination where the
 // handler should write the result.
 template <typename T>
 struct RetTag {};
+
+// A type tag for decoding optional result.
+template <typename T>
+struct OptionalRetTag {};
+
+// A type tag to forward all remaining results as `RemainingRets`.
+struct RemainingRetsTag {};
 
 // A type tag to distinguish parameters tied to the attributes in the
 // `Binding` variadic template.
@@ -369,6 +373,11 @@ struct IsOptionalArgTag : std::false_type {};
 template <typename T>
 struct IsOptionalArgTag<OptionalArgTag<T>> : std::true_type {};
 
+template <typename T>
+struct IsOptionalRetTag : std::false_type {};
+template <typename T>
+struct IsOptionalRetTag<OptionalRetTag<T>> : std::true_type {};
+
 // Checks if parameter pack has an optional argument.
 template <typename... Ts>
 using HasOptionalArgTag = std::disjunction<IsOptionalArgTag<Ts>...>;
@@ -377,6 +386,10 @@ using HasOptionalArgTag = std::disjunction<IsOptionalArgTag<Ts>...>;
 template <typename... Ts>
 using HasRemainingArgsTag =
     std::disjunction<std::is_same<RemainingArgsTag, Ts>...>;
+
+// Checks if parameter pack has an optional result.
+template <typename... Ts>
+using HasOptionalRetTag = std::disjunction<IsOptionalRetTag<Ts>...>;
 
 // Checks if parameter pack has remaining results.
 template <typename... Ts>
@@ -438,6 +451,8 @@ class Binding {
 
   template <typename T>
   Binding<stage, Ts..., internal::RetTag<T>> Ret() && {
+    static_assert(!internal::HasOptionalRetTag<Ts...>::value,
+                  "result can't be passed after optional result");
     static_assert(!internal::HasRemainingRetsTag<Ts...>::value,
                   "result can't be passed after remaining results");
     return {std::move(*this)};
@@ -448,6 +463,13 @@ class Binding {
     static_assert(
         !internal::HasRemainingArgsTag<Ts...>::value,
         "optional argument can't be passed after remaining arguments");
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  Binding<stage, Ts..., internal::OptionalRetTag<T>> OptionalRet() && {
+    static_assert(!internal::HasRemainingRetsTag<Ts...>::value,
+                  "optional result can't be passed after remaining results");
     return {std::move(*this)};
   }
 
@@ -954,6 +976,18 @@ struct Decode<RetTag<T>> {
 };
 
 template <typename T>
+struct Decode<OptionalRetTag<T>> {
+  static std::optional<std::optional<Result<T>>> call(
+      DecodingOffsets& offsets, DecodingContext& ctx,
+      DiagnosticEngine& diagnostic) {
+    if (offsets.rets >= ctx.call_frame->rets.size) {
+      return std::optional<Result<T>>(std::nullopt);
+    }
+    return Decode<RetTag<T>>::call(offsets, ctx, diagnostic);
+  }
+};
+
+template <typename T>
 struct Decode<AttrTag<T>> {
   using R = typename AttrDecoding<T>::Type;
 
@@ -1152,18 +1186,21 @@ struct FnArgType<internal::RemainingArgsTag> {
   using Type = RemainingArgs;
 };
 
-template <>
-struct FnArgType<internal::RemainingRetsTag> {
-  using Type = RemainingRets;
-};
-
-// Extracts the underlying type from the returned result type tag.
 template <typename T>
 struct FnArgType<internal::RetTag<T>> {
   using Type = Result<T>;
 };
 
-// Extracts the underlying type from the attribute type tag.
+template <typename T>
+struct FnArgType<internal::OptionalRetTag<T>> {
+  using Type = std::optional<Result<T>>;
+};
+
+template <>
+struct FnArgType<internal::RemainingRetsTag> {
+  using Type = RemainingRets;
+};
+
 template <typename T>
 struct FnArgType<internal::AttrTag<T>> {
   using Type = typename AttrDecoding<T>::Type;
@@ -1174,7 +1211,6 @@ struct FnArgType<internal::AttrsTag<T>> {
   using Type = T;
 };
 
-// Extracts the underlying type from the context type tag.
 template <typename T>
 struct FnArgType<internal::CtxTag<T>> {
   using Type = typename CtxDecoding<T>::Type;
@@ -1189,6 +1225,8 @@ template <typename T>
 struct IsTagged<OptionalArgTag<T>> : std::true_type {};
 template <typename T>
 struct IsTagged<RetTag<T>> : std::true_type {};
+template <typename T>
+struct IsTagged<OptionalRetTag<T>> : std::true_type {};
 template <typename T>
 struct IsTagged<AttrTag<T>> : std::true_type {};
 template <typename T>
@@ -1233,6 +1271,9 @@ class Handler : public Ffi {
 
   static constexpr int64_t kNumRets =
       internal::NumTagged<internal::RetTag, Ts...>::value;
+
+  static constexpr int64_t kNumOptionalRets =
+      internal::NumTagged<internal::OptionalRetTag, Ts...>::value;
 
   static constexpr int64_t kNumAttrs =
       internal::NumTagged<internal::AttrTag, Ts...>::value;
@@ -1314,8 +1355,17 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size < kNumRets)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of results: expected at least ", kNumRets - 1,
-                   " but got ", call_frame->rets.size));
+            StrCat("Wrong number of results: expected at least ",
+                   kNumRets - kNumOptionalRets - 1, " but got ",
+                   call_frame->rets.size));
+      }
+    } else if constexpr (internal::HasOptionalRetTag<Ts...>::value) {
+      if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size < kNumRets)) {
+        return InvalidArgument(
+            call_frame->api,
+            StrCat("Wrong number of results: expected at least ",
+                   kNumRets - kNumOptionalRets, " but got ",
+                   call_frame->rets.size));
       }
     } else {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets)) {

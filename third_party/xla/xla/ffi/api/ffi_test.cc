@@ -445,6 +445,68 @@ TEST(FfiTest, OptionalArgs) {
   }
 }
 
+TEST(FfiTest, OptionalRets) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  {  // Single optional result.
+    auto fn = [&](std::optional<Result<AnyBuffer>> ret0) {
+      EXPECT_TRUE(ret0.has_value());
+      return Error::Success();
+    };
+
+    auto handler = Ffi::Bind().OptionalRet<AnyBuffer>().To(fn);
+    auto status = Call(*handler, call_frame);
+
+    TF_ASSERT_OK(status);
+  }
+
+  {  // Two optional results.
+    auto fn = [&](std::optional<Result<AnyBuffer>> ret0,
+                  std::optional<Result<AnyBuffer>> ret1) {
+      EXPECT_TRUE(ret0.has_value());
+      EXPECT_FALSE(ret1.has_value());
+      return Error::Success();
+    };
+
+    auto handler =
+        Ffi::Bind().OptionalRet<AnyBuffer>().OptionalRet<AnyBuffer>().To(fn);
+    auto status = Call(*handler, call_frame);
+
+    TF_ASSERT_OK(status);
+  }
+
+  {  // Optional result after a regular one.
+    auto fn = [&](Result<AnyBuffer> ret0,
+                  std::optional<Result<AnyBuffer>> ret1) {
+      EXPECT_FALSE(ret1.has_value());
+      return Error::Success();
+    };
+
+    auto handler = Ffi::Bind().Ret<AnyBuffer>().OptionalRet<AnyBuffer>().To(fn);
+    auto status = Call(*handler, call_frame);
+
+    TF_ASSERT_OK(status);
+  }
+
+  {  // Remaining results after optional one.
+    auto fn = [&](std::optional<Result<AnyBuffer>> ret0, RemainingRets rets) {
+      EXPECT_TRUE(ret0.has_value());
+      EXPECT_EQ(rets.size(), 0);
+      return Error::Success();
+    };
+
+    auto handler = Ffi::Bind().OptionalRet<AnyBuffer>().RemainingRets().To(fn);
+    auto status = Call(*handler, call_frame);
+
+    TF_ASSERT_OK(status);
+  }
+}
+
 TEST(FfiTest, AutoBinding) {
   static constexpr char kI32[] = "i32";
 
