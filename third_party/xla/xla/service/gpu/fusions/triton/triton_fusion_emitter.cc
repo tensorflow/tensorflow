@@ -76,7 +76,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -86,7 +85,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Support/TypeID.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
@@ -112,6 +110,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/transforms/passes.h"
+#include "xla/service/gpu/fusions/triton/passes.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -152,7 +151,6 @@ namespace gpu {
 
 namespace ma = ::mlir::arith;
 namespace mm = ::mlir::math;
-namespace ml = ::mlir::LLVM;
 namespace mn = ::mlir::NVVM;
 namespace mt = ::mlir::triton;
 
@@ -1084,86 +1082,6 @@ absl::StatusOr<Value> EmitScope(
   }
   return values[instructions.back()];
 }
-
-// Extract additional attributes from an LLVM function that are not passed
-// to the builder directly.
-SmallVector<mlir::NamedAttribute> GetExtraAttrs(ml::LLVMFuncOp func) {
-  llvm::StringSet<> registered_attr_names{
-      func.getSymNameAttrName().getValue(),
-      func.getFunctionTypeAttrName().getValue(),
-      func.getLinkageAttrName().getValue(),
-      func.getDsoLocalAttrName().getValue(),
-      func.getCConvAttrName().getValue(),
-      func.getArgAttrsAttrName().getValue(),
-      func.getFunctionEntryCountAttrName().getValue()};
-  return llvm::to_vector(
-      llvm::make_filter_range(func->getAttrs(), [&](mlir::NamedAttribute attr) {
-        return !registered_attr_names.contains(attr.getName().getValue());
-      }));
-}
-
-// Strip address spaces from function parameters.
-void StripParameterAddressSpaces(mlir::RewriterBase& rewriter,
-                                 ml::LLVMFuncOp func) {
-  // Figure out what the new signature should be.
-  ml::LLVMFunctionType func_ty = func.getFunctionType();
-  SmallVector<Type> generic_func_params(
-      llvm::map_range(func_ty.getParams(), [](Type type) -> Type {
-        auto ptr_ty = mlir::dyn_cast<ml::LLVMPointerType>(type);
-        if (!ptr_ty) return type;
-        if (ptr_ty.getAddressSpace() != mn::kGlobalMemorySpace) return type;
-        return ml::LLVMPointerType::get(ptr_ty.getContext());
-      }));
-  ml::LLVMFunctionType generic_func_ty =
-      func_ty.clone(generic_func_params, func_ty.getReturnTypes());
-
-  // Create a function with the new signature.
-  SmallVector<mlir::DictionaryAttr> arg_attrs(llvm::map_range(
-      func.getArgAttrsAttr().getValue(), [](mlir::Attribute attr) {
-        return mlir::cast<mlir::DictionaryAttr>(attr);
-      }));
-  auto generic_func = rewriter.create<ml::LLVMFuncOp>(
-      func.getLoc(), func.getSymName(), generic_func_ty, func.getLinkage(),
-      func.getDsoLocal(), func.getCConv(), /*comdat=*/nullptr,
-      GetExtraAttrs(func), arg_attrs, func.getFunctionEntryCount());
-
-  // Convert generic address spaces back to original ones within the function
-  // body.
-  mlir::Block* entry = generic_func.addEntryBlock(rewriter);
-  rewriter.setInsertionPointToEnd(entry);
-  SmallVector<Value> converted_args;
-  for (auto [arg, type] :
-       llvm::zip(generic_func.getArguments(), func_ty.getParams())) {
-    Value converted = arg;
-    if (arg.getType() != type) {
-      converted = rewriter.create<ml::AddrSpaceCastOp>(arg.getLoc(), type, arg);
-    }
-    converted_args.push_back(converted);
-  }
-
-  // Move the rest of function body from the original function.
-  rewriter.cloneRegionBefore(func.getBody(), generic_func.getBody(),
-                             generic_func.getBody().end());
-  rewriter.eraseOp(func);
-  rewriter.mergeBlocks(entry->getNextNode(), entry, converted_args);
-}
-
-// Rewrite signatures of kernel functions to use generic data pointers and
-// cast them to global ones within the kernel.
-struct GeneralizeKernelSignaturePass
-    : mlir::PassWrapper<GeneralizeKernelSignaturePass, mlir::OperationPass<>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GeneralizeKernelSignaturePass);
-  void runOnOperation() override {
-    mlir::IRRewriter rewriter(&getContext());
-    getOperation()->walk([&](ml::LLVMFuncOp func) {
-      if (!func->hasAttr(mn::NVVMDialect::getKernelFuncAttrName())) {
-        return;
-      }
-      rewriter.setInsertionPointAfter(func);
-      StripParameterAddressSpaces(rewriter, func);
-    });
-  }
-};
 
 const TensorIterationSpec::DimIterationSpec* GetLhsNoncontractingSplitSpec(
     const TritonFusionAnalysis& analysis, int64_t lhs_noncontracting_dim_idx) {
@@ -2987,16 +2905,16 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
            .ok()) {
     return Internal("Failed to create Triton pipeline.");
   }
+  // Triton generates pointers to the global address space, while XLA needs a
+  // kernel signature with pointers to the generic address space.
+  pm.addPass(CreateGeneralizeKernelSignaturePass());
+  // llvm::Linker::linkModules() segfaults if we don't strip locations.
+  pm.addPass(mlir::createStripDebugInfoPass());
+
   if (log_stream.has_value()) {
     pm.printAsTextualPipeline(log_stream.value());
     log_stream->write("\n\n", 2);
   }
-  // Triton generates pointers to the global address space, while XLA needs a
-  // kernel signature with pointers to the generic address space.
-  pm.addPass(std::make_unique<GeneralizeKernelSignaturePass>());
-  // llvm::Linker::linkModules() segfaults if we don't strip locations.
-  pm.addPass(mlir::createStripDebugInfoPass());
-
   bool succeeded = mlir::succeeded(pm.run(triton_module));
 
   if (log_stream.has_value()) {
