@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/optional.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"

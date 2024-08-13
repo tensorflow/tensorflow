@@ -436,6 +436,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeOpInterface",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
     alwayslink = True,

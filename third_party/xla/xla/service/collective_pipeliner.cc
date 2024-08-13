@@ -2879,7 +2879,12 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
-        while_loop_instructions.push_back(instruction);
+        for (HloInstruction* inst : instruction->while_body()->instructions()) {
+          if (config_.should_process(inst)) {
+            while_loop_instructions.push_back(instruction);
+            break;
+          }
+        }
       }
     }
   }
