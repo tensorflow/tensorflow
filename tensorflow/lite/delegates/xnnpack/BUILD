@@ -234,7 +234,7 @@ cc_library(
     }) + select({
         ":xnnpack_use_transient_indirection_buffers_explicit": ["-DXNNPACK_DELEGATE_USE_TRANSIENT_INDIRECTION_BUFFERS=1"],
         "//conditions:default": [],
-    }),
+    }) + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
     linkstatic = True,
     deps = [
         ":quantization_util",
@@ -260,6 +260,7 @@ cc_library(
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
         "@eigen_archive//:eigen3",
+        "@flatbuffers//:runtime_cc",
         "@pthreadpool",
     ],
 )
@@ -299,6 +300,7 @@ cc_library(
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
         "@eigen_archive//:eigen3",
+        "@flatbuffers//:runtime_cc",
         "@pthreadpool",
     ],
 )
