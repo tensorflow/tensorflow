@@ -283,9 +283,16 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 
 //===----------------------------------------------------------------------===//
 
-size_t GetNumLocalParticipants(
-    const std::vector<GlobalDeviceId>& participants,
-    const std::vector<GlobalDeviceId>* local_devices);  // may be null
+absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
+    const Thunk::CollectiveExecuteParams& params,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, NcclStreamId stream_id,
+    AsyncStreamKind stream_kind);
+
+absl::StatusOr<size_t> GetNumLocalParticipants(
+    const Thunk::CollectiveExecuteParams& params,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode);
 
 // Returns a nccl comm handle and a flag indicating if
 // it's a local communicator.

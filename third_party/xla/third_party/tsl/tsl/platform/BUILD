@@ -68,6 +68,7 @@ cc_library(
         ":status",
         ":stringpiece",
         ":types",
+        "@com_google_absl//absl/status",
     ],
 )
 

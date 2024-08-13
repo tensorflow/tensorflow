@@ -217,7 +217,7 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
       nccl_api_(nccl_api),
       async_events_(is_sync ? nullptr : new AsyncEvents()) {}
 
-static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
+absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
     const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, NcclStreamId stream_id,
@@ -228,6 +228,18 @@ static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
       std::vector<GlobalDeviceId> participants,
       GetParticipatingDevices(global_device_id, *params.device_assn,
                               replica_groups, group_mode));
+
+  // If splitting is enabled, particpating groups must match in order for a
+  // clique to be reused from the cache. We can ignore the particpating groups
+  // otherwise.
+  static const int64_t enable_nccl_comm_splitting =
+      xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
+  std::vector<std::vector<GlobalDeviceId>> participant_groups;
+  if (enable_nccl_comm_splitting) {
+    TF_ASSIGN_OR_RETURN(participant_groups,
+                        GetParticipatingDevicesGroups(
+                            *params.device_assn, replica_groups, group_mode));
+  }
 
   if (IsGlobalNcclConfig() &&
       (participants.size() != params.device_assn->replica_count())) {
@@ -240,7 +252,7 @@ static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
 
   return NcclCliqueKey(std::move(participants),
                        enable_per_stream_comms ? stream_id : kNoStreamId,
-                       stream_kind);
+                       stream_kind, std::move(participant_groups));
 }
 
 absl::StatusOr<NcclCommHandleWrapper> GetNcclComm(
@@ -373,33 +385,16 @@ absl::StatusOr<se::Event*> NcclCollectiveThunk::AsyncEvents::GetEvent(
 
 absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
                                           ResourceRequests& resource_requests) {
-  const CollectiveExecuteParams* collectives = params.collective_params;
-
   TF_ASSIGN_OR_RETURN(
-      std::vector<GlobalDeviceId> participants,
-      GetParticipatingDevices(collectives->global_device_id,
-                              *collectives->device_assn,
+      NcclCliqueKey clique_key,
+      GetNcclCliqueKey(*params.collective_params, config().replica_groups,
+                       config().group_mode, nccl_stream_id(),
+                       GetAsyncStreamKind()));
+  TF_ASSIGN_OR_RETURN(
+      size_t num_local_participants,
+      GetNumLocalParticipants(*params.collective_params,
                               config().replica_groups, config().group_mode));
-
-  std::vector<GlobalDeviceId> local_devices;
-  if (collectives->global_device_id_map) {
-    local_devices.reserve(collectives->global_device_id_map->size());
-    for (const auto& entry : *collectives->global_device_id_map) {
-      local_devices.push_back(entry.second);
-    }
-  }
-
-  size_t num_local_participants = GetNumLocalParticipants(
-      participants,
-      collectives->global_device_id_map ? &local_devices : nullptr);
-  AsyncStreamKind stream_kind = GetAsyncStreamKind();
-  static const bool enable_per_stream_comms =
-      xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_per_stream_comms();
-  return resource_requests.AddClique(
-      NcclCliqueKey(std::move(participants),
-                    enable_per_stream_comms ? nccl_stream_id() : kNoStreamId,
-                    stream_kind),
-      num_local_participants);
+  return resource_requests.AddClique(clique_key, num_local_participants);
 }
 
 absl::Status NcclCollectiveThunk::Initialize(const InitializeParams& params) {
@@ -537,13 +532,26 @@ absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
   return absl::OkStatus();
 }
 
-size_t GetNumLocalParticipants(
-    const std::vector<GlobalDeviceId>& participants,
-    const std::vector<GlobalDeviceId>* local_devices) {
-  if (local_devices == nullptr) return participants.size();
+absl::StatusOr<size_t> GetNumLocalParticipants(
+    const Thunk::CollectiveExecuteParams& params,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<GlobalDeviceId> participants,
+      GetParticipatingDevices(params.global_device_id, *params.device_assn,
+                              replica_groups, group_mode));
+  if (!params.global_device_id_map) {
+    return participants.size();
+  }
+
+  std::vector<GlobalDeviceId> local_devices;
+  local_devices.reserve(params.global_device_id_map->size());
+  for (const auto& entry : *params.global_device_id_map) {
+    local_devices.push_back(entry.second);
+  }
 
   return absl::c_count_if(participants, [&](const GlobalDeviceId& device_id) {
-    return absl::c_linear_search(*local_devices, device_id);
+    return absl::c_linear_search(local_devices, device_id);
   });
 }
 
