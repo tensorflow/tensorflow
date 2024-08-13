@@ -31,14 +31,13 @@ namespace {
 
 TEST(DeviceInfoTest, DeviceInfoMatches) {
   absl::flat_hash_map<std::string, GpuDeviceInfoProto> gpu_specs;
-  for (const std::string file_name :
-       {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "h100_pcie",
-        "h100_sxm", "p100", "v100"}) {
+  for (const std::string file_name : GPU_SPEC_FILE_NAMES) {
     GpuTargetConfigProto proto;
     std::string spec_string;
     TF_ASSERT_OK(tsl::ReadFileToString(
         tsl::Env::Default(),
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "hlo_opt",
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "../../local_xla/xla",
+                          "tools", "hlo_opt",
                           "gpu_specs", absl::StrCat(file_name, ".txtpb")),
         &spec_string));
     ASSERT_TRUE(
@@ -47,7 +46,7 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
   }
 
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("CUDA"));
+                          PlatformManager::PlatformWithName(PLATFORM_NAME));
   bool all_skipped = false;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
     TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,

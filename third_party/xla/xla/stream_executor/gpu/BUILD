@@ -826,7 +826,7 @@ xla_test(
     name = "gpu_device_info_test",
     srcs = ["gpu_device_info_test.cc"],
     backends = ["gpu"],
-    data = [
+    data = if_cuda_is_configured([
         "//xla/tools/hlo_opt:gpu_specs/a100_pcie_80.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/a100_sxm_40.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/a100_sxm_80.txtpb",
@@ -835,7 +835,17 @@ xla_test(
         "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
-    ],
+    ]) + if_rocm_is_configured([
+        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
+    ]),
+    local_defines = if_cuda_is_configured([
+        'GPU_SPEC_FILE_NAMES=(std::string[]){\\"a100_pcie_80\\", \\"a100_sxm_40\\", \
+         \\"a100_sxm_80\\", \\"a6000\\", \\"h100_pcie\\", \\"h100_sxm\\", \\"p100\\", \\"v100\\"}',
+         'PLATFORM_NAME=\\"CUDA\\"'
+    ]) + if_rocm_is_configured([
+        'GPU_SPEC_FILE_NAMES=(std::string[]){\\"mi200\\"}',
+        'PLATFORM_NAME=\\"ROCM\\"'
+    ]),
     deps = [
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
