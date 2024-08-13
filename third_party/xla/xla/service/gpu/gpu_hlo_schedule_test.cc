@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -491,6 +492,112 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
       }
     }
   }
+}
+
+TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelFailsWithIncompleteProfile) {
+  const absl::string_view kHloString = R"(
+  HloModule m
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32,32] parameter(1)
+    p2 = f32[32,32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    ROOT t = (f32[32],f32[32],f32[32,32]) tuple(ar-done, ar-done1, add0)
+  })";
+
+  // Profile string, cost does not matter.
+  const absl::string_view kProfile = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 1000.0 }
+  )pb";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          kHloString, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                                      /*enable_gpu_async_tracker=*/true,
+                                      /*fdo_profile=*/kProfile)));
+
+  // `dot1` and `ar-start1` are missing from the profile.
+  EXPECT_THAT(ScheduleGpuModule(
+                  module.get(), /*pointer_size=*/8,
+                  backend().default_stream_executor()->GetDeviceDescription())
+                  .status(),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(
+    GpuHloScheduleTest,
+    ProfileGuidedCostModelDoesNotFailWithIncompleteProfileIfAccuracyCheckerIsDisabled) {  // NOLINT(whitespace/line_length)
+  const absl::string_view kHloString = R"(
+  HloModule m
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32,32] parameter(1)
+    p2 = f32[32,32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    ROOT t = (f32[32],f32[32],f32[32,32]) tuple(ar-done, ar-done1, add0)
+  })";
+
+  // Profile string, cost does not matter.
+  const absl::string_view kProfile = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 1000.0 }
+  )pb";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          kHloString, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                                      /*enable_gpu_async_tracker=*/true,
+                                      /*fdo_profile=*/kProfile)));
+
+  // `dot1` and `ar-start1` are missing from the profile but we disable the
+  // pass.
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "pgle-accuracy-checker");
+  TF_EXPECT_OK(ScheduleGpuModule(
+                   module.get(), /*pointer_size=*/8,
+                   backend().default_stream_executor()->GetDeviceDescription())
+                   .status());
 }
 
 TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithRematData) {

@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
+#include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_memory_scheduler.h"
@@ -476,6 +477,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
       module->config()
           .debug_options()
           .xla_gpu_enable_analytical_latency_estimator();
+  HloPassPipeline pipeline("latency-hiding-scheduler");
   if (profile.has_value()) {
     auto aggregator = std::make_unique<GPUProfileStatisticsAggregator>();
     auto pg_latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
@@ -484,7 +486,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     LOG(INFO)
         << "Found profile, using profile guided latency estimator. Profile:\n"
         << profile->DebugString();
-    TF_RETURN_IF_ERROR(pg_latency_estimator->CheckAccuracy(*module));
+    pipeline.AddPass<PGLEAccuracyChecker>(*pg_latency_estimator);
     latency_estimator = std::move(pg_latency_estimator);
   } else if (enable_analytical_latency_estimator) {
     latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
@@ -509,7 +511,6 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   auto shape_size_in_bytes = [pointer_size](const Shape& shape) {
     return GetSizeOfShape(shape, pointer_size);
   };
-  HloPassPipeline pipeline("latency-hiding-scheduler");
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
       shape_size_in_bytes, async_tracker.get(), latency_estimator.get(),
       config);
