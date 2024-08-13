@@ -102,10 +102,8 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
         mlir::TFL::CreateOptimizeBatchMatmulPass());
   }
   // Add TFLite optimize pass.
-  mlir::TFL::OptimizePassOptions optimize_pass_options;
-  optimize_pass_options.enable_canonicalization_ = true;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateOptimizePass(optimize_pass_options));
+      mlir::TFL::CreateOptimizePass());
 }
 
 void AddVariableFreezingFromGlobalTensorsPasses(
@@ -161,10 +159,8 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
   }
 
   // Add TFLite optimize pass.
-  mlir::TFL::OptimizePassOptions optimize_pass_options;
-  optimize_pass_options.enable_canonicalization_ = true;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateOptimizePass(optimize_pass_options));
+      mlir::TFL::CreateOptimizePass());
 }
 
 void AddPreQuantizationStableHloToTfPasses(
@@ -511,7 +507,6 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 
     // Add TFLite optimize pass.
     mlir::TFL::OptimizePassOptions optimize_pass_options;
-    optimize_pass_options.enable_canonicalization_ = true;
     optimize_pass_options.disable_fuse_mul_and_fc_ =
         toco_flags.disable_fuse_mul_and_fc();
     pass_manager->addNestedPass<mlir::func::FuncOp>(

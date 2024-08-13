@@ -186,7 +186,7 @@ def OptimizePass : Pass<"tfl-optimize", "mlir::func::FuncOp"> {
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
   let options = [
       Option<"enable_canonicalization_", "enable-canonicalization",
-             "bool", "false",
+             "bool", "true",
              "Enable canonicalization during optimization pass.">,
       Option<"disable_fuse_mul_and_fc_", "disable-fuse-mul-and-fc",
              "bool", "false",
