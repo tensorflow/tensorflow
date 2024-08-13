@@ -2010,7 +2010,12 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     # infer dtype if not explicitly provided
     if dtype is None:
       dtype_hierarchy = [
-          dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64
+          dtypes.int32,
+          dtypes.int64,
+          dtypes.float16,
+          dtypes.bfloat16,
+          dtypes.float32,
+          dtypes.float64,
       ]
       assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
       inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
