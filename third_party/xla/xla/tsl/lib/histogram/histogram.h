@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_LIB_HISTOGRAM_HISTOGRAM_H_
-#define TENSORFLOW_TSL_LIB_HISTOGRAM_HISTOGRAM_H_
+#ifndef XLA_TSL_LIB_HISTOGRAM_HISTOGRAM_H_
+#define XLA_TSL_LIB_HISTOGRAM_HISTOGRAM_H_
 
 #include <string>
 #include <vector>
@@ -121,7 +121,7 @@ class ThreadSafeHistogram {
 
   void Clear();
 
-  // TODO(touts): It might be a good idea to provide a AddN(<many values>)
+  // TODO(mdevin): It might be a good idea to provide a AddN(<many values>)
   // method to avoid grabbing/releasing the lock when adding many values.
   void Add(double value);
 
@@ -140,4 +140,4 @@ class ThreadSafeHistogram {
 }  // namespace histogram
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_HISTOGRAM_HISTOGRAM_H_
+#endif  // XLA_TSL_LIB_HISTOGRAM_HISTOGRAM_H_
