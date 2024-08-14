@@ -530,11 +530,7 @@ enum class EvalErrorDetail : uint32_t {
   kDynamicValueDependence = 0,
 };
 
-#if defined(_MSC_VER)
-extern const absl::string_view kEvalErrorDetailUrl = "EvalErrorDetailUrl";
-#else
 extern const absl::string_view kEvalErrorDetailUrl;
-#endif
 
 std::optional<EvalErrorDetail> ParseEvalErrorDetail(const absl::Status& error);
 

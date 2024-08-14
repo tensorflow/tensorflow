@@ -1,7 +1,7 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/service/cpu:build_defs.bzl", "runtime_copts")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -124,6 +124,7 @@ cc_library(
     name = "thunk_executor",
     srcs = ["thunk_executor.cc"],
     hdrs = ["thunk_executor.h"],
+    defines = if_windows(["_ENABLE_EXTENDED_ALIGNED_STORAGE"]),
     deps = [
         ":resource_use",
         ":thunk",
