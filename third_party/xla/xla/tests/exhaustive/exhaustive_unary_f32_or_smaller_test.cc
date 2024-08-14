@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <ios>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -202,7 +203,6 @@ class Exhaustive32BitOrLessUnaryTest
  private:
   int64_t GetInputSize() override {
     auto [begin, end] = GetParam();
-    VLOG(2) << "Checking range [" << begin << ", " << end << ")";
     return end - begin;
   }
 
@@ -217,8 +217,18 @@ class Exhaustive32BitOrLessUnaryTest
         typename ExhaustiveOpTestBase<T, 1>::ComponentIntegralNativeT;
 
     auto [begin, end] = GetParam();
+    if (VLOG_IS_ON(2)) {
+      LOG(INFO) << this->SuiteName() << this->TestName() << " Range:";
+      LOG(INFO) << "\tfrom=" << begin << "; hex=" << std::hex << begin
+                << "; float=" << *reinterpret_cast<float*>(&begin)
+                << " (inclusive)";
+      LOG(INFO) << "\tto=" << end << "; hex=" << std::hex << end
+                << "; float=" << *reinterpret_cast<float*>(&end)
+                << " (exclusive)";
+      LOG(INFO) << "\ttotal values to test=" << (end - begin);
+    }
+
     int64_t input_size = (*input_literal)[0].element_count();
-    VLOG(2) << "Checking range [" << begin << ", " << end << ")";
     CHECK_EQ(input_size, end - begin);
 
     absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();

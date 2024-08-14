@@ -63,9 +63,12 @@ class Exhaustive32BitOrMoreBinaryTest
     FpValues values_0;
     FpValues values_1;
     std::tie(values_0, values_1) = GetParam();
-
-    VLOG(2) << " testing " << values_0.ToString() << " " << values_1.ToString()
-            << "total values " << input_size;
+    if (VLOG_IS_ON(2)) {
+      LOG(INFO) << this->SuiteName() << this->TestName() << " Values:";
+      LOG(INFO) << "\tleft values=" << values_0.ToString();
+      LOG(INFO) << "\tright values=" << values_1.ToString();
+      LOG(INFO) << "\ttotal values to test=" << input_size;
+    }
     CHECK(input_size == (*input_literals)[0].element_count() &&
           input_size == (*input_literals)[1].element_count());
 

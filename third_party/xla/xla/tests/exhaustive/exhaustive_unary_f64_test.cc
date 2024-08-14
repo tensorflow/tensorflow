@@ -53,11 +53,14 @@ class ExhaustiveF64UnaryTest : public ExhaustiveUnaryTest<F64>,
   void FillInput(std::array<Literal, 1>* input_literal) override {
     FpValues fp_values = GetParam();
     int64_t input_size = (*input_literal)[0].element_count();
-    LOG(INFO) << "Checking fp values " << fp_values.ToString() << ", "
-              << input_size;
-    absl::Span<double> input_arr = (*input_literal)[0].data<double>();
+    if (VLOG_IS_ON(2)) {
+      LOG(INFO) << this->SuiteName() << this->TestName() << " Values:";
+      LOG(INFO) << "\t" << fp_values.ToString();
+      LOG(INFO) << "\ttotal values to test=" << input_size;
+    }
 
     uint64_t i = 0;
+    absl::Span<double> input_arr = (*input_literal)[0].data<double>();
     for (auto bits : fp_values) {
       input_arr[i] = this->ConvertAndReplaceKnownIncorrectValueWith(bits, 1);
       ++i;

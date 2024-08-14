@@ -72,14 +72,16 @@ class ExhaustiveComplexUnaryTestBase
   void FillInput(std::array<Literal, 1>* input_literal) override {
     FpValues real_values = std::get<0>(GetParam());
     FpValues imag_values = std::get<1>(GetParam());
-
-    VLOG(2) << " testing input total "
-            << real_values.GetTotalNumValues() * imag_values.GetTotalNumValues()
-            << ", range " << real_values.ToString() << " "
-            << imag_values.ToString();
+    if (VLOG_IS_ON(2)) {
+      LOG(INFO) << this->SuiteName() << this->TestName() << " Values:";
+      LOG(INFO) << "\treal values=" << real_values.ToString();
+      LOG(INFO) << "\timag values=" << imag_values.ToString();
+      LOG(INFO) << "\ttotal values to test="
+                << real_values.GetTotalNumValues() *
+                       imag_values.GetTotalNumValues();
+    }
 
     absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();
-
     uint64_t i = 0;
     for (auto real : real_values) {
       for (auto imag : imag_values) {
