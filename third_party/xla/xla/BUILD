@@ -1134,6 +1134,7 @@ cc_library(
         [
             ":parse_flags_from_env",
             ":xla_proto_cc",
+            "//xla/stream_executor/cuda:nvjitlink_support",
             "//xla/stream_executor/cuda:ptx_compiler_support",
             "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/algorithm:container",

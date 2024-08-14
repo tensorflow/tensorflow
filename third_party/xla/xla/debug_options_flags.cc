@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_parsers.h"
 #include "xla/parse_flags_from_env.h"
+#include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
@@ -231,13 +232,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_triton_hopper(false);
 
-  // We disable this until b/319271534 is fixed due to errors during linking.
-  //
-  // TODO(b/319271534): Re-enable once we use libnvjitlink.
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-
-  opts.set_xla_gpu_enable_libnvptxcompiler(false);
-  opts.set_xla_gpu_enable_libnvjitlink(false);
+  opts.set_xla_gpu_enable_libnvptxcompiler(
+      stream_executor::IsLibNvPtxCompilerSupported());
+  opts.set_xla_gpu_enable_libnvjitlink(
+      stream_executor::IsLibNvJitLinkSupported());
 
   opts.set_xla_gpu_enable_dot_strength_reduction(true);
 
