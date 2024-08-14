@@ -3085,7 +3085,7 @@ class XlaCpuJitDisableFusionTest : public RemapperTest {
     }
 
     Remapper optimizer(RewriterConfig::ON, RewriterConfig::NO_CONVERSION_ON_CPU,
-                       /*xla_clustering_on=*/true);
+                       /*xla_auto_clustering_on=*/true);
     GraphDef output;
     TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
