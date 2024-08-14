@@ -2956,7 +2956,6 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSLoopIterationOffset) {
 
   HloModuleConfig ref_config;
   debugoptions.set_xla_gpu_enable_dynamic_slice_fusion(false);
-  debugoptions.set_xla_gpu_enable_pipelined_reduce_scatter(false);
   ref_config.set_debug_options(debugoptions);
   TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
                           ParseAndReturnVerifiedModule(hlo_ref, ref_config));
@@ -2965,7 +2964,6 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSLoopIterationOffset) {
 
   HloModuleConfig opt_config;
   debugoptions.set_xla_gpu_enable_dynamic_slice_fusion(true);
-  debugoptions.set_xla_gpu_enable_pipelined_reduce_scatter(false);
   opt_config.set_debug_options(debugoptions);
   TF_ASSERT_OK_AND_ASSIGN(auto module_with_adddress_computation_flag,
                           ParseAndReturnVerifiedModule(hlo_ref, opt_config));
