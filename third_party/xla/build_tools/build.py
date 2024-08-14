@@ -390,6 +390,14 @@ def main():
             "github/xla/.bazelrc",
         ],
     )
+    sh(
+        [
+            "sed",
+            "-i",
+            r"s/8\.9\.7\.29/9.1.1/g",
+            "github/xla/.bazelrc",
+        ],
+    )
     sh(["nvidia-smi"])
 
   build.docker_image.pull_and_run(

@@ -672,6 +672,7 @@ lit_test_suite(
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
     ],
     default_tags = tf_cuda_tests_tags(),
+    hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags_override = {
         "element_wise_row_vectorization.hlo": ["no_rocm"],
         "scatter_bf16.hlo": ["no_rocm"],

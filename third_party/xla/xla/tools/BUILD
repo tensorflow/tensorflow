@@ -314,6 +314,7 @@ xla_cc_binary(
 xla_cc_binary(
     name = "hlo-opt",
     testonly = True,
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     deps = [
         "//xla/tools/hlo_opt:opt_main",
     ],
