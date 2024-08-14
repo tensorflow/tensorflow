@@ -19,7 +19,7 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def SparseAddEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
-  let summary = "Adds sparse dot encoding.";
+  let summary = "Add sparse encoding for all the arguments of a SparseDotOp.";
   let options = [
     Option<"num_warps_", "num-warps", "int32_t", /*default=*/"4",
            "Number of warps">,
@@ -36,6 +36,10 @@ def SparseAddEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
 
 def SparseBlockedToMMAPass : Pass<"sparse-blocked-to-mma", "mlir::ModuleOp"> {
   let summary = "Add convert layouts to/from MMA before and after SparseDotOp.";
+  let description = [{
+     Add convert layouts to and from MMA before and after SparseDotOp. In MMAV3,
+     shared memory allocations will be used for A and B operands.
+  }];
   let dependentDialects = [
     "triton::gpu::TritonGPUDialect",
   ];

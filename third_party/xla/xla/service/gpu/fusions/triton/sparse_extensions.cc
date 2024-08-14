@@ -110,7 +110,6 @@ constexpr int kMetaElementsBitSize = 2;
 constexpr int kMetaElementsPerPackedValue = 16 / kMetaElementsBitSize;
 constexpr int kColumnsPerCtaTile = kTileSize / kMetaElementsPerPackedValue;
 
-// Add sparse encoding for all the arguments of a SparseDotOp.
 struct SparseAddEncoding
     : public OpConversionPattern<triton::gpu::SparseDotOp> {
   using OpConversionPattern<triton::gpu::SparseDotOp>::OpConversionPattern;
@@ -226,8 +225,6 @@ struct SparseAddEncodingPass
   }
 };
 
-// Add convert layouts to and from MMA before and after SparseDotOp. In MMAV3,
-// shared memory allocations will be used for A and B operands.
 class SparseBlockedToMMA : public RewritePattern {
   using ConvertLayoutOp = triton::gpu::ConvertLayoutOp;
   using SparseDotOp = triton::gpu::SparseDotOp;
@@ -505,7 +502,7 @@ struct SparseLocalLoadToLLVMPass
     // Allocate shared memory and set barrier
     // This is also done in the TritonGPUToLLVMPass but we need to do it before
     // we write the local load op to LLVM to have barriers in the right place.
-    // See b/351986109.
+    // See b/358375493.
     ModuleAllocation allocation(getOperation());
     ModuleMembarAnalysis membar_pass(&allocation);
     membar_pass.run();
@@ -870,6 +867,8 @@ struct SparseDotOpToLLVMPass
     TritonGPUToLLVMTypeConverter typeConverter(context, option);
     RewritePatternSet patterns(context);
     patterns.add<SparseDotOpConversion>(typeConverter);
+    // TODO(b/358375493): Remove this once TritonGPUToLLVMTypeConverter is
+    // splitted into smaller passes.
     populateGpuToNVVMConversionPatterns(typeConverter, patterns);
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
