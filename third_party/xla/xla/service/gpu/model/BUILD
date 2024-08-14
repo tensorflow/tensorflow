@@ -350,6 +350,7 @@ cc_library(
         ":indexing_analysis",
         ":symbolic_tile_analysis",
         ":tiled_hlo_computation",
+        ":triton_emitter_constraints",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -750,6 +751,40 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "triton_emitter_constraints",
+    srcs = ["triton_emitter_constraints.cc"],
+    hdrs = ["triton_emitter_constraints.h"],
+    deps = [
+        ":affine_map_evaluator",
+        ":symbolic_tile_analysis",
+        ":symbolic_tiled_hlo_instruction",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_emitter_constraints_test",
+    srcs = ["triton_emitter_constraints_test.cc"],
+    deps = [
+        ":symbolic_tile_analysis",
+        ":triton_emitter_constraints",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:instruction_fusion",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:verified_hlo_module",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 

@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -457,7 +458,8 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamondChain(
   mlir::MLIRContext context;
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
       SymbolicTileAnalysis::AnalyzeComputation(
-          *softmax_fusion->called_computation(), &context);
+          *softmax_fusion->called_computation(), &context,
+          TritonEmitterConstraints::GetBuilder());
 
   bool can_tile = std::holds_alternative<SymbolicTileAnalysis>(
       symbolic_tile_analysis_or_error);
