@@ -653,6 +653,13 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
             StringifyNum<NativeT, ComponentIntegralNativeT>(actual)));
 
     PrintMismatch(&mismatches, [mismatch] { return mismatch; });
+
+    // If we have emitted debug logging, we fail the test execution at the first
+    // comparison failure to avoid dumping too much log data and ensure the
+    // relevant debugging information is the last logged data.
+    if (should_emit_debug_logging_) {
+      ASSERT_TRUE(false);
+    }
   }
   EXPECT_EQ(mismatches, 0);
 

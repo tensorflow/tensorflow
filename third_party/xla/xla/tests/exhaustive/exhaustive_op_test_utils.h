@@ -32,6 +32,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -333,6 +334,21 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     // Run all HLO passes.  In particular, constant folding is disabled by
     // default for tests, but we need to run it in order to tickle some bugs.
     mutable_debug_options()->clear_xla_disable_hlo_passes();
+  }
+
+  // Enable debug logging for the invocation of the lambda.
+  //
+  // This is intended to be used to wrap a call to `Run`, which will then log
+  // extra debug information for a failure such as the calculated absolute,
+  // relative, and distance errors. In addition, in an effort to reduce output
+  // log size, this will trigger an ASSERT failure to early return from a test
+  // at the first failure.
+  template <typename Callable,
+            std::enable_if_t<std::is_invocable_r_v<void, Callable>, int> = 0>
+  void EnableDebugLoggingForScope(Callable&& work) {
+    should_emit_debug_logging_ = true;
+    work();
+    should_emit_debug_logging_ = false;
   }
 
   void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
@@ -657,8 +673,17 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     // will be wildly off. We convert back to NativeT for this comparison.
     int64_t distance_err = GetDistanceErr(NativeT(expected), NativeT(actual));
 
-    return abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
-           distance_err <= spec.distance_err;
+    bool passed = abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
+                  distance_err <= spec.distance_err;
+    if (should_emit_debug_logging_ && !passed) {
+      LOG(INFO) << "actual: " << actual << "; expected: " << expected
+                << "\n\tabs_err: " << abs_err
+                << "; spec.abs_err: " << spec.abs_err
+                << "\n\trel_err: " << rel_err << "; spec.rel_err: " << rel_err
+                << "\n\tdistance_err: " << distance_err
+                << "; spec.distance_err: " << spec.distance_err;
+    }
+    return passed;
   }
 
   // Converts part or all bits in an uint64_t to the value of the floating point
@@ -712,6 +737,10 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
 
   // Indicates if files of the expected and actual values should be dumped.
   bool should_dump_values_ = false;
+
+  // Indicates if additional (potentially costly) logging should be emitted to
+  // ease with debugging.
+  bool should_emit_debug_logging_ = false;
 };
 
 // Represents a set of 64 bit chunks by representing the starting bit chunk,
