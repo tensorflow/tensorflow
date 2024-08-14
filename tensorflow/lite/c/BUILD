@@ -292,7 +292,10 @@ cc_test(
     size = "small",
     srcs = ["c_api_signature_runner_test.cc"],
     copts = tflite_copts(),
-    data = ["//tensorflow/lite:testdata/multi_signatures.bin"],
+    data = [
+        "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures.bin",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/lite/core/c:c_api",
