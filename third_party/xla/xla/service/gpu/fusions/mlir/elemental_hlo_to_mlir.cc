@@ -20,7 +20,6 @@ limitations under the License.
 #include <iterator>
 #include <queue>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -67,24 +66,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
-#include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -1178,57 +1171,6 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
 }
 
 }  // namespace
-
-bool IsHloOpSupported(const HloInstruction* instr,
-                      se::CudaComputeCapability compute_capability) {
-  return !(kUnsupportedOps.contains(instr->opcode()) ||
-           IsUnsupportedGather(instr));
-}
-
-bool IsHloConversionSupported(const HloComputation* computation,
-                              se::GpuComputeCapability compute_capability) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
-    // ROCM is not tested.
-    return false;
-  }
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(compute_capability);
-
-  return absl::c_all_of(
-             computation->instructions(),
-             [=](const HloInstruction* instr) {
-               return absl::c_all_of(instr->called_computations(),
-                                     [&](const HloComputation* called) {
-                                       return IsHloConversionSupported(
-                                           called, compute_capability);
-                                     }) &&
-                      IsHloOpSupported(instr, cuda_compute_capability);
-             }) &&
-         (computation->IsFusionComputation() ||
-          (absl::c_all_of(
-              computation->parameter_instructions(), [](auto* param) {
-                return param->shape().IsArray() && param->shape().rank() == 0;
-              })));
-}
-
-bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
-                              se::GpuComputeCapability compute_capability) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
-    // ROCM is not tested.
-    return false;
-  }
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(compute_capability);
-
-  return !HloAnyOf(fusion, [=](HloInstructionAdaptor instr) {
-    return !absl::c_all_of(instr.instruction().called_computations(),
-                           [&](const HloComputation* called) {
-                             return IsHloConversionSupported(
-                                 called, compute_capability);
-                           }) ||
-           !IsHloOpSupported(&instr.instruction(), cuda_compute_capability);
-  });
-}
 
 ValueRange ProvideParameter(const PartitionedComputation& computation,
                             const HloInstruction* instr, int operand_index,

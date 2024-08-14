@@ -113,19 +113,8 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
                          .GetModule()
                          ->config()
                          .debug_options();
-  auto check_mlir_emitters = [&](int64_t required_level, bool check = true) {
-    if (opts.xla_gpu_mlir_emitter_level() < required_level) {
-      return false;
-    }
-    CHECK(!check ||
-          mlir_converter::IsHloConversionSupported(
-              analysis.fusion(),
-              fusion_info.analysis().device_info().gpu_compute_capability()))
-        << "Unsupported fusion: "
-        << analysis.fusion_root(0).instruction().parent()->ToString();
-
-    VLOG(5) << "Emitting with MLIR.";
-    return true;
+  auto check_mlir_emitters = [&](int64_t required_level) {
+    return opts.xla_gpu_mlir_emitter_level() >= required_level;
   };
 
   switch (analysis.GetEmitterFusionKind()) {
@@ -166,7 +155,7 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       }
       return std::make_unique<ReductionFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      if (check_mlir_emitters(/*required_level=*/2, false)) {
+      if (check_mlir_emitters(/*required_level=*/2)) {
         return std::make_unique<MlirScatterFusion>(analysis);
       }
       return std::make_unique<ScatterFusion>(analysis);

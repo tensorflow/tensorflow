@@ -62,19 +62,6 @@ llvm::SmallVector<mlir::Value, 2> ProvideParameterRange(
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     mlir::ImplicitLocOpBuilder& builder);
 
-// Checks whether the given HLO instruction can be converted to MLIR.
-bool IsHloOpSupported(const HloInstruction* instr,
-                      se::CudaComputeCapability compute_capability);
-
-// Checks whether the given HLO computation is supported by the MLIR converter:
-// - all instructions in it are supported
-// - the signature is supported: if the computation is not a fusion computation,
-//   all arguments have rank 0.
-bool IsHloConversionSupported(const HloComputation* computation,
-                              se::GpuComputeCapability compute_capability);
-bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
-                              se::GpuComputeCapability compute_capability);
-
 // Converts a function (subgraph) to an MLIR function producing one element of
 // the result. The function must have the correct interface.
 absl::Status SubgraphToMlirFunction(
