@@ -63,6 +63,9 @@ namespace xla::cpu {
 // WARNING: This is under construction and will eventually replace IrEmitter.
 class IrEmitter2 {
  public:
+  friend class IrEmitter2Test;
+
+ public:
   IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
              IrEmitter* nested_ir_emitter);
 
@@ -86,23 +89,6 @@ class IrEmitter2 {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
-  };
-
-  // A kernel function prototype with all the LLVM values that might be needed
-  // to emit the actual kernel body.
-  struct KernelPrototype {
-    llvm::Function* function;
-    llvm::BasicBlock* return_block;
-
-    // LLVM values identifying kernel invocation thread coordinates.
-    KernelThreadDims thread_dims;
-    KernelThread thread;
-
-    // LLVM values corresponding to the kernel arguments and results arrays. All
-    // tuples are flattened as we do not have any tuples at run time and only
-    // read and write data from/to leaf arrays.
-    std::vector<llvm_ir::IrArray> arguments;
-    std::vector<llvm_ir::IrArray> results;
   };
 
   // Emitted kernel information that defines how to launch it at run time.
@@ -166,6 +152,26 @@ class IrEmitter2 {
   absl::StatusOr<ComparatorInfo> EmitSortComparator(
       const HloInstruction* instr);
 
+ private:
+  class ElementalIrEmitter;
+
+  // A kernel function prototype with all the LLVM values that might be needed
+  // to emit the actual kernel body.
+  struct KernelPrototype {
+    llvm::Function* function;
+    llvm::BasicBlock* return_block;
+
+    // LLVM values identifying kernel invocation thread coordinates.
+    KernelThreadDims thread_dims;
+    KernelThread thread;
+
+    // LLVM values corresponding to the kernel arguments and results arrays. All
+    // tuples are flattened as we do not have any tuples at run time and only
+    // read and write data from/to leaf arrays.
+    std::vector<llvm_ir::IrArray> arguments;
+    std::vector<llvm_ir::IrArray> results;
+  };
+
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
@@ -175,9 +181,6 @@ class IrEmitter2 {
   // Emits a host kernel prototype for the given HLO instruction.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       const HloInstruction* instr);
-
- private:
-  class ElementalIrEmitter;
 
   // Parallel partition bounds for parallelized outer dimensions:
   //   vector<[i64 lower_bound, i64 upper_bound]>
