@@ -7292,6 +7292,7 @@ cc_library(
         ":__subpackages__",
         "//tensorflow/compiler/tf2xla:__pkg__",
         "//xla/pjrt:__subpackages__",
+        "//xla/backends/cpu/runtime:__subpackages__",
     ]),
     deps = [
         ":custom_call_status",
