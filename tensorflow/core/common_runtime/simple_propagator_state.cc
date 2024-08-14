@@ -16,9 +16,19 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "tensorflow/core/common_runtime/entry.h"
+#include "tensorflow/core/common_runtime/graph_view.h"
+#include "tensorflow/core/common_runtime/immutable_executor_state.h"
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
