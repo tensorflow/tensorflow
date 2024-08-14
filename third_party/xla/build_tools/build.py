@@ -23,6 +23,7 @@ assumed are:
 The script also assumes that the working directory never changes modulo `cd`ing
 into the repo that should be built (mostly `github/xla`, but also JAX and TF).
 """
+import contextlib
 import dataclasses
 import enum
 import logging
@@ -32,8 +33,8 @@ import sys
 import time
 from typing import Any, Dict, List, Tuple
 
+_KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 
-_CONTAINER_NAME = "xla_ci"
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
     test_output="errors",
@@ -53,7 +54,7 @@ _DEFAULT_DOCKER_OPTIONS = dict(
     tty=True,
     volume="./github:/github",
 )
-_KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
+
 _XLA_DEFAULT_TARGET_PATTERNS = (
     "//xla/...",
     "//build_tools/...",
@@ -111,9 +112,10 @@ class DockerImage:
     # TODO(ddunleavy): get sha
     # _write_to_sponge_config("TF_INFO_DOCKER_SHA", sha)
 
+  @contextlib.contextmanager
   def pull_and_run(
       self,
-      name: str,
+      name: str = "xla_ci",
       command: Tuple[str, ...] = ("bash",),
       **kwargs: Any,
   ):
@@ -124,13 +126,33 @@ class DockerImage:
       command: Command given to `docker run`, e.g. `bash`
       **kwargs: Extra options passed to `docker run`.
 
-    Returns:
-      None.
-    """
-    self._pull_docker_image_with_retries()
-    options = _dict_to_cli_options(kwargs)
+    Yields:
+      A function that accepts a command as a list of args, and runs those on the
+      corresponding docker container. It shouldn't be used outside the `with`
+      block, as the container will be stopped after the end of the block.
 
-    sh(["docker", "run", "--name", name, *options, self.image_url, *command])
+    This manages pulling, starting, and stopping the container. Example usage:
+    ```
+    with image.pull_and_run() as docker_exec:
+      docker_exec(["command", "--with", "--flags"])
+    ```
+    """
+    try:
+      self._pull_docker_image_with_retries()
+      options = _dict_to_cli_options(kwargs)
+      sh([
+          "docker",
+          "run",
+          "--name",
+          name,
+          *options,
+          self.image_url,
+          *command,
+      ])
+      docker_exec = lambda args: sh(["docker", "exec", name, *args])
+      yield docker_exec
+    finally:
+      sh(["docker", "stop", name])
 
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
@@ -392,15 +414,11 @@ def main():
     )
     sh(["nvidia-smi"])
 
-    build.docker_image.pull_and_run(
-        _CONTAINER_NAME,
-        workdir=f"/github/{repo_name}",
-        **_DEFAULT_DOCKER_OPTIONS,
-    )
-    docker_exec = lambda cmd: sh(["docker", "exec", _CONTAINER_NAME, *cmd])
+  with build.docker_image.pull_and_run(
+      workdir=f"/github/{repo_name}", **_DEFAULT_DOCKER_OPTIONS
+  ) as docker_exec:
     docker_exec(build.bazel_test_command())
     docker_exec(["bazel", "analyze-profile", "profile.json.gz"])
-    sh(["docker", "stop", _CONTAINER_NAME])
 
 
 if __name__ == "__main__":

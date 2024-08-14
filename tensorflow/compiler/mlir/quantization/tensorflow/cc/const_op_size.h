@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
