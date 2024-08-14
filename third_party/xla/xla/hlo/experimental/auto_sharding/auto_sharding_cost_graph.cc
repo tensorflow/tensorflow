@@ -101,16 +101,8 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
     }
 
     if (strategy_group->following) {
-      if (strategy_group->strategies.size() ==
-          strategy_group->following->strategies.size()) {
-        to_merge_pairs_.push_back(
-            {strategy_group->node_idx, strategy_group->following->node_idx});
-      } else {
-        LOG(WARNING) << "Different strategy counts for instruction ID "
-                     << strategy_group->instruction_id
-                     << " and following instruction ID "
-                     << strategy_group->following->instruction_id;
-      }
+      to_merge_pairs_.push_back(
+          {strategy_group->node_idx, strategy_group->following->node_idx});
     }
   }
 
@@ -243,6 +235,8 @@ void CostGraph::MergeNode(const NodeIdx src, const NodeIdx dst) {
     // Otherwise, find the strategy to follow greedily.
     // For every strategy in dst, find the strategy in src with
     // the lowest resharding cost.
+    // Finally, set the cost of all other strategies to infinity (which forces
+    // the solver to select the greedy one).
     std::vector<int> arange(node_lens_[src]);
     std::iota(arange.begin(), arange.end(), 0);
     for (NodeStrategyIdx i = 0; i < node_lens_[dst]; ++i) {
@@ -263,7 +257,12 @@ void CostGraph::MergeNode(const NodeIdx src, const NodeIdx dst) {
                 keys[l].second < keys[r].second);
       });
       reindexing[i] = arange.front();
+      for (NodeStrategyIdx j = 0; j < node_lens_[src]; ++j) {
+        if (j == reindexing[i]) continue;
+        edge_cost(i, j).communication_cost = kInfinityCost;
+      }
     }
+    return;
   }
   merged_to_[src] = dst;
   reindexing_vector_[src] = reindexing;

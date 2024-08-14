@@ -241,7 +241,7 @@ ENTRY %elementwise {
       << full_mesh_64x8_budget_lower_bound << " bytes for 512 devices.";
 }
 
-TEST_F(AutoShardingTest, DISABLED_ElementWiseOperator) {
+TEST_F(AutoShardingTest, ElementWiseOperator) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 ENTRY %elementwise {
@@ -264,7 +264,7 @@ ENTRY %elementwise {
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "param0");
   ASSERT_NE(instruction, nullptr);
-  EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,4]0,1,2,3}"));
 }
 
 TEST_F(AutoShardingTest, Unsupported3DShardingTest) {
