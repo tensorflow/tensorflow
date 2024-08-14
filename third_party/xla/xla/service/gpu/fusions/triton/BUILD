@@ -189,7 +189,6 @@ xla_test(
     ],
     shard_count = 20,
     tags = [
-        "no_rocm",
         "nomac",
     ],
     deps = [
@@ -239,7 +238,6 @@ xla_test(
         "gpu_amd_any",
     ],
     tags = [
-        "no_rocm",
         "nomac",
     ],
     deps = [
@@ -372,7 +370,8 @@ xla_test(
         "gpu_amd_any",
     ],
     shard_count = 10,
-    tags = ["nomac"],
+    tags = ["nomac",
+            "no_rocm"],  # TODO(rocm) 240729
     deps = [
         ":triton_support",
         "//xla:comparison_util",
@@ -419,7 +418,8 @@ xla_cc_test(
     shard_count = 20,
     # TODO(b/353912594): this test does not need to run on GPU, but it is broken on CPU in OSS.
     # Force it to run on GPU temporarily in order to get important OSS coverage.
-    tags = ["gpu"],
+    tags = ["gpu"] +
+           ["no_rocm"], # TODO(rocm) 240729
     deps = [
         ":triton_fusion_emitter",
         ":triton_support",
@@ -450,7 +450,8 @@ xla_test(
         "gpu_h100",
         "gpu_amd_any",
     ],
-    tags = ["nomac"],
+    tags = ["nomac",
+            "no_rocm"], # TODO(rocm) 240729
     deps = [
         ":triton_fusion_emitter",
         ":triton_support",

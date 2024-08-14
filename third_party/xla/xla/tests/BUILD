@@ -932,7 +932,6 @@ xla_test(
     tags = [
         "optonly",
         "test_xla_cpu_thunks",
-        "no_rocm", #TODO(rocm): TEMP, sync 24-06-24
     ],
     deps = [
         ":client_library_test_base",
@@ -971,7 +970,6 @@ xla_test(
         "optonly",
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
-        "no_rocm", #TODO(rocm): TEMP, sync 24-06-24
         "test_xla_cpu_thunks",
     ],
     deps = [
@@ -1099,7 +1097,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-        "no_rocm", #TODO(rocm): TEMP, sync 24-06-24
         "test_xla_cpu_thunks",
     ],
     deps = [

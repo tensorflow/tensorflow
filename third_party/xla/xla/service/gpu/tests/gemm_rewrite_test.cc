@@ -8238,6 +8238,7 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // Make sure the rewriter does not skip the rewrite for being too small.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 

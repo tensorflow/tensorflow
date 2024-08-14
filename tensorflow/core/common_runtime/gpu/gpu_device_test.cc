@@ -190,6 +190,9 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
 }
 
 TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
+#ifndef GOOGLE_CUDA
+  return;
+#endif
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);

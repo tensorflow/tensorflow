@@ -474,9 +474,8 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
-        "gpu_amd_any",
     ],
-    tags = ["no_rocm"], #TODO(rocm) TEMP, sync 24-06-03
+    tags = ["no_rocm"], # TODO(rocm) 240729 Test checks only for cuda capability
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -829,17 +828,6 @@ lit_test_suite(
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
     ],
     default_tags = tf_cuda_tests_tags(),
-    tags_override = {
-        "element_wise_row_vectorization.hlo": ["no_rocm"],
-        "scatter_bf16.hlo": ["no_rocm"],
-        "single_instruction.hlo": ["no_rocm"],
-        "reduce_unnested.hlo": ["no_rocm"],
-        "reduction_vectorization_sm_all.hlo": ["no_rocm"],
-        "kernel_reuse.hlo" : ["no_rocm"],
-        "reduce_column_layout_change.hlo" : ["no_rocm"],
-        "reduce_f64_column.hlo" : ["no_rocm"],
-        "triton_naming.hlo" : ["no_rocm"],
-    },
     tools = [
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
@@ -949,7 +937,6 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    tags = ["no_rocm"],
     deps = if_cuda_is_configured(
         [
             ":gpu_codegen_test",
@@ -1057,7 +1044,6 @@ xla_test(
     name = "load_autotune_results_using_execpath_test",
     srcs = [],
     backends = ["gpu"],
-    tags = ["no_rocm"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
@@ -1076,7 +1062,6 @@ xla_test(
     name = "load_autotune_results_from_test_workspace_test",
     srcs = [],
     backends = ["gpu"],
-    tags = ["no_rocm"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
