@@ -4805,6 +4805,35 @@ class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
   static constexpr const char* kF8E4M3AmaxPlaceholder{"<<F8E4M3_AMAX>>"};
 };
 
+TEST_P(ParameterizedFp8GemmRewriteTest, SupportsF8NonMajorBatchDim) {
+  const char* hlo_text = R"(
+HloModule t
+
+ENTRY main {
+  %bitcast.73421 = f8e4m3fn[16,8,640]{2,1,0} parameter(0)
+  %parameter_1.5 = f8e4m3fn[8,640,5120]{2,1,0} parameter(1)
+  %parameter_2 = f8e4m3fn[8,640,5120]{2,1,0} parameter(2)
+  %concatenate.2145 = f8e4m3fn[8,640,10240]{2,1,0} concatenate(
+      f8e4m3fn[8,640,5120]{2,1,0} %parameter_1.5,
+      f8e4m3fn[8,640,5120]{2,1,0} %parameter_2),
+        dimensions={2}
+  %dot.6237 = f32[8,16,10240]{2,1,0} dot(
+      f8e4m3fn[16,8,640]{2,1,0} %bitcast.73421,
+      f8e4m3fn[8,640,10240]{2,1,0} %concatenate.2145),
+        lhs_batch_dims={1},
+        lhs_contracting_dims={2},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+  ROOT %convert.20480 = bf16[8,16,10240]{2,1,0} convert(
+      f32[8,16,10240]{2,1,0} %dot.6237)
+})";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:    custom-call({{.*}}"lhs_batch_dimensions":["1"],"rhs_batch_dimensions":["0"]
+  )");
+}
+
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
   if (HasFp8Support()) {
     GTEST_SKIP() << "Test requires a pre-Ada GPU or an AMD GPU prior to MI300.";
