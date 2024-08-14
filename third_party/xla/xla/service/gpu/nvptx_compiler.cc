@@ -580,10 +580,12 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     VLOG(2) << "Deferring the PTX to CUBIN compilation of the relocatable "
                "module to the linking step.";
     std::vector<uint8_t> binary;
-    binary.reserve(sizeof(kPtxPrefix) + ptx.size() + 1);
-    binary.insert(binary.end(), kPtxPrefix, kPtxPrefix + sizeof(kPtxPrefix));
-    binary.insert(binary.end(), ptx.begin(), ptx.end());
-    binary.emplace_back('\0');
+    if (!ptx.empty()) {
+      binary.reserve(sizeof(kPtxPrefix) + ptx.size() + 1);
+      binary.insert(binary.end(), kPtxPrefix, kPtxPrefix + sizeof(kPtxPrefix));
+      binary.insert(binary.end(), ptx.begin(), ptx.end());
+      binary.emplace_back('\0');
+    }
     return BackendCompileResult{std::move(ptx), std::move(binary)};
   }
 

@@ -102,12 +102,20 @@ ENTRY e {
          "num_ctas":1}}}
 })";
 
+constexpr std::string_view kResultsInNoPtxHlo = R"(
+  ENTRY e {
+    a = f32[5,5] parameter(0)
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+      backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
+  })";
+
 std::string_view GetHlo(std::string_view name) {
   static const absl::flat_hash_map<std::string_view, std::string_view>* const
       kHloMap = new absl::flat_hash_map<std::string_view, std::string_view>(
           {{"simple", kSimpleHlo},
            {"parallel_compilation", kParallelCompilationHlo},
-           {"requires_sm90a", kSM90AHlo}});
+           {"requires_sm90a", kSM90AHlo},
+           {"results_in_no_ptx", kResultsInNoPtxHlo}});
   return kHloMap->at(name);
 }
 
@@ -288,14 +296,19 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::Span<const uint8_t> reference_binary =
       static_cast<GpuExecutable*>(reference.value().get())->binary();
 
-  if (executable_binary != reference_binary) {
-    std::string test_name =
-        GenerateParametrizedTestname(name, compilation_method, linking_method);
-    DumpArtifactIfEnabled(absl::StrCat(test_name, "_executable.bin"),
-                          executable_binary);
-    DumpArtifactIfEnabled(absl::StrCat(test_name, "_reference.bin"),
-                          reference_binary);
+  if (executable_binary == reference_binary) {
+    // If the binaries are exactly the same, we can short circuit and don't need
+    // to parse them.
+    SUCCEED();
+    return;
   }
+
+  std::string test_name =
+      GenerateParametrizedTestname(name, compilation_method, linking_method);
+  DumpArtifactIfEnabled(absl::StrCat(test_name, "_executable.bin"),
+                        executable_binary);
+  DumpArtifactIfEnabled(absl::StrCat(test_name, "_reference.bin"),
+                        reference_binary);
 
   auto get_text_sections = [&](absl::Span<const uint8_t> binary)
       -> absl::StatusOr<absl::btree_map<std::string, std::string>> {
@@ -341,14 +354,15 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
 
 INSTANTIATE_TEST_SUITE_P(
     NVPTXCompilationTest, NVPTXCompilationTests,
-    ::testing::Combine(
-        ::testing::Values("simple", "parallel_compilation", "requires_sm90a"),
-        ::testing::Values(PtxCompilationMethod::kNvPtxCompiler,
-                          PtxCompilationMethod::kPtxas,
-                          PtxCompilationMethod::kNvJitLink),
-        ::testing::Values(PtxLinkingMethod::kNone, PtxLinkingMethod::kNvLink,
-                          PtxLinkingMethod::kDriver,
-                          PtxLinkingMethod::kNvJitLink)),
+    ::testing::Combine(::testing::Values("simple", "parallel_compilation",
+                                         "requires_sm90a", "results_in_no_ptx"),
+                       ::testing::Values(PtxCompilationMethod::kNvPtxCompiler,
+                                         PtxCompilationMethod::kPtxas,
+                                         PtxCompilationMethod::kNvJitLink),
+                       ::testing::Values(PtxLinkingMethod::kNone,
+                                         PtxLinkingMethod::kNvLink,
+                                         PtxLinkingMethod::kDriver,
+                                         PtxLinkingMethod::kNvJitLink)),
     [](const ::testing::TestParamInfo<std::tuple<
            std::string_view, PtxCompilationMethod, PtxLinkingMethod>>& info) {
       return GenerateParametrizedTestname(std::get<0>(info.param),
