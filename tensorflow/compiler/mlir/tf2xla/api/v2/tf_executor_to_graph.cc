@@ -796,11 +796,11 @@ Status Exporter::Convert(mlir::ModuleOp module,
 
 }  // namespace
 
-Status ConvertMlirToGraph(mlir::ModuleOp module,
-                          const GraphExportConfig& configs,
-                          std::unique_ptr<Graph>* graph,
-                          FunctionLibraryDefinition* flib_def,
-                          absl::flat_hash_set<Node*>* control_ret_nodes) {
+Status ConvertTfExecutorToGraph(mlir::ModuleOp module,
+                                const GraphExportConfig& configs,
+                                std::unique_ptr<Graph>* graph,
+                                FunctionLibraryDefinition* flib_def,
+                                absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::StatusScopedDiagnosticHandler sh(module.getContext());
   if (failed(VerifyExportSuitable(module))) return sh.ConsumeStatus();
   return sh.Combine(
