@@ -1,4 +1,4 @@
-/* Copyright 2019 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_REDUCTION_DIMENSION_GROUPER_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_REDUCTION_DIMENSION_GROUPER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_TRANSPOSE_DIMENSION_GROUPER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_TRANSPOSE_DIMENSION_GROUPER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -24,25 +24,26 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Groups adjacent (logically and physically) reduced dimensions in reduction
-// input.
+// Groups dimensions that are adjacent (logically and physically) in the
+// transpose operand and the transpose output.
 //
-// Precondition: ReductionLayoutNormalizer has been run (physical proximity and
+// Precondition: LayoutNormalization has been run (physical proximity and
 // logical proximity become the same).
 //
 // For example,
 //
-//   out = f32[] reduce(f32[10,20,30] input, dimensions={0,1,2})
+//   out = f32[30,10,20] transpose(f32[10,20,30] input, dimensions={2,0,1})
 //
 // becomes:
 //
-//   tmp = f32[6000] bitcast(f32[10,20,30] input)
-//   out = f32[] reduce(f32[6000] tmp, dimensions={0})
+//   tmp = f32[200,30] bitcast(f32[10,20,30] input)
+//   transpose = f32[30,200] transpose(f32[200,30] tmp, dimensions={1,0})
+//   out = f32[30,0,20] bitcast(f32[30,200] transpose)
 //
-class ReductionDimensionGrouper : public HloModulePass {
+class TransposeDimensionGrouper : public HloModulePass {
  public:
   absl::string_view name() const override {
-    return "reduction-dimension-grouper";
+    return "transpose-dimension-grouper";
   }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -53,4 +54,4 @@ class ReductionDimensionGrouper : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_REDUCTION_DIMENSION_GROUPER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_TRANSPOSE_DIMENSION_GROUPER_H_
