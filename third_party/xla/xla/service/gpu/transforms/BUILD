@@ -1362,7 +1362,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/ffi:ffi_api",
-        "//xla/ffi/api:c_api",
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_target_registry",
         "//xla/service:hlo_pass",
