@@ -225,6 +225,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
+    case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -264,9 +265,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kCollectivePermute:
       return EmitCollectivePermuteThunk(instruction);
 
-    // TODO(ezhulenev): Port pad optimizations from IrEmitter.
     case HloOpcode::kPad:
-      return EmitElementalKernelThunk(instruction);
+      return EmitPadKernelThunk(instruction);
 
     case HloOpcode::kSlice:
     case HloOpcode::kDynamicSlice:
@@ -614,6 +614,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
       kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
+    const HloInstruction* instruction) {
+  const HloPadInstruction* padInstr = Cast<HloPadInstruction>(instruction);
+  TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitPadHostKernel(padInstr));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(padInstr));
+
+  return ThunkSequence::Of<KernelThunk>(
+      ThunkInfo(padInstr), buffers.arguments, buffers.results, kernel.name,
+      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
@@ -744,9 +755,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
   TF_ASSIGN_OR_RETURN(ThunkSequence body_thunk,
                       EmitHloComputation(instruction->while_body()));
 
+  // Check if while loop has a statically known trip count.
+  TF_ASSIGN_OR_RETURN(
+      auto loop_config,
+      instruction->backend_config<xla::WhileLoopBackendConfig>());
+
+  std::optional<int64_t> trip_count;
+  if (loop_config.has_known_trip_count()) {
+    trip_count = loop_config.known_trip_count().n();
+  }
+
   return ThunkSequence::Of<WhileThunk>(ThunkInfo(instruction), cond_buffer,
                                        std::move(cond_thunk),
-                                       std::move(body_thunk));
+                                       std::move(body_thunk), trip_count);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(

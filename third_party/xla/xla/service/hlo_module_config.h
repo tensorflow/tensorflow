@@ -226,6 +226,7 @@ class HloModuleConfig {
   std::string compilation_cache_key() const;
 
   const DebugOptions& debug_options() const { return debug_options_; }
+  DebugOptions& mutable_debug_options() { return debug_options_; }
   void set_debug_options(const DebugOptions& debug_options) {
     debug_options_ = debug_options;
   }

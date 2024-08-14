@@ -86,7 +86,7 @@ py_strict_test(
         ":types",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-        #internal proto upb dep
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//third_party/py/numpy",
         "//xla:xla_data_proto_py",
     ],

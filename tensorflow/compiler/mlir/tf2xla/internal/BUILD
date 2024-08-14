@@ -244,8 +244,8 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -296,7 +296,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:enable_tf2_utils",
         # "//tensorflow/core/platform:resource_loader",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

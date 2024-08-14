@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_float_support.h"
 
+#include <memory>
+#include <string>
+
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_normalization.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -54,11 +60,9 @@ class FloatSupportTest : public HloTestBase {
     return result.value();
   }
 
-  void TestDotConversion(PrimitiveType lhs_type, PrimitiveType rhs_type,
-                         PrimitiveType result_type, se::GpuComputeCapability cc,
-                         bool should_convert_lhs, bool should_convert_rhs,
-                         PrimitiveType low_precision_type,
-                         PrimitiveType high_precision_type = F16) {
+  std::unique_ptr<HloComputation> CreateComputation(PrimitiveType lhs_type,
+                                                    PrimitiveType rhs_type,
+                                                    PrimitiveType result_type) {
     auto builder = HloComputation::Builder(TestName());
     Shape lhs_shape = ShapeUtil::MakeShape(lhs_type, {3, 3});
     Shape rhs_shape = ShapeUtil::MakeShape(rhs_type, {3, 3});
@@ -76,13 +80,65 @@ class FloatSupportTest : public HloTestBase {
     builder.AddInstruction(HloInstruction::CreateDot(
         result_shape, a, b, dot_dnums, precision_config));
 
+    return builder.Build();
+  }
+
+  void TestDotConversion(PrimitiveType lhs_type, PrimitiveType rhs_type,
+                         PrimitiveType result_type, se::GpuComputeCapability cc,
+                         bool should_convert_lhs, bool should_convert_rhs,
+                         PrimitiveType low_precision_type,
+                         PrimitiveType high_precision_type = F16) {
     auto module = CreateNewVerifiedModule();
-    auto computation = module->AddEntryComputation(builder.Build());
+    auto computation = module->AddEntryComputation(
+        CreateComputation(lhs_type, rhs_type, result_type));
 
     EXPECT_EQ(
         Normalize(module.get(), cc, low_precision_type, high_precision_type),
         should_convert_lhs || should_convert_rhs);
 
+    EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kDot);
+    EXPECT_EQ(computation->root_instruction()->operand(0)->opcode() ==
+                  HloOpcode::kConvert,
+              should_convert_lhs);
+    EXPECT_EQ(computation->root_instruction()->operand(1)->opcode() ==
+                  HloOpcode::kConvert,
+              should_convert_rhs);
+  }
+
+  void TestTritonFusedDot(PrimitiveType lhs_type, PrimitiveType rhs_type,
+                          PrimitiveType result_type,
+                          se::GpuComputeCapability cc, bool should_convert_lhs,
+                          bool should_convert_rhs,
+                          PrimitiveType low_precision_type,
+                          PrimitiveType high_precision_type = F16) {
+    auto module = CreateNewVerifiedModule();
+
+    auto computation = module->AddComputationAndUnifyNamesAndIds(
+        CreateComputation(lhs_type, rhs_type, result_type), /*is_entry=*/false);
+
+    Shape lhs_shape = ShapeUtil::MakeShape(lhs_type, {3, 3});
+    Shape rhs_shape = ShapeUtil::MakeShape(rhs_type, {3, 3});
+    Shape result_shape = ShapeUtil::MakeShape(result_type, {3, 3});
+
+    auto builder = HloComputation::Builder("main");
+    HloInstruction* a = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, lhs_shape, "a"));
+    HloInstruction* b = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, rhs_shape, "b"));
+    HloInstruction* fusion =
+        builder.AddInstruction(HloInstruction::CreateFusion(
+            result_shape, HloInstruction::FusionKind::kCustom, {a, b},
+            computation));
+    GpuBackendConfig config;
+    config.mutable_fusion_backend_config()->set_kind(
+        std::string(kTritonGemmFusionKind));
+    CHECK_OK(fusion->set_backend_config(config));
+
+    module->AddEntryComputation(builder.Build());
+
+    EXPECT_EQ(
+        Normalize(module.get(), cc, low_precision_type, high_precision_type),
+        should_convert_lhs || should_convert_rhs);
     EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kDot);
     EXPECT_EQ(computation->root_instruction()->operand(0)->opcode() ==
                   HloOpcode::kConvert,
@@ -137,6 +193,52 @@ TEST_F(FloatSupportTest, ShouldAlwaysConvertFp8Dot) {
   TestDotConversion(F8E5M2, F16, F32, se::CudaComputeCapability::Hopper(),
                     /*should_convert_lhs=*/true,
                     /*should_convert_rhs=*/false, F8E5M2);
+}
+
+TEST_F(FloatSupportTest, ShouldConverTritonUnsupportedFp8Dot) {
+  TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F16,
+                     se::CudaComputeCapability::Hopper(),
+                     /*should_convert_lhs=*/true,
+                     /*should_convert_rhs=*/true, F8E4M3FN);
+
+  TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F32,
+                     se::CudaComputeCapability::Hopper(),
+                     /*should_convert_lhs=*/false,
+                     /*should_convert_rhs=*/false, F8E4M3FN);
+
+  TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F16,
+                     se::CudaComputeCapability::Ampere(),
+                     /*should_convert_lhs=*/true,
+                     /*should_convert_rhs=*/true, F8E4M3FN);
+
+  TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F32,
+                     se::CudaComputeCapability::Hopper(),
+                     /*should_convert_lhs=*/false,
+                     /*should_convert_rhs=*/false, F8E4M3FN);
+
+  TestTritonFusedDot(F8E5M2, F8E5M2, F16, se::CudaComputeCapability::Ampere(),
+                     /*should_convert_lhs=*/true,
+                     /*should_convert_rhs=*/true, F8E5M2);
+
+  TestTritonFusedDot(F8E5M2, F8E5M2, F32, se::CudaComputeCapability::Ampere(),
+                     /*should_convert_lhs=*/true,
+                     /*should_convert_rhs=*/true, F8E5M2);
+
+  TestTritonFusedDot(F8E5M2, F8E4M3FN, F16, se::CudaComputeCapability::Hopper(),
+                     /*should_convert_lhs=*/true,
+                     /*should_convert_rhs=*/false, F8E5M2);
+
+  TestTritonFusedDot(F8E5M2, F8E4M3FN, F32, se::CudaComputeCapability::Hopper(),
+                     /*should_convert_lhs=*/false,
+                     /*should_convert_rhs=*/false, F8E5M2);
+
+  TestTritonFusedDot(F8E5M2, F16, F16, se::CudaComputeCapability::Hopper(),
+                     /*should_convert_lhs=*/true,
+                     /*should_convert_rhs=*/false, F8E5M2);
+
+  TestTritonFusedDot(F8E5M2, F16, F32, se::CudaComputeCapability::Hopper(),
+                     /*should_convert_lhs=*/true,
+                     /*should_convert_rhs=*/false, F8E5M2);
 }
 
 TEST_F(FloatSupportTest, ShouldKeepBf16OnAmpere) {

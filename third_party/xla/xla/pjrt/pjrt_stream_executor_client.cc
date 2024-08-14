@@ -3524,10 +3524,7 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false,
-      exec_build_options.has_debug_options()
-          ? exec_build_options.debug_options().xla_use_shardy()
-          : false));
+      /*return_tuple=*/false, exec_build_options.use_shardy_partitioner()));
 
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.

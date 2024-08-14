@@ -81,8 +81,8 @@ class MemoryKind {
 // indicated by the device, simply returns `MemoryKind` with no memory kind
 // chosen.
 //
-// TODO(hyeontaek,yashkatariya): Harden `MemoryKind` creation paths so that
-// every `MemoryKind` is canonicalized and does not require on-demand
+// TODO(b/356623715): Harden `MemoryKind` creation paths so that every
+// `MemoryKind` is canonicalized and does not require on-demand
 // canonicalization.
 MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device);
 

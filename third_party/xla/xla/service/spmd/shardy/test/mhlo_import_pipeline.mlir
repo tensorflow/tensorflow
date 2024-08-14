@@ -52,37 +52,43 @@ func.func @shmap_body(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xf32>) -> (tensor
 
 // -----
 
+// CHECK-LABEL: sdy.mesh @mesh = <"axis_0"=2, "axis_1"=2>
+
 // CHECK-LABEL: func @while_with_free_variables
-func.func @while_with_free_variables(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
+func.func @while_with_free_variables(
+    %arg0: tensor<32x96xf32>,
+    %arg1: tensor<32x96xf32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
+    -> tensor<32x96xf32> {
   // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
   // CHECK-NEXT: %[[C1:.*]] = sdy.constant dense<1>
-  // CHECK-NEXT: %[[C32:.*]] = sdy.constant dense<32>
-  // CHECK-NEXT: %[[WHILE:.*]]:4 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]], %iterArg_1 = %[[C32]], %iterArg_2 = %[[C1]])
+  // CHECK-NEXT: %[[C32:.*]] = sdy.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, []>]>} dense<32>
+  // CHECK-NEXT: %[[SC:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{?}, {?}]>
+  // CHECK-NEXT: %[[WHILE:.*]]:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
   // CHECK-NEXT:   cond {
-  // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %iterArg_1
+  // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %[[C32]]
   // CHECK-NEXT:   mhlo.return %[[COND]]
   // CHECK-NEXT: } do {
-  // CHECK-NEXT:   %[[ADD_0:.*]] = mhlo.add %iterArg_0, %iterArg_2
-  // CHECK-NEXT:   %[[ADD_1:.*]] = mhlo.add %iterArg, %iterArg
-  // CHECK-NEXT:   %[[IDENTITY_0:.*]] = sdy.identity %iterArg_1
-  // CHECK-NEXT:   %[[IDENTITY_1:.*]] = sdy.identity %iterArg_2
-  // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]], %[[IDENTITY_0]], %[[IDENTITY_1]]
+  // CHECK-NEXT:   %[[ADD_0:.*]] = mhlo.add %iterArg_0, %[[C1]]
+  // CHECK-NEXT:   %[[ADD_1:.*]] = mhlo.add %iterArg, %[[SC]]
+  // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]]
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[WHILE]]#0
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<1> : tensor<i32>
-  %2 = mhlo.constant dense<32> : tensor<i32>
+  %2 = mhlo.constant {mhlo.sharding = "{replicated}"} dense<32> : tensor<i32>
   %3:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %0) : tensor<32x96xf32>, tensor<i32>
     cond {
     %4 = mhlo.compare LT, %iterArg_0, %2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
     mhlo.return %4 : tensor<i1>
   } do {
     %4 = mhlo.add %iterArg_0, %1 : tensor<i32>
-    %5 = mhlo.add %iterArg, %iterArg : tensor<32x96xf32>
+    %5 = mhlo.add %iterArg, %arg1 : tensor<32x96xf32>
     mhlo.return %5, %4 : tensor<32x96xf32>, tensor<i32>
   }
   return %3#0 : tensor<32x96xf32>
 }
+
+// -----
 
 // CHECK-LABEL: func @while_with_sinked_constants
 func.func @while_with_sinked_constants(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {

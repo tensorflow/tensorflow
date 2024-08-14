@@ -60,8 +60,8 @@ tf_cc_shared_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@tf_runtime//:bef",
     ],
 )

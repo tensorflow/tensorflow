@@ -1,4 +1,5 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir/lite:build_def.bzl", "tflite_copts")
 
@@ -17,7 +18,52 @@ cc_library(
     copts = tflite_copts(),
 )
 
+cc_library(
+    name = "runtime_shape",
+    srcs = ["runtime_shape.cc"],
+    hdrs = ["runtime_shape.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [":compatibility_macros"],
+)
+
+tf_cc_test(
+    name = "runtime_shape_test",
+    srcs = ["runtime_shape_test.cc"],
+    deps = [
+        ":runtime_shape",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # LINT.IfChange
+
+cc_library(
+    name = "cppmath",
+    srcs = [],
+    hdrs = [
+        "cppmath.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+)
+
+cc_library(
+    name = "quantization_util",
+    srcs = ["quantization_util.cc"],
+    hdrs = ["quantization_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
+    deps = [
+        ":compatibility_macros",
+        ":cppmath",
+    ],
+)
 
 config_setting(
     name = "haswell",
@@ -132,4 +178,5 @@ cc_library(
         "@gemmlowp//:fixedpoint",
     ],
 )
+
 # LINT.ThenChange(//tensorflow/lite/kernels/internal/BUILD)

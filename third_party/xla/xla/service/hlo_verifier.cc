@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -1322,6 +1323,34 @@ absl::Status ShapeVerifier::HandleCall(HloInstruction* call) {
   for (int64_t i = 0; i < call->to_apply()->num_parameters(); ++i) {
     TF_RETURN_IF_ERROR(CheckOperandAndParameter(call, i, call->to_apply(), i));
   }
+  if (call->is_composite()) {
+    TF_RET_CHECK(call->has_frontend_attributes())
+        << "A composite call op must have frontend attributes";
+    auto map = call->frontend_attributes().map();
+    if (auto name = map.find("composite.name");
+        name == map.end() || name->second.empty()) {
+      return InvalidArgument(
+          "A composite call op must have frontend attributes with key "
+          "composite.name whose value is non-empty");
+    }
+    if (auto attributes = map.find("composite.attributes");
+        attributes != map.end() && attributes->second.empty()) {
+      return InvalidArgument(
+          "A composite call op must have frontend attributes with key "
+          "composite.attributes whose value is default: {} or non-empty");
+    }
+    if (auto version_str = map.find("composite.version");
+        version_str != map.end()) {
+      int64_t version = 0;
+      if (!absl::SimpleAtoi(version_str->second, &version) || version < 0) {
+        return InvalidArgument(
+            "A composite call op must have frontend attributes with a "
+            "composite.version whose value is a non-negative integer but got: "
+            "%s",
+            version_str->second);
+      }
+    }
+  }
   // The shape of kCall should match the shape of the computation it calls.
   return CheckShape(call, call->to_apply()->root_instruction()->shape());
 }
@@ -1920,6 +1949,26 @@ absl::Status ShapeVerifier::CheckShape(
         }
         return ShapesSame(instruction->shape(), inferred_shape, equal);
       }
+      case HloOpcode::kCopy: {
+        // Disallow host offloading copies which change FpPrecision.
+        if (opts_.IsLayoutSensitive()) {
+          if (instruction->shape().has_layout() &&
+              inferred_shape.has_layout()) {
+            int64_t instruction_memory_space =
+                instruction->shape().layout().memory_space();
+            int64_t operand_memory_space =
+                inferred_shape.layout().memory_space();
+            if (instruction_memory_space != operand_memory_space &&
+                (instruction_memory_space == Layout::kHostMemorySpace ||
+                 operand_memory_space == Layout::kHostMemorySpace)) {
+              // Is a host->device copy for a device->host copy.
+              return Shape::Equal().IgnoreMemorySpaceInLayout()(
+                  instruction->shape(), inferred_shape);
+            }
+          }
+        }
+        [[fallthrough]];
+      }
 
       // We allow arbitrary layout and f32->bf16 transformations on all other
       // instructions, although this may be made more strict pending discussion
@@ -2075,6 +2124,30 @@ std::string ComputationsToString(
                        [](std::string* s, const HloComputation* computation) {
                          absl::StrAppend(s, computation->name());
                        });
+}
+
+absl::Status VerifyInstructionNameUnchanged(const HloModule& module,
+                                            const HloVerifierOpts& opts) {
+  if (!opts.verify_instruction_name_unchanged) {
+    return absl::OkStatus();
+  }
+  for (auto* comp : module.computations()) {
+    for (auto* inst : comp->instructions()) {
+      if (inst->metadata().scheduling_name().empty()) {
+        continue;
+      }
+      // We do not enforce the invariant when the instruction has been cloned
+      // explicitly via .clone or .remat suffix.
+      if (inst->metadata().scheduling_name() != inst->name() &&
+          (!absl::StrContains(inst->name(), ".remat") &&
+           !absl::StrContains(inst->name(), ".clone"))) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Expected instruction name to remain the same. Was '",
+            inst->metadata().scheduling_name(), "' is '", inst->name(), "'."));
+      }
+    }
+  }
+  return absl::OkStatus();
 }
 
 // Verifies various invariants about the structure of the HLO:
@@ -2883,6 +2956,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       }
     }
 
+    if (instruction->has_to_apply() &&
+        instruction->to_apply()->execution_thread() !=
+            instruction->parent()->execution_thread()) {
+      return Internal(
+          "%s top_apply computation execution thread does not match (%s vs %s)",
+          instruction->name(), instruction->to_apply()->execution_thread(),
+          instruction->parent()->execution_thread());
+    }
+
     return absl::OkStatus();
   }
 
@@ -3001,6 +3083,8 @@ absl::StatusOr<bool> HloVerifier::Run(
     TF_RETURN_IF_ERROR(VerifyHloStructure(module));
     TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
     TF_RETURN_IF_ERROR(VerifyChannels(*module));
+    TF_RETURN_IF_ERROR(VerifyInstructionNameUnchanged(
+        *module, target_metadata_->GetVerifierOpts()));
 
     std::unique_ptr<ShapeVerifier> shape_verifier =
         target_metadata_->GetVerifier();

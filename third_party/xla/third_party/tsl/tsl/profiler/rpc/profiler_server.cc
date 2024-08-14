@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "grpcpp/grpcpp.h"
 #include "absl/strings/str_cat.h"
+#include "grpcpp/grpcpp.h"  // IWYU pragma: keep
 #include "tsl/platform/logging.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"

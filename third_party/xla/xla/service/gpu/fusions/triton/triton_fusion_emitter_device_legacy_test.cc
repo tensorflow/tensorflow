@@ -51,8 +51,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -1183,6 +1183,46 @@ ENTRY e {
 )");
 }
 
+TEST_F(TritonTest, FloatToSignedIntConversion) {
+  const std::string kHloText = R"(
+HloModule t, is_scheduled=true
+
+triton_gemm_r {
+  p_0 = s8[32,32]{1,0} parameter(0)
+  p_1 = f16[32,32]{1,0} parameter(1)
+  cvt_1 = s8[32,32]{1,0} convert(p_1)
+  ROOT r.1 = f32[32,32]{1,0} dot(p_0, cvt_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p_0 = s8[32,32]{1,0} parameter(0)
+  p_1 = f16[32,32]{1,0} parameter(1)
+  ROOT triton_gemm_r = f32[32,32]{1,0} fusion(p_0, p_1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
+                         "split_k":1,"num_stages":1,"num_warps":4,
+                         "num_ctas":1}}}
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm_r", R"(
+CHECK:    tt.func @triton_fn
+CHECK-DAG:      %[[ZERO:.*]] = arith.constant dense<0>
+CHECK-DAG:      %[[FMIN:.*]] = arith.constant dense<-1.280000e+02>
+CHECK-DAG:      %[[IMIN:.*]] = arith.constant dense<-128>
+CHECK-DAG:      %[[FMAX:.*]] = arith.constant dense<1.270000e+02>
+CHECK-DAG:      %[[IMAX:.*]] = arith.constant dense<127>
+CHECK:          %[[FPTOSI:.*]] = arith.fptosi %[[IN:.*]] :
+CHECK:          %[[CMP1:.*]] = arith.cmpf ole, %[[IN]], %[[FMIN]]
+CHECK:          %[[RES1:.*]] = arith.select %[[CMP1]], %[[IMIN]], %[[FPTOSI]]
+CHECK:          %[[CMP2:.*]] = arith.cmpf oge, %[[IN]], %[[FMAX]]
+CHECK:          %[[RES2:.*]] = arith.select %[[CMP2]], %[[IMAX]], %[[RES1]]
+CHECK:          %[[CMP3:.*]] = arith.cmpf uno, %[[IN]], %[[IN]]
+CHECK:          %[[RES3:.*]] = arith.select %[[CMP3]], %[[ZERO]], %[[RES2]]
+})"));
+}
+
 TEST_F(TritonGemmTestWithoutTritonGemmAny, SkipF32F32) {
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "GEMM padding requirements for ROCM not included yet.";
@@ -1507,6 +1547,35 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonGemmTest, MultiplePathsToSameOperandWorks) {
+  const std::string kHloText = R"(
+triton_computation {
+  p0 = bf16[8192,512]{1,0} parameter(0)
+  p1 = bf16[512,512]{1,0} parameter(1)
+  dot = bf16[8192,512]{1,0} dot(bf16[8192,512]{1,0} p0, bf16[512,512]{1,0} p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = bf16[8192,512]{1,0} parameter(2)
+  multiply.1 = bf16[8192,512]{1,0} multiply(bf16[8192,512]{1,0} dot, bf16[8192,512]{1,0} p2)
+  ROOT multiply.2 = bf16[8192,512]{1,0} multiply(bf16[8192,512]{1,0} multiply.1, bf16[8192,512]{1,0} p2)
+}
+
+ENTRY e {
+  p0 = bf16[8192,512]{1,0} parameter(0)
+  p1 = bf16[512,512]{1,0} parameter(1)
+  p2 = bf16[8192,512]{1,0} parameter(2)
+  ROOT fusion = bf16[8192,512]{1,0} fusion(p0,p1,p2), kind=kCustom, calls=triton_computation, 
+  backend_config={"fusion_backend_config":
+      {"kind":"__triton_gemm", "triton_gemm_config":{"block_m":"64","block_n":"256","block_k":"32","split_k":"1","num_stages":"4","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  TF_ASSERT_OK(
+      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_computation", R"(
+        CHECK:      tt.dot
+        CHECK-SAME: tensor<64x32xbf16> * tensor<32x256xbf16> -> tensor<64x256xf32>
+        CHECK:      arith.mulf
+        CHECK:      arith.mulf
+    )"));
 }
 
 class TritonGemmDynamicSliceClampingTest
@@ -4702,8 +4771,7 @@ CHECK-NOT:  inputPrecision = tf32
 }
 
 TEST_F(TritonTest, Fp8LoweringIsSupportedPostHopper) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
   const std::string hlo_text = R"(
@@ -4732,6 +4800,36 @@ ENTRY main {
       CreateTritonIrAndFileCheckForDot(this, hlo_text, "triton_dot", R"(
 CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FNUZ> * tensor<64x32xf8E4M3FNUZ> -> tensor<128x32xf32>
   )"));
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, BF16ToFP8EndToEnd) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
+  }
+
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_dot {
+  parameter_0 = bf16[32,32]{1,0} parameter(0)
+  parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
+  convert = f8e4m3fn[32,32]{1,0} convert(parameter_0)
+  ROOT dot = f32[32,32]{1,0} dot(convert, parameter_1),
+                lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  parameter_0 = bf16[32,32]{1,0} parameter(0)
+  parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
+  ROOT gemm_fusion_dot = f32[32,32]{1,0} fusion(parameter_0, parameter_1),
+       kind=kCustom, calls=triton_dot,
+       backend_config={
+       "fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }

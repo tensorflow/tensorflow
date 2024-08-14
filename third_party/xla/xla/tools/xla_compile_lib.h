@@ -84,6 +84,15 @@ struct XlaCompileOptions {
 // correspond to fields in XlaCompileOptions.
 absl::Status XlaCompileMain(const XlaCompileOptions& compile_options);
 
+namespace internal {
+
+// Loads autotuning data if autotuning is enabled and autotuning results are
+// present. Returns true if data was present and successfully loaded, false
+// otherwise.
+absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
+                                                BackendType backend);
+
+}  // namespace internal
 }  // namespace xla
 
 #endif  // XLA_TOOLS_XLA_COMPILE_LIB_H_

@@ -59,6 +59,10 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/xla_data.pb.h"
 
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "xla/service/cpu/onednn_memory_util.h"
+#endif
+
 namespace xla {
 namespace cpu {
 
@@ -154,19 +158,22 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
   // Used by IrEmitter2
-  void PushComputeFunction(std::shared_ptr<llvm::IRBuilder<>> b,
-                           llvm::Module* llvm_module,
+  void PushComputeFunction(llvm::IRBuilder<>* b, llvm::Module* llvm_module,
                            int64_t num_dynamic_loop_bounds,
                            llvm::Function* function,
                            llvm::Value* dynamic_loop_bounds_arg,
                            llvm::BasicBlock* return_block) {
-    b->SetInsertPoint(llvm::BasicBlock::Create(llvm_module->getContext(),
-                                               "insertion_point", function));
-    compute_function_.emplace(b.get(), llvm_module, num_dynamic_loop_bounds,
-                              function, dynamic_loop_bounds_arg, return_block);
+    function->getEntryBlock().getTerminator()->eraseFromParent();
+    b->SetInsertPoint(&function->getEntryBlock());
+    compute_function_.emplace(b, llvm_module, num_dynamic_loop_bounds, function,
+                              dynamic_loop_bounds_arg, return_block);
   }
 
-  void PopComputeFunction() { compute_function_.pop(); }
+  void PopComputeFunction() {
+    // At this point, the compute function destructor adds a branch to the
+    // return block.
+    compute_function_.pop();
+  }
 
   // Emit an LLVM global variable for every constant buffer allocation.
   absl::Status EmitConstantGlobals();
@@ -294,6 +301,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status Preprocess(HloInstruction* hlo) override;
   absl::Status Postprocess(HloInstruction* hlo) override;
 
+  absl::Status HandlePad(HloInstruction* pad,
+                         const llvm_ir::IrArray& operand_array,
+                         const llvm_ir::IrArray& padding_value_array,
+                         const llvm_ir::IrArray& output_array);
+
   absl::Status HandleSelectAndScatter(HloInstruction* select_and_scatter,
                                       const llvm_ir::IrArray& operand_array,
                                       const llvm_ir::IrArray& source_array,
@@ -312,6 +324,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);
   absl::Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  std::vector<StackAlloca> EmitOneDnnOperandsAlloca(HloInstruction* custom_call,
+                                                    llvm::Value*& args_val,
+                                                    int& arg_indx);
   absl::Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
                                        std::string runtime_symbol_name);
   absl::Status HandleOneDnnSoftmax(HloInstruction* hlo);
@@ -745,8 +760,14 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // result with the dereferenceable bytes required by the shape / buffer size.
   void AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
                                             const Shape& shape);
-  void AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
-                                            int64_t buffer_size);
+  static void AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
+                                                   int64_t buffer_size);
+
+  // Given a load instruction, annotate the load's result with the invariant
+  // load metadata.
+  void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* load) const;
+  static void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* load,
+                                                 const HloModuleConfig& config);
 
   // Calculate the alignment of a buffer allocated for a given shape.
   int MinimumAlignmentForShape(const Shape& shape);

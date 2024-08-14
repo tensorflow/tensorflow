@@ -49,6 +49,8 @@ class HloControlFlowFlattening : public HloModulePass {
     bool flatten_while_loop = true;
     bool remove_comm = true;
     bool remove_host_transfer = false;
+    // Removes partition-id, replica-id, and slice-id.
+    bool remove_id = false;
   };
   explicit HloControlFlowFlattening(const Options& options)
       : while_execution_count_(options.while_execution_count),
@@ -57,7 +59,8 @@ class HloControlFlowFlattening : public HloModulePass {
         remove_infeed_outfeed_(options.remove_infeed_outfeed),
         flatten_while_loop_(options.flatten_while_loop),
         remove_host_transfer_(options.remove_host_transfer),
-        remove_comm_(options.remove_comm) {}
+        remove_comm_(options.remove_comm),
+        remove_id_(options.remove_id) {}
   ~HloControlFlowFlattening() override = default;
   absl::string_view name() const override { return "control-flow-flattening"; }
   using HloPassInterface::Run;
@@ -102,6 +105,7 @@ class HloControlFlowFlattening : public HloModulePass {
       HloInstruction* recv_done,
       absl::flat_hash_set<HloInstruction*>* additional_removed) const;
   bool remove_comm_;
+  bool remove_id_;
 };
 
 // Retrieves the original loop bound. If fail, return a default value. If bounds

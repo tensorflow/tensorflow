@@ -79,7 +79,7 @@ static std::string PatchPattern(const std::string& pattern) {
 static std::vector<std::string> AllDirectoryPrefixes(const std::string& d) {
   std::vector<std::string> dirs;
   const std::string patched = PatchPattern(d);
-  StringPiece dir(patched);
+  absl::string_view dir(patched);
 
   // If the pattern ends with a `/` (or `\\` on Windows), we need to strip it
   // otherwise we would have one additional matching step and the result set
@@ -94,7 +94,7 @@ static std::vector<std::string> AllDirectoryPrefixes(const std::string& d) {
 
   while (!dir.empty()) {
     dirs.emplace_back(dir);
-    StringPiece new_dir(io::Dirname(dir));
+    absl::string_view new_dir(io::Dirname(dir));
     // io::Dirname("/") returns "/" so we need to break the loop.
     // On Windows, io::Dirname("C:\\") would return "C:\\", so we check for
     // identity of the result instead of checking for dir[0] == `/`.

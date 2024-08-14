@@ -170,11 +170,7 @@ absl::Status PreemptionSyncManagerImpl::Initialize(
   call_opts_ = agent_->GetKeyValueAsync(
       kPreemptionNoticeKey,
       [this, agent = agent_](absl::StatusOr<std::string> status_or_death_time) {
-        if (absl::IsCancelled(status_or_death_time.status()) ||
-            // TODO(b/349613356): Investigate if we can always ensure that
-            // the RPC is cancelled before the server goes away, so we can
-            // differentiate between network failure and shutdown behaviour.
-            absl::IsUnavailable(status_or_death_time.status())) {
+        if (absl::IsCancelled(status_or_death_time.status())) {
           // The agent cancels pending GetKeyValue RPCs because of shutdown,
           // so simply log and return.
           LOG(INFO) << "Cancelled call to retrieve preemption notice. This is "

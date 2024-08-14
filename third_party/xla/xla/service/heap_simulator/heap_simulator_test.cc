@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,26 +25,37 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_join.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
-#include "xla/service/hlo_ordering.h"
+#include "xla/service/hlo_alias_analysis.h"
+#include "xla/service/hlo_dataflow_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/tuple_points_to_analysis.h"
-#include "xla/status_macros.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
+
+using ::testing::ContainerEq;
+using ::testing::HasSubstr;
+using ::testing::StrEq;
 
 class MinimumMemoryForSequenceTest : public HloTestBase {};
 
@@ -213,9 +223,6 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape());
   };
-  absl::flat_hash_map<const HloComputation*, int64_t> memory_by_computation;
-  memory_by_computation[cond_computation] = 5;
-  memory_by_computation[body_computation] = 16;
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
       HloAliasAnalysis::Run(module.get()).value();
@@ -224,7 +231,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   // so we don't double count.
   EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, schedule.sequence(entry_computation),
-                    *alias_analysis, size_fn, &memory_by_computation)
+                    *alias_analysis, size_fn)
                     .value());
 }
 
@@ -2017,6 +2024,61 @@ TEST_F(IntervalTreeTest, ThreeLevelsRightLeftChunkDifferent) {
   EXPECT_EQ(tree.GetRoot()->chunk.size, 4);
   EXPECT_TRUE(tree.Remove(22, 40, chunk3));
   ASSERT_EQ(tree.GetRoot(), nullptr);
+}
+
+TEST_F(IntervalTreeTest, BufferIntervalTreeToAsciiArt) {
+  // Buffer 1: memory block [0, 16), time interval [15, 25]
+  // Buffer 2: memory block [16, 48), time interval [15, 19]
+  // Buffer 3: memory block [32, 64), time interval [20, 22]
+  BufferIntervalTree tree;
+  tree.Add(15, 25, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  tree.Add(15, 19, HeapSimulator::Chunk::FromOffsetEnd(16, 48));
+  tree.Add(20, 22, HeapSimulator::Chunk::FromOffsetEnd(32, 64));
+  std::string output = tree.NodesOverlappingInTimeToAsciiArt(
+      /*start=*/18, /*end=*/23, /*group_size=*/3);
+  EXPECT_THAT(output, HasSubstr("Memory map for time: [18,23], "
+                                "memory_block_size: 16, group_size: 3"));
+  EXPECT_THAT(output, HasSubstr("..# ##. 64"));
+  EXPECT_THAT(output, HasSubstr("### ##. 48"));
+  EXPECT_THAT(output, HasSubstr("##. ... 32"));
+  EXPECT_THAT(output, HasSubstr("### ### 16"));
+  EXPECT_THAT(output, HasSubstr("890 123"));
+}
+
+TEST_F(IntervalTreeTest, BufferIntervalTreeToAsciiArtTooLarge) {
+  BufferIntervalTree tree;
+  tree.Add(0, 4, HeapSimulator::Chunk::FromOffsetEnd(0, 128));
+  tree.Add(5, 10, HeapSimulator::Chunk::FromOffsetEnd(1, 129));
+  std::string output = tree.NodesOverlappingInTimeToAsciiArt(
+      /*start=*/0, /*end=*/10, /*group_size=*/3);
+  EXPECT_THAT(
+      output,
+      HasSubstr(
+          "Cannot print memory usage to ASCII art. Printing nodes instead!"));
+  EXPECT_THAT(output, HasSubstr("start: 0 end: 4 chunk: [0,128)"));
+  EXPECT_THAT(output, HasSubstr("start: 5 end: 10 chunk: [1,129)"));
+}
+
+TEST_F(IntervalTreeTest, BufferIntervalTreeToAsciiArtFreeMemory) {
+  BufferIntervalTree tree;
+  tree.Add(5, 10, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  std::string output = tree.NodesOverlappingInTimeToAsciiArt(
+      /*start=*/0, /*end=*/4, /*group_size=*/10);
+  EXPECT_THAT(output, StrEq("No nodes overlapping in time. Memory is free!"));
+}
+
+TEST_F(IntervalTreeTest, BufferIntervalTreeMemoryUsedInInterval) {
+  // Buffer 1: memory block [0, 16), time interval [15, 25]
+  // Buffer 2: memory block [16, 48), time interval [15, 19]
+  // Buffer 3: memory block [32, 64), time interval [20, 22]
+  BufferIntervalTree tree;
+  tree.Add(15, 25, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  tree.Add(15, 19, HeapSimulator::Chunk::FromOffsetEnd(16, 48));
+  tree.Add(20, 22, HeapSimulator::Chunk::FromOffsetEnd(32, 64));
+  std::vector<int64_t> memory_used_by_time = tree.MemoryUsedInInterval(
+      /*start=*/18, /*end=*/23);
+  std::vector<int64_t> expected_memory_used_by_time = {48, 48, 48, 48, 48, 16};
+  EXPECT_THAT(memory_used_by_time, ContainerEq(expected_memory_used_by_time));
 }
 
 class SlicedBufferIntervalTest : public ::testing::Test {

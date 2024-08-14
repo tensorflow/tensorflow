@@ -107,12 +107,12 @@ struct hash<tstring> {
 };
 
 template <>
-struct hash<StringPiece> {
-  size_t operator()(StringPiece sp) const {
+struct hash<absl::string_view> {
+  size_t operator()(absl::string_view sp) const {
     return static_cast<size_t>(Hash64(sp.data(), sp.size()));
   }
 };
-using StringPieceHasher = ::tsl::hash<StringPiece>;
+using StringPieceHasher = ::tsl::hash<absl::string_view>;
 
 template <typename T, typename U>
 struct hash<std::pair<T, U>> {

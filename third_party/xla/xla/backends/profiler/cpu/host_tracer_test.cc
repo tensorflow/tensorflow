@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/types/optional.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"

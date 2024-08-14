@@ -81,6 +81,10 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
 
   pm.addPass(CreateRewriteClusterToIfrtCallPass());
 
+  // After device program is extracted, we can clean up device attributes from
+  // all ops.
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfDeviceCleanupPass());
+
   // Sink VarHandle with ReadVariableOp: subsequent SinkVariableAsNamedArrayPass
   // rely on the co-existence of VarHandle and ReadVariable in the same
   // function.

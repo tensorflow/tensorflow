@@ -167,6 +167,16 @@ absl::StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
+      if (instruction->opcode() == HloOpcode::kPad &&
+          instruction->operand(0)->opcode() == HloOpcode::kBroadcast &&
+          instruction->operand(1)->opcode() == HloOpcode::kConstant) {
+        // Reduce the compile time by skipping the constant folding of pad
+        // instruction with broadcast operand. With 45m shape limit the compile
+        // time could be more than 30 seconds. According to the current
+        // benchmarks it does not affect the performance.
+        continue;
+      }
+
       // Don't constant fold unless output and operand sizes are small.
       if (instruction->shape().IsArray()) {
         int64_t elements_in_operands = 0;
@@ -181,6 +191,9 @@ absl::StatusOr<bool> HloConstantFolding::Run(
         static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
         if (std::max(elements_in_constant, elements_in_operands) >
             kMaximumConstantSizeElements) {
+          VLOG(2) << "Ignore constant folding: result shape size is "
+                  << elements_in_constant << " total size of arguments is "
+                  << elements_in_operands;
           continue;
         }
       }

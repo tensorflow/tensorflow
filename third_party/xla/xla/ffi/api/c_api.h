@@ -529,6 +529,7 @@ struct XLA_FFI_Api {
   size_t struct_size;
   void* priv;
 
+  XLA_FFI_Api_Version api_version;
   XLA_FFI_InternalApi* internal_api;
 
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);

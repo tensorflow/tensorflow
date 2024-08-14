@@ -396,7 +396,7 @@ def expand_dims_v2(input, axis, name=None):
 
   Given a tensor `input`, this operation inserts a dimension of length 1 at the
   dimension index `axis` of `input`'s shape. The dimension index follows Python
-  indexing rules: It's zero-based, a negative index it is counted backward
+  indexing rules: It's zero-based, and a negative index is counted backward
   from the end.
 
   This operation is useful to:

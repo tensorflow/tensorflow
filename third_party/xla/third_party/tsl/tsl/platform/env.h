@@ -640,7 +640,7 @@ absl::Status ReadFileToString(Env* env, const std::string& fname,
 /// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
 absl::Status WriteStringToFile(Env* env, const std::string& fname,
-                               const StringPiece& data);
+                               const absl::string_view& data);
 
 /// Write binary representation of "proto" to the named file.
 absl::Status WriteBinaryProto(Env* env, const std::string& fname,

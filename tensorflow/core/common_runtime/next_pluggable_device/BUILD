@@ -329,7 +329,6 @@ tf_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:errors",
@@ -341,6 +340,7 @@ tf_cc_test(
         "@local_xla//xla/tsl/distributed_runtime:call_options",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

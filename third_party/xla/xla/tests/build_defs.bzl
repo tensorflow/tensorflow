@@ -320,8 +320,23 @@ def xla_test(
     # b/317293391. For this reason, if we would create an empty `test_suite`,
     # instead create a `cc_test` with no srcs that links against `main` to have
     # more predictable behavior that avoids bugs.
+    #
+    # Due to b/317293391, we also mark the test suite `manual`, so that wild card builds
+    # like in the XLA CI won't try to build the test suite target. Instead the wild card
+    # build will build the individual test targets and therefore respect the tags on each
+    # individual test target.
+    # Example: Assume we have an `xla_test(name=my_test)` in `//xla/service/gpu` with backends `cpu`
+    # and `gpu`. This generates two test targets `//xla/service/gpu:my_test_{cpu|gpu}`. The latter
+    # has a tag `gpu`.
+    #
+    # - `bazel test --test_tag_filters=-gpu //xla/service/gpu/...` will only run the cpu test.
+    # - `bazel test //xla/service/gpu/...` will run both tests.
+    # - `bazel test //xla/service/gpu:my_test` will run both tests.
+    # Caveat:
+    # - `bazel test --test_tag_filters=-gpu //xla/service/gpu:my_test` will run both tests and
+    #   not respect the tag filter - but it's way better than the previous behavoir.
     if test_names:
-        native.test_suite(name = name, tags = tags, tests = test_names)
+        native.test_suite(name = name, tags = tags + ["manual"], tests = test_names)
     else:
         native.cc_test(name = name, deps = ["@local_tsl//tsl/platform:test_main"])
 

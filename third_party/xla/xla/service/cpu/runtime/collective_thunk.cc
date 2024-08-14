@@ -205,10 +205,6 @@ const Shape& CollectiveThunk::source_shape(int64_t index) const {
   return op_buffers_.source_shapes[index];
 }
 
-absl::Span<const Shape> CollectiveThunk::source_shapes() const {
-  return op_buffers_.source_shapes;
-}
-
 const BufferAllocation::Slice& CollectiveThunk::destination_buffer(
     int64_t index) const {
   return op_buffers_.destination_buffers[index];
@@ -221,10 +217,6 @@ absl::Span<const BufferAllocation::Slice> CollectiveThunk::destination_buffers()
 
 const Shape& CollectiveThunk::destination_shape(int64_t index) const {
   return op_buffers_.destination_shapes[index];
-}
-
-absl::Span<const Shape> CollectiveThunk::destination_shapes() const {
-  return op_buffers_.destination_shapes;
 }
 
 }  // namespace xla::cpu

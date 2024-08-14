@@ -140,8 +140,7 @@ class ShardingPropagation : public HloModulePass {
 
  private:
   bool InferShardingFromShardGroup(
-      HloInstruction* instruction, const ComputationMap& computation_map,
-      int64_t aggressiveness,
+      HloInstruction* instruction, int64_t aggressiveness,
       const absl::flat_hash_set<HloInstruction*>& shard_group);
   bool InferShardingFromOperands(
       HloInstruction* instruction, const ComputationMap& computation_map,

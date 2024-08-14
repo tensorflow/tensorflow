@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
@@ -46,8 +46,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -391,7 +391,6 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
-  GTEST_SKIP() << "TODO(b/354864068): Test fails in OSS stack on A100-80.";
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()
@@ -428,8 +427,7 @@ ENTRY main {
 
   HloModuleConfig config;
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
-  triton_enabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
-      false);
+  triton_enabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_enabled_debug_options
       .set_xla_gpu_require_complete_aot_autotune_results(true);
   config.set_debug_options(triton_enabled_debug_options);
@@ -448,8 +446,7 @@ ENTRY main {
                           GetOptimizedModule(std::move(module)));
   AutotunerUtil::ClearAutotuneResults();
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
-  triton_disabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
-      false);
+  triton_disabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
   config.set_debug_options(triton_disabled_debug_options);
   TF_ASSERT_OK_AND_ASSIGN(module,
@@ -647,12 +644,12 @@ CHECK:       %[[AFTER_ALL:.*]] = after-all
 CHECK:       %[[RESULT_RECV:.*]] = recv(%[[AFTER_ALL]])
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[CUSTOM_CALL]]}
 CHECK:       %[[RESULT_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[AFTER_ALL]])
 CHECK-SAME:    channel_id=1
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[RESULT_RECV]]}
 CHECK:       ROOT
 // We actually expect both RESULT_RECV and RESULT_SEND to match on this line.
@@ -666,11 +663,11 @@ CHECK:       %[[ENTRY_AFTER_ALL:.*]] = after-all
 CHECK:       %[[ENTRY_RECV:.*]] = recv(%[[ENTRY_AFTER_ALL]])
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}}
 CHECK:       %[[ENTRY_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[ENTRY_AFTER_ALL]])
 CHECK-SAME:    channel_id=1
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[ENTRY_RECV]]}
 CHECK:       %[[WHILE_INIT:.*]] = tuple
 // Check here that the send argument is likewise passed to the while loop, as
@@ -863,10 +860,10 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
     })";
 
   const char* kExpected = R"(
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
-  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
-  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
   )";
 
   DebugOptions debug_options;

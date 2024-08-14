@@ -100,9 +100,10 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
   return calcMultiDimIndex(b, loc, linearIndex, shapeVec);
 }
 
-SmallVector<Value> calcMultiDimIndexForFirstOperand(OpBuilder& b, Location loc,
-                                                    Value linearIndex,
-                                                    Operation* op) {
+static SmallVector<Value> calcMultiDimIndexForFirstOperand(OpBuilder& b,
+                                                           Location loc,
+                                                           Value linearIndex,
+                                                           Operation* op) {
   assert(op->getDialect()->getNamespace() == "lmhlo");
   Value operandMemref = op->getOperand(0);
   return calcMultiDimIndex(b, loc, linearIndex, operandMemref);

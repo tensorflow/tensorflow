@@ -56,7 +56,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   // TODO(jreiffers): Remove this once all callers use a cache.
   std::optional<HloFusionAnalysis> local_analysis;
   if (!config.fusion_analysis_cache) {
-    local_analysis = AnalyzeFusion(*instr, device_info);
+    local_analysis = HloFusionAnalysis::Create(*instr, device_info);
   }
   const auto& fusion_analysis = config.fusion_analysis_cache
                                     ? config.fusion_analysis_cache->Get(*instr)
@@ -144,7 +144,7 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     // TODO(jreiffers): Remove this once all callers use a cache.
     std::optional<HloFusionAnalysis> local_analysis;
     if (!config.fusion_analysis_cache) {
-      local_analysis = AnalyzeFusion(*fused_consumer, device_info);
+      local_analysis = HloFusionAnalysis::Create(*fused_consumer, device_info);
     }
     const auto& analysis_unfused =
         config.fusion_analysis_cache
@@ -193,7 +193,7 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   std::optional<HloFusionAnalysis> local_analysis_fused;
   if (!config.fusion_analysis_cache) {
     local_analysis_fused =
-        AnalyzeProducerConsumerFusion(*producer, *consumer, device_info);
+        HloFusionAnalysis::Create(*producer, *consumer, device_info);
   }
   const auto& fusion_analysis =
       config.fusion_analysis_cache
@@ -296,8 +296,8 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
 
     std::optional<HloFusionAnalysis> local_analysis_fused;
     if (!config.fusion_analysis_cache) {
-      local_analysis_fused = AnalyzeProducerConsumerFusion(
-          *producer, *fused_consumer, device_info);
+      local_analysis_fused =
+          HloFusionAnalysis::Create(*producer, *fused_consumer, device_info);
     }
     const auto& analysis_fused =
         config.fusion_analysis_cache
@@ -345,8 +345,9 @@ GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
     const GpuPerformanceModelOptions& config,
     absl::Span<const HloInstruction* const> fused_consumers,
     bool multi_output) {
-  EstimateRunTimeData producer_runtime = EstimateRunTimeForInstructionCached(
-      producer, device_info, cost_analysis, config);
+  auto cache_result = config.gpu_performance_model_cache->Get(*producer);
+  CHECK(cache_result.has_value());
+  EstimateRunTimeData producer_runtime = *cache_result;
 
   absl::Duration time_unfused =
       kKernelLaunchOverhead * (fused_consumers.size() + 1) +
@@ -357,8 +358,10 @@ GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
   for (auto fused_consumer : fused_consumers) {
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
 
-    EstimateRunTimeData consumer_runtime = EstimateRunTimeForInstructionCached(
-        fused_consumer, device_info, cost_analysis, config);
+    auto cache_result =
+        config.gpu_performance_model_cache->Get(*fused_consumer);
+    CHECK(cache_result.has_value());
+    EstimateRunTimeData consumer_runtime = *cache_result;
 
     time_unfused += consumer_runtime.exec_time;
 

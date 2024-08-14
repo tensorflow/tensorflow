@@ -113,7 +113,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
@@ -158,6 +157,11 @@ using CustomOptionsOffset = VectorBufferOffset<uint8_t>;
 namespace tfl = mlir::TFL;
 
 ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";
+
+// LINT.IfChange(optional_tensor)
+// Taken from third_party/tensorflow/lite/core/c/common.h
+constexpr int kTfLiteMigrationOptionalTensor = -1;
+// LINT.ThenChange(//tensorflow/lite/core/c/common.h:optional_tensor)
 
 // Use initial buffer size in flatbuffer builder to be same as the initial size
 // used by the TOCO export. (It does not explain rationale for this choice.)
@@ -3024,7 +3028,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     operands.reserve(real_inst->getNumOperands());
     for (auto operand : real_inst->getOperands()) {
       if (mlir::isa<NoneType>(operand.getType()))
-        operands.push_back(kTfLiteOptionalTensor);
+        operands.push_back(kTfLiteMigrationOptionalTensor);
       else if (auto stats_op =
                    llvm::dyn_cast_or_null<mlir::quantfork::StatisticsOp>(
                        operand.getDefiningOp()))

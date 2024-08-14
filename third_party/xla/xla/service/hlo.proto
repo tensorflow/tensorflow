@@ -112,7 +112,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 88
+// Next ID: 90
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -382,6 +382,12 @@ message HloInstructionProto {
 
   // Represents the list of devices that participate in a collective operation.
   xla.CollectiveDeviceListProto collective_device_list = 87;
+
+  // For HLO value tracking.
+  xla.OriginalValueProto original_value = 88;
+
+  // Specifies if a call instruction is a composite.
+  bool is_composite = 89;
 }
 
 // Serialization of HloComputation.
@@ -576,6 +582,7 @@ message HloModuleProto {
     FUSION = 2;
     LAYOUT = 3;
     DOT = 4;
+    FLAGNET = 5;
   }
 
   // Information about the optimization profile that this module contains.

@@ -18,12 +18,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -37,7 +35,6 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -123,6 +120,120 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   return true;
 }
 
+// Is rankx2xi32 padding array "balanced"
+// i.e. 0 <= [d][1] - [d][0] <= 1 for all spatial dims d (and 0 elsewhere).
+template <typename T>
+bool IsBalancedPaddingArray(int spatials_start, int spatials_end,
+                            llvm::ArrayRef<T> data) {
+  for (int i = 0; i < data.size() / 2; ++i) {
+    const T pad_low = data[2 * i];
+    const T pad_hi = data[2 * i + 1];
+    if ((i < spatials_start || i >= spatials_end) &&
+        (pad_low != 0 || pad_hi != 0)) {
+      return false;
+    }
+    const T pad_diff = pad_hi - pad_low;
+    if (pad_diff > 1 || pad_diff < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsBalancedPaddingArray(int spatials_start, int spatials_end,
+                            DenseElementsAttr data) {
+  if (data.isSplat()) {
+    return false;
+  }
+  if (data.getElementType().isInteger(64)) {
+    return IsBalancedPaddingArray<int64_t>(
+        spatials_start, spatials_end,
+        llvm::SmallVector<int64_t>(data.value_begin<int64_t>(),
+                                   data.value_end<int64_t>()));
+  }
+  if (data.getElementType().isInteger(32)) {
+    return IsBalancedPaddingArray<int32_t>(
+        spatials_start, spatials_end,
+        llvm::SmallVector<int32_t>(data.value_begin<int32_t>(),
+                                   data.value_end<int32_t>()));
+  }
+  return false;
+}
+
+bool HasSameStridedDim(int in, int dilate, int stride, int k, int p) {
+  const int effective_filter = (k - 1) * dilate + 1;
+  const int out_size = (in + stride - 1) / stride;
+  const int padding_needed = (out_size - 1) * stride + effective_filter - in;
+  return padding_needed == p;
+}
+
+// Is the pre pad shape amenable to given conv with SAME padding.
+bool HasSameStridedShape(TFL::Conv2DOp op, ArrayRef<int64_t> pre_pad_shape) {
+  auto conv_in_shape =
+      llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();
+  auto kernel_shape =
+      llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
+  if (conv_in_shape.size() != kernel_shape.size()) {
+    return false;
+  }
+  if (conv_in_shape.size() < 3) {
+    return false;
+  }
+
+  const int64_t h_pad = conv_in_shape[1] - pre_pad_shape[1];
+  const bool h_strided =
+      HasSameStridedDim(pre_pad_shape[1], op.getDilationHFactor(),
+                        op.getStrideH(), kernel_shape[1], h_pad);
+
+  const int64_t w_pad = conv_in_shape[2] - pre_pad_shape[2];
+  const bool w_strided =
+      HasSameStridedDim(pre_pad_shape[2], op.getDilationWFactor(),
+                        op.getStrideW(), kernel_shape[2], w_pad);
+  return h_strided && w_strided;
+}
+
+bool HasSameStridedShape(TFL::DepthwiseConv2DOp op,
+                         ArrayRef<int64_t> pre_pad_shape) {
+  auto conv_in_shape =
+      llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();
+  auto kernel_shape =
+      llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
+
+  const int64_t h_pad = conv_in_shape[1] - pre_pad_shape[1];
+  const bool h_strided =
+      HasSameStridedDim(pre_pad_shape[1], op.getDilationHFactor(),
+                        op.getStrideH(), kernel_shape[1], h_pad);
+
+  const int64_t w_pad = conv_in_shape[2] - pre_pad_shape[2];
+  const bool w_strided =
+      HasSameStridedDim(pre_pad_shape[2], op.getDilationWFactor(),
+                        op.getStrideW(), kernel_shape[2], w_pad);
+  return h_strided && w_strided;
+}
+
+bool HasSameStridedShape(TFL::Conv3DOp op, ArrayRef<int64_t> pre_pad_shape) {
+  auto conv_in_shape =
+      llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();
+  auto kernel_shape =
+      llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
+
+  const int64_t d_pad = conv_in_shape[1] - pre_pad_shape[1];
+  const bool d_strided =
+      HasSameStridedDim(pre_pad_shape[1], op.getDilationDFactor(),
+                        op.getStrideD(), kernel_shape[0], d_pad);
+
+  const int64_t h_pad = conv_in_shape[2] - pre_pad_shape[2];
+  const bool h_strided =
+      HasSameStridedDim(pre_pad_shape[2], op.getDilationHFactor(),
+                        op.getStrideH(), kernel_shape[1], h_pad);
+
+  const int64_t w_pad = conv_in_shape[3] - pre_pad_shape[3];
+  const bool w_strided =
+      HasSameStridedDim(pre_pad_shape[3], op.getDilationWFactor(),
+                        op.getStrideW(), kernel_shape[2], w_pad);
+  return h_strided && w_strided && d_strided;
+}
+
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
@@ -138,11 +249,16 @@ class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
     this->disable_fuse_mul_and_fc_ = disable_fuse_mul_and_fc;
   }
 
+  explicit OptimizePass(const OptimizePassOptions &options) {
+    this->enable_canonicalization_ = options.enable_canonicalization_;
+    this->disable_fuse_mul_and_fc_ = options.disable_fuse_mul_and_fc_;
+  }
+
   void runOnOperation() override;
 };
 
-// Return true if the product of dimension values of a subsection of the tensor
-// is equal to the non-contracting dimension after a reshape
+// Return true if the product of dimension values of a subsection of the
+// tensor is equal to the non-contracting dimension after a reshape
 bool BroadcastDimsProductEqual(Value input, Value output,
                                size_t agg_start_idx) {
   ArrayRef<int64_t> input_shape =
@@ -231,17 +347,16 @@ bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
   }
 
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
-  // If elements depth equals 1 (i.e., scalar or tensor with 1 element), then we
-  // can let binary op to broadcast elements.
+  // If elements depth equals 1 (i.e., scalar or tensor with 1 element), then
+  // we can let binary op to broadcast elements.
   if (elements_depth == 1) {
     return true;
   }
 
-  // In TFLite Conv2D uses OHWI format for filter, and 1HWO for Depthwise Conv.
-  // For conv:
-  // Check if last dimension in filter equals the first dimension
-  // For depthwise conv:
-  // Check if the first in filter dimension equals the first dimension.
+  // In TFLite Conv2D uses OHWI format for filter, and 1HWO for Depthwise
+  // Conv. For conv: Check if last dimension in filter equals the first
+  // dimension For depthwise conv: Check if the first in filter dimension
+  // equals the first dimension.
   if (filter_shape.empty() ||
       (is_depthwise ? filter_shape.back() != elements_depth
                     : filter_shape[0] != elements_depth))
@@ -275,15 +390,15 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
 }
 
 // Returns true if we can eliminate the GatherNdOp or ScatterNdOp. When the
-// value of `indices` are from 0 to n-1, the output tensor are identical to the
-// `params`.
+// value of `indices` are from 0 to n-1, the output tensor are identical to
+// the `params`.
 bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
                                               DenseIntElementsAttr indices,
                                               Type output_type) {
   auto params_type = mlir::dyn_cast<RankedTensorType>(params.getType());
   auto indices_type = mlir::dyn_cast<RankedTensorType>(indices.getType());
-  // Checks the shape of `params` is [n, ...], shape of `indices` is [n, 1]. 2D
-  // `indices` means it gets the first row of `params`. As long as indices
+  // Checks the shape of `params` is [n, ...], shape of `indices` is [n, 1].
+  // 2D `indices` means it gets the first row of `params`. As long as indices
   // iterate the first row of `params`, the output is identical to input.
   if (!params_type || !indices_type || indices_type.getRank() != 2 ||
       indices_type.getDimSize(0) != params_type.getDimSize(0) ||
@@ -304,9 +419,9 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
   return true;
 }
 
-// Returns true if we can eliminate the SliceOp. When the values of `begin` are
-// all 0s and `size[i]` is equal to either -1 or `input.shape[i]`
-// for each dim i, the output tensor is identical to `input`.
+// Returns true if we can eliminate the SliceOp. When the values of `begin`
+// are all 0s and `size[i]` is equal to either -1 or `input.shape[i]` for each
+// dim i, the output tensor is identical to `input`.
 bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
   // Checks if `begin` and `size` are i32 or i64.
   auto begin_attr = mlir::dyn_cast<DenseIntElementsAttr>(begin);
@@ -324,8 +439,8 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
     return false;
   }
 
-  // Checks if `input` is ranked and its rank is equal to number of elements in
-  // `begin` and `size`.
+  // Checks if `input` is ranked and its rank is equal to number of elements
+  // in `begin` and `size`.
   auto input_ty = mlir::cast<ShapedType>(input.getType());
   if (!input_ty.hasRank()) {
     return false;
@@ -380,8 +495,8 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
   return quant::RescaleQuantizedType(input, factor);
 }
 
-// Returns `true` if reducing `axes` in `input` with `keep_dims=true` results in
-// the specified `shape` and `false` otherwise.
+// Returns `true` if reducing `axes` in `input` with `keep_dims=true` results
+// in the specified `shape` and `false` otherwise.
 static bool ShapeMatchesReduceWithKeepAxes(Value input,
                                            const mlir::Attribute &axes,
                                            const mlir::Attribute &shape) {
@@ -481,8 +596,8 @@ bool IsF32Value(Value value) {
   return mlir::cast<ShapedType>(value.getType()).getElementType().isF32();
 }
 
-// Returns the number of elements in attr if it is a static shape, 1 otherwise,
-// as an unranked int32 Attribute.
+// Returns the number of elements in attr if it is a static shape, 1
+// otherwise, as an unranked int32 Attribute.
 TypedAttr GetNumElementsOrOne(Type type) {
   auto shaped_type = mlir::cast<ShapedType>(type);
   int32_t num_elements =
@@ -497,8 +612,8 @@ TypedAttr GetNumElementsOrOne(Type type) {
 
 // Reshapes value to a given shape.
 Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value) {
-  // This function is always guarded with HasTrivialShapeExceptSecondLastDim(),
-  // so we could cast safely here.
+  // This function is always guarded with
+  // HasTrivialShapeExceptSecondLastDim(), so we could cast safely here.
   auto type = mlir::cast<ShapedType>(value.getType());
   SmallVector<int> new_shape;
   if (type.hasStaticShape()) {
@@ -548,10 +663,11 @@ bool HasOneUseOrUsedByOnlyBinaryOps(Value out_value) {
   return true;
 }
 
-// Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or an
-// incrementing sequence from 0 to N-1.
+// Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or
+// an incrementing sequence from 0 to N-1.
 //
-// If such a value is used in an Equal operator, it can be replaced with OneHot.
+// If such a value is used in an Equal operator, it can be replaced with
+// OneHot.
 bool IsOneHotIndexAttribute(Attribute attr) {
   const auto dense_attr = mlir::dyn_cast_or_null<DenseIntElementsAttr>(attr);
   if (!dense_attr) {
@@ -638,8 +754,8 @@ bool IsF32Splat(Attribute input_splat) {
 }
 
 // Converts an Attribute with a single value of float or integral type to an
-// Attribute holding a single value of float type. If attr has no elements, the
-// result is 0.0f.
+// Attribute holding a single value of float type. If attr has no elements,
+// the result is 0.0f.
 TypedAttr ConvertSingleElementAttrToFloatAttr(Attribute attr) {
   const auto dense_fp_attr = mlir::dyn_cast_or_null<DenseFPElementsAttr>(attr);
   if (dense_fp_attr) {
@@ -2583,6 +2699,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
     bool enable_canonicalization, bool disable_fuse_mul_and_fc) {
   return std::make_unique<OptimizePass>(enable_canonicalization,
                                         disable_fuse_mul_and_fc);
+}
+
+// Creates an instance of the TensorFlow Lite dialect Optimize pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
+    const OptimizePassOptions &options) {
+  return std::make_unique<OptimizePass>(options);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {

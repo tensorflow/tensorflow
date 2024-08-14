@@ -1005,6 +1005,7 @@ class MoveOperandIntoBranch {
       CHECK_NE(new_tuple, nullptr);
       VLOG(5) << "Cloned new tuple:" << new_tuple->parent()->ToString() << "\n";
       std::vector<std::vector<HloInstruction*>> gte_users;
+      gte_users.reserve(branch_param->shape().tuple_shapes_size());
       for (int64_t j = 0; j < branch_param->shape().tuple_shapes_size(); ++j) {
         gte_users.push_back(std::vector<HloInstruction*>());
       }

@@ -128,6 +128,9 @@ class LiteralUtil {
   template <typename NativeT>
   static Literal CreateFullWithDescendingLayout(
       absl::Span<const int64_t> dimensions, NativeT value);
+  template <typename NativeT>
+  static Literal CreateFull(absl::Span<const int64_t> dimensions,
+                            NativeT value);
 
   // Creates a new literal from an Array type. The variants not ending with
   // WithLayout use the default XLA layout for the literal's linear
@@ -175,9 +178,19 @@ class LiteralUtil {
       std::initializer_list<std::initializer_list<NativeT>> values,
       int64_t projection_p, int64_t projection_z);
 
-  // Returns an identity matrix (rank 2) with the given row and column count.
+  // Returns a scalar matrix (rank 2) of the given size and scalar value.
+  template <typename NativeT>
+  static Literal MakeScalarMatrixR2(int64_t size, NativeT scalar);
+
+  // Returns an identity matrix (rank 2) of the given size.
   template <typename NativeT>
   static Literal MakeIdentityR2(int64_t size);
+
+  // Creates fingerprint input where each entry encodes its row and column
+  // scaled by the given scale.
+  template <typename NativeT>
+  static Literal CreateFingerprintMatixR2(int64_t m, int64_t n,
+                                          NativeT scale = 1);
 
   // Returns a tuple literal composed of given literals. Data is copied from the
   // given elements into the returned literal.
@@ -516,12 +529,32 @@ template <typename NativeT>
   return CreateFromArrayWithLayout(values, layout);
 }
 
-// Returns an identity matrix (rank 2) with the given row and column count.
+// Creates a squared scalar matrix of given size.
+template <typename NativeT>
+/* static */ Literal LiteralUtil::MakeScalarMatrixR2(int64_t size,
+                                                     NativeT scalar) {
+  Array2D<NativeT> array(size, size, NativeT(0));
+  for (int64_t i = 0; i < size; ++i) {
+    array(i, i) = scalar;
+  }
+  return CreateR2FromArray2D(array);
+}
+
 template <typename NativeT>
 /* static */ Literal LiteralUtil::MakeIdentityR2(int64_t size) {
-  Array2D<NativeT> array(size, size, 0);
-  for (int64_t i = 0; i < size; ++i) {
-    array(i, i) = 1;
+  return MakeScalarMatrixR2<NativeT>(size, NativeT(1));
+}
+
+template <typename NativeT>
+/* static */ Literal LiteralUtil::CreateFingerprintMatixR2(int64_t m, int64_t n,
+                                                           NativeT scale) {
+  NativeT row_factor = log10(m) + 1;
+  NativeT col_factor = log10(n) + 1;
+  Array2D<NativeT> array(m, n, NativeT(0));
+  for (int64_t i = 0; i < m; ++i) {
+    for (int64_t j = 0; j < n; ++j) {
+      array(i, i) = scale * (row_factor * i + col_factor * j);
+    }
   }
   return CreateR2FromArray2D(array);
 }
@@ -530,6 +563,15 @@ template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateFullWithDescendingLayout(
     absl::Span<const int64_t> dimensions, NativeT value) {
   Literal literal(ShapeUtil::MakeShapeWithDescendingLayout(
+      primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
+  literal.PopulateWithValue(value);
+  return literal;
+}
+
+template <typename NativeT>
+/* static */ Literal LiteralUtil::CreateFull(
+    absl::Span<const int64_t> dimensions, NativeT value) {
+  Literal literal(ShapeUtil::MakeShape(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
   literal.PopulateWithValue(value);
   return literal;

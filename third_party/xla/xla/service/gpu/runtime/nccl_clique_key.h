@@ -82,7 +82,8 @@ class NcclCliqueKey {
   explicit NcclCliqueKey(
       std::vector<GlobalDeviceId> devices,
       NcclStreamId stream_id = NcclStreamId(0),
-      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
+      std::vector<std::vector<GlobalDeviceId>> participant_groups = {});
 
   absl::Span<const GlobalDeviceId> devices() const;
 
@@ -113,11 +114,23 @@ class NcclCliqueKey {
   std::vector<GlobalDeviceId> devices_;
   NcclStreamId stream_id_;
   AsyncStreamKind stream_kind_;
+  // The full list of groups across all devices which this clique is a part of.
+  // When enable_nccl_comm_splitting is enabled, this is used to distinguish
+  // which cliques can be reused from the cache or must be split in order to
+  // prevent a deadlock situation.
+  // For example, imagine we have a communicator with devices = [0,1] and groups
+  // = [0, 1] Later on, we may want to create communicators [0, 1] and [2, 3] by
+  // splitting [0, 1, 2, 3] If ranks 0 and 1 reuse the exisiting [0, 1] clique
+  // but ranks 2 and 3 initiate a split, there will be a deadlock since ranks 2,
+  // 3 and will be waiting forever for 0, 1 to join the split. Having the
+  // particating groups as part of the cache key will prevent such situations
+  std::vector<std::vector<GlobalDeviceId>> participant_groups_;
 };
 
 template <typename H>
 H AbslHashValue(H h, const NcclCliqueKey& k) {
-  return H::combine(std::move(h), k.devices_, k.stream_id_);
+  return H::combine(std::move(h), k.devices_, k.stream_id_,
+                    k.participant_groups_);
 }
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);

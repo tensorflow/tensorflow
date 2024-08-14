@@ -21,6 +21,8 @@ limitations under the License.
 namespace xla::ifrt {
 
 inline constexpr llvm::StringLiteral kIfrtDevicesAttrName = "ifrt.devices";
+inline constexpr llvm::StringLiteral kIfrtNumDevicesAttrName =
+    "ifrt.num_devices";
 inline constexpr llvm::StringLiteral kIfrtShardingAttrName = "ifrt.sharding";
 inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
     "ifrt.entry_function";

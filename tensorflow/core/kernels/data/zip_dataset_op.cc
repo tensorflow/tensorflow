@@ -18,16 +18,26 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -262,6 +272,9 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       // Note: When restoring, `SaveInternal` would not be called
       // if there is a global_shuffle_dataset_op.cc above this op.
+      int64_t inputs_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kInputImplsEmpty, &inputs_empty));
       if (ctx->restored_element_count()) {
         if (input_impls_.size() != dataset()->inputs_.size()) {
           return absl::FailedPreconditionError(
@@ -273,14 +286,19 @@ class ZipDatasetOp::Dataset : public DatasetBase {
               "ctx->index_mapper() should be provided along with "
               "ctx->restored_element_count() when restoring.");
         }
-        for (const auto& input_impl : input_impls_) {
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
+        if (static_cast<bool>(inputs_empty)) {
+          input_impls_.clear();
+        } else {
+          for (int i = 0; i < input_impls_.size(); ++i) {
+            input_contexts_[i].set_restored_element_count(
+                ctx->restored_element_count().value());
+            TF_RETURN_IF_ERROR(
+                RestoreInput(&input_contexts_[i], reader, input_impls_[i]));
+            ctx->MergeCheckpoint(input_contexts_[i].checkpoint());
+          }
         }
         return absl::OkStatus();
       }
-      int64_t inputs_empty;
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(prefix(), kInputImplsEmpty, &inputs_empty));
       if (static_cast<bool>(inputs_empty)) {
         input_impls_.clear();
       } else {

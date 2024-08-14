@@ -59,7 +59,7 @@ inline int64_t LevenshteinDistance(const gtl::ArraySlice<T>& s,
   if (s == t) return 0;
 
   // Create work vector
-  gtl::InlinedVector<int64_t, 32> scratch_holder(t_size);
+  absl::InlinedVector<int64_t, 32UL> scratch_holder(t_size);
 
   int64_t* scratch = scratch_holder.data();
 

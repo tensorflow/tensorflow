@@ -250,9 +250,9 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
     DumpGraphDefToFile("before_pruning", graph_def);
   }
 
-  TF_ASSIGN_OR_RETURN(
-      result.graph,
-      CreatePrunedGraph(graph_def, build_graph_options.callable_options));
+  TF_ASSIGN_OR_RETURN(result.graph,
+                      CreatePrunedGraph(std::move(graph_def),
+                                        build_graph_options.callable_options));
   DCHECK(result.graph);
 
   if (VLOG_IS_ON(1)) {

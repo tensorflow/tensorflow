@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -51,7 +50,6 @@ using MemorySchedulerAlgorithm =
     std::function<absl::StatusOr<HloInstructionSequence>(
         HloComputation*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
         const LogicalBuffer::SizeFunction&,
-        const absl::flat_hash_map<const HloComputation*, int64_t>&,
         const MemorySchedulerPostprocessor&,
         /*peak_memory*/ int64_t*)>;
 
@@ -73,8 +71,6 @@ absl::StatusOr<HloInstructionSequence> ListMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
 // DFS-order scheduler
@@ -83,8 +79,6 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
 // BFS-order scheduler
@@ -102,8 +96,6 @@ absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
 // Naive Post Order scheduler
@@ -112,8 +104,6 @@ absl::StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
 // The default scheduling algorithm. Runs the list scheduler, the DFS scheduler,
@@ -125,8 +115,6 @@ absl::StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
 absl::StatusOr<HloSchedule> DefaultModuleScheduler(
@@ -145,13 +133,6 @@ absl::StatusOr<HloSchedule> ScheduleModule(
     const ModuleSchedulerAlgorithm& algorithm = {},
     const absl::flat_hash_set<absl::string_view>& execution_threads = {},
     int64_t* peak_memory = nullptr);
-
-// Computes the schedule for a single computation.
-// Currently only used by the GPU backend.
-absl::StatusOr<HloInstructionSequence> ScheduleComputation(
-    HloComputation* computation,
-    const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor);
 
 // A pass which schedules the HLO instructions in a module. The HloModule's
 // schedule field is set to the resulting HloSchedule using

@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
@@ -366,17 +367,10 @@ void ShapeAttr::print(AsmPrinter& os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim != ShapedType::kDynamic) {
-        if (dim == 0) {
-          // In order to avoid the parseInteger below from confusing a dimension
-          // list with '0x' as hex integer, we use 00 for a 0 sized dimension.
-          os << "00";
-        } else {
-          os << dim;
-        }
-      } else {
+      if (dim != ShapedType::kDynamic)
+        os << dim;
+      else
         os << "?";
-      }
     };
     llvm::interleave(getShape(), os, print_dim, "x");
   } else {
@@ -405,7 +399,7 @@ Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
       llvm::SMLoc loc = parser.getCurrentLocation();
       if (succeeded(parser.parseOptionalQuestion())) {
         shape.back() = ShapedType::kDynamic;
-      } else if (failed(parser.parseInteger(shape.back()))) {
+      } else if (failed(parser.parseDecimalInteger(shape.back()))) {
         parser.emitError(loc)
             << "expected an integer or `?` when parsing a tf.shape attribute";
         return failure();

@@ -37,6 +37,11 @@ namespace gpu {
 
 namespace nvptx {
 
+// Gets the GPU name as it's known to LLVM for a given compute
+// capability.  If we see an unrecognized compute capability, we
+// return the highest one that is known and below the selected device.
+std::string GetSmName(se::CudaComputeCapability compute_capability);
+
 std::string CantFindCudaMessage(absl::string_view msg,
                                 absl::string_view xla_gpu_cuda_data_dir);
 
@@ -72,6 +77,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     const DebugOptions& debug_options,
     const std::string& module_config_cache_key);
 }  // namespace amdgpu
+
+namespace spir {
+// Compiles the argument module and returns it.
+absl::StatusOr<std::vector<uint8_t>> CompileToSpir(
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options);
+}  // namespace spir
 
 }  // namespace gpu
 }  // namespace xla

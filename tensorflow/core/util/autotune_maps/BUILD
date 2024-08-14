@@ -15,6 +15,7 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
+    # copybara:uncomment "tf_pyclif_proto_library",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -51,8 +52,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
 )
 
@@ -117,7 +118,7 @@ tf_cuda_library(
         "conv_parameters.h",
     ],
     cuda_deps = [
-        "@local_tsl//tsl/lib/strings:proto_serialization",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
     deps = [
         ":conv_parameters_proto_cc",
@@ -153,6 +154,15 @@ tf_proto_library(
 #     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 #     deps = [":autotune_map_proto"],
 # )
+#
+# tf_pyclif_proto_library(
+#     name = "autotune_map_pyclif",
+#     proto_lib = ":autotune_map_proto",
+#     visibility = [
+#         "//waymo/ml/deploy/benchmark:__subpackages__",
+#         "//waymo/ml/deploy/system/autotuning:__subpackages__",
+#     ],
+# )
 # copybara:uncomment_end
 
 tf_cuda_library(
@@ -172,12 +182,12 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
 )
 

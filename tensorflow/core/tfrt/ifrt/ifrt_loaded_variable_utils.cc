@@ -53,14 +53,10 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> LoadIfrtVariable(
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
     const tensorflow::Tensor& variable,
-    const VariableDeviceShardingConfigProto& sharding_config) {
-  std::vector<int> device_ids{sharding_config.device_ids().begin(),
-                              sharding_config.device_ids().end()};
-  TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
-                      xla::HloSharding::FromProto(sharding_config.sharding()));
+    const VariableDeviceShardingConfig& sharding_config) {
   return tensorflow::ifrt_serving::MakeArrayFromTensor(
-      *ifrt_client, variable, sharding_config.device_ids(), hlo_sharding,
-      thread_pool);
+      *ifrt_client, variable, sharding_config.device_ids,
+      sharding_config.hlo_sharding, thread_pool);
 }
 
 }  // namespace
@@ -97,12 +93,11 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-    const VariableDeviceShardingConfigProto& sharding_config) {
-  absl::flat_hash_set<int> device_ids{sharding_config.device_ids().begin(),
-                                      sharding_config.device_ids().end()};
+    const VariableDeviceShardingConfig& sharding_config) {
   IfrtLoadedVariableRegistry::Key loaded_variable_key{
-      .device_ids = std::move(device_ids),
+      .device_ids = sharding_config.device_ids,
       .input_name = std::string(runtime_name),
+      .hlo_sharding = sharding_config.hlo_sharding,
   };
   if (ifrt_loaded_variable_registry.GetLoadedVariable(loaded_variable_key)
           .ok()) {

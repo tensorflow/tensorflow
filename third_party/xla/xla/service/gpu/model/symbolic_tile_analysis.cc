@@ -191,6 +191,11 @@ class OrderedUniquePtrValueHashSet {
     return {*it, inserted};
   }
 
+  void Reserve(int64_t n) {
+    hash_set_.reserve(n);
+    data_.reserve(n);
+  }
+
   // Moves data out of the set.
   std::vector<std::unique_ptr<T>> ExtractData() { return std::move(data_); }
 
@@ -295,13 +300,16 @@ void SortTiledHloInstructionsInPostOrder(
 }  // namespace
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
-    const HloComputation& computation, MLIRContext* ctx) {
+    const HloComputation& computation, MLIRContext* ctx,
+    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
   auto fusion = HloFusionAdaptor::ForComputation(&computation);
-  return SymbolicTileAnalysis::AnalyzeFusion(*fusion, ctx);
+  return SymbolicTileAnalysis::AnalyzeFusion(
+      *fusion, ctx, emitter_specific_constraints_builder);
 }
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
-    const HloFusionAdaptor& fusion, MLIRContext* ctx) {
+    const HloFusionAdaptor& fusion, MLIRContext* ctx,
+    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
   OrderedUniquePtrValueHashSet<SymbolicTiledHloInstruction>
       tiled_hlo_instructions_set;
 
@@ -378,12 +386,20 @@ void SortTiledHloInstructionsInPostOrder(
     return std::get<FusionDecision>(constraints_or);
   }
 
+  // Create emitter-specific constraints if a builder was provided.
+  std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints;
+  if (emitter_specific_constraints_builder != nullptr) {
+    emitter_specific_constraints =
+        emitter_specific_constraints_builder(tiled_hlo_instructions);
+  }
+
   // Order instructions in def-before-use order.
   SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
 
   return SymbolicTileAnalysis(
       std::move(tiled_hlo_instructions),
-      std::get<ConstraintExpression>(std::move(constraints_or)), ctx);
+      std::get<ConstraintExpression>(std::move(constraints_or)),
+      std::move(emitter_specific_constraints), ctx);
 }
 
 absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
@@ -394,17 +410,27 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
         "This should never happen.");
   }
 
-  // Handle the unconstrained case.
-  if (constraints_.IsAlwaysSatisfied()) {
-    return true;
-  }
-
   if (tile_parameters.size() != num_tile_parameters()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Failed to check if tile parameters satisfy constraints. Number of "
         "provided parameters doesn't match number of expected parameters "
         "(%d != %d)",
         tile_parameters.size(), num_tile_parameters()));
+  }
+
+  if (emitter_specific_constraints_ != nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        bool constraints_are_satisfied,
+        emitter_specific_constraints_->ParametersSatisfyConstraints(
+            tile_parameters));
+    if (!constraints_are_satisfied) {
+      return false;
+    }
+  }
+
+  // Handle the unconstrained case.
+  if (constraints_.IsAlwaysSatisfied()) {
+    return true;
   }
 
   // TODO(bchetioui): replace with convenience methods in
@@ -492,6 +518,11 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
   absl::flat_hash_map<const SymbolicTiledHloInstruction*, TiledHloInstruction*>
       symbolic_to_tiled_hlo_map;
+  // The actual number of TiledHloInstructions can be smaller than the number of
+  // SymbolicTiledHloInstructions, because some instruction will be
+  // deduplicated, but we reserve to the upper bound to avoid reallocations and
+  // additional hash calculations.
+  tiled_hlo_instructions_set.Reserve(symbolic_tiled_hlo_instructions_.size());
 
   std::function<absl::StatusOr<TiledHloInstruction*>(
       const SymbolicTiledHloInstruction*)>

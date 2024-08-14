@@ -20,14 +20,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -42,13 +42,16 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   auto stream = executor->CreateStream().value();
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
-  auto custom_kernel = GetCutlassGemmKernel(
-      "cutlass_gemm", PrimitiveType::F32, 4, 4, 4,
-      /*indices=*/{0, 1, 2}, /*slices=*/{}, executor->GetDeviceDescription());
-
   TF_ASSERT_OK_AND_ASSIGN(
-      auto gemm,
-      se::KernelFactory::Create(executor, custom_kernel->kernel_spec()));
+      auto custom_kernels,
+      GetCutlassGemmKernels("cutlass_gemm", PrimitiveType::F32,
+                            PrimitiveType::F32, PrimitiveType::F32, 4, 4, 4,
+                            /*indices=*/{0, 1, 2}, /*slices=*/{},
+                            executor->GetDeviceDescription()));
+  auto custom_kernel = custom_kernels[0];
+
+  TF_ASSERT_OK_AND_ASSIGN(auto gemm,
+                          executor->LoadKernel(custom_kernel.kernel_spec()));
 
   int64_t length = 4 * 4;
   int64_t byte_length = sizeof(float) * length;
@@ -69,9 +72,9 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   // Launch gemm kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
-      custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(stream->Launch(custom_kernel->thread_dims(),
-                              custom_kernel->block_dims(), *gemm, arr));
+      custom_kernel.shared_memory_bytes());
+  TF_ASSERT_OK(stream->Launch(custom_kernel.thread_dims(),
+                              custom_kernel.block_dims(), *gemm, arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);
@@ -97,9 +100,8 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
       "cutlass_gemm", kernel_lib_path, PrimitiveType::F32, 4, 4, 4,
       /*indices=*/{0, 1, 2}, /*slices=*/{}, executor->GetDeviceDescription());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto gemm,
-      se::KernelFactory::Create(executor, custom_kernel->kernel_spec()));
+  TF_ASSERT_OK_AND_ASSIGN(auto gemm,
+                          executor->LoadKernel(custom_kernel->kernel_spec()));
 
   int64_t length = 4 * 4;
   int64_t byte_length = sizeof(float) * length;

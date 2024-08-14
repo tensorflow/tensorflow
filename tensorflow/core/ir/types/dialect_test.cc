@@ -62,7 +62,7 @@ TEST(TFTypesDialect, TestFuncAttrSubElement) {
 TEST(TFTypesDialect, ParsesDimensionListWithZero) {
   // Test that a dimension list with zero can be parsed.
   const char *const code = R"mlir(
-  "test.op"() {shape = #tf_type.shape<00x128>} : () -> ()
+  "test.op"() {shape = #tf_type.shape<0x128>} : () -> ()
 )mlir";
 
   MLIRContext context;

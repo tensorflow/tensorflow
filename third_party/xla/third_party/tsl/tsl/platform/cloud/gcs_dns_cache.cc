@@ -41,7 +41,8 @@ namespace {
 const std::vector<string>& kCachedDomainNames =
     *new std::vector<string>{"www.googleapis.com", "storage.googleapis.com"};
 
-inline void print_getaddrinfo_error(const string& name, Status return_status) {
+inline void print_getaddrinfo_error(const string& name,
+                                    absl::Status return_status) {
   // Status doesn't map well to EAI type errors.
   LOG(ERROR) << "Error resolving " << name << ": " << return_status;
 }
@@ -104,13 +105,13 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
       /* max_delay_time_us = */ 50 * 1000 * 5000,
       /* max_retries = */ 5);
 
-  const Status getaddrinfo_status = RetryingUtils::CallWithRetries(
+  const absl::Status getaddrinfo_status = RetryingUtils::CallWithRetries(
       [&name, &hints, &result]() {
         int return_code = getaddrinfo(name.c_str(), nullptr, &hints, &result);
         absl::Status return_status;
         switch (return_code) {
           case 0:
-            return_status = OkStatus();
+            return_status = absl::OkStatus();
             break;
 #ifndef _WIN32
           case EAI_ADDRFAMILY:
@@ -175,7 +176,7 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
 #endif
         }
 
-        return Status(return_status);
+        return absl::Status(return_status);
       },
       retryConfig);
 

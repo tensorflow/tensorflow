@@ -31,8 +31,8 @@ enum CaseFormatType {
 
 string FormatStringCase(const string &str, CaseFormatType to,
                         const char delimiter = '_') {
-  const bool from_snake =
-      (str == str_util::Uppercase(str)) || (str == str_util::Lowercase(str));
+  const bool from_snake = (str == absl::AsciiStrToUpper(str)) ||
+                          (str == absl::AsciiStrToLower(str));
   const bool toUpper = (to == UPPER_CAMEL || to == UPPER_SNAKE);
   const bool toSnake = (to == LOWER_SNAKE || to == UPPER_SNAKE);
 

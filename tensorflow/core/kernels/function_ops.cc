@@ -255,7 +255,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    profiler::TraceMe trace_me("SymbolicGradientOp");
+    tsl::profiler::TraceMe trace_me("SymbolicGradientOp");
     lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
@@ -319,12 +319,12 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       handle = cached_entry->second;
     } else {
       VLOG(1) << "Instantiating " << func_name << " on " << target_device;
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [&] {
             return strings::StrCat("RemoteCall: Instantiate: ", func_name,
                                    " on ", target_device);
           },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
       const auto* config = (ctx->function_library())
                                ? ctx->function_library()->config_proto()
@@ -398,24 +398,24 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   auto* rets = new std::vector<Tensor>;
   VLOG(1) << "Running " << func_name << " on " << target_device
           << " with handle: " << handle;
-  profiler::TraceMe trace_me(
+  tsl::profiler::TraceMe trace_me(
       [&] {
         return profiler::TraceMeEncode(
             "RemoteCallOp",
             {{"func_name", func_name}, {"device", target_device}});
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   lib->Run(
       opts, handle, args, rets,
       [rets, done = std::move(done), func_name, ctx, cancel_mgr,
        target_device = std::move(function_target.first)](const Status& status) {
-        profiler::TraceMe activity(
+        tsl::profiler::TraceMe activity(
             [&] {
               return profiler::TraceMeEncode(
                   "RemoteCallOpDone",
                   {{"func_name", func_name}, {"device", target_device}});
             },
-            profiler::TraceMeLevel::kInfo);
+            tsl::profiler::TraceMeLevel::kInfo);
         if (!status.ok()) {
           ctx->SetStatus(status);
         } else {

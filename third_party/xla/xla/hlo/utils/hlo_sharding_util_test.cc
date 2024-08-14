@@ -1017,7 +1017,7 @@ TEST(HloShardingUtilTest, UntileShape) {
 
 using HloShardingUtilTestWithHlo = HloTestBase;
 
-TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest) {
+TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest1) {
   absl::string_view hlo_string = R"(
     HloModule module
 
@@ -1059,6 +1059,55 @@ TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest) {
               HloSharding::PartialTile(TileAssignment(
                   {2, 2, 2, 1, 4}, {2, 2, 2, 2, 2}, {0, 1, 3, 2, 4})));
   }
+}
+
+TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest2) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY %main.7 {
+      %p0 = bf16[32,64,128,512] parameter(0), sharding={devices=[8,1,1,4]<=[32]}
+      %p1 = bf16[32,64,256,512] parameter(1), sharding={devices=[1,1,1,2,16]<=[8,2,2]T(1,0,2) last_tile_dim_replicate}
+      ROOT %dot.3 = bf16[32,64,128,256] dot(%p0, %p1), lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={3}, sharding={devices=[2,2,2,2,2]<=[32] last_tile_dim_replicate}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  auto dnums = dot_as_convolution_util::ParseDotGeneralFromDot(dot);
+
+  const HloSharding& lhs_sharding = dot->operand(0)->sharding();
+  const HloSharding& rhs_sharding = dot->operand(1)->sharding();
+  const HloSharding& dot_sharding = dot->sharding();
+
+  bool may_combine_partial_sharding = true;
+  for (int64_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(InferDotOperandSharding(nullptr, nullptr, i, dnums, true,
+                                      may_combine_partial_sharding),
+              HloSharding::Replicate());
+  }
+
+  // If the other_operand_sharding is missing (nullptr), we only infer the
+  // result from the result.
+  for (int64_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(InferDotOperandSharding(&dot_sharding, nullptr, i, dnums, true,
+                                      may_combine_partial_sharding),
+              InferDotOperandSharding(dot, i, dnums, false,
+                                      may_combine_partial_sharding));
+  }
+
+  EXPECT_EQ(InferDotOperandSharding(nullptr, &rhs_sharding, 0, dnums, true,
+                                    may_combine_partial_sharding),
+            rhs_sharding);
+  EXPECT_EQ(InferDotOperandSharding(nullptr, &lhs_sharding, 1, dnums, true,
+                                    may_combine_partial_sharding),
+            lhs_sharding);
+
+  EXPECT_EQ(InferDotOperandSharding(nullptr, &rhs_sharding, 0, dnums, false,
+                                    may_combine_partial_sharding),
+            HloSharding::Replicate());
+  EXPECT_EQ(InferDotOperandSharding(nullptr, &lhs_sharding, 1, dnums, false,
+                                    may_combine_partial_sharding),
+            HloSharding::Replicate());
 }
 
 }  // namespace

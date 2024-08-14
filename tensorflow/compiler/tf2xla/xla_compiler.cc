@@ -1393,6 +1393,7 @@ void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
 // TODO(b/265059672): Remove when end-to-end stack trace handling is in place
 class DummyStackTrace : public AbstractStackTrace {
   absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+  std::vector<StackFrame> ToUncachedFrames() const override { return frames_; }
 
   StackFrame LastUserFrame() const override { return frames_.back(); }
 

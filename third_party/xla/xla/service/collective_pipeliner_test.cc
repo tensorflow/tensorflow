@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
@@ -238,14 +239,14 @@ ENTRY entry {
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: HloModule
     // CHECK: %while_body
-    // CHECK:   %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}_xla_send_recv_validation="{{[{]}}{0,5},{0,6},{1,7},{2,8},{3,9},{4,10},{5,11},{6,12}{{[}]}}"
+    // CHECK:   %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}_xla_send_recv_validation={{[{]}}{0,5},{0,6},{1,7},{2,8},{3,9},{4,10},{5,11},{6,12}{{[}]}}
     // CHECK:   %[[dus:.+]] = {{.+}} dynamic-slice({{.+}} %[[cp]], {{.+}})
     // CHECK:   %[[mul:.+]] = {{.+}} multiply({{.+}} %[[dus]], {{.+}} %[[dus]])
     // CHECK:   %[[dus2:.+]] = {{.+}} dynamic-update-slice({{.+}} %[[mul]], {{.+}})
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[dus2]], {{.+}})
     // CHECK: }
     // CHECK: ENTRY %entry
-    // CHECK:   %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}{_xla_send_recv_validation="{{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}"
+    // CHECK:   %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}{_xla_send_recv_validation={{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}
     // CHECK:   %[[ds:.+]] = {{.+}} dynamic-slice({{.+}} %[[cp]], {{.+}})
     // CHECK:   %[[mul:.+]] = {{.+}} multiply({{.+}} %[[ds]], {{.+}} %[[ds]])
     // CHECK:   %[[dus:.+]] = {{.+}} dynamic-update-slice({{.+}} %[[mul]], {{.+}})
@@ -314,14 +315,14 @@ ENTRY entry {
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: HloModule
     // CHECK: %while_body
-    // CHECK:   %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}_xla_send_recv_validation="{{[{]}}{6,12},{5,11},{4,10},{3,9},{2,8},{1,7},{0,6},{0,5}{{[}]}}"
+    // CHECK:   %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}_xla_send_recv_validation={{[{]}}{6,12},{5,11},{4,10},{3,9},{2,8},{1,7},{0,6},{0,5}{{[}]}}
     // CHECK:   %[[dus:.+]] = {{.+}} dynamic-slice({{.+}} %[[cp]], {{.+}})
     // CHECK:   %[[mul:.+]] = {{.+}} multiply({{.+}} %[[dus]], {{.+}} %[[dus]])
     // CHECK:   %[[dus2:.+]] = {{.+}} dynamic-update-slice({{.+}} %[[mul]], {{.+}})
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[dus2]], {{.+}})
     // CHECK: }
     // CHECK: ENTRY %entry
-    // CHECK:   %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}{_xla_send_recv_validation="{{[{]}}{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{0,0}{{[}]}}"
+    // CHECK:   %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}{_xla_send_recv_validation={{[{]}}{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{0,0}{{[}]}}
     // CHECK:   %[[ds:.+]] = {{.+}} dynamic-slice({{.+}} %[[cp]], {{.+}})
     // CHECK:   %[[mul:.+]] = {{.+}} multiply({{.+}} %[[ds]], {{.+}} %[[ds]])
     // CHECK:   %[[dus:.+]] = {{.+}} dynamic-update-slice({{.+}} %[[mul]], {{.+}})
@@ -1345,6 +1346,102 @@ ENTRY entry {
 }
 
 TEST_F(CollectivePipelinerTest,
+       TransformIncrementIndexByOneBackwardsWithTwoDependentClones) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,1,2,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,1,2,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.k = bf16[3,1,2,128] get-tuple-element(param), index=2
+  constant.2561 = s32[] constant(0)
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.k = bf16[1,1,2,128] dynamic-slice(get-tuple-element.k, select.1348, constant.2561, constant.2561, constant.2561), dynamic_slice_sizes={1,1,2,128}
+  r = bf16[1,2,128] reshape(dynamic-slice.k)
+  // To be peeled.
+  custom-call = bf16[1,2,128] custom-call(r), custom_call_target="MoveToDevice"
+  a = bf16[1,2,128] add(custom-call, custom-call), control-predecessors={constant.2559}
+  // To be peeled.
+  ag = bf16[1,8,128] all-gather(a), dimensions={1}, replica_groups={}
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, ag)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.k), control-predecessors={a}
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  p1 = bf16[3,1,2,128] parameter(1)
+  tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128]) tuple(c0, p0, p1)
+  while = (s32[], bf16[3,8,128], bf16[3,1,2,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  auto is_all_gather_or_offloading = [](const HloInstruction* instruction) {
+    return instruction->opcode() == HloOpcode::kAllGather ||
+           instruction->IsCustomCall(
+               host_memory_offload_annotations::kMoveToDeviceCustomCallTarget);
+  };
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
+                           /*process_different_sized_ops=*/false,
+                           CollectivePipeliner::PipeliningDirection::kBackward,
+                           is_all_gather_or_offloading)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  const int64_t while_count = absl::c_count_if(
+      module->entry_computation()->instructions(),
+      [](const HloInstruction* instruction) {
+        return HloPredicateIsOp<HloOpcode::kWhile>(instruction);
+      });
+  EXPECT_EQ(while_count, 1);
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  const HloInstruction* tuple = while_instr->operand(0);
+  EXPECT_TRUE(tuple->HasControlDependencies());
+  EXPECT_EQ(tuple->control_predecessors().size(), 1);
+  const HloInstruction* add_instr = tuple->control_predecessors()[0];
+  EXPECT_EQ(add_instr->opcode(), HloOpcode::kAdd);
+  const HloComputation* comp = while_instr->while_body();
+  const HloInstruction* root_loop = comp->root_instruction();
+  EXPECT_TRUE(root_loop->HasControlDependencies());
+  EXPECT_EQ(root_loop->control_predecessors().size(), 1);
+  const HloInstruction* add_instr_loop = root_loop->control_predecessors()[0];
+  EXPECT_EQ(add_instr_loop->opcode(), HloOpcode::kAdd);
+
+  EXPECT_NE(FindInstruction(module.get(), "custom-call.1"), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), "custom-call.2"), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), "ag.1"), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), "ag.2"), nullptr);
+}
+
+TEST_F(CollectivePipelinerTest,
        TransformIncrementIndexByOneBackwardsCollectivePermute) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
@@ -1410,13 +1507,13 @@ ENTRY entry {
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
-  // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8},{3,9},{4,10},{5,11},{6,12},{7,12}{{[}]}}"}
+  // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8},{3,9},{4,10},{5,11},{6,12},{7,12}{{[}]}}}
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.+}} %[[cp]], {{.+}})
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.+}} %[[dus]], {{.+}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.+}})
   // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.+}} %[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[gte]]), {{.+}}_xla_send_recv_validation="{{[{]}}{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{0,0}{{[}]}}"
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[gte]]), {{.+}}_xla_send_recv_validation={{[{]}}{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{0,0}{{[}]}}
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.+}} %[[cp2]], {{.+}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.+}} %[[dus]], {{.+}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.+}} %[[tuple]]), index=1
@@ -1489,13 +1586,13 @@ ENTRY entry {
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
-  // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}_xla_send_recv_validation="{{[{]}}{7,12},{6,12},{5,11},{4,10},{3,9},{2,8},{1,7},{0,6}{{[}]}}"}
+  // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}_xla_send_recv_validation={{[{]}}{7,12},{6,12},{5,11},{4,10},{3,9},{2,8},{1,7},{0,6}{{[}]}}}
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.+}} %[[cp]], {{.+}})
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.+}} %[[dus]], {{.+}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.+}})
   // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.+}} %[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[gte]]), {{.+}}_xla_send_recv_validation="{{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}"
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[gte]]), {{.+}}_xla_send_recv_validation={{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.+}} %[[cp2]], {{.+}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.+}} %[[dus]], {{.+}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.+}} %[[tuple]]), index=1
@@ -2329,7 +2426,7 @@ TEST_F(CollectivePipelinerTest,
 
   EXPECT_EQ(recv1->channel_id(), send1->channel_id());
 
-  const char* kSourceTarget = "_xla_send_recv_source_target_pairs=\"{{3,0}}\"";
+  const char* kSourceTarget = "_xla_send_recv_source_target_pairs={{3,0}}";
   const char* kPeeledAttr = "_xla_other_attr=\"1\"";
   const char* kRotatedAttr = "_xla_other_attr=\"2\"";
   EXPECT_THAT(send1->ToString(), ::testing::HasSubstr(kSourceTarget));

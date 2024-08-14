@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_MUTEX_H_
 #define TENSORFLOW_TSL_PLATFORM_MUTEX_H_
 
-#include <chrono>  // NOLINT
+#include <chrono>   // NOLINT
+#include <cstdint>  // NOLINT
 // for std::try_to_lock_t and std::cv_status
 #include <condition_variable>  // NOLINT
 #include <mutex>               // NOLINT
 
 #include "tsl/platform/platform.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/platform/types.h"
 
 // Include appropriate platform-dependent implementation details of mutex etc.
 #if defined(PLATFORM_GOOGLE)
@@ -107,7 +107,7 @@ class TF_LOCKABLE mutex {
   // has been reached, then atomically reacquire *this in the same mode in
   // which it was previously held, and return whether cond.Eval() is true.
   // See tsl/tsl/platform/env_time.h for the time interface.
-  bool AwaitWithDeadline(const Condition& cond, uint64 abs_deadline_ns);
+  bool AwaitWithDeadline(const Condition& cond, uint64_t abs_deadline_ns);
   // -------
 
  private:

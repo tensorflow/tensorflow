@@ -1,0 +1,10 @@
+// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-test-to-inline -xla-gpu-test-vectorize | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=neg:0 --bijection_outputs=neg
+
+neg {
+  %input = f32[20] parameter(0)
+  ROOT neg = f32[20] negate(%input)
+}
+
+// CHECK-NOT: vector.
+// CHECK: tensor.extract

@@ -680,8 +680,6 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":credentials_factory",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/data:dataset_utils",
     ],
 )
 
@@ -758,8 +756,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

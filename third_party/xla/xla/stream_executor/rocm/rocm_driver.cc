@@ -1148,6 +1148,21 @@ struct BitPatternToValue {
   return absl::OkStatus();
 }
 
+absl::Status GpuDriver::LaunchKernel(
+    GpuContext* context, absl::string_view kernel_name,
+    GpuFunctionHandle function, unsigned int cluster_dim_x,
+    unsigned int cluster_dim_y, unsigned int cluster_dim_z,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes,
+    GpuStreamHandle stream, void** kernel_params, void** extra) {
+  if (cluster_dim_x != 1 || cluster_dim_y != 1 || cluster_dim_z != 1)
+    return absl::UnimplementedError("Not implemented for ROCm");
+  return LaunchKernel(context, kernel_name, function, grid_dim_x, grid_dim_y,
+                      grid_dim_z, block_dim_x, block_dim_y, block_dim_z,
+                      shared_mem_bytes, stream, kernel_params, extra);
+}
+
 /* static */ absl::Status GpuDriver::LoadPtx(GpuContext* context,
                                              const char* ptx_contents,
                                              hipModule_t* module) {
@@ -1367,16 +1382,32 @@ struct BitPatternToValue {
 /* static */ void* GpuDriver::UnifiedMemoryAllocate(GpuContext* context,
                                                     uint64_t bytes) {
   ScopedActivateContext activated{context};
-
-  LOG(ERROR)
-      << "Feature not supported on ROCm platform (UnifiedMemoryAllocate)";
-  return nullptr;
+  hipDeviceptr_t result = 0;
+  // "managed" memory is visible to both CPU and GPU.
+  hipError_t res = wrap::hipMallocManaged(&result, bytes, hipMemAttachGlobal);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to alloc " << bytes
+               << " bytes unified memory; result: " << ToString(res);
+    return nullptr;
+  }
+  void* ptr = reinterpret_cast<void*>(result);
+  VLOG(2) << "allocated " << ptr << " for context " << context->context()
+          << " of " << bytes << " bytes in unified memory";
+  return ptr;
 }
 
 /* static */ void GpuDriver::UnifiedMemoryDeallocate(GpuContext* context,
                                                      void* location) {
-  LOG(ERROR)
-      << "Feature not supported on ROCm platform (UnifiedMemoryDeallocate)";
+  ScopedActivateContext activation(context);
+  hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
+  hipError_t res = wrap::hipFree(pointer);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to free unified memory at " << location
+               << "; result: " << ToString(res);
+  } else {
+    VLOG(2) << "deallocated unified memory at " << location << " for context "
+            << context->context();
+  }
 }
 
 /* static */ void* GpuDriver::HostAllocate(GpuContext* context,

@@ -37,7 +37,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/Support/Error.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -80,12 +82,18 @@ using FunctionRegistry = CpuExecutable::FunctionRegistry;
 
 FunctionRegistry::FunctionRegistry(SimpleOrcJIT* jit) : jit_(jit) {}
 
+std::string FunctionRegistry::Mangle(std::string_view name) {
+  llvm::SmallVector<char, 40> mangled;
+  llvm::Mangler::getNameWithPrefix(mangled, name, jit_->data_layout());
+  return std::string(mangled.begin(), mangled.end());
+}
+
 absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
     std::string_view name) {
-  VLOG(2) << "Find host kernel with a name " << name;
+  VLOG(3) << "Find host kernel with a name " << name;
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
-      jit_->FindCompiledSymbol(std::string(name));
+      jit_->FindCompiledSymbol(Mangle(name));
   if (!sym) {
     return absl::InvalidArgumentError(
         absl::StrCat("Can't resolve host kernel with a name ", name,
@@ -96,10 +104,10 @@ absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
 
 absl::StatusOr<FunctionRegistry::Comparator> FunctionRegistry::FindComparator(
     std::string_view name) {
-  VLOG(2) << "Find comparator with a name " << name;
+  VLOG(3) << "Find comparator with a name " << name;
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
-      jit_->FindCompiledSymbol(std::string(name));
+      jit_->FindCompiledSymbol(Mangle(name));
   if (!sym) {
     return absl::InvalidArgumentError(
         absl::StrCat("Can't resolve comparator with a name ", name,
@@ -147,7 +155,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
   if (!sym) {
-    return absl::InvalidArgumentError(
+    return absl::NotFoundError(
         absl::StrCat("Symbol ", entry_function_name, " not found."));
   }
   // getAddress can do work under the hood in the jit, so it needs to be
@@ -175,6 +183,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_profile_index_map), std::move(assignment)));
 
   executable->jit_ = std::move(jit);
+  executable->jit_->DoneCompiling();
   executable->function_registry_ = FunctionRegistry(executable->jit_.get());
 
   TF_ASSIGN_OR_RETURN(executable->thunks_,
@@ -387,7 +396,7 @@ absl::Status CpuExecutable::ExecuteThunks(
   Thunk::ExecuteParams execute_params = {
       &*function_registry_,
       &allocations,
-      runtime::GetXfeedManager(run_options->device_ordinal()),
+      runtime::GetXfeedManager(runtime::GetDeviceOrdinal(run_options)),
       run_options->intra_op_thread_pool(),
       &task_runner,
       &collective_execute_params,

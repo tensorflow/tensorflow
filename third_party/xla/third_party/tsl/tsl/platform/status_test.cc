@@ -157,7 +157,7 @@ TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
   s.SetPayload("key3", absl::Cord("value3"));
 
   std::unordered_map<std::string, absl::Cord> payloads;
-  s.ForEachPayload([&payloads](StringPiece key, const absl::Cord& value) {
+  s.ForEachPayload([&payloads](absl::string_view key, const absl::Cord& value) {
     payloads[std::string(key)] = value;
   });
 
@@ -174,7 +174,7 @@ TEST(Status, OkStatusForEachPayloadNoIteration) {
   s.SetPayload("key3", absl::Cord("value3"));
 
   std::unordered_map<std::string, absl::Cord> payloads;
-  s.ForEachPayload([&payloads](StringPiece key, const absl::Cord& value) {
+  s.ForEachPayload([&payloads](absl::string_view key, const absl::Cord& value) {
     payloads[std::string(key)] = value;
   });
 

@@ -27,8 +27,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/internal/endian.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -5800,6 +5802,29 @@ TEST_F(HloEvaluatorTest, SimpleConvTraced) {
   };
 
   EXPECT_EQ(macs_traced, macs_expected);
+}
+
+TEST(EvalErrorTest, OK) {
+  EXPECT_EQ(std::nullopt, internal::ParseEvalErrorDetail(absl::OkStatus()));
+}
+
+TEST(EvalErrorTest, NoPayload) {
+  EXPECT_EQ(std::nullopt,
+            internal::ParseEvalErrorDetail(absl::InternalError("hmm")));
+}
+
+TEST(EvalErrorTest, Payload) {
+  absl::Status s = absl::InternalError("hmm");
+  std::string payload;
+  payload.resize(sizeof(internal::EvalErrorDetail));
+  absl::little_endian::Store32(
+      const_cast<char*>(payload.data()),
+      static_cast<uint32_t>(
+          internal::EvalErrorDetail::kDynamicValueDependence));
+  s.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(payload));
+
+  EXPECT_EQ(internal::ParseEvalErrorDetail(s),
+            internal::EvalErrorDetail::kDynamicValueDependence);
 }
 
 }  // namespace

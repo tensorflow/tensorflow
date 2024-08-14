@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
@@ -117,6 +117,7 @@ ENTRY main.24 {
   XLA_VLOG_LINES(1, module->ToString());
 
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
   EXPECT_EQ(custom_call->users()[0]->shape().layout(),
@@ -163,12 +164,14 @@ ENTRY main.24 {
   XLA_VLOG_LINES(1, module->ToString());
 
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
   EXPECT_EQ(custom_call->users()[0]->shape().layout(),
             LayoutUtil::MakeLayout({1, 0}));
 
   custom_call = FindInstruction(module.get(), "custom-call.19");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(),
             LayoutUtil::MakeLayout({0, 1}, {}, {}, {}, {Tile{{8, 128}}}));
@@ -206,6 +209,7 @@ ENTRY main.24 {
 
   HloInstruction* dus =
       FindInstruction(module.get(), "dynamic-update-slice.6830");
+  ASSERT_NE(dus, nullptr);
   EXPECT_EQ(dus->operand(0)->shape().layout(),
             dus->operand(1)->shape().layout());
   EXPECT_EQ(dus->shape().layout(), dus->operand(1)->shape().layout());
@@ -251,6 +255,7 @@ ENTRY main.24 {
 
   HloInstruction* dus =
       FindInstruction(module.get(), "dynamic-update-slice.6830");
+  ASSERT_NE(dus, nullptr);
   EXPECT_EQ(dus->operand(0)->shape().layout(),
             dus->operand(1)->shape().layout());
   EXPECT_EQ(dus->shape().layout(), dus->operand(1)->shape().layout());
@@ -369,6 +374,8 @@ ENTRY main {
   HloInstruction* copy = FindInstruction(module.get(), HloOpcode::kCopy);
   HloInstruction* consuming_while =
       FindInstruction(module.get(), "consuming_while");
+  ASSERT_NE(copy, nullptr);
+  ASSERT_NE(consuming_while, nullptr);
   EXPECT_NE(copy, nullptr);
   EXPECT_NE(consuming_while, nullptr);
   EXPECT_EQ(copy->parent(), consuming_while->while_body());
@@ -480,12 +487,45 @@ ENTRY main {
   HloInstruction* copy_1 = FindInstruction(module.get(), "cp1.2");
   HloInstruction* consuming_while =
       FindInstruction(module.get(), "consuming_while");
+  ASSERT_NE(copy_0, nullptr);
+  ASSERT_NE(copy_1, nullptr);
+  ASSERT_NE(consuming_while, nullptr);
   EXPECT_NE(copy_0, nullptr);
   EXPECT_NE(copy_1, nullptr);
   EXPECT_NE(consuming_while, nullptr);
   EXPECT_EQ(copy_0->parent(), module->entry_computation());
   EXPECT_EQ(copy_1->operand(0), copy_0);
   XLA_VLOG_LINES(1, module->ToString());
+}
+
+TEST_F(HostOffloadLegalizeTest, MoveCopyOverBitcast) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(bf16[1,1,16384,4,256]{4,3,2,1,0:T(4,128)(2,1)S(5)})->bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)}}
+
+ENTRY main {
+  param = bf16[1,1,16384,4,256]{4,3,2,1,0:T(4,128)(2,1)} parameter(0)
+  copy = bf16[1,1,16384,4,256]{4,2,3,1,0:T(8,128)(2,1)} copy(param)
+  bitcast = bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)} bitcast(copy)
+  custom-call = bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)} custom-call(bitcast), custom_call_target="MoveToDevice"
+  ROOT add = bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)} add(custom-call, custom-call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  EXPECT_EQ(custom_call->shape().layout(),
+            LayoutUtil::MakeLayout({3, 2, 1, 0}, {}, {}, {},
+                                   {Tile{{4, 128}}, Tile{{2, 1}}}));
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({3, 1, 2, 0}, {}, {}, {},
+                                   {Tile{{8, 128}}, Tile{{2, 1}}}));
 }
 
 }  // namespace

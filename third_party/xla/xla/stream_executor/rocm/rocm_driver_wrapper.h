@@ -135,6 +135,7 @@ namespace wrap {
   __macro(hipLaunchHostFunc)                        \
   __macro(hipLaunchKernel)                          \
   __macro(hipMalloc)                                \
+  __macro(hipMallocManaged)                         \
   __macro(hipMemGetAddressRange)                    \
   __macro(hipMemGetInfo)                            \
   __macro(hipMemcpyDtoD)                            \

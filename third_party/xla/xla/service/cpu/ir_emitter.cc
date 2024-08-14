@@ -451,6 +451,18 @@ void IrEmitter::AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
   }
 }
 
+void IrEmitter::AttachInvariantLoadMetadataForLoad(llvm::LoadInst* load) const {
+  AttachInvariantLoadMetadataForLoad(load, hlo_module_config_);
+}
+
+/*static*/ void IrEmitter::AttachInvariantLoadMetadataForLoad(
+    llvm::LoadInst* load, const HloModuleConfig& config) {
+  if (config.debug_options().xla_llvm_enable_invariant_load_metadata()) {
+    load->setMetadata(llvm::LLVMContext::MD_invariant_load,
+                      llvm::MDNode::get(load->getContext(), /*MDs=*/{}));
+  }
+}
+
 absl::Status IrEmitter::HandleGetTupleElement(
     HloInstruction* get_tuple_element) {
   // A tuple is an array of pointers, one for each operand. Each pointer points
@@ -2300,6 +2312,22 @@ absl::Status IrEmitter::HandleRecvDone(HloInstruction* recv_done) {
 }
 
 absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
+  CHECK_EQ(pad->operand_count(), 2);
+  const auto operand = pad->operand(0);
+  const auto padding_value = pad->operand(1);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(pad));
+
+  return HandlePad(pad, GetIrArrayFor(operand), GetIrArrayFor(padding_value),
+                   GetIrArrayFor(pad));
+}
+
+absl::Status IrEmitter::HandlePad(HloInstruction* pad,
+                                  const llvm_ir::IrArray& operand_array,
+                                  const llvm_ir::IrArray& padding_value_array,
+                                  const llvm_ir::IrArray& output_array) {
+  CHECK_EQ(pad->operand_count(), 2);
+
   // CPU backend does not properly handle negative padding but this is ok
   // because negative padding should be removed by the algebraic simplifier.
   for (auto& padding_dimension : pad->padding_config().dimensions()) {
@@ -2312,15 +2340,22 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
     }
   }
 
+  const HloInstruction* padding_value = pad->operand(1);
+  const auto index_type = b()->getInt64Ty();
+  const auto index = llvm_ir::IrArray::Index(index_type);
+  llvm::Value* padding_value_addr = padding_value_array.EmitArrayElementAddress(
+      index, b(), "padding_value_addr", true, nullptr);
+  const llvm_ir::ElementGenerator element_generator =
+      [this, padding_value,
+       padding_value_addr](const llvm_ir::IrArray::Index& target_index) {
+        return b()->CreateLoad(IrShapeType(padding_value->shape()),
+                               padding_value_addr);
+      };
+
   // First, fill in the padding value to all output elements.
   TF_RETURN_IF_ERROR(EmitTargetElementLoop(
-      pad, "initialize",
-      [this, pad](const llvm_ir::IrArray::Index& target_index) {
-        const HloInstruction* padding_value = pad->operand(1);
-        llvm::Value* padding_value_addr = GetEmittedValueFor(padding_value);
-        return Load(IrShapeType(padding_value->shape()), padding_value_addr);
-      },
-      std::nullopt));
+      pad, "initialize", element_generator,
+      std::optional<const llvm_ir::IrArray>(output_array)));
 
   // Create a loop to iterate over the operand elements and update the output
   // locations where the operand elements should be stored.
@@ -2332,7 +2367,6 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
   SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b());
 
   // Load an element from the operand.
-  llvm_ir::IrArray operand_array(GetIrArrayFor(operand));
   llvm::Value* operand_data =
       operand_array.EmitReadArrayElement(operand_index, b());
 
@@ -2350,7 +2384,6 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
   }
 
   // Store the operand element to the computed output location.
-  llvm_ir::IrArray output_array(GetIrArrayFor(pad));
   llvm_ir::IrArray::Index output_index(
       output_multi_index, output_array.GetShape(), operand_index.GetType());
   output_array.EmitWriteArrayElement(output_index, operand_data, b());
@@ -2622,6 +2655,22 @@ absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 }
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+
+// Emits operands alloca vector for oneDNN custom calls.
+std::vector<StackAlloca> IrEmitter::EmitOneDnnOperandsAlloca(
+    HloInstruction* custom_call, llvm::Value*& args_val, int& arg_indx) {
+  std::vector<StackAlloca> operands_stack_alloca;
+  const int num_operands = custom_call->operand_count();
+  operands_stack_alloca.reserve(num_operands);
+  for (int i = 0; i < num_operands; ++i) {
+    llvm_ir::IrArray ir_array(GetIrArrayFor(custom_call->operand(i)));
+    StackAlloca stack_alloca = GetAllocaAndEmitMemrefInfo(*b(), ir_array);
+    args_val = b()->CreateInsertValue(args_val, stack_alloca.value, arg_indx++);
+    operands_stack_alloca.push_back(std::move(stack_alloca));
+  }
+  return operands_stack_alloca;
+}
+
 absl::Status IrEmitter::HandleOneDnnMatMulCalls(
     HloInstruction* custom_call, std::string runtime_symbol_name) {
   // We would like to emit LLVM IR for the following function call
@@ -2663,7 +2712,6 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   args_val = b()->CreateInsertValue(args_val, run_opts_val, arg_indx++);
 
   // Insert OneDnnMatMulConfig.
-
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   auto backend_config = typed_custom_call->backend_config<BackendConfig>();
   OneDnnMatMulConfig matmul_config;
@@ -2675,17 +2723,8 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   args_val = b()->CreateInsertValue(args_val, matmul_config_val, arg_indx++);
 
   // Insert operands.
-  std::vector<StackAlloca> operands_stack_alloca;
-  operands_stack_alloca.reserve(num_operands);
-  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
-                    [this](HloInstruction* instr) {
-                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
-                      return GetAllocaAndEmitMemrefInfo(*b(), ir_array);
-                    });
-  for (int i = 0; i < num_operands; ++i) {
-    args_val = b()->CreateInsertValue(args_val, operands_stack_alloca[i].value,
-                                      arg_indx++);
-  }
+  auto operands_stack_alloca =
+      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
   TF_RET_CHECK(nargs == arg_indx)
       << "Number of arguments don't equal the last argument index.";
 
@@ -2791,17 +2830,8 @@ absl::Status IrEmitter::HandleOneDnnConvolution(HloInstruction* custom_call) {
       b()->CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config));
   args_val = b()->CreateInsertValue(args_val, conv_config_val, arg_indx++);
 
-  std::vector<StackAlloca> operands_stack_alloca;
-  operands_stack_alloca.reserve(num_operands);
-  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
-                    [this](HloInstruction* instr) {
-                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
-                      return GetAllocaAndEmitMemrefInfo(*b(), ir_array);
-                    });
-  for (int i = 0; i < num_operands; ++i) {
-    args_val = b()->CreateInsertValue(args_val, operands_stack_alloca[i].value,
-                                      arg_indx++);
-  }
+  auto operands_stack_alloca =
+      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
   TF_RET_CHECK(nargs == arg_indx)
       << "Number of arguments don't equal the last argument index.";
 
@@ -2870,17 +2900,10 @@ absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   args_val = b()->CreateInsertValue(args_val, ln_config_val, arg_indx++);
 
   // Insert operands.
-  std::vector<StackAlloca> operands_stack_alloca;
-  operands_stack_alloca.reserve(num_operands);
-  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
-                    [this](HloInstruction* instr) {
-                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
-                      return GetAllocaAndEmitMemrefInfo(*b(), ir_array);
-                    });
-  for (int i = 0; i < num_operands; ++i) {
-    args_val = b()->CreateInsertValue(args_val, operands_stack_alloca[i].value,
-                                      arg_indx++);
-  }
+  auto operands_stack_alloca =
+      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
+  TF_RET_CHECK(nargs == arg_indx)
+      << "Number of arguments don't equal the last argument index.";
 
   llvm::Value* args_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "layernorm.args", b());
@@ -4062,12 +4085,8 @@ llvm::Value* IrEmitter::EmitGlobalBufferPointer(
       GetBufferTableArgument(), b()->getPtrTy(), slice.index(), b());
   llvm::LoadInst* tempbuf_address_base =
       Load(b()->getPtrTy(), tempbuf_address_ptr);
-  if (hlo_module_config_.debug_options()
-          .xla_llvm_enable_invariant_load_metadata()) {
-    tempbuf_address_base->setMetadata(
-        llvm::LLVMContext::MD_invariant_load,
-        llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
-  }
+
+  AttachInvariantLoadMetadataForLoad(tempbuf_address_base);
   AttachAlignmentMetadataForLoad(tempbuf_address_base, allocation.size());
   AttachDereferenceableMetadataForLoad(tempbuf_address_base, allocation.size());
 
@@ -4138,6 +4157,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
             .EmitLoop(IrName(target_op, desc)));
 
     std::vector<llvm::Value*> tuple_operand_ptrs;
+    tuple_operand_ptrs.reserve(output_arrays.size());
     for (int64_t i = 0; i < output_arrays.size(); ++i) {
       tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
     }

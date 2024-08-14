@@ -17,18 +17,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
+#include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu {
@@ -41,13 +44,16 @@ class CutlassFusionTest : public HloTestBase {
         ->GetDeviceDescription()
         .shared_memory_per_block_optin();
   }
-  int CutlassGemmKernelSharedMemorySize(PrimitiveType dtype, int m, int n,
+  int CutlassGemmKernelSharedMemorySize(PrimitiveType dot_type,
+                                        PrimitiveType lhs_type,
+                                        PrimitiveType rhs_type, int m, int n,
                                         int k) {
-    return kernel::gemm_universal::GetCutlassGemmKernel(
-               "cutlass_gemm", dtype, m, n, k,
+    return kernel::gemm_universal::GetCutlassGemmKernels(
+               "cutlass_gemm", dot_type, lhs_type, rhs_type, m, n, k,
                /*indices=*/{0, 1, 2}, /*slices=*/{},
                backend().default_stream_executor()->GetDeviceDescription())
-        ->shared_memory_bytes();
+        ->at(0)
+        .shared_memory_bytes();
   };
 };
 
@@ -80,7 +86,7 @@ TEST_F(CutlassFusionTest, RowMajorGemm) {
     ; CHECK:     kind=kCustom, calls=%cutlass_gemm,
     ; CHECK:     backend_config={
     ; CHECK:       "kind":"__custom_fusion",
-    ; CHECK:       "custom_fusion_config":{"name":"cutlass_gemm"}
+    ; CHECK:       "custom_fusion_config":{"name":"cutlass_gemm","kernel_index":0}
     ; CHECK:     }
     ; CHECK: }
   )";
@@ -120,7 +126,49 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
     ; CHECK:     kind=kCustom, calls=%cutlass_gemm_with_upcast,
     ; CHECK:     backend_config={
     ; CHECK:       "kind":"__custom_fusion",
-    ; CHECK:       "custom_fusion_config":{"name":"cutlass_gemm_with_upcast"}
+    ; CHECK:       "custom_fusion_config":{"name":"cutlass_gemm_with_upcast","kernel_index":0}
+    ; CHECK:     }
+    ; CHECK: }
+  )";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
+}
+
+TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastOfBothOperands) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main (p0: bf16[15,19], p1: bf16[19,17]) -> f32[15,17] {
+      %p0 = bf16[15,19]{1,0} parameter(0)
+      %c1 = f32[15,19]{1,0} convert(%p0)
+      %p1 = bf16[19,17]{1,0} parameter(1)
+      %c2 = f32[19,17]{1,0} convert(%p1)
+      ROOT %r = f32[15,17]{1,0} dot(%c1, %c2),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK: %cutlass_gemm_with_upcast {{.*}} {
+    ; CHECK-DAG: [[P0:%[^ ]+]] = bf16[15,19]{1,0} parameter
+    ; CHECK:     [[C1:%[^ ]+]] = f32[15,19]{1,0} convert([[P0]])
+    ; CHECK-DAG: [[P1:%[^ ]+]] = bf16[19,17]{1,0} parameter
+    ; CHECK:     [[C2:%[^ ]+]] = f32[19,17]{1,0} convert([[P1]])
+    ; CHECK:     ROOT [[DOT:%[^ ]+]] = f32[15,17]{1,0} dot([[C1]], [[C2]]),
+    ; CHECK:       lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ; CHECK: }
+
+    ; CHECK: ENTRY %main {{.*}} {
+    ; CHECK:   ROOT [[FUSION:%[^ ]+]] = f32[15,17]{1,0} fusion
+    ; CHECK:     kind=kCustom, calls=%cutlass_gemm_with_upcast,
+    ; CHECK:     backend_config={
+    ; CHECK:       "kind":"__custom_fusion",
+    ; CHECK:       "custom_fusion_config":{"name":"cutlass_gemm_with_upcast","kernel_index":0}
     ; CHECK:     }
     ; CHECK: }
   )";
@@ -169,7 +217,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSlice) {
     ; CHECK:     backend_config={
     ; CHECK:       "kind":"__custom_fusion",
     ; CHECK:       "custom_fusion_config":{
-    ; CHECK:         "name":"cutlass_gemm_with_dynamic_update_slice"
+    ; CHECK:         "name":"cutlass_gemm_with_dynamic_update_slice","kernel_index":0
     ; CHECK:       }
     ; CHECK:     }
     ; CHECK: }
@@ -223,7 +271,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceMultipleUses) {
     ; CHECK:     backend_config={
     ; CHECK:       "kind":"__custom_fusion",
     ; CHECK:       "custom_fusion_config":{
-    ; CHECK:         "name":"cutlass_gemm_with_dynamic_update_slice"
+    ; CHECK:         "name":"cutlass_gemm_with_dynamic_update_slice","kernel_index":0
     ; CHECK:       }
     ; CHECK:     }
     ; CHECK:   [[SLICE:%[^ ]+]] = f32[1,2,2]{2,1,0} dynamic-slice(
@@ -274,7 +322,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceWithoutBitcast) {
     ; CHECK:     backend_config={
     ; CHECK:       "kind":"__custom_fusion",
     ; CHECK:       "custom_fusion_config":{
-    ; CHECK:         "name":"cutlass_gemm_with_dynamic_update_slice"
+    ; CHECK:         "name":"cutlass_gemm_with_dynamic_update_slice","kernel_index":0
     ; CHECK:       }
     ; CHECK:     }
     ; CHECK: }
@@ -321,16 +369,14 @@ TEST_F(CutlassFusionTest, RowMajorGemmKernel) {
     arg0 = f32[100,784]{1,0} parameter(0)
     arg1 = f32[784,10]{1,0} parameter(1)
     ROOT _ = f32[100,10]{1,0} fusion(arg0, arg1), kind=kCustom, calls=cutlass_gemm,
-      backend_config={"fusion_backend_config":{kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm"}}}
+      backend_config={"fusion_backend_config":{kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm", "kernel_index":0}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
                                       error_spec, /*run_hlo_passes=*/false));
 }
 
-TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
-  GTEST_SKIP() << "Requires CUTLASS 3.3.0+";
-
+TEST_F(CutlassFusionTest, GemmWithLeftHandSideUpcastKernel) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_text_cublas = R"(
@@ -338,12 +384,12 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
 
   ENTRY e {
     p0 = bf16[16,32]{1,0} parameter(0)
-    p1 = s8[32,8]{1,0} parameter(1)
-    c1 = bf16[32,8]{1,0} convert(p1)
-    gemm = (bf16[16,8]{1,0}, s8[0]{0}) custom-call(p0, c1),
+    c0 = f32[16,32]{1,0} convert(p0)
+    p1 = f32[32,8]{1,0} parameter(1)
+    gemm = (f32[16,8]{1,0}, s8[0]{0}) custom-call(c0, p1),
       custom_call_target="__cublas$gemm",
       backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
-    ROOT get-tuple-element = bf16[16,8]{1,0} get-tuple-element(gemm), index=0
+    ROOT get-tuple-element = f32[16,8]{1,0} get-tuple-element(gemm), index=0
   })";
 
   const char* hlo_text_custom_fusion = R"(
@@ -351,17 +397,98 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
 
   cutlass_gemm_with_upcast {
     p0 = bf16[16,32]{1,0} parameter(0)
+    c0 = f32[16,32]{1,0} convert(p0)
+    p1 = f32[32,8]{1,0} parameter(1)
+    ROOT dot = f32[16,8]{1,0} dot(c0, p1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY e {
+    p0 = bf16[16,32]{1,0} parameter(0)
+    p1 = f32[32,8]{1,0} parameter(1)
+    ROOT _ = f32[16,8]{1,0} fusion(p0, p1), kind=kCustom, calls=cutlass_gemm_with_upcast,
+      backend_config={"fusion_backend_config":{kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm_with_upcast", "kernel_index":0}}}
+  })";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
+                                      error_spec, /*run_hlo_passes=*/false));
+}
+
+TEST_F(CutlassFusionTest, GemmWithRightHandSideUpcastKernel) {
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  const char* hlo_text_cublas = R"(
+  HloModule cublas
+
+  ENTRY e {
+    p0 = f32[16,32]{1,0} parameter(0)
+    p1 = bf16[32,8]{1,0} parameter(1)
+    c1 = f32[32,8]{1,0} convert(p1)
+    gemm = (f32[16,8]{1,0}, s8[0]{0}) custom-call(p0, c1),
+      custom_call_target="__cublas$gemm",
+      backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
+    ROOT get-tuple-element = f32[16,8]{1,0} get-tuple-element(gemm), index=0
+  })";
+
+  const char* hlo_text_custom_fusion = R"(
+  HloModule cutlass
+
+  cutlass_gemm_with_upcast {
+    p0 = f32[16,32]{1,0} parameter(0)
+    p1 = bf16[32,8]{1,0} parameter(1)
+    c1 = f32[32,8]{1,0} convert(p1)
+    ROOT dot = f32[16,8]{1,0} dot(p0, c1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY e {
+    p0 = f32[16,32]{1,0} parameter(0)
+    p1 = bf16[32,8]{1,0} parameter(1)
+    ROOT _ = f32[16,8]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=cutlass_gemm_with_upcast,
+      backend_config={"fusion_backend_config":{kind: "__custom_fusion",
+      custom_fusion_config: {"name":"cutlass_gemm_with_upcast",
+      "kernel_index":0}}}
+  })";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
+                                      error_spec, /*run_hlo_passes=*/false));
+}
+
+TEST_F(CutlassFusionTest, GemmWithLeftHandAndRightHandSideUpcastKernel) {
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  const char* hlo_text_cublas = R"(
+  HloModule cublas
+
+  ENTRY e {
+    p0 = bf16[16,32]{1,0} parameter(0)
+    c0 = f32[16,32]{1,0} convert(p0)
     p1 = s8[32,8]{1,0} parameter(1)
-    c1 = bf16[32,8]{1,0} convert(p1)
-    ROOT dot = bf16[16,8]{1,0} dot(p0, c1),
+    c1 = f32[32,8]{1,0} convert(p1)
+    gemm = (f32[16,8]{1,0}, s8[0]{0}) custom-call(c0, c1),
+      custom_call_target="__cublas$gemm",
+      backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
+    ROOT get-tuple-element = f32[16,8]{1,0} get-tuple-element(gemm), index=0
+  })";
+
+  const char* hlo_text_custom_fusion = R"(
+  HloModule cutlass
+
+  cutlass_gemm_with_upcast {
+    p0 = bf16[16,32]{1,0} parameter(0)
+    c0 = f32[16,32]{1,0} convert(p0)
+    p1 = s8[32,8]{1,0} parameter(1)
+    c1 = f32[32,8]{1,0} convert(p1)
+    ROOT dot = f32[16,8]{1,0} dot(c0, c1),
       lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
 
   ENTRY e {
     p0 = bf16[16,32]{1,0} parameter(0)
     p1 = s8[32,8]{1,0} parameter(1)
-    ROOT _ = bf16[16,8]{1,0} fusion(p0, p1), kind=kCustom, calls=cutlass_gemm_with_upcast,
-      backend_config={"fusion_backend_config":{kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm_with_upcast"}}}
+    ROOT _ = f32[16,8]{1,0} fusion(p0, p1), kind=kCustom, calls=cutlass_gemm_with_upcast,
+      backend_config={"fusion_backend_config":{kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm_with_upcast", "kernel_index":0}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
@@ -370,7 +497,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
 
 TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
   if (GpuSharedMemorySize() <
-      CutlassGemmKernelSharedMemorySize(BF16, 8, 8, 8)) {
+      CutlassGemmKernelSharedMemorySize(BF16, BF16, BF16, 8, 8, 8)) {
     GTEST_SKIP_("The GPU does not have sufficient shared memory");
   }
 
@@ -418,7 +545,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
     p3 = s32[] parameter(3)
     r.0 = (bf16[2,8,8]{2,1,0}, u8[1024]{0}) fusion(p1, p0, p2, p3), kind=kCustom,
       calls=%cutlass_gemm,
-      backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm_with_dynamic_update_slice"}}}
+      backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm_with_dynamic_update_slice", "kernel_index":0}}}
     ROOT %get-tuple-element = bf16[2,8,8]{2,1,0} get-tuple-element(r.0), index=0
   })";
 
@@ -444,7 +571,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
 TEST_F(CutlassFusionTest,
        RowMajorGemmWithDynamicUpdateSliceKernelWithoutBitcast) {
   if (GpuSharedMemorySize() <
-      CutlassGemmKernelSharedMemorySize(BF16, 8, 8, 8)) {
+      CutlassGemmKernelSharedMemorySize(BF16, BF16, BF16, 8, 8, 8)) {
     GTEST_SKIP_("The GPU does not have sufficient shared memory");
   }
 
@@ -491,7 +618,7 @@ TEST_F(CutlassFusionTest,
     p3 = s32[] parameter(3)
     r.0 = (bf16[16,8]{1,0}, u8[1024]{0}) fusion(p1, p0, p2, p3), kind=kCustom,
       calls=%cutlass_gemm,
-      backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm_with_dynamic_update_slice"}}}
+      backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm_with_dynamic_update_slice", "kernel_index":0}}}
     ROOT %get-tuple-element = bf16[16,8]{1,0} get-tuple-element(r.0), index=0
   })";
 

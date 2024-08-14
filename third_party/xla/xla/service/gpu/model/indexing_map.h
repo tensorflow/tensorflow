@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
@@ -144,6 +145,11 @@ struct Interval {
 };
 
 std::ostream& operator<<(std::ostream& out, const Interval& range);
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                     const Interval& interval) {
+  os << absl::StrFormat("[%d, %d]", interval.lower, interval.upper);
+  return os;
+}
 
 template <typename H>
 H AbslHashValue(H h, const Interval& range) {
@@ -362,6 +368,9 @@ class IndexingMap {
   llvm::SmallVector<int64_t, 4> Evaluate(
       llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
       llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
+
+  // Returns true if there is a constraint on the given symbol.
+  bool IsSymbolConstrained(int64_t symbol_id) const;
 
   // Returns true if the domain is empty. If it returns false, that does not
   // mean that the domain is not effectively empty.

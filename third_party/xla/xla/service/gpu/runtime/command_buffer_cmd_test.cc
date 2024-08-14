@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"  // IWYU pragma: keep
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -235,7 +235,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -306,7 +306,7 @@ TEST(CommandBufferCmdTest, BarrierCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy data back to host, correct executor order should populate all buffers
   // with expected value.
@@ -384,7 +384,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);

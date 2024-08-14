@@ -90,11 +90,8 @@ class ListScheduler {
   static absl::StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
       const TuplePointsToAnalysis& points_to_analysis,
-      const BufferValue::SizeFunction& size_function,
-      const absl::flat_hash_map<const HloComputation*, int64_t>&
-          memory_by_computation) {
-    ListScheduler scheduler(computation, points_to_analysis, size_function,
-                            memory_by_computation);
+      const BufferValue::SizeFunction& size_function) {
+    ListScheduler scheduler(computation, points_to_analysis, size_function);
     return scheduler.CreateSchedule();
   }
 
@@ -115,13 +112,10 @@ class ListScheduler {
 
   ListScheduler(HloComputation* computation,
                 const TuplePointsToAnalysis& points_to_analysis,
-                const BufferValue::SizeFunction& size_function,
-                const absl::flat_hash_map<const HloComputation*, int64_t>&
-                    memory_by_computation)
+                const BufferValue::SizeFunction& size_function)
       : computation_(computation),
         points_to_analysis_(points_to_analysis),
-        size_function_(size_function),
-        memory_by_computation_(memory_by_computation) {
+        size_function_(size_function) {
     // Create a map containing the LogicalBuffer uses for each HLO
     // instruction. An HLO instruction "uses" a LogicalBuffer if the
     // LogicalBuffer is in an operand of the instruction as indicated by
@@ -242,29 +236,7 @@ class ListScheduler {
         freed_bytes += size_function_(*buffer);
       }
     }
-    // We only count the memory usage of the largest subcomputation, instead of
-    // adding them all, because subcomputations won't execute in parallel.
-    int64_t max_subcomputation_bytes = 0;
-    for (const auto* c : instruction->called_computations()) {
-      auto it = memory_by_computation_.find(c);
-      if (it != memory_by_computation_.end()) {
-        int64_t subcomputation_bytes = it->second;
-        if (subcomputation_bytes > max_subcomputation_bytes) {
-          max_subcomputation_bytes = subcomputation_bytes;
-        }
-      }
-    }
-    int64_t bytes_defined;
-    if (max_subcomputation_bytes > 0 &&
-        (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
-         opcode == HloOpcode::kConditional)) {
-      // The output buffer of while/call/conditional is always aliased with the
-      // output buffer of the root instruction in the body. Don't double count.
-      bytes_defined = max_subcomputation_bytes;
-    } else {
-      bytes_defined = entry.bytes_defined + max_subcomputation_bytes;
-    }
-    return freed_bytes - bytes_defined;
+    return freed_bytes - entry.bytes_defined;
   }
 
   // Constructs the scheduling priority of the given instruction.
@@ -392,11 +364,6 @@ class ListScheduler {
   HloComputation* computation_;
   const TuplePointsToAnalysis& points_to_analysis_;
   const BufferValue::SizeFunction& size_function_;
-  // Computations are analyzed in post-order. When scheduling an instruction
-  // that includes subcomputations, such as a while loop, we use this map to
-  // look up the memory needed by subcomputations.
-  const absl::flat_hash_map<const HloComputation*, int64_t>&
-      memory_by_computation_;
 
   // A map containing the LogicalBuffers that each instruction uses.
   absl::flat_hash_map<const HloInstruction*, std::vector<const LogicalBuffer*>>
@@ -426,19 +393,15 @@ absl::StatusOr<HloInstructionSequence> ScheduleComputationHelper(
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_function,
     const MemorySchedulerAlgorithm& algorithm,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
   VLOG(2) << "Computation: " << computation->name();
 
   if (algorithm) {
     return algorithm(computation, points_to_analysis, alias_analysis,
-                     size_function, memory_by_computation, postprocessor,
-                     peak_memory);
+                     size_function, postprocessor, peak_memory);
   }
   return DefaultMemoryScheduler(computation, points_to_analysis, alias_analysis,
-                                size_function, memory_by_computation,
-                                postprocessor, peak_memory);
+                                size_function, postprocessor, peak_memory);
 }
 
 }  // namespace
@@ -448,8 +411,6 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
   // These variables are a hack to prevent overflows.
   int64_t cumulative_total_size = 0;
@@ -526,9 +487,9 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler(
   CHECK_EQ(sequence.size(), computation->instruction_count());
   if (peak_memory) {
     TF_ASSIGN_OR_RETURN(
-        *peak_memory, HeapSimulator::MinimumMemoryForComputation(
-                          *computation, sequence, alias_analysis, size_function,
-                          &memory_by_computation));
+        *peak_memory,
+        HeapSimulator::MinimumMemoryForComputation(
+            *computation, sequence, alias_analysis, size_function));
   }
   return sequence;
 }
@@ -538,8 +499,6 @@ absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
   // Index of HloInstruction in the `computation`.
   absl::flat_hash_map<const HloInstruction*, int64_t> inst_index;
@@ -586,9 +545,9 @@ absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
   CHECK_EQ(sequence.size(), computation->instruction_count());
   if (peak_memory) {
     TF_ASSIGN_OR_RETURN(
-        *peak_memory, HeapSimulator::MinimumMemoryForComputation(
-                          *computation, sequence, alias_analysis, size_function,
-                          &memory_by_computation));
+        *peak_memory,
+        HeapSimulator::MinimumMemoryForComputation(
+            *computation, sequence, alias_analysis, size_function));
   }
 
   return sequence;
@@ -605,16 +564,14 @@ ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
              const absl::flat_hash_set<absl::string_view>& execution_threads,
              int64_t* peak_memory) -> absl::StatusOr<HloSchedule> {
     HloSchedule schedule(module);
-    absl::flat_hash_map<const HloComputation*, int64_t> memory_by_computation;
     for (auto* computation :
          module->MakeComputationPostOrder(execution_threads)) {
       if (!computation->IsFusionComputation()) {
-        TF_ASSIGN_OR_RETURN(
-            HloInstructionSequence computation_sequence,
-            ScheduleComputationHelper(
-                computation, points_to_analysis, alias_analysis, size_func,
-                computation_scheduler, memory_by_computation, postprocessor,
-                /*peak_memory=*/nullptr));
+        TF_ASSIGN_OR_RETURN(HloInstructionSequence computation_sequence,
+                            ScheduleComputationHelper(
+                                computation, points_to_analysis, alias_analysis,
+                                size_func, computation_scheduler, postprocessor,
+                                /*peak_memory=*/nullptr));
         schedule.set_sequence(computation, std::move(computation_sequence));
       }
     }
@@ -631,20 +588,18 @@ absl::StatusOr<HloInstructionSequence> ListMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
-  TF_ASSIGN_OR_RETURN(HloInstructionSequence sequence,
-                      ListScheduler::Run(computation, points_to_analysis,
-                                         size_function, memory_by_computation));
+  TF_ASSIGN_OR_RETURN(
+      HloInstructionSequence sequence,
+      ListScheduler::Run(computation, points_to_analysis, size_function));
   if (postprocessor) {
     sequence = postprocessor(sequence);
   }
   if (peak_memory) {
     TF_ASSIGN_OR_RETURN(
-        *peak_memory, HeapSimulator::MinimumMemoryForComputation(
-                          *computation, sequence, alias_analysis, size_function,
-                          &memory_by_computation));
+        *peak_memory,
+        HeapSimulator::MinimumMemoryForComputation(
+            *computation, sequence, alias_analysis, size_function));
   }
   return sequence;
 }
@@ -654,8 +609,6 @@ absl::StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
   HloInstructionSequence sequence(computation->MakeInstructionPostOrder());
   if (postprocessor) {
@@ -663,9 +616,9 @@ absl::StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
   }
   if (peak_memory) {
     TF_ASSIGN_OR_RETURN(
-        *peak_memory, HeapSimulator::MinimumMemoryForComputation(
-                          *computation, sequence, alias_analysis, size_function,
-                          &memory_by_computation));
+        *peak_memory,
+        HeapSimulator::MinimumMemoryForComputation(
+            *computation, sequence, alias_analysis, size_function));
   }
   return sequence;
 }
@@ -675,8 +628,6 @@ absl::StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
   // We try a few schedulers and choose whichever returns a lower min-memory,
   // not accounting for fragmentation.
@@ -690,24 +641,21 @@ absl::StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
   TF_ASSIGN_OR_RETURN(
       HloInstructionSequence list_sequence,
       ListMemoryScheduler(computation, points_to_analysis, alias_analysis,
-                          size_function, memory_by_computation, postprocessor,
-                          &list_memory));
+                          size_function, postprocessor, &list_memory));
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
   int64_t dfs_memory;
   TF_ASSIGN_OR_RETURN(
       HloInstructionSequence dfs_sequence,
       DFSMemoryScheduler(computation, points_to_analysis, alias_analysis,
-                         size_function, memory_by_computation, postprocessor,
-                         &dfs_memory));
+                         size_function, postprocessor, &dfs_memory));
   VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
   int64_t post_order_memory;
-  TF_ASSIGN_OR_RETURN(
-      HloInstructionSequence post_order_sequence,
-      PostOrderMemoryScheduler(computation, points_to_analysis, alias_analysis,
-                               size_function, memory_by_computation,
-                               postprocessor, &post_order_memory));
+  TF_ASSIGN_OR_RETURN(HloInstructionSequence post_order_sequence,
+                      PostOrderMemoryScheduler(
+                          computation, points_to_analysis, alias_analysis,
+                          size_function, postprocessor, &post_order_memory));
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
@@ -813,21 +761,6 @@ absl::StatusOr<HloSchedule> ScheduleModule(
   TF_RETURN_IF_ERROR(schedule.Verify());
 
   return std::move(schedule);
-}
-
-absl::StatusOr<HloInstructionSequence> ScheduleComputation(
-    HloComputation* computation, const BufferValue::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor) {
-  CHECK(!computation->IsFusionComputation());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
-                      TuplePointsToAnalysis::Run(computation->parent()));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(computation->parent()));
-  absl::flat_hash_map<const HloComputation*, int64_t> empty_map;
-  return ScheduleComputationHelper(
-      computation, *points_to_analysis, *alias_analysis, size_function,
-      /*algorithm=*/nullptr, empty_map, postprocessor,
-      /*peak_memory=*/nullptr);
 }
 
 HloMemoryScheduler::HloMemoryScheduler(

@@ -319,7 +319,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         if (element_position >= input_cardinality) {
           // The input element position is out-of-range. The caller is
           // responsible for handle this case (e.g.: returning end_of_sequence).
-          return element_position;
+          return absl::OutOfRangeError("Finite repeat is out of range");
         }
 
         // First, maps the input indices from
@@ -356,28 +356,37 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
+
       if (ctx->restored_element_count().has_value()) {
         CardinalityOptions options;
         options.set_compute_level(
             CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
         const int64_t input_cardinality =
             dataset()->input_->Cardinality(std::move(options));
-        i_ = *ctx->restored_element_count() / input_cardinality;
         // For upstream iterators, the restored element count should be the
         // element count within the current repetition.
         IteratorContext::Params params(ctx);
         params.restored_element_count =
-            *ctx->restored_element_count() % input_cardinality;
+            *ctx->restored_element_count() % (input_cardinality);
         params.index_mapper = GetIndexMapper(ctx->index_mapper());
         IteratorContext ctx_with_restored_element_count(params);
-        return RestoreInput(&ctx_with_restored_element_count, reader,
-                            input_impl_);
+        if (!input_empty) {
+          // Needs to re-`MakeIterator` because `i_` might have changed.
+          TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+              ctx, this, nested_prefix(prefix(), i_), &input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(&ctx_with_restored_element_count,
+                                          reader, input_impl_));
+          ctx->MergeCheckpoint(ctx_with_restored_element_count.checkpoint());
+        } else {
+          input_impl_.reset();
+        }
+        return absl::OkStatus();
       }
 
-      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
-      int64_t input_empty;
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
       if (static_cast<bool>(!input_empty)) {
         TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
             ctx, this, nested_prefix(prefix(), i_), &input_impl_));

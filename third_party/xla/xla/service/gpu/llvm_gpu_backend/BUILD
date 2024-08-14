@@ -3,6 +3,10 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl_is_configured",
+)
+load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
@@ -88,6 +92,8 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@llvm-project//llvm:AMDGPUCodeGen",
         "@llvm-project//llvm:AMDGPUAsmParser",
+    ]) + if_sycl_is_configured([
+        "@spirv_llvm_translator//:spirv_llvm_translator",
     ]),
 )
 
@@ -103,6 +109,19 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@llvm-project//llvm:Core",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_backend_lib_test",
+    size = "small",
+    srcs = ["gpu_backend_lib_test.cc"],
+    deps = [
+        ":llvm_gpu_backend",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",
+        "@llvm-project//llvm:Core",
         "@local_tsl//tsl/platform:test",
     ],
 )

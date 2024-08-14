@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/make_fully_connected.h"
 
+#include <any>
 #include <memory>
 #include <string>
 #include <vector>
@@ -56,7 +57,7 @@ class MakeFullyConnectedFromConvolution : public NodeTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    const auto& conv_attr = absl::any_cast<const Convolution2DAttributes&>(
+    const auto& conv_attr = std::any_cast<const Convolution2DAttributes&>(
         node->operation.attributes);
     if (!IsConvEquivalentToFullyConnected(conv_attr)) {
       return {TransformStatus::SKIPPED, ""};
@@ -76,7 +77,7 @@ class MakeFullyConnectedFromConvolution : public NodeTransformation {
 }  // namespace
 
 std::unique_ptr<NodeTransformation> NewMakeFullyConnectedFromConvolution() {
-  return absl::make_unique<MakeFullyConnectedFromConvolution>();
+  return std::make_unique<MakeFullyConnectedFromConvolution>();
 }
 
 }  // namespace gpu

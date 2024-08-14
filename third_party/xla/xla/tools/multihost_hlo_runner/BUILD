@@ -84,6 +84,7 @@ xla_cc_binary(
     testonly = True,
     tags = [
         "gpu",
+        "no_rocm",
         "nomac",
     ] + tf_gpu_tests_tags(),
     deps = [
@@ -198,6 +199,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/tests:filecheck",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -206,7 +208,6 @@ xla_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",

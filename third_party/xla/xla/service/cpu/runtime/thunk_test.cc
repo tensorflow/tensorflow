@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/thunk.h"
 
 #include <cstdint>
+#include <utility>
 
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/collectives_interface.h"
@@ -33,8 +34,8 @@ class ThunkExecuteStateTestHelper : public Thunk {
   }
 };
 
-TEST(ThunkTest, OkExecuteEvent) {
-  auto event = Thunk::OkExecuteEvent();
+TEST(ThunkTest, OkExecuteEventSingleton) {
+  auto event = Thunk::OkExecuteEventSingleton();
   ASSERT_TRUE(event.IsConcrete());
 }
 

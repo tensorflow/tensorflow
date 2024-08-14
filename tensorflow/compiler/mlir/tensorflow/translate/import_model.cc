@@ -127,6 +127,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -1795,7 +1796,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
 
     if (stack_trace != nullptr) {
       DVLOG(1) << "Stack available for " << node.name();
-      for (const StackFrame& frame : stack_trace->ToFrames()) {
+      for (const StackFrame& frame : stack_trace->ToUncachedFrames()) {
         auto file_name = mlir::StringAttr::get(context_, frame.file_name);
         // Use col 1 as there is no column info in StackTrace.
         auto file_line_loc =

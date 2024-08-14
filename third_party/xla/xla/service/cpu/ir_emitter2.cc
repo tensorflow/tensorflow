@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -47,7 +48,7 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/Casting.h"
+#include "llvm/Support/CodeGen.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -251,6 +252,37 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
 
   return kernels_.emplace_back(KernelInfo{
       kernel_prototype.function->getName().str(), se::BlockDim(), thread_dims});
+}
+
+absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
+    const HloInstruction* pad) {
+  VLOG(2) << "Emit Pad host kernel.";
+
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(pad));
+
+  llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
+  llvm_ir::IrArray padvalue_array = kernel_prototype.arguments[1];
+  llvm_ir::IrArray output_array = kernel_prototype.results[0];
+
+  llvm::LLVMContext& ctx = module_->getContext();
+  llvm::IRBuilder<> b(ctx);
+  auto builder_overwrite = nested_ir_emitter_->WithBuilder(b);
+
+  nested_ir_emitter_->PushComputeFunction(
+      &b, module_,
+      /*num_dynamic_loop_bounds=*/0, kernel_prototype.function,
+      /*dynamic_loop_bounds_arg=*/nullptr, kernel_prototype.return_block);
+
+  TF_RETURN_IF_ERROR(nested_ir_emitter_->HandlePad(
+      const_cast<HloInstruction*>(pad), operand_array, padvalue_array,
+      output_array));
+
+  nested_ir_emitter_->PopComputeFunction();
+
+  return kernels_.emplace_back(
+      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                 se::ThreadDim()});
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
@@ -515,6 +547,12 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
     const HloInstruction* instr) {
   HloComputation* comparator = instr->to_apply();
 
+  // Find if we already emitted this comparator.
+  auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
+    return info.name == comparator->name();
+  });
+  if (info != comparators_.end()) return *info;
+
   // We use simple post-order schedule as we are not emitting a "real"
   // computation that requires buffer assignment.
   auto schedule = comparator->MakeInstructionPostOrder();
@@ -526,6 +564,10 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
                           comparator, comparator->name(),
                           /*is_top_level_computation=*/true, schedule,
                           /*allow_reassociation=*/false));
+
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  comparator_function->setUWTableKind(llvm::UWTableKind::Default);
 
   return comparators_.emplace_back(
       ComparatorInfo{comparator_function->getName().str()});
@@ -673,6 +715,15 @@ llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
   // emit metadata to allow LLVM to use that information for optimization.
   llvm_ir::SetAlignmentMetadataForLoad(data, cpu_function_runtime::MinAlign());
 
+  // All buffers pointers passed to host kernels are expected to be
+  // dereferenceable.
+  IrEmitter::AttachDereferenceableMetadataForLoad(data, ByteSizeOf(shape));
+
+  // All buffers pointers passed to host kernels are expected to be invariant
+  // over the whole program. Note the metadata is attached only to loading
+  // buffer pointers, not to loading actual buffers.
+  AttachInvariantLoadMetadataForLoad(data);
+
   return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
 }
 
@@ -754,11 +805,15 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     }
   }
 
-  // Create a kernel function with HostKernel API.
-  llvm::Function* function = llvm::dyn_cast<llvm::Function>(
-      module_->getOrInsertFunction(name, KernelFunctionTy(ctx)).getCallee());
+  // Create a kernel function with HostKernel API. We use external linkage
+  // because we'll be resolving this function from the XLA runtime.
+  llvm::Function* function = llvm::Function::Create(
+      KernelFunctionTy(ctx), llvm::GlobalValue::ExternalLinkage, name, module_);
   function->setCallingConv(llvm::CallingConv::C);
-  function->setDoesNotThrow();
+
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  function->setUWTableKind(llvm::UWTableKind::Default);
 
   // Set prefer-vector-width attribute to allow LLVM to use wider vector
   // registers (by default LLVM uses at most 256-bit registers).
@@ -809,11 +864,21 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
 
   // Return null pointer to signal success as we do not support error handling
   // in the compiled host kernel.
+  llvm::BasicBlock* return_block =
+      llvm::BasicBlock::Create(ctx, "return", function);
+
+  b.CreateBr(return_block);
+
+  b.SetInsertPoint(return_block);
   b.CreateRet(
       llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(ctx)));
 
-  return KernelPrototype{function, kernel_thread_dims, kernel_thread,
-                         std::move(ir_arguments), std::move(ir_results)};
+  return KernelPrototype{function,
+                         return_block,
+                         kernel_thread_dims,
+                         kernel_thread,
+                         std::move(ir_arguments),
+                         std::move(ir_results)};
 }
 
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
@@ -978,6 +1043,19 @@ absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
   TF_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
                          .EmitLoop(llvm_ir::IrName(instr)));
   return se::ThreadDim();
+}
+
+// This is a convenience function taken from IrEmitter, it uses module_ class
+// field. If there will be more functions that use module_, we should consider
+// refactoring (like we did for compute_function_ and builder_).
+int64_t IrEmitter2::ByteSizeOf(const Shape& shape) const {
+  return llvm_ir::ByteSizeOf(shape, module_->getDataLayout());
+}
+
+void IrEmitter2::AttachInvariantLoadMetadataForLoad(
+    llvm::LoadInst* instr) const {
+  nested_ir_emitter_->AttachInvariantLoadMetadataForLoad(instr,
+                                                         hlo_module_.config());
 }
 
 }  // namespace xla::cpu

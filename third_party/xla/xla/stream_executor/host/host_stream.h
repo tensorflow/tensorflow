@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Class declaration for Stream type that enqueues tasks onto a host/CPU-based
-// execution context (as opposed to a GPU device), HostExecutor.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <queue>
 
@@ -27,6 +25,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/thread_annotations.h"
@@ -34,6 +36,8 @@ limitations under the License.
 namespace stream_executor {
 namespace host {
 
+// Class declaration for Stream type that enqueues tasks onto a host/CPU-based
+// execution context (as opposed to a GPU device), HostExecutor.
 class HostStream : public StreamCommon {
  public:
   explicit HostStream(StreamExecutor* executor);
@@ -65,6 +69,8 @@ class HostStream : public StreamCommon {
                       uint64_t size) override;
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const Kernel& kernel, const KernelArgs& args) override;
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

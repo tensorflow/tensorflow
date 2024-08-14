@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"

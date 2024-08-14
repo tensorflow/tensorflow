@@ -272,7 +272,9 @@ class Stream {
   // platform driver.
   virtual absl::Status Launch(const ThreadDim &thread_dims,
                               const BlockDim &block_dims, const Kernel &k,
-                              const KernelArgs &args) = 0;
+                              const KernelArgs &args) {
+    return absl::UnimplementedError("Not implemented");
+  }
 
   // Launches a data parallel kernel with the given thread/block
   // dimensionality and already-packed args/sizes to pass to the underlying
@@ -280,7 +282,9 @@ class Stream {
   virtual absl::Status Launch(const ThreadDim &thread_dims,
                               const BlockDim &block_dims,
                               const ClusterDim &cluster_dims, const Kernel &k,
-                              const KernelArgs &args) = 0;
+                              const KernelArgs &args) {
+    return absl::UnimplementedError("Not implemented");
+  }
 
   // Get/set a name for a stream, which can be shown in profiling tools
   virtual absl::string_view name() const = 0;

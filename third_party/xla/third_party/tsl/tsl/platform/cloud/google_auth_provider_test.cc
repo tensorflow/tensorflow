@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cloud/http_request_fake.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
@@ -40,23 +40,24 @@ class FakeEnv : public EnvWrapper {
 
 class FakeOAuthClient : public OAuthClient {
  public:
-  Status GetTokenFromServiceAccountJson(
-      Json::Value json, StringPiece oauth_server_uri, StringPiece scope,
-      string* token, uint64* expiration_timestamp_sec) override {
-    provided_credentials_json = json;
-    *token = return_token;
-    *expiration_timestamp_sec = return_expiration_timestamp;
-    return OkStatus();
-  }
-
-  /// Retrieves a bearer token using a refresh token.
-  Status GetTokenFromRefreshTokenJson(
-      Json::Value json, StringPiece oauth_server_uri, string* token,
+  absl::Status GetTokenFromServiceAccountJson(
+      Json::Value json, absl::string_view oauth_server_uri,
+      absl::string_view scope, string* token,
       uint64* expiration_timestamp_sec) override {
     provided_credentials_json = json;
     *token = return_token;
     *expiration_timestamp_sec = return_expiration_timestamp;
-    return OkStatus();
+    return absl::OkStatus();
+  }
+
+  /// Retrieves a bearer token using a refresh token.
+  absl::Status GetTokenFromRefreshTokenJson(
+      Json::Value json, absl::string_view oauth_server_uri, string* token,
+      uint64* expiration_timestamp_sec) override {
+    provided_credentials_json = json;
+    *token = return_token;
+    *expiration_timestamp_sec = return_expiration_timestamp;
+    return absl::OkStatus();
   }
 
   string return_token;

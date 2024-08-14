@@ -63,12 +63,6 @@ AsyncValue::TypeInfoTable* AsyncValue::GetTypeInfoTableSingleton() {
 
 std::atomic<size_t> AsyncValue::total_allocated_async_values_;
 
-const AsyncValue::TypeInfo& AsyncValue::GetTypeInfo() const {
-  TypeInfoTable* type_info_table = AsyncValue::GetTypeInfoTableSingleton();
-  DCHECK_NE(type_id_, 0);
-  return (*type_info_table)[type_id_ - 1];
-}
-
 // This is called when the value is set into the ConcreteAsyncValue buffer, or
 // when the IndirectAsyncValue is forwarded to an available AsyncValue, and we
 // need to change our state and clear out the notifications. The current state

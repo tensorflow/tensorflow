@@ -31,10 +31,12 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/compiler/mlir/lite/core/absl_error_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/flatbuffer_to_mlir.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
@@ -46,8 +48,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 #include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
 #include "tensorflow/lite/toco/model.h"
@@ -309,7 +309,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool enable_variable_quantization,
                             bool disable_per_channel_for_dense_layers,
                             PyObject* debug_options_proto_txt_raw) {
-  using tflite::interpreter_wrapper::PythonErrorReporter;
+  using tflite_migration::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -362,9 +362,9 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     return nullptr;
   }
 
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromBuffer(buf, length,
-                                               error_reporter.get());
+  std::unique_ptr<mlir::TFL::FlatBufferModelAbslError> model =
+      mlir::TFL::FlatBufferModelAbslError::BuildFromBuffer(
+          buf, length, error_reporter.get());
   if (!model) {
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;
@@ -399,7 +399,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
 }
 
 PyObject* MlirSparsifyModel(PyObject* data) {
-  using tflite::interpreter_wrapper::PythonErrorReporter;
+  using tflite_migration::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -408,9 +408,9 @@ PyObject* MlirSparsifyModel(PyObject* data) {
     PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");
     return nullptr;
   }
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromBuffer(buf, length,
-                                               error_reporter.get());
+  std::unique_ptr<mlir::TFL::FlatBufferModelAbslError> model =
+      mlir::TFL::FlatBufferModelAbslError::BuildFromBuffer(
+          buf, length, error_reporter.get());
   if (!model) {
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;

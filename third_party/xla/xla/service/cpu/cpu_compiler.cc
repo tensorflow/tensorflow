@@ -168,6 +168,7 @@ limitations under the License.
 #include "xla/service/sharding_remover.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/sort_simplifier.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/stochastic_convert_decomposer.h"
 #include "xla/service/sub_byte_normalization.h"
@@ -179,6 +180,7 @@ limitations under the License.
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_invariant_code_motion.h"
 #include "xla/service/while_loop_simplifier.h"
+#include "xla/service/while_loop_trip_count_annotator.h"
 #include "xla/service/zero_sized_hlo_elimination.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -203,8 +205,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "xla/service/cpu/cpu_float_support.h"
-#include "xla/service/cpu/onednn_convolution_rewriter.h"
-#include "xla/service/cpu/onednn_matmul_rewriter.h"
+#include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #include "xla/service/simplify_fp_conversions.h"
 #endif
@@ -446,11 +447,14 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
-
-    spmd_pipeline.AddPass<ShardingPropagation>(
-        /*is_spmd=*/true, /*propagate_metadata=*/false,
-        module->config().allow_spmd_sharding_propagation_to_output(),
-        module->config().allow_spmd_sharding_propagation_to_parameters());
+    if (module->config().use_shardy_partitioner()) {
+      spmd_pipeline.AddPass<sdy::ShardyXLA>();
+    } else {
+      spmd_pipeline.AddPass<ShardingPropagation>(
+          /*is_spmd=*/true, /*propagate_metadata=*/false,
+          module->config().allow_spmd_sharding_propagation_to_output(),
+          module->config().allow_spmd_sharding_propagation_to_parameters());
+    }
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
@@ -516,7 +520,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
-  if (!is_aot_compile) {
+  bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
+  if (!is_aot_compile && !is_thunk_runtime) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic
@@ -536,7 +541,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   FloatSupport bf16_support(BF16);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   CpuFloatSupport onednn_bf16_support(BF16);
-  if (!is_aot_compile) {
+  if (!is_aot_compile && !is_thunk_runtime) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
   } else {
     pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -681,6 +686,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<OptimizationBarrierExpander>();
   pipeline.AddPass<TupleSimplifier>();
 
+  // Annotate while loops with statically known trip counts, so that at run time
+  // we can avoid running the loop condition computations.
+  pipeline.AddPass<WhileLoopTripCountAnnotator>();
+
   // Layout assignment uses alias analysis, which requires the call graph to be
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
@@ -737,8 +746,11 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
           : tsl::port::NumSchedulableCPUs();
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  auto& debug_options = module->config().debug_options();
+  bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
+
   // AOT compiled code runs in single thread.
-  if (!is_aot_compile) {
+  if (!is_aot_compile && !is_thunk_runtime) {
     auto debug_options = module->config().debug_options();
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
@@ -746,11 +758,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }
-    pipeline.AddPass<OneDnnConvolutionRewriter>();
-    pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
-                                           compile_options.thread_pool);
+    pipeline.AddPass<OneDnnContractionRewriter>(max_parallelism,
+                                                compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
-    // that may exist as a result of running OneDnnMatMulRewriter pass.
+    // that may exist as a result of running OneDnnContractionRewriter pass.
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }
@@ -1250,16 +1261,27 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
+    std::string ir_module_string;
+    if (embed_ir_in_executable) {
+      ir_module_string = llvm_ir::DumpToString(llvm_module.get());
+    }
+
     // JIT compile the LLVM IR module to in-memory machine code.
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
     cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
         std::move(llvm_module), std::move(llvm_context))));
 
+    auto mangle = [&](std::string_view name) {
+      llvm::SmallVector<char, 40> mangled;
+      llvm::Mangler::getNameWithPrefix(mangled, name, (*jit)->data_layout());
+      return std::string(mangled.begin(), mangled.end());
+    };
+
     // TODO(ezhulenev): We should be able to make it lazy on-demand, but today
     // we capture obj_files by reference and it leads to asan errors. Figure out
     // lifetime issues and move compilation to Thunk initialization stage.
     for (const auto& kernel : ir_emitter2.kernels()) {
-      if (auto sym = (*jit)->FindCompiledSymbol(kernel.name); !sym) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
         return Internal("Failed to find compiled symbol for kernel %s",
                         kernel.name);
       }
@@ -1267,7 +1289,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
     // Compile auxiliary comparator functions used by sort thunks.
     for (const auto& comparator : ir_emitter2.comparators()) {
-      if (auto sym = (*jit)->FindCompiledSymbol(comparator.name); !sym) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
         return Internal("Failed to find compiled symbol for comparator %s",
                         comparator.name);
       }
@@ -1288,6 +1310,10 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
     // Save object files to be able to export them to AOT compilation result.
     cpu_executable->set_obj_files(std::move(obj_files));
+
+    if (embed_ir_in_executable) {
+      cpu_executable->set_ir_module_string(ir_module_string);
+    }
 
     return with_hlo_proto(std::move(cpu_executable));
   }
@@ -1697,6 +1723,8 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
 
+  VLOG(2) << "Load XLA:CPU executable for module: " << module->name();
+
   // Recreate BufferAssignment from proto.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
@@ -1719,10 +1747,17 @@ CpuExecutableAotCompilationResult::LoadExecutable(
 
   // Create a named buffer from compiled object file.
   llvm::StringRef data(proto_.obj_file().data(), proto_.obj_file().size());
-  auto obj_file =
-      llvm::MemoryBuffer::getMemBuffer(data, proto_.entry_function_name());
 
-  cantFail((*jit)->AddObjFile(std::move(obj_file)));
+  // We might have an XLA:CPU executable that has only runtime thunks and
+  // doesn't have any corresponding object files.
+  if (data.empty()) {
+    VLOG(2) << "Loaded XLA:CPU executable does not have an object file";
+  } else {
+    VLOG(2) << "Load XLA:CPU executable object file with entry function: "
+            << proto_.entry_function_name();
+    cantFail((*jit)->AddObjFile(
+        llvm::MemoryBuffer::getMemBuffer(data, proto_.entry_function_name())));
+  }
 
   std::unique_ptr<CpuExecutable> cpu_executable;
 
@@ -1754,16 +1789,22 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
+    auto mangle = [&](std::string_view name) {
+      llvm::SmallVector<char, 40> mangled;
+      llvm::Mangler::getNameWithPrefix(mangled, name, (*jit)->data_layout());
+      return std::string(mangled.begin(), mangled.end());
+    };
+
     // Lookup all kernel functions by name in the loaded object file.
     for (const auto& kernel : ir_emitter2.kernels()) {
-      if (auto sym = (*jit)->FindCompiledSymbol(kernel.name); !sym) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
         return Internal("Failed to find compiled symbol for kernel %s",
                         kernel.name);
       }
     }
 
     for (const auto& comparator : ir_emitter2.comparators()) {
-      if (auto sym = (*jit)->FindCompiledSymbol(comparator.name); !sym) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
         return Internal("Failed to find compiled symbol for comparator %s",
                         comparator.name);
       }
@@ -1809,18 +1850,23 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
   if (!cpu_executable)
     return Internal("Could not downcast Executable to CpuExecutable");
 
-  if (cpu_executable->obj_files().size() != 1) {
-    return absl::InternalError(
-        absl::StrCat("Can't export CPU execuable, expected exactly one object "
-                     "file but got: ",
-                     cpu_executable->obj_files().size()));
+  if (cpu_executable->obj_files().size() > 1) {
+    return Internal(
+        "Can't export CPU executable %s, expected at most one object file but "
+        "got: %d",
+        cpu_executable->module().name(), cpu_executable->obj_files().size());
   }
+
+  std::string_view obj_file = cpu_executable->obj_files().empty()
+                                  ? std::string_view("")
+                                  : cpu_executable->obj_files()[0];
 
   auto kind = cpu_executable->has_thunks() ? CompilationResultProto::KERNELS
                                            : CompilationResultProto::CLASSIC;
+
   return {std::make_unique<CpuExecutableAotCompilationResult>(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
-      cpu_executable->module_name(), cpu_executable->obj_files()[0], kind)};
+      cpu_executable->module_name(), obj_file, kind)};
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>

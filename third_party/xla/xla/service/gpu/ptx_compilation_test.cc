@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compilation_method.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
@@ -155,6 +156,29 @@ class NVPTXCompilationTests
       // Compiled without libnvptxcompiler support
       GTEST_SKIP() << "libnvptxcompiler is not supported in this build.";
     }
+
+    if (!stream_executor::IsLibNvJitLinkSupported() &&
+        (compilation_method == PtxCompilationMethod::kNvJitLink ||
+         linking_method == PtxLinkingMethod::kNvJitLink)) {
+      // Compiled without libnvjitlink support
+      GTEST_SKIP() << "libnvjitlink is not supported in this build.";
+    }
+
+    if (compilation_method == PtxCompilationMethod::kNvJitLink &&
+        linking_method != PtxLinkingMethod::kNvJitLink) {
+      // When compilation method is NvJitLink, linking method must be NvJitLink
+      // as well.
+      GTEST_SKIP() << "Compilation method NvJitLink is only supported if the "
+                      "linking method is NvJitLink as well.";
+    }
+
+    if (compilation_method == PtxCompilationMethod::kPtxas &&
+        linking_method == PtxLinkingMethod::kNvJitLink) {
+      // We could support this combination, but it would require some
+      // refactoring of the flags.
+      GTEST_SKIP() << "Compilation method Ptxas is not supported with linking "
+                      "method NvJitLink.";
+    }
   }
 
   void SetDebugOptionsFromPtxSettings(DebugOptions* debug_options,
@@ -162,6 +186,10 @@ class NVPTXCompilationTests
                                       PtxLinkingMethod linking_method) {
     debug_options->set_xla_gpu_enable_libnvptxcompiler(
         compilation_method == PtxCompilationMethod::kNvPtxCompiler);
+
+    debug_options->set_xla_gpu_enable_libnvjitlink(
+        compilation_method == PtxCompilationMethod::kNvJitLink ||
+        linking_method == PtxLinkingMethod::kNvJitLink);
 
     debug_options->set_xla_gpu_enable_llvm_module_compilation_parallelism(
         linking_method != PtxLinkingMethod::kNone);
@@ -316,9 +344,11 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(
         ::testing::Values("simple", "parallel_compilation", "requires_sm90a"),
         ::testing::Values(PtxCompilationMethod::kNvPtxCompiler,
-                          PtxCompilationMethod::kPtxas),
+                          PtxCompilationMethod::kPtxas,
+                          PtxCompilationMethod::kNvJitLink),
         ::testing::Values(PtxLinkingMethod::kNone, PtxLinkingMethod::kNvLink,
-                          PtxLinkingMethod::kDriver)),
+                          PtxLinkingMethod::kDriver,
+                          PtxLinkingMethod::kNvJitLink)),
     [](const ::testing::TestParamInfo<std::tuple<
            std::string_view, PtxCompilationMethod, PtxLinkingMethod>>& info) {
       return GenerateParametrizedTestname(std::get<0>(info.param),

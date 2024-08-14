@@ -1465,7 +1465,7 @@ tsl_cc_test(
         ":subprocess",
         ":test",
         ":test_main",
-        "//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -1768,7 +1768,7 @@ tsl_cc_test(
         ":str_util",
         ":test",
         ":test_main",
-        "//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -1784,7 +1784,7 @@ tsl_cc_test(
         ":str_util",
         ":test",
         ":test_main",
-        "//tsl/lib/core:status_test_util",
         "@com_google_absl//absl/time",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

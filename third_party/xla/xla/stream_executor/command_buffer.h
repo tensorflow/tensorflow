@@ -327,6 +327,11 @@ class CommandBuffer {
     return While(kDefaulExecutionScope, pred, cond_builder, body_builder);
   }
 
+  // Submits the command buffer for execution.
+  virtual absl::Status Submit(Stream* stream) {
+    return absl::UnimplementedError("Not implemented for this command buffer.");
+  }
+
   //--------------------------------------------------------------------------//
   // Command buffer state management API
   //--------------------------------------------------------------------------//

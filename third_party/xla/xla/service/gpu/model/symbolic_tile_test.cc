@@ -121,7 +121,7 @@ TEST_F(SymbolicTileTest,
         size_map: (d0, d1) -> (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
         stride_map: (d0, d1) -> (0, 1, 1, 1)
         constraints:
-          6 mod d0 in [0, 1) || d0 mod 6 in [0, 1)
+          6 mod d0 in [0, 0] || d0 mod 6 in [0, 0]
       )")));
 }
 
@@ -150,12 +150,12 @@ TEST_F(SymbolicTileTest,
           (((-d2 + 7) floordiv 6) * (((-d1 + 9) floordiv 8) *
           ((-((-d0 + 5) floordiv 4) + 1) * 48) +
           (-((-d1 + 9) floordiv 8) + 1) * 6) + -((-d2 + 7) floordiv 6) + 1, 1)
-        constraints: d0 in [1, 2) && d1 in [1, 2) ||
-                     d0 in [1, 2) && d2 in [1, 2) ||
-                     d0 in [1, 2) && d2 in [6, 7) ||
-                     d1 in [1, 2) && d2 in [1, 2) ||
-                     d1 in [8, 9) && d2 in [1, 2) ||
-                     d1 in [8, 9) && d2 in [6, 7)
+        constraints: d0 in [1, 1] && d1 in [1, 1] ||
+                     d0 in [1, 1] && d2 in [1, 1] ||
+                     d0 in [1, 1] && d2 in [6, 6] ||
+                     d1 in [1, 1] && d2 in [1, 1] ||
+                     d1 in [8, 8] && d2 in [1, 1] ||
+                     d1 in [8, 8] && d2 in [6, 6]
       )")));
 
   // Capturing elements along dimensions 0, 1, and 2 makes the stride equal to
@@ -406,10 +406,10 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicSlice) {
         size_map: (d0, d1, d2) -> (1, d1, d2)
         stride_map: (d0, d1, d2) -> (0, 1, 1)
         rt_vars:
-          s0 in [0, 2)
+          s0 in [0, 1]
             hlo: %of1 = s32[] parameter(1)
             (d0, d1, d2) -> ()
-          s1 in [0, 227)
+          s1 in [0, 226]
             hlo: %of3 = s32[] parameter(3)
             (d0, d1, d2) -> ()
       )")));
@@ -458,10 +458,10 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicUpdateSlice) {
         size_map: (d0, d1) -> (d0, d1)
         stride_map: (d0, d1) -> (1, 1)
         rt_vars:
-          s0 in [0, 16)
+          s0 in [0, 15]
             hlo: %of1 = s32[] parameter(2)
             (d0, d1) -> ()
-          s1 in [0, 21)
+          s1 in [0, 20]
             hlo: %of2 = s32[] parameter(3)
             (d0, d1) -> ()
       )")));
@@ -501,10 +501,10 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughGather) {
         size_map: (d0, d1, d2, d3) -> (d1, d2, d3)
         stride_map: (d0, d1, d2, d3) -> (1, 1, 1)
         rt_vars:
-          s0 in [0, 27)
+          s0 in [0, 26]
             hlo: %indices = s32[1806,2]{1,0} parameter(1)
             (d0, d1, d2, d3) -> (d0, 0)
-          s1 in [0, 69)
+          s1 in [0, 68]
             hlo: %indices = s32[1806,2]{1,0} parameter(1)
             (d0, d1, d2, d3) -> (d0, 1)
       )")));
@@ -546,6 +546,61 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
         size_map: (d0, d1) ->
           (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
         stride_map: (d0, d1) -> (0, 1, 1, 1)
+      )")));
+}
+
+TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReductionOfSplittedAxis) {
+  // A split reshape of a reverse creates a sum of strided symbols.
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    computation {
+      p0 = f32[18] parameter(0)
+      bitcast = f32[9,2] bitcast(p0)
+      c0 = f32[] constant(0)
+      reduce_0 = f32[9] reduce(bitcast, c0), dimensions={1}, to_apply=add
+      ROOT reduce_1 = f32[] reduce(reduce_0, c0), dimensions={0}, to_apply=add
+    }
+
+    ENTRY e {
+      p0 = f32[18] parameter(0)
+      ROOT fusion = f32[] fusion(p0), kind=kLoop, calls=computation
+    }
+  )"));
+
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: () -> (0)
+        size_map: () -> (18)
+        stride_map: () -> (1)
+      )")));
+}
+
+TEST_F(SymbolicTileTest, CanPropagateTileThroughSummationOfSymbols) {
+  // Such an indexing map is representative of a sequence of HLOs containing a
+  // bitcast followed by two sequential reductions of the split axis, i.e.
+  // something like
+  //   p0 = f32[18] parameter(0)
+  //   bitcast = f32[9,2] bitcast(p0)
+  //   reduce_0 = f32[9] reduce(bitcast), dimensions={1}
+  //   reduce_1 = f32[] reduce(reduce_0), dimensions={0}
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("()[s0, s1] -> (s1 * 2 + s0)", &mlir_context_), {},
+      {2, 9});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: () -> (0)
+        size_map: () -> (18)
+        stride_map: () -> (1)
       )")));
 }
 
@@ -694,10 +749,10 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
         size_map: (d0, d1) -> (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, (d1 + 7) floordiv 8, d1 - ((d1 - 1) floordiv 8) * 8)
         stride_map: (d0, d1) -> (0, 1, 1, 1, 1)
         constraints:
-          6 mod d0 in [0, 1) && 8 mod d1 in [0, 1) ||
-          6 mod d0 in [0, 1) && d1 mod 8 in [0, 1) ||
-          8 mod d1 in [0, 1) && d0 mod 6 in [0, 1) ||
-          d0 mod 6 in [0, 1) && d1 mod 8 in [0, 1)
+          6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] ||
+          6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] ||
+          8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] ||
+          d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0]
       )")));
 }
 
@@ -720,7 +775,7 @@ TEST_F(SymbolicTileTest,
         offset_map: (d0, d1, d2) -> (0, 0)
         size_map: (d0, d1, d2) -> (d0 * d1, 50304)
         stride_map: (d0, d1, d2) -> (((-d1 + 2049) floordiv 2048) * ((-((-d0 + 5) floordiv 4) + 1) * 2048) + -((-d1 + 2049) floordiv 2048) + 1, 1)
-        constraints: d0 in [1, 2) || d1 in [1, 2) || d1 in [2048, 2049)
+        constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [2048, 2048]
       )")));
 }
 
@@ -801,7 +856,7 @@ TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
   constraints.Or(std::move(conjunction_1));
   constraints.Or(std::move(conjunction_2));
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [0, 6) && d1 in [0, 6) || d2 in [0, 6)"));
+                               "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
 }
 
 TEST_F(ConstraintExpressionTest,
@@ -809,11 +864,11 @@ TEST_F(ConstraintExpressionTest,
   ConstraintExpression constraints;
 
   constraints.And(GetConjointConstraints({{"d0", Interval{0, 5}}}));
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 6)"));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 5]"));
 
   // Constraints are intersected.
   constraints.And(GetConjointConstraints({{"d0", Interval{3, 6}}}));
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [3, 6)"));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [3, 5]"));
 
   // Empty intersection results in unsatisfiability.
   constraints.And(GetConjointConstraints({{"d0", Interval{7, 8}}}));
@@ -862,7 +917,7 @@ TEST_F(
   constraints.Or(std::move(conjunction_1));
   constraints.Or(std::move(conjunction_2));
   EXPECT_THAT(constraints,
-              MatchConstraintExpressionString("d0 in [0, 6) || d1 in [0, 6)"));
+              MatchConstraintExpressionString("d0 in [0, 5] || d1 in [0, 5]"));
 
   // `conjunction_1` && `conjunction_3` is an unsatisfiable constraint. Taking
   // the conjunction of the existing constraint expression with `conjunction_3`
@@ -873,7 +928,7 @@ TEST_F(
   constraints.And(std::move(conjunction_3));
 
   EXPECT_THAT(constraints,
-              MatchConstraintExpressionString("d0 in [6, 7) && d1 in [0, 6)"));
+              MatchConstraintExpressionString("d0 in [6, 6] && d1 in [0, 5]"));
 
   // But becomes unsatisfiable if we eliminate the last remaining constraint by
   // constructing another unsatisfiable conjunction.
@@ -1102,7 +1157,7 @@ TEST_F(ConstraintExpressionTest,
   constraints.Simplify();
 
   EXPECT_THAT(constraints,
-              MatchConstraintExpressionString("d0 in [0, 2) && d1 in [0, 2)"));
+              MatchConstraintExpressionString("d0 in [0, 1] && d1 in [0, 1]"));
 }
 
 TEST_F(ConstraintExpressionTest,
@@ -1119,7 +1174,7 @@ TEST_F(ConstraintExpressionTest,
 
   constraints.Simplify();
 
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 2)"));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 1]"));
 }
 
 TEST_F(ConstraintExpressionTest, SimplifyKeepsAlwaysSatisfiedUnchanged) {
@@ -1156,11 +1211,11 @@ TEST_F(ConstraintExpressionTest, SimplifyRemovesRedundantConstraints) {
 
   constraints.Simplify();
 
-  // We could simplify those contraints even further to `d0 in [0, 1)` by
+  // We could simplify those contraints even further to `d0 in [0, 0]` by
   // checking that one conjunction is a subset of the other, but we don't do
   // that yet.
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [0, 1) || d0 in [0, 1) && d1 in [1, 2)"));
+                               "d0 in [0, 0] || d0 in [0, 0] && d1 in [1, 1]"));
 }
 
 }  // namespace

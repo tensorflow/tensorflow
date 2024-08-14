@@ -57,6 +57,8 @@ using tensorflow::HeartbeatRequest;
 using tensorflow::HeartbeatResponse;
 using tensorflow::InsertKeyValueRequest;
 using tensorflow::InsertKeyValueResponse;
+using tensorflow::PollForErrorRequest;
+using tensorflow::PollForErrorResponse;
 using tensorflow::RegisterTaskRequest;
 using tensorflow::RegisterTaskResponse;
 using tensorflow::ReportErrorToServiceRequest;
@@ -269,6 +271,17 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
+  void PollForErrorAsync(CallOptions* call_opts,
+                         const PollForErrorRequest* request,
+                         PollForErrorResponse* response,
+                         StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/PollForError", *request,
+        response, std::move(done), call_opts,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
  private:
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
@@ -347,9 +360,7 @@ CoordinationClientCache* NewGrpcCoordinationClientCache(
 
 CoordinationClient* NewGrpcCoordinationClient(
     std::shared_ptr<::grpc::Channel> channel) {
-  // TODO(hanyangtay): Pass in the logical task name for better logging.
-  return new GrpcCoordinationClient(
-      channel, /*target=*/"unknown_target_for_coordination_leader");
+  return new GrpcCoordinationClient(channel, /*target=*/"coordination_service");
 }
 
 }  // namespace tsl

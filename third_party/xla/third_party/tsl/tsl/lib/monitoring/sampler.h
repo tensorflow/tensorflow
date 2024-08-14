@@ -122,7 +122,7 @@ class Sampler {
 #include <utility>
 #include <vector>
 
-#include "tsl/lib/histogram/histogram.h"
+#include "xla/tsl/lib/histogram/histogram.h"
 #include "tsl/lib/monitoring/collection_registry.h"
 #include "tsl/lib/monitoring/metric_def.h"
 #include "tsl/platform/macros.h"

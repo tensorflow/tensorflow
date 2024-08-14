@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -674,9 +674,8 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
                                           ->tensorflow_accelerator_device_info()
                                           ->use_pjrt_tensor_buffer;
   const DeviceType& device_type = GetDeviceType(context_.get());
-  TF_ASSERT_OK_AND_ASSIGN(const int pjrt_device_id,
-                          tsl::GetDeviceIdFromDeviceParsedName(
-                              context_->device()->parsed_name(), device_type));
+  const int pjrt_device_id =
+      tsl::GetDeviceIdFromDeviceParsedName(context_->device()->parsed_name());
   TF_ASSERT_OK_AND_ASSIGN(xla::PjRtDevice * pjrt_device,
                           pjrt_client_->LookupAddressableDevice(
                               xla::PjRtLocalDeviceId(pjrt_device_id)));

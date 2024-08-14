@@ -73,8 +73,8 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
@@ -284,43 +284,45 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConcat(
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   int concat_dim =
       Cast<HloConcatenateInstruction>(instr)->concatenate_dimension();
-  int64_t offset = 0;
-  IfOp outermost_if = nullptr;
   SmallVector<Value, 3> operand_indices = indices;
-  for (auto [index, operand] : llvm::enumerate(instr->operands())) {
-    int64_t limit = offset + operand->shape().dimensions(concat_dim);
-    auto ins = b.create<CmpIOp>(CmpIPredicate::ult, indices[concat_dim],
-                                b.create<ConstantIndexOp>(limit));
-
-    auto generate_operand = [&, index = index]() {
-      operand_indices[concat_dim] = b.create<arith::SubIOp>(
-          indices[concat_dim], b.create<ConstantIndexOp>(offset));
-      TF_ASSIGN_OR_RETURN(auto operand,
-                          operand_provider(instr, index, operand_indices));
-      b.create<YieldOp>(operand);
-      return absl::OkStatus();
-    };
-
-    if (index < instr->operand_count() - 1) {
-      auto if_op =
-          b.create<IfOp>(mlir::TypeRange{result_element_type}, ins, true, true);
-      if (outermost_if == nullptr) {
-        outermost_if = if_op;
-      } else {
-        b.create<YieldOp>(if_op.getResults());
-      }
-
-      b.setInsertionPointToStart(if_op.getBody(0));
-      TF_RETURN_IF_ERROR(generate_operand());
-      b.setInsertionPointToStart(if_op.getBody(1));
-    } else {
-      TF_RETURN_IF_ERROR(generate_operand());
-    }
-    offset = limit;
+  SmallVector<int64_t, 3> offsets{0};
+  for (auto* operand : instr->operands()) {
+    offsets.push_back(offsets.back() + operand->shape().dimensions(concat_dim));
   }
 
-  b.setInsertionPointAfter(outermost_if);
-  return outermost_if.getResults();
+  std::function<absl::StatusOr<SmallVector<Value, 1>>(int64_t, int64_t)>
+      generate_concat;
+  generate_concat = [&](int64_t begin,
+                        int64_t end) -> absl::StatusOr<SmallVector<Value, 1>> {
+    // If there's just one operand in the range, emit it.
+    if (begin == end - 1) {
+      operand_indices[concat_dim] = b.create<arith::SubIOp>(
+          indices[concat_dim], b.create<ConstantIndexOp>(offsets[begin]));
+      TF_ASSIGN_OR_RETURN(auto operand,
+                          operand_provider(instr, begin, operand_indices));
+      return operand;
+    }
+
+    int64_t mid = (begin + end) / 2;  // No risk of overflow.
+    auto if_op = b.create<IfOp>(
+        mlir::TypeRange{result_element_type},
+        b.create<CmpIOp>(CmpIPredicate::ult, indices[concat_dim],
+                         b.create<ConstantIndexOp>(offsets[mid])),
+        true, true);
+
+    b.setInsertionPointToStart(if_op.getBody(0));
+    TF_ASSIGN_OR_RETURN(auto left_val, generate_concat(begin, mid));
+    b.create<YieldOp>(left_val);
+
+    b.setInsertionPointToStart(if_op.getBody(1));
+    TF_ASSIGN_OR_RETURN(auto right_val, generate_concat(mid, end));
+    b.create<YieldOp>(right_val);
+    b.setInsertionPointAfter(if_op);
+
+    return if_op.getResults();
+  };
+
+  return generate_concat(0, instr->operand_count());
 }
 
 absl::StatusOr<SmallVector<Value, 1>> EmitDynamicSlice(
@@ -665,9 +667,10 @@ Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
   return b.createOrFold<mlir::affine::AffineApplyOp>(expr, args);
 }
 
-SmallVector<Value, 3> ApplyIndexing(const IndexingMap& map, ValueRange dims,
+SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
                                     ValueRange symbols,
                                     ImplicitLocOpBuilder& b) {
+  map.ClearConstraints();
   SmallVector<Value, 3> results;
   for (unsigned int i = 0; i < map.GetAffineMap().getNumResults(); ++i) {
     SmallVector<Value, 1> result;
@@ -1465,6 +1468,8 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       .Convert();
 }
 
+}  // namespace
+
 void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
                                   const IndexingMap& indexing_map,
                                   SmallVectorImpl<Value>* lbs,
@@ -1478,8 +1483,6 @@ void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
     steps->push_back(c1);
   }
 }
-
-}  // namespace
 
 absl::Status SubgraphToMlirFunction(
     const PartitionedComputation& computation,
@@ -1512,20 +1515,6 @@ absl::Status SubgraphToMlirFunction(
 }
 
 namespace {
-
-bool IsSymbolConstrained(const IndexingMap& map, int symbol_id) {
-  for (const auto& [expr, _] : map.GetConstraints()) {
-    bool result = false;
-    expr.walk([&](mlir::AffineExpr leaf) {
-      auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf);
-      if (sym && sym.getPosition() == symbol_id) {
-        result = true;
-      }
-    });
-    if (result) return true;
-  }
-  return false;
-}
 
 ValueRange EmitLoopNestImpl(
     ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
@@ -1623,7 +1612,7 @@ ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
        sym_index >= 0 && cumulative_loop_size < 64; --sym_index) {
     auto& bound = indexing_map.GetSymbolBound(sym_index);
     cumulative_loop_size *= bound.GetLoopTripCount();
-    if (!IsSymbolConstrained(indexing_map, sym_index)) continue;
+    if (!indexing_map.IsSymbolConstrained(sym_index)) continue;
 
     IndexingMap peeled_map = indexing_map;
     if (bound.upper == bound.lower) continue;
@@ -1632,7 +1621,7 @@ ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
     peeled_map.Simplify();
 
     // If the symbol is still constrained, peeling does not help.
-    if (IsSymbolConstrained(peeled_map, sym_index)) continue;
+    if (peeled_map.IsSymbolConstrained(sym_index)) continue;
 
     auto first_results = EmitLoopNestImpl(b, dim_values, iter_args_inits,
                                           peeled_map, create_body, vectorize);

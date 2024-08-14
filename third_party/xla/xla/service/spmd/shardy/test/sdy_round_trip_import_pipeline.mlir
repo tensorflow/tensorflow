@@ -30,20 +30,22 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
   }
 
   // CHECK-LABEL: func @while_with_free_variables
-  func.func @while_with_free_variables(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
+  func.func @while_with_free_variables(
+      %arg0: tensor<32x96xf32>,
+      %arg1: tensor<32x96xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh, [{}, {}]>"}})
+      -> tensor<32x96xf32> {
     // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
     // CHECK-NEXT: %[[C1:.*]] = sdy.constant dense<1>
     // CHECK-NEXT: %[[C32:.*]] = sdy.constant dense<32>
-    // CHECK-NEXT: %[[WHILE:.*]]:4 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]], %iterArg_1 = %[[C32]], %iterArg_2 = %[[C1]])
+    // CHECK-NEXT: %[[SC:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{?}, {?}]>
+    // CHECK-NEXT: %[[WHILE:.*]]:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
     // CHECK-NEXT:   cond {
-    // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %iterArg_1
+    // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %[[C32]]
     // CHECK-NEXT:   mhlo.return %[[COND]]
     // CHECK-NEXT: } do {
-    // CHECK-NEXT:   %[[ADD_0:.*]] = mhlo.add %iterArg_0, %iterArg_2
-    // CHECK-NEXT:   %[[ADD_1:.*]] = mhlo.add %iterArg, %iterArg
-    // CHECK-NEXT:   %[[IDENTITY_0:.*]] = sdy.identity %iterArg_1
-    // CHECK-NEXT:   %[[IDENTITY_1:.*]] = sdy.identity %iterArg_2
-    // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]], %[[IDENTITY_0]], %[[IDENTITY_1]]
+    // CHECK-NEXT:   %[[ADD_0:.*]] = mhlo.add %iterArg_0, %[[C1]]
+    // CHECK-NEXT:   %[[ADD_1:.*]] = mhlo.add %iterArg, %[[SC]]
+    // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]]
     // CHECK-NEXT: }
     // CHECK-NEXT: return %[[WHILE]]#0
     %0 = mhlo.constant dense<0> : tensor<i32>
@@ -55,7 +57,7 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
       mhlo.return %4 : tensor<i1>
     } do {
       %4 = mhlo.add %iterArg_0, %1 : tensor<i32>
-      %5 = mhlo.add %iterArg, %iterArg : tensor<32x96xf32>
+      %5 = mhlo.add %iterArg, %arg1 : tensor<32x96xf32>
       mhlo.return %5, %4 : tensor<32x96xf32>, tensor<i32>
     }
     return %3#0 : tensor<32x96xf32>

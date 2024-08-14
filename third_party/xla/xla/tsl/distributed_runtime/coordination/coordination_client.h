@@ -40,6 +40,8 @@ using tensorflow::HeartbeatRequest;
 using tensorflow::HeartbeatResponse;
 using tensorflow::InsertKeyValueRequest;
 using tensorflow::InsertKeyValueResponse;
+using tensorflow::PollForErrorRequest;
+using tensorflow::PollForErrorResponse;
 using tensorflow::RegisterTaskRequest;
 using tensorflow::RegisterTaskResponse;
 using tensorflow::ReportErrorToServiceRequest;
@@ -124,6 +126,10 @@ class CoordinationClient {
   virtual void CancelBarrierAsync(const CancelBarrierRequest* request,
                                   CancelBarrierResponse* response,
                                   StatusCallback done) = 0;
+  virtual void PollForErrorAsync(CallOptions* call_opts,
+                                 const PollForErrorRequest* request,
+                                 PollForErrorResponse* response,
+                                 StatusCallback done) = 0;
 };
 
 // Simple wrapper class that can be used to retrieve CoordinationClients.

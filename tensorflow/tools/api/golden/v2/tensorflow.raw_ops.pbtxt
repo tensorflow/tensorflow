@@ -3014,7 +3014,7 @@ tf_module {
   }
   member_method {
     name: "ParallelMapDatasetV2"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'deterministic\', \'preserve_cardinality\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'default\', \'False\', \'\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'deterministic\', \'preserve_cardinality\', \'use_unbounded_threadpool\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'default\', \'False\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ParameterizedTruncatedNormal"

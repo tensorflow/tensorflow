@@ -74,7 +74,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
-#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_device.h"
 #include "xla/python/py_values.h"
@@ -88,11 +87,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
-// TODO(b/324133505): remove this GOOGLE_CUDA block after JAX OSS migrates
-// to cuda plugin.
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_driver.h"
-#endif
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -866,19 +860,6 @@ absl::StatusOr<nb::object> CudaArrayInterfaceToBuffer(
       PrimitiveType element_type,
       DtypeToPrimitiveType(nb_dtype::from_args(cai["typestr"])));
 
-  // TODO(b/324133505): remove this GOOGLE_CUDA block after JAX OSS migrates
-  // to cuda plugin.
-#ifdef GOOGLE_CUDA
-  if (!device_id.has_value()) {
-    // cannot determine device_id/stream when device pointer is NULL.
-    device_id.emplace(
-        (data_value == 0
-             ? 0
-             : stream_executor::gpu::CreatedContexts::GetDeviceOrdinal(
-                   data_ptr)));
-  }
-#endif  // GOOGLE_CUDA
-
   if (!device_id.has_value()) {
     throw XlaRuntimeError(
         "This operation requires CUDA support from jaxlib or jax cuda plugin.");
@@ -1063,14 +1044,12 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
     const ifrt::DeviceList& src_devices = ifrt_array_ptr->sharding().devices();
     const ifrt::DeviceList& dst_devices = dst_device_lists[i];
 
-    ifrt::MemoryKind src_memory_kind = ifrt_array_ptr->sharding().memory_kind();
-    ifrt::MemoryKind dst_memory_kind =
-        CreateIfRtMemoryKindFromSharding(dst_sharding);
+    ifrt::MemoryKind src_memory_kind = ifrt::CanonicalizeMemoryKind(
+        ifrt_array_ptr->sharding().memory_kind(), src_devices.front());
+    ifrt::MemoryKind dst_memory_kind = ifrt::CanonicalizeMemoryKind(
+        CreateIfRtMemoryKindFromSharding(dst_sharding), dst_devices.front());
 
-    if (src_devices == dst_devices &&
-        (!dst_memory_kind.memory_kind().has_value() ||
-         !src_memory_kind.memory_kind().has_value() ||
-         src_memory_kind == dst_memory_kind)) {
+    if (src_devices == dst_devices && src_memory_kind == dst_memory_kind) {
       results[i] = py_arrays[i];
       continue;
     }

@@ -96,6 +96,7 @@ void convertShardings(FuncOp funcOp) {
   // We need to wait until after we've converted all the Operations before
   // copying the result shardings.
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
+    funcOp.removeArgAttr(argNum, kXlaShardingAttr);
     // Attempt to extract the TensorShardingAttr from the frontend attributes of
     // the function argument/result.
     if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
@@ -106,8 +107,16 @@ void convertShardings(FuncOp funcOp) {
     }
   }
 
+  // Due to `SdyRoundTripExportShardingsPass` keeping `mhlo.sharding`s, remove
+  // them purely for cleanliness of the module.
+  for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
+    funcOp.removeResultAttr(
+        resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
+  }
+
   // Extract the round-tripped SDY shardings from the operations.
   funcOp.front().walk([&](Operation* op) {
+    op->removeAttr(kXlaShardingAttr);
     if (DictionaryAttr dictAttr = getFrontendAttrs(op)) {
       // NOTE: we are only setting the sharding on known custom-calls. For any
       // other op that has a `kShardingRoundTripAttr` we discard it. XLA

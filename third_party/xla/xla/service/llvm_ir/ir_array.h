@@ -22,8 +22,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -247,9 +250,9 @@ class IrArray {
   IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape);
 
   // Default implementations of copying and moving.
-  IrArray(IrArray&& other) = default;
+  IrArray(IrArray&& other) noexcept = default;
   IrArray(const IrArray& other) = default;
-  IrArray& operator=(IrArray&& other) = default;
+  IrArray& operator=(IrArray&& other) noexcept = default;
   IrArray& operator=(const IrArray& other) = default;
 
   llvm::Value* GetBasePointer() const { return base_ptr_; }

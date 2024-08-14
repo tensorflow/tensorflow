@@ -22,21 +22,29 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/Casting.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -519,6 +527,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     if (!index.LinearValidOnShape(shape_)) {
       // Create a valid linear index.
       std::vector<int64_t> dimensions;
+      dimensions.reserve(shape_.rank());
       for (int64_t i = 0; i < shape_.rank(); ++i) {
         dimensions.push_back(shape_.dimensions(i));
       }

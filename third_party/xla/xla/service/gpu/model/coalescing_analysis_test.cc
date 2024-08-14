@@ -52,7 +52,7 @@ class CoalescingTest : public HloTestBase {
 
   std::vector<bool> IsReadCoalescedPerOperand(const HloInstruction* root) {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    auto analysis = AnalyzeFusion(*root, device_info_);
+    auto analysis = HloFusionAnalysis::Create(*root, device_info_);
     auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
     EXPECT_NE(fusion, nullptr);
@@ -71,7 +71,7 @@ class CoalescingTest : public HloTestBase {
   bool IsReadCoalescedHeuristic(absl::string_view hlo_string) {
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
     HloInstruction* root = module->entry_computation()->root_instruction();
-    auto analysis = AnalyzeFusion(*root, device_info_);
+    auto analysis = HloFusionAnalysis::Create(*root, device_info_);
     return xla::gpu::IsReadCoalescedHeuristic(analysis.GetEmitterFusionKind(),
                                               root->operand(0), root);
   }

@@ -94,7 +94,7 @@ mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
                             mlir::ImplicitLocOpBuilder& b);
 
 // Creates an `apply_indexing` op for the given map.
-llvm::SmallVector<mlir::Value, 3> ApplyIndexing(const IndexingMap& map,
+llvm::SmallVector<mlir::Value, 3> ApplyIndexing(IndexingMap map,
                                                 mlir::ValueRange dims,
                                                 mlir::ValueRange symbols,
                                                 mlir::ImplicitLocOpBuilder& b);
@@ -147,6 +147,13 @@ mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
 mlir::SmallVector<mlir::Value, 2> InlineBlock(mlir::OpBuilder& builder,
                                               mlir::Block& src_block,
                                               mlir::ValueRange mapped_args);
+
+// Populates `lbs`, `ubs` and `steps` with the loop bounds from `indexing_map`.
+void GetLoopBoundsFromIndexingMap(mlir::ImplicitLocOpBuilder& b,
+                                  const IndexingMap& indexing_map,
+                                  llvm::SmallVectorImpl<mlir::Value>* lbs,
+                                  llvm::SmallVectorImpl<mlir::Value>* ubs,
+                                  llvm::SmallVectorImpl<mlir::Value>* steps);
 
 }  // namespace mlir_converter
 }  // namespace gpu

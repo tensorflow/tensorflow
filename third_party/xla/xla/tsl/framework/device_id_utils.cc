@@ -29,12 +29,6 @@ limitations under the License.
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
-namespace {
-int GetTfDeviceIdFromDeviceParsedName(
-    const DeviceNameUtils::ParsedName& device_name) {
-  return device_name.id;
-}
-}  // namespace
 
 void CheckValidTfDeviceId(const DeviceType& type,
                           const int visible_device_count,
@@ -62,7 +56,7 @@ absl::Status ParseVisibleDeviceList(
     std::iota(visible_device_order->begin(), visible_device_order->end(), 0);
   } else {
     const std::vector<std::string> order_str =
-        tsl::str_util::Split(visible_device_list, ',');
+        tsl::str_util::Split(visible_device_list, ',');  // non-absl ok
     for (const std::string& platform_device_id_str : order_str) {
       int32_t platform_device_id;
       if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
@@ -126,7 +120,7 @@ absl::StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
 absl::StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
     const DeviceNameUtils::ParsedName& device_name,
     const DeviceType& device_type) {
-  const TfDeviceId tf_device_id(GetTfDeviceIdFromDeviceParsedName(device_name));
+  const TfDeviceId tf_device_id(GetDeviceIdFromDeviceParsedName(device_name));
   PlatformDeviceId platform_device_id;
   absl::Status platform_id_status = DeviceIdManager::TfToPlatformDeviceId(
       device_type, tf_device_id, &platform_device_id);
@@ -136,15 +130,10 @@ absl::StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
   return platform_id_status;
 }
 
-absl::StatusOr<int> GetDeviceIdFromDeviceParsedName(
-    const DeviceNameUtils::ParsedName& device_name,
-    const DeviceType& device_type) {
-  auto platform_id =
-      GetPlatformDeviceIdFromDeviceParsedName(device_name, device_type);
-  if (platform_id.ok()) {
-    return *platform_id;
-  }
-  return GetTfDeviceIdFromDeviceParsedName(device_name);
+int GetDeviceIdFromDeviceParsedName(
+    const DeviceNameUtils::ParsedName& device_name) {
+  // This assumes that TF device ID is the same as PJRT local device ID.
+  return device_name.id;
 }
 
 }  // namespace tsl

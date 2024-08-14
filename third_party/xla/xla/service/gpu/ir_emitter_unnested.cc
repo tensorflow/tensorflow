@@ -26,7 +26,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -99,7 +98,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/service/gpu/gpu_fused_mha_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -122,7 +120,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/runtime/fft_thunk.h"
-#include "xla/service/gpu/runtime/fused_mha_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/runtime/infeed_thunk.h"
@@ -173,6 +170,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/runtime/cholesky_thunk.h"
 #include "xla/service/gpu/runtime/cub_sort_thunk.h"
+#include "xla/service/gpu/runtime/cudnn_thunk.h"
 #include "xla/service/gpu/runtime/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -580,7 +578,9 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
 
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      std::move(thunk_sequence)));
+      std::move(thunk_sequence),
+      ir_emitter_context_->debug_options()
+          .xla_enable_command_buffers_during_profiling()));
 
   return absl::OkStatus();
 }
@@ -953,221 +953,17 @@ absl::Status IrEmitterUnnested::EmitNormThunk(
   return absl::OkStatus();
 }
 
-absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
+absl::Status IrEmitterUnnested::EmitCuDnnThunk(
     const HloCustomCallInstruction* instr) {
-  const HloInstruction* lhs_bmm1 = instr->operand(0);
-  const HloInstruction* rhs_bmm1 = instr->operand(1);
-  const HloInstruction* rhs_bmm2 = instr->operand(2);
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_bmm1_slice,
-                      GetAllocationSliceForHlo(lhs_bmm1));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_bmm1_slice,
-                      GetAllocationSliceForHlo(rhs_bmm1));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_bmm2_slice,
-                      GetAllocationSliceForHlo(rhs_bmm2));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
-                      GetAllocationSliceForHlo(instr, {0}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      GetAllocationSliceForHlo(
-                          instr, {instr->shape().tuple_shapes_size() - 1}));
-  BufferAllocation::Slice activation_slice;
-  bool has_activation = xla::ShapeUtil::TupleElementCount(instr->shape()) == 3;
-  if (has_activation) {
-    TF_ASSIGN_OR_RETURN(activation_slice, GetAllocationSliceForHlo(instr, {1}));
-  }
-
-  TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
-                      xla::gpu::GetCudnnfMHAKind(instr));
-  BufferAllocation::Slice mask_slice, bias_slice;
-  BufferAllocation::Slice seqlen_q_slice, seqlen_k_slice;
-  std::optional<Shape> mask_shape, bias_shape;
-  {
-    bool has_bias = kind == CudnnfMHAKind::kScaleBiasSoftmax ||
-                    kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout;
-
-    if (has_bias) {
-      const HloInstruction* bias = instr->operand(3);
-      TF_ASSIGN_OR_RETURN(bias_slice, GetAllocationSliceForHlo(bias));
-      bias_shape = bias->shape();
-    }
-    int64_t seqlen_qk_operand_index = 3 + has_bias;
-    bool has_seqlen_qk = seqlen_qk_operand_index == instr->operand_count() - 2;
-    if (has_seqlen_qk) {
-      const HloInstruction* seqlen_q = instr->operand(seqlen_qk_operand_index);
-      TF_ASSIGN_OR_RETURN(seqlen_q_slice, GetAllocationSliceForHlo(seqlen_q));
-      const HloInstruction* seqlen_k =
-          instr->operand(seqlen_qk_operand_index + 1);
-      TF_ASSIGN_OR_RETURN(seqlen_k_slice, GetAllocationSliceForHlo(seqlen_k));
-    }
-  }
-
-  TF_ASSIGN_OR_RETURN(const auto gpu_config,
-                      instr->backend_config<xla::gpu::GpuBackendConfig>());
-  const xla::gpu::CudnnfMHABackendConfig& config =
-      gpu_config.cudnn_fmha_backend_config();
-  Shape intermediate_tensor_shape(config.intermediate_tensor_shape());
-  absl::InlinedVector<Shape, 2> output_shapes = {
-      ShapeUtil::GetSubshape(instr->shape(), {0})};
-  if (has_activation) {
-    output_shapes.push_back(ShapeUtil::GetSubshape(instr->shape(), {1}));
-  }
-  TF_ASSIGN_OR_RETURN(const auto mask_type,
-                      AsCudnnFmhaMaskKind(config.mask_type()));
-  GpufMHADescriptor descriptor = {kind,
-                                  config,
-                                  mask_type,
-                                  lhs_bmm1->shape(),
-                                  rhs_bmm1->shape(),
-                                  rhs_bmm2->shape(),
-                                  intermediate_tensor_shape,
-                                  output_shapes,
-                                  config.bmm1_dot_dimension_numbers(),
-                                  config.bmm2_dot_dimension_numbers(),
-                                  mask_shape,
-                                  bias_shape};
-
-  TF_ASSIGN_OR_RETURN(GpufMHAConfig fmha_config,
-                      GpufMHAConfig::For(descriptor));
-  AddThunkToThunkSequence(std::make_unique<FusedMHAThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(fmha_config),
-      lhs_bmm1_slice, rhs_bmm1_slice, rhs_bmm2_slice, output_slice,
-      scratch_slice, mask_slice, bias_slice, activation_slice, seqlen_q_slice,
-      seqlen_k_slice));
-  return absl::OkStatus();
-}
-
-absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
-    const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(const auto gpu_config,
-                      instr->backend_config<xla::gpu::GpuBackendConfig>());
-  const xla::gpu::CudnnfMHABackendConfig& config =
-      gpu_config.cudnn_fmha_backend_config();
-
-  int input_index = 0;
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm1_grad_gemm1_rhs_slice,
-                      GetAllocationSliceForHlo(instr->operand(input_index)));
-  Shape bmm1_grad_gemm1_rhs_shape = instr->operand(input_index++)->shape();
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm1_grad_gemm2_rhs_slice,
-                      GetAllocationSliceForHlo(instr->operand(input_index)));
-  Shape bmm1_grad_gemm2_rhs_shape = instr->operand(input_index++)->shape();
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm2_grad_gemm2_rhs_slice,
-                      GetAllocationSliceForHlo(instr->operand(input_index)));
-  Shape bmm2_grad_gemm2_rhs_shape = instr->operand(input_index++)->shape();
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm2_grad_gemm1_lhs_slice,
-                      GetAllocationSliceForHlo(instr->operand(input_index)));
-  Shape bmm2_grad_gemm1_lhs_shape;
-
-  Shape intermediate_tensor_shape(config.intermediate_tensor_shape());
-  bmm2_grad_gemm1_lhs_shape = intermediate_tensor_shape;
-  input_index++;
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_output_slice,
-                      GetAllocationSliceForHlo(instr->operand(input_index)));
-  Shape d_output_shape = instr->operand(input_index++)->shape();
-
-  TF_ASSIGN_OR_RETURN(const CudnnfMHAKind kind, GetCudnnfMHAKind(instr));
-  BufferAllocation::Slice mask_slice;
-  std::optional<Shape> mask_shape;
-
-  bool has_bias = (kind == CudnnfMHAKind::kBackwardScaleBiasSoftmax ||
-                   kind == CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout);
-  BufferAllocation::Slice bias_slice;
-  std::optional<Shape> bias_shape;
-  if (has_bias) {
-    TF_ASSIGN_OR_RETURN(bias_slice,
-                        GetAllocationSliceForHlo(instr->operand(input_index)));
-    bias_shape = instr->operand(input_index++)->shape();
-  }
-
-  BufferAllocation::Slice fwd_output_slice;
-  std::optional<Shape> fwd_output_shape;
-
-  TF_ASSIGN_OR_RETURN(fwd_output_slice,
-                      GetAllocationSliceForHlo(instr->operand(input_index)));
-  fwd_output_shape = instr->operand(input_index++)->shape();
-
-  BufferAllocation::Slice seqlen_q_slice, seqlen_k_slice;
-  bool has_seqlen_qk = input_index == instr->operand_count() - 2;
-  if (has_seqlen_qk) {
-    const HloInstruction* seqlen_q = instr->operand(input_index);
-    TF_ASSIGN_OR_RETURN(seqlen_q_slice, GetAllocationSliceForHlo(seqlen_q));
-    const HloInstruction* seqlen_k = instr->operand(input_index + 1);
-    TF_ASSIGN_OR_RETURN(seqlen_k_slice, GetAllocationSliceForHlo(seqlen_k));
-    input_index += 2;
-  }
-  TF_RET_CHECK(input_index == instr->operand_count());
-
-  int output_index = 0;
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_bmm1_lhs_slice,
-                      GetAllocationSliceForHlo(instr, {output_index}));
-  Shape d_bmm1_lhs_shape =
-      ShapeUtil::GetSubshape(instr->shape(), {output_index++});
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_bmm1_rhs_slice,
-                      GetAllocationSliceForHlo(instr, {output_index}));
-  Shape d_bmm1_rhs_shape =
-      ShapeUtil::GetSubshape(instr->shape(), {output_index++});
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_bmm2_rhs_slice,
-                      GetAllocationSliceForHlo(instr, {output_index}));
-  Shape d_bmm2_rhs_shape =
-      ShapeUtil::GetSubshape(instr->shape(), {output_index++});
-
-  BufferAllocation::Slice d_s_slice;
-  std::optional<Shape> d_s_shape;
-
-  bool has_dbias = instr->shape().tuple_shapes().size() == 5;
-  BufferAllocation::Slice d_bias_slice;
-  std::optional<Shape> d_bias_shape;
-  if (has_dbias) {
-    TF_ASSIGN_OR_RETURN(d_bias_slice,
-                        GetAllocationSliceForHlo(instr, {output_index}));
-    d_bias_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
-  }
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      GetAllocationSliceForHlo(instr, {output_index++}));
-  TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
-  TF_ASSIGN_OR_RETURN(const auto mask_type,
-                      AsCudnnFmhaMaskKind(config.mask_type()));
-  bool force_deterministic = config.force_deterministic();
-  GpufMHABackwardDescriptor descriptor = {
-      kind,
-      config,
-      mask_type,
-      bmm1_grad_gemm1_rhs_shape,
-      bmm1_grad_gemm2_rhs_shape,
-      bmm2_grad_gemm1_lhs_shape,
-      bmm2_grad_gemm2_rhs_shape,
-      d_output_shape,
-      d_bmm1_lhs_shape,
-      d_bmm1_rhs_shape,
-      d_bmm2_rhs_shape,
-      config.bmm1_grad_gemm1_dot_dimension_numbers(),
-      config.bmm1_grad_gemm2_dot_dimension_numbers(),
-      config.bmm2_grad_gemm1_dot_dimension_numbers(),
-      config.bmm2_grad_gemm2_dot_dimension_numbers(),
-      d_s_shape,
-      fwd_output_shape,
-      mask_shape,
-      d_bias_shape,
-      bias_shape,
-      force_deterministic};
-
-  TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig fmha_backward_config,
-                      GpufMHABackwardConfig::For(descriptor));
-
-  AddThunkToThunkSequence(std::make_unique<FusedMHABackwardThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      std::move(fmha_backward_config), bmm1_grad_gemm1_rhs_slice,
-      bmm1_grad_gemm2_rhs_slice, bmm2_grad_gemm1_lhs_slice,
-      bmm2_grad_gemm2_rhs_slice, d_output_slice, scratch_slice,
-      d_bmm1_lhs_slice, d_bmm1_rhs_slice, d_bmm2_rhs_slice, d_s_slice,
-      mask_slice, d_bias_slice, fwd_output_slice, bias_slice, seqlen_q_slice,
-      seqlen_k_slice));
-
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
+                              instr->operands()));
+  TF_ASSIGN_OR_RETURN(const std::string fingerprint,
+                      FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
+  AddThunkToThunkSequence(std::make_unique<CuDnnThunk>(
+      fingerprint, Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      kernel_arguments.args()));
   return absl::OkStatus();
 }
 
@@ -1696,7 +1492,7 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
   const se::DeviceDescription& device_info =
       ir_emitter_context_->gpu_device_info();
   const HloFusionAnalysis fusion_analysis =
-      HloFusionAnalysis::Create(instr, &device_info);
+      HloFusionAnalysis::Create(*instr, device_info);
 
   std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(HloFusionInfo(
       fusion_analysis, instr, &ir_emitter_context_->buffer_assignment()));
@@ -2919,11 +2715,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCustomCallToDnnNorm(*instr)) {
         return EmitNormThunk(custom_call);
       }
-      if (IsFwdCustomCallTofMHA(*instr)) {
-        return EmitFusedMHAThunk(custom_call);
-      }
-      if (IsBwdCustomCallTofMHA(*instr)) {
-        return EmitFusedMHABackwardThunk(custom_call);
+      if (IsCustomCallTofMHA(*instr)) {
+        return EmitCuDnnThunk(custom_call);
       }
 #endif  // GOOGLE_CUDA
       if (IsCustomCallToTopK(*instr)) {

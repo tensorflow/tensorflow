@@ -15,3 +15,14 @@ cc_library(
         "//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
+
+cc_library(
+    name = "python_error_reporter",
+    srcs = ["python_error_reporter.cc"],
+    hdrs = ["python_error_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite:stateful_error_reporter",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+    ],
+)

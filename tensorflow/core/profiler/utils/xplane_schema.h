@@ -54,6 +54,7 @@ using tsl::profiler::kMetadataPlaneName;             // NOLINT
 using tsl::profiler::kPythonTracerPlaneName;         // NOLINT
 using tsl::profiler::kRoctracerApiPlaneName;         // NOLINT
 using tsl::profiler::kSourceLineName;                // NOLINT
+using tsl::profiler::kSparseCorePlaneRegex;          // NOLINT
 using tsl::profiler::kStepLineName;                  // NOLINT
 using tsl::profiler::kTensorFlowNameScopeLineName;   // NOLINT
 using tsl::profiler::kTensorFlowOpLineName;          // NOLINT

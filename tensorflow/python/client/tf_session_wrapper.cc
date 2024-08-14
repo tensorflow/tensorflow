@@ -334,7 +334,7 @@ class tf_handle {
 
   tf_handle(const tf_handle<T>& other) { Reset(other.obj_); }
 
-  tf_handle<T>& operator=(tf_handle<T>&& other) {
+  tf_handle<T>& operator=(tf_handle<T>&& other) noexcept {
     if (this == &other) {
       return *this;
     }

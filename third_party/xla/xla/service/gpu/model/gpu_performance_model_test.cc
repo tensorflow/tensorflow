@@ -68,9 +68,19 @@ class GpuPerformanceModelTest : public HloTestBase {
   GpuPerformanceModel::RunTimes EstimateRunTimesForPriorityFusion(
       const HloInstruction* producer,
       std::vector<HloInstruction*> fused_consumers = {}) {
+    auto config = GpuPerformanceModelOptions::PriorityFusion(
+        &fusion_analysis_cache_, &gpu_performance_model_cache_);
+
+    auto runtime_data = GpuPerformanceModel::EstimateRunTimeForInstruction(
+        producer, device_info_, &analysis_, config);
+    gpu_performance_model_cache_.Set(*producer, runtime_data);
+    for (auto consumer : fused_consumers) {
+      auto runtime_data = GpuPerformanceModel::EstimateRunTimeForInstruction(
+          consumer, device_info_, &analysis_, config);
+      gpu_performance_model_cache_.Set(*consumer, runtime_data);
+    }
     return GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
-        producer, device_info_, &analysis_,
-        GpuPerformanceModelOptions::PriorityFusion(), fused_consumers);
+        producer, device_info_, &analysis_, config, fused_consumers);
   }
 
   mlir::MLIRContext mlir_context_;
@@ -82,6 +92,7 @@ class GpuPerformanceModelTest : public HloTestBase {
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuHloCostAnalysis analysis_{options_, device_info_};
+  GpuPerformanceModelCache gpu_performance_model_cache_;
 
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, ShapeSizeBytesFunction(),
@@ -674,16 +685,16 @@ add {
 }
 
 fused_computation.0 {
-  p0 = f32[4,28672,32] parameter(0)
-  tanh = f32[4,28672,32] tanh(p0)
+  p0 = f32[4,256,32] parameter(0)
+  tanh = f32[4,256,32] tanh(p0)
   c1 = f32[] constant(72)
-  broadcast = f32[4,28672,32] broadcast(c1), dimensions={}
-  ROOT mul = f32[4,28672,32] multiply(tanh, broadcast)
+  broadcast = f32[4,256, 32] broadcast(c1), dimensions={}
+  ROOT mul = f32[4,256,32] multiply(tanh, broadcast)
 }
 
 ENTRY fusion {
-  p0 = f32[4,28672,32] parameter(0)
-  fusion = f32[4,28672,32] fusion(p0), kind=kLoop, calls=fused_computation.0
+  p0 = f32[4,256,32] parameter(0)
+  fusion = f32[4,256,32] fusion(p0), kind=kLoop, calls=fused_computation.0
   c0 = f32[] constant(0)
   ROOT reduce = f32[4,32] reduce(fusion, c0), to_apply=add, dimensions={1}
 })";

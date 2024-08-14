@@ -1,6 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/tests:build_combined_defs.bzl", "tf_xla_combined_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -88,14 +89,19 @@ py_strict_test(
     ],
 )
 
-tf_xla_py_strict_test(
-    name = "adadelta_test",
+tf_xla_combined_py_test(
+    name = "ops_test_mlir_false",
     size = "medium",
-    srcs = ["adadelta_test.py"],
     enable_mlir_bridge = False,
+    package = "tensorflow.compiler.tests",
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    test_files = [
+        # go/keep-sorted start
+        "adadelta_test.py",
+        # go/keep-sorted end
     ],
     deps = [
         ":xla_test",

@@ -1176,16 +1176,14 @@ TEST_F(WhileLoopUnrollerTest, IsEffectivelyStaticDynamicSlice) {
         comp->GetInstructionWithName("dynamic-slice.static");
     if (static_slice != nullptr) {
       auto index = MatchEffectivelyStaticDynamicSliceInsideLoop(
-          static_slice, static_slice->operand(0), HloOpcode::kDynamicSlice,
-          *config);
+          static_slice, static_slice->operand(0), *config);
       EXPECT_TRUE(index.has_value());
     }
     HloInstruction* dynamic_slice =
         comp->GetInstructionWithName("dynamic-slice.dynamic");
     if (dynamic_slice != nullptr) {
       auto index = MatchEffectivelyStaticDynamicSliceInsideLoop(
-          dynamic_slice, dynamic_slice->operand(0), HloOpcode::kDynamicSlice,
-          *config);
+          dynamic_slice, dynamic_slice->operand(0), *config);
       EXPECT_FALSE(index.has_value());
     }
   }

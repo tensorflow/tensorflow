@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -59,12 +58,16 @@ limitations under the License.
 #include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
+#include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -420,7 +423,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
       GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
 
   std::unique_ptr<Thunk> thunk;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&custom_call);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
   if (absl::c_any_of(slice_instrs, [&](auto slice_instr) {
         return DynCastOrNull<HloDynamicIndexInstruction>(slice_instr) !=
@@ -657,7 +660,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   }
 
   std::unique_ptr<Thunk> thunk;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&custom_call);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
   auto ffi_thunk = [&](Slices ops, Slices res) {
     auto& called_computations = custom_call.called_computations();
@@ -756,6 +759,119 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   return result;
 }
 
+absl::StatusOr<FusionEmissionResult> EmitCollective(
+    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
+    const HloFusionInstruction& fusion_instr, const HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kReduceScatter) {
+    return absl::UnimplementedError(
+        "Dynamic slice fusion with collectives only works for reduce-scatter "
+        "instruction");
+  }
+
+  const BufferAssignment& buffer_assignment =
+      ir_emitter_context.buffer_assignment();
+
+  std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>
+      offset_buffer_indices(2, std::nullopt);
+  std::vector<std::optional<Shape>> orig_shapes(2, std::nullopt);
+  std::vector<std::optional<Shape>> sliced_shapes(2, std::nullopt);
+  std::vector<std::optional<uint64_t>> offset_byte_sizes(2, std::nullopt);
+
+  std::vector<HloInstruction*> slice_instrs(2, nullptr);
+  std::vector<std::optional<BufferAllocation::Slice>> arguments;
+
+  // Collect slice information for inputs.
+  unsigned arg_idx = 0;
+  TF_ASSIGN_OR_RETURN(arguments.emplace_back(),
+                      GetOperandSlice(buffer_assignment, adaptor, fusion_instr,
+                                      *instr->operand(arg_idx), slice_instrs,
+                                      /*shape_idx=*/{}, arg_idx));
+  TF_RETURN_IF_ERROR(CollectSliceInfo(
+      buffer_assignment, fusion_instr,
+      absl::Span<HloInstruction*>(slice_instrs), offset_buffer_indices,
+      orig_shapes, sliced_shapes, offset_byte_sizes, arg_idx++));
+
+  // Collect slice information for outputs.
+  TF_ASSIGN_OR_RETURN(
+      arguments.emplace_back(),
+      GetResultSlice(buffer_assignment, adaptor, fusion_instr, *instr,
+                     slice_instrs, /*shape_idx=*/{}, arg_idx));
+  TF_RETURN_IF_ERROR(CollectSliceInfo(
+      buffer_assignment, fusion_instr,
+      absl::Span<HloInstruction*>(slice_instrs), offset_buffer_indices,
+      orig_shapes, sliced_shapes, offset_byte_sizes, arg_idx));
+
+  if (absl::c_all_of(slice_instrs, [&](HloInstruction* slice_instr) {
+        return slice_instr &&
+               slice_instr->opcode() != HloOpcode::kDynamicUpdateSlice;
+      })) {
+    return absl::InternalError(
+        "DynamicSliceFusion with reduce-scatter expects a dynamic-update-slice "
+        "operation.");
+  }
+
+  // Provide fake allocations for inputs and outputs.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(2);
+  unsigned fake_arg_idx = 0;
+  int64_t operand_byte_size =
+      ShapeUtil::ByteSizeOf(instr->operand(fake_arg_idx)->shape());
+  fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
+      /*index=*/fake_arg_idx, operand_byte_size, /*color=*/0);
+  BufferAllocation::Slice slice_operand(fake_allocations[fake_arg_idx].get(), 0,
+                                        operand_byte_size);
+  fake_arg_idx++;
+  TF_RET_CHECK(instr->shape().IsArray() &&
+               "The output is not expected to be a tuple.");
+  int64_t out_fake_byte_size =
+      ShapeUtil::ByteSizeOf(instr->shape());  // TODO: we don't need this
+  fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
+      /*index=*/fake_arg_idx, out_fake_byte_size, /*color=*/0);
+  BufferAllocation::Slice slice_out_fake(fake_allocations[fake_arg_idx].get(),
+                                         0, out_fake_byte_size);
+
+  // Generate the hero thunk and wrap it in a dynamic-slice thunk.
+  ThunkSequence seq;
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  std::vector<NcclCollectiveThunk::Buffer> buffers;
+  const Shape& src_shape = instr->operand(0)->shape();
+  const Shape& dst_shape = instr->shape();
+  buffers.push_back(NcclCollectiveThunk::Buffer{
+      ShapeUtil::ElementsIn(src_shape), slice_operand, slice_out_fake,
+      src_shape.layout().memory_space(), dst_shape.layout().memory_space(),
+      nullptr, nullptr});
+
+  if (instr->opcode() == HloOpcode::kReduceScatter) {
+    int64_t replica_count = instr->GetModule()->config().replica_count();
+    int64_t partition_count = instr->GetModule()->config().num_partitions();
+    auto rs = static_cast<const HloReduceScatterInstruction*>(instr);
+    TF_RETURN_IF_ERROR(NcclReduceScatterStartThunk::CheckImplementable(
+        rs, replica_count, partition_count));
+
+    // TODO: add special handling for degenerate case - where no communication
+    // is needed. Just copy.
+    auto rs_start_thunk = std::make_unique<NcclReduceScatterStartThunk>(
+        thunk_info, NcclApi::Default(), rs, buffers);
+    auto rs_done = std::make_unique<NcclCollectiveDoneThunk>(
+        /*kind=*/Thunk::kNcclReduceScatterDone,
+        /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(rs),
+        /*async_events=*/rs_start_thunk->async_events(),
+        /*async_stream_kind=*/AsyncStreamKind::kCollective);
+    seq.emplace_back(std::move(rs_start_thunk));
+    seq.emplace_back(std::move(rs_done));
+  } else {
+    return absl::InternalError("Expected reduce-scatter hero instruction");
+  }
+
+  std::unique_ptr<Thunk> thunk = std::make_unique<DynamicSliceThunk>(
+      thunk_info, std::make_unique<ThunkSequence>(std::move(seq)),
+      std::move(arguments), std::move(fake_allocations),
+      std::move(offset_buffer_indices), std::move(orig_shapes),
+      std::move(sliced_shapes), std::move(offset_byte_sizes));
+  FusionEmissionResult result;
+  result.thunks.push_back(std::move(thunk));
+  return result;
+}
+
 }  // namespace
 
 absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
@@ -765,7 +881,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
                       fusion.backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
-  const auto& config = backend_config.custom_fusion_config();
+  const CustomFusionConfig& config = backend_config.custom_fusion_config();
 
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
 
@@ -794,14 +910,10 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
                      " returned empty custom kernels for a fused computation"));
   }
 
-  // TODO(ezhulenev): Add support for auto tuning to select the best kernel.
-  if (kernels.size() != 1) {
-    return absl::InternalError("Expected exactly one custom kernel");
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      auto thunk, BuildCustomKernelThunkForFusion(ir_emitter_context, fusion,
-                                                  std::move(kernels[0])));
+  TF_ASSIGN_OR_RETURN(auto thunk,
+                      BuildCustomKernelThunkForFusion(
+                          ir_emitter_context, fusion,
+                          std::move(kernels[config.kernel_index()])));
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
@@ -812,6 +924,16 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
+  // Only reduce-scatter is supported for now.
+  auto maybe_collective =
+      HloBfsFindIf(/*roots=*/adaptor.GetRoots(), /*fusion=*/adaptor,
+                   /*visit=*/[](HloInstructionAdaptor node) -> bool {
+                     return node.opcode() == HloOpcode::kReduceScatter;
+                   });
+  if (maybe_collective != std::nullopt) {
+    return EmitCollective(ir_emitter_context, adaptor, fusion,
+                          &maybe_collective->instruction());
+  }
   auto maybe_custom_call_adaptor = HloBfsFindIf(
       adaptor.GetRoots(), adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });

@@ -56,6 +56,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_finder.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/process_state.h"
@@ -73,7 +75,6 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/statusor.h"
@@ -580,11 +581,8 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   }();
   if (platform_status != nullptr) return *platform_status;
 
-  se::StreamExecutorConfig config;
-  config.gpu_stream = stream_handle;
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                      platform->GetExecutor(config));
-  se::Stream* stream = executor->FindAllocatedStream(stream_handle);
+  TF_ASSIGN_OR_RETURN(se::Stream * stream,
+                      stream_executor::FindStream(platform, stream_handle));
   if (!stream) {
     return xla::Internal("Stream not found for %p", stream_handle);
   }

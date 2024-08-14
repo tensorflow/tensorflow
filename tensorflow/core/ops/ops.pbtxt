@@ -4112,6 +4112,8 @@ op {
     allowed_values {
       list {
         s: "PAD_UP"
+        s: "BATCH_DOWN"
+        s: "MINIMIZE_TPU_COST_PER_REQUEST"
       }
     }
   }
@@ -33005,6 +33007,13 @@ op {
   }
   attr {
     name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "use_unbounded_threadpool"
     type: "bool"
     default_value {
       b: false

@@ -25,13 +25,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -710,17 +713,6 @@ std::map<int, llvm::MDNode*> MergeMetadata(
     }
   }
   return result;
-}
-
-static absl::Status CreateAndWriteStringToFile(
-    const std::string& directory_name, const std::string& file_name,
-    const std::string& text) {
-  std::unique_ptr<tsl::WritableFile> f;
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(text));
-  TF_RETURN_IF_ERROR(f->Close());
-  return absl::OkStatus();
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,

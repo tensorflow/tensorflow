@@ -273,9 +273,9 @@ index d74e0a224..4e45f7c4c 100644
 +  return op->hasTrait<OpTrait::DotLike>() || isa<ttg::SparseDotOp>(op);
 +}
 +
- // Replace the ForOp's yield with a new one with the given operands appended.
- static void appendToYield(scf::ForOp forOp, ArrayRef<Value> newOperands) {
-   // Fix up the yield op.
+ static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
+                             Value insertIdx, Value extractIdx,
+                             tt::CoarseSchedule &schedule,
 @@ -248,19 +252,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
@@ -344,52 +344,6 @@ index d74e0a224..4e45f7c4c 100644
            if (auto dotEnc = dyn_cast<ttg::NvidiaMmaEncodingAttr>(
                    dot.getResult().getType().getEncoding())) {
              auto loadTy = cast<RankedTensorType>(op->getResultTypes()[0]);
-diff --git a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
-index 8c1f18e45..c39110d12 100644
---- a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
-+++ b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
-@@ -38,6 +38,10 @@ public:
-       auto srcEncoding = srcType.getEncoding();
-       if (isa<triton::gpu::SharedEncodingAttr>(srcEncoding))
-         return;
-+      if (isa<triton::gpu::SparseDotMetaEncodingAttr>(dstType.getEncoding())) {
-+        replaceSparseMetaEncoding(cvtOp);
-+        return;
-+      }
-       auto dstDotOp =
-           dyn_cast<triton::gpu::DotOperandEncodingAttr>(dstType.getEncoding());
-       if (!dstDotOp)
-@@ -86,6 +90,30 @@ public:
-       cvtOp.erase();
-     });
-   }
-+
-+ private:
-+  void replaceSparseMetaEncoding(triton::gpu::ConvertLayoutOp cvtOp) {
-+    auto srcType = cast<RankedTensorType>(cvtOp.getOperand().getType());
-+    auto srcEncoding = srcType.getEncoding();
-+    auto sharedLayout = triton::gpu::SharedEncodingAttr::get(
-+        cvtOp.getContext(), 8, 1, 1, triton::gpu::getOrder(srcEncoding),
-+        triton::gpu::getCTALayout(srcEncoding));
-+
-+    auto dstType = cast<RankedTensorType>(cvtOp.getType());
-+    auto sharedMemorySpace =
-+        triton::gpu::SharedMemorySpaceAttr::get(srcType.getContext());
-+    auto tmpType = triton::MemDescType::get(
-+        dstType.getShape(), dstType.getElementType(), sharedLayout,
-+        sharedMemorySpace);
-+
-+    OpBuilder builder(cvtOp);
-+    auto tmp = builder.create<triton::gpu::LocalAllocOp>(
-+        cvtOp.getLoc(), tmpType, cvtOp.getSrc());
-+    auto newConvert = builder.create<triton::gpu::LocalLoadOp>(
-+        cvtOp.getLoc(), dstType, tmp);
-+    cvtOp.replaceAllUsesWith(newConvert.getResult());
-+    cvtOp.erase();
-+  }
- };
- 
- } // namespace gpu
 diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 index fb0e7f6fd..37795c20c 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp

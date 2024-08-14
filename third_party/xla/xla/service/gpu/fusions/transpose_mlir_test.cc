@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -44,7 +44,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
   )"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
   EXPECT_THAT(
@@ -56,15 +56,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 200)
-        d4 in [0, 1)
-        d5 in [0, 1)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 199]
+        d4 in [0, 0]
+        d5 in [0, 0]
 
-        s0 in [0, 8)
-        s1 in [0, 1)
+        s0 in [0, 7]
+        s1 in [0, 0]
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -75,15 +75,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
           d0 mod 32
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 200)
-        d4 in [0, 1)
-        d5 in [0, 1)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 199]
+        d4 in [0, 0]
+        d5 in [0, 0]
 
-        s0 in [0, 8)
-        s1 in [0, 1)
+        s0 in [0, 7]
+        s1 in [0, 0]
       )"));
 }
 
@@ -101,7 +101,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
     })"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirTransposeFusion fusion(analysis);
 
   EXPECT_THAT(
@@ -113,15 +113,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
           d0 mod 32
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 200)
-        d4 in [0, 1)
-        d5 in [0, 1)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 199]
+        d4 in [0, 0]
+        d5 in [0, 0]
 
-        s0 in [0, 8)
-        s1 in [0, 1)
+        s0 in [0, 7]
+        s1 in [0, 0]
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -132,15 +132,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 200)
-        d4 in [0, 1)
-        d5 in [0, 1)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 199]
+        d4 in [0, 0]
+        d5 in [0, 0]
 
-        s0 in [0, 8)
-        s1 in [0, 1)
+        s0 in [0, 7]
+        s1 in [0, 0]
       )"));
 }
 
@@ -158,7 +158,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized021) {
   )"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
   EXPECT_THAT(
@@ -170,14 +170,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized021) {
           (d0 mod 32) * 2 + s1
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 8192)
-        d4 in [0, 1)
-        d5 in [0, 1)
-        s0 in [0, 16)
-        s1 in [0, 2)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 8191]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 15]
+        s1 in [0, 1]
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -188,14 +188,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized021) {
           (d0 mod 32) * 2 + s1
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 8192)
-        d4 in [0, 1)
-        d5 in [0, 1)
-        s0 in [0, 16)
-        s1 in [0, 2)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 8191]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 15]
+        s1 in [0, 1]
       )"));
 }
 
@@ -212,7 +212,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized210) {
     })"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirTransposeFusion fusion(analysis);
 
   EXPECT_THAT(
@@ -224,14 +224,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized210) {
           (d0 mod 32) * 2 + (d3 mod 128) * 64 + s1
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 8192)
-        d4 in [0, 1)
-        d5 in [0, 1)
-        s0 in [0, 16)
-        s1 in [0, 2)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 8191]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 15]
+        s1 in [0, 1]
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -242,14 +242,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized210) {
           (d0 mod 32) * 2 + s1
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 8192)
-        d4 in [0, 1)
-        d5 in [0, 1)
-        s0 in [0, 16)
-        s1 in [0, 2)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 8191]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 15]
+        s1 in [0, 1]
       )"));
 }
 
@@ -292,6 +292,55 @@ TEST_F(MlirTransposeFusionTest, FusedTranspose021) {
     // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation__epilogue__
     // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]
   )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirTransposeFusionTest, FusedTranspose102) {
+  auto kHloString = R"(
+    HloModule Transpose
+
+    %fused_computation {
+      %p0 = s8[160,170,3] parameter(0)
+      ROOT %transpose = s8[170,160,3] transpose(%p0), dimensions={1,0,2}
+    }
+    ENTRY main {
+      %param = s8[160,170,3] parameter(0)
+      ROOT %fusion = s8[170,160,3] fusion(%param), kind=kInput,
+        calls=%fused_computation
+    }
+  )";
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-LABEL: func.func @fused_computation(
+    // CHECK-SAME:   }, %[[OUT:.*]]: tensor<170x160x3xi8>
+    //
+    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C3:.*]] = arith.constant 3 : index
+    // CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
+
+    // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<32x33x3xi8>
+    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = scf.for
+    // CHECK-SAME:     %[[C0]] to %[[C8]] step %[[C1]]
+    // CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
+    // CHECK:      %[[SHMEM_WITH_VALS2:.*]] = scf.for
+    // CHECK-SAME:     %[[C0]] to %[[C3]] step %[[C1]]
+    // CHECK-SAME:     iter_args(%[[SHMEM2_:.*]] = %[[SHMEM_]])
+    // CHECK:        %[[P0:.*]] = xla_gpu.pure_call @fused_computation_p0
+    // CHECK:        tensor.insert %[[P0]] into %[[SHMEM2_]]
+
+    // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
+
+    // CHECK:      scf.for
+    // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
+    // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
+    // CHECK:      scf.for
+    // CHECK-SAME:    %[[C0]] to %[[C3]] step %[[C1]]
+    // CHECK-SAME:    iter_args(%[[OUT2_:.*]] = %[[OUT_]])
+    // CHECK:       %[[EXTRACTED:.*]] = tensor.extract %[[SYNC]]
+    // CHECK:       %[[RES:.*]] = xla_gpu.pure_call @fused_computation__epilogue__transpose
+    // CHECK:       tensor.insert %[[RES]] into %[[OUT2_]]
+  )"));
+
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -578,7 +627,7 @@ TEST_F(MlirTransposeFusionTest, SameInputIndexingForRealHeroAndSideOutput) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
@@ -608,7 +657,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingSideOutput) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
@@ -621,15 +670,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingSideOutput) {
           d0 floordiv 32 + s0 * 4
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 200)
-        d4 in [0, 1)
-        d5 in [0, 1)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 199]
+        d4 in [0, 0]
+        d5 in [0, 0]
 
-        s0 in [0, 8)
-        s1 in [0, 1)
+        s0 in [0, 7]
+        s1 in [0, 0]
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(1, &mlir_context)->ToString(),
@@ -640,15 +689,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingSideOutput) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 128)
-        d1 in [0, 1)
-        d2 in [0, 1)
-        d3 in [0, 200)
-        d4 in [0, 1)
-        d5 in [0, 1)
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 199]
+        d4 in [0, 0]
+        d5 in [0, 0]
 
-        s0 in [0, 8)
-        s1 in [0, 1)
+        s0 in [0, 7]
+        s1 in [0, 0]
       )"));
 }
 

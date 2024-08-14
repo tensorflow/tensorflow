@@ -44,6 +44,7 @@ limitations under the License.
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
@@ -70,16 +71,17 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/core/absl_error_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
@@ -97,8 +99,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -625,7 +625,7 @@ StatusOr<Operation*> ConvertOp(
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
     OpBuilder builder,
-    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr) {
+    const std::unique_ptr<tfl::FlatBufferModelAbslError>& model_ptr) {
   llvm::SmallVector<Value, 4> operands;
   llvm::SmallVector<mlir::Type, 2> outputTypes;
 
@@ -1116,7 +1116,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     bool experimental_prune_unreachable_nodes_unconditionally,
     const tflite::SignatureDefT* signature,
     const tflite::ControlEdges& control_edges,
-    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr,
+    const std::unique_ptr<tfl::FlatBufferModelAbslError>& model_ptr,
     bool use_stablehlo_constant) {
   // Populate from metadata.
   ControlNodes control_nodes;
@@ -1518,8 +1518,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
       mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
       mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
 
-  auto model_ptr =
-      FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
+  auto model_ptr = tfl::FlatBufferModelAbslError::VerifyAndBuildFromBuffer(
+      buffer.data(), buffer.length());
   if (nullptr == model_ptr) {
     return emitError(base_loc, "couldn't parse flatbuffer"), nullptr;
   }

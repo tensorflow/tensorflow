@@ -103,7 +103,7 @@ bool CancellationManager::RegisterCallback(CancellationToken token,
 
 bool CancellationManager::RegisterCallbackWithErrorLogging(
     CancellationToken token, CancelCallback callback,
-    tsl::StringPiece callback_name) {
+    absl::string_view callback_name) {
   return RegisterCallbackConfig(
       token, CallbackConfiguration{callback, std::string(callback_name), true});
 }

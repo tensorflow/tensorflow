@@ -203,5 +203,51 @@ TEST(WhileThunkTest, NonBlockingExecute) {
   EXPECT_EQ(counter[0], kNumIterations);
 }
 
+TEST(WhileThunkTest, NonBlockingExecuteWithTripCount) {
+  static constexpr size_t kNumIterations = 100;
+
+  BufferAllocation pred_alloc(0, sizeof(char), 0);
+  BufferAllocation cnt_alloc(1, sizeof(int32_t), 0);
+
+  BufferAllocation::Slice pred_slice(&pred_alloc, 0, sizeof(char));
+  BufferAllocation::Slice cnt_slice(&cnt_alloc, 0, sizeof(int32_t));
+
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<char> predicate = {false};
+  std::vector<int32_t> counter = {0};
+
+  buffers.emplace_back(se::DeviceMemoryBase(predicate.data(), sizeof(char)));
+  buffers.emplace_back(se::DeviceMemoryBase(counter.data(), sizeof(int32_t)));
+
+  BufferAllocations allocations(buffers);
+
+  // We pass empty cond sequence, because we know the trip count, and check that
+  // predicate value is ignored (it is initialized to false) and body executed
+  // `kNumIterations` times.
+  ThunkSequence cond_sequence;
+
+  ThunkSequence body_sequence;
+  body_sequence.push_back(std::make_unique<BodyThunk>(cnt_slice));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, WhileThunk::Create(
+                      {"while"}, pred_slice, std::move(cond_sequence),
+                      std::move(body_sequence), /*trip_count=*/kNumIterations));
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "while-test", 8);
+  Eigen::ThreadPoolDevice device(thread_pool.AsEigenThreadPool(),
+                                 thread_pool.NumThreads());
+
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = &device;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
+
+  EXPECT_EQ(counter[0], kNumIterations);
+}
+
 }  // namespace
 }  // namespace xla::cpu

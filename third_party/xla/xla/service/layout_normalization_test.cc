@@ -644,10 +644,26 @@ TEST_F(LayoutNormalizationTest, Select) {
 HloModule module
 
 ENTRY main {
-  p0 = f32[1,17,9,9]{1,3,2,0} parameter(0)
-  p1 = f32[1,17,9,9]{1,3,2,0} parameter(1)
-  b = pred[1,17,9,9]{1,3,2,0} parameter(2)
-  ROOT out = f32[1,17,9,9]{1,3,2,0} select(b, p0, p1), metadata={op_name="test"}
+  lhs = f32[1,17,9,9]{1,3,2,0} parameter(0)
+  rhs = f32[1,17,9,9]{1,3,2,0} parameter(1)
+  p = pred[1,17,9,9]{1,3,2,0} parameter(2)
+  ROOT out = f32[1,17,9,9]{1,3,2,0} select(p, lhs, rhs), metadata={op_name="test"}
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[1,9,9,17]{3,2,1,0} select({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, SelectScalarPredicate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  lhs = f32[1,17,9,9]{1,3,2,0} parameter(0)
+  rhs = f32[1,17,9,9]{1,3,2,0} parameter(1)
+  p = pred[] parameter(2)
+  ROOT out = f32[1,17,9,9]{1,3,2,0} select(p, lhs, rhs), metadata={op_name="test"}
 }
 )";
   CheckLayoutNormalization(hlo, R"(
@@ -734,10 +750,44 @@ TEST_F(LayoutNormalizationTest, Clamp) {
 HloModule m
 
 ENTRY main {
-  p0 = f32[64,1,32]{1,0,2} parameter(0)
-  p1 = f32[64,1,32]{1,0,2} parameter(1)
-  p2 = f32[64,1,32]{1,0,2} parameter(2)
-  ROOT out = f32[64,1,32]{1,0,2} clamp(f32[64,1,32]{1,0,2} p0, f32[64,1,32]{1,0,2} p1, f32[64,1,32]{1,0,2} p2), metadata={op_name="test"}
+  lb = f32[64,1,32]{1,0,2} parameter(0)
+  in = f32[64,1,32]{1,0,2} parameter(1)
+  ub = f32[64,1,32]{1,0,2} parameter(2)
+  ROOT out = f32[64,1,32]{1,0,2} clamp(f32[64,1,32]{1,0,2} lb, f32[64,1,32]{1,0,2} in, f32[64,1,32]{1,0,2} ub), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,64,1]{2,1,0} clamp({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, ClampScalarBounds) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  lb = f32[] parameter(0)
+  in = f32[64,1,32]{1,0,2} parameter(1)
+  ub = f32[] parameter(2)
+  ROOT out = f32[64,1,32]{1,0,2} clamp(f32[] lb, f32[64,1,32]{1,0,2} in, f32[] ub), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,64,1]{2,1,0} clamp({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, ClampScalarLb) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  lb = f32[] parameter(0)
+  in = f32[64,1,32]{1,0,2} parameter(1)
+  ub = f32[64,1,32]{1,0,2} parameter(2)
+  ROOT out = f32[64,1,32]{1,0,2} clamp(f32[] lb, f32[64,1,32]{1,0,2} in, f32[64,1,32]{1,0,2} ub), metadata={op_name="test"}
 }
 )";
 

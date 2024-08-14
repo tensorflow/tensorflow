@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tests/literal_test_util.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"

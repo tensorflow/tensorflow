@@ -22,6 +22,7 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 
 // Checks if the param passed is a F32 ElementsAttr.
 def F32ElementsAttr : ElementsAttrBase<
@@ -1651,3 +1652,123 @@ def FuseSliceAndPack : Pat<(
           (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_)
     ), $_, $_), (replaceWithValue $input0),
     [(IsSame $input0, $input1), (IsSame $input0, $input2)]>;
+
+// Given a value, checks if dim `d` is static.
+class HasStaticDim<int d> : Constraint<CPred<
+  "!$0.getType().cast<ShapedType>().isDynamicDim(" # d # ")">>;
+
+class IsBalancedPaddingArray<int spatials_start, int spatials_end> :
+  Constraint<CPred<
+    "IsBalancedPaddingArray("# spatials_start #","# spatials_end #","
+      "$0.cast<DenseElementsAttr>())">>;
+
+// Given in_shape, out_shape, stride checks ceil(in_shape[d] / stride) == out_shape[d]
+def IsSameStridedShape2D : Constraint<CPred<
+  "HasSameStridedShape($0.getDefiningOp<TFL::Conv2DOp>(),"
+    "$1.getType().cast<ShapedType>().getShape())">>;
+
+def IsSameStridedShapeDepthwise : Constraint<CPred<
+  "HasSameStridedShape($0.getDefiningOp<TFL::DepthwiseConv2DOp>(),"
+    "$1.getType().cast<ShapedType>().getShape())">>;
+
+def IsSameStridedShape3D : Constraint<CPred<
+  "HasSameStridedShape($0.getDefiningOp<TFL::Conv3DOp>(),"
+    "$1.getType().cast<ShapedType>().getShape())">>;
+
+def IsValidPadding : Constraint<CPred<"$0.str() == \"VALID\"">>;
+
+// Fuse explicit tfl.pad ops into standard convolutions when it implies "SAME"
+// padding. "SAME" padding is defined to be any non-trivial padding where
+// ceil(in_dim_i / stride_i) == out_dim_i
+// and 0 <= (pad_i_hi - pad_i_lo) <= 1 for all spatial dims i.
+
+def FuseSamePaddingConv2D : Pat<
+  (TFL_Conv2DOp:$conv_out
+    (TFL_PadOp $input, (Arith_ConstantOp $paddings)),
+    $filter,
+    $bias,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    $padding,
+    $stride_h,
+    $stride_w
+  ), (TFL_Conv2DOp
+    $input,
+    $filter,
+    $bias,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    TFL_PAD_Same,
+    $stride_h,
+    $stride_w
+  ),
+  [(HasStaticDim<1> $input),
+    (HasStaticDim<2> $input),
+    (IsBalancedPaddingArray<1, 3> $paddings),
+    (IsValidPadding $padding),
+    (IsSameStridedShape2D $conv_out, $input)]>;
+
+def FuseSamePaddingDepthwiseConv : Pat<
+  (TFL_DepthwiseConv2DOp:$conv_out
+    (TFL_PadOp $input, (Arith_ConstantOp $paddings)),
+    $filter,
+    $bias,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    $padding,
+    $stride_h,
+    $stride_w,
+    $depth
+  ), (TFL_DepthwiseConv2DOp
+    $input,
+    $filter,
+    $bias,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    TFL_PAD_Same,
+    $stride_h,
+    $stride_w,
+    $depth
+  ),
+  [(HasStaticDim<1> $input),
+    (HasStaticDim<2> $input),
+    (IsBalancedPaddingArray<1, 3> $paddings),
+    (IsValidPadding $padding),
+    (IsSameStridedShapeDepthwise $conv_out, $input)]>;
+
+def FuseSamePaddingConv3D : Pat<
+  (TFL_Conv3DOp:$conv_out
+    (TFL_PadOp $input, (Arith_ConstantOp $paddings)),
+    $filter,
+    $bias,
+    $d_dilate,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    $padding,
+    $stride_d,
+    $stride_h,
+    $stride_w
+  ), (TFL_Conv3DOp
+    $input,
+    $filter,
+    $bias,
+    $d_dilate,
+    $h_dilate,
+    $w_dilate,
+    $faf,
+    TFL_PAD_Same,
+    $stride_d,
+    $stride_h,
+    $stride_w
+  ),
+  [(HasStaticDim<1> $input),
+    (HasStaticDim<2> $input),
+    (HasStaticDim<3> $input),
+    (IsBalancedPaddingArray<1, 4> $paddings),
+    (IsValidPadding $padding),
+    (IsSameStridedShape3D $conv_out, $input)]>;

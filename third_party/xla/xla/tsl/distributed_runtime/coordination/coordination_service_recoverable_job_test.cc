@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"

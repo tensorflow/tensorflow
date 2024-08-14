@@ -25,14 +25,14 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/custom_call_program.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_test_util.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -45,7 +45,7 @@ using ::testing::MatchesRegex;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class CustomCallProgramSerDesTest : public test_util::ShardingTest {};
+class CustomCallProgramSerDesTest : public test_util::DeviceTest {};
 
 TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   Shape shape0({10, 20});
@@ -117,7 +117,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, CustomCallProgramSerDesTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/2,
                              /*num_addressable_devices=*/2}));
 

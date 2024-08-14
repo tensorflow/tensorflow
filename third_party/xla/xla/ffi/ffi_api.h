@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -47,11 +49,23 @@ namespace xla::ffi {
 // Calling XLA FFI handlers
 //===----------------------------------------------------------------------===//
 
+// Options for calling XLA FFI handlers. Backend specific options must be
+// constructed from `xla::ExecuteRunOptions`, to give FFI handlers access to
+// XLA runtime internals.
 struct CallOptions {
-  int32_t device_ordinal = -1;
+  struct CpuOptions {
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
+  };
 
-  se::Stream* stream = nullptr;
-  se::DeviceMemoryAllocator* allocator = nullptr;
+  struct GpuOptions {
+    se::Stream* stream = nullptr;
+    se::DeviceMemoryAllocator* allocator = nullptr;
+  };
+
+  using BackendOptions = std::variant<std::monostate, CpuOptions, GpuOptions>;
+
+  int32_t device_ordinal = -1;
+  BackendOptions backend_options = {};
 
   const HloComputation* called_computation = nullptr;
   const ExecutionContext* execution_context = nullptr;
@@ -61,6 +75,10 @@ struct CallOptions {
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
 // `error` if it's not nullptr; returns OK status otherwise.
 absl::Status TakeStatus(XLA_FFI_Error* error);
+
+absl::Status CallWithApi(const XLA_FFI_Api* api, Ffi& handler,
+                         CallFrame& call_frame, const CallOptions& options = {},
+                         ExecutionStage stage = ExecutionStage::kExecute);
 
 absl::Status Call(Ffi& handler, CallFrame& call_frame,
                   const CallOptions& options = {},

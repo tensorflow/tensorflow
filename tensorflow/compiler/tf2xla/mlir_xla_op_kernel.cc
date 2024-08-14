@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_base.h"
@@ -154,7 +153,6 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   core::ScopedUnref unref_ctx(ctx_res);
 
   // Compile the graph to HLO.
-  GraphDebugInfo debug_info;
   std::vector<xla::XlaOp> returns(1);
   auto build_hlo = [&](bool unconditionally_use_output_shapes) {
     return BuildHloFromGraph(
@@ -162,7 +160,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
         unconditionally_use_output_shapes,
         mlir::SpanToArrayRef<XlaCompiler::Argument>(xla_args), control_rets,
         device->device_type(),
-        *ctx->function_library()->GetFunctionLibraryDefinition(), debug_info);
+        *ctx->function_library()->GetFunctionLibraryDefinition());
   };
 
   // Some of the operations that come through here do not know how to set their

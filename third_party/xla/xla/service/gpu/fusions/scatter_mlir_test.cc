@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -77,7 +77,7 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
   thread_id_printer_.SetSymbolName(2, "index_id");
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirScatterFusion fusion(analysis);
 
   constexpr auto kUpdatesIndexing = R"(
@@ -87,15 +87,15 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
       (bl_x * 128 + th_x) mod 20
     )
     domain:
-    th_x in [0, 128)
-    th_y in [0, 1)
-    th_z in [0, 1)
-    bl_x in [0, 66)
-    bl_y in [0, 1)
-    bl_z in [0, 1)
-    chunk_id in [0, 1)
-    unroll_id in [0, 1)
-    bl_x * 128 + th_x in [0, 8400)
+    th_x in [0, 127]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 65]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+    chunk_id in [0, 0]
+    unroll_id in [0, 0]
+    bl_x * 128 + th_x in [0, 8399]
   )";
   EXPECT_THAT(
       fusion
@@ -126,16 +126,16 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id, index_id] ->
       ((bl_x * 128 + th_x) floordiv 200, 0)
     domain:
-    th_x in [0, 128)
-    th_y in [0, 1)
-    th_z in [0, 1)
-    bl_x in [0, 66)
-    bl_y in [0, 1)
-    bl_z in [0, 1)
-    chunk_id in [0, 1)
-    unroll_id in [0, 1)
-    index_id in [0, 1)
-    bl_x * 128 + th_x in [0, 8400)
+    th_x in [0, 127]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 65]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+    chunk_id in [0, 0]
+    unroll_id in [0, 0]
+    index_id in [0, 0]
+    bl_x * 128 + th_x in [0, 8399]
   )";
   EXPECT_THAT(
       fusion
@@ -187,8 +187,8 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[$MAP0:.*]] = affine_map<(d0) -> (d0 floordiv 2)>
-    // CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0 mod 2)>
+    // CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 2)
+    // CHECK: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 2)
 
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>

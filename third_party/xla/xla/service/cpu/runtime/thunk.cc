@@ -24,6 +24,7 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
@@ -84,6 +85,10 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "while";
   }
 }
+Thunk::Thunk(Kind kind, Info info)
+    : kind_(kind),
+      info_(std::move(info)),
+      ok_event_(OkExecuteEventSingleton()) {}
 
 absl::StatusOr<Thunk::CollectiveExecuteParams>
 Thunk::CollectiveExecuteParams::Create(
@@ -135,36 +140,40 @@ Thunk::CustomCallExecuteParams::Create(
           ? run_options->device_ordinal()
           : run_options->stream()->parent()->device_ordinal();
 
-  return CustomCallExecuteParams{device_ordinal, run_options->stream(),
-                                 run_options->allocator(),
+  return CustomCallExecuteParams{device_ordinal,
+                                 run_options->intra_op_thread_pool(),
                                  run_options->ffi_execution_context()};
 }
 
 Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
-    int32_t device_ordinal, stream_executor::Stream* stream,
-    stream_executor::DeviceMemoryAllocator* allocator,
+    int32_t device_ordinal, const Eigen::ThreadPoolDevice* intra_op_thread_pool,
     const ffi::ExecutionContext* ffi_execution_context)
     : device_ordinal(device_ordinal),
-      stream(stream),
-      allocator(allocator),
+      intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
 
-tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEvent() {
-  static tsl::AsyncValueOwningRef<ExecuteEvent>* event = [] {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEventSingleton() {
+  static tsl::AsyncValueOwningRef<ExecuteEvent>* singleton = [] {
     auto* storage = new tsl::internal::AsyncValueStorage<ExecuteEvent>();
     return new tsl::AsyncValueOwningRef<ExecuteEvent>(
         tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(*storage));
   }();
-  return event->AsRef();
+  return singleton->AsRef();
 }
 
-Thunk::ExecuteState::ExecuteState(int64_t parallel_tasks)
-    : pending_tasks(parallel_tasks),
+Thunk::ExecuteState::ExecuteState(int64_t num_tasks)
+    : pending_tasks(num_tasks),
       event(tsl::MakeConstructedAsyncValueRef<Thunk::ExecuteEvent>()) {}
 
+Thunk::ExecuteState::~ExecuteState() {
+  auto cnt = pending_tasks.load(std::memory_order_acquire);
+  DCHECK_EQ(cnt, 0)
+      << "ExecuteState is destroyed before all tasks are completed";
+}
+
 void Thunk::ExecuteState::Notify() {
-  if (pending_tasks.load(std::memory_order_relaxed) == 1 ||
-      pending_tasks.fetch_sub(1, std::memory_order_relaxed) == 1) {
+  bool is_done = pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1;
+  if (ABSL_PREDICT_FALSE(is_done)) {
     event.SetStateConcrete();
   }
 }

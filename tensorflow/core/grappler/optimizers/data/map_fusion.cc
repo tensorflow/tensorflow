@@ -216,10 +216,22 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   for (const NodeDef& node : sorted_old_graph.node()) {
     const NodeDef* map_node = get_map_node(node);
     if (!map_node) continue;
+    // Do not fuse ParallelMap node that uses the unbounded thread pool.
+    if (map_node->attr().find("use_unbounded_threadpool") !=
+            map_node->attr().end() &&
+        map_node->attr().at("use_unbounded_threadpool").b()) {
+      continue;
+    }
 
     const NodeDef* parent_map_node =
         get_map_node(*graph_utils::GetInputNode(*map_node, graph));
     if (!parent_map_node) continue;
+    // Do not fuse ParallelMap node that uses the unbounded thread pool.
+    if (parent_map_node->attr().find("use_unbounded_threadpool") !=
+            parent_map_node->attr().end() &&
+        parent_map_node->attr().at("use_unbounded_threadpool").b()) {
+      continue;
+    }
 
     // TODO(b/148614504): Support fusing different types of map operations.
     if (parent_map_node->op() != map_node->op()) continue;

@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/executable.pb.h"
@@ -171,10 +171,10 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
-  // Runs cuDNN fusion compiler pass.
-  virtual absl::Status RunCudnnFusionCompilerPass(
-      HloModule* module, se::StreamExecutor* stream_exec,
-      BinaryMap* dnn_compiled_graphs) {
+  // Runs cuDNN fusion and custom call compiler passes.
+  virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
+                                              se::StreamExecutor* stream_exec,
+                                              BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 
@@ -235,7 +235,8 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
   virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
-      se::GpuComputeCapability cc, se::StreamExecutor* stream_exec,
+      se::GpuComputeCapability gpu_compute_capability,
+      se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) {
     return Unimplemented("LinkModules is not implemented.");

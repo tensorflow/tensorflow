@@ -53,6 +53,8 @@ class HloInstructionAdaptor {
 
   friend bool operator==(const HloInstructionAdaptor& lhs,
                          const HloInstructionAdaptor& rhs);
+  friend bool operator!=(const HloInstructionAdaptor& lhs,
+                         const HloInstructionAdaptor& rhs);
   template <typename H>
   friend H AbslHashValue(H h, const HloInstructionAdaptor& m);
 
@@ -147,9 +149,7 @@ void HloBfsConsumersFirstTraversal(
     absl::Span<const HloInstructionAdaptor> roots,
     const HloFusionAdaptor& fusion,
     const std::function<TraversalResult(HloInstructionAdaptor node)>&
-        visit_node,
-    const std::function<void(HloInstructionAdaptor producer)>& visit_arg =
-        [](HloInstructionAdaptor) {});
+        visit_node);
 
 // Visit the HLO nodes starting from `producers` in BFS order following the
 // `user` edges. Each node will be visited exactly once.

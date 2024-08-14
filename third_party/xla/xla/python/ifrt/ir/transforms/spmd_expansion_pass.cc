@@ -35,7 +35,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/transforms/constants.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -272,15 +271,15 @@ mlir::LogicalResult SpmdExpansionPass::spmdExpand(mlir::func::FuncOp func_op) {
 void SpmdExpansionPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
   // Skip single-device case.
-  auto devices = module_op->getAttrOfType<xla::ifrt::IfrtDevicesAttr>(
-      kIfrtDevicesAttrName);
-  if (devices == nullptr) {
+  auto num_devices =
+      module_op->getAttrOfType<mlir::IntegerAttr>(kIfrtNumDevicesAttrName);
+  if (num_devices == nullptr) {
     module_op->emitOpError()
         << "`" << module_op.getName()->str() << "` requires `"
-        << kIfrtDevicesAttrName << "` attribute.";
+        << kIfrtNumDevicesAttrName << "` attribute.";
     return signalPassFailure();
   }
-  if (devices.getIds().size() == 1) {
+  if (num_devices.getInt() == 1) {
     return;
   }
 

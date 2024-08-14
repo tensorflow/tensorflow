@@ -24,6 +24,7 @@ class Flags:
     enable_function_pruning_before_inlining: Flag
     enable_nested_function_shape_inference: Flag
     enable_quantized_dtypes_training: Flag
+    enable_skip_encapsulation_for_non_tpu_graphs: Flag
     enable_tf2min_ici_weight: Flag
     graph_building_optimization: Flag
     more_stack_traces: Flag

@@ -13,27 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/log/log.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
 
+#include "absl/log/log.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace gpu {
 
 void CheckCuda(CUresult result, const char* file, int line) {
-  if (result == CUDA_SUCCESS) {
-    return;
-  }
-  const char* name;
-  cuGetErrorName(result, &name);
-  const char* message;
-  cuGetErrorString(result, &message);
-  LOG(FATAL) << file << "(" << line << "): " << name << ", " << message;
+  TF_CHECK_OK(cuda::ToStatus(result));
 }
 
 void CheckCuda(cudaError_t result, const char* file, int line) {

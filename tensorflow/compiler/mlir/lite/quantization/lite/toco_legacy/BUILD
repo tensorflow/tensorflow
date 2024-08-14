@@ -36,3 +36,42 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "quantization_utils",
+    srcs = ["quantization_utils.cc"],
+    hdrs = ["quantization_utils.h"],
+    deps = [
+        ":model_utils",
+        ":portable_tensor_utils",
+        "//tensorflow/compiler/mlir/lite/kernels/internal:runtime_shape",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "quantization_utils_test",
+    srcs = ["quantization_utils_test.cc"],
+    args = [
+        "--test_model_file=$(location //tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin)",
+    ],
+    data = [
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin",
+    ],
+    deps = [
+        ":quantization_utils",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
+        "//tensorflow/lite/core:framework",  # to remove when mlir version is ready.
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_xla//xla/tsl/util:command_line_flags",
+    ],
+)

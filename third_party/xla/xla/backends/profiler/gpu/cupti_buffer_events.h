@@ -56,7 +56,7 @@ struct MemcpyDetails {
   int8_t dst_mem_kind;
 
   // ID of the hardware channel on which this operation ran.
-  uint32_t channel_id = -1;
+  uint32_t channel_id = static_cast<uint32_t>(-1);
   // CUpti_ChannelType of the channel above.
   int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };

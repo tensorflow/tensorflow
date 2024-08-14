@@ -72,10 +72,10 @@ SparseCoreLayoutStacker::SparseCoreLayoutStacker(int num_partitions,
       activation_mem_bytes_limit_(GetXlaSparseCoreStackingMemLimit()),
       variable_shard_bytes_limit_(GetXlaSparseCoreStackingTableShardLimit()) {}
 
-absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
+absl::Status SparseCoreLayoutStacker::AddTable(absl::string_view table_name,
                                                int64_t table_height,
                                                int64_t table_width,
-                                               tsl::StringPiece group,
+                                               absl::string_view group,
                                                int64_t output_samples) {
   if (stacks_by_group_.empty()) {  // First call?
     VLOG(1) << "Stacking parameters: stacking_enabled_ = " << stacking_enabled_

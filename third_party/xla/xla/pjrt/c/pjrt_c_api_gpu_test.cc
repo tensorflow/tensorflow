@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/client/client_library.h"
 #include "xla/ffi/api/ffi.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
@@ -76,8 +77,8 @@ class PjrtCApiGpuTest : public PjrtCApiTestBase {
 
 TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   // Prepares a device memory ptr on GPU.
-  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer =
-      create_buffer().first;
+  auto [buffer, buffer_future] = create_buffer();
+  TF_CHECK_OK(buffer_future.Await());
   PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args device_buffer_ptr_args;
   device_buffer_ptr_args.struct_size =
       PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
@@ -215,6 +216,7 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
   auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
   std::shared_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data =
       ::pjrt::ConvertToCKeyValueCallbacks(kv_store);
+  xla::ClientLibrary::DestroyLocalInstances();
 
   int num_nodes = 2;
   std::vector<std::thread> threads;
@@ -225,7 +227,8 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
                           kv_store = kv_store] {
       absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
           {"num_nodes", static_cast<int64_t>(num_nodes)},
-          {"node_id", static_cast<int64_t>(i)}};
+          {"node_id", static_cast<int64_t>(i)},
+          {"visible_devices", std::vector<int64_t>({0})}};
       TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
                               ::pjrt::ConvertToPjRtNamedValueList(options));
       TF_ASSERT_OK_AND_ASSIGN(

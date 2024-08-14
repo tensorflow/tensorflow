@@ -24,7 +24,7 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
-template <typename T, typename CoordsT = int32>
+template <typename T, typename CoordsT = int32_t>
 inline TfLiteStatus Gather(const tflite::GatherParams& op_params,
                            const RuntimeShape& input_shape, const T* input_data,
                            const RuntimeShape& coords_shape,

@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -90,6 +92,7 @@ class IrEmitter2 {
   // to emit the actual kernel body.
   struct KernelPrototype {
     llvm::Function* function;
+    llvm::BasicBlock* return_block;
 
     // LLVM values identifying kernel invocation thread coordinates.
     KernelThreadDims thread_dims;
@@ -122,6 +125,9 @@ class IrEmitter2 {
   // Emits an elemental host kernel for the given HLO instruction.
   absl::StatusOr<KernelInfo> EmitElementalHostKernel(
       const HloInstruction* instr);
+
+  // Emits a host kernel for the pad instruction.
+  absl::StatusOr<KernelInfo> EmitPadHostKernel(const HloInstruction* pad);
 
   // Emits a host kernel for the given fusion instruction.
   absl::StatusOr<KernelInfo> EmitFusionHostKernel(
@@ -234,6 +240,13 @@ class IrEmitter2 {
       const llvm_ir::ElementGenerator& element_generator);
 
   bool fast_min_max() const;
+
+  // Returns the number of bytes within the shape.
+  int64_t ByteSizeOf(const Shape& shape) const;
+
+  // Given a load instruction, annotate the load's result with the invariant
+  // load metadata.
+  void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* instr) const;
 
   const HloModule& hlo_module_;
   llvm::Module* module_;

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -25,12 +24,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
@@ -47,7 +46,7 @@ using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class HloShardingTest : public test_util::ShardingTest {};
+class HloShardingTest : public test_util::DeviceTest {};
 
 TEST_P(HloShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
@@ -482,7 +481,7 @@ TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, HloShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              .num_devices = 6, .num_addressable_devices = 4}));
 
 }  // namespace

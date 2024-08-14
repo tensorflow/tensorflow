@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <new>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -88,8 +88,8 @@ class AsyncValueRef {
   AsyncValueRef(const AsyncValueRef&) = default;
   AsyncValueRef& operator=(const AsyncValueRef&) = default;
 
-  AsyncValueRef(AsyncValueRef&&) = default;
-  AsyncValueRef& operator=(AsyncValueRef&&) = default;
+  AsyncValueRef(AsyncValueRef&&) noexcept = default;
+  AsyncValueRef& operator=(AsyncValueRef&&) noexcept = default;
 
   explicit AsyncValueRef(RCReference<AsyncValue> value)
       : value_(std::move(value)) {}
@@ -135,7 +135,7 @@ class AsyncValueRef {
   // Return true if the AsyncValue contains a concrete value.
   bool IsConcrete() const { return value_->IsConcrete(); }
 
-  // Return true if state is kUnconstructed.
+  // Return true if state is `kUnconstructed`.
   bool IsUnconstructed() const { return value_->IsUnconstructed(); }
 
   // Return the stored value. The AsyncValueRef must be available.
@@ -423,7 +423,9 @@ class AsyncValuePtr {
   T& operator*() const { return get(); }
 
   explicit operator bool() const { return value_ != nullptr; }
-  bool operator!=(std::nullptr_t) const { return value_ != nullptr; }
+  bool operator==(const AsyncValuePtr& p) const { return value_ == p.value_; }
+  bool operator!=(const AsyncValuePtr& p) const { return value_ != p.value_; }
+
   AsyncValuePtr& operator=(std::nullptr_t) {
     value_ = nullptr;
     return *this;
@@ -874,7 +876,7 @@ T* PlacementConstruct(void* buf, Args&&... args) {
 
 template <typename T, typename... Args>
 T* AllocateAndConstruct(Args&&... args) {
-  void* buf = port::AlignedMalloc(sizeof(T), alignof(T));
+  void* buf = ::operator new(sizeof(T), std::align_val_t{alignof(T)});
   return PlacementConstruct<T, Args...>(buf, std::forward<Args>(args)...);
 }
 
@@ -951,13 +953,13 @@ class AsyncValueOwningRef {
   AsyncValueOwningRef(const AsyncValueOwningRef&) = delete;
   AsyncValueOwningRef& operator=(const AsyncValueOwningRef&) = delete;
 
-  AsyncValueOwningRef& operator=(AsyncValueOwningRef&& other) {
+  AsyncValueOwningRef& operator=(AsyncValueOwningRef&& other) noexcept {
     Destroy();
     std::swap(value_, other.value_);
     return *this;
   }
 
-  AsyncValueOwningRef(AsyncValueOwningRef&& other) {
+  AsyncValueOwningRef(AsyncValueOwningRef&& other) noexcept {
     Destroy();
     std::swap(value_, other.value_);
   }

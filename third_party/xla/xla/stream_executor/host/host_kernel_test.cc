@@ -28,14 +28,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
-#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
@@ -90,10 +89,10 @@ define ptr @LlvmAddI32(ptr noundef %0) {
 }
 )";
 
-static absl::StatusOr<std::unique_ptr<StreamExecutor>> NewStreamExecutor() {
-  StreamExecutorConfig config(/*ordinal=*/0);
+static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
   TF_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
-  TF_ASSIGN_OR_RETURN(auto stream_exec, platform->GetUncachedExecutor(config));
+  TF_ASSIGN_OR_RETURN(auto stream_exec,
+                      platform->ExecutorForDevice(/*ordinal=*/0));
   return stream_exec;
 }
 
@@ -157,8 +156,7 @@ TEST(HostKernelTest, Addition3D) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto add,
-                          KernelFactory::Create(executor.get(), spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add, executor->LoadKernel(spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
   TF_ASSERT_OK(stream->Launch(ThreadDim(2, 2, 3), BlockDim(1), *add, kargs));
@@ -184,8 +182,7 @@ TEST(HostKernelTest, JitAddition) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto add,
-                          KernelFactory::Create(executor.get(), spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add, executor->LoadKernel(spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
   TF_ASSERT_OK(stream->Launch(ThreadDim(4), BlockDim(1), *add, kargs));

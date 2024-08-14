@@ -701,6 +701,7 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
         "//tensorflow/core/kernels/batching_util:batch_scheduler_hdrs",
+        "//tensorflow/core/kernels/batching_util:batch_scheduler_utils",
         "//tensorflow/core/kernels/batching_util:bounded_executor",
         "//tensorflow/core/kernels/batching_util:concat_split_util",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
@@ -1647,7 +1648,7 @@ cc_library(
 
 tf_cc_test(
     name = "batch_kernels_test",
-    size = "medium",
+    size = "small",
     srcs = ["batch_kernels_test.cc"],
     features = ["-layering_check"],
     deps = [
@@ -4672,7 +4673,7 @@ tf_kernel_library(
         "spacetobatch_functor.h",
         "spacetobatch_functor_gpu.cu.cc",
     ],
-    visibility = [":friends"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -4715,7 +4716,7 @@ tf_kernel_library(
         "spacetodepth_op.h",
         "spacetodepth_op_gpu.cu.cc",
     ],
-    visibility = [":friends"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

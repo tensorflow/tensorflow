@@ -76,7 +76,6 @@ class MaybeOwningCpuMemory {
 
   void* data() const { return buf_; }
   size_t size() const { return size_; }
-  bool owns_data() const { return data_ != nullptr; }
 
  private:
   void* buf_ = nullptr;                  // Non-owning data pointer.
@@ -129,8 +128,9 @@ class TrackedTfrtCpuDeviceBuffer {
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   // Move-only.
-  TrackedTfrtCpuDeviceBuffer(TrackedTfrtCpuDeviceBuffer&&) = default;
-  TrackedTfrtCpuDeviceBuffer& operator=(TrackedTfrtCpuDeviceBuffer&&) = default;
+  TrackedTfrtCpuDeviceBuffer(TrackedTfrtCpuDeviceBuffer&&) noexcept = default;
+  TrackedTfrtCpuDeviceBuffer& operator=(TrackedTfrtCpuDeviceBuffer&&) noexcept =
+      default;
   TrackedTfrtCpuDeviceBuffer(const TrackedTfrtCpuDeviceBuffer&) = delete;
   TrackedTfrtCpuDeviceBuffer& operator=(const TrackedTfrtCpuDeviceBuffer&) =
       delete;

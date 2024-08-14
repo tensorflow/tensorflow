@@ -385,6 +385,13 @@ void UpdateInstructionLayout(const InstructionAndIndex& instruction_and_index,
   }
 }
 
+Shape RemoveMajormostDimension(const Shape& shape) {
+  CHECK(shape.has_layout()) << "Shape must have layout.";
+  const int size = shape.layout().minor_to_major_size();
+  const int64_t majormost_dim = shape.layout().minor_to_major(size - 1);
+  return ShapeUtil::DeleteDimension(majormost_dim, shape);
+}
+
 absl::Status MoveCopy(
     const InstructionAndIndex& copy_to_move_instruction_and_index,
     const CallGraph* call_graph,
@@ -392,13 +399,27 @@ absl::Status MoveCopy(
     absl::flat_hash_set<HloInstruction*>& to_remove) {
   HloInstruction* copy_to_move = copy_to_move_instruction_and_index.instruction;
   VLOG(5) << "Moving copy: " << copy_to_move->ToString();
-  std::vector<InstructionAndIndex> stack = {copy_to_move_instruction_and_index};
+  struct InstructionAndShapes {
+    InstructionAndShapes(InstructionAndIndex idx, Shape s_before, Shape s_after)
+        : instruction_and_index(idx),
+          shape_before_copy(s_before),
+          shape_after_copy(s_after) {}
+    InstructionAndIndex instruction_and_index;
+    Shape shape_before_copy;
+    Shape shape_after_copy;
+  };
+  std::vector<InstructionAndShapes> stack = {InstructionAndShapes(
+      copy_to_move_instruction_and_index, copy_to_move->operand(0)->shape(),
+      copy_to_move->shape())};
   while (!stack.empty()) {
-    InstructionAndIndex current_instruction_and_index = stack.back();
+    InstructionAndShapes current_instruction_and_shapes = stack.back();
+    InstructionAndIndex current_instruction_and_index =
+        current_instruction_and_shapes.instruction_and_index;
     stack.pop_back();
     VLOG(5) << "Current top of stack: "
             << current_instruction_and_index.instruction->ToString() << " "
             << current_instruction_and_index.index;
+    // Get the users of the current instruction.
     absl::StatusOr<std::vector<InstructionAndIndex>> current_value_down =
         WalkDownMemoryOffload(current_instruction_and_index, *call_graph);
     if (!current_value_down.ok()) {
@@ -406,14 +427,74 @@ absl::Status MoveCopy(
               << current_value_down.status();
       break;
     }
+
     for (InstructionAndIndex& instruction_and_index :
          current_value_down.value()) {
       HloInstruction* instruction = instruction_and_index.instruction;
+      Shape shape_before_copy =
+          current_instruction_and_shapes.shape_before_copy;
+      Shape shape_after_copy = current_instruction_and_shapes.shape_after_copy;
       VLOG(5) << "Evaluating successor: " << instruction->ToString();
       const int index = instruction_and_index.index;
+      if (instruction->opcode() == HloOpcode::kBitcast) {
+        // For now, we only know how to move a copy over a bitcast which
+        // "reshapes" away the majormost dimension (which must be a degenerate
+        // dimension).
+        const Shape& before_bitcast_shape = instruction->operand(0)->shape();
+        const Shape& after_bitcast_shape = instruction->shape();
+        if (!Shape::Equal().IgnoreLayout()(copy_to_move->operand(0)->shape(),
+                                           copy_to_move->shape())) {
+          return absl::InternalError(absl::StrFormat(
+              "Expecting copy to only change instructions layout. Copy: %s",
+              copy_to_move->ToString()));
+        }
+        if (after_bitcast_shape.rank() != before_bitcast_shape.rank() - 1) {
+          return absl::InternalError(
+              absl::StrFormat("Only handling bitcasts which remove 0'th "
+                              "dimension. This bitcast is \"%s\"",
+                              instruction->ToString()));
+        }
+        if (!(ShapeUtil::IsEffectivelyMostMajorDimension(before_bitcast_shape,
+                                                         0) &&
+              before_bitcast_shape.dimensions(0) == 1)) {
+          return absl::InternalError(
+              absl::StrFormat("Only handling bitcasts with majormost dimension "
+                              "of size 1. This bitcast is \"%s\"",
+                              instruction->ToString()));
+        }
+        const Shape new_bitcast_shape =
+            RemoveMajormostDimension(shape_before_copy);
+        VLOG(2) << absl::StreamFormat(
+            " Encountered bitcast \"%s\", updating current shape from %s to %s",
+            instruction->name(), shape_before_copy.ToString(true),
+            new_bitcast_shape.ToString(true));
+        shape_before_copy = new_bitcast_shape;
+        const Shape new_copy_shape = RemoveMajormostDimension(shape_after_copy);
+        VLOG(2) << absl::StreamFormat(
+            " Also updating shape after copy from %s to %s",
+            shape_after_copy.ToString(true), new_copy_shape.ToString(true));
+        shape_after_copy = new_copy_shape;
+      } else if (instruction->opcode() == HloOpcode::kSlice ||
+                 instruction->opcode() == HloOpcode::kDynamicSlice) {
+        // Since we're moving the copy over a Slice/DynamicSlice, we need to
+        // change the shape of the copy to match the shape of the result of the
+        // Slice/DynamicSlice. We want to maintain the layout of
+        // shape_after_copy though.
+        Shape new_copy_shape = instruction->shape();
+        *new_copy_shape.mutable_layout() = shape_after_copy.layout();
+        VLOG(2) << absl::StreamFormat(
+            " Encountered %s \"%s\", updating shape after copy from "
+            "%s to %s",
+            HloOpcodeString(instruction->opcode()), instruction->name(),
+            shape_after_copy.ToString(true), new_copy_shape.ToString(true));
+        shape_after_copy = new_copy_shape;
+      }
+
+      // Update the shape of this instruction as if the copy never happened.
       UpdateInstructionLayout(instruction_and_index,
-                              copy_to_move->operand(0)->shape().layout());
+                              shape_before_copy.layout());
       if (instruction->opcode() == HloOpcode::kParameter) {
+        // Also update the layout of the call site.
         std::vector<HloInstruction*> callers =
             call_graph->GetComputationCallers(instruction->parent());
         if (callers.size() != 1) {
@@ -422,11 +503,12 @@ absl::Status MoveCopy(
         }
         HloInstruction* caller = callers[0];
         UpdateInstructionLayout(InstructionAndIndex(caller, index),
-                                copy_to_move->operand(0)->shape().layout());
+                                shape_before_copy.layout());
       }
 
       CHECK_NE(instruction->opcode(), HloOpcode::kCopy)
-          << "Copies should be processed in order";
+          << "Copies should be processed in reverse order so this never "
+             "happens";
       if (absl::c_linear_search(kUsersOpcodes, instruction->opcode()) ||
           instruction->IsCustomCall(
               host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
@@ -444,12 +526,12 @@ absl::Status MoveCopy(
                   instruction->shape(), {instruction}));
         }
         UpdateInstructionLayout(InstructionAndIndex(new_annotation, -1),
-                                copy_to_move->operand(0)->shape().layout());
-        Shape new_copy_shape = new_annotation->shape();
-        *new_copy_shape.mutable_layout() = copy_to_move->shape().layout();
+                                shape_before_copy.layout());
+        VLOG(3) << absl::StreamFormat("Creating copy with shape %s",
+                                      shape_after_copy.ToString(true));
         HloInstruction* new_copy =
             instruction->AddInstruction(copy_to_move->CloneWithNewOperands(
-                new_copy_shape, {new_annotation}));
+                shape_after_copy, {new_annotation}));
         VLOG(2) << absl::StreamFormat("Inserting copy \"%s\" after \"%s\"",
                                       new_copy->name(), instruction->name());
         std::vector<HloInstruction*> users = instruction->users();
@@ -504,7 +586,8 @@ absl::Status MoveCopy(
           TF_RETURN_IF_ERROR(update_slice->ReplaceOperandWith(0, new_copy));
         }
       }
-      stack.push_back(instruction_and_index);
+      stack.emplace_back(instruction_and_index, shape_before_copy,
+                         shape_after_copy);
     }
   }
   VLOG(2) << absl::StreamFormat("Removing copy \"%s\"",

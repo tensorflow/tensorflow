@@ -67,7 +67,6 @@ char const* numpy_type_name(int numpy_type) {
     TYPE_CASE(NPY_DATETIME);
     TYPE_CASE(NPY_TIMEDELTA);
     TYPE_CASE(NPY_HALF);
-    TYPE_CASE(NPY_NTYPES);
     TYPE_CASE(NPY_NOTYPE);
     TYPE_CASE(NPY_CHAR);
     TYPE_CASE(NPY_USERDEF);
@@ -75,6 +74,10 @@ char const* numpy_type_name(int numpy_type) {
       return "not a numpy type";
   }
 }
+
+#if NPY_ABI_VERSION < 0x02000000
+#define PyDataType_FIELDS(descr) ((descr)->fields)
+#endif  // NPY_ABI_VERSION < 0x02000000
 
 Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
                                    TF_DataType* out_tf_datatype) {
@@ -84,11 +87,11 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
 
   // Return an error if the fields attribute is null.
   // Occurs with an improper conversion attempt to resource.
-  if (descr->fields == nullptr) {
+  if (PyDataType_FIELDS(descr) == nullptr) {
     return errors::Internal("Unexpected numpy data type");
   }
 
-  if (PyDict_Next(descr->fields, &pos, &key, &value)) {
+  if (PyDict_Next(PyDataType_FIELDS(descr), &pos, &key, &value)) {
     // In Python 3, the keys of numpy custom struct types are unicode, unlike
     // Python 2, where the keys are bytes.
     const char* key_string =

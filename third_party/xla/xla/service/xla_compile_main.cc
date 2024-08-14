@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
                 "an attached GPU will be used."),
       tsl::Flag("autotune_results", &options.gpu_options.autotune_results_path,
                 "The path to AutotuneResults, optional when compiling for"
-                " GPU"),
+                " GPU. Only used if autotuning is enabled in XLA_FLAGS."),
       tsl::Flag("symbol_repo", &options.repo_options.symbol_repo,
                 "Which SymbolRepository to look up --symbol_reference in. If "
                 "the repository contains a GpuTargetConfig, "
@@ -83,7 +83,8 @@ int main(int argc, char* argv[]) {
           "optimized_symbol_reference",
           &options.repo_options.optimized_symbol_id,
           "Optimized symbol ID to look up in a SymbolRepository. Overrides "
-          "--autotune_results_path."),
+          "--autotune_results_path. Any autotuning results that are present "
+          "will be used as long as autotuning is enabled in XLA_FLAGS."),
 
       tsl::Flag("use_attached_device", &options.gpu_options.use_attached_device,
                 "Whether to use the attached GPU or not. Overrides the "

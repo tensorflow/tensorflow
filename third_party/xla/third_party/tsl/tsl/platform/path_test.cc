@@ -160,7 +160,7 @@ TEST(PathTest, CommonPathPrefix) {
 }
 
 TEST(PathTest, GetTestWorkspaceDir) {
-  constexpr tsl::StringPiece kOriginalValue = "original value";
+  constexpr absl::string_view kOriginalValue = "original value";
   std::string dir;
 
   dir = kOriginalValue;
@@ -193,7 +193,7 @@ TEST(PathTest, GetTestWorkspaceDir) {
 }
 
 TEST(PathTest, GetTestUndeclaredOutputsDir) {
-  constexpr tsl::StringPiece kOriginalValue = "original value";
+  constexpr absl::string_view kOriginalValue = "original value";
   std::string dir;
 
   dir = kOriginalValue;
@@ -211,7 +211,7 @@ TEST(PathTest, GetTestUndeclaredOutputsDir) {
 }
 
 TEST(PathTest, ResolveTestPrefixesKeepsThePathUnchanged) {
-  constexpr tsl::StringPiece kOriginalValue = "original value";
+  constexpr absl::string_view kOriginalValue = "original value";
   std::string resolved_path;
 
   resolved_path = kOriginalValue;
@@ -232,7 +232,7 @@ TEST(PathTest, ResolveTestPrefixesKeepsThePathUnchanged) {
 }
 
 TEST(PathTest, ResolveTestPrefixesCanResolveTestWorkspace) {
-  constexpr tsl::StringPiece kOriginalValue = "original value";
+  constexpr absl::string_view kOriginalValue = "original value";
   std::string resolved_path;
 
   tsl::setenv("TEST_SRCDIR", "/repo/src", /*overwrite=*/true);
@@ -260,7 +260,7 @@ TEST(PathTest, ResolveTestPrefixesCanResolveTestWorkspace) {
 }
 
 TEST(PathTest, ResolveTestPrefixesCannotResolveTestWorkspace) {
-  constexpr tsl::StringPiece kOriginalValue = "original value";
+  constexpr absl::string_view kOriginalValue = "original value";
   std::string resolved_path;
 
   tsl::unsetenv("TEST_SRCDIR");
@@ -272,7 +272,7 @@ TEST(PathTest, ResolveTestPrefixesCannotResolveTestWorkspace) {
 }
 
 TEST(PathTest, ResolveTestPrefixesCanResolveTestUndeclaredOutputsDir) {
-  constexpr tsl::StringPiece kOriginalValue = "original value";
+  constexpr absl::string_view kOriginalValue = "original value";
   std::string resolved_path;
 
   tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", "/test/outputs",
@@ -305,7 +305,7 @@ TEST(PathTest, ResolveTestPrefixesCanResolveTestUndeclaredOutputsDir) {
 }
 
 TEST(PathTest, ResolveTestPrefixesCannotResolveTestUndeclaredOutputsDir) {
-  constexpr tsl::StringPiece kOriginalValue = "original value";
+  constexpr absl::string_view kOriginalValue = "original value";
   std::string resolved_path;
 
   tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");

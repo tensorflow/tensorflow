@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 
+#include <cstdarg>
+#include <cstdio>
+
 #include <gtest/gtest.h>
 
 namespace mlir {

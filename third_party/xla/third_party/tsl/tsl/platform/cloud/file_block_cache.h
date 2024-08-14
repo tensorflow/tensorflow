@@ -70,9 +70,9 @@ class FileBlockCache {
   /// cache is constructed. The returned Status should be OK as long as the
   /// read from the remote filesystem succeeded (similar to the semantics of the
   /// read(2) system call).
-  typedef std::function<Status(const string& filename, size_t offset,
-                               size_t buffer_size, char* buffer,
-                               size_t* bytes_transferred)>
+  typedef std::function<absl::Status(const string& filename, size_t offset,
+                                     size_t buffer_size, char* buffer,
+                                     size_t* bytes_transferred)>
       BlockFetcher;
 
   virtual ~FileBlockCache() {}
@@ -91,8 +91,8 @@ class FileBlockCache {
   ///    placed in `out`.
   /// 4) OK otherwise (i.e. the read succeeded, and at least one byte was placed
   ///    in `out`).
-  virtual Status Read(const string& filename, size_t offset, size_t n,
-                      char* buffer, size_t* bytes_transferred) = 0;
+  virtual absl::Status Read(const string& filename, size_t offset, size_t n,
+                            char* buffer, size_t* bytes_transferred) = 0;
 
   // Validate the given file signature with the existing file signature in the
   // cache. Returns true if the signature doesn't change or the file did not

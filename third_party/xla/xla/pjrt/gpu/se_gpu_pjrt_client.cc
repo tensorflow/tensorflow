@@ -82,7 +82,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
-#include "tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -1013,7 +1013,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         ordinal_and_device.second->executor()->GetPlatform();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::se::DeviceDescription> desc,
-        platform->DescriptionForDevice(ordinal_and_device.first));
+        platform->DescriptionForDevice(
+            ordinal_and_device.second->local_hardware_id().value()));
     DeviceProto* device_proto = local_topology.add_devices();
     device_proto->set_local_device_ordinal(ordinal_and_device.first);
     device_proto->set_name(desc->name());

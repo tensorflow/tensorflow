@@ -19,13 +19,17 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
+#include "third_party/gpus/cuda/include/vector_types.h"
 #include "cute/layout.hpp"
 #include "cutlass/cutlass.h"
+#include "cutlass/device_kernel.h"
 #include "cutlass/gemm/device/gemm_universal_adapter.h"
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/gemm/gemm_enumerated_types.h"
 #include "cutlass/gemm_coord.h"
+#include "cutlass/kernel_hardware_info.h"
 #include "cutlass/layout/matrix.h"
 #include "cutlass/util/packed_stride.hpp"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
@@ -137,6 +141,21 @@ static bool CanImplement(const Arguments &args) {
          cutlass::Status::kSuccess;
 }
 
+inline cutlass::gemm::GemmUniversalMode ToGemmUniversalMode(GemmMode mode) {
+  switch (mode) {
+    case GemmMode::kGemm:
+      return cutlass::gemm::GemmUniversalMode::kGemm;
+    case GemmMode::kGemmSplitKParallel:
+      return cutlass::gemm::GemmUniversalMode::kGemmSplitKParallel;
+    case GemmMode::kBatched:
+      return cutlass::gemm::GemmUniversalMode::kBatched;
+    case GemmMode::kArray:
+      return cutlass::gemm::GemmUniversalMode::kArray;
+    case GemmMode::kInvalid:
+      return cutlass::gemm::GemmUniversalMode::kInvalid;
+  }
+}
+
 // Converts type-erased gemm arguments to the underlying CUTLASS operation
 // arguments.
 template <typename Tag>
@@ -148,7 +167,7 @@ static typename Traits<Tag>::Arguments OpArguments(const Arguments &args) {
   auto ldb = LdB<typename Traits<Tag>::Operation>(problem_size);
   auto ldc = LdC<typename Traits<Tag>::Operation>(problem_size);
 
-  auto mode = cutlass::gemm::GemmUniversalMode::kGemm;
+  cutlass::gemm::GemmUniversalMode mode = ToGemmUniversalMode(args.mode);
 
   // TODO(ezhulenev): We hardcode parameters for `LinearCombination`
   // epilogue, however `Gemm` template can be compiled with arbitrary
@@ -160,7 +179,7 @@ static typename Traits<Tag>::Arguments OpArguments(const Arguments &args) {
 
   return typename Traits<Tag>::Arguments(      // CUTLASS Operation arguments
       mode, problem_size,                      //
-      1,                                       // batch
+      args.batch_count,                        // batch or k-split slices
       {alpha, beta},                           // epilogue
       args.lhs, args.rhs, args.out, args.out,  // pointers
       0, 0, 0, 0,                              // batch strides
@@ -199,8 +218,9 @@ namespace adaptor_3x {
 template <typename Tag>
 static std::optional<Dim3> ClusterDim() {
   typename Traits<Tag>::Kernel::DispatchPolicy::ClusterShape cluster;
-  return Dim3{cute::get<0>(cluster), cute::get<1>(cluster),
-              cute::get<2>(cluster)};
+  return Dim3{static_cast<uint32_t>(cute::get<0>(cluster)),
+              static_cast<uint32_t>(cute::get<1>(cluster)),
+              static_cast<uint32_t>(cute::get<2>(cluster))};
 }
 
 template <typename Tag>
@@ -236,7 +256,9 @@ static typename Traits<Tag>::Arguments OpArguments(const Arguments &args) {
   // TODO(ezhulenev): Pass device id and sm_count in arguments.
   cutlass::KernelHardwareInfo hw_info{/*device_id=*/0, /*sm_count=*/128};
 
-  auto mode = cutlass::gemm::GemmUniversalMode::kGemm;
+  cutlass::gemm::GemmUniversalMode mode =
+      static_cast<cutlass::gemm::GemmUniversalMode>(
+          static_cast<int>(args.mode));
   typename Kernel::ProblemShape problem_shape = {args.m, args.n, args.k,
                                                  /*batch=*/1};
 

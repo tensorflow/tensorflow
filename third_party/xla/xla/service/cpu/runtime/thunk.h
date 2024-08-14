@@ -110,7 +110,7 @@ class Thunk {
   using Task = std::function<void()>;
   using TaskRunner = absl::AnyInvocable<void(Task)>;
 
-  Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}
+  Thunk(Kind kind, Info info);
 
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
@@ -208,14 +208,12 @@ class Thunk {
         const ExecutableRunOptions* run_options);
 
     int32_t device_ordinal;
-    stream_executor::Stream* stream = nullptr;
-    stream_executor::DeviceMemoryAllocator* allocator = nullptr;
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
 
    private:
     CustomCallExecuteParams(int32_t device_ordinal,
-                            stream_executor::Stream* stream,
-                            stream_executor::DeviceMemoryAllocator* allocator,
+                            const Eigen::ThreadPoolDevice* intra_op_thread_pool,
                             const ffi::ExecutionContext* ffi_execution_context);
   };
 
@@ -286,9 +284,21 @@ class Thunk {
   // An execute event that becomes ready when all tasks are completed.
   using ExecuteEvent = tsl::Chain;
 
-  // Returns non-reference-counted async value ref for thunks executed in the
-  // caller thread to avoid reference counting overhead.
-  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent();
+  // Returns non-reference-counted async value ref in constructed state.
+  // Returned async value is a per-process singleton stored in a storage with a
+  // static duration, and can be safely compared using pointer equality.
+  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEventSingleton();
+
+  // Returns `OkExecuteEventSingleton()` cached by this thunk instance.
+  tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent() const { return ok_event_; }
+
+  bool IsOkExecuteEvent(const tsl::AsyncValueRef<ExecuteEvent>& event) const {
+    return event == ok_event_;
+  }
+
+  bool IsOkExecuteEvent(tsl::AsyncValuePtr<ExecuteEvent> event) const {
+    return event == ok_event_.AsPtr();
+  }
 
   // Thunk execution must be asynchronous and never block the caller thread,
   // especially waiting for work submitted into the `intra_op_threadpool`,
@@ -304,7 +314,8 @@ class Thunk {
   // multiple tasks and need to signal completion when all tasks are done (see
   // ConvolutionThunk and DotThunk for examples).
   struct ExecuteState {
-    explicit ExecuteState(int64_t parallel_tasks);
+    explicit ExecuteState(int64_t num_tasks);
+    ~ExecuteState();
 
     void Notify();
 
@@ -330,6 +341,8 @@ class Thunk {
  private:
   Kind kind_;
   Info info_;
+
+  tsl::AsyncValueRef<ExecuteEvent> ok_event_;
 };
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);

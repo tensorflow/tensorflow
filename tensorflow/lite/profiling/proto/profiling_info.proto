@@ -25,22 +25,27 @@ message BenchmarkProfilingData {
   optional ModelProfilingData runtime_profile = 3;
 }
 
+// LINT.IfChange(ModelProfilingData)
 message ModelProfilingData {
   repeated SubGraphProfilingData subgraph_profiles = 1;
   repeated DelegateProfilingData delegate_profiles = 2;
 }
+// LINT.ThenChange(//tensorflow/lite/profiling/profile_summary_formatter_test.cc:ModelProfilingDataComparator)
 
+// LINT.IfChange(SubGraphProfilingData)
 message SubGraphProfilingData {
   optional string subgraph_name = 1;
   optional int32 subgraph_index = 2;
   repeated OpProfileData per_op_profiles = 3;
 }
+// LINT.ThenChange(//tensorflow/lite/profiling/profile_summary_formatter_test.cc:SubGraphProfilingDataComparator)
 
 message DelegateProfilingData {
   optional string delegate_name = 1;
   repeated OpProfileData per_op_profiles = 2;
 }
 
+// LINT.IfChange(OpProfilingStat)
 message OpProfilingStat {
   optional int64 first = 1;
   optional int64 last = 2;
@@ -52,7 +57,9 @@ message OpProfilingStat {
   optional int64 sum = 8;
   optional int64 count = 9;
 }
+// LINT.ThenChange(//tensorflow/lite/profiling/profile_summary_formatter_test.cc:OpProfilingStatComparator)
 
+// LINT.IfChange(OpProfileData)
 message OpProfileData {
   optional string node_type = 1;
   optional OpProfilingStat inference_microseconds = 2;
@@ -61,3 +68,4 @@ message OpProfileData {
   optional string name = 5;
   optional int64 run_order = 6;
 }
+// LINT.ThenChange(//tensorflow/lite/profiling/profile_summary_formatter_test.cc:OpProfileDataComparator)

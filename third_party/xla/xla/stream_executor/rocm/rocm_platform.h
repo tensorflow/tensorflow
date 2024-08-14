@@ -41,16 +41,6 @@ class ROCmPlatform : public Platform {
   ROCmPlatform();
   ~ROCmPlatform() override;
 
-  // ROCmPlatform-specific functionality
-  // Returns the number of distinct buses / NUMA nodes on the machine.
-  int BusCount();
-
-  // Returns the bus/NUMA node for the specified device ordinal.
-  int DeviceToBus(int device_ordinal);
-
-  // Returns the lowest-ordinal-number StreamExecutor on the specified bus.
-  absl::StatusOr<StreamExecutor*> FirstExecutorForBus(int bus_ordinal);
-
   // Platform interface implementation:
   // Returns the same value as kROCmPlatform above.
   Platform::Id id() const override;
@@ -64,16 +54,17 @@ class ROCmPlatform : public Platform {
       int ordinal) const override;
 
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
   absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
 
-  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) override;
-
  private:
-  // Determines the number of NUMA nodes and the assignment of executor to each.
-  void InspectNumaNodes();
+  // Returns a device constructed with the options specified in "config" without
+  // looking in or storing to the Platform's executor cache.
+  // Ownership IS transferred to the caller.
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+      const StreamExecutorConfig& config);
 
   // This platform's name.
   std::string name_;
@@ -83,15 +74,6 @@ class ROCmPlatform : public Platform {
 
   // Cache of created executors.
   ExecutorCache executor_cache_;
-
-  // The smallest NUMA node value for any device managed by this machine
-  // manager. Used, along with limit_numa_node_, to convert NUMA nodes into bus
-  // ordinals. The NUMA node space occupied by GPUs is assumed to be dense./
-  int min_numa_node_;
-
-  // Larger than the NUMA node value for any device managed by this machine
-  // manager.
-  int limit_numa_node_;
 
   ROCmPlatform(const ROCmPlatform&) = delete;
   void operator=(const ROCmPlatform&) = delete;

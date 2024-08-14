@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -328,6 +329,176 @@ TEST(XlaBuilderTest, Call) {
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Add(m::Call(m::Parameter(), m::Parameter()),
                                 m::Call(m::Constant(), m::Constant()))));
+}
+
+TEST(XlaBuilderTest, CompositeCall) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+
+  XlaBuilder bsum(TestName());
+  Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
+  TF_ASSERT_OK_AND_ASSIGN(const XlaComputation computation, bsum.Build());
+
+  std::vector<XlaOp> operands = {Parameter(&b, 0, shape, "arg0"),
+                                 Parameter(&b, 1, shape, "arg1")};
+  CompositeCall(&b, computation, absl::MakeSpan(operands),
+                /*name=*/"foo.bar",
+                /*attributes=*/"{n = 1 : i32, tensor = dense<1> : tensor<i32>}",
+                /*version=*/1);
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Call(m::Parameter(), m::Parameter())));
+}
+
+TEST(XlaBuilderTest, CompositeCallFrontendAttributesStayLocal) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+
+  XlaBuilder bsum(TestName());
+  Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
+  TF_ASSERT_OK_AND_ASSIGN(const XlaComputation computation, bsum.Build());
+
+  std::vector<XlaOp> operands = {Parameter(&b, 0, shape, "arg0"),
+                                 Parameter(&b, 1, shape, "arg1")};
+  CompositeCall(&b, computation, absl::MakeSpan(operands),
+                /*name=*/"foo.bar",
+                /*attributes=*/"{n = 1 : i32, tensor = dense<1> : tensor<i32>}",
+                /*version=*/1);
+  Add(operands[0], operands[1]);
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_TRUE(GetRoot(*module)->frontend_attributes().map().empty());
+}
+
+TEST(XlaBuilderTest, CompositeCallMissingName) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+
+  XlaBuilder bsum(TestName());
+  Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
+  TF_ASSERT_OK_AND_ASSIGN(const XlaComputation computation, bsum.Build());
+
+  std::vector<XlaOp> operands = {Parameter(&b, 0, shape, "arg0"),
+                                 Parameter(&b, 1, shape, "arg1")};
+  CompositeCall(&b, computation, absl::MakeSpan(operands), /*name=*/"",
+                /*attributes=*/"{n = 1 : i32, tensor = dense<1> : tensor<i32>}",
+                /*version=*/1);
+
+  auto statusor = BuildHloModule(b);
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().message(),
+              HasSubstr("A composite call op must have frontend attributes "
+                        "with key composite.name whose value is non-empty"));
+}
+
+TEST(XlaBuilderTest, CompositeCallMissingAttribute) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+
+  XlaBuilder bsum(TestName());
+  Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
+  TF_ASSERT_OK_AND_ASSIGN(const XlaComputation computation, bsum.Build());
+
+  std::vector<XlaOp> operands = {Parameter(&b, 0, shape, "arg0"),
+                                 Parameter(&b, 1, shape, "arg1")};
+  CompositeCall(&b, computation, absl::MakeSpan(operands), /*name=*/"foo.bar",
+                /*attributes=*/"", /*version=*/1);
+
+  auto statusor = BuildHloModule(b);
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().message(),
+      HasSubstr(
+          "A composite call op must have frontend attributes with key "
+          "composite.attributes whose value is default: {} or non-empty"));
+}
+
+TEST(XlaBuilderTest, CompositeCallNonNegativeVersion) {
+  XlaBuilder b(TestName());
+
+  FrontendAttributes frontend_attributes = b.frontend_attributes();
+  frontend_attributes.mutable_map()->insert({"foo", "bar"});
+  b.SetFrontendAttributes(frontend_attributes);
+
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+
+  XlaBuilder bsum(TestName());
+  Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
+  TF_ASSERT_OK_AND_ASSIGN(const XlaComputation computation, bsum.Build());
+
+  std::vector<XlaOp> operands = {Parameter(&b, 0, shape, "arg0"),
+                                 Parameter(&b, 1, shape, "arg1")};
+  CompositeCall(&b, computation, absl::MakeSpan(operands),
+                /*name=*/"foo.bar",
+                /*attributes=*/"{n = 1 : i32, tensor = dense<1> : tensor<i32>}",
+                /*version=*/-1);
+
+  auto statusor = BuildHloModule(b);
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().message(),
+              HasSubstr("A composite call op must have frontend attributes "
+                        "with a composite.version whose value is a "
+                        "non-negative integer but got: -1"));
+}
+
+TEST(XlaBuilderTest, CompositeCallOptionalVersionAndAttribute) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+
+  XlaBuilder bsum(TestName());
+  Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
+  TF_ASSERT_OK_AND_ASSIGN(const XlaComputation computation, bsum.Build());
+
+  std::vector<XlaOp> operands = {Parameter(&b, 0, shape, "arg0"),
+                                 Parameter(&b, 1, shape, "arg1")};
+  CompositeCall(&b, computation, absl::MakeSpan(operands), /*name=*/"foo.bar");
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  ASSERT_THAT(GetRoot(*module),
+              GmockMatch(m::Call(m::Parameter(), m::Parameter())));
+  ASSERT_TRUE(GetRoot(*module)->frontend_attributes().map().contains(
+      "composite.attributes"));
+  EXPECT_EQ(
+      GetRoot(*module)->frontend_attributes().map().at("composite.attributes"),
+      "{}");
+  EXPECT_EQ(
+      GetRoot(*module)->frontend_attributes().map().at("composite.version"),
+      "0");
+}
+
+TEST(XlaBuilderTest, CompositeCallWithExtraFrontendAttributes) {
+  XlaBuilder b(TestName());
+
+  FrontendAttributes frontend_attributes = b.frontend_attributes();
+  frontend_attributes.mutable_map()->insert({"foo", "bar"});
+  b.SetFrontendAttributes(frontend_attributes);
+
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+
+  XlaBuilder bsum(TestName());
+  Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
+  TF_ASSERT_OK_AND_ASSIGN(const XlaComputation computation, bsum.Build());
+
+  std::vector<XlaOp> operands = {Parameter(&b, 0, shape, "arg0"),
+                                 Parameter(&b, 1, shape, "arg1")};
+  CompositeCall(&b, computation, absl::MakeSpan(operands),
+                /*name=*/"foo.bar",
+                /*attributes=*/"{n = 1 : i32, tensor = dense<1> : tensor<i32>}",
+                /*version=*/1);
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Call(m::Parameter(), m::Parameter())));
+  ASSERT_TRUE(GetRoot(*module)->frontend_attributes().map().contains("foo"));
+  EXPECT_EQ(GetRoot(*module)->frontend_attributes().map().at("foo"), "bar");
 }
 
 TEST(XlaBuilderTest, BinopHasDegenerateBroadcast) {

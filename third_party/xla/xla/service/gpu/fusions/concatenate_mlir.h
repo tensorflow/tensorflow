@@ -37,8 +37,7 @@ namespace gpu {
 
 class MlirConcatenateFusion : public MlirFusionEmitterBase {
  public:
-  explicit MlirConcatenateFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis) {}
+  explicit MlirConcatenateFusion(const HloFusionAnalysis& analysis);
 
   LaunchDimensions launch_dimensions() const override;
 
@@ -62,6 +61,9 @@ class MlirConcatenateFusion : public MlirFusionEmitterBase {
 
  private:
   const HloFusionAnalysis& analysis_;
+  Shape largest_shape_;
+  LaunchDimensionsConfig config_;
+  int unroll_factor_;
 };
 
 }  // namespace gpu

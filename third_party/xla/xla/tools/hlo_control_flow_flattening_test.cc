@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -513,6 +513,37 @@ TEST_F(HloControlFlowFlatteningTest, ReplicaIdSucceedsWithChange) {
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Constant());
   EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
             "replica-id.18600");
+}
+
+TEST_F(HloControlFlowFlatteningTest, RemoveReplicaIdButKeepAllReduce) {
+  absl::string_view kHloText = R"(
+  HloModule RemoveReplicaIdButKeepCollective
+
+%sum (a: f32[], b: f32[]) -> f32[] {
+    %a = f32[] parameter(0)
+    %b = f32[] parameter(1)
+    ROOT %add = f32[] add(f32[] a, f32[] b)
+  }
+  ENTRY ReplicaId {
+    replica-id.1 = u32[]{:T(128)} replica-id()
+    ROOT all-reduce.1 = u32[]{:T(128)} all-reduce(replica-id.1), to_apply=sum, replica_groups={}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/1, /*max_outer_loop_count=*/1,
+      /*max_loop_count=*/1, /*remove_infeed_outfeed=*/false,
+      /*flatten_while_loop=*/false, /*remove_comm=*/false,
+      /*remove_host_transfer=*/false, /*remove_id=*/true});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::AllReduce());
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(0),
+              op::Constant());
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {

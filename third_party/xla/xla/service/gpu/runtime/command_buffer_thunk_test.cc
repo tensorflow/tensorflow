@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime/memset_thunk.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
@@ -46,11 +48,12 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -248,6 +251,114 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   TF_ASSERT_OK(stream->Memcpy(dst.data(), a, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 84));
+}
+
+TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+
+  auto memset_thunk =
+      std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 84, slice_a);
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(memset_thunk));
+  auto seq_thunks =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+  // Prepare commands sequence for constructing command buffer that should not
+  // be used.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<Memset32Cmd>(s0, slice_a, int32_t{12});
+
+  constexpr bool kProfileCommandBuffersEnabled = false;
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(),
+                           std::move(seq_thunks),
+                           kProfileCommandBuffersEnabled);
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  BufferAllocations allocations({a}, 0, &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto profiler_lock,
+                          tsl::profiler::ProfilerLock::Acquire());
+  // Execute command buffer thunk and verify that it set the memory.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `a` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), a, byte_length));
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 84));
+}
+
+TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+
+  auto memset_thunk =
+      std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 84, slice_a);
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(memset_thunk));
+  auto seq_thunks =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+  // Prepare commands sequence for constructing command buffer that should not
+  // be used.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<Memset32Cmd>(s0, slice_a, int32_t{12});
+
+  constexpr bool kProfileCommandBuffersEnabled = true;
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(),
+                           std::move(seq_thunks),
+                           kProfileCommandBuffersEnabled);
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  BufferAllocations allocations({a}, 0, &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto profiler_lock,
+                          tsl::profiler::ProfilerLock::Acquire());
+  // Execute command buffer thunk and verify that it set the memory.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `a` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), a, byte_length));
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 12));
 }
 
 TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {

@@ -445,7 +445,6 @@ std::vector<HloInstruction*> CollectDependenciesToPipeline(
                                                             ops.end());
   formatting_set.insert(source_ops.begin(), source_ops.end());
   std::vector<HloInstruction*> to_return;
-  absl::flat_hash_set<HloInstruction*> already_inserted;
   for (const HloInstruction* op : ops) {
     for (HloInstruction* operand : op->operands()) {
       if (!formatting_set.count(operand)) {
@@ -1205,7 +1204,9 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
   }
   int64_t count = 0;
   absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order;
-  for (auto* instr : while_body->MakeInstructionPostOrder()) {
+  std::vector<HloInstruction*> instructions_post_order =
+      while_body->MakeInstructionPostOrder();
+  for (auto* instr : instructions_post_order) {
     if (instr->opcode() == HloOpcode::kGetTupleElement) {
       if (index_range && instr->tuple_index() == 0) {
         index_ranges.insert({instr, *index_range});
@@ -1214,7 +1215,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     instruction_order[instr] = count++;
   }
 
-  for (auto* instr : while_body->instructions()) {
+  for (auto* instr : instructions_post_order) {
     if (direction == CollectivePipeliner::PipeliningDirection::kForward &&
         (instr->operand_count() != 1 ||
          instr->shape().dimensions_size() !=
@@ -1378,7 +1379,6 @@ bool IsLoopInvariant(
   // to still visit before visiting the HLO itself.
   std::vector<std::pair<const HloInstruction*, int>> stack(
       1, std::make_pair(instr, 0));
-  absl::flat_hash_set<const HloInstruction*> visited;
   while (!stack.empty()) {
     auto& current = stack.back();
     invariant_cache[std::get<0>(current)] = true;
@@ -2773,8 +2773,6 @@ static absl::Status TransformLoopBackward(
         instruction, false, CollectivePipeliner::PipeliningDirection::kBackward,
         loop_analysis));
   }
-  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
-      loop_cond_replacements;
   auto cond_builder =
       HloComputation::Builder(while_loop->while_condition()->name());
   HloInstruction* new_cond_param =
