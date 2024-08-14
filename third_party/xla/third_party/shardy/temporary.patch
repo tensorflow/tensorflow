@@ -1,0 +1,37 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index e176b0f..d4f814e 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -255,3 +255,17 @@ diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/extractelement.ll b/llvm
+    %v = bitcast i64 %a to <8 x i8>
+    %r0 = extractelement <8 x i8> %v, i64 0
+    %r1 = extractelement <8 x i8> %v, i64 1
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/StorageUniquerSupport.h b/mlir/include/mlir/IR/StorageUniquerSupport.h
++--- a/mlir/include/mlir/IR/StorageUniquerSupport.h
+++++ b/mlir/include/mlir/IR/StorageUniquerSupport.h
++@@ -226,9 +226,7 @@
++ 
++   /// Default implementation that just returns success.
++   template <typename... Args>
++-  static LogicalResult
++-  verifyInvariants(function_ref<InFlightDiagnostic()> emitErrorFn,
++-                   Args... args) {
+++  static LogicalResult verifyInvariants(Args... args) {
++     return success();
++   }
++ 
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index f33d888..5d345bf 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "35f55f53dfbb62902da007f308a618192102dd1c"
+-    LLVM_SHA256 = "f27ca1bd652f820ed87eeec00a218b3a87469052027860e8747e92f5cba11391"
++    LLVM_COMMIT = "165c6d12519cf66f4ef3f5a00f9b1ed83613ff28"
++    LLVM_SHA256 = "88f0633993d48f91d642e16878b3c5a3968d3e7fd041349bb05ebebbd87904fe"
+ 
+     tf_http_archive(
+         name = name,

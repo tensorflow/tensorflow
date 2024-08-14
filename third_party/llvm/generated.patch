@@ -255,3 +255,17 @@ diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/extractelement.ll b/llvm
    %v = bitcast i64 %a to <8 x i8>
    %r0 = extractelement <8 x i8> %v, i64 0
    %r1 = extractelement <8 x i8> %v, i64 1
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/StorageUniquerSupport.h b/mlir/include/mlir/IR/StorageUniquerSupport.h
+--- a/mlir/include/mlir/IR/StorageUniquerSupport.h
++++ b/mlir/include/mlir/IR/StorageUniquerSupport.h
+@@ -226,9 +226,7 @@
+ 
+   /// Default implementation that just returns success.
+   template <typename... Args>
+-  static LogicalResult
+-  verifyInvariants(function_ref<InFlightDiagnostic()> emitErrorFn,
+-                   Args... args) {
++  static LogicalResult verifyInvariants(Args... args) {
+     return success();
+   }
+ 
