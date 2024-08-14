@@ -26,35 +26,11 @@
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/service/host_offload_utils.h"
 
 namespace xla {
 
 class HloCostAnalysis;
-
-struct InstructionAndShapeIndex {
-  explicit InstructionAndShapeIndex(HloInstruction* instruction)
-      : instruction(instruction) {}
-  InstructionAndShapeIndex(HloInstruction* instruction, ShapeIndex shape_index)
-      : instruction(instruction), shape_index(shape_index) {}
-  HloInstruction* instruction;
-  ShapeIndex shape_index;
-  std::string ToString() const;
-
-  template <typename H>
-  static H Hash(H h, const InstructionAndShapeIndex& i) {
-    h = H::combine(std::move(h), i.instruction);
-    h = H::combine(std::move(h), i.shape_index);
-    return std::move(h);
-  }
-
-  template <typename H>
-  friend H AbslHashValue(H h, const InstructionAndShapeIndex& i) {
-    return InstructionAndShapeIndex::Hash(std::move(h), i);
-  }
-};
-
-bool operator==(const InstructionAndShapeIndex& lhs,
-                const InstructionAndShapeIndex& rhs);
 
 // This pass does "host memory offloading". If a tensor is annotated to be moved
 // to or from the host, this pass will remove the annotations and update each
@@ -90,16 +66,13 @@ class HostOffloader : public HloModulePass {
   absl::flat_hash_set<HloInstruction*> validated_slices_;
   absl::flat_hash_map<HloInstruction*, HloInstruction*> copies_created_after_;
   absl::flat_hash_set<HloInstruction*> move_to_device_custom_calls_to_remove_;
-  absl::flat_hash_set<InstructionAndShapeIndex> already_inserted_copy_before_;
+  absl::flat_hash_set<host_offload_utils::InstructionAndShapeIndex>
+      already_inserted_copy_before_;
 
   // Sometimes previous transformations turn a DynamicSlice into a Slice. Since
   // we're doing a DMA between the host and device, we need to turn the Slice
   // back into a DynamicSlice.
   absl::StatusOr<HloInstruction*> DynamifySlice(HloInstruction* slice);
-
-  // Returns true if the instruction is allowed to be in the
-  // middle of a pure memory offload path.
-  bool IsValidDuringPureMemoryOffload(const HloInstruction* instruction) const;
 
   // Returns true if the instruction is allowed to be in the
   // middle of a path between a MoveToHost custom-call annotation and a
@@ -146,19 +119,22 @@ class HostOffloader : public HloModulePass {
   // Common function for doing the actual walking of the graph. Host memory
   // spaces are set and copies are inserted in here.
   absl::StatusOr<bool> WalkDownHostMemoryOffloadPaths(
-      const InstructionAndShapeIndex& starting_instruction_and_index,
+      const host_offload_utils::InstructionAndShapeIndex&
+          starting_instruction_and_index,
       bool insert_copy_before);
 
   // Given a custom call, this returns the first instruction and shape index to
   // start the host memory offload path from for each use of the custom call.
-  absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetStartingInstructions(
-      HloInstruction* custom_call_instruction);
+  absl::StatusOr<std::vector<host_offload_utils::InstructionAndShapeIndex>>
+  GetStartingInstructions(HloInstruction* custom_call_instruction);
 
   // When a MoveToHost custom call is not paired with a DynamicUpdateSlice, a
   // copy from device to host must be inserted.
   absl::StatusOr<bool> InsertCopyBetween(
-      const InstructionAndShapeIndex& before_instruction_and_index,
-      const InstructionAndShapeIndex& after_instruction_and_index);
+      const host_offload_utils::InstructionAndShapeIndex&
+          before_instruction_and_index,
+      const host_offload_utils::InstructionAndShapeIndex&
+          after_instruction_and_index);
 
   // This is a fix for scheduling. Add copies to inputs of dynamic-update-slice
   // if the inserted value is directly a parameter of a computation. This is to

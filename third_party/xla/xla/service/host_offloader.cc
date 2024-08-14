@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/host_offload_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -58,6 +59,7 @@ namespace {
 
 using ::xla::host_memory_offload_annotations::kMoveToDeviceCustomCallTarget;
 using ::xla::host_memory_offload_annotations::kMoveToHostCustomCallTarget;
+using ::xla::host_offload_utils::InstructionAndShapeIndex;
 
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
   CHECK(shape->has_layout());
@@ -85,209 +87,7 @@ bool SetBuffersToMemorySpaceColor(
   return changed;
 }
 
-bool CustomCallReusesBuffer(const HloInstruction* custom_call,
-                            int64_t operand_index) {
-  if (custom_call->custom_call_target() == kMoveToDeviceCustomCallTarget ||
-      custom_call->custom_call_target() == kMoveToHostCustomCallTarget) {
-    // Does not define a new buffer.
-    return true;
-  }
-  // Check the custom call's output_to_operand_aliasing.
-  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-      aliases = custom_call->output_operand_aliasing();
-  for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>& alias :
-       aliases) {
-    int64_t alias_operand_index = alias.second.first;
-    if (alias_operand_index == operand_index) {
-      // This operand aliases with the output.
-      return true;
-    }
-  }
-  // By default, assume custom calls define new buffers.
-  return false;
-}
-
-// If an instruction's user is a call, we descend into the call first.
-// Eventually, a later invocation of this function while walking the graph will
-// return the call itself as a successor of the ROOT instruction of the
-// computation.
-absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
-    const InstructionAndShapeIndex& instruction_and_shape_index) {
-  std::vector<InstructionAndShapeIndex> result;
-  HloInstruction* instruction = instruction_and_shape_index.instruction;
-  if (instruction->IsRoot()) {
-    // Successor of the root is the call instruction(s).
-    std::unique_ptr<CallGraph> call_graph =
-        CallGraph::Build(instruction->GetModule());
-    auto callers = call_graph->GetComputationCallers(instruction->parent());
-    for (HloInstruction* caller : callers) {
-      result.push_back({caller, instruction_and_shape_index.shape_index});
-    }
-  }
-  for (HloInstruction* user : instruction->users()) {
-    if (user->opcode() == HloOpcode::kTuple) {
-      auto operand_indices = user->OperandIndices(instruction);
-      for (const auto i : operand_indices) {
-        auto tmp_shape_index = instruction_and_shape_index.shape_index;
-        tmp_shape_index.push_back(i);
-        result.push_back({user, std::move(tmp_shape_index)});
-      }
-    } else if (user->opcode() == HloOpcode::kGetTupleElement) {
-      ShapeIndex tmp_shape_index = instruction_and_shape_index.shape_index;
-      const auto index = tmp_shape_index.front();
-      if (index == user->tuple_index()) {
-        // This GTE is for the buffer we're tracking.
-        tmp_shape_index.pop_front();
-        result.push_back({user, std::move(tmp_shape_index)});
-      }
-    } else if (user->opcode() == HloOpcode::kCall) {
-      auto operand_indices = user->OperandIndices(instruction);
-      CHECK(user->called_computations().size() == 1)
-          << "Expect call to only have one called computation.";
-      for (const auto i : operand_indices) {
-        HloComputation* called_computation =
-            user->called_computations().front();
-        HloInstruction* parameter_instruction =
-            called_computation->parameter_instruction(i);
-        result.push_back(
-            {parameter_instruction, instruction_and_shape_index.shape_index});
-      }
-    } else if (user->opcode() == HloOpcode::kWhile) {
-      auto operand_indices = user->OperandIndices(instruction);
-      HloComputation* while_body_computation = user->while_body();
-      HloComputation* while_condition_computation = user->while_condition();
-      for (const auto i : operand_indices) {
-        HloInstruction* parameter_instruction =
-            while_body_computation->parameter_instruction(i);
-        result.push_back(
-            {parameter_instruction, instruction_and_shape_index.shape_index});
-
-        HloInstruction* condition_instruction =
-            while_condition_computation->parameter_instruction(i);
-        result.push_back(
-            {condition_instruction, instruction_and_shape_index.shape_index});
-      }
-    } else if (user->opcode() == HloOpcode::kAsyncStart) {
-      auto operand_indices = user->OperandIndices(instruction);
-      CHECK(user->called_computations().size() == 1)
-          << "Expect async-start to only have one called computation.";
-      for (const auto i : operand_indices) {
-        HloComputation* called_computation =
-            user->called_computations().front();
-        HloInstruction* parameter_instruction =
-            called_computation->parameter_instruction(i);
-        result.push_back(
-            {parameter_instruction, instruction_and_shape_index.shape_index});
-      }
-    } else if (user->opcode() == HloOpcode::kCustomCall) {
-      const auto operand_indices = user->OperandIndices(instruction);
-      // TODO(b/342650757): Rather than a boolean indicating whether the
-      // instruction reuses the buffer, return the shape index of the output
-      // that the operand aliases with.
-      bool found_one = false;
-      for (const auto i : operand_indices) {
-        if (CustomCallReusesBuffer(user, i)) {
-          if (found_one) {
-            return absl::InternalError(
-                "Found multiple operands of a custom call that reuse the same "
-                "output buffer.");
-          }
-          result.push_back({user, instruction_and_shape_index.shape_index});
-          found_one = true;
-        }
-      }
-    } else {
-      result.push_back({user, instruction_and_shape_index.shape_index});
-    }
-  }
-  return result;
-}
-
-// If an instruction's operand is a call, return the call now. A follow up call
-// of this function on that call returns the ROOT. Eventually, once the given
-// instruction is a parameter, the returned predecessor will be the appropriate
-// operand of the call (not the call itself, since we already returned it).
-std::vector<InstructionAndShapeIndex> GetPredecessors(
-    const InstructionAndShapeIndex& instruction_and_shape_index) {
-  std::vector<InstructionAndShapeIndex> result;
-  HloInstruction* instruction = instruction_and_shape_index.instruction;
-  if (instruction->opcode() == HloOpcode::kGetTupleElement) {
-    const int64_t index = instruction->tuple_index();
-    auto tmp_shape_index = instruction_and_shape_index.shape_index;
-    tmp_shape_index.push_front(index);
-    result.push_back({instruction->mutable_operand(0), tmp_shape_index});
-  } else if (instruction->opcode() == HloOpcode::kTuple) {
-    CHECK(!instruction_and_shape_index.shape_index.empty())
-        << "Did not store an index before encountering a tuple.";
-    auto tmp_shape_index = instruction_and_shape_index.shape_index;
-    const int64_t index = tmp_shape_index.front();
-    tmp_shape_index.pop_front();
-    result.push_back({instruction->mutable_operand(index), tmp_shape_index});
-  } else if (instruction->opcode() == HloOpcode::kCall) {
-    // Predecessor of a call is its computation's root instruction.
-    CHECK(instruction->called_computations().size() == 1)
-        << "Expect call to only have one called computation.";
-    HloComputation* called_computation =
-        instruction->called_computations().front();
-    result.push_back({called_computation->root_instruction(),
-                      instruction_and_shape_index.shape_index});
-  } else if (instruction->opcode() == HloOpcode::kParameter) {
-    std::unique_ptr<CallGraph> call_graph =
-        CallGraph::Build(instruction->GetModule());
-    auto callers = call_graph->GetComputationCallers(instruction->parent());
-    for (HloInstruction* caller : callers) {
-      result.push_back(
-          {caller->mutable_operand(instruction->parameter_number()),
-           instruction_and_shape_index.shape_index});
-    }
-  } else if (instruction->opcode() == HloOpcode::kDynamicSlice) {
-    result.push_back({instruction->mutable_operand(0),
-                      instruction_and_shape_index.shape_index});
-  } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    result.push_back({instruction->mutable_operand(0),
-                      instruction_and_shape_index.shape_index});
-  } else if (instruction->opcode() == HloOpcode::kWhile) {
-    HloComputation* while_body_computation = instruction->while_body();
-    result.push_back({while_body_computation->root_instruction(),
-                      instruction_and_shape_index.shape_index});
-  } else {
-    CHECK(instruction->operand_count() == 1) << absl::StreamFormat(
-        "Expecting instruction %s to have 1 operand, but it has %d.",
-        instruction->name(), instruction->operand_count());
-    result.push_back({instruction->mutable_operand(0),
-                      instruction_and_shape_index.shape_index});
-  }
-  return result;
-}
-
 }  // namespace
-
-bool operator==(const InstructionAndShapeIndex& lhs,
-                const InstructionAndShapeIndex& rhs) {
-  return lhs.instruction == rhs.instruction &&
-         lhs.shape_index == rhs.shape_index;
-}
-
-std::string InstructionAndShapeIndex::ToString() const {
-  return absl::StrFormat("{Instr: %s, ShapeIndex: %s}", instruction->name(),
-                         shape_index.ToString());
-}
-
-bool HostOffloader::IsValidDuringPureMemoryOffload(
-    const HloInstruction* instruction) const {
-  static constexpr std::array allowed_opcodes = {
-      HloOpcode::kGetTupleElement,
-      HloOpcode::kBitcast,
-      HloOpcode::kTuple,
-      HloOpcode::kCall,
-      HloOpcode::kWhile,
-      HloOpcode::kParameter,
-      HloOpcode::kOptimizationBarrier,
-      HloOpcode::kAsyncStart,
-      HloOpcode::kAsyncDone,
-      HloOpcode::kCustomCall};
-  return absl::c_linear_search(allowed_opcodes, instruction->opcode());
-}
 
 bool HostOffloader::InstructionIsAllowedBetweenMoveToHostAndDus(
     const HloInstruction* instruction) const {
@@ -355,7 +155,8 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
         // this so that we don't try to create an AllocateBuffer later.
         dynamic_update_slices_already_allocated_.insert(instruction);
       }
-    } else if (IsValidDuringPureMemoryOffload(instruction)) {
+    } else if (host_offload_utils::IsValidDuringPureMemoryOffload(
+                   instruction)) {
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
         // When visiting the parameter, we already set the memory space of the
         // input of the async-start; do not set it now.
@@ -433,8 +234,9 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       }
     }
     // Push successors onto the queue to be visited.
-    TF_ASSIGN_OR_RETURN(const std::vector<InstructionAndShapeIndex> successors,
-                        GetSuccessors(instruction_and_shape_index));
+    TF_ASSIGN_OR_RETURN(
+        const std::vector<InstructionAndShapeIndex> successors,
+        host_offload_utils::GetSuccessors(instruction_and_shape_index));
     for (const InstructionAndShapeIndex& successor : successors) {
       queue.push(successor);
     }
@@ -454,7 +256,8 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   }
 
   if (insert_copy_before) {
-    const auto predecessors = GetPredecessors(starting_instruction_and_index);
+    const auto predecessors =
+        host_offload_utils::GetPredecessors(starting_instruction_and_index);
     CHECK_EQ(predecessors.size(), 1);
     TF_ASSIGN_OR_RETURN(bool inserted_copy,
                         InsertCopyBetween(predecessors.front(),
@@ -687,7 +490,8 @@ HostOffloader::GetStartingInstructions(
   std::queue<InstructionAndShapeIndex> queue;
   TF_ASSIGN_OR_RETURN(
       const std::vector<InstructionAndShapeIndex> successors_of_custom_call,
-      GetSuccessors(InstructionAndShapeIndex(custom_call_instruction)));
+      host_offload_utils::GetSuccessors(
+          InstructionAndShapeIndex(custom_call_instruction)));
   for (const InstructionAndShapeIndex& successor : successors_of_custom_call) {
     queue.push(successor);
   }
@@ -707,8 +511,9 @@ HostOffloader::GetStartingInstructions(
     } else {
       // Is a logical bitcast/reshape, we won't offload this yet.
     }
-    TF_ASSIGN_OR_RETURN(const std::vector<InstructionAndShapeIndex> successors,
-                        GetSuccessors(instruction_and_shape));
+    TF_ASSIGN_OR_RETURN(
+        const std::vector<InstructionAndShapeIndex> successors,
+        host_offload_utils::GetSuccessors(instruction_and_shape));
     for (const InstructionAndShapeIndex& successor : successors) {
       queue.push(successor);
     }
@@ -730,7 +535,7 @@ absl::Status HostOffloader::ValidateSliceLeadsToMoveToDeviceCustomCall(
   std::queue<InstructionAndShapeIndex> queue;
   TF_ASSIGN_OR_RETURN(
       const std::vector<InstructionAndShapeIndex> successors_of_slice,
-      GetSuccessors(InstructionAndShapeIndex(slice)));
+      host_offload_utils::GetSuccessors(InstructionAndShapeIndex(slice)));
   for (const InstructionAndShapeIndex& successor : successors_of_slice) {
     queue.push(successor);
   }
@@ -824,7 +629,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
             InstructionAndShapeIndex nested_instruction_and_shape =
                 nested_queue.front();
             nested_queue.pop();
-            if (!IsValidDuringPureMemoryOffload(
+            if (!host_offload_utils::IsValidDuringPureMemoryOffload(
                     nested_instruction_and_shape.instruction)) {
               return absl::InvalidArgumentError(absl::StrFormat(
                   "Tensor which is moved to host is used by an invalid "
@@ -851,7 +656,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       dynamic_update_slices_already_allocated_.insert(instruction);
     }
     const std::vector<InstructionAndShapeIndex> predecessors =
-        GetPredecessors(instruction_and_shape);
+        host_offload_utils::GetPredecessors(instruction_and_shape);
     for (const InstructionAndShapeIndex& predecessor : predecessors) {
       HloInstruction* predecessor_instruction = predecessor.instruction;
       if (predecessor_instruction->opcode() == HloOpcode::kBroadcast) {

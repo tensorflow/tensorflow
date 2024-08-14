@@ -6398,6 +6398,58 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "host_offload_utils",
+    srcs = ["host_offload_utils.cc"],
+    hdrs = ["host_offload_utils.h"],
+    deps = [
+        ":call_graph",
+        ":hlo_buffer",
+        ":host_memory_offload_annotations_hdr",
+        ":pattern_matcher",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "host_offload_utils_test",
+    srcs = ["host_offload_utils_test.cc"],
+    deps = [
+        ":hlo_verifier",
+        ":host_memory_offload_annotations_hdr",
+        ":host_offload_utils",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "host_offloader",
     srcs = ["host_offloader.cc"],
     hdrs = ["host_offloader.h"],
@@ -6409,6 +6461,7 @@ cc_library(
         ":hlo_pass",
         ":hlo_value",
         ":host_memory_offload_annotations_hdr",
+        ":host_offload_utils",
         ":pattern_matcher",
         "//xla:literal_util",
         "//xla:shape_util",
