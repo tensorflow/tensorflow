@@ -600,6 +600,7 @@ xla_test(
     name = "cuda_platform_test",
     srcs = ["cuda_platform_test.cc"],
     backends = ["gpu"],
+    tags = ["no_rocm"],
     deps = [
         ":cuda_platform",
         "//xla/stream_executor:platform",

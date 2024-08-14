@@ -428,6 +428,8 @@ cc_library(
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
+        # keep sorted
+        "@local_config_rocm//rocm:hip",
         "@local_config_rocm//rocm:rocm_headers",
     ]) + if_cuda_or_rocm([
         ":py_client_gpu",  # TODO(b/337876408): remove after migration to plugin
