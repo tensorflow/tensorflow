@@ -20,19 +20,14 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 
 namespace xla::gpu {
-namespace {
-
-using ::mlir::WalkResult;
-
-}  // namespace
 
 bool ContainsOp(mlir::Operation* op,
                 llvm::function_ref<bool(mlir::Operation*)> fn) {
-  return op
-      ->walk([&](mlir::Operation* nested_op) {
-        return fn(nested_op) ? WalkResult::interrupt() : WalkResult::advance();
-      })
-      .wasInterrupted();
+  auto visitor = [&](mlir::Operation* nested_op) {
+    return fn(nested_op) ? mlir::WalkResult::interrupt()
+                         : mlir::WalkResult::advance();
+  };
+  return op->walk(visitor).wasInterrupted();
 }
 
 }  // namespace xla::gpu
