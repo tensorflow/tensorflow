@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -369,7 +370,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     absl::Span<const int64_t> tile_sizes) {
   // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
   SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(
+          fusion_adaptor, mlir_context_,
+          TritonEmitterConstraints::GetBuilder());
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&analysis_or_error)) {
     return absl::FailedPreconditionError(absl::StrCat(
@@ -429,7 +432,9 @@ absl::StatusOr<TiledRunTimeDataOrError>
 GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
     const HloFusionAdaptor& fusion_adaptor) {
   SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(
+          fusion_adaptor, mlir_context_,
+          TritonEmitterConstraints::GetBuilder());
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&analysis_or_error)) {

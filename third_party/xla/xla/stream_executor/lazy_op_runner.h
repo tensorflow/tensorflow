@@ -264,22 +264,6 @@ struct NormOp {
   }
 };
 
-// Implementation of the concept required by LazyOpRunner, for FusedMatmul.
-struct FusedMatmulOp {
-  using Signature = FusedMatmulSignature;
-
-  // Config is mainly used in RunnerFromAlgorithmDesc() to lazily create the
-  // runner. At this moment we only get existing runners and don't implement
-  // this feature.
-  struct Config {};
-
-  static absl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
-  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
-                          Stream* stream) {
-    return absl::UnimplementedError("Unimplemented");
-  }
-};
-
 }  // namespace dnn
 }  // namespace stream_executor
 
