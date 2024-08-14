@@ -497,20 +497,30 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
-    if (!pass_config.unfold_batch_matmul) {
-      // Enable an optimization pass that transforms FC to BatchMatmul only when
-      // `unfold_batch_matmul=false`.
-      pass_manager->addNestedPass<mlir::func::FuncOp>(
-          mlir::TFL::CreateOptimizeBatchMatmulPass());
-    }
-    pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
 
-    // Add TFLite optimize pass.
     mlir::TFL::OptimizePassOptions optimize_pass_options;
     optimize_pass_options.disable_fuse_mul_and_fc_ =
         toco_flags.disable_fuse_mul_and_fc();
-    pass_manager->addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::CreateOptimizePass(optimize_pass_options));
+
+    auto add_tfl_optimization_passes = [&]() {
+      if (!pass_config.unfold_batch_matmul) {
+        // Enable an optimization pass that transforms FC to BatchMatmul only
+        // when `unfold_batch_matmul=false`.
+        pass_manager->addNestedPass<mlir::func::FuncOp>(
+            mlir::TFL::CreateOptimizeBatchMatmulPass());
+      }
+      pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
+
+      // Add TFLite optimize pass.
+      pass_manager->addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::CreateOptimizePass(optimize_pass_options));
+    };
+
+    // Run TFL optimization passes set multiple times as op fusion and
+    // reordering in later passes may enable further optimizations with earlier
+    // passes.
+    add_tfl_optimization_passes();
+    add_tfl_optimization_passes();
 
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
