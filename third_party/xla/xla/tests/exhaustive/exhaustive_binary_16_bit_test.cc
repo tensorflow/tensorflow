@@ -163,9 +163,37 @@ BINARY_TEST_16BIT(Add, {
       error_spec_gen);
 })
 
+// Can be thought of as an absolute error of
+// `<= |std::numeric_limits::<float>::min()|`.
+double SubCpuBf16AbsErr(xla::bfloat16 left, xla::bfloat16 right) {
+  float output = static_cast<float>(left) - static_cast<float>(right);
+
+  // Hardware flushes subnormal outputs to 0.
+  if (IsSubnormal(output)) {
+    return std::numeric_limits<float>::min();
+  }
+
+  return 0.0;
+}
+
 BINARY_TEST_16BIT(Sub, {
-  auto host_sub = [](float x, float y) { return x - y; };
-  Run(AddEmptyBroadcastDimension(Sub), host_sub);
+  ErrorSpecGen error_spec_gen = +[](NativeT, NativeT) {
+    return ErrorSpec::Builder().strict_signed_zeros().build();
+  };
+  if (IsCpu(platform_)) {
+    if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+      error_spec_gen = +[](NativeT left, NativeT right) {
+        return ErrorSpec::Builder()
+            .abs_err(SubCpuBf16AbsErr(static_cast<xla::bfloat16>(left),
+                                      static_cast<xla::bfloat16>(right)))
+            .strict_signed_zeros()
+            .build();
+      };
+    }
+  }
+  Run(
+      AddEmptyBroadcastDimension(Sub), [](float x, float y) { return x - y; },
+      error_spec_gen);
 })
 
 // Can be thought of as an absolute error of
