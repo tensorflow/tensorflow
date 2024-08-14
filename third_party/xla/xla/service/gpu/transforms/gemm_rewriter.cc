@@ -2204,16 +2204,20 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return f32_dot;
   }
 
-  // Turns an F8 dot into an F16 dot, converting operands to F16 and
+  // Turns an F8 dot into an F16 dot, converting operands to F16 (or BF16) and
   // converting the output back to F8.
   absl::StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
     DCHECK(IsF8Type(instr->operand(0)));
     DCHECK(IsF8Type(instr->operand(1)));
 
-    // Convert operands to F16
+    // If the output type is BF16, the input types have to be BF16 as well.
+    PrimitiveType conv_type =
+        instr->shape().element_type() == BF16 ? BF16 : F16;
+
+    // Convert operands to F16 (or BF16).
     for (int i = 0; i < 2; ++i) {
       Shape operand_f16_shape = instr->operand(i)->shape();
-      operand_f16_shape.set_element_type(F16);
+      operand_f16_shape.set_element_type(conv_type);
       HloInstruction *convert =
           instr->AddInstruction(HloInstruction::CreateConvert(
               operand_f16_shape, instr->mutable_operand(i)));
