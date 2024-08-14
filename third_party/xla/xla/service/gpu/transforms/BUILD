@@ -2924,6 +2924,7 @@ cc_library(
     srcs = ["windowed_einsum_handler.cc"],
     hdrs = ["windowed_einsum_handler.h"],
     deps = [
+        "//xla:literal",
         "//xla:literal_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -2934,7 +2935,6 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
         "//xla/service/gpu:backend_configs_cc",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
