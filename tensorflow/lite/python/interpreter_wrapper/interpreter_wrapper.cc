@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdarg.h>
 
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -745,12 +746,32 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
       tensor->type != kTfLiteVariant) {
     // Make a buffer copy but we must tell Numpy It owns that data or else
     // it will leak.
-    void* data = malloc(tensor->bytes);
+    size_t numpy_bytes = tensor->bytes;
+    if (tensor->type == kTfLiteInt4) {
+      // Numpy doesn't have int4 type, so we double the size of the buffer
+      // to hold int8 type for each (4-bit packed) element.
+      numpy_bytes *= 2;
+    }
+    void* data = malloc(numpy_bytes);
     if (!data) {
       PyErr_SetString(PyExc_ValueError, "Malloc to copy tensor failed.");
       return nullptr;
     }
-    memcpy(data, tensor->data.raw, tensor->bytes);
+    if (tensor->type == kTfLiteInt4) {
+      int8_t* tensor_data = reinterpret_cast<int8_t*>(tensor->data.raw);
+      int8_t* numpy_data = static_cast<int8_t*>(data);
+      // Unpack each 4-bit value to an 8-bit container.
+      for (size_t i = 0; i < tensor->bytes; i++) {
+        int8_t byte = tensor_data[i];
+        int8_t lower = static_cast<int8_t>(byte << 4) >> 4;
+        int8_t upper = static_cast<int8_t>(byte >> 4);
+        numpy_data[2 * i] = lower;
+        numpy_data[2 * i + 1] = upper;
+      }
+    } else {
+      memcpy(data, tensor->data.raw, tensor->bytes);
+    }
+
     PyObject* np_array;
     if (tensor->sparsity == nullptr) {
       np_array =

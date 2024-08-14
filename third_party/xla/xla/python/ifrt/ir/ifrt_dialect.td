@@ -95,7 +95,7 @@ def Ifrt_UnspecifiedShardingAttr : AttrDef<Ifrt_Dialect,
 
 def Ifrt_IntervalAttr : AttrDef<Ifrt_Dialect, "IfrtInterval"> {
   let mnemonic = "interval";
-  let summary = [{
+  let description = [{
     Half-open interval attribute using the Python slice format
     `[start:end:step]`. Reverse iteration is not supported for simplicity.
     Therefore, `start` and `end` must be zero or positive, and `step`
@@ -133,7 +133,7 @@ def Ifrt_MappingAttrArrayAttr :
 
 def Ifrt_ArrayMappingAttr : AttrDef<Ifrt_Dialect, "IfrtArrayMapping"> {
   let mnemonic = "array_mapping";
-  let summary = [{
+  let description = [{
     Mapping of shards from an input array to an output array. The shards are
     chosen from input array with index `in_array_index` and are used to assemble
     the output array with index `out_array_index`.
