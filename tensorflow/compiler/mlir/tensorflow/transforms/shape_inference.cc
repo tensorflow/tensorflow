@@ -126,9 +126,9 @@ MLIRContext::Threading GetMlirContextThreading() {
 }
 
 // Compute a refined type between two types `lhs` and `rhs`, the result type
-// is always more refined (i.e. has more static information) than `lhs`
-// This method will actually merge the information contained in the
-// types, it is capable of refining:
+// is always at least as refined as (i.e. has more static information) than
+// `lhs` This method will actually merge the information contained in the types,
+// it is capable of refining:
 //   tensor<!tf_type.variant<tensor<?x8xf32>>>
 // and:
 //   tensor<!tf_type.variant<tensor<10x?xf32>>>
@@ -2329,12 +2329,15 @@ bool ShapeInference::RefineWithInferTypeOpInterface(
   // Map each of the results of the call to the returned type of the
   // function.
   bool changed = false;
-  for (auto result : zip(op->getResults(), inferred)) {
-    if (std::get<0>(result).getType() == std::get<1>(result)) continue;
-
-    if (!UpdateTypeAndInsertIncompatibleUseCasts(std::get<1>(result),
-                                                 std::get<0>(result)))
+  for (auto [result, inferred_type] : zip(op->getResults(), inferred)) {
+    auto result_type = result.getType();
+    auto new_type = TypeMeet(inferred_type, result_type);
+    if (new_type == result_type) {
       continue;
+    }
+    if (!UpdateTypeAndInsertIncompatibleUseCasts(new_type, result)) {
+      continue;
+    }
     changed = true;
   }
   return changed;
