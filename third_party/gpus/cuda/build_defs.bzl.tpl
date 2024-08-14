@@ -104,9 +104,16 @@ def if_cuda_newer_than(wanted_ver, if_true, if_false = []):
     wanted_major = int(wanted_ver.split('_')[0])
     wanted_minor = int(wanted_ver.split('_')[1])
 
-    configured_version = "%{cuda_version}"
-    configured_major = int(configured_version.split('.')[0])
-    configured_minor = int(configured_version.split('.')[1])
+    # Strip "64_" which appears in the CUDA version on Windows.
+    configured_version = "%{cuda_version}".rsplit("_", 1)[-1]
+    configured_version_parts = configured_version.split('.')
+
+    # On Windows, the major and minor versions are concatenated without a period and the minor only contains one digit.
+    if len(configured_version_parts) == 1:
+        configured_version_parts = [configured_version[0:-1], configured_version[-1:]]
+
+    configured_major = int(configured_version_parts[0])
+    configured_minor = int(configured_version_parts[1])
 
     if %{cuda_is_configured} and (wanted_major, wanted_minor) <= (configured_major, configured_minor):
       return select({"//conditions:default": if_true})
