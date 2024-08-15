@@ -9,7 +9,7 @@ package(
     licenses = ["notice"],
 )
 
-# LINT.IfChange(cc_library_common)
+# LINT.IfChange(common)
 cc_library(
     name = "common",
     srcs = [],
@@ -17,9 +17,23 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
-        "//tensorflow/compiler/mlir/lite/kernels:__pkg__",
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:__pkg__",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
-# LINT.ThenChange(//tensorflow/lite/core/c/BUILD)
+# LINT.ThenChange(//tensorflow/lite/core/c:common)
+
+# LINT.IfChange(private_common)
+# This is a private target, its visibility is set to public only to be
+# used by "tflite_custom_c_library" and "tflite_flex_cc_library".
+# Do not use this target directly and don't consider it as a part of the public API.
+alias(
+    name = "private_common",
+    actual = ":common",
+    tags = ["avoid_dep"],
+    visibility = [
+        "//visibility:public",
+    ],
+)
+# LINT.ThenChange(//tensorflow/lite/core/c:private_common)

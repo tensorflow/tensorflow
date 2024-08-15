@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "xla/status_macros.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "xla/client/padding.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

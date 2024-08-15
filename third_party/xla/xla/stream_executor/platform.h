@@ -19,7 +19,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_PLATFORM_H_
 #define XLA_STREAM_EXECUTOR_PLATFORM_H_
 
-#include <map>
 #include <memory>
 #include <string>
 

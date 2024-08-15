@@ -61,7 +61,7 @@ config_setting(
 # to get the benefit of custom contraction kernel:
 #
 #   #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#   #include "third_party/tensorflow/compiler/xla/tsl/framework/contraction/eigen_contraction_kernel.h"
+#   #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #   #endif
 #
 # We define a two-level target because if we just add

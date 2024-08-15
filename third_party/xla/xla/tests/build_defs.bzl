@@ -66,7 +66,14 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         all_tags = new_backend_tags[gpu_backend]
         requires_gpu = [t for t in all_tags if t.startswith("requires-gpu-")]
         requires_sm, only = None, False
+        num_gpus = None
         for tag in requires_gpu:
+            if ":" in tag:  # Multi-GPU tests are suffixed with colon and number of GPUs.
+                tag, suffix = tag.split(":")  # Remove the suffix from the tag for further parsing.
+                parsed_num_gpus = int(suffix)
+                if num_gpus and num_gpus != parsed_num_gpus:
+                    fail("Inconsistent number of GPUs: %d vs %d" % (num_gpus, parsed_num_gpus))
+                num_gpus = parsed_num_gpus
             if tag.startswith("requires-gpu-sm"):
                 version = tag.split("-")[2][2:]
                 sm = (int(version[:-1]), int(version[-1]))
@@ -84,6 +91,8 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         else:
             sm_major, sm_minor = sm_requirements[gpu_backend]
             sm_tag = "requires-gpu-nvidia" if sm_major == 0 else "requires-gpu-sm%s%s-only" % (sm_major, sm_minor)
+            if num_gpus:
+                sm_tag += ":%d" % num_gpus
             new_backend_tags[gpu_backend] = [t for t in all_tags if t not in requires_gpu]
             new_backend_tags[gpu_backend].append(sm_tag)
 

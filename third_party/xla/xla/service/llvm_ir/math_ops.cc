@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/math_ops.h"
 
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {

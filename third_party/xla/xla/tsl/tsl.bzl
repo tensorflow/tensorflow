@@ -9,17 +9,14 @@ load(
     "//xla/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
+    "if_mkldnn_aarch64_acl",
+    "if_mkldnn_aarch64_acl_openmp",
+    "if_mkldnn_openmp",
     "onednn_v3_define",
 )
 load(
     "//third_party/compute_library:build_defs.bzl",
     "if_enable_acl",
-)
-load(
-    "@local_tsl//third_party/mkl_dnn:build_defs.bzl",
-    "if_mkldnn_aarch64_acl",
-    "if_mkldnn_aarch64_acl_openmp",
-    "if_mkldnn_openmp",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -788,4 +785,10 @@ def nvtx_headers():
     return if_oss(["@nvtx_archive//:headers"], ["@local_config_cuda//cuda:cuda_headers"])
 
 def tsl_google_bzl_deps():
+    return []
+
+def tsl_extra_config_settings():
+    pass
+
+def tsl_extra_config_settings_targets():
     return []

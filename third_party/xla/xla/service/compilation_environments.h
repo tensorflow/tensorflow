@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -143,7 +144,12 @@ T& CompilationEnvironments::GetMutableEnv() {
     it = environments_.find(descriptor);
   }
 
+  // TODO(b/302086111): Remove after XLA has an updated protobuf version.
+#if TSL_IS_IN_OSS
   return tensorflow::down_cast<T&>(*it->second);
+#else
+  return tsl::protobuf::DownCastToGenerated<T>(*it->second);
+#endif
 }
 
 template <typename T>

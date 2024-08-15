@@ -22,9 +22,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/SmallVector.h"
 #include "xla/iterator_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/util.h"
 #include "tsl/lib/gtl/iterator_range.h"
 
 namespace xla {
@@ -71,8 +74,10 @@ class TiledHloComputation {
   // Creates a computation from a list of instructions. The instructions are
   // expected to be sorted in def-before-use order.
   static TiledHloComputation FromSortedTiledHloInstructions(
-      std::vector<std::unique_ptr<TiledHloInstruction>> instructions) {
-    return TiledHloComputation(std::move(instructions));
+      std::vector<std::unique_ptr<TiledHloInstruction>> instructions,
+      llvm::SmallVector<int64_t> num_output_tiles_per_dim) {
+    return TiledHloComputation(std::move(instructions),
+                               std::move(num_output_tiles_per_dim));
   }
 
   // Returns an iterator range over the instructions in the computation in
@@ -82,6 +87,16 @@ class TiledHloComputation {
   instructions() const {
     return {MakeUnwrappingIterator(instructions_.begin()),
             MakeUnwrappingIterator(instructions_.end())};
+  }
+
+  // Returns the number of output tiles for each dimension.
+  llvm::ArrayRef<int64_t> num_output_tiles_per_dim() const {
+    return num_output_tiles_per_dim_;
+  }
+
+  // Returns the total number of output tiles.
+  int64_t num_output_tiles() const {
+    return Product(num_output_tiles_per_dim());
   }
 
   // Returns the root instruction of the computation.
@@ -95,11 +110,16 @@ class TiledHloComputation {
 
  private:
   explicit TiledHloComputation(
-      std::vector<std::unique_ptr<TiledHloInstruction>> instructions)
-      : instructions_(std::move(instructions)) {}
+      std::vector<std::unique_ptr<TiledHloInstruction>> instructions,
+      llvm::SmallVector<int64_t> num_output_tiles_per_dim)
+      : instructions_(std::move(instructions)),
+        num_output_tiles_per_dim_(std::move(num_output_tiles_per_dim)) {}
 
   // Stores instructions in the computation in def-before-use order.
   std::vector<std::unique_ptr<TiledHloInstruction>> instructions_;
+
+  // Stores the number of output tiles for each dimension.
+  llvm::SmallVector<int64_t> num_output_tiles_per_dim_;
 };
 
 }  // namespace gpu

@@ -141,7 +141,6 @@ tf_staging/tensorflow/tools/ci_build/a100/nightly.sh:
 tf_staging/tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test:.py
 tf_staging/tensorflow/tools/ci_build/release/common.sh:
 tf_staging/tensorflow/tools/ci_build/release/common_win.bat:
-tf_staging/tensorflow/tools/ci_build/release/mac_build_utils.sh:
 tf_staging/tensorflow/tools/ci_build/release/ubuntu_16/custom_op/nightly.sh:
 tf_staging/tensorflow/tools/ci_build/release/ubuntu_16/custom_op/release.sh:
 tf_staging/tensorflow/tools/ci_build/release/windows/cpu_py310_full/release_pip_rename.sh:
@@ -276,7 +275,6 @@ tf_staging/third_party/llvm_openmp/expand_cmake_vars:.py
 tf_staging/third_party/llvm_openmp/openmp.bzl:
 tf_staging/third_party/mkl/BUILD:
 tf_staging/third_party/mkl_dnn/LICENSE:
-tf_staging/third_party/mkl_dnn/build_defs.bzl:
 tf_staging/third_party/mkl_dnn/mkldnn_acl.BUILD:
 tf_staging/third_party/mkl_dnn/mkldnn_v1.BUILD:
 tf_staging/third_party/mpi/.gitignore:

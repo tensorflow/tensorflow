@@ -15,11 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 
+#include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {

@@ -269,23 +269,22 @@ ENTRY main.12_spmd {
       FindInstructionByName(module->entry_computation(), "dot.7");
   // dot.7 should now consume output of the windowed einsum while loop.
   EXPECT_EQ(inst->operand(0)->opcode(), HloOpcode::kGetTupleElement);
-  EXPECT_EQ(inst->operand(0)->tuple_index(), 3);
+  EXPECT_EQ(inst->operand(0)->tuple_index(), 5);
   EXPECT_EQ(inst->operand(0)->operand(0), ag_loop);
 
   // while loop's root should now have a chain of DUS.
   HloInstruction* ag_while_root = ag_loop->while_body()->root_instruction();
   EXPECT_THAT(ag_while_root,
               GmockMatch(m::Tuple(
-                  m::Op(), m::Op(), m::Op(),
+                  m::Op(), m::Op(), m::Op(), m::Op(), m::Op(),
                   m::DynamicUpdateSlice(
                       m::DynamicUpdateSlice(
                           m::GetTupleElement(m::Parameter())
                               .WithPredicate([](const HloInstruction* instr) {
-                                return instr->tuple_index() == 3;
+                                return instr->tuple_index() == 5;
                               }),
                           m::Op(), m::Op(), m::Op(), m::Op()),
-                      m::Op(), m::Op(), m::Op(), m::Op()),
-                  m::Op())));
+                      m::Op(), m::Op(), m::Op(), m::Op()))));
 }
 TEST_F(GpuWindowedEinsumHanlderTest, A2aGemmHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
@@ -838,5 +837,82 @@ ENTRY main.9_spmd {
 )");
 }
 
+TEST_F(GpuWindowedEinsumHanlderTest,
+       AgLoopsMultipleConsumersAreChainedWithShardedContratingDim) {
+  constexpr absl::string_view kHloString = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0})->bf16[4096,6288]{1,0}}, num_partitions=8
+
+windowed_dot_general_body_ag {
+  param.195 = (bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0}, bf16[16,2048,6288]{2,1,0}, u32[]) parameter(0)
+  get-tuple-element.588 = bf16[16,2048,512]{2,1,0} get-tuple-element(param.195), index=0
+  collective-permute.194 = bf16[16,2048,512]{2,1,0} collective-permute(get-tuple-element.588), channel_id=446, source_target_pairs={{0,7},{1,0},{2,1},{3,2},{4,3},{5,4},{6,5},{7,6}}
+  collective-permute.195 = bf16[16,2048,512]{2,1,0} collective-permute(collective-permute.194), channel_id=447, source_target_pairs={{0,7},{1,0},{2,1},{3,2},{4,3},{5,4},{6,5},{7,6}}
+  get-tuple-element.589 = bf16[4096,6288]{1,0} get-tuple-element(param.195), index=1
+  get-tuple-element.590 = bf16[16,2048,6288]{2,1,0} get-tuple-element(param.195), index=2
+  constant.11432 = s32[8]{0} constant({0, 512, 1024, 1536, 2048, 2560, 3072, 3584})
+  get-tuple-element.592 = u32[] get-tuple-element(param.195), index=4
+  partition-id.194 = u32[] partition-id()
+  add.4309 = u32[] add(get-tuple-element.592, partition-id.194)
+  constant.11431 = u32[] constant(8)
+  remainder.194 = u32[] remainder(add.4309, constant.11431)
+  dynamic-slice.388 = s32[1]{0} dynamic-slice(constant.11432, remainder.194), dynamic_slice_sizes={1}
+  reshape.12959 = s32[] reshape(dynamic-slice.388)
+  constant.11433 = s32[] constant(0)
+  dynamic-slice.389 = bf16[512,6288]{1,0} dynamic-slice(get-tuple-element.589, reshape.12959, constant.11433), dynamic_slice_sizes={512,6288}
+  dot.244 = bf16[16,2048,6288]{2,1,0} dot(get-tuple-element.588, dynamic-slice.389), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  add.4310 = bf16[16,2048,6288]{2,1,0} add(get-tuple-element.590, dot.244)
+  constant.11434 = u32[] constant(1)
+  add.4312 = u32[] add(get-tuple-element.592, constant.11434)
+  add.4313 = u32[] add(add.4312, partition-id.194)
+  remainder.195 = u32[] remainder(add.4313, constant.11431)
+  dynamic-slice.390 = s32[1]{0} dynamic-slice(constant.11432, remainder.195), dynamic_slice_sizes={1}
+  reshape.12960 = s32[] reshape(dynamic-slice.390)
+  dynamic-slice.391 = bf16[512,6288]{1,0} dynamic-slice(get-tuple-element.589, reshape.12960, constant.11433), dynamic_slice_sizes={512,6288}
+  dot.245 = bf16[16,2048,6288]{2,1,0} dot(collective-permute.194, dynamic-slice.391), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  add.4314 = bf16[16,2048,6288]{2,1,0} add(add.4310, dot.245)
+  get-tuple-element.591 = bf16[16,2048,6288]{2,1,0} get-tuple-element(param.195), index=3
+  add.4315 = u32[] add(add.4312, constant.11434)
+  ROOT tuple.98 = (bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0}, bf16[16,2048,6288]{2,1,0}, u32[]) tuple(collective-permute.195, get-tuple-element.589, add.4314, get-tuple-element.591, add.4315)
+} // windowed_dot_general_body_ag
+
+windowed_dot_general_cond_ag {
+  param = (bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0}, bf16[16,2048,6288]{2,1,0}, u32[]) parameter(0)
+  get-tuple-element = u32[] get-tuple-element(param), index=4
+  constant = u32[] constant(4)
+  ROOT compare = pred[] compare(get-tuple-element, constant), direction=LT
+}
+
+ENTRY main.12_spmd {
+  param.4 = bf16[16,2048,512]{2,1,0} parameter(0)
+  param.5 = bf16[4096,6288]{1,0} parameter(1)
+  constant.22 = bf16[] constant(0)
+  broadcast = bf16[16,2048,6288]{2,1,0} broadcast(constant.22), dimensions={}
+  constant.24 = u32[] constant(0)
+  tuple.2 = (bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0}, bf16[16,2048,6288]{2,1,0}, u32[]) tuple(param.4, param.5, broadcast, broadcast, constant.24)
+  while = (bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0}, bf16[16,2048,6288]{2,1,0}, u32[]) while(tuple.2), condition=windowed_dot_general_cond_ag, body=windowed_dot_general_body_ag
+  get-tuple-element.13 = bf16[16,2048,6288]{2,1,0} get-tuple-element(while), index=2
+  all-gather = bf16[16,2048,4096]{2,1,0} all-gather(param.4), channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={2}, use_global_device_ids=true
+  param.6 = bf16[16,2048,6288]{2,1,0} parameter(2)
+  ROOT dot.7 = bf16[4096,6288]{1,0} dot(all-gather, param.6), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  GpuWindowedEinsumHandler gpu_handler;
+  bool changed;
+  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* ag_loop =
+      FindInstructionByName(module->entry_computation(), "while");
+  HloInstruction* inst =
+      FindInstructionByName(module->entry_computation(), "dot.7");
+  // dot.7 should now consume output of the windowed einsum while loop.
+  EXPECT_EQ(inst->operand(0)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(inst->operand(0)->tuple_index(), 5);
+  EXPECT_EQ(inst->operand(0)->operand(0), ag_loop);
+}
 }  // namespace
 }  // namespace xla::gpu

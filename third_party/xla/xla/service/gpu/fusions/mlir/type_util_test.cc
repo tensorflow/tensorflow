@@ -21,9 +21,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Types.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -52,6 +52,14 @@ TEST(TensorShapeTest, ConvertsShape) {
   EXPECT_EQ(TypeToString(
                 TensorShapeToMlirType(ShapeUtil::MakeShape(S32, {4, 5, 6}), b)),
             "tensor<4x5x6xi32>");
+}
+
+TEST(TensorShapeTest, ConvertsPred) {
+  mlir::MLIRContext ctx;
+  mlir::OpBuilder b(&ctx);
+  EXPECT_EQ(TypeToString(TensorShapeToMlirType(
+                ShapeUtil::MakeShape(PRED, {4, 5, 6}), b)),
+            "tensor<4x5x6xi8>");
 }
 
 TEST(TensorShapeTest, ConvertsLayout) {

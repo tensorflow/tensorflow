@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

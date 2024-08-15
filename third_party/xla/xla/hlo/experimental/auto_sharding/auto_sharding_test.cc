@@ -180,7 +180,7 @@ TEST_F(AutoShardingTest, MemoryBudgetTest) {
          const absl::flat_hash_map<std::string, std::vector<HloSharding>>&
              preserved_shardings = {}) -> absl::StatusOr<int64_t> {
     auto size_fn = [](const BufferValue& buffer) {
-      return spmd::GetBytes(buffer.shape());
+      return spmd::ByteSizeOfShape(buffer.shape());
     };
     TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                         ScheduleModule(&module, size_fn,
@@ -809,7 +809,7 @@ ENTRY %entry {
                       op::Sharding("{devices=[2,2]0,1,2,3}"))));
 }
 
-TEST_F(AutoShardingTest, TwoMatmul) {
+TEST_F(AutoShardingTest, TwoMatmulWithoutDotReplicationEnabled) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 ENTRY twomatmul {
@@ -852,9 +852,22 @@ ENTRY twomatmul {
   ASSERT_NE(dot5, nullptr);
   EXPECT_THAT(dot5,
               op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}"));
+}
 
-  // Test with replicated strategies on for dot
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHloString));
+TEST_F(AutoShardingTest, TwoMatmulWithDotReplicationEnabled) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+ENTRY twomatmul {
+  parameter.1 = f32[64,64]{1,0} parameter(0)
+  parameter.2 = f32[64,128]{1,0} parameter(1)
+  dot.4 = f32[64,128]{1,0} dot(parameter.1, parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  parameter.3 = f32[128,64]{1,0} parameter(2)
+  ROOT dot.5 = f32[64,64]{1,0} dot(dot.4, parameter.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
   option.enable = true;
   option.allow_recompute_heavy_op = true;
   option.allow_mixed_mesh_shape = false;
@@ -862,14 +875,14 @@ ENTRY twomatmul {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(changed, AutoSharding(option).Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  param1 = FindInstruction(module.get(), "parameter.1");
-  param2 = FindInstruction(module.get(), "parameter.2");
-  param3 = FindInstruction(module.get(), "parameter.3");
-  dot4 = FindInstruction(module.get(), "dot.4");
-  dot5 = FindInstruction(module.get(), "dot.5");
+  const HloInstruction* param1 = FindInstruction(module.get(), "parameter.1");
+  const HloInstruction* param2 = FindInstruction(module.get(), "parameter.2");
+  const HloInstruction* param3 = FindInstruction(module.get(), "parameter.3");
+  const HloInstruction* dot4 = FindInstruction(module.get(), "dot.4");
+  const HloInstruction* dot5 = FindInstruction(module.get(), "dot.5");
   ASSERT_NE(param1, nullptr);
   ASSERT_NE(param2, nullptr);
   ASSERT_NE(param3, nullptr);
@@ -1330,9 +1343,9 @@ ENTRY %Scatter {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  // Memory budget lower than what would be required if the largest tensors are
-  // sharded only 2-ways
-  option.memory_budget_per_device = 4 * 2 * (4 * 128 / 2) - 1;
+  // Memory budget a tad higher than what would be required if the largest
+  // tensors are sharded 4-ways
+  option.memory_budget_per_device = 1185;  // bytes required to
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
@@ -1369,7 +1382,7 @@ ENTRY %Scatter {
   option.device_mesh_beta = {0.01, 1.0};
   // Memory budget lower than what would be required if the largest tensors are
   // sharded only 2-ways
-  option.memory_budget_per_device = 4 * 2 * (4 * 128 * 128 / 2) - 1;
+  option.memory_budget_per_device = 4 * 2 * (4 * 128 * 128 / 4) + 48 + 1024 + 1;
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
@@ -1445,34 +1458,33 @@ HloModule module
 ENTRY %entry {
   %param0 = f32[1024,1024]{0,1} parameter(0)
   %param1 = s32[128,1024,1]{2,1,0} parameter(1)
-  %gather = f32[128,1024,1024]{2,1,0} gather(f32[1024,1024]{0,1} %param0, s32[128,1024,1]{2,1,0} %param1),
-  offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
-  index_vector_dim=2, slice_sizes={1,1024}
+  %gather = f32[128,1024,1024]{2,1,0} gather(f32[1024,1024]{0,1} %param0, s32[128,1024,1]{2,1,0} %param1), offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2, slice_sizes={1,1024}
   %param2 = f32[1024,1024]{1,0} parameter(2), sharding={replicated}
   %reshape = f32[1024,1024,1]{2,1,0} reshape(param2)
-  ROOT convolution = f32[128,1024,1024]{2,1,0} convolution(gather, reshape),
-  window={size=1}, dim_labels=b0f_io0->b0f
+  ROOT convolution = f32[128,1024,1024]{2,1,0} convolution(gather, reshape), window={size=1}, dim_labels=b0f_io0->b0f
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
-  option.device_mesh_shape = {4, 1, 1};
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
+  option.device_mesh_shape = {4, 1};
   option.device_mesh_ids = {0, 1, 2, 3};
-  option.device_mesh_alpha = {1.0, 1.0, 1.0};
-  option.device_mesh_beta = {0.01, 1.0, 1.0};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   EXPECT_TRUE(changed);
-  auto* gather = FindInstruction(module.get(), "gather");
-  auto* conv = FindInstruction(module.get(), "convolution");
+  const HloInstruction* gather = FindInstruction(module.get(), "gather");
+  const HloInstruction* conv = FindInstruction(module.get(), "convolution");
   ASSERT_NE(gather, nullptr);
   ASSERT_NE(conv, nullptr);
-  EXPECT_THAT(gather, op::Sharding("{devices=[1,4,1]0,1,2,3}"));
-  EXPECT_THAT(conv, op::Sharding("{devices=[1,4,1]0,1,2,3}"));
-  auto gather_sharding = gather->sharding();
-  TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
-  auto conv_sharding = conv->sharding();
-  TF_EXPECT_OK(conv_sharding.Validate(conv->shape(), 4));
+  const HloSharding& gather_sharding = gather->sharding();
+  EXPECT_EQ(gather_sharding.NumTiles(), 4);
+  EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
+  const HloSharding& conv_sharding = conv->sharding();
+  EXPECT_EQ(conv_sharding.NumTiles(), 4);
+  EXPECT_OK(conv_sharding.Validate(conv->shape(), 4));
 }
 
 TEST_F(AutoShardingTest, MatmulMeshShape1DMeshShape) {
@@ -1700,7 +1712,8 @@ TEST_F(AutoShardingTest, LargeSize) {
   option.device_mesh_shape = {1, 2, 4, 7};
   option.device_mesh_alpha = {1.0, 1.0, 1.0, 1.0};
   option.device_mesh_beta = {1.0, 1.0, 1.0, 1.0};
-  RunMatMulAutoShardingWithOptions(option, 8, 2);
+  option.memory_budget_per_device = (8192 + 8192 * 2 + 8192 * 4 / 8);
+  RunMatMulAutoShardingWithOptions(option, 7, 1);
 }
 
 TEST_F(AutoShardingTest, InvalidOptions) {

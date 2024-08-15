@@ -15,7 +15,8 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/framework/op_kernel.h"

@@ -333,13 +333,13 @@ class MMapWeightCacheProvider {
 
   // Cache provider implementation for XNNPack.
   xnn_weights_cache_provider cache_provider_{
-      .context = this,
-      .look_up = MMapWeightCacheProvider::look_up,
-      .reserve_space = MMapWeightCacheProvider::reserve_space,
-      .look_up_or_insert = MMapWeightCacheProvider::look_up_or_insert,
-      .is_finalized = MMapWeightCacheProvider::is_finalized,
-      .offset_to_addr = MMapWeightCacheProvider::offset_to_addr,
-      .delete_cache = MMapWeightCacheProvider::delete_cache};
+      /*context=*/this,
+      /*look_up=*/MMapWeightCacheProvider::look_up,
+      /*reserve_space=*/MMapWeightCacheProvider::reserve_space,
+      /*look_up_or_insert=*/MMapWeightCacheProvider::look_up_or_insert,
+      /*is_finalized=*/MMapWeightCacheProvider::is_finalized,
+      /*offset_to_addr=*/MMapWeightCacheProvider::offset_to_addr,
+      /*delete_cache=*/MMapWeightCacheProvider::delete_cache};
 
   // Path to the cache file.
   std::string file_path_;

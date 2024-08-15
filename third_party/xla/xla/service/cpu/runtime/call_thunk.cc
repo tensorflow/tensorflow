@@ -50,4 +50,8 @@ CallThunk::BufferUses CallThunk::buffer_uses() const {
   return called_executor_.buffer_uses();
 }
 
+CallThunk::ResourceUses CallThunk::resource_uses() const {
+  return called_executor_.resource_uses();
+}
+
 }  // namespace xla::cpu

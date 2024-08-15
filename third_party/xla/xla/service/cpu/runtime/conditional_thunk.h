@@ -36,6 +36,7 @@ class ConditionalThunk final : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
+  ResourceUses resource_uses() const final;
 
  private:
   ConditionalThunk(Info info, BufferAllocation::Slice branch_index_buffer,

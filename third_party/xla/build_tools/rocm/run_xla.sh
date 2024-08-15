@@ -15,6 +15,9 @@
 #
 # ==============================================================================
 
+# This script runs XLA unit tests on ROCm platform by selecting tests that are
+# tagged with requires-gpu-amd
+
 set -e
 set -x
 
@@ -59,6 +62,7 @@ bazel \
     --test_timeout=920,2400,7200,9600 \
     --test_sharding_strategy=disabled \
     --test_output=errors \
+    --flaky_test_attempts=3 \
     --keep_going \
     --local_test_jobs=${N_TEST_JOBS} \
     --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \

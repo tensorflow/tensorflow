@@ -69,7 +69,7 @@ tsl::DeviceReservation GpuServingDeviceSelector::ReserveDevice(
 
 void GpuServingDeviceSelector::FreeDeviceReservation(
     const tsl::DeviceReservation& reservation) {
-  Completed(reservation.device_index());
+  Completed(reservation.device_index(), /*had_error=*/false);
 }
 
 void GpuServingDeviceSelector::Enqueue(int32_t index_on_host,

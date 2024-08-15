@@ -71,6 +71,7 @@ CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 struct ReconfigBatchOpPassOptions {
   int64_t min_num_batch_threads = 1;
   int64_t min_max_enqueued_batches = 1;
+  std::string batch_padding_policy = "";
 };
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
     ReconfigBatchOpPassOptions options);

@@ -57,7 +57,6 @@ class BufferUse {
     // Returns true if any of the buffer use(s) has a conflict with tracked
     // buffer slice reads or writes.
     bool HasConflicts(const BufferUse& use) const;
-    bool HasConflicts(absl::Span<const BufferUse> uses) const;
     bool HasConflicts(const ReadWriteSet& other);
 
    private:

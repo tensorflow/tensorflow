@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project

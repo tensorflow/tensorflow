@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/mlir/utils/type_util.h"
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/primitive_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

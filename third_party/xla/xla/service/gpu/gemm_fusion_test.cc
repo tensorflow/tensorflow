@@ -446,6 +446,25 @@ class GemmFusionLevel2Test : public GemmFusionTest {
   }
 };
 
+TEST_F(GemmFusionTest, ConcatenationDivisibleBy64IsFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[8192,1]{1,0} parameter(0)
+  p1 = bf16[2752,8192]{1,0} parameter(1)
+  p2 = bf16[2752,8192]{1,0} parameter(2)
+  concat = bf16[5504,8192]{1,0} concatenate(p1, p2), dimensions={0}
+  bitcast = bf16[8192,5504]{0,1} bitcast(concat)
+  ROOT r = f32[1,5504]{1,0} dot(p0, bitcast),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+}
+
 TEST_F(GemmFusionLevel2Test, ReshapeToScalarIsHandled) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -876,7 +895,7 @@ ENTRY e {
                                "(compute capability 8.0) and up, but got")));
 }
 
-TEST_F(GemmFusionLevel2Test, GemmFusionBailsOutOnNonCudaGpu) {
+TEST_F(GemmFusionLevel2Test, GemmFusionSucceedsOnNonCudaGpu) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -887,11 +906,7 @@ ENTRY e {
   ROOT dot = f32[2,2] dot(p0e, p1c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  EXPECT_THAT(
-      GemmFusion(se::RocmComputeCapability{}).Run(module.get()),
-      tsl::testing::StatusIs(
-          absl::StatusCode::kFailedPrecondition,
-          ::testing::StrEq("Triton support is only enabled for CUDA GPUs.")));
+  EXPECT_TRUE(GemmFusion(se::RocmComputeCapability{}).Run(module.get()).ok());
 }
 
 TEST_F(GemmFusionLevel2Test, ParameterUsedElementwiseTwiceIsFused) {

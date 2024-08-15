@@ -18,12 +18,18 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 // A thin wrapper around llvm_loop.h to make code generating structured control

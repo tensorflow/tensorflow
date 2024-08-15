@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_BACKENDS_INTERPRETER_INTERPRETER_TRANSFER_MANAGER_H_
 
 #include "xla/service/generic_transfer_manager.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 
 namespace xla {
 

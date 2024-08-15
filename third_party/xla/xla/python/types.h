@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/python/ifrt/dtype.h"

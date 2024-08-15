@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -1718,7 +1720,10 @@ Status FastParseSingleExample(const Config& config, StringPiece serialized,
       }
 
       if (num_elements % num_elements_divisor != 0) {
-        return parse_error();
+        return absl::InvalidArgumentError(absl::Substitute(
+            "Error while parsing feature with key $0: number "
+            "of elements should be divisible by $1, found $2 instead",
+            feature_name, num_elements_divisor, num_elements));
       }
 
       if (stats) {

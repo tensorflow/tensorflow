@@ -20,7 +20,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status.h"
@@ -268,6 +270,29 @@ class CStream : public StreamCommon {
       LOG(ERROR) << TF_Message(c_status.get());
     }
     return tensorflow::StatusFromTF_Status(c_status.get());
+  }
+  // Wrapper that allows passing std::function across C API.
+  struct HostCallbackContext {
+    absl::AnyInvocable<absl::Status() &&> callback;
+  };
+
+  // This wrapper allows calling `HostCallbackContext::callback` across C API.
+  // This function matches `SE_StatusCallbackFn` signature and will be passed as
+  // `callback_fn` to `host_callback` in `SP_StreamExecutor`.
+  static void HostCallbackTrampoline(void* ctx, TF_Status* status) {
+    HostCallbackContext* host_ctx = static_cast<HostCallbackContext*>(ctx);
+    absl::Status s = std::move(host_ctx->callback)();
+    tsl::Set_TF_Status_from_Status(status, s);
+    delete host_ctx;
+  }
+  absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback) override {
+    HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
+    if (stream_executor_->host_callback(device_, stream_handle_,
+                                        &HostCallbackTrampoline, ctx)) {
+      return absl::OkStatus();
+    }
+    return absl::InternalError("Failed to host callback.");
   }
   SP_Stream Handle() { return stream_handle_; }
 

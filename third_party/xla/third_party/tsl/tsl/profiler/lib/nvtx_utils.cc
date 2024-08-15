@@ -14,16 +14,39 @@ limitations under the License.
 ==============================================================================*/
 #include "tsl/profiler/lib/nvtx_utils.h"
 
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
 
 #include "nvtx3/nvToolsExt.h"
+#include "nvtx3/nvToolsExtCuda.h"
+#include "nvtx3/nvToolsExtCudaRt.h"
 #include "nvtx3/nvToolsExtPayload.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+
+namespace {
+// Get the ID of the current thread following the convention for
+// nvtxNameOsThreadA:
+// https://nvidia.github.io/NVTX/doxygen/group___r_e_s_o_u_r_c_e___n_a_m_i_n_g.html
+// This convention may not match the one in tsl::Env::GetCurrentThreadId().
+std::optional<uint32_t> GetCurrentThreadId() {
+#ifdef __linux__
+  return syscall(SYS_gettid);
+#else
+  return std::nullopt;
+#endif
+}
+}  // namespace
 
 namespace tsl::profiler {
+static_assert(std::is_pointer_v<CUstream>);
 static_assert(std::is_pointer_v<nvtxDomainHandle_t>);
 static_assert(std::is_pointer_v<nvtxStringHandle_t>);
 
@@ -31,6 +54,20 @@ ProfilerDomainHandle DefaultProfilerDomain() {
   static ProfilerDomainHandle domain =
       reinterpret_cast<ProfilerDomainHandle>(nvtxDomainCreateA("TSL"));
   return domain;
+}
+
+void NameCurrentThread(const std::string& thread_name) {
+  if (std::optional<uint32_t> tid = GetCurrentThreadId(); tid.has_value()) {
+    nvtxNameOsThreadA(*tid, thread_name.c_str());
+  }
+}
+
+void NameDevice(int device_id, const std::string& device_name) {
+  nvtxNameCudaDeviceA(device_id, device_name.c_str());
+}
+
+void NameStream(StreamHandle stream, const std::string& stream_name) {
+  nvtxNameCuStreamA(reinterpret_cast<CUstream>(stream), stream_name.c_str());
 }
 
 void RangePop(ProfilerDomainHandle domain) {

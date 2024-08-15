@@ -1137,6 +1137,7 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$low_priority_allowed_batch_sizes,
     DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_enqueued_batches,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP"]>, "\"PAD_UP\"">:$batch_padding_policy,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting
   );
 
@@ -5458,7 +5459,42 @@ def TF_FakeQuantWithMinMaxArgsGradientOp : TF_Op<"FakeQuantWithMinMaxArgsGradien
 
   let results = (outs
     Res<TF_Float32Tensor, [{Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
-`gradients * (inputs >= min && inputs <= max)`.}]>:$backprops
+`gradients * (inputs >= min && inputs <= max)`.
+
+```
+import tensorflow as tf
+
+# Define some sample data
+gradients = tf.random.uniform((2, 3), minval=-5.0, maxval=5.0, dtype=tf.float32)
+inputs = tf.random.uniform((2, 3), minval=-10.0, maxval=10.0, dtype=tf.float32)
+
+# Define quantization parameters (adjust as needed)
+min_val = -2.0
+max_val = 8.0
+num_bits = 4  # Number of bits for quantization
+
+# Calculate gradients for fake quantization with specified parameters
+output_gradients = tf.quantization.fake_quant_with_min_max_args_gradient(
+    gradients=gradients, inputs=inputs, min=min_val, max=max_val, num_bits=num_bits, narrow_range = False, name=None
+)
+
+# Print the original gradients and the gradients after the fake-quant operation
+print("Original Gradients:")
+print(gradients)
+print("\nGradients after Fake-Quantization:")
+print(output_gradients)
+
+```
+#Original Gradients:
+#tf.Tensor(
+#[[ 1.242547    3.217492    3.568469  ]
+#[-0.55371046  0.23130894  2.608243  ]], shape=(2, 3), dtype=float32)
+
+#Gradients after Fake-Quantization:
+#tf.Tensor(
+#[[ 0.          3.217492    3.568469  ]
+# [-0.55371046  0.23130894  2.608243  ]], shape=(2, 3), dtype=float32)
+}]>:$backprops
   );
 
   let extraClassDeclaration = [{
@@ -5498,6 +5534,26 @@ the behavior can be unexpected:
 
 This operation has a gradient and thus allows for training `min` and `max`
 values.
+
+>>> constant_input = tf.constant([[1.2, -0.3, 0.7], [2.1, 0.5, -1.0]], dtype=tf.float32)
+>>>
+>>> min_val = -0.5
+>>> max_val = 0.8
+>>> num_bits = 8
+>>> narrow_range = False #False:for the quantization range [0; 2^num_bits - 1]
+>>>
+>>> quantized_data = tf.quantization.fake_quant_with_min_max_vars(
+...   inputs=constant_input, min=min_val, max=max_val, num_bits=num_bits, narrow_range=narrow_range
+... )
+>>>
+>>> print("Input:\n", constant_input.numpy())
+Input:
+[[ 1.2 -0.3  0.7]
+[ 2.1  0.5 -1. ]]
+>>> print("Output:\n", quantized_data.numpy())
+Output:
+[[ 0.8003921 -0.3007843  0.6984313]
+[ 0.8003921  0.4996078 -0.4996078]]
   }];
 
   let arguments = (ins
@@ -13781,7 +13837,8 @@ A tensor of indices into ref.}]>:$indices,
     Arg<TF_Tensor, [{A Tensor. Must have the same type as ref. A tensor of
 values to add to ref.}]>:$updates,
 
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_locking
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_locking,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs);
@@ -13838,7 +13895,8 @@ A tensor of indices into ref.}]>:$indices,
     Arg<TF_Tensor, [{A Tensor. Must have the same type as ref. A tensor of
 values to add to ref.}]>:$updates,
 
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_locking
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_locking,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs);
@@ -13897,7 +13955,8 @@ A tensor of indices into ref.}]>:$indices,
     Arg<TF_Tensor, [{A Tensor. Must have the same type as ref. A tensor of updated
 values to add to ref.}]>:$updates,
 
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_locking
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_locking,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs);
@@ -19663,14 +19722,23 @@ numpy=array([[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
              [[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
              [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]], dtype=int32)>
 
-Note: on CPU, if an out of bound index is found, an error is returned.
-On GPU, if an out of bound index is found, the index is ignored.
+
+If `indices` contains any out-of-bound indices, depending on
+`bad_indices_policy`, the op will either return an error or ignore the
+out-of-bound indices. `bad_indices_policy` can be one of the following values:
+1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+   historically on CPU and GPU we handle errors in different ways, and for
+   backward compatibility we keep the default behavior.
+2. "ERROR": raises error; GPU does not support this value.
+3. "IGNORE": ignore the bad indices; supported on both CPU and GPU.
   }];
 
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to copy/update.}]>:$tensor,
     Arg<TF_I32OrI64Tensor, [{Index tensor.}]>:$indices,
-    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates
+    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs
@@ -19707,7 +19775,9 @@ Refer to `tf.tensor_scatter_nd_update` for more details.
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to update.}]>:$tensor,
     Arg<TF_I32OrI64Tensor, [{Index tensor.}]>:$indices,
-    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates
+    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs
@@ -19724,7 +19794,9 @@ def TF_TensorScatterMinOp : TF_Op<"TensorScatterMin", [Pure]> {
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to update.}]>:$tensor,
     Arg<TF_I32OrI64Tensor, [{Index tensor.}]>:$indices,
-    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates
+    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs
@@ -19808,7 +19880,9 @@ On GPU, if an out of bound index is found, the index is ignored.
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to copy/update.}]>:$tensor,
     Arg<TF_I32OrI64Tensor, [{Index tensor.}]>:$indices,
-    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates
+    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs
@@ -19833,8 +19907,6 @@ for the existing tensor cannot be re-used, a copy is made and updated.
 
 If `indices` contains duplicates, then we pick the last update for the index.
 
-If an out of bound index is found on CPU, an error is returned.
-
 **WARNING**: There are some GPU specific semantics for this operation.
 - If an out of bound index is found, the index is ignored.
 - The order in which updates are applied is nondeterministic, so the output
@@ -19858,6 +19930,15 @@ The overall shape of `updates` is:
 indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
 ```
 
+If `indices` contains any out-of-bound indices, depending on
+`bad_indices_policy`, the op will either return an error or ignore the
+out-of-bound indices. `bad_indices_policy` can be one of the following values:
+1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+   historically on CPU and GPU we handle errors in different ways, and for
+   backward compatibility we keep the default behavior.
+2. "ERROR": raises error; GPU does not support this value.
+3. "IGNORE": ignore the bad indices; supported on both CPU and GPU.
+
 For usage examples see the python [tf.tensor_scatter_nd_update](
 https://www.tensorflow.org/api_docs/python/tf/tensor_scatter_nd_update) function
   }];
@@ -19865,7 +19946,9 @@ https://www.tensorflow.org/api_docs/python/tf/tensor_scatter_nd_update) function
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to copy/update.}]>:$tensor,
     Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64, TF_Uint16]>, [{Index tensor.}]>:$indices,
-    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates
+    Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs

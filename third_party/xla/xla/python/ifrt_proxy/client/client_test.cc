@@ -22,7 +22,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
@@ -75,50 +75,101 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
     rpc_helper_->set_host_buffer_store(host_buffer_store_);
 
     InitResponse response;
-    ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-        R"pb(
-          platform_name: "ifrt-service"
-          platform_version: "n/a"
-          platform_id: 42
-          process_index: 1
-          runtime_type: "ifrt-service"
-          devices {
-            id: 0
-            local_hardware_id: 1234
-            device_kind: "mock"
-            default_memory_id: 0
-            memory_ids: [ 0 ]
-            attributes {
-              key: "name"
-              value { string_value: "device0" }
+    if (Version().protocol_version() <= 3) {
+      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+          R"pb(
+            platform_name: "ifrt-service"
+            platform_version: "n/a"
+            platform_id: 42
+            process_index: 1
+            runtime_type: "ifrt-service"
+            devices {
+              id: 0
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 0
+              memory_ids: [ 0 ]
+              deprecated_attributes {
+                key: "name"
+                value { string_value: "device0" }
+              }
             }
-          }
-          devices {
-            id: 1
-            local_hardware_id: 1234
-            device_kind: "mock"
-            default_memory_id: 1
-            memory_ids: [ 1 ]
-            attributes {
-              key: "name"
-              value { string_value: "device1" }
+            devices {
+              id: 1
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 1
+              memory_ids: [ 1 ]
+              deprecated_attributes {
+                key: "name"
+                value { string_value: "device1" }
+              }
             }
-          }
-          addressable_device_ids: 1
-          memories {
-            id: 0
-            memory_space_kind: "mock"
-            kind_id: 0
-            device_ids: [ 0 ]
-          }
-          memories {
-            id: 1
-            memory_space_kind: "mock"
-            kind_id: 1
-            device_ids: [ 1 ]
-          }
-        )pb",
-        &response));
+            addressable_device_ids: 1
+            memories {
+              id: 0
+              memory_space_kind: "mock"
+              kind_id: 0
+              device_ids: [ 0 ]
+            }
+            memories {
+              id: 1
+              memory_space_kind: "mock"
+              kind_id: 1
+              device_ids: [ 1 ]
+            }
+          )pb",
+          &response));
+    } else {
+      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+          R"pb(
+            platform_name: "ifrt-service"
+            platform_version: "n/a"
+            platform_id: 42
+            process_index: 1
+            runtime_type: "ifrt-service"
+            devices {
+              id: 0
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 0
+              memory_ids: [ 0 ]
+              attributes {
+                attributes {
+                  key: "name"
+                  value { string_value: "device0" }
+                }
+              }
+            }
+            devices {
+              id: 1
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 1
+              memory_ids: [ 1 ]
+              attributes {
+                attributes {
+                  key: "name"
+                  value { string_value: "device1" }
+                }
+              }
+            }
+            addressable_device_ids: 1
+            memories {
+              id: 0
+              memory_space_kind: "mock"
+              kind_id: 0
+              device_ids: [ 0 ]
+            }
+            memories {
+              id: 1
+              memory_space_kind: "mock"
+              kind_id: 1
+              device_ids: [ 1 ]
+            }
+          )pb",
+          &response));
+    }
     TF_ASSERT_OK_AND_ASSIGN(client_, Client::Create(rpc_helper_, response));
   }
 
@@ -142,9 +193,8 @@ TEST_P(ClientTest, Init) {
                           client_->LookupDevice(DeviceId(0)));
   EXPECT_EQ(device0->Id(), DeviceId(0));
   EXPECT_EQ(device0->Kind(), "mock");
-  EXPECT_THAT(device0->Attributes(),
-              ElementsAre(Pair(
-                  "name", xla::PjRtDeviceAttribute(std::string("device0")))));
+  EXPECT_THAT(device0->Attributes().map(),
+              ElementsAre(Pair("name", AttributeMap::StringValue("device0"))));
 
   ASSERT_THAT(device0->Memories(), SizeIs(1));
   auto* const memory0 = device0->Memories()[0];
@@ -157,9 +207,8 @@ TEST_P(ClientTest, Init) {
                           client_->LookupDevice(DeviceId(1)));
   EXPECT_EQ(device1->Id(), 1);
   EXPECT_EQ(device1->Kind(), "mock");
-  EXPECT_THAT(device1->Attributes(),
-              ElementsAre(Pair(
-                  "name", xla::PjRtDeviceAttribute(std::string("device1")))));
+  EXPECT_THAT(device1->Attributes().map(),
+              ElementsAre(Pair("name", AttributeMap::StringValue("device1"))));
 
   ASSERT_THAT(device1->Memories(), SizeIs(1));
   auto* const memory1 = device1->Memories()[0];

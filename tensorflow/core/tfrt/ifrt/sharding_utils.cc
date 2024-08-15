@@ -689,6 +689,24 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
                                                     device);
   }
 
+  // Fast path for replicated sharding.
+  if (hlo_sharding.IsReplicated()) {
+    VLOG(1) << "Fast path for replicated tensor";
+    auto ifrt_sharding = xla::ifrt::HloSharding::Create(
+        device_list, xla::ifrt::MemoryKind(), hlo_sharding);
+
+    TF_ASSIGN_OR_RETURN(xla::ifrt::DType ifrt_dtype,
+                        ToIfrtDType(input_tensor.dtype()));
+    return ifrt_client.MakeArrayFromHostBuffer(
+        input_tensor.data(), ifrt_dtype, ToIfrtShape(input_tensor.shape()),
+        GetByteStrides(input_tensor.dtype(), input_tensor.shape()),
+        std::move(ifrt_sharding),
+        xla::ifrt::Client::HostBufferSemantics::
+            kImmutableUntilTransferCompletes,
+        [input_tensor]() {  // keep tensor alive
+        });
+  }
+
   return MakeAssembledArrayFromHostBuffer(ifrt_client, input_tensor,
                                           std::move(hlo_sharding), device_list,
                                           thread_pool);

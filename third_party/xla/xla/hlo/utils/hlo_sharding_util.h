@@ -69,9 +69,12 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
                    bool may_combine_partial_sharding);
 
 // Merges `to_merge` into `dst` only if they are compatible, and the merged
-// sharding has >= minimum_tiles tiles. Returns if merging happened.
+// sharding has >= `minimum_tiles` tiles. Returns if merging happened.
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst);
+
+// Same as above, but with `minimum_tiles` = `dst->NumTiles() + 1`.
+bool MergeShardingIfCompatible(const HloSharding& to_merge, HloSharding* dst);
 
 // Find a reasonable common sharding for a list of shardings. The reasonable
 // sharding should incur little(the least) amount of total resharding cost when

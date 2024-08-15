@@ -19,7 +19,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/core/framework/registration/registration.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/sparse_expander_common.h"
 

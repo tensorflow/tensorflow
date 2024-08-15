@@ -168,7 +168,7 @@ absl::StatusOr<Shape> AbstractTfrtCpuBuffer::logical_on_device_shape() {
 
   // Safe to call `AsShapedBuffer` because the definition event is ready.
   ShapedBuffer shaped_buffer =
-      AsShapedBuffer(device()->local_hardware_id(), on_device_shape_,
+      AsShapedBuffer(device()->local_hardware_id().value(), on_device_shape_,
                      device_buffer->Buffers());
   Shape ret_shape = on_device_shape_;
   TF_RETURN_IF_ERROR(ReadDynamicShapesOnCpu(

@@ -61,7 +61,7 @@ TEST_F(HloOpProfilesTest, GetProfile) {
   auto device_info_sm_90 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       stream_executor::CudaComputeCapability(9, 0));
 
-  const auto& op_profile = hlo_op_profiles->GetProfile(&device_info_sm_90);
+  const auto& op_profile = hlo_op_profiles->GetProfile(device_info_sm_90);
   ASSERT_TRUE(op_profile.contains(
       std::make_pair(HloOpcode::kDivide, PrimitiveType::F32)));
   EXPECT_EQ(
@@ -76,7 +76,7 @@ TEST_F(HloOpProfilesTest, GetProfileDefault) {
       stream_executor::CudaComputeCapability(8, 5));
 
   // hlo_op_profiles only has sm_80 and sm_90, should return the default sm_80.
-  const auto& op_profile = hlo_op_profiles->GetProfile(&device_info_sm_85);
+  const auto& op_profile = hlo_op_profiles->GetProfile(device_info_sm_85);
   ASSERT_TRUE(op_profile.contains(
       std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32)));
   EXPECT_EQ(

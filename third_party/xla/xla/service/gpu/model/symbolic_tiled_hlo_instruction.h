@@ -17,11 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
@@ -35,25 +38,28 @@ namespace gpu {
 class SymbolicTiledHloInstruction {
  public:
   SymbolicTiledHloInstruction(const HloInstruction* hlo,
-                              IndexingMap indexing_map,
-                              SymbolicTile symbolic_tile)
-      : hlo_(hlo),
-        indexing_map_(std::move(indexing_map)),
-        symbolic_tile_(std::move(symbolic_tile)) {}
+                              IndexingMap indexing_map)
+      : hlo_(hlo), indexing_map_(std::move(indexing_map)) {}
 
   // Evaluates the tile offsets of an instruction with given tile parameters.
-  std::vector<int64_t> TileOffsets(
+  llvm::SmallVector<int64_t> TileOffsets(
       absl::Span<int64_t const> tile_parameters) const;
   // Evaluates the tile sizes of an instruction with given tile parameters.
-  std::vector<int64_t> TileSizes(
+  llvm::SmallVector<int64_t> TileSizes(
       absl::Span<int64_t const> tile_parameters) const;
   // Evaluates the tile strides of an instruction with given tile parameters.
-  std::vector<int64_t> TileStrides(
+  llvm::SmallVector<int64_t> TileStrides(
       absl::Span<int64_t const> tile_parameters) const;
 
   const HloInstruction* hlo() const { return hlo_; }
   const IndexingMap& indexing_map() const { return indexing_map_; }
-  const SymbolicTile& symbolic_tile() const { return symbolic_tile_; }
+  void set_symbolic_tile(SymbolicTile symbolic_tile) {
+    symbolic_tile_ = std::move(symbolic_tile);
+  }
+  const SymbolicTile& symbolic_tile() const {
+    CHECK(symbolic_tile_.has_value()) << "Symbolic tile was not computed";
+    return *symbolic_tile_;
+  }
 
   const SymbolicTiledHloInstruction* operand(int64_t operand_id) const {
     return operands_[operand_id];
@@ -81,12 +87,30 @@ class SymbolicTiledHloInstruction {
   // Indexing map from the computation root to this instruction output.
   IndexingMap indexing_map_;
 
-  // Symbolic tile derived from the indexing map.
-  SymbolicTile symbolic_tile_;
+  // Symbolic tile derived from the indexing map. Should be computed outside of
+  // this class and set before usage. Wrapped in an optional, because
+  // SymbolicTile does not have a default constructor.
+  std::optional<SymbolicTile> symbolic_tile_;
 
   // Operands of the instruction in the tiled computation graph.
   std::vector<SymbolicTiledHloInstruction*> operands_;
 };
+
+inline bool operator==(const SymbolicTiledHloInstruction& lhs,
+                       const SymbolicTiledHloInstruction& rhs) {
+  return lhs.hlo() == rhs.hlo() && lhs.indexing_map() == rhs.indexing_map();
+}
+
+inline bool operator!=(const SymbolicTiledHloInstruction& lhs,
+                       const SymbolicTiledHloInstruction& rhs) {
+  return !(lhs == rhs);
+}
+
+template <typename H>
+H AbslHashValue(H h, const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
+  return H::combine(std::move(h), tiled_hlo_instruction.hlo(),
+                    tiled_hlo_instruction.indexing_map());
+}
 
 }  // namespace gpu
 }  // namespace xla

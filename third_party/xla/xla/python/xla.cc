@@ -34,18 +34,18 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/nb_defs.h"
-#include "third_party/nanobind/include/nanobind/stl/function.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/set.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/nb_defs.h"
+#include "nanobind/stl/function.h"  // IWYU pragma: keep
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/pair.h"  // IWYU pragma: keep
+#include "nanobind/stl/set.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/variant.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt_proxy/client/py_module.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
 #include "xla/service/cpu/collectives_interface.h"
@@ -66,8 +67,8 @@ limitations under the License.
 #endif  // XLA_PYTHON_ENABLE_GPU
 
 #ifdef __linux__
-#include "third_party/gloo/gloo/transport/tcp/attr.h"
-#include "third_party/gloo/gloo/transport/tcp/device.h"
+#include "gloo/transport/tcp/attr.h"
+#include "gloo/transport/tcp/device.h"
 #include "xla/pjrt/cpu/gloo_collectives.h"
 #include "xla/pjrt/cpu/gloo_kv_store.h"
 #endif  // __linux__
@@ -181,7 +182,7 @@ NB_MODULE(xla_extension, m_nb) {
                                                    PyExc_RuntimeError);
 
   // Types
-  nb::enum_<PrimitiveType>(m_nb, "PrimitiveType")
+  nb::enum_<PrimitiveType>(m_nb, "PrimitiveType", nb::is_arithmetic())
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)
       .value("PRED", PRED)
       .value("S4", S4)
@@ -224,6 +225,7 @@ NB_MODULE(xla_extension, m_nb) {
            [](const PjRtLayout& layout) { return absl::HashOf(layout); });
 
   nb::class_<PjRtXlaLayout, PjRtLayout>(m_nb, "PjRtXlaLayout")
+      .def("_xla_layout", &PjRtXlaLayout::xla_layout)
       .def("__getstate__",
            [](const PjRtXlaLayout& layout) -> nb::tuple {
              absl::StatusOr<std::string> serialized = layout.Serialize();
@@ -477,17 +479,6 @@ NB_MODULE(xla_extension, m_nb) {
 
   nb::class_<PyLoadedExecutable>(m_nb, "LoadedExecutable")
       .def_prop_ro("client", &PyLoadedExecutable::client)
-      .def("local_logical_device_ids",
-           [](PyLoadedExecutable* exec) {
-             auto span = exec->addressable_device_logical_ids();
-             // Not on dispatch critical path, so ok to have heap allocation.
-             std::vector<std::pair<int, int>> addressable_device_logic_ids;
-             addressable_device_logic_ids.reserve(span.size());
-             for (const auto& logical_device_id : span) {
-               addressable_device_logic_ids.push_back(std::make_pair(
-                   logical_device_id.replica, logical_device_id.partition));
-             }
-           })
       .def("local_devices", &PyLoadedExecutable::AddressableDevices)
       .def("size_of_generated_code_in_bytes",
            &PyLoadedExecutable::SizeOfGeneratedCodeInBytes)
@@ -524,7 +515,10 @@ NB_MODULE(xla_extension, m_nb) {
                  self.pjrt_executable()->GetCompileOptions());
            })
       .def("cost_analysis",
-           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCostAnalysis))
+           [](const PyLoadedExecutable& self) {
+             auto map = ValueOrThrow(self.GetCostAnalysis());
+             return ifrt::ToPjRtAttributeMap(std::move(map));
+           })
       .def_prop_ro("traceback", &PyLoadedExecutable::traceback)
       .def_prop_ro("fingerprint", [](PyLoadedExecutable* exec) -> nb::object {
         if (exec->fingerprint().has_value()) {
@@ -839,10 +833,10 @@ NB_MODULE(xla_extension, m_nb) {
            })
       .def("__getattr__",
            [](ifrt::Topology& topology, std::string_view name) -> nb::object {
-             const auto& attrs = topology.Attributes();
+             const auto& attrs = topology.Attributes().map();
              auto it = attrs.find(name);
              if (it != attrs.end()) {
-               return std::visit([](auto&& v) { return nb::cast(v); },
+               return std::visit([](auto&& v) { return nb::cast(v.value); },
                                  it->second);
              }
              throw nb::attribute_error(
@@ -867,8 +861,10 @@ NB_MODULE(xla_extension, m_nb) {
              std::string serialized = ValueOrThrow(exec.Serialize());
              return nb::bytes(serialized.data(), serialized.size());
            })
-      .def("cost_analysis",
-           xla::ValueOrThrowWrapper(&ifrt::Executable::GetCostAnalysis));
+      .def("cost_analysis", [](const ifrt::Executable& exec) {
+        auto attrs = ValueOrThrow(exec.GetCostAnalysis());
+        return ifrt::ToPjRtAttributeMap(std::move(attrs));
+      });
 
   m_nb.def("is_asan", IsAsan);
   m_nb.def("is_msan", IsMsan);

@@ -38,7 +38,7 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
                      const AssociativeDotPairs& associative_dot_pairs) {
   node_lens_.reserve(strategy_groups.size());
   extra_node_costs_.reserve(strategy_groups.size());
-  adjacency_.assign(strategy_groups.size(), StableHashSet<int>());
+  adjacency_.assign(strategy_groups.size(), StableSet<int>());
 
   // Build the cost graph.
   for (StrategyGroup* strategy_group : strategy_groups) {

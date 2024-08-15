@@ -51,7 +51,10 @@ class Value : public tsl::ReferenceCounted<Value>,
   // will be triggered after all values have been deleted.
   // Implementations that do not track the completion of the deletion operation
   // may make the future immediately ready with an OK status.
-  // TODO(phawkins): decide if we want Delete() to be idempotent.
+  //
+  // Deletion is idempotent. Deleting an already deleted value is allowed, and
+  // all the futures returned by different calls to Delete() will become ready
+  // with the same status.
   virtual Future<> Delete() = 0;
 
   // Returns whether the value has been enqueued for deletion from the devices.

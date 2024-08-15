@@ -30,21 +30,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
-
-XlaOp DynamicStridedSlice(XlaOp input, absl::Span<const XlaOp> base_indices,
-                          absl::Span<const int64_t> window_sizes,
-                          absl::Span<const int64_t> strides) {
-  XlaOp sliced_input = DynamicSlice(input, base_indices, window_sizes);
-  if (std::any_of(strides.begin(), strides.end(),
-                  [](int64_t stride) { return stride != 1; })) {
-    sliced_input =
-        Slice(sliced_input, std::vector<int64_t>(window_sizes.size()),
-              window_sizes, strides);
-  }
-  return sliced_input;
-}
 
 XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64_t> start,
                        absl::Span<const int64_t> end) {

@@ -88,6 +88,7 @@ CUptiResult CuptiErrorManager::ActivityGetNextRecord(
   CUptiResult error = interface_->ActivityGetNextRecord(
       buffer, valid_buffer_size_bytes, record);
   ALLOW_ERROR(error, CUPTI_ERROR_MAX_LIMIT_REACHED);
+  ALLOW_ERROR(error, CUPTI_ERROR_INVALID_KIND);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -131,6 +132,13 @@ CUptiResult CuptiErrorManager::ActivityUsePerThreadBuffer() {
   return error;
 }
 
+CUptiResult CuptiErrorManager::SetActivityFlushPeriod(uint32_t period_ms) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->SetActivityFlushPeriod(period_ms);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+};
+
 CUptiResult CuptiErrorManager::GetDeviceId(CUcontext context,
                                            uint32_t* device_id) {
   IGNORE_CALL_IF_DISABLED;
@@ -167,6 +175,10 @@ CUptiResult CuptiErrorManager::EnableCallback(uint32_t enable,
                          0 /* DISABLE */, subscriber, domain, callback_id);
       RegisterUndoFunction(f);
     }
+  } else {
+    LOG(ERROR) << "cupti" << __func__
+               << ": error with domain:" << static_cast<int>(domain)
+               << " and callback_id:" << static_cast<int>(callback_id);
   }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
@@ -248,6 +260,21 @@ CUptiResult CuptiErrorManager::GetStreamIdEx(CUcontext context, CUstream stream,
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error =
       interface_->GetStreamIdEx(context, stream, per_thread_stream, stream_id);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::GetGraphId(CUgraph graph, uint32_t* graph_id) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetGraphId(graph, graph_id);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::GetGraphExecId(CUgraphExec graph_exec,
+                                              uint32_t* graph_id) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetGraphExecId(graph_exec, graph_id);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }

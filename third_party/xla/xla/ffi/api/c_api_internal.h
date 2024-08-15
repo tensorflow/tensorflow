@@ -69,6 +69,11 @@ typedef void* XLA_FFI_INTERNAL_CalledComputation_Get(
 typedef void* XLA_FFI_INTERNAL_ExecutionContext_Get(
     XLA_FFI_ExecutionContext* ctx);
 
+// Returns a pointer to the underlying `xla::ffi::ExecutionState` object which
+// allows to access typed data stored in the execution state.
+typedef void* XLA_FFI_INTERNAL_ExecutionState_Get(
+    XLA_FFI_ExecutionContext* ctx);
+
 //===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
@@ -83,6 +88,7 @@ struct XLA_FFI_InternalApi {
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CalledComputation_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_ExecutionContext_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_ExecutionState_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD

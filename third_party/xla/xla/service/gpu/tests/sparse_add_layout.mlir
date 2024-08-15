@@ -1,4 +1,4 @@
-// RUN: sparse-opt %s \
+// RUN: xla-opt %s \
 // RUN:   -convert-triton-to-tritongpu='target=cuda:80' \
 // RUN:   -add-sparse-encoding -canonicalize \
 // RUN: | FileCheck %s

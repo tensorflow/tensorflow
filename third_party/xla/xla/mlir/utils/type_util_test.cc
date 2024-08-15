@@ -21,9 +21,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/function_ref.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"

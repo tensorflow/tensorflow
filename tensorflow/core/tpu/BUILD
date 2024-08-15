@@ -371,7 +371,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:logging",
-    ] + if_libtpu(["//tensorflow/compiler/jit"]),
+    ] + if_libtpu([
+        "//tensorflow/compiler/jit:xla_tpu_jit",
+        "//tensorflow/compiler/jit:xla_tpu_device",
+    ]),
 )
 
 bzl_library(

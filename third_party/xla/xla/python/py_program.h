@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_PROGRAM_H_
 #define XLA_PYTHON_PY_PROGRAM_H_
 
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 
 namespace xla {
 

@@ -35,11 +35,10 @@ As with all the tools, `--help` can be used to obtain the full list of options.
 ## Running HLO snippets with SPMD support: `multihost_hlo_runner`
 
 Multihost HLO runner is a very similar tool, with the caveat that it supports
-SPMD, including cross host communication. A typical invocation looks like:
+SPMD, including cross host communication. See
+[Multi-Host HLO Runner](./tools_multihost_hlo_runner) for details.
 
-```
-$ hlo_runner_main  /path/to/module.hlo
-```
+## Multi-HLO replay
 
 Invocation with multiple modules is supported for both `run_hlo_module` and
 `hlo_runner_main`, which is often convenient to replay all modules in a dump
@@ -84,7 +83,7 @@ GPU spec on the command line we can get e.g. PTX output without access to an
 accelerator:
 
 ```
-$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=(pwd)/tools/data/gpu_specs/a100_80.txtpb input.hlo
+$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=(pwd)/tools/data/gpu_specs/a100_pcie_80.txtpb input.hlo
 ```
 
 Note: For the above invocation to work, the user would usually either need to
@@ -123,16 +122,16 @@ Deviceless compilation might run into issues if autotuning is required. Luckily,
 we can also provide those on the command line:
 
 ```
-$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
+$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_pcie_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
 ```
 
 The autotune file is text serialization of `autotune_results.proto`, with
 example looking like:
 
 ```
-version: 2
+version: 3
 results {
-  device: "sm_8.0 with 42331013120B RAM, 108 cores, 1410000KHz clock, 1215000KHz mem clock, 41943040B L2$"
+  device: "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: 1555 GB/s, L2 cache: 40 MB"
   hlo: "{\n  tmp_0 = f16[1,16,17,3]{3,2,1,0} parameter(0)\n  tmp_1 = f16[16,51]{1,0} bitcast(f16[1,16,17,3]{3,2,1,0} tmp_0)\n  tmp_2 = s8[16,17,3]{2,1,0} parameter(1)\n  tmp_3 = s8[51,16]{0,1} bitcast(s8[16,17,3]{2,1,0} tmp_2)\n  tmp_4 = f16[51,16]{0,1} convert(s8[51,16]{0,1} tmp_3)\n  tmp_5 = f16[16,16]{1,0} dot(f16[16,51]{1,0} tmp_1, f16[51,16]{0,1} tmp_4), lhs_contracting_dims={1}, rhs_contracting_dims={0}\n  ROOT tmp_6 = f16[1,16,16]{2,1,0} bitcast(f16[16,16]{1,0} tmp_5)\n}"
   result {
     run_time {

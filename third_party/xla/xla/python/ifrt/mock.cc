@@ -19,16 +19,13 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
-#include <utility>
 
 #include <gmock/gmock.h>
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -95,11 +92,6 @@ MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
                  ArrayCopySemantics semantics) {
             return delegated_->CopyToHostBuffer(data, byte_strides, semantics);
           });
-  ON_CALL(*this, Reshard)
-      .WillByDefault([this](std::shared_ptr<const Sharding> new_sharding,
-                            ArrayCopySemantics semantics) {
-        return delegated_->Reshard(std::move(new_sharding), semantics);
-      });
 }
 // LINT.ThenChange()
 
@@ -159,8 +151,8 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, platform_id).WillByDefault([this]() {
     return delegated_->platform_id();
   });
-  ON_CALL(*this, attributes).WillByDefault([this]() {
-    return delegated_->attributes();
+  ON_CALL(*this, Attributes).WillByDefault([this]() {
+    return delegated_->Attributes();
   });
   ON_CALL(*this, device_count).WillByDefault([this]() {
     return delegated_->device_count();
@@ -224,12 +216,9 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
   ON_CALL(*this, ToString).WillByDefault([this]() {
     return delegated_->ToString();
   });
-  ON_CALL(*this, Attributes)
-      .WillByDefault(
-          [this]()
-              -> const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& {
-            return delegated_->Attributes();
-          });
+  ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
+    return delegated_->Attributes();
+  });
   ON_CALL(*this, DefaultMemory).WillByDefault([this]() {
     return delegated_->DefaultMemory();
   });

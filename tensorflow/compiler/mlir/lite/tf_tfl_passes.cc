@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "stablehlo/experimental/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
@@ -38,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
@@ -98,6 +99,24 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
       mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
+void AddVariableFreezingFromGlobalTensorsPasses(
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager* pass_manager) {
+  // This pass does resource analysis of saved model global tensors and marks
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+
+  if (!pass_config.disable_variable_freezing) {
+    // This pass 'freezes' immutable global tensors and inlines them as tf
+    // constant ops.
+    pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+        /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
+  }
+
+  pass_manager->addPass(mlir::TFL::CreateUnfreezeMutableGlobalTensorsPass());
+}
+
 void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
                                        mlir::OpPassManager& pass_manager) {
   const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
@@ -151,10 +170,12 @@ void AddPreQuantizationStableHloToTfPasses(
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // Decompose CHLO into StableHLO ops
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::CreateLegalizeChloToTflPass());
   // TODO(b/331843141): There are some CHLO's like TopK which we could instead
   // lower to TFL ops.
-  mlir::stablehlo::experimental::createChloLegalizeToStablehloPipeline(
-      pass_manager);
+  mlir::stablehlo_ext::createChloLegalizeToStablehloPipeline(pass_manager);
+
   pass_manager.addPass(mlir::odml::CreateTransposeCommuteOpsPass());
   // The following two passes find specific uniform quantization patterns in
   // StableHLO and converts them to TFLite ops that accept or produce uniform
@@ -234,6 +255,12 @@ void AddPostQuantizationStableHloToTfPasses(
 
   // TFLite dialect passes.
   if (!pass_config.disable_hlo_to_tfl_conversion) {
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::odml::CreatePrepareHloPass());
+    // This pass must be added right before the legalization because pattern
+    // rewriter driver applies folding by default.
+    // TODO: b/354280588 - Rewrite this pass into a pattern in PrepareHloPass.
+    pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
     pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
   }
   // TF dialect passes
@@ -354,11 +381,6 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
         toco_flags.enable_dynamic_update_slice()));
   }
 
-  // This pass does resource analysis of saved model global tensors and marks
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-
   if (pass_config.shape_inference) {
     // Add a shape inference pass to optimize away the unnecessary casts.
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -390,13 +412,6 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   pass_manager->addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   // This pass does dead code elimination based on symbol visibility.
   pass_manager->addPass(mlir::createSymbolDCEPass());
-
-  if (!pass_config.disable_variable_freezing) {
-    // This pass 'freezes' immutable global tensors and inlines them as tf
-    // constant ops.
-    pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
-        /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
-  }
 
   if (!saved_model_dir.empty()) {
     // This pass 'freezes' tf saved model asset ops and inlines as string values

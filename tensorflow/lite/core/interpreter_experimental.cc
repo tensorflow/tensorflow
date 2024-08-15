@@ -91,24 +91,15 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
   TF_LITE_ENSURE(context_, tensor_index < tensors_size());
-  TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
-  return SetBufferHandle(tensor, buffer_handle, delegate);
+  return primary_subgraph().SetBufferHandle(tensor_index, buffer_handle,
+                                            delegate);
 }
 
 TfLiteStatus Interpreter::SetBufferHandle(TfLiteTensor* tensor,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
-  TF_LITE_ENSURE(context_, tensor != nullptr);
-  TF_LITE_ENSURE(context_,
-                 tensor->delegate == nullptr || tensor->delegate == delegate);
-  tensor->delegate = delegate;
-  if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
-    TF_LITE_ENSURE_STATUS(TfLiteDelegateFreeBufferHandleInternal(
-        context_, tensor->delegate, &(tensor->buffer_handle)));
-  }
-  tensor->buffer_handle = buffer_handle;
-
-  return kTfLiteOk;
+  return Subgraph::SetBufferHandleImpl(context_, tensor, buffer_handle,
+                                       delegate);
 }
 
 TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,

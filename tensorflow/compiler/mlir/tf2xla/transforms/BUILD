@@ -143,6 +143,12 @@ cc_library(
     hdrs = [
         "passes.h",
     ],
+    # DEPRECATED: use v2/legalize_tf.h::LegalizeMlirToHlo instead.
+    visibility = [
+        "//tensorflow/compiler/mlir/lite/stablehlo:__pkg__",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:__pkg__",
+    ],
     deps = [
         ":legalize_tf_patterns_inc_gen",
         ":legalize_utils",

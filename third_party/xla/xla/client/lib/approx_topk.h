@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_APPROX_TOPK_H_
 #define XLA_CLIENT_LIB_APPROX_TOPK_H_
 
+#include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

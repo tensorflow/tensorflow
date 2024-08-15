@@ -458,7 +458,7 @@ def TestFactory(xla_backend,
           .API_VERSION_STATUS_RETURNING_UNIFIED,
       )
       with self.assertRaisesRegex(
-          xla_client.XlaRuntimeError, expected_regex="INVALID_ARGUMENT"
+          xla_client.XlaRuntimeError, expected_regex="NOT_FOUND"
       ):
         self._Execute(c, arguments=())
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/copy_insertion.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_ordering.h"
@@ -143,7 +144,8 @@ class BufferAssignmentTest : public HloTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
       HloModule* module, int64_t alignment = 1) {
-    auto must_not_live_out = [](const HloInstruction* instruction,
+    auto must_not_live_out = [](const HloAliasAnalysis& alias_analysis,
+                                const HloInstruction* instruction,
                                 const ShapeIndex&) {
       return instruction->opcode() == HloOpcode::kAdd;
     };

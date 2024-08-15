@@ -39,9 +39,9 @@ limitations under the License.
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloTypes.h"  // from @stablehlo
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/core/macros.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/lite/core/macros.h"
 
 #define DEBUG_TYPE "compat-passes"
 

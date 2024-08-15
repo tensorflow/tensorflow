@@ -66,3 +66,24 @@ def tflite_copts():
     return copts + tflite_copts_extra()
 
 # LINT.ThenChange(//tensorflow/lite/build_def.bzl:tflite_copts)
+
+# LINT.IfChange(tflite_copts_warnings)
+def tflite_copts_warnings():
+    """Defines common warning flags used primarily by internal TFLite libraries."""
+
+    # TODO(b/155906820): Include with `tflite_copts()` after validating clients.
+
+    return select({
+        clean_dep("//tensorflow:windows"): [
+            # We run into trouble on Windows toolchains with warning flags,
+            # as mentioned in the comments below on each flag.
+            # We could be more aggressive in enabling supported warnings on each
+            # Windows toolchain, but we compromise with keeping BUILD files simple
+            # by limiting the number of config_setting's.
+        ],
+        "//conditions:default": [
+            "-Wall",
+        ],
+    })
+
+# LINT.ThenChange(//tensorflow/lite/build_def.bzl:tflite_copts_warnings)

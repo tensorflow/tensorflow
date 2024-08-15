@@ -97,16 +97,16 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
   for (std::string_view instruction : {"start1", "update1", "done1"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
-                IsOkAndHolds(AsyncExecutionStreamIds(
+                IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
-                    /*destination_stream_id=*/ExecutionStreamId(1))));
+                    /*destination_stream_id=*/ExecutionStreamId(1)}));
   }
   for (std::string_view instruction : {"start2", "update2", "done2"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
-                IsOkAndHolds(AsyncExecutionStreamIds(
+                IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
-                    /*destination_stream_id=*/ExecutionStreamId(2))));
+                    /*destination_stream_id=*/ExecutionStreamId(2)}));
   }
 
   // Leaf computations should run on the respective asynchronous

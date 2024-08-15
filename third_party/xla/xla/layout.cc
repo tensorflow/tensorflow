@@ -101,6 +101,14 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major)
       minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
+               absl::Span<const Tile> tiles, int64_t element_size_in_bits)
+    : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
+      pointer_primitive_type_(PRIMITIVE_TYPE_INVALID),
+      element_size_in_bits_(element_size_in_bits),
+      minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
+      tiles_(tiles.begin(), tiles.end()) {}
+
+Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const DimLevelType> dim_level_types,
                absl::Span<const bool> dim_unique,
                absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,

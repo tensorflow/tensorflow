@@ -440,15 +440,23 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   explicit HloCostAnalysis(ShapeSizeFunction shape_size,
                            const Properties& per_second_rates = {});
 
-  absl::Status HandleElementwiseUnary(const HloInstruction* hlo) override;
-  absl::Status HandleElementwiseBinary(const HloInstruction* hlo) override;
+  // For all element-wise instruction we call HandleElementwiseOp. If necessary,
+  // override HandleElementwiseOp instead.
+  absl::Status HandleElementwiseUnary(const HloInstruction* hlo) final;
+  absl::Status HandleElementwiseBinary(const HloInstruction* hlo) final;
+  absl::Status HandleSelect(const HloInstruction* hlo) final;
+  absl::Status HandleCompare(const HloInstruction* compare) final;
+  absl::Status HandleClamp(const HloInstruction* clamp) final;
+  absl::Status HandleConvert(const HloInstruction* convert) final;
+
+  // Utility function to handle all element-wise operations.
+  virtual absl::Status HandleElementwiseOp(
+      const HloInstruction* hlo_instruction);
+
   absl::Status HandleConstant(const HloInstruction* constant) override;
   absl::Status HandleIota(const HloInstruction* iota) override;
   absl::Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
-  absl::Status HandleSelect(const HloInstruction* hlo) override;
-  absl::Status HandleCompare(const HloInstruction* compare) override;
-  absl::Status HandleClamp(const HloInstruction* clamp) override;
   absl::Status HandleReducePrecision(const HloInstruction* hlo) override;
   absl::Status HandleConcatenate(const HloInstruction* concatenate) override;
   absl::Status HandleAsyncStart(const HloInstruction* async_start) override;
@@ -460,7 +468,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleSendDone(const HloInstruction* send_done) override;
   absl::Status HandleRecv(const HloInstruction* recv) override;
   absl::Status HandleRecvDone(const HloInstruction* recv_done) override;
-  absl::Status HandleConvert(const HloInstruction* convert) override;
   absl::Status HandleCopy(const HloInstruction* copy) override;
   absl::Status HandleDomain(const HloInstruction* domain) override;
   absl::Status HandleDot(const HloInstruction* dot) override;
@@ -663,9 +670,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // flop_count(hlo_instruction) to return cost of a particular HLO instruction.
   virtual absl::StatusOr<Properties> ProcessSubcomputation(
       HloComputation* computation);
-
-  // Utility function to handle all element-wise operations.
-  absl::Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
 
   // Returns 0.0f if the hlo is not present in hlo_to_properties or if the key
   // is not present in hlo_to_properties[hlo]. Otherwise, returns the value that

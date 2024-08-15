@@ -54,9 +54,9 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    ((bl_x * 128 + th_x + chunk_id * 129024) floordiv 15000) mod 100,
-    ((bl_x * 128 + th_x + chunk_id * 129024) floordiv 75) mod 200,
-    (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
+    (bl_x * 128 + chunk_id * 129024 + th_x) floordiv 15000,
+    ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 75) mod 200,
+    ((bl_x * 128 + chunk_id * 129024 + th_x) mod 75) * 4 + unroll_id
   )
   domain:
   th_x in [0, 127]
@@ -67,7 +67,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   bl_z in [0, 0]
   chunk_id in [0, 11]
   unroll_id in [0, 3]
-  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999996]
+  bl_x * 128 + chunk_id * 129024 + th_x in [0, 1499999]
 )"));
 }
 
@@ -148,7 +148,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-                  ((bl_x * 128 + th_x) floordiv 600) mod 10,
+                  (bl_x * 128 + th_x) floordiv 600,
                   ((bl_x * 128 + th_x) floordiv 30) mod 20,
                   (bl_x * 128 + th_x) mod 30
                 )
@@ -161,7 +161,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
                 bl_z in [0, 0]
                 chunk_id in [0, 0]
                 unroll_id in [0, 0]
-                th_x + bl_x * 128 in [0, 5999]
+                bl_x * 128 + th_x in [0, 5999]
             )"));
   auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
@@ -178,7 +178,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
                 bl_z in [0, 0]
                 chunk_id in [0, 0]
                 unroll_id in [0, 0]
-                th_x + bl_x * 128 in [0, 5999]
+                bl_x * 128 + th_x in [0, 5999]
             )"));
 }
 
@@ -197,7 +197,7 @@ TEST_F(MlirLoopFusionTest, Constant_Broadcast) {
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d1 * 1024 + d0)>
-    // CHECK: #[[MAP1:.*]] = affine_map<(d0, d1) -> (((d1 * 1024 + d0) floordiv 768) mod 2)>
+    // CHECK: #[[MAP1:.*]] = affine_map<(d0, d1) -> ((d1 * 1024 + d0) floordiv 768)>
     // CHECK: #[[MAP2:.*]] = affine_map<(d0, d1) -> (((d1 * 1024 + d0) floordiv 48) mod 16)>
     // CHECK: #[[MAP3:.*]] = affine_map<(d0, d1) -> ((d1 * 1024 + d0) mod 48)>
     // CHECK: func.func @fused_computation(%[[ARG0:.*]]: tensor<2x16x48xbf16>
@@ -508,6 +508,63 @@ TEST_F(MlirLoopFusionTest, DynamicSliceWith64BitInput) {
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64 : i32>>
   )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, DynamicUpdateSlice) {
+  constexpr auto kHloString = R"(
+    %fused_computation {
+      in = c64[2,3] parameter(0)
+      updates = c64[2,2] parameter(1)
+      i0 = s32[] parameter(2)
+      i1 = s32[] parameter(3)
+      updated = c64[2,3] dynamic-update-slice(in, updates, i0, i1)
+      ROOT transpose = c64[3,2] transpose(updated), dimensions={1,0}
+    }
+
+    ENTRY main {
+      p0 = c64[2,3] parameter(0)
+      p1 = c64[2,2] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      ROOT %fusion = c64[3,2] fusion(p0, p1, p2, p3), kind=kLoop, calls=%fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: scf.if
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, NotPred) {
+  constexpr auto kHloString = R"(
+    %fused_computation {
+      p0 = s8[1000] parameter(0)
+      cvt = pred[1000] convert(p0)
+      ROOT not = pred[1000] not(cvt)
+    }
+
+    ENTRY main {
+      p0 = s8[1000] parameter(0)
+      ROOT %fusion = pred[1000] fusion(p0), kind=kLoop, calls=%fused_computation
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, MulPred) {
+  constexpr auto kHloString = R"(
+    %fused_computation {
+      p0 = s8[1000] parameter(0)
+      p1 = s8[1000] parameter(1)
+      cvt0 = pred[1000] convert(p0)
+      cvt1 = pred[1000] convert(p1)
+      ROOT mul = pred[1000] multiply(cvt0, cvt1)
+    }
+
+    ENTRY main {
+      p0 = s8[1000] parameter(0)
+      p1 = s8[1000] parameter(1)
+      ROOT %fusion = pred[1000] fusion(p0, p1), kind=kLoop, calls=%fused_computation
+    })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 

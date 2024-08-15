@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for legalizing mhlo.dot_general to
 // tflite.batch_matmul.
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -408,30 +410,15 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
   return reshaped.getResult();
 }
 
-// Converts mhlo.dot_general to tfl.BatchMatMul. Reshape and Transpose ops will
-// be inserted when necessary. See ConvertDotGeneralOp for additional notes.
-Value ConvertDotOp(PatternRewriter& rewriter, Operation* old_op) {
-  auto dot_op = cast<mhlo::DotOp>(old_op);
-  auto lhs_rank = mlir::cast<ShapedType>(dot_op.getLhs().getType()).getRank();
-  auto dot_dimension_numbers =
-      mhlo::DotDimensionNumbersAttr::get(rewriter.getContext(),
-                                         /*lhsBatchingDimensions=*/{},
-                                         /*rhsBatchingDimensions=*/{},
-                                         /*lhsContractingDimensions=*/
-                                         {lhs_rank == 1 ? 0 : 1},
-                                         /*rhsContractingDimensions=*/{0});
-  return ConvertDot(
-      rewriter, dot_op.getLhs(), dot_op.getRhs(), dot_dimension_numbers,
-      mlir::cast<ShapedType>(dot_op.getResult().getType()), dot_op.getLoc());
+LogicalResult LowerDotGeneralOp::matchAndRewrite(
+    mhlo::DotGeneralOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  auto val = ConvertDot(
+      rewriter, op.getLhs(), op.getRhs(), op.getDotDimensionNumbers(),
+      mlir::cast<ShapedType>(op.getResult().getType()), op.getLoc());
+  rewriter.replaceOp(op, val.getDefiningOp());
+  return mlir::success();
 }
 
-Value ConvertDotGeneralOp(PatternRewriter& rewriter, Operation* old_op) {
-  auto dot_general_op = cast<mhlo::DotGeneralOp>(old_op);
-  return ConvertDot(
-      rewriter, dot_general_op.getLhs(), dot_general_op.getRhs(),
-      dot_general_op.getDotDimensionNumbers(),
-      mlir::cast<ShapedType>(dot_general_op.getResult().getType()),
-      dot_general_op.getLoc());
-}
 }  // namespace odml
 }  // namespace mlir

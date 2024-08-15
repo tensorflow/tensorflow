@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape.h"
@@ -61,6 +62,11 @@ class CollectiveThunk : public Thunk {
     std::vector<Shape> destination_shapes;
   };
 
+  // Resources used by the collective operation.
+  struct OpResources {
+    std::shared_ptr<Resource> communicator_resource;
+  };
+
   // Device memory resolved for the collective operation buffers.
   struct OpDeviceMemory {
     absl::InlinedVector<se::DeviceMemoryBase, 4> source;
@@ -68,7 +74,7 @@ class CollectiveThunk : public Thunk {
   };
 
   CollectiveThunk(Kind kind, Thunk::Info info, OpParams op_params,
-                  OpBuffers op_buffers);
+                  OpBuffers op_buffers, OpResources op_resources);
 
   const OpParams& op_params() const { return op_params_; }
   const OpBuffers& op_buffers() const { return op_buffers_; }
@@ -77,6 +83,7 @@ class CollectiveThunk : public Thunk {
   absl::StatusOr<OpDeviceMemory> GetOpDeviceMemory(const ExecuteParams& params);
 
   BufferUses buffer_uses() const final;
+  ResourceUses resource_uses() const final;
 
  protected:
   // Callback for collective thunk implementations.
@@ -113,6 +120,7 @@ class CollectiveThunk : public Thunk {
  private:
   OpParams op_params_;
   OpBuffers op_buffers_;
+  OpResources op_resources_;
 };
 
 }  // namespace xla::cpu

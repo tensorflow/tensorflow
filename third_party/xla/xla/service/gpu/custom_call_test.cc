@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <ostream>
 #include <sstream>
@@ -34,8 +33,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -51,6 +50,7 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -380,10 +380,9 @@ TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
-  return stream->MemcpyD2D(
-      &dst->data, src.data,
-      absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
-          sizeof(float));
+  se::DeviceMemoryBase dst_mem = dst->device_memory();
+  se::DeviceMemoryBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
@@ -729,28 +728,42 @@ TEST_F(CustomCallTest, WithCalledComputation) {
 struct SomeExtraContext {
   explicit SomeExtraContext(int32_t value) : value(value) {}
   int32_t value;
+  bool initialized = false;
+  bool executed = false;
 };
 
-static int32_t execution_context_counter = 0;
-
+template <ffi::ExecutionStage stage>
 static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
                                      SomeExtraContext* ctx) {
   if (ctx->value != 42) return absl::InternalError("Unexpected value");
-  ++execution_context_counter;
+  if constexpr (stage == ffi::ExecutionStage::kInitialize) {
+    ctx->initialized = true;
+  } else {
+    ctx->executed = true;
+  }
+
   return absl::OkStatus();
 }
 
-XLA_FFI_DEFINE_HANDLER(kExecutionContext, ExecutionContext,
-                       ffi::Ffi::Bind()
+XLA_FFI_DEFINE_HANDLER(kExecutionContextInitialize,
+                       ExecutionContext<ffi::ExecutionStage::kInitialize>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kInitialize>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContextExecute,
+                       ExecutionContext<ffi::ExecutionStage::kExecute>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kExecute>()
                            .Ret<ffi::AnyBuffer>()
                            .Ctx<ffi::UserData<SomeExtraContext>>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
                          PLATFORM,
                          {
+                             /*instantiate=*/nullptr,
                              /*prepare=*/nullptr,
-                             /*initializer=*/kExecutionContext,
-                             /*execute=*/kExecutionContext,
+                             /*initialize=*/kExecutionContextInitialize,
+                             /*execute=*/kExecutionContextExecute,
                          });
 
 TEST_F(CustomCallTest, FfiExecutionContext) {
@@ -772,7 +785,63 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
   TF_ASSERT_OK(Execute(&b, {}).status());
 
   // Check that FFI handler was called during initialization and execution.
-  EXPECT_EQ(execution_context_counter, 2);
+  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
+                          execution_context.Lookup<SomeExtraContext>());
+  EXPECT_TRUE(user_context->initialized);
+  EXPECT_TRUE(user_context->executed);
+}
+
+//===----------------------------------------------------------------------===//
+// Stateful XLA:FFI handler
+//===----------------------------------------------------------------------===//
+
+struct SomeState {
+  explicit SomeState(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+// Every time custom call HLO operation is instantiated as a GPU runtime Thunk,
+// XLA calls instantiate callback to create a new instance of the handler state,
+// that will be passed to all other FFI handler calls.
+static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateState() {
+  return std::make_unique<SomeState>(42);
+}
+
+// At run time we can access the state created by the instantiate callback.
+static absl::Status GetState(ffi::Result<ffi::AnyBuffer>, SomeState* state) {
+  if (state->value != 42) {
+    return absl::InternalError("Unexpected value");
+  }
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kInstantiateState, InstantiateState,
+                       ffi::Ffi::BindInstantiate());
+
+XLA_FFI_DEFINE_HANDLER(
+    kGetState, GetState,
+    ffi::Ffi::Bind().Ret<ffi::AnyBuffer>().Ctx<ffi::State<SomeState>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_state",
+                         PLATFORM,
+                         {
+                             /*instantiate=*/kInstantiateState,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kGetState,
+                         });
+
+TEST_F(CustomCallTest, FfiExecutionState) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "xla.gpu.ffi_execution_state", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  TF_ASSERT_OK(Execute(&b, {}).status());
 }
 
 }  // anonymous namespace

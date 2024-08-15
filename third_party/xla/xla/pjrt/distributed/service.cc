@@ -31,7 +31,6 @@ limitations under the License.
 #include "tsl/protobuf/coordination_config.pb.h"
 
 namespace {
-constexpr int kBarrierTimedOut = -1000;
 
 std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
     const xla::CoordinationServiceImpl::Options& options) {

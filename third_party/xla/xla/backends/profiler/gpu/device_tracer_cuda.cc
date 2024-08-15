@@ -206,7 +206,7 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
         space->add_warnings(std::move(events_dropped));
       }
       if (cupti_collector_) {
-        uint64_t end_gpu_ns = CuptiTracer::GetTimestamp();
+        uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
         cupti_collector_->Export(space, end_gpu_ns);
       }
       return absl::OkStatus();

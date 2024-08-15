@@ -36,7 +36,7 @@ class ScannerTest : public ::testing::Test {
 };
 
 TEST_F(ScannerTest, Any) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(Scanner("   horse0123")
                   .Any(Scanner::SPACE)
                   .Any(Scanner::DIGIT)
@@ -63,7 +63,7 @@ TEST_F(ScannerTest, Any) {
 }
 
 TEST_F(ScannerTest, AnySpace) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(Scanner("  a b ")
                   .AnySpace()
                   .One(Scanner::LETTER)
@@ -74,7 +74,7 @@ TEST_F(ScannerTest, AnySpace) {
 }
 
 TEST_F(ScannerTest, AnyEscapedNewline) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(Scanner("\\\n")
                   .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
                   .GetResult(&remaining, &match));
@@ -83,7 +83,7 @@ TEST_F(ScannerTest, AnyEscapedNewline) {
 }
 
 TEST_F(ScannerTest, AnyEmptyString) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(Scanner("")
                   .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
                   .GetResult(&remaining, &match));
@@ -99,7 +99,7 @@ TEST_F(ScannerTest, Eos) {
 }
 
 TEST_F(ScannerTest, Many) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(Scanner("abc").Many(Scanner::LETTER).GetResult());
   EXPECT_FALSE(Scanner("0").Many(Scanner::LETTER).GetResult());
   EXPECT_FALSE(Scanner("").Many(Scanner::LETTER).GetResult());
@@ -115,7 +115,7 @@ TEST_F(ScannerTest, Many) {
 }
 
 TEST_F(ScannerTest, One) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(Scanner("abc").One(Scanner::LETTER).GetResult());
   EXPECT_FALSE(Scanner("0").One(Scanner::LETTER).GetResult());
   EXPECT_FALSE(Scanner("").One(Scanner::LETTER).GetResult());
@@ -137,7 +137,7 @@ TEST_F(ScannerTest, OneLiteral) {
 }
 
 TEST_F(ScannerTest, ScanUntil) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(Scanner(R"(' \1 \2 \3 \' \\'rest)")
                   .OneLiteral("'")
                   .ScanUntil('\'')
@@ -164,7 +164,7 @@ TEST_F(ScannerTest, ScanUntil) {
 }
 
 TEST_F(ScannerTest, ScanEscapedUntil) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(Scanner(R"(' \1 \2 \3 \' \\'rest)")
                   .OneLiteral("'")
                   .ScanEscapedUntil('\'')
@@ -184,7 +184,7 @@ TEST_F(ScannerTest, ScanEscapedUntil) {
 }
 
 TEST_F(ScannerTest, ZeroOrOneLiteral) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
   EXPECT_TRUE(
       Scanner("abc").ZeroOrOneLiteral("abC").GetResult(&remaining, &match));
   EXPECT_EQ("abc", remaining);
@@ -205,7 +205,7 @@ TEST_F(ScannerTest, ZeroOrOneLiteral) {
 // Test output of GetResult (including the forms with optional params),
 // and that it can be called multiple times.
 TEST_F(ScannerTest, CaptureAndGetResult) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
 
   Scanner scan("  first    second");
   EXPECT_TRUE(scan.Any(Scanner::SPACE)
@@ -238,7 +238,7 @@ TEST_F(ScannerTest, CaptureAndGetResult) {
 // Tests that if StopCapture is not called, then calling GetResult, then
 // scanning more, then GetResult again will update the capture.
 TEST_F(ScannerTest, MultipleGetResultExtendsCapture) {
-  StringPiece remaining, match;
+  absl::string_view remaining, match;
 
   Scanner scan("one2three");
   EXPECT_TRUE(scan.Many(Scanner::LETTER).GetResult(&remaining, &match));
@@ -255,8 +255,8 @@ TEST_F(ScannerTest, MultipleGetResultExtendsCapture) {
 TEST_F(ScannerTest, FailedMatchDoesntChangeResult) {
   // A failed match doesn't change pointers passed to GetResult.
   Scanner scan("name");
-  StringPiece remaining = "rem";
-  StringPiece match = "match";
+  absl::string_view remaining = "rem";
+  absl::string_view match = "match";
   EXPECT_FALSE(scan.One(Scanner::SPACE).GetResult(&remaining, &match));
   EXPECT_EQ("rem", remaining);
   EXPECT_EQ("match", match);
@@ -265,8 +265,8 @@ TEST_F(ScannerTest, FailedMatchDoesntChangeResult) {
 TEST_F(ScannerTest, DefaultCapturesAll) {
   // If RestartCapture() is not called, the whole string is used.
   Scanner scan("a b");
-  StringPiece remaining = "rem";
-  StringPiece match = "match";
+  absl::string_view remaining = "rem";
+  absl::string_view match = "match";
   EXPECT_TRUE(scan.Any(Scanner::LETTER)
                   .AnySpace()
                   .Any(Scanner::LETTER)

@@ -662,7 +662,7 @@ class UneraseCallHelper<Fn, TReturn, TSignatureArg, TSignatureRest...> {
           absl::StrCat(std::string("Function ") + name + " Arg " +
                        std::to_string(argument_index) +
                        " cannot be cast to desired signature type "));
-    return UneraseCallHelper<Fn, TReturn, TSignatureRest...>::template Call(
+    return UneraseCallHelper<Fn, TReturn, TSignatureRest...>::Call(
         name, fn, argument_index + 1, args_in, args..., *x);
   }
 };

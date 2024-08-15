@@ -23,6 +23,7 @@ xla_cc_binary(
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/platform.h"
 
-#include <map>
 #include <string>
 
 #include "absl/status/status.h"

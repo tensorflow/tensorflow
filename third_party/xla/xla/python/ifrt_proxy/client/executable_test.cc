@@ -136,8 +136,8 @@ TEST_F(LoadedExecutableTest, Metadata) {
   MockClient client;
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
-      /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
+      /*num_devices=*/2, /*addressable_devices=*/{},
+      /*fingerprint=*/"fingerprint",
       /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
@@ -185,8 +185,8 @@ TEST_F(LoadedExecutableTest, Execute) {
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
-      /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
+      /*num_devices=*/2, /*addressable_devices=*/{},
+      /*fingerprint=*/"fingerprint",
       /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
@@ -277,8 +277,8 @@ TEST_F(LoadedExecutableTest, Delete) {
   MockClient client;
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
-      /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
+      /*num_devices=*/2, /*addressable_devices=*/{},
+      /*fingerprint=*/"fingerprint",
       /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 

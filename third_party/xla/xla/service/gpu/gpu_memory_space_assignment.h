@@ -29,6 +29,7 @@ namespace xla {
 namespace gpu {
 
 inline constexpr int64_t kCollectiveMemorySpaceColor = 1;
+inline constexpr int64_t kTempBufferMemorySpaceColor = 2;
 
 // Set memory space to kCollectiveMemorySpaceColor for all allocations used by
 // all-reduce, all-gather, and reduce-scatter. This memory space maps to

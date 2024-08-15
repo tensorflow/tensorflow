@@ -36,7 +36,14 @@ namespace gpu {
 
 absl::StatusOr<GpuFunctionHandle> GpuRuntime::GetFuncBySymbol(void* symbol) {
   VLOG(2) << "Get ROCM function from a symbol: " << symbol;
+#if TF_ROCM_VERSION >= 60200
+  hipFunction_t func;
+  RETURN_IF_ROCM_ERROR(wrap::hipGetFuncBySymbol(&func, symbol),
+                       "Failed call to hipGetFuncBySymbol");
+  return func;
+#else
   return absl::UnimplementedError("GetFuncBySymbol is not implemented");
+#endif  // TF_ROCM_VERSION >= 60200
 }
 
 absl::StatusOr<int32_t> GpuRuntime::GetRuntimeVersion() {

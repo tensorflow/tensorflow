@@ -28,7 +28,7 @@ CudaCompiler = configure.CudaCompiler
 OS = configure.OS
 
 _PYTHON_BIN_PATH = "/usr/bin/python3"
-_CLANG_PATH = "/usr/lib/llvm-17/bin/clang"
+_CLANG_PATH = "/usr/lib/llvm-18/bin/clang"
 _GCC_PATH = "/usr/bin/gcc"
 _COMPILER_OPTIONS = ("-Wno-sign-compare",)
 
@@ -92,7 +92,7 @@ class ConfigureTest(absltest.TestCase):
         DiscoverablePathsAndVersions(
             clang_path=_CLANG_PATH,
             ld_library_path="",
-            clang_major_version=17,
+            clang_major_version=18,
         )
     )
 
@@ -134,7 +134,7 @@ class ConfigureTest(absltest.TestCase):
     bazelrc_lines = config.to_bazelrc_lines(
         DiscoverablePathsAndVersions(
             clang_path=_CLANG_PATH,
-            clang_major_version=17,
+            clang_major_version=18,
             **_CUDA_SPECIFIC_PATHS_AND_VERSIONS,
         )
     )
@@ -156,7 +156,7 @@ class ConfigureTest(absltest.TestCase):
     bazelrc_lines = config.to_bazelrc_lines(
         DiscoverablePathsAndVersions(
             clang_path=_CLANG_PATH,
-            clang_major_version=17,
+            clang_major_version=18,
             **_CUDA_SPECIFIC_PATHS_AND_VERSIONS,
         )
     )

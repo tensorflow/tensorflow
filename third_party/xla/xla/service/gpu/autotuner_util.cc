@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -310,6 +313,47 @@ std::string ToCanonicalString(const HloInstruction* instr) {
 AutotuneCacheKey::AutotuneCacheKey(absl::string_view model_str,
                                    const HloInstruction& instr)
     : AutotuneCacheKey(model_str, ToCanonicalString(&instr)) {}
+
+/*static*/ std::string AutotuneCacheKey::DeviceDescriptionToCacheKey(
+    const se::DeviceDescription& device_description) {
+  std::string compute_capability;
+  if (auto* ccc = std::get_if<se::CudaComputeCapability>(
+          &device_description.gpu_compute_capability())) {
+    compute_capability = absl::StrCat("CUDA: ", ccc->major, ".", ccc->minor);
+  } else {
+    auto* rcc = std::get_if<se::RocmComputeCapability>(
+        &device_description.gpu_compute_capability());
+    CHECK(rcc != nullptr) << "Unknown compute capability type";
+    compute_capability = absl::StrCat("ROCM: ", rcc->gfx_version());
+  }
+
+  // The string below should include only as much information as is needed to
+  // make it a valid key. Information that should not be included is:
+  // - specs that are directly derivable from the compute capability, e.g.
+  //   shared memory size. For NVIDIA GPUs, you can see what is derivable from
+  //   the SM version here:
+  //   https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications-technical-specifications-per-compute-capability
+  // - specs that are irrelevant for autotuning. E.g. the total available memory
+  //   on a device is not relevant, because by itself, it does not affect the
+  //   performance of single kernels.
+  //
+  // See b/344573710 for some discussion.
+
+  double memory_bandwidth = device_description.memory_bandwidth() / 1e9;
+  // Round the memory bandwidth to make the final string nicer to read.
+  // This will also cause minute differences in bandwidth to yield the same
+  // cache key, but that's fine, since the difference is inconsequential.
+  memory_bandwidth = std::round(memory_bandwidth);
+
+  constexpr double kBytesPerMegabyte = 1 << 20;
+  double l2_cache_size = device_description.l2_cache_size() / kBytesPerMegabyte;
+
+  return absl::StrCat(compute_capability,
+                      ", Cores: ", device_description.core_count(),
+                      ", GPU clock: ", device_description.clock_rate_ghz(),
+                      " GHz, Memory bandwidth: ", memory_bandwidth,
+                      " GB/s, L2 cache: ", l2_cache_size, " MB");
+}
 
 namespace {
 absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(

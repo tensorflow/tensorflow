@@ -44,6 +44,7 @@ cc_library(
         ":gpu_helpers",
         ":gpu_metrics",
         ":gpu_topology",
+        ":gpu_topology_proto_cc",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -115,14 +116,20 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:nvtx_utils",
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_cuda_or_rocm([
+        # keep sorted
         ":nccl_id_store",
+        "//xla:debug_options_flags",
         "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:gpu_memory_space_assignment",
     ]) + if_cuda([
-        "@local_config_cuda//cuda:cuda_headers",
+        # keep sorted
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
+        "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
+        # keep sorted
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -150,6 +157,7 @@ xla_cc_test(
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
@@ -298,6 +306,7 @@ xla_test(
         "no_oss",
     ] + if_google(["config-cuda-only"]),
     deps = [
+        ":gpu_topology",
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",
         "//xla:test",

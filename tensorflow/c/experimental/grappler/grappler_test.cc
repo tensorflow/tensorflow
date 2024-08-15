@@ -14,16 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/grappler/grappler.h"
 
-#include "tensorflow/c/c_api_internal.h"
+#include "absl/log/check.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
-#include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {

@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/pjrt/cpu/cpu_topology.pb.h"
+
 namespace xla {
 
 std::unique_ptr<const CpuTopology> CpuTopology::FromProto(

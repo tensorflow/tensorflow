@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <utility>
 
 #include "absl/base/optimization.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/threadpool.h"
 
@@ -63,13 +63,12 @@ static absl::InlinedVector<SE_HOST_KernelArg, 8> ConvertBuffersToKernelArgs(
 namespace {
 // Keep a state of an in-flight asynchronous kernel execution on a heap to keep
 // it alive until the last task is done.
-class HostKernelExecuteState
-    : public tsl::ReferenceCounted<HostKernelExecuteState> {
+class HostKernelExecuteState {
  public:
   HostKernelExecuteState(HostKernel::TaskRunner task_runner,
-                         HostKernel::KernelFunction* function,
-                         ThreadDim thread_dims,
-                         absl::Span<const DeviceMemoryBase> buffers);
+                         SE_HOST_Kernel* kernel, ThreadDim thread_dims,
+                         absl::Span<const SE_HOST_KernelArg> args);
+  ~HostKernelExecuteState();
 
   // Notify of a completion of a host kernel task.
   void Notify(absl::Status status);
@@ -84,6 +83,15 @@ class HostKernelExecuteState
   tsl::AsyncValueRef<LaunchEvent> event() const { return event_; }
 
  private:
+  // Align all atomic counters to a cache line boundary to avoid false
+  // sharing between multiple worker threads.
+  static constexpr size_t kAtomicAlignment =
+#if defined(__cpp_lib_hardware_interference_size)
+      std::hardware_destructive_interference_size;
+#else
+      64;
+#endif
+
   // Converts linear task index in [0, num_tasks) to (x, y, z) coordinate. We
   // assume that `x` is the fastest iterating dimension.
   SE_HOST_KernelThread Delinearize(uint64_t task_index);
@@ -95,11 +103,12 @@ class HostKernelExecuteState
   SE_HOST_KernelThreadDim thread_dims_;
   absl::InlinedVector<SE_HOST_KernelArg, 8> args_;
 
-  std::atomic<bool> abort_;
+  alignas(kAtomicAlignment) std::atomic<int64_t> counter_;
+
+  alignas(kAtomicAlignment) std::atomic<bool> abort_;
   absl::Mutex abort_mutex_;
   absl::Status abort_status_ ABSL_GUARDED_BY(abort_mutex_);
 
-  std::atomic<int64_t> counter_;
   tsl::AsyncValueRef<LaunchEvent> event_;
 };
 }  // namespace
@@ -112,17 +121,24 @@ HostKernel::HostKernel(std::shared_ptr<tsl::thread::ThreadPool> thread_pool)
 HostKernel::HostKernel(unsigned arity, SE_HOST_Kernel* kernel,
                        std::shared_ptr<tsl::thread::ThreadPool> thread_pool)
     : function_(std::make_unique<KernelFunctionPtr>(kernel)),
+      kernel_(function_->kernel()),
       arity_(arity),
       thread_pool_(thread_pool) {}
 
 absl::Status HostKernel::Launch(
     const ThreadDim& thread_dims,
     absl::Span<const DeviceMemoryBase> buffers) const {
-  SE_HOST_KernelThreadDim kernel_thread_dims = {thread_dims.x, thread_dims.y,
-                                                thread_dims.z};
+  return Launch(thread_dims, ConvertBuffersToKernelArgs(buffers));
+}
 
-  SE_HOST_Kernel* kernel = function_->kernel();
-  auto args = ConvertBuffersToKernelArgs(buffers);
+absl::Status HostKernel::Launch(
+    const ThreadDim& thread_dims,
+    absl::Span<const SE_HOST_KernelArg> args) const {
+  SE_HOST_KernelThreadDim kernel_thread_dims = {
+      thread_dims.x,
+      thread_dims.y,
+      thread_dims.z,
+  };
 
   for (uint64_t z = 0; z < thread_dims.z; ++z) {
     for (uint64_t y = 0; y < thread_dims.y; ++y) {
@@ -132,9 +148,9 @@ absl::Status HostKernel::Launch(
         SE_HOST_KernelCallFrame call_frame = {
             &kernel_thread_dims, &kernel_thread, args.size(), args.data()};
 
-        SE_HOST_KernelError* error = (*kernel)(&call_frame);
+        SE_HOST_KernelError* error = (*kernel_)(&call_frame);
 
-        if (error != nullptr) {
+        if (ABSL_PREDICT_FALSE(error != nullptr)) {
           return absl::InternalError("Failed to call host kernel");
         }
       }
@@ -147,37 +163,54 @@ absl::Status HostKernel::Launch(
 tsl::AsyncValueRef<LaunchEvent> HostKernel::Launch(
     const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
     TaskRunner task_runner) const {
+  return Launch(thread_dims, ConvertBuffersToKernelArgs(buffers),
+                std::move(task_runner));
+}
+
+tsl::AsyncValueRef<LaunchEvent> HostKernel::Launch(
+    const ThreadDim& thread_dims, absl::Span<const SE_HOST_KernelArg> args,
+    TaskRunner task_runner) const {
   size_t num_tasks = thread_dims.x * thread_dims.y * thread_dims.z;
   CHECK_GT(num_tasks, 0) << "Number of tasks must be positive";  // Crash Ok
 
   // Short-circuit launch with a single task and run it in the caller thread.
   if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
-    absl::Status launched = Launch(thread_dims, buffers);
+    absl::Status launched = Launch(thread_dims, args);
     return ABSL_PREDICT_TRUE(launched.ok())
                ? OkLaunchEvent()
                : tsl::MakeErrorAsyncValueRef(std::move(launched));
   }
 
-  // Allocate a control structure that will orchestrate kernel execution.
-  auto state = tsl::MakeRef<HostKernelExecuteState>(
-      std::move(task_runner), function_.get(), thread_dims, buffers);
-
+  // Create host kernel execute state on heap and kick-off execution.
+  auto state = std::make_unique<HostKernelExecuteState>(
+      std::move(task_runner), kernel_, thread_dims, args);
   state->CallAsync(/*start_index=*/0, /*end_index=*/num_tasks);
 
-  return state->event();
+  // Move execute state to the execute event callback to ensure that it is kept
+  // alive while host kernel has pending tasks.
+  auto execute_event = state->event();
+  execute_event.AndThen([state = std::move(state)] {});
+
+  return execute_event;
 }
 
 HostKernelExecuteState::HostKernelExecuteState(
-    HostKernel::TaskRunner task_runner, HostKernel::KernelFunction* function,
-    ThreadDim thread_dims, absl::Span<const DeviceMemoryBase> buffers)
+    HostKernel::TaskRunner task_runner, SE_HOST_Kernel kernel,
+    ThreadDim thread_dims, absl::Span<const SE_HOST_KernelArg> args)
     : task_runner_(std::move(task_runner)),
       num_tasks_(thread_dims.x * thread_dims.y * thread_dims.z),
-      kernel_(function->kernel()),
+      kernel_(kernel),
       thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
-      args_(ConvertBuffersToKernelArgs(buffers)),
-      abort_(false),
+      args_(args.begin(), args.end()),
       counter_(num_tasks_),
+      abort_(false),
       event_(tsl::MakeConstructedAsyncValueRef<LaunchEvent>()) {}
+
+HostKernelExecuteState::~HostKernelExecuteState() {
+  auto cnt = counter_.load(std::memory_order_acquire);
+  DCHECK_EQ(cnt, 0) << "Host kernel execute state is destroyed before all "
+                       "tasks are completed";
+}
 
 void HostKernelExecuteState::Notify(absl::Status status) {
   if (ABSL_PREDICT_FALSE(!status.ok())) {
@@ -187,14 +220,16 @@ void HostKernelExecuteState::Notify(absl::Status status) {
   }
 
   // Check if it was the last notification and kernel launch is done.
-  bool is_done = counter_.load(std::memory_order_relaxed) == 1 ||
-                 counter_.fetch_sub(1, std::memory_order_relaxed) == 1;
+  bool is_done = counter_.fetch_sub(1, std::memory_order_acq_rel) == 1;
   if (ABSL_PREDICT_TRUE(!is_done)) return;
 
   // In the unlikely event of a kernel error, forward it to the launch event.
   if (ABSL_PREDICT_FALSE(abort_.load(std::memory_order_relaxed))) {
-    absl::MutexLock lock(&abort_mutex_);
-    event_.SetError(std::move(abort_status_));
+    auto take_abort_status = [&] {
+      absl::MutexLock lock(&abort_mutex_);
+      return std::move(abort_status_);
+    };
+    event_.SetError(take_abort_status());
   } else {
     event_.SetStateConcrete();
   }
@@ -228,7 +263,7 @@ void HostKernelExecuteState::CallAsync(uint64_t start_index,
   CHECK_LT(start_index, end_index) << "Invalid task index range";  // Crash OK
   while (end_index - start_index > 1) {
     uint64_t mid_index = (start_index + end_index) / 2;
-    task_runner_([self = tsl::FormRef(this), mid_index, end_index] {
+    task_runner_([self = this, mid_index, end_index] {
       self->CallAsync(mid_index, end_index);
     });
     end_index = mid_index;

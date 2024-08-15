@@ -48,11 +48,10 @@ TEST(XNNPackDelegateProviderTest, Test) {
   EXPECT_FALSE(params.HasValueSet<bool>("xnnpack_force_fp16"));
   ASSERT_NE(params.GetParam("xnnpack_force_fp16"), nullptr);
 
-  EXPECT_TRUE(params.HasParam("xnnpack_experimental_weight_cache_file_path"));
-  EXPECT_FALSE(params.HasValueSet<std::string>(
-      "xnnpack_experimental_weight_cache_file_path"));
-  ASSERT_NE(params.GetParam("xnnpack_experimental_weight_cache_file_path"),
-            nullptr);
+  EXPECT_TRUE(params.HasParam("xnnpack_weight_cache_file_path"));
+  EXPECT_FALSE(
+      params.HasValueSet<std::string>("xnnpack_weight_cache_file_path"));
+  ASSERT_NE(params.GetParam("xnnpack_weight_cache_file_path"), nullptr);
 
   params.Set<bool>("use_xnnpack", true, /*position=*/0);
 
@@ -61,18 +60,18 @@ TEST(XNNPackDelegateProviderTest, Test) {
     const TfLiteXNNPackDelegateOptions* options =
         TfLiteXNNPackDelegateGetOptions(delegate.get());
     ASSERT_NE(options, nullptr);
-    EXPECT_EQ(options->experimental_weight_cache_file_path, nullptr);
+    EXPECT_EQ(options->weight_cache_file_path, nullptr);
   }
 
   params.Set<bool>("xnnpack_force_fp16", true, /*position=*/1);
-  params.Set<std::string>("xnnpack_experimental_weight_cache_file_path",
-                          kFakeCacheParam, /*position=*/2);
+  params.Set<std::string>("xnnpack_weight_cache_file_path", kFakeCacheParam,
+                          /*position=*/2);
   {
     TfLiteDelegatePtr delegate = xnnpack_provider->CreateTfLiteDelegate(params);
     const TfLiteXNNPackDelegateOptions* options =
         TfLiteXNNPackDelegateGetOptions(delegate.get());
     ASSERT_NE(options, nullptr);
-    EXPECT_THAT(options->experimental_weight_cache_file_path,
+    EXPECT_THAT(options->weight_cache_file_path,
                 testing::StrEq(kFakeCacheParam));
     EXPECT_TRUE(options->flags & TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16);
   }

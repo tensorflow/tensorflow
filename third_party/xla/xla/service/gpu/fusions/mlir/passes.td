@@ -49,6 +49,21 @@ def ConvertPureCallOpsPass
   let constructor = "CreateConvertPureCallOpsPass()";
 }
 
+def FlattenTensorsPass : Pass<"xla-gpu-flatten-tensors", "mlir::ModuleOp"> {
+  let summary = "Flatten tensors.";
+
+  let description = [{
+    Linearizes all tensors loads and stores.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "mlir::tensor::TensorDialect",
+    "xla::gpu::XlaGpuDialect",
+  ];
+  let constructor = "CreateFlattenTensorsPass()";
+}
+
 def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
   let summary = "Lowers tensors to llvm pointers and loads/stores.";
 
@@ -182,7 +197,9 @@ def LowerToLLVMPass :
   }];
 
   let dependentDialects = [
-    "mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"
+    "mlir::func::FuncDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
   ];
 
   let constructor = "CreateLowerToLLVMPass()";

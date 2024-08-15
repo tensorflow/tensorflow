@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/translate/mhlo_to_hlo/module_config_exporter.h"
 
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace mlir {

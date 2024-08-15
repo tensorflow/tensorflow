@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-AttributeMap FromPjRtDeviceAttributeMap(
+AttributeMap FromPjRtAttributeMap(
     absl::flat_hash_map<std::string, xla::PjRtValueType> attributes) {
   AttributeMap::Map result;
   result.reserve(attributes.size());
@@ -56,7 +56,7 @@ AttributeMap FromPjRtDeviceAttributeMap(
   return AttributeMap(std::move(result));
 }
 
-absl::flat_hash_map<std::string, xla::PjRtValueType> ToPjRtDeviceAttributeMap(
+absl::flat_hash_map<std::string, xla::PjRtValueType> ToPjRtAttributeMap(
     AttributeMap attributes) {
   absl::flat_hash_map<std::string, xla::PjRtValueType> result;
   result.reserve(attributes.map().size());

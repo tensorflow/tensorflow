@@ -586,7 +586,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
     // but currently it does not, see the bug for details. Once fixed, this
     // code should be in an else clause of the above if statement.
     RETURN_IF_ERROR(context_->AddToQueue(queue_));
-    clFlush(queue_->queue());
+    context_->FlushQueue(queue_);
     return absl::OkStatus();
   }
 

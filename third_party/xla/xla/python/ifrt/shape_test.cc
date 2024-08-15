@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "xla/python/ifrt/shape.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -192,6 +193,19 @@ TEST(DynamicShapeTest, ToString) {
     output << shape;
     EXPECT_EQ(output.str(), "[2,<=4]");
   }
+}
+
+TEST(ShapeTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      Shape({}),
+      Shape({1}),
+      Shape({2}),
+      Shape({1, 2}),
+      Shape({1, 3}),
+      Shape({2, 1}),
+      Shape({1, 2, 3}),
+      Shape({1, 2, 4}),
+  }));
 }
 
 }  // namespace

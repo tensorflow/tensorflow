@@ -444,6 +444,10 @@ ENTRY %main {
                                   m::GetTupleElement(m::CustomCall(), 1))));
 }
 
+TEST_F(GpuSortRewriterTest, SortSizeThresholdIsSet) {
+  EXPECT_EQ(GpuSortRewriter::SortSizeThreshold(), 1000);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

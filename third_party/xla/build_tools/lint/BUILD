@@ -13,8 +13,8 @@
 # limitations under the License.
 # ============================================================================
 
+load("@rules_python//python:py_test.bzl", "py_test")
 load("//xla:pytype.default.bzl", "pytype_strict_library")
-# Placeholder: load py_test
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

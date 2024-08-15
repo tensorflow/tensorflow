@@ -118,6 +118,8 @@ extern const char* const kEigenSingleThreadedMatMulC128SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulC128";
 extern const char* const kEigenSingleThreadedMatMulS32SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulS32";
+extern const char* const kEigenSingleThreadedMatMulU8SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulU8";
 extern const char* const kEigenSingleThreadedConv2DF16SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedConv2DF16";
 extern const char* const kEigenSingleThreadedConv2DF32SymbolName =

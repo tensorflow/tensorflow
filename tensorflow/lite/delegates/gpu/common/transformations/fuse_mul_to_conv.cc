@@ -21,7 +21,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/strings/string_view.h"
+#include "absl/memory/memory.h"
+#include "absl/types/any.h"
+#include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"

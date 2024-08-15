@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/subprocess.h"
 #include "tsl/platform/test.h"
 
@@ -43,7 +44,7 @@ TEST(InteractiveGraphviz, CPU) {
                                    "--platform=Host"};
 
   // Logging to stderr is the default externally.
-  if (!tsl::testing::kIsOpenSource) args.push_back("--logtostderr");
+  if (!tsl::kIsOpenSource) args.push_back("--logtostderr");
 
   tsl::SubProcess proc;
   proc.SetProgram(interactive_graphviz_bin, args);

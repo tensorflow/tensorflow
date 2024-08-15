@@ -1,1 +1,25 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp b/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
+--- a/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
++++ b/mlir/lib/Dialect/Linalg/Transforms/WinogradConv2D.cpp
+@@ -15,9 +15,7 @@
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
+ #include "mlir/Dialect/Linalg/Utils/Utils.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+-#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
+ #include "mlir/Dialect/Utils/StaticValueUtils.h"
+-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "llvm/Support/MathExtras.h"
+ 
+ namespace mlir {
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -11350,7 +11350,6 @@
+         ":TensorTransforms",
+         ":TensorUtils",
+         ":TilingInterface",
+-        ":TosaDialect",
+         ":TransformUtils",
+         ":ValueBoundsOpInterface",
+         ":VectorDialect",

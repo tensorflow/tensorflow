@@ -105,6 +105,7 @@ absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
   if (!streams_.count(device_ordinal)) {
     TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     auto stream_ptr = stream.get();
+    stream_ptr->set_name("StreamExecutorMemoryAllocator");
     streams_.emplace(device_ordinal, std::move(stream));
     return stream_ptr;
   }

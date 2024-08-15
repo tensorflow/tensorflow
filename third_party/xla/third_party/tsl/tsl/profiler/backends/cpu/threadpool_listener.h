@@ -21,6 +21,7 @@ limitations under the License.
 #include "tsl/platform/types.h"
 #include "tsl/profiler/backends/cpu/threadpool_listener_state.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 namespace tsl {
 namespace profiler {
 

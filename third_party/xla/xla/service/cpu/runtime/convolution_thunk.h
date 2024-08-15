@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
@@ -75,14 +74,14 @@ class ConvolutionThunk final : public Thunk {
                             se::DeviceMemoryBase input,
                             se::DeviceMemoryBase kernel,
                             se::DeviceMemoryBase output);
-  void HandleEigen2DConvolution(const ExecuteParams& params,
-                                se::DeviceMemoryBase input,
-                                se::DeviceMemoryBase kernel,
-                                se::DeviceMemoryBase output);
-  void HandleEigen3DConvolution(const ExecuteParams& params,
-                                se::DeviceMemoryBase input,
-                                se::DeviceMemoryBase kernel,
-                                se::DeviceMemoryBase output);
+
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> HandleEigen2DConvolution(
+      const ExecuteParams& params, se::DeviceMemoryBase input,
+      se::DeviceMemoryBase kernel, se::DeviceMemoryBase output);
+
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> HandleEigen3DConvolution(
+      const ExecuteParams& params, se::DeviceMemoryBase input,
+      se::DeviceMemoryBase kernel, se::DeviceMemoryBase output);
 
   // A helper struct to store the x, y and z dimensions of a tensor, introduced
   // for readability.

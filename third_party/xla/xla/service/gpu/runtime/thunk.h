@@ -32,13 +32,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
@@ -165,12 +166,10 @@ class Thunk {
     kTriangularSolve,
     kWhile,
     kFusedMHA,
+    kFusedMHABackward,
     kWaitForStreams,
     kCuDnn
   };
-
-  // <HLO computation fingerprint, serialized compiled object>.
-  using BinaryMap = absl::flat_hash_map<std::string, std::string>;
 
   // TODO(ezhulenev): This should become a part of StreamExecutor library, but
   // for now we keep it here as a Thunk implementation detail. It's not yet

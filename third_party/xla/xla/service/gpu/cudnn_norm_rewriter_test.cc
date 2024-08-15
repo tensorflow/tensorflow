@@ -599,6 +599,64 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3IncorrectScaleBroadcast) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
+TEST_F(CudnnNormRewriterTest, LayerNorm4D3InputOutputTypeMismatch) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
+  GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
+#endif
+  if (!(GetCudaComputeCapability().major ==
+        se::CudaComputeCapability::AMPERE) &&
+      !(GetCudaComputeCapability().major ==
+        se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "Layer norm kernels require Ampere or Hopper architectures.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    apply {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT c = f32[] add(a,b)
+    }
+
+    ENTRY test {
+        input = f16[2,4,6,8] parameter(0)
+        input_f32 = f32[2,4,6,8] convert(input)
+        input_square = f32[2,4,6,8] multiply(input_f32, input_f32)
+        c0 = f32[] constant(0)
+        input_square_sum = f32[2,4,6] reduce(input_square, c0), dimensions={3}, to_apply=apply
+        r_nelems = f32[] constant(0.125)
+        r_nelems_bcast = f32[2,4,6] broadcast(r_nelems), dimensions={}
+        input_square_mean = f32[2,4,6] multiply(input_square_sum, r_nelems_bcast)
+        input_sum = f32[2,4,6] reduce(input_f32, c0), dimensions={3}, to_apply=apply
+        input_mean = f32[2,4,6] multiply(input_sum, r_nelems_bcast)
+        input_mean_square = f32[2,4,6] multiply(input_mean, input_mean)
+        variance = f32[2,4,6] subtract(input_square_mean, input_mean_square)
+        epsilon = f32[] constant(0.001)
+        epsilon_bcast = f32[2,4,6] broadcast(epsilon), dimensions={}
+        variance_plus_epsilon = f32[2,4,6] add(variance, epsilon_bcast)
+        norm_factor = f32[2,4,6] rsqrt(variance_plus_epsilon)
+        norm_factor_bcast = f32[2,4,6,8] broadcast(norm_factor), dimensions={0,1,2}
+        input_mean_bcast = f32[2,4,6,8] broadcast(input_mean), dimensions={0,1,2}
+        input_center = f32[2,4,6,8] subtract(input_f32, input_mean_bcast)
+        norm = f32[2,4,6,8] multiply(norm_factor_bcast, input_center)
+        scale = f32[8] parameter(1)
+        scale_bcast = f32[2,4,6,8] broadcast(scale), dimensions={3}
+        norm_scale = f32[2,4,6,8] multiply(norm, scale_bcast)
+        bias = f32[8] parameter(2)
+        bias_bcast = f32[2,4,6,8] broadcast(bias), dimensions={3}
+        ROOT out = f32[2,4,6,8] add(norm_scale, bias_bcast)
+    })";
+
+  const char* optimized_hlo = R"(
+
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> f32[2,4,6,8] {
+; CHECK-NOT:           custom_call_target="__cudnn$norm"
+  )";
+
+  TestNorm(hlo_text, optimized_hlo);
+}
+
 TEST_F(CudnnNormRewriterTest, LayerNormTrain2D1) {
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";

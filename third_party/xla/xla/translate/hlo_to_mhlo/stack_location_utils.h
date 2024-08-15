@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Location.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 

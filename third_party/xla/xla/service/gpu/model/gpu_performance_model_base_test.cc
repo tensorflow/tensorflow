@@ -51,7 +51,7 @@ class GpuPerformanceModelBaseTest : public HloTestBase {
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
-  GpuHloCostAnalysis analysis_{options_, &device_info_};
+  GpuHloCostAnalysis analysis_{options_, device_info_};
 
   GpuPerformanceModelBaseTest() : HloTestBase() {}
 };
@@ -241,7 +241,7 @@ ENTRY e {
   p0 = f32[16,970]{1,0} parameter(0)
   ROOT r = f32[16,970]{1,0} fusion(p0), kind=kCustom,
     calls=triton_softmax_computation,
-    backend_config={"fusion_backend_config": {kind: "__triton"}}
+    backend_config={"fusion_backend_config": {kind: "__triton","block_level_fusion_config":{"output_tile_sizes":["1","970"],"num_warps":"2"}}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,

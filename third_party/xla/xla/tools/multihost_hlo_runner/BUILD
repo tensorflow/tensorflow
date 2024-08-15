@@ -24,15 +24,16 @@ build_test(
     ],
 )
 
-xla_cc_binary(
-    name = "hlo_runner_main",
+cc_library(
+    name = "hlo_runner_main_lib",
     testonly = True,
     srcs = ["hlo_runner_main.cc"],
+    compatible_with = None,
     tags = [
-        "noasan",  # Exceeds linker limit.
         "nomac",
-    ] + tf_gpu_tests_tags(),
+    ],
     deps = [
+        ":create_client",
         ":functional_hlo_runner",
         "//xla:debug_options_flags",
         "//xla:status_macros",
@@ -57,48 +58,67 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
     ]) + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ]) + if_rocm([
+    ] + if_google(
+        [
+            "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
+        ],
+    )) + if_rocm([
         "//xla/stream_executor:rocm_platform",
     ]),
+    alwayslink = True,
+)
+
+xla_cc_binary(
+    name = "hlo_runner_main",
+    testonly = True,
+    tags = [
+        "nomac",
+    ],
+    deps = [
+        ":hlo_runner_main_lib",
+    ],
 )
 
 xla_cc_binary(
     name = "hlo_runner_main_gpu",
     testonly = True,
-    srcs = ["hlo_runner_main.cc"],
     tags = [
         "gpu",
         "nomac",
     ] + tf_gpu_tests_tags(),
     deps = [
-        ":functional_hlo_runner",
-        "//xla:debug_options_flags",
+        ":hlo_runner_main_lib",
+        "//xla/service:gpu_plugin",
+        "//xla/stream_executor:cuda_platform",
+    ] + if_google([
+        "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
+    ]),
+)
+
+cc_library(
+    name = "create_client",
+    srcs = ["create_client.cc"],
+    hdrs = ["create_client.h"],
+    deps = [
         "//xla:status_macros",
+        "//xla:xla_proto_cc",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt/cpu:cpu_client",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:service",
-        "//xla/service:cpu_plugin",
-        "//xla/service:gpu_plugin",
-        "//xla/tsl/util:command_line_flags",
+        "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda([
-        "//xla/stream_executor:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor:rocm_platform",
-    ]) + if_google([
-        "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
-    ]),
+    ],
 )
 
 cc_library(
@@ -111,6 +131,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/client:xla_computation",
@@ -120,17 +141,13 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
-        "//xla/pjrt/cpu:cpu_client",
-        "//xla/pjrt/distributed",
-        "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/distributed:service",
-        "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/service:computation_layout",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_pass_pipeline",
+        "//xla/service:hlo_proto_cc",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_control_flow_flattening",
         "@com_google_absl//absl/algorithm:container",
@@ -141,7 +158,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
@@ -176,11 +192,11 @@ xla_test(
     ],
     tags = ["nomac"],
     deps = [
+        ":create_client",
         ":functional_hlo_runner",
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/distributed:service",
         "//xla/tests:filecheck",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",

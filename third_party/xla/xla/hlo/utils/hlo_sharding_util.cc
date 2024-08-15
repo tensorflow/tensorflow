@@ -288,6 +288,11 @@ check_if_more_specific:
   return IsLeafShardingMoreSpecific(*dst, to_merge);
 }
 
+bool MergeShardingIfCompatible(const HloSharding& to_merge, HloSharding* dst) {
+  return MergeShardingIfCompatible(to_merge,
+                                   /*minimum_tiles=*/dst->NumTiles() + 1, dst);
+}
+
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst) {
   CHECK(!to_merge.IsTuple() && !to_merge.IsManual() && !dst->IsTuple() &&
@@ -953,8 +958,7 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
         }
         HloSharding ungrouped_sharding = HloSharding::PartialTile(
             sharding.tile_assignment().Transpose(perm).Reshape(reshape_dims));
-        if (MergeShardingIfCompatible(ungrouped_sharding, result.NumTiles() + 1,
-                                      &result)) {
+        if (MergeShardingIfCompatible(ungrouped_sharding, &result)) {
           // If the current interval works, we can skip all dimensions within
           // or before it in future intervals, since they have been considered
           // already. Set start_dim to end_dim to start with the next disjoint

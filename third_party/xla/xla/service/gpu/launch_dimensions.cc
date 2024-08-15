@@ -32,16 +32,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::ostream& operator<<(std::ostream& out,
-                         const LaunchDimensions& launch_dims) {
-  se::BlockDim block_counts = launch_dims.block_counts();
-  se::ThreadDim thread_counts = launch_dims.thread_counts_per_block();
-  out << absl::StrFormat("[block: {%d, %d, %d}, thread: {%d, %d, %d}]",
-                         block_counts.x, block_counts.y, block_counts.z,
-                         thread_counts.x, thread_counts.y, thread_counts.z);
-  return out;
-}
-
 static int64_t ThreadsPerBlockLimit(
     const se::DeviceDescription& gpu_device_info) {
   int64_t threads_per_block = gpu_device_info.threads_per_block_limit();

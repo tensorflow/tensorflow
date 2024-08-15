@@ -935,8 +935,7 @@ HloCollectiveInstruction::HloCollectiveInstruction(
 
 HloInstructionProto HloCollectiveInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
-  *proto.mutable_replica_groups() = {replica_groups().begin(),
-                                     replica_groups().end()};
+  *proto.mutable_collective_device_list() = device_list_.ToProto();
   proto.set_constrain_layout(constrain_layout_);
   return proto;
 }
@@ -945,8 +944,7 @@ void HloCollectiveInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
   HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
   printer.Next([this](Printer* printer) {
-    AppendCat(printer,
-              "replica_groups=", ReplicaGroupsToString(replica_groups()));
+    AppendCat(printer, "replica_groups=", device_list_.ToString());
   });
   if (constrain_layout_) {
     printer.Next(

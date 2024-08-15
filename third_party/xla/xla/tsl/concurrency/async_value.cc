@@ -92,7 +92,7 @@ void AsyncValue::NotifyAvailable(State available_state) {
 
 void AsyncValue::RunWaiters(NotifierListNode* list) {
   while (list) {
-    auto* node = list;
+    NotifierListNode* node = list;
     // TODO(chky): pass state into notification_ so that waiters do not need to
     // check atomic state again.
     node->notification_();

@@ -37,8 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/save_report.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

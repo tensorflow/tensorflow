@@ -15,28 +15,30 @@ limitations under the License.
 
 #include "xla/service/hlo_constant_folding.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_fix.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -299,6 +301,26 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Pad(m::Constant(), m::Constant())));
+}
+
+TEST_F(HloConstantFoldingTest, DoesNotFoldPadBroadcast) {
+  const char* const kConstantFoldPadBroadcast = R"(
+  HloModule ConstantFoldLargePad
+
+  ENTRY r {
+    a = f32[] constant(239)
+    broadcast_a = f32[4] broadcast(a), dimensions={}
+    b = f32[] constant(42)
+    ROOT pad = f32[8] pad(f32[4] broadcast_a, f32[] b), padding=4_0
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kConstantFoldPadBroadcast));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Pad(m::Broadcast(), m::Constant())));
 }
 
 TEST_F(HloConstantFoldingTest, DoesNotFoldSlicesWithLargeOperand) {

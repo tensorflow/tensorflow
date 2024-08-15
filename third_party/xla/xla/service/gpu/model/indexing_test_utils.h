@@ -16,16 +16,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_INDEXING_TEST_UTILS_H_
 #define XLA_SERVICE_GPU_MODEL_INDEXING_TEST_UTILS_H_
 
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string_view>
+#include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "absl/types/span.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 
@@ -33,9 +40,6 @@ namespace xla {
 namespace gpu {
 
 // Matches two strings ignoring whitespaces.
-// 'lhs' may contain regions bounded by the special pattern '###',
-// in which case, each region is parsed as a sequence of terms separated by
-// '+ signs. The function will try to match all permutations of terms.
 bool ApproximateMatch(std::string_view lhs, std::string_view rhs);
 
 MATCHER(UndefinedMap, "") { return arg.IsUndefined(); }
@@ -84,6 +88,41 @@ mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
 
 mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
                                  mlir::MLIRContext* context);
+
+// Safely evaluates the given expression, returning nullopt if the result is
+// undefined (due to undefined behavior, e.g. division by zero or overflow).
+std::optional<int64_t> SafeEvaluateAffineExpr(mlir::AffineExpr expr,
+                                              absl::Span<int64_t const> dims,
+                                              absl::Span<int64_t const> syms);
+
+// Enumerates all the points in the domain of the given indexing map: points
+// within the bounds of the dimensions and symbols that do not violate any of
+// the constraints.
+absl::Status EnumerateDomain(
+    const IndexingMap& indexing_map,
+    const std::function<absl::Status(absl::Span<int64_t const> dims,
+                                     absl::Span<int64_t const> syms)>&
+        callback);
+
+// Checks if the indexing map is a bijection: verifies that each point in the
+// expected codomain is mapped to a unique point in the domain.
+// The codomain is the output of the indexing map. For example, for an
+// input->output map for an instruction, it would be the instruction's output
+// shape.
+absl::Status VerifyBijection(const IndexingMap& indexing_map,
+                             absl::Span<Interval const> expected_codomain);
+
+// Checks that two affine expressions map to the same values for all points in
+// their domain. If `reference` is undefined at a point, the value of `other` is
+// ignored. If `other` is undefined at a point, but `reference` is not, this is
+// a failure.
+absl::Status VerifyExprsAreIdentical(
+    mlir::AffineExpr reference, mlir::AffineExpr other,
+    absl::Span<Interval const> dimension_ranges,
+    absl::Span<Interval const> symbol_ranges);
+
+// Returns the trip counts for each symbol in the indexing map.
+std::vector<int64_t> GetLoopTripCounts(const IndexingMap& indexing_map);
 
 }  // namespace gpu
 }  // namespace xla

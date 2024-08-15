@@ -29,7 +29,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -37,14 +41,24 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
+
+// Enum representing the partitioning methods for gather and scatter.
+enum class PartitioningMethod {
+  kIndexParallel,
+  kOperandPassthrough,
+  kTrivialSlicedOperand,
+  kIndexPassthrough,
+};
 
 struct SpmdPartitionerOptions {
   // Always exchange halo on LHS for all convolutions. If false, backprop filter
@@ -94,6 +108,14 @@ struct SpmdPartitionerOptions {
   // Whether disable rewrite for dots that share the same
   // operand as an already rewritten windowed einsum loop.
   bool disable_ag_rewrite_for_multiple_consumers = false;
+
+  // Partitioning method to prioritize for gather operations.
+  PartitioningMethod gather_partition_method =
+      PartitioningMethod::kIndexParallel;
+
+  // Partitioning method to prioritize for scatter operations.
+  PartitioningMethod scatter_partition_method =
+      PartitioningMethod::kIndexParallel;
 };
 
 // Class to wrap the computation builder to capture information during SPMD

@@ -20,12 +20,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -34,7 +34,7 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class ShardingSerDesTest : public test_util::ShardingTest {};
+class ShardingSerDesTest : public test_util::DeviceTest {};
 
 TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
   auto sharding = SingleDeviceSharding::Create(
@@ -138,7 +138,7 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingSerDesTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/2,
                              /*num_addressable_devices=*/2}));
 

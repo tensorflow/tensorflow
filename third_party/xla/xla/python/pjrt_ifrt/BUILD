@@ -1,6 +1,6 @@
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package_group(
@@ -70,7 +70,9 @@ tf_proto_library(
     name = "xla_host_callback_proto",
     srcs = ["xla_host_callback.proto"],
     cc_api_version = 2,
-    protodeps = ["//xla:xla_data_proto"],
+    protodeps = [
+        "//xla:xla_data_proto",
+    ] + if_google(["@com_google_protobuf//:any"]),
 )
 
 tf_proto_library(
@@ -115,9 +117,9 @@ xla_cc_test(
         ":xla_sharding_serdes",
         "//xla/hlo/ir:hlo",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:device_test_util",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
-        "//xla/python/ifrt:sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -172,7 +174,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
         "//xla/python/ifrt",
-        "//xla/python/ifrt:sharding_test_util",
+        "//xla/python/ifrt:device_test_util",
         "//xla/python/ifrt:tuple_impl_test_lib",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -211,6 +213,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":basic_string_array",
+        ":pjrt_attribute_map_util",
         ":xla_ifrt",
         "//xla:literal",
         "//xla:shape_util",
@@ -231,6 +234,7 @@ cc_library(
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:topology_util",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/service:hlo_proto_cc",
         "//xla/translate/mhlo_to_hlo:type_to_shape",

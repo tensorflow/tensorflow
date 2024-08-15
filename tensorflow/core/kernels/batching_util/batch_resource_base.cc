@@ -1242,12 +1242,16 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
                      total_cost / processed_size * batch.size());
 
     if (cost_type == kTpuCostName) {
+      // Get the model stats object for the current model name and op name.
+      ModelBatchStats& model_stats = GlobalBatchStats().model(
+          /* model_name= */ model_name, /* op_name= */ op_name);
+
       // Register TPU cost for in-process use.
-      GlobalBatchStats()
-          .model(/* model_name= */ model_name, /* op_name= */ op_name)
-          .batch_size(processed_size)
-          .tpu_cost()
-          .Register(total_cost);
+      model_stats.batch_size(processed_size).tpu_cost().Register(total_cost);
+
+      // Register cumulative size of processed non-padding jobs for in-process
+      // use.
+      model_stats.RegisterProcessedSize(batch.size());
     }
 
     for (int i = 0; i < batch.num_tasks(); i++) {

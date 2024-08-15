@@ -1,4 +1,3 @@
-#include "absl/base/attributes.h"
 /* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");

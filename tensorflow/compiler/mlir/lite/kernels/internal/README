@@ -1,2 +1,3 @@
-This folder contains compatibility_macros.h, which mirrors compatibility.h in
-lite/kernels/internal and recreates macros from there that are needed in the converter.
+This folder mirrors some files in tensorflow/lite/kernels/internal that are
+needed in the converter. They mostly have the same name, although
+compatibility_macros.h mirrors compatibility.h and op_macros.h.

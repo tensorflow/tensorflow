@@ -33,13 +33,19 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/shape_util.h"
+#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/types.h"
@@ -198,7 +204,7 @@ TEST(LegalizeMlirTest, LegalizesModuleWithDynamicShape) {
   EXPECT_TRUE(status.ok());
 }
 
-absl::StatusOr<std::unique_ptr<Graph>> BuildOpGraphWithOutputShapes() {
+absl::StatusOr<std::unique_ptr<Graph>> BuildConstOpGraphWithOutputShapes() {
   DataType data_type = DT_INT32;
   std::initializer_list<int64_t> dims = {2, 3, 4, 5};
   Tensor tensor(data_type, TensorShape(dims));
@@ -218,38 +224,87 @@ absl::StatusOr<std::unique_ptr<Graph>> BuildOpGraphWithOutputShapes() {
 
   TF_RETURN_IF_ERROR(builder.Finalize(&node));
 
-  return CreateSingleOpGraph(node, {}, {DataType::DT_INT32});
+  return CreateSingleOpGraph(node, {}, {data_type});
 }
 
-absl::Status BuildHloFromGraph(Graph& graph, bool use_output_shapes) {
+absl::StatusOr<std::unique_ptr<Graph>> BuildEmptyOpGraph(
+    std::vector<XlaCompiler::Argument>& xla_args) {
+  DataType data_type = DT_INT32;
+  XlaCompiler::Argument arg;
+  arg.type = DT_INT32;
+  arg.shape = xla::ShapeUtil::MakeShape(xla::S32, {});
+  arg.name = "arg0";
+  arg.kind = XlaCompiler::Argument::kParameter;
+  xla_args.push_back(arg);
+
+  NodeDef node;
+  auto builder = NodeDefBuilder("some_node", "Empty")
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("dtype", data_type);
+
+  TF_RETURN_IF_ERROR(builder.Finalize(&node));
+
+  return CreateSingleOpGraph(node, xla_args, {data_type});
+}
+
+absl::StatusOr<xla::XlaComputation> BuildHloFromGraph(
+    Graph& graph, std::vector<XlaCompiler::Argument>& xla_args,
+    bool use_output_shapes) {
   xla::XlaBuilder builder(
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
   mlir::MLIRContext mlir_context;
   llvm::SmallVector<xla::XlaOp, 4> xla_params;
+  for (int i = 0; i < xla_args.size(); ++i) {
+    xla_params.push_back(Parameter(&builder, i, std::get<1>(xla_args[i].shape),
+                                   "arg" + std::to_string(i)));
+  }
   std::vector<xla::XlaOp> returns(1);
-  return BuildHloFromGraph(graph, builder, mlir_context, xla_params, returns,
-                           use_output_shapes, /*args=*/{},
-                           /*control_rets=*/{}, DEVICE_TPU,
-                           FunctionLibraryDefinition(OpRegistry::Global()),
-                           /*debug_info=*/{},
-                           /*custom_legalization_passes=*/{});
+  TF_RETURN_IF_ERROR(
+      BuildHloFromGraph(graph, builder, mlir_context, xla_params, returns,
+                        use_output_shapes, xla_args,
+                        /*control_rets=*/{}, DEVICE_TPU,
+                        FunctionLibraryDefinition(OpRegistry::Global()),
+                        /*debug_info=*/{}));
+  return builder.Build();
 }
 
 TEST(CompileMlirUtil, UsesCorrectOriginalShapeWithoutOutputShapes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto graph, BuildOpGraphWithOutputShapes());
+  std::vector<XlaCompiler::Argument> xla_args;
+  // Build a graph with an op that is supported by the MLIR lowerings.
+  TF_ASSERT_OK_AND_ASSIGN(auto graph, BuildConstOpGraphWithOutputShapes());
 
-  auto build_result = BuildHloFromGraph(*graph, /*use_output_shapes=*/false);
+  auto build_result =
+      BuildHloFromGraph(*graph, xla_args, /*use_output_shapes=*/false);
+
   TF_ASSERT_OK(build_result);
+  EXPECT_THAT(build_result,
+              XlaComputationProtoContains("opcode: \"constant\""));
 }
 
 TEST(CompileMlirUtil, UsesIncorrectOutputShapesWhenPresent) {
-  TF_ASSERT_OK_AND_ASSIGN(auto graph, BuildOpGraphWithOutputShapes());
+  std::vector<XlaCompiler::Argument> xla_args;
+  TF_ASSERT_OK_AND_ASSIGN(auto graph, BuildConstOpGraphWithOutputShapes());
 
-  auto build_result = BuildHloFromGraph(*graph, /*use_output_shapes=*/true);
+  auto build_result =
+      BuildHloFromGraph(*graph, xla_args, /*use_output_shapes=*/true);
+
   ASSERT_FALSE(build_result.ok());
-  EXPECT_THAT(build_result.message(),
+  EXPECT_THAT(build_result.status().message(),
               HasSubstr("op operand type 'tensor<2x3x4x5xi32>' and result type "
                         "'tensor<1xi32>' are cast incompatible"));
+}
+
+TEST(CompileMlirUtil, DoesNotLowerFallbackOps) {
+  std::vector<XlaCompiler::Argument> xla_args;
+  // Build a graph with an op that is not supported by the MLIR lowerings.
+  TF_ASSERT_OK_AND_ASSIGN(auto graph, BuildEmptyOpGraph(xla_args));
+
+  auto build_result =
+      BuildHloFromGraph(*graph, xla_args, /*use_output_shapes=*/true);
+
+  ASSERT_FALSE(build_result.ok());
+  EXPECT_THAT(build_result.status().message(),
+              HasSubstr("'tf.Empty' op unsupported op"));
 }
 
 }  // namespace

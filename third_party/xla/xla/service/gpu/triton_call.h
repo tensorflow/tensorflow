@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 
 namespace xla::gpu {
 

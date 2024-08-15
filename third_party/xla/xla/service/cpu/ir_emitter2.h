@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_EMITTER2_H_
 #define XLA_SERVICE_CPU_IR_EMITTER2_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -24,17 +23,21 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
@@ -62,6 +65,14 @@ class IrEmitter2 {
   IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
              IrEmitter* nested_ir_emitter);
 
+  // Kernel parameter (argument or result buffer) passed to a kernel function.
+  // We rely on buffer allocation slice information to infer buffer aliasing
+  // scopes for LLVM codegen.
+  struct KernelParameter {
+    Shape shape;
+    BufferAllocation::Slice slice;
+  };
+
   // Thread dimensions of the kernel invocation.
   struct KernelThreadDims {
     llvm::Value* x;
@@ -80,6 +91,7 @@ class IrEmitter2 {
   // to emit the actual kernel body.
   struct KernelPrototype {
     llvm::Function* function;
+    llvm::BasicBlock* return_block;
 
     // LLVM values identifying kernel invocation thread coordinates.
     KernelThreadDims thread_dims;
@@ -99,12 +111,22 @@ class IrEmitter2 {
     se::ThreadDim thread_dims;
   };
 
+  // Emitted comparator function information (for sort operation).
+  struct ComparatorInfo {
+    std::string name;
+  };
+
   // Returns all the kernels emitted so far via this emitter.
   absl::Span<const KernelInfo> kernels() const { return kernels_; }
+
+  absl::Span<const ComparatorInfo> comparators() const { return comparators_; }
 
   // Emits an elemental host kernel for the given HLO instruction.
   absl::StatusOr<KernelInfo> EmitElementalHostKernel(
       const HloInstruction* instr);
+
+  // Emits a host kernel for the pad instruction.
+  absl::StatusOr<KernelInfo> EmitPadHostKernel(const HloInstruction* pad);
 
   // Emits a host kernel for the given fusion instruction.
   absl::StatusOr<KernelInfo> EmitFusionHostKernel(
@@ -119,18 +141,39 @@ class IrEmitter2 {
   // thunk that calls into libraries.
   absl::StatusOr<KernelInfo> EmitDotHostKernel(const HloInstruction* instr);
 
+  // Emits a host kernel for the given concatenate instruction.
+  absl::StatusOr<KernelInfo> EmitConcatenateHostKernel(
+      const HloInstruction* instr);
+
   // Emits a host kernel for the given dot fusion instruction (output fusion).
   absl::StatusOr<KernelInfo> EmitDotFusionHostKernel(
       const HloFusionInstruction* fusion);
 
+  // Emits a host kernel for the given slice-to-dynamic instruction.
+  absl::StatusOr<KernelInfo> EmitSliceToDynamicHostKernel(
+      const HloInstruction* instr);
+
+  // Emits a host kernel for the given select-and-scatter instruction.
+  absl::StatusOr<KernelInfo> EmitSelectAndScatterHostKernel(
+      const HloInstruction* instr);
+
+  // Emits a host kernel for the given dynamic-update-slice instruction.
+  absl::StatusOr<KernelInfo> EmitDynamicUpdateSliceHostKernel(
+      const HloInstruction* instr);
+
+  // Emits a comparator function for the given sort instruction.
+  absl::StatusOr<ComparatorInfo> EmitSortComparator(
+      const HloInstruction* instr);
+
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
-  KernelPrototype EmitKernelPrototype(std::string_view name,
-                                      absl::Span<const Shape> arguments,
-                                      absl::Span<const Shape> results);
+  absl::StatusOr<KernelPrototype> EmitKernelPrototype(
+      std::string_view name, absl::Span<const KernelParameter> arguments,
+      absl::Span<const KernelParameter> results);
 
   // Emits a host kernel prototype for the given HLO instruction.
-  KernelPrototype EmitKernelPrototype(const HloInstruction* instr);
+  absl::StatusOr<KernelPrototype> EmitKernelPrototype(
+      const HloInstruction* instr);
 
  private:
   class ElementalIrEmitter;
@@ -147,6 +190,24 @@ class IrEmitter2 {
     std::vector<int64_t> outer_dimension_partitions;
   };
 
+  // Returns the buffer allocation slice assigned to the given instruction at
+  // the given shape index. Instruction must have a unique slice assigned to it!
+  absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+      const HloInstruction* instruction, const ShapeIndex& index = {});
+
+  // We do not materialize buffers for tuples at run time, and work only with
+  // leaf arrays. These are the helper functions to flatten HLO instruction
+  // parameters and results into a list of leaf shapes.
+  absl::StatusOr<std::vector<KernelParameter>> GetKernelArgumentsParameters(
+      const HloInstruction* instruction);
+  absl::StatusOr<std::vector<KernelParameter>> GetKernelResultsParameters(
+      const HloInstruction* instruction);
+
+  // Verifies kernel parameters preconditions that are required for codegen.
+  absl::Status VerifyKernelParameters(
+      absl::Span<const KernelParameter> arguments,
+      absl::Span<const KernelParameter> results);
+
   KernelThreadDims EmitKernelThreadDims(llvm::IRBuilder<>& b,
                                         llvm::Value* call_frame);
 
@@ -159,6 +220,8 @@ class IrEmitter2 {
   // Returns parallel config for the given instruction or std::nullopt if
   // the instruction has to be compiled to a single threaded loop.
   std::optional<ParallelConfig> GetParallelConfig(const HloInstruction* instr);
+
+  absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) const;
 
   // Emits LLVM IR that computes parallel partition bounds from the call frame's
   // block and thread dimensions and parallel execution config.
@@ -190,8 +253,9 @@ class IrEmitter2 {
   llvm::StructType* thread_ty_;
   llvm::StructType* arg_ty_;
 
-  // Keeps track of all the kernels emitted so far.
+  // Keeps track of all the functions emitted so far.
   std::vector<KernelInfo> kernels_;
+  std::vector<ComparatorInfo> comparators_;
 };
 
 }  // namespace xla::cpu

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -966,10 +967,6 @@ std::string HloComputation::ToString(
   return std::move(printer).ToString();
 }
 
-absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
-  return ToCord(options, MakeInstructionPostOrder());
-}
-
 absl::Cord HloComputation::ToCord(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
@@ -1748,6 +1745,10 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
 
 void HloComputation::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
+}
+
+void HloComputation::UniquifyName(HloModule* module) {
+  UniquifyName(&module->computation_name_uniquer());
 }
 
 HloInstruction* HloComputation::GetInstructionWithName(absl::string_view name) {

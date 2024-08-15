@@ -259,8 +259,10 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   }
   if (options.generate_step_db) {
     if (is_tpu) {
+      // TPU steps relies on step number in step line in Xplane which has
+      // already dropped the incomplete steps at both beginning and end.
       *op_stats.mutable_step_db() = ConvertStepEventsToStepDb(
-          has_device, options.maybe_drop_incomplete_steps, step_events);
+          has_device, /*maybe_drop_incomplete_steps=*/false, step_events);
       *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
           ComputePrecisionStats(step_events);
     } else {

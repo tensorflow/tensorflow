@@ -78,22 +78,17 @@ limitations under the License.
 #undef PCHECK
 
 namespace tsl {
-const int INFO = 0;            // base_logging::INFO;
-const int WARNING = 1;         // base_logging::WARNING;
-const int ERROR = 2;           // base_logging::ERROR;
-const int FATAL = 3;           // base_logging::FATAL;
-const int NUM_SEVERITIES = 4;  // base_logging::NUM_SEVERITIES;
 
 namespace internal {
 
 // Emit "message" as a log message to the log for the specified
 // "severity" as if it came from a LOG call at "fname:line"
-void LogString(const char* fname, int line, int severity,
+void LogString(const char* fname, int line, absl::LogSeverity severity,
                const std::string& message);
 
 class LogMessage : public std::basic_ostringstream<char> {
  public:
-  LogMessage(const char* fname, int line, int severity);
+  LogMessage(const char* fname, int line, absl::LogSeverity severity);
   ~LogMessage() override;
 
   // Change the location of the log message.
@@ -102,7 +97,7 @@ class LogMessage : public std::basic_ostringstream<char> {
   // Returns the maximum log level for VLOG statements.
   // E.g., if MaxVLogLevel() is 2, then VLOG(2) statements will produce output,
   // but VLOG(3) will not. Defaults to 0.
-  static int64_t MaxVLogLevel();
+  static int MaxVLogLevel();
 
   // Returns whether VLOG level lvl is activated for the file fname.
   //
@@ -121,7 +116,7 @@ class LogMessage : public std::basic_ostringstream<char> {
  private:
   const char* fname_;
   int line_;
-  int severity_;
+  absl::LogSeverity severity_;
 };
 
 // Uses the lower operator & precedence to voidify a LogMessage reference, so
@@ -142,16 +137,16 @@ class LogMessageFatal : public LogMessage {
 // LogMessageNull supports the DVLOG macro by simply dropping any log messages.
 class LogMessageNull : public std::basic_ostringstream<char> {
  public:
-  LogMessageNull() {}
+  LogMessageNull() = default;
   ~LogMessageNull() override {}
 };
 
 #define _TF_LOG_INFO \
-  ::tsl::internal::LogMessage(__FILE__, __LINE__, ::tsl::INFO)
+  ::tsl::internal::LogMessage(__FILE__, __LINE__, absl::LogSeverity::kInfo)
 #define _TF_LOG_WARNING \
-  ::tsl::internal::LogMessage(__FILE__, __LINE__, ::tsl::WARNING)
+  ::tsl::internal::LogMessage(__FILE__, __LINE__, absl::LogSeverity::kWarning)
 #define _TF_LOG_ERROR \
-  ::tsl::internal::LogMessage(__FILE__, __LINE__, ::tsl::ERROR)
+  ::tsl::internal::LogMessage(__FILE__, __LINE__, absl::LogSeverity::kError)
 #define _TF_LOG_FATAL ::tsl::internal::LogMessageFatal(__FILE__, __LINE__)
 
 #define _TF_LOG_QFATAL _TF_LOG_FATAL
@@ -183,11 +178,12 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 
 #endif
 
-#define VLOG(level)                   \
-  TF_PREDICT_TRUE(!VLOG_IS_ON(level)) \
-  ? (void)0                           \
-  : ::tsl::internal::Voidifier() &    \
-          ::tsl::internal::LogMessage(__FILE__, __LINE__, tsl::INFO)
+#define VLOG(level)                                       \
+  TF_PREDICT_TRUE(!VLOG_IS_ON(level))                     \
+  ? (void)0                                               \
+  : ::tsl::internal::Voidifier() &                        \
+          ::tsl::internal::LogMessage(__FILE__, __LINE__, \
+                                      absl::LogSeverity::kInfo)
 
 // `DVLOG` behaves like `VLOG` in debug mode (i.e. `#ifndef NDEBUG`).
 // Otherwise, it compiles away and does nothing.
@@ -555,9 +551,9 @@ T&& CheckNotNull(const char* file, int line, const char* exprtext, T&& t) {
   return std::forward<T>(t);
 }
 
-int64_t MinLogLevelFromEnv();
+absl::LogSeverityAtLeast MinLogLevelFromEnv();
 
-int64_t MaxVLogLevelFromEnv();
+int MaxVLogLevelFromEnv();
 
 }  // namespace internal
 
@@ -568,20 +564,13 @@ int64_t MaxVLogLevelFromEnv();
 // instance will be called from whichever thread is performing a logging
 // operation.
 class TFLogEntry {
-  static absl::LogSeverity AsAbslLogSeverity(int severity) {
-    return static_cast<absl::LogSeverity>(severity);
-  }
-
  public:
-  explicit TFLogEntry(int severity, absl::string_view message)
-      : severity_(AsAbslLogSeverity(severity)), message_(message) {}
+  explicit TFLogEntry(absl::LogSeverity severity, absl::string_view message)
+      : severity_(severity), message_(message) {}
 
-  explicit TFLogEntry(int severity, absl::string_view fname, int line,
-                      absl::string_view message)
-      : severity_(AsAbslLogSeverity(severity)),
-        fname_(fname),
-        line_(line),
-        message_(message) {}
+  explicit TFLogEntry(absl::LogSeverity severity, absl::string_view fname,
+                      int line, absl::string_view message)
+      : severity_(severity), fname_(fname), line_(line), message_(message) {}
 
   absl::LogSeverity log_severity() const { return severity_; }
   std::string FName() const { return fname_; }

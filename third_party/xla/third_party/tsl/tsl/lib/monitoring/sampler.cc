@@ -17,7 +17,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tsl/platform/platform.h"
+#include "absl/log/check.h"
 // clang-format on
 
 // We replace this implementation with a null implementation for mobile

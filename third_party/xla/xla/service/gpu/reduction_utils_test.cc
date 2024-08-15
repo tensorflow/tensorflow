@@ -25,6 +25,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
+
 using ReductionUtilsTest = HloTestBase;
 
 const char kModulePrefix[] = R"(
@@ -184,6 +186,14 @@ TEST_F(ReductionUtilsTest,
   const HloInstruction* fusion2 = root->operand(1);
   EXPECT_FALSE(AreReductionsMultiOutputFusionCompatible(
       fusion1->fused_expression_root(), fusion2->fused_expression_root()));
+}
+
+TEST(ReductionDimensionsTest, GetOutputShape) {
+  ReductionDimensions row_reduction{/*is_row_reduction=*/true, {1, 2, 3}};
+  ReductionDimensions col_reduction{/*is_row_reduction=*/false, {1, 2, 3}};
+
+  EXPECT_THAT(row_reduction.GetOutputShape(), ElementsAre(2));
+  EXPECT_THAT(col_reduction.GetOutputShape(), ElementsAre(1, 3));
 }
 
 }  // namespace

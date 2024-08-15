@@ -247,13 +247,9 @@ bool WeightCacheBuilder::Start(const char* path) {
   }
 
   // Write data in the header, this will be overwritten in the `Finalize` call.
-  const XNNPackCacheHeader header{
-      // We explicitly set the header as invalid. If any error happens during
-      // the build, reloading the cache file will fail.
-      .version = XNNPackCacheHeader::kInvalidHeader,
-      .buffer_list_offset = 0,
-      .buffer_list_size = 0,
-  };
+  // We explicitly set the header as invalid. If any error happens during
+  // the build, reloading the cache file will fail.
+  const XNNPackCacheHeader header{XNNPackCacheHeader::kInvalidHeader};
 
   if (!WriteData(fd_, (const uint8_t*)&header, sizeof(header),
                  file_path_.c_str(), "padding for flatbuffer offset")) {
@@ -298,13 +294,15 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
     return BufferLocation{};
   }
 
-  BufferLocation loc{.offset = offset - schema_.base_offset, .size = size};
-  schema_.buffers.push_back(std::make_unique<cache::schema::BufferT>(
-      cache::schema::BufferT{.packing_algorithm_id = pack_id.pack_algorithm_id,
-                             .weights_id = pack_id.weights_id,
-                             .bias_id = pack_id.bias_id,
-                             .offset = loc.offset,
-                             .size = loc.size}));
+  BufferLocation loc{/*offset=*/offset - schema_.base_offset, /*size=*/size};
+  cache::schema::BufferT buffer;
+  buffer.packing_algorithm_id = pack_id.pack_algorithm_id;
+  buffer.weights_id = pack_id.weights_id;
+  buffer.bias_id = pack_id.bias_id;
+  buffer.offset = loc.offset;
+  buffer.size = loc.size;
+  schema_.buffers.push_back(std::make_unique<cache::schema::BufferT>(buffer));
+
   WriteData(fd_, reinterpret_cast<const uint8_t*>(data), size,
             file_path_.c_str(), "Append buffer to cache file");
   return loc;
@@ -513,10 +511,10 @@ bool MMapWeightCacheProvider::Load() {
         return false;
       }
       cache_key_to_offset_.emplace(
-          PackIdentifier{.pack_algorithm_id = buffer->packing_algorithm_id(),
-                         .weights_id = buffer->weights_id(),
-                         .bias_id = buffer->bias_id()},
-          BufferLocation{.offset = buffer->offset(), .size = buffer->size()});
+          PackIdentifier{/*pack_algorithm_id=*/buffer->packing_algorithm_id(),
+                         /*weights_id=*/buffer->weights_id(),
+                         /*bias_id=*/buffer->bias_id()},
+          BufferLocation{/*offset=*/buffer->offset(), /*size=*/buffer->size()});
     }
   }
 
@@ -653,9 +651,9 @@ PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
     }
     return PackIdentifier::kNoId;
   };
-  return PackIdentifier{.pack_algorithm_id = key.seed,
-                        .weights_id = get_buffer_id(key.kernel),
-                        .bias_id = get_buffer_id(key.bias)};
+  return PackIdentifier{/*pack_algorithm_id=*/key.seed,
+                        /*weights_id=*/get_buffer_id(key.kernel),
+                        /*bias_id=*/get_buffer_id(key.bias)};
 }
 
 }  // namespace tflite::xnnpack

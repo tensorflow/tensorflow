@@ -1,8 +1,8 @@
-build --action_env CLANG_COMPILER_PATH=/usr/lib/llvm-17/bin/clang
-build --repo_env CC=/usr/lib/llvm-17/bin/clang
-build --repo_env BAZEL_COMPILER=/usr/lib/llvm-17/bin/clang
+build --action_env CLANG_COMPILER_PATH=/usr/lib/llvm-18/bin/clang
+build --repo_env CC=/usr/lib/llvm-18/bin/clang
+build --repo_env BAZEL_COMPILER=/usr/lib/llvm-18/bin/clang
 build --config nvcc_clang
-build --action_env CLANG_CUDA_COMPILER_PATH=/usr/lib/llvm-17/bin/clang
+build --action_env CLANG_CUDA_COMPILER_PATH=/usr/lib/llvm-18/bin/clang
 build --action_env CUDA_TOOLKIT_PATH=/usr/local/cuda-12.2
 build --action_env TF_CUBLAS_VERSION=12.3
 build --action_env TF_CUDA_COMPUTE_CAPABILITIES=7.5

@@ -31,8 +31,10 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_protobuf//:protobuf",
         "@flatbuffers",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -50,16 +52,18 @@ cc_test(
     deps = [
         ":signature_def_util",
         "//tensorflow/cc/saved_model:signature_constants",
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -74,9 +78,11 @@ pybind_extension(
     enable_stub_generation = True,
     deps = [
         ":signature_def_util",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/status",
         "@pybind11",
     ],
 )

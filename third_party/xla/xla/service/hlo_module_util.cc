@@ -132,6 +132,8 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
         execution_options->alias_passthrough_params());
     *config->mutable_fdo_profile() = execution_options->fdo_profile();
     config->set_device_memory_size(execution_options->device_memory_size());
+    config->set_use_shardy_partitioner(
+        execution_options->use_shardy_partitioner());
   } else {
     config->set_replica_count(default_num_replicas);
     config->set_debug_options(GetDebugOptionsFromFlags());

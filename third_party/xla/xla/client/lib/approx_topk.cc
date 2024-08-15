@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/approx_topk_shape.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"

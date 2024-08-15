@@ -22,8 +22,22 @@ import "xla/service/hlo.proto";
 import "xla/xla.proto";
 
 message CompilationResultProto {
+  enum ObjFileKind {
+    UNKNOWN = 0;
+
+    // Object file contains a single entry function that implements the XLA
+    // computation. This is the mode for legacy XLA:CPU backends where we
+    // compile HLO module to a single LLVM function.
+    CLASSIC = 1;
+
+    // Object file contains a set of host kernel functions that are loaded by
+    // the XLA:CPU runtime and instantiated as a ThunkSequence.
+    KERNELS = 2;
+  }
+
   HloModuleProtoWithConfig hlo_module = 1;
   BufferAssignmentProto buffer_assignment = 2;
   string entry_function_name = 3;
   bytes obj_file = 4;
+  ObjFileKind obj_file_kind = 5;
 }

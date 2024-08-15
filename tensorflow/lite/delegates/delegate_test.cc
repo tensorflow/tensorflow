@@ -23,8 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -33,11 +35,10 @@ limitations under the License.
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -448,7 +449,7 @@ struct OpaqueTestDelegate {
     delegate_state->delegate_prepared = true;
 
     TfLiteRegistration registration{};
-    registration.registration_external = TfLiteOperatorCreateWithData(
+    registration.registration_external = TfLiteOperatorCreate(
         kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel", 1,
         /*user_data=*/nullptr);
 
@@ -1133,7 +1134,7 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
 };
 
 TfLiteOperator* CreateTfLiteOperator() {
-  auto* registration = TfLiteOperatorCreateWithData(
+  auto* registration = TfLiteOperatorCreate(
       kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1, /*user_data=*/nullptr);
   TfLiteOperatorSetPrepareWithData(
       registration,

@@ -218,6 +218,7 @@ cc_library(
     hdrs = ["host_offload_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_visitor",
@@ -225,6 +226,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/profiler/utils:timespan",
         "@local_xla//xla:shape_util",
     ],

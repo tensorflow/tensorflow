@@ -329,6 +329,7 @@ struct FusedMHABackwardOp {
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
     FMHAMaskKind mask_type;
+    bool force_deterministic;
   };
 
   static absl::StatusOr<
@@ -345,7 +346,7 @@ struct FusedMHABackwardOp {
         config.d_bmm2_rhs_descriptor, config.d_s_descriptor,
         config.d_bias_descriptor, config.fwd_output_descriptor,
         config.bias_descriptor, config.scale, config.dropout_rate, config.seed,
-        config.mask_type);
+        config.mask_type, config.force_deterministic);
   }
 };
 

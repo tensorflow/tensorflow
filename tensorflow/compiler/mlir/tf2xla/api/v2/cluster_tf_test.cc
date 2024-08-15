@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/testing/utils.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -49,11 +50,7 @@ using ::mlir::OwningOpRef;
 using ::mlir::WalkResult;
 using ::mlir::func::FuncOp;
 using ::tensorflow::monitoring::testing::CellReader;
-
-std::string TestDataPath() {
-  return tensorflow::GetDataDependencyFilepath(
-      "tensorflow/compiler/mlir/tf2xla/api/v2/testdata/");
-}
+using ::tensorflow::tf2xla::v2::testing::TestDataPath;
 
 static constexpr char kCompilationStreamz[] =
     "/tensorflow/core/tf_mlir_bridge_first_phase_v2_count";

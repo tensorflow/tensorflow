@@ -206,7 +206,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   auto cmd_buffer = TraceCommandBufferFactory::Create(
       executor,
       [&](Stream* stream) {
-        return executor->Launch(stream, ThreadDim(), BlockDim(4), *add, args);
+        return stream->Launch(ThreadDim(), BlockDim(4), *add, args);
       },
       primary);
 

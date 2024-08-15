@@ -24,12 +24,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/python/ifrt/sharding_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -45,11 +45,11 @@ using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class SingleDeviceShardingTest : public test_util::ShardingTest {};
-class OpaqueShardingTest : public test_util::ShardingTest {};
-class ConcreteShardingTest : public test_util::ShardingTest {};
-class ConcreteEvenShardingTest : public test_util::ShardingTest {};
-class ShardingParamShardingTest : public test_util::ShardingTest {};
+class SingleDeviceShardingTest : public test_util::DeviceTest {};
+class OpaqueShardingTest : public test_util::DeviceTest {};
+class ConcreteShardingTest : public test_util::DeviceTest {};
+class ConcreteEvenShardingTest : public test_util::DeviceTest {};
+class ShardingParamShardingTest : public test_util::DeviceTest {};
 
 TEST_P(SingleDeviceShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0});
@@ -817,23 +817,23 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, SingleDeviceShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
                              /*num_addressable_devices=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, OpaqueShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
                              /*num_addressable_devices=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ConcreteShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
                              /*num_addressable_devices=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ConcreteEvenShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
                              /*num_addressable_devices=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingParamShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
                              /*num_addressable_devices=*/4}));
 

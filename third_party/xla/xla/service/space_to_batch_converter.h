@@ -31,7 +31,6 @@ struct SpaceToBatchController {
   bool enable_propagations_on_trivial_window_dilations;
   bool disable_starting_on_small_chains;
   int64_t limit_on_batch_size;
-  bool enable_propagations_on_dots = false;
   int64_t dimension_from_end_to_convert = 1;
   // We choose the new batch size to be number_of_splits times that of the old
   // batch so that space-to-batch propagation through several convolutional
@@ -46,8 +45,6 @@ enum class SpaceToBatchDimMap : uint8_t {
   kFeature = 1,
   kSpace0 = 2,
 };
-
-inline constexpr int64_t NumMappedDims() { return 3; }
 
 // A pass which rewrites convolutions such that space dimension is turned into
 // batch.

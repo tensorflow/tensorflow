@@ -21,6 +21,7 @@ package_group(
         "//learning/brain/tfrt/mlir/mlrt/application/pathways/compiler/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        "//smartass/brain/util/...",
     ]),
 )
 

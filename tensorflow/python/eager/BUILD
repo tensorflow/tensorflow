@@ -207,6 +207,7 @@ py_strict_library(
     srcs = ["context.py"],
     srcs_version = "PY3",
     visibility = [
+        "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
         "//third_party/py/jax_tpu_embedding:__subpackages__",
     ],

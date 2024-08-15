@@ -77,7 +77,7 @@ TEST(UtilTest, VectorString) {
 
 TEST(UtilTest, LogLines) {
   // Just make sure this code runs (not verifying the output).
-  LogLines(tsl::INFO, "hello\n\nworld", __FILE__, __LINE__);
+  LogLines(absl::LogSeverity::kInfo, "hello\n\nworld", __FILE__, __LINE__);
 }
 
 TEST(UtilTest, CommonFactors) {

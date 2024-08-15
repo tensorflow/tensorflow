@@ -48,8 +48,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -495,19 +497,6 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
 
-#define RETURN_IF_CUDA_ERROR(expr)                                            \
-  do {                                                                        \
-    CUresult _status = expr;                                                  \
-    if (!ABSL_PREDICT_TRUE(_status == CUDA_SUCCESS)) {                        \
-      const char* error_string;                                               \
-      cuGetErrorString(_status, &error_string);                               \
-      std::ostringstream oss;                                                 \
-      oss << error_string << "\nin " << __FILE__ << "(" << __LINE__ << "): '" \
-          << #expr << "'";                                                    \
-      return absl::UnknownError(oss.str().c_str());                           \
-    }                                                                         \
-  } while (false)
-
 static absl::StatusOr<std::string> FindNvlinkExecutable(
     std::string_view preferred_cuda_dir) {
   static constexpr ToolVersion kMinimumNvlinkVersion{11, 8, 0};
@@ -528,6 +517,7 @@ absl::StatusOr<ToolVersion> GetNvLinkVersion(
 }
 
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
+    stream_executor::CudaComputeCapability cc,
     std::string_view preferred_cuda_dir, gpu::GpuContext* context,
     std::vector<CubinOrPTXImage> images) {
   LOG_FIRST_N(INFO, 1) << "Using nvlink for parallel linking";
@@ -562,17 +552,10 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     // produce TF error.
     tsl::Env::Default()->DeleteFile(output_path).IgnoreError();
   };
-  int cc_major;
-  int cc_minor;
-  {
-    TF_ASSIGN_OR_RETURN(auto cu_device,
-                        gpu::GpuDriver::DeviceFromContext(context));
-    TF_RETURN_IF_ERROR(
-        gpu::GpuDriver::GetComputeCapability(&cc_major, &cc_minor, cu_device));
-  }
   std::vector<std::string> args;
   args.push_back(bin_path);
-  args.push_back(absl::StrCat("-arch=sm_", cc_major, cc_minor));
+  std::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  args.push_back(absl::StrCat("-arch=sm_", cc.major, cc.minor, extension));
   for (int i = 0; i < images.size(); i++) {
     args.push_back(temp_files[i]);
   }
@@ -611,27 +594,50 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 }
 
 absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
-    gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
+    stream_executor::CudaComputeCapability cc, gpu::GpuContext* context,
+    std::vector<CubinOrPTXImage> images) {
   gpu::ScopedActivateContext activation(context);
 
   CUlinkState link_state;
-  RETURN_IF_CUDA_ERROR(cuLinkCreate(0, nullptr, nullptr, &link_state));
+  CUjit_option options[] = {CU_JIT_TARGET};
+  CUjit_target target = static_cast<CUjit_target>(cc.major * 10 + cc.minor);
+#if CUDA_VERSION >= 12000
+  // Even though CUDA 11.8 has Hopper support, SM 9.0a and most Hopper features
+  // (WGMMA, TMA, and more) are only supported in CUDA 12+.
+  if (cc.major == 9 && cc.minor == 0) {
+    target =
+        static_cast<CUjit_target>(target + CU_COMPUTE_ACCELERATED_TARGET_BASE);
+  }
+#endif
+  void* option_values[] = {
+      // We first cast to an integer type the same size as a pointer, and then
+      // we reinterpret that integer as a pointer.
+      reinterpret_cast<void*>(static_cast<std::ptrdiff_t>(target))};
+
+  // Both arrays must have the same number of elements.
+  static_assert(sizeof(options) / sizeof(options[0]) ==
+                sizeof(option_values) / sizeof(option_values[0]));
+
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuLinkCreate(sizeof(options) / sizeof(options[0]), options,
+                                  option_values, &link_state)));
   for (auto& image : images) {
-    auto status = cuLinkAddData(link_state, CU_JIT_INPUT_CUBIN,
-                                static_cast<void*>(image.bytes.data()),
-                                image.bytes.size(), "", 0, nullptr, nullptr);
-    if (status != CUDA_SUCCESS) {
+    auto status = cuda::ToStatus(cuLinkAddData(
+        link_state, CU_JIT_INPUT_CUBIN, static_cast<void*>(image.bytes.data()),
+        image.bytes.size(), "", 0, nullptr, nullptr));
+    if (!status.ok()) {
       LOG(ERROR) << "cuLinkAddData fails. This is usually caused by stale "
                     "driver version.";
+      return status;
     }
-    RETURN_IF_CUDA_ERROR(status);
   }
   void* cubin_out;
   size_t cubin_size;
-  RETURN_IF_CUDA_ERROR(cuLinkComplete(link_state, &cubin_out, &cubin_size));
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuLinkComplete(link_state, &cubin_out, &cubin_size)));
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
                              static_cast<uint8_t*>(cubin_out) + cubin_size);
-  RETURN_IF_CUDA_ERROR(cuLinkDestroy(link_state));
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuLinkDestroy(link_state)));
   return std::move(cubin);
 }
 

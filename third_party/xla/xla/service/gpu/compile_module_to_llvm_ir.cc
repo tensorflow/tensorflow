@@ -36,11 +36,11 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -183,7 +183,16 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                     .xla_gpu_enable_nccl_user_buffers()
                 ? CollectiveColorer()
                 : BufferAssigner::DefaultColorer(),
-            /*must_not_live_out=*/{}, can_share_buffer_function));
+            /*must_not_live_out=*/{},
+            /*can_share_buffer*/ can_share_buffer_function,
+            /*preset_assignments*/ {},
+            /*private_stack*/ {}, /*heap_buffer_interval_compare*/ nullptr,
+            /*isolation_options*/ std::nullopt,
+            hlo_module->config()
+                    .debug_options()
+                    .xla_gpu_temp_buffer_use_separate_color()
+                ? std::optional<BufferValue::Color>(kTempBufferMemorySpaceColor)
+                : std::nullopt));
   }
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
           << results.buffer_assignment->GetStats().ToString();

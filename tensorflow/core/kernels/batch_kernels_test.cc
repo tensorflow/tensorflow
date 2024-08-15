@@ -139,6 +139,7 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
                            .Attr("low_priority_max_enqueued_batches",
                                  enable_low_priority_queue ? 2 : 0)
                            .Attr("mixed_priority_policy", mixed_priority_policy)
+                           .Attr("batch_padding_policy", "PAD_UP")
                            .Attr("Tin", {DataType::DT_INT64})
                            .Input(inputs)
                            .Attr("Tcaptured", std::vector<DataType>{})
@@ -609,6 +610,7 @@ class BatchFunctionKernelParallelWarmupTestState
                            .Attr("low_priority_batch_timeout_micros", 8000)
                            .Attr("low_priority_allowed_batch_sizes", {32, 64})
                            .Attr("low_priority_max_enqueued_batches", 1000)
+                           .Attr("batch_padding_policy", "PAD_UP")
                            .Attr("Tin", {DataType::DT_INT64})
                            .Input(inputs)
                            .Attr("Tcaptured", std::vector<DataType>{})

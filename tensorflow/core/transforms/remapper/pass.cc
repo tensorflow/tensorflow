@@ -20,12 +20,21 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/PDL/IR/PDL.h"  // from @llvm-project
 #include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/core/framework/types.h"
@@ -34,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/transforms/remapper/remapping_helper.h"
 #include "tensorflow/core/transforms/utils/pdll/utils.h"
 #include "tensorflow/core/transforms/utils/utils.h"
-#include "tensorflow/core/util/util.h"
 
 namespace mlir {
 namespace tfg {

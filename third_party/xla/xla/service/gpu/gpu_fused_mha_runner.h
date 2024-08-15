@@ -100,6 +100,7 @@ struct GpufMHABackwardDescriptor {
   std::optional<Shape> mask_shape;
   std::optional<Shape> d_bias_shape;
   std::optional<Shape> bias_shape;
+  bool force_deterministic;
 };
 
 // Structure to describe static properties of a GPU fused Multi-Headed
@@ -166,6 +167,7 @@ struct GpufMHABackwardConfig {
   std::optional<se::dnn::TensorDescriptor> d_bias;
   std::optional<se::dnn::TensorDescriptor> fwd_output;
   std::optional<se::dnn::TensorDescriptor> bias;
+  bool force_deterministic;
 };
 
 // Implementation struct exposed for debugging and log analysis.

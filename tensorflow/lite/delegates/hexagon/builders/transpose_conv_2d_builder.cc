@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <limits>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
-#include "tensorflow/lite/delegates/hexagon/hexagon_nn/hexagon_nn.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/delegates/hexagon/builders/conv_2d_builder.h"
+#include "tensorflow/lite/delegates/hexagon/builders/op_builder.h"
 #include "tensorflow/lite/kernels/padding.h"
 
 namespace tflite {

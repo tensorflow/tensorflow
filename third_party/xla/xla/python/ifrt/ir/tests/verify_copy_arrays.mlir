@@ -30,6 +30,28 @@ func.func @copy_donated_array(%arg0: !array0)
 
 // -----
 
+!array0 = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_unspecified, [0,1]>
+!array1 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @copy_with_unspecified_input_sharding(%arg0: !array0)
+    attributes {ifrt.function} {
+  %0, %ctrl = ifrt.CopyArrays(%arg0) : (!array0) -> !array1
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_unspecified, [0,1]>
+func.func @copy_with_unspecified_output_sharding(%arg0: !array0)
+    attributes {ifrt.function} {
+  %0, %ctrl = ifrt.CopyArrays(%arg0) : (!array0) -> !array1
+  return
+}
+
+// -----
+
 !array = !ifrt.array<tensor<2x4xi32>,
                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
 func.func @requires_at_least_one_input() attributes {ifrt.function} {

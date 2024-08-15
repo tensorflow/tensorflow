@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_format.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"

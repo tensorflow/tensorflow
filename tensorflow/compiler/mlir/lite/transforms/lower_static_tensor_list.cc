@@ -89,6 +89,25 @@ namespace mlir {
 
 namespace {
 
+// TODO(b/355062942): This a temporary solution to unblock LLVM intergration.
+// https://github.com/llvm/llvm-project/commit/bbd4af5da2b741672a8e6f625eb12ea5c2d6220f
+// changed the behavior of `applySignatureConversion`. Before, an op adaptor
+// would have the new block arguments directly as operands. Now, there is an
+// `UnrealizedConversionCastOp` inserts from the new type to the old type.
+// The new behaviour is correct, but passes in this file depended on the old
+// bahavior and worked by coincidence.
+llvm::SmallVector<Value, 4> GetOperandsAndSkipUnrealizedConversionCasts(
+    ValueRange operands) {
+  llvm::SmallVector<Value, 4> result;
+  for (Value operand : operands) {
+    if (auto cast = operand.getDefiningOp<UnrealizedConversionCastOp>()) {
+      operand = cast.getInputs().front();
+    }
+    result.push_back(operand);
+  }
+  return result;
+}
+
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
     : public impl::LowerStaticTensorListPassBase<LowerStaticTensorListPass> {
@@ -351,9 +370,13 @@ struct ConvertTensorListSetItem
       TF::TensorListSetItemOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const {
     Location loc = op.getLoc();
-    Value input = adaptor.getOperands()[0];
-    Value index = adaptor.getOperands()[1];
-    Value item = adaptor.getOperands()[2];
+
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+
+    Value input = operands[0];
+    Value index = operands[1];
+    Value item = operands[2];
 
     IntegerType shape_dtype = rewriter.getIntegerType(32);
     auto item_rank = rewriter.create<TF::RankOp>(
@@ -409,9 +432,12 @@ struct ConvertTensorListSetItem
       TF::TensorListSetItemOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const {
     Location loc = op.getLoc();
-    Value input = adaptor.getOperands()[0];
-    Value index = adaptor.getOperands()[1];
-    Value item = adaptor.getOperands()[2];
+
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    Value input = operands[0];
+    Value index = operands[1];
+    Value item = operands[2];
 
     IntegerType shape_dtype = rewriter.getIntegerType(32);
     auto item_rank = rewriter.create<TF::RankOp>(
@@ -695,8 +721,10 @@ struct ConvertTensorListPushBack
   LogicalResult matchAndRewrite(
       TF::TensorListPushBackOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input_handle = adaptor.getOperands()[0];
-    Value item = adaptor.getOperands()[1];
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    Value input_handle = operands[0];
+    Value item = operands[1];
 
     // Expand the shape of the item so that it will have rank same as the input
     // tensor and it is compatible for the Concat Op.
@@ -736,8 +764,10 @@ struct ConvertTensorListResize
   LogicalResult matchAndRewrite(
       TF::TensorListResizeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input_handle = adaptor.getOperands()[0];
-    Value size = adaptor.getOperands()[1];
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    Value input_handle = operands[0];
+    Value size = operands[1];
 
     Location loc = op.getLoc();
     Value scalar_zero = CreateI32SplatConst(loc, &rewriter, {}, 0);
@@ -899,8 +929,11 @@ struct ConvertTensorListGetItem
   LogicalResult matchAndRewrite(
       TF::TensorListGetItemOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input = adaptor.getOperands()[0];
-    Value index = adaptor.getOperands()[1];
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+
+    Value input = operands[0];
+    Value index = operands[1];
     rewriter.replaceOpWithNewOp<TF::GatherOp>(op, op.getType(), input, index,
                                               rewriter.getBoolAttr(true));
     return success();
@@ -915,7 +948,8 @@ struct ConvertTensorListLength
       TF::TensorListLengthOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input_handle = adaptor.getOperands()[0];
+    Value input_handle =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands())[0];
 
     BoolAttr true_attr = rewriter.getBoolAttr(true);
     auto shape = rewriter.create<TF::ShapeOp>(loc, input_handle,
@@ -935,8 +969,11 @@ struct ConvertTensorListStack
       TF::TensorListStackOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input = adaptor.getOperands()[0];
-    Value element_shape = adaptor.getOperands()[1];
+
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    Value input = operands[0];
+    Value element_shape = operands[1];
 
     // If the `element_shape` is a known constant (which is defined when calling
     // `tensor_list_stack`) and also valid (not scalar), we rewrite this op to a
@@ -983,8 +1020,11 @@ struct ConvertTensorListConcatV2
       TF::TensorListConcatV2Op op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input = adaptor.getOperands()[0];
-    Value element_shape = adaptor.getOperands()[1];
+
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    Value input = operands[0];
+    Value element_shape = operands[1];
 
     // Only match when `element_shape` is a constant.
     DenseIntElementsAttr dense_elem_attr;
@@ -1044,9 +1084,10 @@ struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   LogicalResult matchAndRewrite(
       TF::IdentityOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input = adaptor.getOperands()[0];
-    rewriter.replaceOpWithNewOp<TF::IdentityOp>(
-        op, input.getType(), adaptor.getOperands(), op->getAttrs());
+    Value input =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands())[0];
+    rewriter.replaceOpWithNewOp<TF::IdentityOp>(op, input.getType(), input,
+                                                op->getAttrs());
     return success();
   }
 };
@@ -1057,8 +1098,11 @@ struct ConvertReturn : public OpConversionPattern<func::ReturnOp> {
   LogicalResult matchAndRewrite(
       func::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.modifyOpInPlace(op,
-                             [&] { op->setOperands(adaptor.getOperands()); });
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+
+    rewriter.replaceOpWithNewOp<func::ReturnOp>(op, ValueRange{}, operands,
+                                                op->getAttrs());
     return success();
   }
 };
@@ -1069,8 +1113,9 @@ struct ConvertYield : public OpConversionPattern<TF::YieldOp> {
   LogicalResult matchAndRewrite(
       TF::YieldOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.modifyOpInPlace(op,
-                             [&] { op->setOperands(adaptor.getOperands()); });
+    auto operands =
+        GetOperandsAndSkipUnrealizedConversionCasts(adaptor.getOperands());
+    rewriter.replaceOpWithNewOp<TF::YieldOp>(op, operands);
     return success();
   }
 };

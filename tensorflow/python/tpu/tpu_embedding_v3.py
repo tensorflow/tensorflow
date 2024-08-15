@@ -83,6 +83,7 @@ class SparseCoreEmbeddingConfig:
   max_ids_per_table: Optional[Dict[str, int]] = None
   max_unique_ids_per_table: Optional[Dict[str, int]] = None
   allow_id_dropping: bool = False
+  initialize_tables_on_host: bool = True
 
 
 class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
@@ -583,6 +584,119 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 
     self._pipelining = pipeline_execution_with_tensor_core
 
+  def _compute_sc_shard_info(
+      self,
+      table: TableConfig,
+      partition_shape: tuple[int, int],
+      partition_offset: List[int],
+      total_vocab_size: int,
+      sc_idx: int,
+  ) -> base.ShardInfo:
+    # Scale the partition to get sizes for the current table,
+    # then select this sc shard.
+    sc_shard_size = (
+        table.vocabulary_size
+        * partition_shape[0]
+        // total_vocab_size
+        // self._num_sc_per_chip
+    )
+    sc_shard_offset = (
+        table.vocabulary_size
+        * partition_offset[0]
+        // total_vocab_size
+    ) + sc_idx * sc_shard_size
+
+    return base.ShardInfo([sc_shard_size, table.dim], [sc_shard_offset, 0])
+
+  def _compute_sc_shard_idx_and_offset(
+      self,
+      table_name: str,
+      shard_info: base.ShardInfo
+  ) -> tuple[int, int]:
+    tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
+    num_replicas, num_cores_per_replica = tpu_devices.shape
+    num_devices = num_replicas * num_cores_per_replica
+
+    shift = self._s.table_to_stacked_table_offset[table_name][2]
+    shard_index = shard_info.offset[0] // shard_info.shape[0]
+    # Rotate the shards.
+    shard_index = (shard_index - shift) % self._num_sc_shards
+    num_sc = num_devices * self._num_sc_per_chip
+
+    return shard_index, num_sc
+
+  def _host_table_initializer(
+      self,
+      stacked_tables: List[TableConfig],
+      total_vocab_size: int,
+      partition_shape: tuple[int, int],
+      dtype: dtypes.DType,
+  ) -> Dict[int, List[Dict[str, tensor.Tensor]]]:
+    cpu_table_tensors = {}
+
+    tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
+    num_replicas, num_cores_per_replica = tpu_devices.shape
+    num_devices = num_replicas * num_cores_per_replica
+
+    partition_shape = (partition_shape[0] // num_devices, partition_shape[1])
+    partition_offset = [0] * len(partition_shape)
+
+    for rid in range(num_replicas):
+      for cid in range(num_cores_per_replica):
+        device_cpu = (
+            tf_device.DeviceSpec.from_string(tpu_devices[rid][cid])
+            .replace(device_type="CPU", device_index=0)
+            .to_string()
+        )
+
+        shard_dim_offset = (
+            (rid * num_cores_per_replica) + cid
+        ) * partition_shape[0]
+        cpu_table_tensors[shard_dim_offset] = []
+
+        for i in range(self._num_sc_per_chip):
+          # Each underlying table has column lookups rotated by 1 to avoid hot
+          # spots on core 0 for id=0. We shift the initializer as well to help
+          # with comparisons against CPU.
+          full_tables = {}
+          cpu_table_tensors[shard_dim_offset].append({})
+          for table in stacked_tables:
+            arg_spec = tf_inspect.getfullargspec(table.initializer)
+            sharding_aware = (
+                "shard_info" in arg_spec.args
+                or "shard_info" in arg_spec.kwonlyargs
+            )
+
+            if (
+                self._sparse_core_embedding_config.initialize_tables_on_host
+                and not sharding_aware
+            ):
+              # When the user-initializer is not sharding aware but includes
+              # shard info, we pre-construct the full initial table on the host
+              # and then slice out the individual shards.
+              partition_offset[0] = shard_dim_offset
+              sc_shard_info = self._compute_sc_shard_info(
+                  table,
+                  partition_shape,
+                  partition_offset,
+                  total_vocab_size,
+                  i,
+              )
+              shard_index, shard_offset = self._compute_sc_shard_idx_and_offset(
+                  table.name, sc_shard_info
+              )
+
+              with ops.device(device_cpu):
+                if table.name not in full_tables:
+                  full_tables[table.name] = table.initializer(
+                      shape=(table.vocabulary_size, table.dim),
+                      dtype=dtype,
+                  )
+                sc_shard = full_tables[table.name][shard_index::shard_offset, :]
+                cpu_table_tensors[shard_dim_offset][i][table.name] = sc_shard
+
+    return cpu_table_tensors
+
   def _update_sparse_core_buffer_size_after_table_stacking(self):
     """Update the sparse core buffer size after table stacking."""
     for table_name in self._stacked_table_to_tables:
@@ -688,11 +802,18 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     total_vocab_size = sum([table.vocabulary_size for table in stacked_tables])
     table_dim = stacked_tables[0].dim
     variable_shape = (total_vocab_size, table_dim)
+    variable_dtype = dtypes.float32
     optimizer = stacked_tables[0].optimizer
+
+    # Compute those table shards early on host that might otherwise saturate
+    # device HBM from needing to initialize full embedding tables.
+    host_table_tensors = self._host_table_initializer(
+        stacked_tables, total_vocab_size, variable_shape, variable_dtype,
+    )
 
     def table_initialize_fn(shape, dtype, shard_info=None):
       # Concat all the tables along the first axis.
-      table_tensors = []
+      concat_tensors = []
       # Temporary patch, we need to initialize tables with the SC level
       # sharding. Note that we need to ensure that the vocab size is divisible
       # by the global number of SC.
@@ -700,57 +821,45 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         # Each underlying table has column lookups rotated by 1 to avoid hot
         # spots on core 0 for id=0. We shift the initializer as well to help
         # with comparisons against CPU.
-        full_tables = {}
         for table in stacked_tables:
-          shift = self._table_to_stacked_table_offset[table.name][2]
           arg_spec = tf_inspect.getfullargspec(table.initializer)
           sharding_aware = (
               "shard_info" in arg_spec.args
               or "shard_info" in arg_spec.kwonlyargs
           )
 
-          # If the user-initializer is not sharding aware, use it to construct
-          # the full initial table and then slice out the individual shards.
-          if shard_info and not sharding_aware:
-            if table.name not in full_tables:
-              full_tables[table.name] = table.initializer(
-                  shape=(table.vocabulary_size, table.dim),
-                  dtype=dtype,
-              )
-          if shard_info is not None:
-            # A partition contains all of the tables.
-            partition_shape = shard_info.shape
-            partition_offset = shard_info.offset
-            # Scale the partition to get sizes for the current table,
-            # then select this sc shard.
-            sc_shard_size = (
-                table.vocabulary_size
-                * partition_shape[0]
-                // total_vocab_size
-                // self._num_sc_per_chip
+          if shard_info:
+            sc_shard_info = self._compute_sc_shard_info(
+                table,
+                shard_info.shape,
+                shard_info.offset,
+                total_vocab_size,
+                i,
             )
-            sc_shard_offset = (
-                table.vocabulary_size * partition_offset[0] // total_vocab_size
-            ) + i * sc_shard_size
-            sc_shard_info = base.ShardInfo(
-                [sc_shard_size, table.dim], [sc_shard_offset, 0]
-            )
-            if sharding_aware:
+            if not sharding_aware:
+              if (
+                  host_table_tensors
+                  and table.name in host_table_tensors[shard_info.offset[0]][i]
+              ):
+                sc_shard = host_table_tensors[shard_info.offset[0]][i][
+                    table.name
+                ]
+              else:
+                shard_index, shard_offset = (
+                    self._compute_sc_shard_idx_and_offset(
+                        table.name, sc_shard_info
+                    )
+                )
+                sc_shard = table.initializer(
+                    shape=(table.vocabulary_size, table.dim), dtype=dtype
+                )[shard_index::shard_offset, :]
+
+            else:
               sc_shard = table.initializer(
                   shape=(table.vocabulary_size, table.dim),
                   dtype=dtype,
                   shard_info=sc_shard_info,
               )
-            else:
-              shard_index = sc_shard_info.offset[0] // sc_shard_info.shape[0]
-              # Rotate the shards.
-              shard_index = (shard_index - shift) % self._num_sc_shards
-              tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
-              num_replicas, num_cores_per_replica = tpu_devices.shape
-              num_sc = (
-                  num_replicas * num_cores_per_replica * self._num_sc_per_chip
-              )
-              sc_shard = full_tables[table.name][shard_index::num_sc, :]
           else:
             sc_shard = table.initializer(
                 shape=(
@@ -761,8 +870,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
                 ),
                 dtype=dtype,
             )
-          table_tensors.append(sc_shard)
-      return array_ops.concat(table_tensors, axis=0)
+          concat_tensors.append(sc_shard)
+      return array_ops.concat(concat_tensors, axis=0)
 
     def getter(name, shape, dtype, initializer, trainable):
       del shape
@@ -787,7 +896,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           name=name,
           initializer=initializer,
           shape=variable_shape,
-          dtype=dtypes.float32,
+          dtype=variable_dtype,
           getter=getter,
           trainable=False,
       )

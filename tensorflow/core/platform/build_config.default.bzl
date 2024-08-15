@@ -1,5 +1,6 @@
 """OSS versions of Bazel macros that can't be migrated to TSL."""
 
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
@@ -28,7 +29,9 @@ def tf_additional_binary_deps():
         # core.
         Label("//tensorflow/core/kernels:lookup_util"),
         Label("//tensorflow/core/util/tensor_bundle"),
-    ] + if_rocm([
+    ] + if_cuda([
+        Label("@local_xla//xla/stream_executor:cuda_platform"),
+    ]) + if_rocm([
         "@local_xla//xla/stream_executor:rocm_platform",
         "@local_xla//xla/stream_executor/rocm:rocm_rpath",
     ]) + if_mkl_ml([

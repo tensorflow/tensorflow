@@ -17,16 +17,14 @@ limitations under the License.
 #define XLA_FFI_EXECUTION_CONTEXT_H_
 
 #include <algorithm>
-#include <cstdint>
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/ffi/type_id_registry.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -37,29 +35,19 @@ namespace xla::ffi {
 // pass arbitrary user data to FFI handlers via the side channel that does not
 // require modifying HLO modules.
 //
-// From XLA FFI perspective user data is an opaque pointer that can be
-// forwarded to the FFI handler. We rely on type id to guarantee that we forward
-// user data of correct type. There are kinds of type ids:
-//
-// 1. External type id. When FFI handlers defined in a dynamically loaded
-//    library, they must register types used in the execution context ahead
-//    of time and explicitly get a unique type id for them.
-//
-// 2. Internal type id. When FFI handler defined in the same binary we rely
-//    on a global static registry to automatically assing type ids.
+// From XLA FFI perspective user data is an opaque pointer that can be forwarded
+// to the FFI handler. We rely on type id to guarantee that we forward user data
+// of correct type.
 //
 // Examples: FFI handler can register a per-execution cache in the execution
 // context and get access to it in the FFI handler, with a guarantee that it is
 // unique between separate calls to XLA execute.
 class ExecutionContext {
  public:
+  using TypeId = TypeIdRegistry::TypeId;
+
   template <typename T>
   using Deleter = std::function<void(T*)>;
-
-  TSL_LIB_GTL_DEFINE_INT_TYPE(TypeId, int64_t);
-
-  // Registers external type with a given name in a static type registry.
-  static absl::StatusOr<TypeId> RegisterExternalTypeId(std::string_view name);
 
   // Inserts opaque user data with a given type id and optional deleter.
   absl::Status Insert(TypeId type_id, void* data,
@@ -77,7 +65,8 @@ class ExecutionContext {
   // Looks up typed execution context data of type `T`.
   template <typename T>
   absl::StatusOr<T*> Lookup() const {
-    TF_ASSIGN_OR_RETURN(auto user_data, LookupUserData(GetTypeId<T>()));
+    TF_ASSIGN_OR_RETURN(auto user_data,
+                        LookupUserData(TypeIdRegistry::GetTypeId<T>()));
     return static_cast<T*>(user_data->data());
   }
 
@@ -107,14 +96,6 @@ class ExecutionContext {
     Deleter<void> deleter_;
   };
 
-  static TypeId GetNextTypeId();
-
-  template <typename T>
-  static TypeId GetTypeId() {
-    static const TypeId id = GetNextTypeId();
-    return id;
-  }
-
   absl::Status InsertUserData(TypeId type_id, std::unique_ptr<UserData> data);
   absl::StatusOr<UserData*> LookupUserData(TypeId type_id) const;
 
@@ -123,7 +104,7 @@ class ExecutionContext {
 
 template <typename T>
 absl::Status ExecutionContext::Insert(T* data, Deleter<T> deleter) {
-  return InsertUserData(GetTypeId<T>(),
+  return InsertUserData(TypeIdRegistry::GetTypeId<T>(),
                         std::make_unique<UserData>(
                             data, [deleter = std::move(deleter)](void* data) {
                               if (deleter) deleter(static_cast<T*>(data));
@@ -132,7 +113,7 @@ absl::Status ExecutionContext::Insert(T* data, Deleter<T> deleter) {
 
 template <typename T, typename... Args>
 absl::Status ExecutionContext::Emplace(Args&&... args) {
-  return InsertUserData(GetTypeId<T>(),
+  return InsertUserData(TypeIdRegistry::GetTypeId<T>(),
                         std::make_unique<UserData>(
                             new T(std::forward<Args>(args)...),
                             [](void* data) { delete static_cast<T*>(data); }));

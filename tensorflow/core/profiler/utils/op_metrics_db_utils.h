@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_METRICS_DB_UTILS_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -49,7 +50,8 @@ class OpMetricsDbBuilder {
   // Looks up the given OP name. If it is already in the database,
   // return its OpMetrics; otherwise, insert a new one.
   OpMetrics* LookupOrInsertNewOpMetrics(uint64 hlo_module_id,
-                                        absl::string_view name);
+                                        absl::string_view name,
+                                        uint64_t fingerprint);
 
   OpMetricsDb* db() { return db_; }
 

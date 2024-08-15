@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -621,23 +622,31 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
   return 0;
 }
 
-int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
-  if (!cache) {
-    return SharedMemoryUsageNoCache(instr);
+int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = shared_memory_usage_.find(&instr);
+    if (it != shared_memory_usage_.end()) {
+      return it->second;
+    }
   }
 
   // nb: Users are only expected to call cache.Invalidate() on top-level
   // instructions, not instructions inside fusion nodes.  Therefore we can only
   // cache top-level instructions; it would not be valid to pass the cache to
   // SharedMemoryUsageNoCache and use the cache *within* the fusion.
-  auto it_and_inserted = cache->shared_memory_usage.emplace(&instr, -1);
-  auto it = it_and_inserted.first;
-  auto inserted = it_and_inserted.second;
+  int64_t shared_memory_usage = SharedMemoryUsageNoCache(instr);
 
-  if (inserted) {
-    it->second = SharedMemoryUsageNoCache(instr);
+  absl::MutexLock lock(&mutex_);
+  shared_memory_usage_.emplace(&instr, shared_memory_usage);
+  return shared_memory_usage;
+}
+
+int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
+  if (!cache) {
+    return SharedMemoryUsageNoCache(instr);
   }
-  return it->second;
+  return cache->GetSharedMemoryUsage(instr);
 }
 
 // Codegen'ing unnested reductions requires a lot of registers, so a MOF
@@ -661,24 +670,33 @@ static int64_t NumUnnestedReductionsNoCache(const HloInstruction& instr) {
   return 0;
 }
 
-static int64_t NumUnnestedReductions(const HloInstruction& instr,
-                                     FusionInfoCache* cache) {
-  if (!cache) {
-    return NumUnnestedReductionsNoCache(instr);
+int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = num_unnested_reductions_.find(&instr);
+    if (it != num_unnested_reductions_.end()) {
+      return it->second;
+    }
   }
 
   // nb: Users are only expected to call cache.Invalidate() on top-level
   // instructions, not instructions inside fusion nodes.  Therefore we can only
   // cache top-level instructions; it would not be valid to pass the cache to
   // NumUnnestedReductionsNoCache and use the cache *within* the fusion.
-  auto it_and_inserted = cache->num_unnested_reductions.emplace(&instr, -1);
-  auto it = it_and_inserted.first;
-  auto inserted = it_and_inserted.second;
+  int64_t num_unnested_reductions = NumUnnestedReductionsNoCache(instr);
 
-  if (inserted) {
-    it->second = NumUnnestedReductionsNoCache(instr);
+  absl::MutexLock lock(&mutex_);
+  num_unnested_reductions_.emplace(&instr, num_unnested_reductions);
+  return num_unnested_reductions;
+}
+
+static int64_t NumUnnestedReductions(const HloInstruction& instr,
+                                     FusionInfoCache* cache) {
+  if (!cache) {
+    return NumUnnestedReductionsNoCache(instr);
   }
-  return it->second;
+
+  return cache->GetNumUnnestedReductions(instr);
 }
 
 // This function limits the maximum number of operands to a fusion, and the
@@ -952,7 +970,7 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
   // An empirically chosen constant: unrolling concat with a large amount of
   // arguments causes excessive register spilling.
   static constexpr int kMaxConcatArgumentsForUnrolling = 10;
-  return HloAnyOf(fusion.GetRoots(), fusion, [&](auto node) {
+  return HloAnyOf(fusion, [&](auto node) {
     switch (node.opcode()) {
       case HloOpcode::kReduceWindow:
       case HloOpcode::kSort:

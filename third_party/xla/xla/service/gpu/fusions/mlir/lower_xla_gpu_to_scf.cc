@@ -16,27 +16,28 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/util.h"
@@ -125,16 +126,21 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
         auto padded_int_ty = b.getIntegerType(n_shuffles * 32);
         value = b.create<mlir::arith::BitcastOp>(int_ty, value);
         value = b.create<mlir::arith::ExtUIOp>(padded_int_ty, value);
-        auto vector_type = ml::getVectorType(b.getI32Type(), n_shuffles);
-        value = b.create<ml::BitcastOp>(vector_type, value);
-        mlir::Value result_vec = b.create<ml::UndefOp>(vector_type);
-        for (int i = 0; i < n_shuffles; ++i) {
-          auto idx = b.create<mlir::arith::ConstantIntOp>(i, 32);
-          result_vec = b.create<ml::InsertElementOp>(
-              result_vec,
-              shuffle_32(b.create<ml::ExtractElementOp>(value, idx)), idx);
+        if (n_shuffles > 1) {
+          // Don't generate vectors if the size is 1.
+          auto vector_type = ml::getVectorType(b.getI32Type(), n_shuffles);
+          value = b.create<ml::BitcastOp>(vector_type, value);
+          mlir::Value result_vec = b.create<ml::UndefOp>(vector_type);
+          for (int i = 0; i < n_shuffles; ++i) {
+            auto idx = b.create<mlir::arith::ConstantIntOp>(i, 32);
+            result_vec = b.create<ml::InsertElementOp>(
+                result_vec,
+                shuffle_32(b.create<ml::ExtractElementOp>(value, idx)), idx);
+          }
+          value = b.create<ml::BitcastOp>(padded_int_ty, result_vec);
+        } else {
+          value = shuffle_32(value);
         }
-        value = b.create<ml::BitcastOp>(padded_int_ty, result_vec);
         value = b.create<mlir::arith::TruncIOp>(int_ty, value);
         value = b.create<ml::BitcastOp>(ty, value);
         return value;

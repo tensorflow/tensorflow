@@ -17,8 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 
 namespace xla {
 namespace llvm_ir {

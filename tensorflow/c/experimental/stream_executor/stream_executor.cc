@@ -312,13 +312,6 @@ class CStreamExecutor : public StreamExecutorCommon {
                              size, c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
-  bool HostCallback(Stream* stream,
-                    absl::AnyInvocable<absl::Status() &&> callback) override {
-    SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();
-    HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
-    return stream_executor_->host_callback(&device_, stream_handle,
-                                           &HostCallbackTrampoline, ctx);
-  }
   void DeallocateStream(Stream* stream) override {
     static_cast<CStream*>(stream)->Destroy();
   }

@@ -116,5 +116,26 @@ ENTRY entry {
   EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
 }
 
+TEST_F(GpuAlgebraicSimplifierTest, SmallDotShouldBeStrengthReduced2) {
+  const std::string& hlo_string = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = f32[2000, 3000] parameter(0)
+  p1 = f32[2000] parameter(1)
+  ROOT dot = f32[3000] dot(p0, p1), lhs_contracting_dims={0},
+    rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_f32_x6
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  AlgebraicSimplifierOptions options;
+  options.set_enable_dot_strength_reduction(true);
+  se::CudaComputeCapability ampere(8, 0);
+  GpuAlgebraicSimplifier simplifier(options, ampere);
+  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
+  EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
+}
+
 }  // namespace
 }  // namespace xla::gpu

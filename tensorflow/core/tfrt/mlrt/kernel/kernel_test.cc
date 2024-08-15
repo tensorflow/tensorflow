@@ -1292,6 +1292,10 @@ mlrt::bc::Buffer CreateExecutableForBatchFunctionOp() {
                         value { s: "low_priority_padding_with_max_batch_size" }
                       }
                       attr {
+                        key: "batch_padding_policy"
+                        value { s: "PAD_UP" }
+                      }
+                      attr {
                         key: "container"
                         value { s: "container" }
                       }

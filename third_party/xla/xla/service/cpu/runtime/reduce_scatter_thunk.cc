@@ -43,7 +43,7 @@ namespace xla::cpu {
 
 absl::StatusOr<std::unique_ptr<ReduceScatterThunk>> ReduceScatterThunk::Create(
     Info info, ReductionKind reduction_kind, OpParams op_params,
-    OpBuffers op_buffers) {
+    OpBuffers op_buffers, OpResources op_resources) {
   auto datatype = op_buffers.source_shapes[0].element_type();
   if (!IsDataTypeSupportedByCollectiveReduce(datatype)) {
     return Unimplemented("ReduceScatter for datatype '%s' is not supported",
@@ -51,13 +51,16 @@ absl::StatusOr<std::unique_ptr<ReduceScatterThunk>> ReduceScatterThunk::Create(
   }
 
   return absl::WrapUnique(new ReduceScatterThunk(
-      std::move(info), reduction_kind, op_params, std::move(op_buffers)));
+      std::move(info), reduction_kind, std::move(op_params),
+      std::move(op_buffers), std::move(op_resources)));
 }
 
 ReduceScatterThunk::ReduceScatterThunk(Info info, ReductionKind reduction_kind,
-                                       OpParams op_params, OpBuffers op_buffers)
-    : CollectiveThunk(Kind::kReduceScatter, info, op_params,
-                      std::move(op_buffers)),
+                                       OpParams op_params, OpBuffers op_buffers,
+                                       OpResources op_resources)
+    : CollectiveThunk(Kind::kReduceScatter, std::move(info),
+                      std::move(op_params), std::move(op_buffers),
+                      std::move(op_resources)),
       reduction_kind_(reduction_kind) {}
 
 tsl::AsyncValueRef<ReduceScatterThunk::ExecuteEvent>

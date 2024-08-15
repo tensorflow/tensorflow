@@ -50,6 +50,8 @@ class GemmAlgorithmPicker : public HloModulePass {
 
   absl::string_view name() const override { return "gemm-algorithm-picker"; }
 
+  size_t num_algorithms_left() const { return num_algorithms_left_; }
+
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
@@ -57,6 +59,9 @@ class GemmAlgorithmPicker : public HloModulePass {
 
  private:
   AutotuneConfig config_;
+  // The number of valid algorithms used for autotuning (from the last call),
+  // to be used for testing purposes.
+  size_t num_algorithms_left_ = 0;
 };
 
 }  // namespace gpu

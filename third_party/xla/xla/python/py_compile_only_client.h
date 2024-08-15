@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 // placeholder for index annotation headers
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/py_client.h"

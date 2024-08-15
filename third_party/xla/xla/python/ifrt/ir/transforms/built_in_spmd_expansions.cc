@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/python/ifrt/ir/transforms/spmd_expanders/noop_ifrt_spmd_expander.h"
 #include "xla/python/ifrt/ir/transforms/spmd_expanders/terminator_ifrt_spmd_expander.h"
 

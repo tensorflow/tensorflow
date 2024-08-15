@@ -27,14 +27,12 @@ limitations under the License.
 #include "xla/client/lib/matrix.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
-#include "xla/literal.h"
+#include "xla/error_spec.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 

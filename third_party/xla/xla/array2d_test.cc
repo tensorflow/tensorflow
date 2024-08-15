@@ -18,6 +18,7 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 
+#include "Eigen/Core"
 #include "xla/test.h"
 #include "tsl/platform/ml_dtypes.h"
 

@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/util.h"
+#include "tsl/profiler/lib/traceme.h"
 
 // IMPLEMENTATION NOTE:
 //
@@ -459,11 +460,13 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     }
 
     if (do_staging) {
-      staging_buffer = host_memory_allocator->AllocateRaw(
-          tensorflow::Allocator::kAllocatorAlignment, total_bytes);
-      std::memcpy(staging_buffer, src_ptr, total_bytes);
-      input_ref.Unref();
-
+      {
+        tsl::profiler::TraceMe trace_me("Staging CPU buffer to pinned memory");
+        staging_buffer = host_memory_allocator->AllocateRaw(
+            tensorflow::Allocator::kAllocatorAlignment, total_bytes);
+        std::memcpy(staging_buffer, src_ptr, total_bytes);
+        input_ref.Unref();
+      }
       s = recv_host_to_device_stream->Memcpy(&gpu_dst_ptr, staging_buffer,
                                              total_bytes);
     } else {

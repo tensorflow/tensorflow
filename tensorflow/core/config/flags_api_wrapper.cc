@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11

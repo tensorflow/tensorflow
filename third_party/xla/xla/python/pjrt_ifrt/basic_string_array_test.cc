@@ -693,53 +693,53 @@ TEST(DisassembleArrayIntoSingleDeviceArrays, FailsIfTheArrayHasBeenDeleted) {
       StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
-TEST(ReshardTest, SuccessSingleDeviceShardedArray) {
+TEST(CopyTest, SuccessSingleDeviceShardedArray) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
 
   auto [buffers, on_done_with_buffer] = MakeBuffersAndOnDoneWithBuffer({"abc"});
+  std::vector<tsl::RCReference<Array>> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto array,
+      arrays.emplace_back(),
       CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(buffers),
                       std::move(on_done_with_buffer)));
 
   // CreateTestArray above would place the array on the first device. Use the
-  // second one for the new sharding.
-  std::shared_ptr<const Sharding> new_sharding =
-      SingleDeviceSharding::Create(devices[1], MemoryKind());
-
+  // second one for the new array.
   TF_ASSERT_OK_AND_ASSIGN(
-      auto new_array,
-      array->Reshard(new_sharding, ArrayCopySemantics::kAlwaysCopy));
+      auto new_arrays,
+      client->CopyArrays(absl::MakeSpan(arrays), DeviceList({devices[1]}),
+                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
   auto new_basic_string_array =
-      llvm::dyn_cast<BasicStringArray>(new_array.get());
+      llvm::dyn_cast<BasicStringArray>(new_arrays[0].get());
   TF_ASSERT_OK_AND_ASSIGN(auto new_buffers,
                           new_basic_string_array->buffers().Await());
   ASSERT_EQ(new_buffers.size(), 1);
   EXPECT_THAT(new_buffers[0], testing::ElementsAre("abc"));
 }
 
-TEST(ReshardTest, SuccessMultiDeviceShardedArray) {
+TEST(CopyTest, SuccessMultiDeviceShardedArray) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 4);
 
   const std::vector<std::string> per_shard_contents({"shard 0", "shard 1"});
+  std::vector<tsl::RCReference<Array>> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto array, MakeShardedStringTestArray(client.get(), per_shard_contents,
-                                             /*is_fully_replicated=*/false));
-
-  std::shared_ptr<const Sharding> new_sharding = OpaqueSharding::Create(
-      DeviceList({devices[2], devices[3]}), MemoryKind());
+      arrays.emplace_back(),
+      MakeShardedStringTestArray(client.get(), per_shard_contents,
+                                 /*is_fully_replicated=*/false));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto new_array,
-      array->Reshard(new_sharding, ArrayCopySemantics::kAlwaysCopy));
+      auto new_arrays,
+      client->CopyArrays(absl::MakeSpan(arrays),
+                         DeviceList({devices[2], devices[3]}), MemoryKind(),
+                         ArrayCopySemantics::kAlwaysCopy));
 
   auto new_basic_string_array =
-      llvm::dyn_cast<BasicStringArray>(new_array.get());
+      llvm::dyn_cast<BasicStringArray>(new_arrays[0].get());
   TF_ASSERT_OK_AND_ASSIGN(auto new_buffers,
                           new_basic_string_array->buffers().Await());
   ASSERT_EQ(new_buffers.size(), 2);
@@ -747,44 +747,45 @@ TEST(ReshardTest, SuccessMultiDeviceShardedArray) {
   EXPECT_THAT(new_buffers[1], testing::ElementsAre("shard 1"));
 }
 
-TEST(ReshardTest, FailsAfterDeletion) {
+TEST(CopyTest, FailsAfterDeletion) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
 
   auto [buffers, on_done_with_buffer] = MakeBuffersAndOnDoneWithBuffer({"abc"});
+  std::vector<tsl::RCReference<Array>> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto array,
+      arrays.emplace_back(),
       CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(buffers),
                       std::move(on_done_with_buffer)));
 
-  array->Delete();
+  arrays[0]->Delete();
 
   EXPECT_THAT(
-      array->Reshard(SingleDeviceSharding::Create(devices[1], MemoryKind()),
-                     ArrayCopySemantics::kAlwaysCopy),
+      client->CopyArrays(absl::MakeSpan(arrays), DeviceList({devices[1]}),
+                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy),
       StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
-TEST(ReshardTest, FailsWithDifferentNumbersDevicesInNewSharding) {
+TEST(CopyTest, FailsWithDifferentNumbersDevices) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
 
   auto [buffers, on_done_with_buffer] = MakeBuffersAndOnDoneWithBuffer({"abc"});
+  std::vector<tsl::RCReference<Array>> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto array,
+      arrays.emplace_back(),
       CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(buffers),
                       std::move(on_done_with_buffer)));
 
-  EXPECT_THAT(
-      array->Reshard(OpaqueSharding::Create(
-                         DeviceList({devices[0], devices[1]}), MemoryKind()),
-                     ArrayCopySemantics::kAlwaysCopy),
-      StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(client->CopyArrays(absl::MakeSpan(arrays),
+                                 DeviceList({devices[0], devices[1]}),
+                                 MemoryKind(), ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(ReshardTest, NonReadySourceArraySuccessfullyBecomesReadyAfterReshard) {
+TEST(CopyTest, NonReadySourceArraySuccessfullyBecomesReadyAfterCopy) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
@@ -795,12 +796,13 @@ TEST(ReshardTest, NonReadySourceArraySuccessfullyBecomesReadyAfterReshard) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto ret, CreateNonReadyTestArray(client.get(), devices[0],
                                         std::move(on_done_with_buffer)));
-  auto array = std::move(ret.first);
+  std::vector<tsl::RCReference<Array>> arrays;
+  arrays.push_back(std::move(ret.first));
   auto promise = std::move(ret.second);
 
-  TF_ASSERT_OK(
-      array->Reshard(SingleDeviceSharding::Create(devices[1], MemoryKind()),
-                     ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK(client->CopyArrays(absl::MakeSpan(arrays),
+                                  DeviceList({devices[1]}), MemoryKind(),
+                                  ArrayCopySemantics::kAlwaysCopy));
 
   absl::Notification done_readying_single_device_arrays;
   tsl::Env::Default()->SchedClosure(([&]() mutable {
@@ -808,7 +810,7 @@ TEST(ReshardTest, NonReadySourceArraySuccessfullyBecomesReadyAfterReshard) {
     done_readying_single_device_arrays.Notify();
   }));
 
-  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(array.get());
+  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(arrays[0].get());
   ASSERT_NE(basic_string_array, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(auto new_buffers,
@@ -822,7 +824,7 @@ TEST(ReshardTest, NonReadySourceArraySuccessfullyBecomesReadyAfterReshard) {
   done_readying_single_device_arrays.WaitForNotification();
 }
 
-TEST(ReshardTest, NonReadySourceArrayFailsToBecomeReadyAfterReshard) {
+TEST(CopyTest, NonReadySourceArrayFailsToBecomeReadyAfterCopy) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
@@ -833,12 +835,13 @@ TEST(ReshardTest, NonReadySourceArrayFailsToBecomeReadyAfterReshard) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto ret, CreateNonReadyTestArray(client.get(), devices[0],
                                         std::move(on_done_with_buffer)));
-  auto array = std::move(ret.first);
+  std::vector<tsl::RCReference<Array>> arrays;
+  arrays.push_back(std::move(ret.first));
   auto promise = std::move(ret.second);
 
-  TF_ASSERT_OK(
-      array->Reshard(SingleDeviceSharding::Create(devices[1], MemoryKind()),
-                     ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK(client->CopyArrays(absl::MakeSpan(arrays),
+                                  DeviceList({devices[1]}), MemoryKind(),
+                                  ArrayCopySemantics::kAlwaysCopy));
 
   absl::Notification done_readying_single_device_arrays;
   tsl::Env::Default()->SchedClosure(([&]() mutable {
@@ -846,7 +849,7 @@ TEST(ReshardTest, NonReadySourceArrayFailsToBecomeReadyAfterReshard) {
     done_readying_single_device_arrays.Notify();
   }));
 
-  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(array.get());
+  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(arrays[0].get());
   ASSERT_NE(basic_string_array, nullptr);
 
   auto buffers_future = basic_string_array->buffers();

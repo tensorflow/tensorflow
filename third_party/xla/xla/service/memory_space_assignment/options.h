@@ -147,10 +147,6 @@ struct Options {
   // This is only useful for testing, repack after every allocation.
   bool repack_after_every_allocation = false;
 
-  // If true, tries allocating buffers across (e.g., before and inside a while
-  // loop body) sequential calls (kWhile, kCall, and kConditional).
-  bool allocate_across_sequential_calls = false;
-
   // If true, verifies the memory space assignment against overlapping
   // buffers.
   bool verify = false;
@@ -176,6 +172,11 @@ struct Options {
   // TODO(tjablin): Use a heuristic to determine this automatically.
   int max_cross_program_prefetches = 1;
 
+  // If false, we assume tensors that we couldn't explicitly determine to be
+  // activations are activations. If true, we assume these aren't activations,
+  // so they may be cross-program-prefetch candidates.
+  bool cross_program_prefetch_permissive_mode = false;
+
   // Enable redundant eviction optimization in/around while loops. If enabled,
   // this optimization would keep a copy of the buffer in the default memory in
   // addition to alternate memory to eliminate redundant evictions.
@@ -191,6 +192,10 @@ struct Options {
 
   // If true, enforces the FIFO order for prefetches.
   bool enforce_prefetch_fifo_order = false;
+
+  // If true, tries to replace synchronous copy instructions with asynchronous
+  // ones. If it fails to replace the copy, it keeps the sync version.
+  bool enable_sync_copy_replacement = false;
 
   // The ratio of use bytes to copy bytes for a given allocation site below
   // which we consider the site to be inefficient. A value of 0 would treat all

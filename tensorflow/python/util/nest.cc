@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"

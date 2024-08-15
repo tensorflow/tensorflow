@@ -149,6 +149,9 @@ struct TfrtCompileOptions {
   // resources.
   int64_t min_max_enqueued_batches = 1;
 
+  // The policy used by a BatchScheduler to pad (or split) batches.
+  std::string batch_padding_policy;
+
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = true;

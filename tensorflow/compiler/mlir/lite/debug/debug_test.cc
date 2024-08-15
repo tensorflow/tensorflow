@@ -50,7 +50,6 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace debug_test {

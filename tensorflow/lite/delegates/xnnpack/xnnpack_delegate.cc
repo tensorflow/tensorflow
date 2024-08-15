@@ -21,6 +21,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -31,8 +32,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "experiments-config.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
+#include "Eigen/Core"  // from @eigen_archive
+#include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -503,10 +505,12 @@ class Delegate {
                     TfLiteContext* context = nullptr) {
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
     pthreadpool_t threadpool = nullptr;
+#ifdef TFLITE_KERNEL_USE_XNNPACK
     if (context != nullptr) {
       threadpool =
           CpuBackendContext::GetFromContext(context)->get_xnnpack_threadpool();
     }
+#endif
     if (threadpool != nullptr) {
       // Note that by passing a valid threadpool via context, your xnnpack
       // threadpool will have the same number of threads as
@@ -535,21 +539,21 @@ class Delegate {
 
     // If no weight cache is provided, add one when requested.
     if (!options_.weights_cache) {
-      if (options_.experimental_weight_cache_file_path) {
+      if (options_.weight_cache_file_path) {
         if (weight_cache_provider_.LoadOrStartBuild(
-                options_.experimental_weight_cache_file_path)) {
+                options_.weight_cache_file_path)) {
           options_.weights_cache =
               reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
                   weight_cache_provider_.GetCacheProvider().context);
-          options_.experimental_weight_cache_file_path =
+          options_.weight_cache_file_path =
               weight_cache_provider_.GetFilePath().data();
         } else {
           TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
                           "XNNPack weight cache could neither be loaded from "
                           "or saved to '%s'. Check that this location is "
                           "readable and writable.",
-                          options_.experimental_weight_cache_file_path);
-          options_.experimental_weight_cache_file_path = nullptr;
+                          options_.weight_cache_file_path);
+          options_.weight_cache_file_path = nullptr;
         }
       } else {
         TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
@@ -2738,6 +2742,21 @@ class Subgraph {
       case kTfLiteBuiltinFloor:
         return VisitFloorNode(subgraph, delegate, logging_context, node_index,
                               node, context->tensors, input_output_tensors);
+      case kTfLiteBuiltinGelu: {
+        const TfLiteGeluParams* gelu_params =
+            static_cast<const TfLiteGeluParams*>(node->builtin_data);
+        // Sorry, we don't do approximates here, only the real thing to full
+        // accuracy.
+        // TODO(b/338031720) - Add support for the tanh-based GELU
+        // approximation.
+        if (gelu_params->approximate) {
+          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                   "Unsupported approximate Gelu.");
+          return kTfLiteError;
+        }
+        return VisitGeluNode(subgraph, delegate, logging_context, node_index,
+                             node, context->tensors, input_output_tensors);
+      }
       case kTfLiteBuiltinHardSwish:
         return VisitHardSwishNode(subgraph, delegate, logging_context,
                                   node_index, node, context->tensors,
@@ -4239,7 +4258,10 @@ class Subgraph {
         TfLiteAffineQuantization* filter_params =
             reinterpret_cast<TfLiteAffineQuantization*>(
                 filter_tensor.quantization.params);
-        if (filter_params->scale->size != output_channels) {
+        xnn_datatype filter_datatype = GetXNNPackDatatype(
+            logging_context, filter_tensor, node->inputs->data[1]);
+        if (filter_datatype == xnn_datatype_qint8) {
+          filter_datatype = xnn_datatype_qcint8;
           TfLiteFloatArrayFree(filter_params->scale);
           filter_params->scale = TfLiteFloatArrayCreate(output_channels);
           std::fill_n(filter_params->scale->data, output_channels,
@@ -4278,8 +4300,6 @@ class Subgraph {
         std::vector<size_t> filter_dims(
             &filter_tensor.dims->data[0],
             &filter_tensor.dims->data[NumDimensions(&filter_tensor)]);
-        const xnn_datatype filter_datatype = GetXNNPackDatatype(
-            logging_context, filter_tensor, node->inputs->data[1]);
         int32_t zero_point_value = filter_params->zero_point->data[0];
         uint32_t kernel_id = XNN_INVALID_VALUE_ID;
         status = xnn_define_channelwise_quantized_tensor_value_v2(
@@ -4367,6 +4387,39 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
                            EnumNameBuiltinOperator(BuiltinOperator_FLOOR),
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitGeluNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors,
+      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+    TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
+        logging_context, node, 1, 1, BuiltinOperator_GELU, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_gelu(
+          subgraph,
+          /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+          /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_GELU),
                            node_index);
         return kTfLiteError;
       }
@@ -4794,8 +4847,12 @@ class Subgraph {
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
     const int num_reduction_axes = NumElements(&axes_tensor);
     bool all_reductions_supported = false;
+    bool use_legacy_path = false;
     if (input_tensor.type == kTfLiteFloat32) {
       all_reductions_supported = true;
+      if (NumDimensions(&input_tensor) == 4) {
+        use_legacy_path = true;
+      }
     } else {
       TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
                                              node->inputs->data[0],
@@ -4805,10 +4862,12 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
-    if (!all_reductions_supported) {
-      switch (num_reduction_axes) {
-        case 1:
-          if (axes_data[0] != 2) {
+    switch (num_reduction_axes) {
+      case 1:
+        if (axes_data[0] != 2) {
+          if (all_reductions_supported) {
+            use_legacy_path = false;
+          } else {
             TF_LITE_MAYBE_KERNEL_LOG(
                 logging_context,
                 "unsupported MEAN reduction along non-spatial "
@@ -4816,10 +4875,14 @@ class Subgraph {
                 axes_data[0], node_index);
             return kTfLiteError;
           }
-          break;
-        case 2:
-          if (std::min(axes_data[0], axes_data[1]) != 1 ||
-              std::max(axes_data[0], axes_data[1]) != 2) {
+        }
+        break;
+      case 2:
+        if (std::min(axes_data[0], axes_data[1]) != 1 ||
+            std::max(axes_data[0], axes_data[1]) != 2) {
+          if (all_reductions_supported) {
+            use_legacy_path = false;
+          } else {
             TF_LITE_MAYBE_KERNEL_LOG(
                 logging_context,
                 "unsupported MEAN reduction along non-spatial "
@@ -4828,21 +4891,31 @@ class Subgraph {
                 std::max(axes_data[0], axes_data[1]), node_index);
             return kTfLiteError;
           }
-          break;
-        default:
+        }
+        break;
+      default:
+        if (all_reductions_supported) {
+          use_legacy_path = false;
+        } else {
           TF_LITE_MAYBE_KERNEL_LOG(
               logging_context,
               "unsupported MEAN reduction along %d axes in node %d",
               SizeOfDimension(&axes_tensor, 0), node_index);
           return kTfLiteError;
+        }
+    }
+    int expected_output_dims = 4;
+    if (!reducer_params->keep_dims) {
+      expected_output_dims -= num_reduction_axes;
+    }
+    if (NumDimensions(&output_tensor) != expected_output_dims) {
+      if (all_reductions_supported) {
+        use_legacy_path = false;
+      } else {
+        TF_LITE_ENSURE_STATUS(CheckTensorShape(
+            logging_context, output_tensor, expected_output_dims,
+            node->outputs->data[0], BuiltinOperator_MEAN, node_index));
       }
-      int expected_output_dims = 4;
-      if (!reducer_params->keep_dims) {
-        expected_output_dims -= num_reduction_axes;
-      }
-      TF_LITE_ENSURE_STATUS(CheckTensorShape(
-          logging_context, output_tensor, expected_output_dims,
-          node->outputs->data[0], BuiltinOperator_MEAN, node_index));
     }
 
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
@@ -4852,7 +4925,7 @@ class Subgraph {
     if (subgraph != nullptr) {
       uint32_t flags = reducer_params->keep_dims ? XNN_FLAG_KEEP_DIMS : 0;
       xnn_status status = xnn_status_success;
-      if (all_reductions_supported) {
+      if (all_reductions_supported && !use_legacy_path) {
         std::array<size_t, XNN_MAX_TENSOR_DIMS> reduction_axes;
         for (int i = 0; i < num_reduction_axes; ++i) {
           if (axes_data[i] < 0) {
@@ -7600,7 +7673,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         }
       }
 
-      // Non-delegatable node is not an error.
+      // Non-delegable node is not an error.
       continue;
     }
 

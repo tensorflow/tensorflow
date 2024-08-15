@@ -172,8 +172,6 @@ TEST_F(CompilerTest, Compile) {
              loaded_executable_handle: 1234
              name: "foo-executable"
              num_devices: 2
-             addressable_device_logical_ids { replica: 0 partition: 0 }
-             addressable_device_logical_ids { replica: 0 partition: 1 }
              addressable_device_ids: [ 0, 1 ]
              fingerprint_value: "fingerprint"
              ready_future_handle: 5678
@@ -208,8 +206,6 @@ TEST_F(CompilerTest, Compile) {
 
   EXPECT_EQ(executable->name(), "foo-executable");
   EXPECT_EQ(executable->num_devices(), 2);
-  EXPECT_THAT(executable->addressable_device_logical_ids(),
-              ElementsAre(FieldsAre(0, 0), FieldsAre(0, 1)));
   EXPECT_THAT(executable->addressable_devices(),
               ElementsAre(&devices[0], &devices[1]));
   EXPECT_THAT(executable->Fingerprint(),

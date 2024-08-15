@@ -149,6 +149,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_EMBEDDING_LOOKUP: {
+      if (op_sig.inputs.at(1).type == kTfLiteInt4) {
+        return 4;
+      }
+      return 1;
+    }
+
     case BuiltinOperator_FAKE_QUANT: {
       auto fake_quant_params =
           reinterpret_cast<TfLiteFakeQuantParams*>(op_sig.builtin_data);
@@ -172,6 +179,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       auto fully_connected_params =
           reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(fully_connected_params != nullptr);
+
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        return 13;
+      }
 
       if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
           op_sig.inputs.at(1).type == kTfLiteInt8 &&

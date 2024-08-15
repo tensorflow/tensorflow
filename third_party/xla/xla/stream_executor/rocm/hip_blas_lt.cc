@@ -24,10 +24,10 @@ limitations under the License.
 #include "xla/util.h"
 
 #if TF_HIPBLASLT
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 #include "xla/stream_executor/rocm/rocm_blas.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -395,12 +395,12 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
       blas_lt_ref_.parent_->RecordApiTrace(StreamExecutor::GemmCallTrace{
           StreamExecutor::GemmCallTrace::GemmType::kBlasLt, 0, a.size(),
           b.size()});
+  std::unique_ptr<EventBasedTimer> timer;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<gpu::GpuTimer> timer,
-      gpu::GpuTimer::CreateIfNeeded(
-          stream, profile_result && profile_result->warmup_run_executed(),
-          profile_result));
+  if (profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                   profile_result->warmup_run_executed()));
+  }
 
   void* workspace_addr = nullptr;
   uint64_t workspace_size = 0;

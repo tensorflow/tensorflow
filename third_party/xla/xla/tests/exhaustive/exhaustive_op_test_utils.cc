@@ -16,13 +16,42 @@ limitations under the License.
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 
 #include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/meta/type_traits.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"
+#include "xla/literal.h"
+#include "xla/types.h"
 
 namespace xla {
 namespace exhaustive_op_test {
+
+bool IsSubnormalReal(xla::complex64 value) { return IsSubnormal(value.real()); }
+
+bool IsSubnormalReal(xla::complex128 value) {
+  return IsSubnormal(value.real());
+}
+
+bool IsSubnormalImaginary(xla::complex64 value) {
+  return IsSubnormal(value.imag());
+}
+
+bool IsSubnormalImaginary(xla::complex128 value) {
+  return IsSubnormal(value.imag());
+}
 
 // For f64, f32, f16, and bf16, we need 17, 9, 5, and 4 decimal places of
 // precision to be guaranteed that we're printing the full number.
@@ -364,7 +393,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
         static_cast<NativeT>(CallOperation(evaluate_op, inputs_ref_ty));
     ErrorSpec error_spec = CallErrorSpec(error_spec_gen, inputs);
 
-    if (check_valid_range != nullptr && !check_valid_range(actual)) {
+    if (check_valid_range != nullptr && !check_valid_range(inputs, actual)) {
       PrintMismatch(&mismatches, [&] {
         return absl::StrFormat(
             "mismatch on input: %s. output: %s, output is not in valid range",

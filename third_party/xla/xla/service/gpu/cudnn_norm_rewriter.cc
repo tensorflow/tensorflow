@@ -948,10 +948,11 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
         return absl::OkStatus();
       }
 
-      // Verify the element types. The types and shapes of the scale and bias
-      // must match.
-      if (!CompatibleElementType(x.Instr()) || !CompatibleElementType(instr) ||
-          !CompatibleElementType(scale) || !CompatibleElementType(bias) ||
+      // Verify the element types. The element types of input and output and the
+      // shapes of scale and bias must match.
+      if (!CompatibleElementType(instr) || !CompatibleElementType(scale) ||
+          !CompatibleElementType(bias) ||
+          !ShapeUtil::SameElementType(instr->shape(), x.Instr()->shape()) ||
           !ShapeUtil::Equal(scale->shape(), bias->shape())) {
         VLOG(1) << "Layer norm input types or shapes not supported.";
         return absl::OkStatus();

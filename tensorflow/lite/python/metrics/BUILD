@@ -1,12 +1,6 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
-
-# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "if_portable", "pybind_extension")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -61,7 +55,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":_pywrap_tensorflow_lite_metrics_wrapper",
-        ":converter_error_data_proto_py",
+        "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
         "//tensorflow/compiler/mlir/lite/python:wrap_converter",
     ],
 )
@@ -111,7 +105,7 @@ pytype_strict_library(
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = if_portable(
         if_false = [
-            ":converter_error_data_proto_py",
+            "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
             ":metrics_wrapper",
             "//tensorflow/python/eager:monitoring",
         ],
@@ -134,12 +128,12 @@ py_strict_test(
     ),
     python_version = "PY3",
     deps = [
-        ":converter_error_data_proto_py",
         ":metrics",
         "@absl_py//absl/testing:parameterized",
         #internal proto upb dep
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:convert",
         "//tensorflow/lite/python:lite",
@@ -162,17 +156,3 @@ py_strict_test(
         "//tensorflow/python/trackable:autotrackable",
     ],
 )
-
-tf_proto_library(
-    name = "converter_error_data_proto",
-    srcs = ["converter_error_data.proto"],
-    cc_api_version = 2,
-)
-
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "converter_error_data_proto_py",
-#     api_version = 2,
-#     deps = [":converter_error_data_proto"],
-# )
-# copybara:uncomment_end

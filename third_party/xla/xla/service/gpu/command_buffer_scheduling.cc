@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -132,8 +133,22 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
+  if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
+      IsCustomCallTofMHA(*hlo)) {
+    VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
+            << " into command buffer.";
+    return true;
+  }
+
   if (!config.enabled_commands.contains(DebugOptions::CUSTOM_CALL)) {
     return false;
+  }
+
+  if (config.enabled_legacy_custom_call_targets.contains(
+          hlo->custom_call_target())) {
+    VLOG(3) << "Recording legacy custom call target "
+            << hlo->custom_call_target() << " into command buffer.";
+    return true;
   }
 
   // A special case for jax-triton kernel while it is not ported to FFI.
@@ -165,7 +180,7 @@ static bool IsCommand(const HloInstruction* hlo,
       auto fusion_analysis =
           HloFusionAnalysis::Create(fusion, &config.device_description);
       const HloFusionAdaptor& adaptor = fusion_analysis.fusion();
-      auto custom_call_adaptor = HloFindIf(
+      auto custom_call_adaptor = HloBfsFindIf(
           adaptor.GetRoots(), adaptor,
           [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
       const auto* custom_call = static_cast<const HloCustomCallInstruction*>(
@@ -451,7 +466,7 @@ absl::Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
 //===----------------------------------------------------------------------===//
 
 absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
-    const HloInstructionSequence& seq) {
+    const HloInstructionSequence& seq, HloModule* module) {
   auto builder = HloComputation::Builder("command_buffer");
 
   absl::Span<HloInstruction* const> instructions =
@@ -493,9 +508,12 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 
       // Create a new parameter for value defined outside of a command buffer.
       int64_t parameter_id = parameters.size();
-      auto* parameter = Cast<HloParameterInstruction>(builder.AddInstruction(
-          HloInstruction::CreateParameter(parameter_id, operand->shape(),
-                                          absl::StrCat("p", parameter_id))));
+      auto* parameter = Cast<HloParameterInstruction>(
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              parameter_id, operand->shape(), "p")));
+
+      parameter->UniquifyName(module);
+      parameter->UniquifyId(module);
       inst_mapping[operand] = parameters[operand] = parameter;
     }
   }
@@ -518,6 +536,7 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 
     inst_mapping[inst] = builder.AddInstruction(
         inst->CloneWithNewOperands(inst->shape(), mapped_operands(inst), &ctx));
+    inst_mapping[inst]->UniquifyId(module);
   }
 
   // Convert parameters to command buffer arguments.
@@ -546,11 +565,18 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 
   // If we return multiple results wrap them into tuple.
   if (returned.size() > 1) {
-    builder.AddInstruction(HloInstruction::CreateTuple(returned));
+    HloInstruction* inst =
+        builder.AddInstruction(HloInstruction::CreateTuple(returned));
+    inst->UniquifyName(module);
+    inst->UniquifyId(module);
   }
 
+  std::unique_ptr<HloComputation> comp = builder.Build();
+  comp->UniquifyName(module);
+  comp->SetUniqueId(comp->root_instruction()->unique_id());
+
   return CommandBuffer{std::move(arguments), std::move(results),
-                       builder.Build(), std::move(inst_mapping)};
+                       std::move(comp), std::move(inst_mapping)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -579,9 +605,8 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
   }
 
   HloComputation* computation =
-      parent->parent()->AddComputationAndUnifyNamesAndIds(
-          std::move(command_buffer.computation),
-          /*is_entry=*/false);
+      parent->parent()->AddComputation(std::move(command_buffer.computation),
+                                       /*is_entry=*/false);
 
   HloInstruction* call = parent->AddInstruction(HloInstruction::CreateCall(
       cmd_buffer_result_shape, command_buffer.arguments, computation));
@@ -692,13 +717,22 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
-  CommandBufferConfig config{std::move(commands), device_description_};
+
+  absl::flat_hash_set<std::string> legacy_custom_call_targets;
+  for (const auto& target :
+       debug_options.legacy_command_buffer_custom_call_targets()) {
+    legacy_custom_call_targets.insert(target);
+  }
+
+  CommandBufferConfig config{std::move(commands),
+                             std::move(legacy_custom_call_targets),
+                             device_description_};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
   static constexpr auto kRequireTracing = {
-      DebugOptions::CUBLAS, DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
-      DebugOptions::COLLECTIVES};
+      DebugOptions::CUBLAS, DebugOptions::CUBLASLT, DebugOptions::CUDNN,
+      DebugOptions::CUSTOM_CALL, DebugOptions::COLLECTIVES};
 
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {
@@ -756,7 +790,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
 
     for (const HloInstructionSequence& seq : sequences) {
       TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
-                          PrepareCommandBuffer(seq));
+                          PrepareCommandBuffer(seq, comp->parent()));
       TF_ASSIGN_OR_RETURN(
           HloComputation * command_buffer_computation,
           RewriteCommandBuffer(comp, seq, std::move(command_buffer)));

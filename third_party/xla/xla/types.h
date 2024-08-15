@@ -23,7 +23,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/strings/str_cat.h"
-#include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: export
+#include "Eigen/Core"  // IWYU pragma: export
 #include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
 
 namespace xla {

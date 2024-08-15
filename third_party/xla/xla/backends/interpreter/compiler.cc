@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/cholesky_expander.h"
-#include "xla/service/comparison_expander.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"

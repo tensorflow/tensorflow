@@ -1212,9 +1212,13 @@ A set of element-wise binary arithmetic operations is supported.
 
 <b> `Op(lhs, rhs)` </b>
 
-Where `Op` is one of `Add` (addition), `Sub` (subtraction), `Mul`
-(multiplication), `Div` (division), `Rem` (remainder), `Max` (maximum), `Min`
-(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR).
+Where `Op` is one of `Add` (addition), `Sub`(subtraction), `Mul`
+(multiplication), `Div` (division), `Pow` (power), `Rem` (remainder), `Max`
+(maximum), `Min` (minimum), `LogicalAnd` (logical AND), `LogicalOr` (logical
+OR), `LogicalXor` (logical XOR), `ShiftLeft` (Left Shift),
+`ShiftRightArithmetic` (arithmetic Right Shift), `ShiftRightLogical` (logical
+Right Shift), `Atan2` (2-argument arctangent), or `Complex` (combines real and
+imaginary parts into a complex number)
 
 Arguments | Type    | Semantics
 --------- | ------- | ----------------------------------------

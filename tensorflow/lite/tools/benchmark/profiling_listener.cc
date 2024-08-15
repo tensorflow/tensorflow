@@ -18,7 +18,11 @@ limitations under the License.
 #include <fstream>
 #include <string>
 
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/profile_summary_formatter.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {

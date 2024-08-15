@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -71,10 +72,10 @@ TEST(TestOpaqueDelegate, AddDelegate) {
     // Test that an unnamed delegate kernel can be passed to the TF Lite
     // runtime.
     TfLiteOperator* registration_external =
-        TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate,
-                                     /*name*/ nullptr,
-                                     /*version=*/1,
-                                     /*user_data=*/nullptr);
+        TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                             /*name*/ nullptr,
+                             /*version=*/1,
+                             /*user_data=*/nullptr);
     TfLiteOperatorSetInitWithData(
         registration_external,
         [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
@@ -129,10 +130,10 @@ TEST(TestOpaqueDelegate, ModelWithCustomOpAndInitData) {
                                        TfLiteOpaqueDelegate* opaque_delegate,
                                        void* data) -> TfLiteStatus {
     TfLiteOperator* registration_external =
-        TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate,
-                                     /*name*/ nullptr,
-                                     /*version=*/1,
-                                     /*user_data=*/nullptr);
+        TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                             /*name*/ nullptr,
+                             /*version=*/1,
+                             /*user_data=*/nullptr);
     TfLiteOperatorSetInitWithData(
         registration_external,
         [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,

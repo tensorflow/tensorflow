@@ -22,13 +22,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
-#include "tensorflow/lite/tools/optimize/test_util.h"
 
 namespace {
 tensorflow::string* g_test_model_dir = nullptr;
@@ -40,25 +40,25 @@ namespace {
 
 std::unique_ptr<FlatBufferModel> ReadTestModel() {
   auto model_path = tensorflow::io::JoinPath(
-      *g_test_model_dir, internal::kConvModelWith0Plus10Weights);
+      *g_test_model_dir, ::mlir::lite::internal::kConvModelWith0Plus10Weights);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 std::unique_ptr<FlatBufferModel> ReadSharedWeightsTestModel() {
-  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir,
-                                             internal::kModelWithSharedWeights);
+  auto model_path = tensorflow::io::JoinPath(
+      *g_test_model_dir, ::mlir::lite::internal::kModelWithSharedWeights);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 std::unique_ptr<FlatBufferModel> ReadGatherTestModel() {
-  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir,
-                                             internal::kQuantizedWithGather);
+  auto model_path = tensorflow::io::JoinPath(
+      *g_test_model_dir, ::mlir::lite::internal::kQuantizedWithGather);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 std::unique_ptr<FlatBufferModel> ReadCustomOpTestModel() {
-  auto model_path =
-      tensorflow::io::JoinPath(*g_test_model_dir, internal::kModelWithCustomOp);
+  auto model_path = tensorflow::io::JoinPath(
+      *g_test_model_dir, ::mlir::lite::internal::kModelWithCustomOp);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_H_
 #define XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_H_
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -28,6 +29,9 @@ namespace stream_executor {
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill);
+
+using LibNvPtxCompilerVersion = std::array<int64_t, 3>;
+absl::StatusOr<LibNvPtxCompilerVersion> GetLibNvPtxCompilerVersion();
 
 }  // namespace stream_executor
 

@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -49,8 +50,14 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -468,6 +475,15 @@ absl::InlinedVector<int64_t, 1>
 AsyncTracker::GetReleasedNonextendableResourcesFromVector(
     const ResourcesVector& resources) const {
   return {};
+}
+
+bool AsyncTracker::ReleasesSelectiveResource(const HloGraphNode* node) const {
+  return absl::c_any_of(
+      node->GetResources(), [&](const ResourcePair& resource) {
+        return resource.second == ResourceUsageType::kResourceRelease &&
+               GetResourceHazardType(resource.first) ==
+                   ResourceHazardType::kSelective;
+      });
 }
 
 BufferInfoTracker::BufferInfoTracker(
@@ -1276,10 +1292,10 @@ void DefaultSchedulerCore::LogInstruction(const HloInstruction* instr) const {
 
 void PrintOccupierList(
     std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers) {
-  VLOG(2) << "Occupier list:";
   for (int64_t i = 0; i < occupiers.size(); i++) {
-    VLOG(2) << "\tOccupier at index: " << i
-            << " with projected finish time: " << occupiers[i].second
+    VLOG(2) << "\tOccupier " << i << ": "
+            << occupiers[i].first->Target().GetInstr().name()
+            << ", projected finish time: " << occupiers[i].second
             << " original latency: " << occupiers[i].first->OriginalLatency()
             << " latency: " << occupiers[i].first->Latency();
   }
@@ -1329,9 +1345,6 @@ bool DefaultSchedulerCore::DeleteOccupierFromResource(
   it = occupiers.erase(it);
   for (; it != occupiers.end(); it++) {
     it->second -= accumulated_saved_time;
-  }
-  if (VLOG_IS_ON(2)) {
-    PrintOccupierList(occupiers);
   }
   return true;
 }
@@ -1384,9 +1397,6 @@ bool DefaultSchedulerCore::AddOccupierToResource(
   for (; it != occupiers.end(); it++) {
     it->second += accumulated_delay;
   }
-  if (VLOG_IS_ON(2)) {
-    PrintOccupierList(occupiers);
-  }
   return true;
 }
 
@@ -1396,6 +1406,33 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   sched_state->new_sequence_reversed.push_back(
       const_cast<HloInstruction*>(&n->GetInstr()));
   n->SetScheduled();
+
+  // Remove scheduled node from selective_resources_releasers if it
+  // was there.
+  if (sched_state->config.enable_selective_resources &&
+      n->ReleasesSelectiveResource()) {
+    auto it = std::find(sched_state->selective_resource_releasers.begin(),
+                        sched_state->selective_resource_releasers.end(), n);
+    // Perform sanity check node was in selective_resources_releasers.
+    if (it == sched_state->selective_resource_releasers.end()) {
+      LOG(WARNING) << "Selective resource releasers list does not contain node "
+                      "that releases a selective resource: "
+                   << n->ToString();
+    } else {
+      sched_state->selective_resource_releasers.erase(it);
+    }
+  }
+
+  // If scheduled node cannot overlap with nodes that hold selective resources,
+  // we increment the ready time of all nodes that release a selective resource
+  // with the cost of the scheduled node.
+  if (sched_state->config.enable_selective_resources &&
+      !n->GetValuableForSelectiveOverlap()) {
+    for (HloGraphNode* node : sched_state->selective_resource_releasers) {
+      node->SetReadyTime(node->GetReadyTime() + n->GetCost());
+    }
+  }
+
   // If this node is an async start/done handle the increase/decrease the number
   // of outstanding async ops.
   for (auto& resource : n->GetResources()) {
@@ -1422,13 +1459,13 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
         auto occupiers = sched_state->shareable_resource_occupiers[resource];
         for (auto [occupier_edge, edge_pft] : occupiers) {
           if (occupier_edge == &pred) {
-            VLOG(10) << "Ready time of scheduled node " << n->GetInstr().name()
-                     << " before update with pft: " << edge_pft
-                     << ", ready_time: " << schedule_time;
+            VLOG(2) << "Ready time of scheduled node " << n->GetInstr().name()
+                    << " before update with pft: " << edge_pft
+                    << ", ready_time: " << schedule_time;
             schedule_time = std::max(schedule_time, edge_pft);
-            VLOG(10) << "Ready time of scheduled node " << n->GetInstr().name()
-                     << " after update with pft: " << edge_pft
-                     << ", ready_time: " << schedule_time;
+            VLOG(2) << "Ready time of scheduled node " << n->GetInstr().name()
+                    << " after update with pft: " << edge_pft
+                    << ", ready_time: " << schedule_time;
           }
         }
       }
@@ -1446,6 +1483,13 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
         CHECK(DeleteOccupierFromResource(
             schedule_time, edge,
             sched_state->shareable_resource_occupiers[resource]));
+        if (VLOG_IS_ON(2)) {
+          VLOG(2) << "Occupier list for "
+                  << sched_state->async_tracker->GetResourceName(resource)
+                  << ": ";
+          PrintOccupierList(
+              sched_state->shareable_resource_occupiers[resource]);
+        }
       }
     }
     // If a shareable resource is occupied by scheduling this node, insert the
@@ -1459,6 +1503,13 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
             CHECK(AddOccupierToResource(
                 current_time, inverse_edge,
                 sched_state->shareable_resource_occupiers[resource]));
+            if (VLOG_IS_ON(2)) {
+              VLOG(2) << "Occupier list for "
+                      << sched_state->async_tracker->GetResourceName(resource)
+                      << ": ";
+              PrintOccupierList(
+                  sched_state->shareable_resource_occupiers[resource]);
+            }
           }
           break;
         }
@@ -1508,15 +1559,15 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
           auto occupiers = sched_state->shareable_resource_occupiers[resource];
           for (auto [occupier_edge, edge_pft] : occupiers) {
             if (occupier_edge == &pred) {
-              VLOG(10) << "Ready time of predecessor "
-                       << edge.Target().GetInstr().name()
-                       << " before update with pft: " << edge_pft
-                       << ", ready_time: " << ready_time;
+              VLOG(2) << "Ready time of predecessor "
+                      << edge.Target().GetInstr().name()
+                      << " before update with pft: " << edge_pft
+                      << ", ready_time: " << ready_time;
               ready_time = std::max(ready_time, edge_pft);
-              VLOG(10) << "Ready time of predecessor "
-                       << edge.Target().GetInstr().name()
-                       << " after update with pft: " << edge_pft
-                       << ", ready_time: " << ready_time;
+              VLOG(2) << "Ready time of predecessor "
+                      << edge.Target().GetInstr().name()
+                      << " after update with pft: " << edge_pft
+                      << ", ready_time: " << ready_time;
             }
           }
         }
@@ -1533,6 +1584,13 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       sched_state->next_ready_stack.push_back(&edge.Target());
       std::push_heap(sched_state->next_ready_stack.begin(),
                      sched_state->next_ready_stack.end(), ready_time_cmp);
+    }
+
+    // If the node we added to ready set releases a selective resource, add
+    // it to selective_resources_releasers.
+    if (sched_state->config.enable_selective_resources &&
+        edge.Target().ReleasesSelectiveResource()) {
+      sched_state->selective_resource_releasers.push_back(&edge.Target());
     }
   }
   ++sched_state->scheduled_count;
@@ -1612,6 +1670,8 @@ HloScheduleGraph::HloScheduleGraph(
     new_node_it->second->occupied_shareable_resources_ =
         async_tracker->GetOccupiedShareableResourcesFromVector(
             new_node_it->second->GetResources());
+    new_node_it->second->releases_selective_resource_ =
+        async_tracker->ReleasesSelectiveResource(new_node_it->second.get());
     // Gather while instructions for subsequent send-done dependency checks.
     if (instr->opcode() == HloOpcode::kWhile) {
       while_instrs.push_back(instr);

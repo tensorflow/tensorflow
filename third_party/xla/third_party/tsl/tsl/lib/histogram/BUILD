@@ -18,11 +18,7 @@ cc_library(
     name = "histogram",
     srcs = ["histogram.cc"],
     hdrs = ["histogram.h"],
-    visibility = internal_visibility([
-        "//learning/brain/google/monitoring:__pkg__",
-        "//tensorflow/core/lib/histogram:__pkg__",
-        "//tsl/lib/monitoring:__pkg__",
-    ]),
+    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:logging",
         "//tsl/platform:macros",

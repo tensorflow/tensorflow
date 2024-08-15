@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
-#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 std::ostream& operator<<(std::ostream& os, const TfLiteTensor& tensor) {
   std::string shape;

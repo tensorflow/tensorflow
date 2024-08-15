@@ -29,6 +29,8 @@ class MockServingDeviceSelector : public tsl::ServingDeviceSelector {
  public:
   MOCK_METHOD(tsl::DeviceReservation, ReserveDevice, (absl::string_view),
               (override));
+  MOCK_METHOD(void, Enqueue, (int32_t, absl::string_view), (override));
+  MOCK_METHOD(void, Completed, (int32_t, bool), (override));
   MOCK_METHOD(void, FreeDeviceReservation, (const tsl::DeviceReservation&),
               (override));
 };

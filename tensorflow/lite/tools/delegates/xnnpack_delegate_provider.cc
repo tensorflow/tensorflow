@@ -27,7 +27,7 @@ class XnnpackDelegateProvider : public DelegateProvider {
     default_params_.AddParam("use_xnnpack", ToolParam::Create<bool>(false));
     default_params_.AddParam("xnnpack_force_fp16",
                              ToolParam::Create<bool>(false));
-    default_params_.AddParam("xnnpack_experimental_weight_cache_file_path",
+    default_params_.AddParam("xnnpack_weight_cache_file_path",
                              ToolParam::Create<std::string>(""));
   }
 
@@ -56,8 +56,8 @@ std::vector<Flag> XnnpackDelegateProvider::CreateFlags(
                        "false explicitly."),
       CreateFlag<bool>("xnnpack_force_fp16", params,
                        "enforce float16 inference."),
-      CreateFlag<std::string>("xnnpack_experimental_weight_cache_file_path",
-                              params, "enable file-backed weight caching."),
+      CreateFlag<std::string>("xnnpack_weight_cache_file_path", params,
+                              "enable file-backed weight caching."),
   };
   return flags;
 }
@@ -67,9 +67,8 @@ void XnnpackDelegateProvider::LogParams(const ToolParams& params,
   LOG_TOOL_PARAM(params, bool, "use_xnnpack", "Use xnnpack", verbose);
   LOG_TOOL_PARAM(params, bool, "xnnpack_force_fp16", "xnnpack_force_fp16",
                  verbose);
-  LOG_TOOL_PARAM(params, std::string,
-                 "xnnpack_experimental_weight_cache_file_path",
-                 "xnnpack_experimental_weight_cache_file_path", verbose);
+  LOG_TOOL_PARAM(params, std::string, "xnnpack_weight_cache_file_path",
+                 "xnnpack_weight_cache_file_path", verbose);
 }
 
 TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
@@ -78,8 +77,7 @@ TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
     return evaluation::CreateXNNPACKDelegate(
         params.Get<int32_t>("num_threads"),
         params.Get<bool>("xnnpack_force_fp16"),
-        params.Get<std::string>("xnnpack_experimental_weight_cache_file_path")
-            .c_str());
+        params.Get<std::string>("xnnpack_weight_cache_file_path").c_str());
   }
   return CreateNullDelegate();
 }

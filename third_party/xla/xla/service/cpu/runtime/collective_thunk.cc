@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/collectives_interface.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape.h"
@@ -52,10 +53,12 @@ limitations under the License.
 namespace xla::cpu {
 
 CollectiveThunk::CollectiveThunk(Kind kind, Thunk::Info info,
-                                 OpParams op_params, OpBuffers op_buffers)
+                                 OpParams op_params, OpBuffers op_buffers,
+                                 OpResources op_resources)
     : Thunk(kind, info),
       op_params_(std::move(op_params)),
-      op_buffers_(std::move(op_buffers)) {}
+      op_buffers_(std::move(op_buffers)),
+      op_resources_(std::move(op_resources)) {}
 
 Thunk::BufferUses CollectiveThunk::buffer_uses() const {
   BufferUses uses;
@@ -66,15 +69,11 @@ Thunk::BufferUses CollectiveThunk::buffer_uses() const {
   for (auto& destination_buffer : destination_buffers()) {
     uses.push_back(BufferUse::Write(destination_buffer));
   }
-
-  // TODO(ezhulenev): It is a hack to make sure that we execute all collective
-  // operations in the same order as in HLO schedule, because otherwise racing
-  // collectives lead to undefined behavior. Instead we should correctly model
-  // side effects of Thunks.
-  static auto* fake_alloc = new BufferAllocation(0, 1, 0);
-  uses.push_back(BufferUse::Write(BufferAllocation::Slice(fake_alloc, 0, 1)));
-
   return uses;
+}
+
+Thunk::ResourceUses CollectiveThunk::resource_uses() const {
+  return {ResourceUse::Write(op_resources_.communicator_resource)};
 }
 
 bool CollectiveThunk::IsDataTypeSupportedByCollectiveReduce(

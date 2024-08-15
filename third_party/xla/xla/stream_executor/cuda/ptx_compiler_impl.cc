@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
+#include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace stream_executor {
@@ -171,6 +172,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
       nvPTXCompilerGetCompiledProgram(compiler_handle, (char*)cubin.data()));
 
   return cubin;
+}
+
+absl::StatusOr<LibNvPtxCompilerVersion> GetLibNvPtxCompilerVersion() {
+  unsigned major{}, minor{};
+  RETURN_IF_NVPTXCOMPILER_ERROR(nvPTXCompilerGetVersion(&major, &minor));
+
+  return LibNvPtxCompilerVersion{major, minor, 0};
 }
 
 }  // namespace stream_executor

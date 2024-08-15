@@ -320,7 +320,9 @@ enum StatType {
   kEdgeTpuModelProfileInfo,
   kEdgeTpuMlir,
   kDroppedTraces,
-  kLastStatType = kDroppedTraces,
+  kCudaGraphId,
+  kCudaGraphDetails,
+  kLastStatType = kCudaGraphDetails,
 };
 
 enum MegaScaleStatType : uint8_t {

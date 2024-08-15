@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/tree_reduction_rewriter.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <memory>
-#include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -48,6 +48,26 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+absl::InlinedVector<int64_t, 2> GetSortedReducedDims(
+    HloReduceInstruction *reduce) {
+  absl::InlinedVector<int64_t, 2> reduced_dims{reduce->dimensions().begin(),
+                                               reduce->dimensions().end()};
+  absl::c_sort(reduced_dims);
+  return reduced_dims;
+}
+
+bool IsMinMaxReduction(HloReduceInstruction *reduce) {
+  HloComputation *called = &reduce->to_apply()[0];
+  if (auto reduction_kind = MatchReductionComputation(called)) {
+    return reduction_kind == ReductionKind::MAX ||
+           reduction_kind == ReductionKind::MIN;
+  }
+  return false;
+}
+
+}  // namespace
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
@@ -55,285 +75,294 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       : gpu_version_(gpu_version) {}
 
   absl::Status HandleReduce(HloInstruction *hlo) override {
-    // MLIR emitters only support race-free reductions.
-    // TODO(jreiffers: Verify performance and implement atomics for reductions
-    // if needed.
-    if (hlo->GetModule()
-                ->config()
-                .debug_options()
-                .xla_gpu_mlir_emitter_level() < 4 &&
-        IsMinMaxReduction(hlo)) {
-      // TODO(cheshire): Also enable for integers.
-      VLOG(1) << "Not performing tree expansion on min/max-reduction: "
-              << hlo->ToString() << " since min/max operations are associative";
-      return absl::OkStatus();
-    }
+    auto *reduce = Cast<HloReduceInstruction>(hlo);
+    VLOG(3) << "Reduction instruction: " << reduce->ToString();
 
-    if (!IsReductionFromOrToContiguousDimensions(*hlo)) {
+    const HloModuleConfig &config = reduce->GetModule()->config();
+    if (!MatchReductionForSplit(reduce, config)) {
       return absl::OkStatus();
     }
-    return RewriteReduction(hlo);
+    ReductionDimensions reduction_dims =
+        GetReductionKindAndContiguousComponents(*hlo);
+    if (ReductionIsRaceFree(config, reduction_dims)) {
+      VLOG(3) << "Base case: dimensions fit";
+      return absl::OkStatus();
+    }
+    auto sorted_dims_to_reduce = GetSortedReducedDims(reduce);
+    CHECK_LE(sorted_dims_to_reduce.size(), 2);
+
+    // If the major reduced dimension does not fit, reduce the minor dimension
+    // first, then the major.
+    if (reduction_dims.is_row_reduction &&
+        reduction_dims
+                .dimensions[ReductionDimensions::kRowMajorReducedDimension] >
+            BatchedReductionRaceFreeBound()) {
+      VLOG(2) << "Splitting batched dimension reduce into a separate reduction";
+      return RewriteBatchDimensionLargerThanTile(reduce, reduction_dims,
+                                                 sorted_dims_to_reduce);
+    }
+    SplitParams split_params =
+        ComputeSplitParams(reduce, reduction_dims, sorted_dims_to_reduce);
+    return SplitReductionDimension(reduce, split_params, sorted_dims_to_reduce);
   }
 
  private:
-  bool IsMinMaxReduction(HloInstruction *hlo) {
-    HloComputation *called = hlo->called_computations()[0];
-    if (std::optional<ReductionKind> reduction_kind =
-            MatchReductionComputation(called)) {
-      return reduction_kind == ReductionKind::MAX ||
-             reduction_kind == ReductionKind::MIN;
+  bool MatchReductionForSplit(HloReduceInstruction *reduce,
+                              const HloModuleConfig &config) {
+    // MLIR emitters only support race-free reductions.
+    // TODO(jreiffers: Verify performance and implement atomics for reductions
+    // if needed.
+    bool reductions_via_mlir_disabled =
+        config.debug_options().xla_gpu_mlir_emitter_level() < 4;
+    if (reductions_via_mlir_disabled && IsMinMaxReduction(reduce)) {
+      // TODO(cheshire): Also enable for integers.
+      VLOG(1) << "Not performing tree expansion on min/max-reduction: "
+              << reduce->ToString()
+              << " since min/max operations are associative";
+      return false;
     }
-    return false;
+    if (!IsReductionFromOrToContiguousDimensions(*reduce)) {
+      VLOG(3) << "Is not a reduction from or to contiguous dimensions";
+      return false;
+    }
+    VLOG(3) << "Perform rewrite";
+    return true;
   }
 
   // We observe larger n_div_k can improve tree reduction performance in most of
   // the cases by reducing memory store and the launch overhead of blocks. Swap
   // k and n_div_k if possible.
-  bool ShouldSwapInnerAndOuterReducedMinorDimension(uint64_t k,
-                                                    uint64_t n_div_k,
+  bool ShouldSwapInnerAndOuterReducedMinorDimension(uint64_t k1, uint64_t k2,
                                                     uint64_t n,
                                                     int64_t race_free_bound,
                                                     bool is_row_reduction) {
-    CHECK(k >= n_div_k);
+    CHECK(k1 >= k2);
     // Keep inner reduction as race free.
-    if (k > race_free_bound) {
+    if (k1 > race_free_bound) {
       return false;
     }
     // Swapping only affects row reduction vectorization.
     if (is_row_reduction) {
       // Rough conditions for row reduction vectorization, not mean that
       // vectorization will definitely occur.
-      bool maybe_vectorized = n_div_k % 2 == 0 && n % 2 == 0;
+      bool maybe_vectorized = k2 % 2 == 0 && n % 2 == 0;
       if (maybe_vectorized) {
         // Swap if n_div_k is small enough or k dim can be vectorized also.
-        return n_div_k * 2 < k || k % 2 == 0;
+        return k2 * 2 < k1 || k1 % 2 == 0;
       }
       // Current reduction emitter only checks reduction input dimensions but
       // not fusion input dimensions. Due to pad and inner reduction always fuse
       // into same computation, it may leads to each thread reads multiple non
       // aligned elements but can not vectorized so that get bad performance.
       // Don't swap If encountered this situation.
-      return n % 2 == 0 || k % 2 != 0;
+      return n % 2 == 0 || k1 % 2 != 0;
     }
     // There exists no specific situation where swapping has no performance gain
     // for column reduction.
     return true;
   }
 
-  absl::Status RewriteReduction(HloInstruction *hlo) {
-    ReductionDimensions reduction_dimensions =
-        GetReductionKindAndContiguousComponents(*hlo);
-    VLOG(5) << "Input: " << hlo->ToString();
-    auto *reduce = Cast<HloReduceInstruction>(hlo);
+  // Parameters how to split a dimension `dim` with `k` elements into `k1` x
+  // `k2`.
+  struct SplitParams {
+    int64_t k1;
+    int64_t k2;
+    int64_t dim;
+  };
+
+  // Attempts to find the best way to split a dimension `dim` with `k` elements
+  // into `k1` x `k2`.
+  SplitParams ComputeSplitParams(
+      HloReduceInstruction *reduce, const ReductionDimensions &reduction_dims,
+      absl::Span<const int64_t> sorted_dims_to_reduce) {
     absl::Span<int64_t const> input_shape_dims =
         reduce->inputs()[0]->shape().dimensions();
-    VLOG(3) << "Input dimensions: " << absl::StrJoin(input_shape_dims, ", ");
 
-    bool reduce_batch_dimension = hlo->dimensions().size() > 1;
-    VLOG(3) << "reduce_batch_dimension = " << reduce_batch_dimension;
+    int64_t reduced_dim = sorted_dims_to_reduce.back();
+    int64_t reduced_dim_size = input_shape_dims[reduced_dim];
+    VLOG(3) << "reduced dim size = " << reduced_dim_size;
 
-    std::vector<int64_t> reduced_dimensions = *hlo->mutable_dimensions();
-    absl::c_sort(reduced_dimensions);
-    CHECK_LE(reduced_dimensions.size(), 2);
-    int64_t reduced_input_dimension =
-        reduced_dimensions[reduced_dimensions.size() - 1];
-    VLOG(3) << "reduced_input_dimension: " << reduced_input_dimension;
-
-    // Case (1): batched dimension does not fit.
-    if (reduce_batch_dimension &&
-        input_shape_dims[0] > BatchedReductionRaceFreeBound()) {
-      VLOG(2) << "Splitting batched dimension reduce into a separate reduction";
-      VLOG(1) << "Input: " << hlo->ToString();
-      return RewriteBatchDimensionLargerThanTile(reduce, reduction_dimensions,
-                                                 reduced_input_dimension);
-    }
-    bool is_row_reduction = reduction_dimensions.is_row_reduction;
-
-    // Base case: everything fits.
-    if (ReductionIsRaceFree(hlo->GetModule()->config(), reduction_dimensions)) {
-      VLOG(3) << "Base case: dimensions fit";
-      return absl::OkStatus();
-    }
-
-    VLOG(1) << "Input: " << hlo->ToString();
-    int64_t n = input_shape_dims[reduced_input_dimension];
-    VLOG(3) << "n = " << n;
-
-    // We will do this reduction in two stages.  The first will reduce from n
-    // elements to k elements in the reduction dimension.  The second will
-    // reduce further, from k to 1 element.
+    // We will do this reduction in two stages.  The first will reduce from k
+    // elements to k1 elements in the reduction dimension.  The second will
+    // reduce further, from k2 to 1 element.
     //
-    // We do this by splitting the input shape [a, n, b] into [a, k, n / k, b].
+    // We do this by splitting the input shape [a, k, b] into [a, k1, k2, b].
     //
-    // We want to choose k to be roughly equal to sqrt(n) so that we process
+    // We want to choose k1 to be roughly equal to sqrt(k) so that we process
     // "most of" the reduction in the first step. But it is also important that
-    // we choose a value of k with the least amount of padding we need to add to
-    // n to make it divisible by k. We search for the best value of n / k
-    // between sqrt(n)/2 and sqrt(n). If there are several possible values for
-    // n / k that result in the minimum amount of padding, we also want n / k to
+    // we choose a value of k1 with the least amount of padding we need to add
+    // to n to make it divisible by k1. We search for the best value of k2
+    // between sqrt(k)/2 and sqrt(k). If there are several possible values for
+    // k2 that result in the minimum amount of padding, we also want k2 to
     // be a power of 2, so that the GPU kernel doesn't spend all its time doing
-    // slow integer divmods to compute indices into the shape [a,k,n/k,b].
-    // Note that by searching in the range between sqrt(n)/2 and sqrt(n), we
+    // slow integer divmods to compute indices into the shape [a,k1,k2,b].
+    // Note that by searching in the range between sqrt(k)/2 and sqrt(k), we
     // will have a power of 2 in that range.
-    uint64_t n_div_k = static_cast<uint64_t>(std::floor(std::sqrt(n)));
+    uint64_t k2 =
+        static_cast<uint64_t>(std::floor(std::sqrt(reduced_dim_size)));
     int64_t race_free_bound = ReductionDimensionRaceFreeBound(
-        hlo->GetModule()->config(), reduction_dimensions);
-    if (n_div_k > race_free_bound) {
+        reduce->GetModule()->config(), reduction_dims);
+    if (k2 > race_free_bound) {
       // This means we need more than one split. It is best to limit the n/k
       // dimension to the maximum size that doesn't require further splitting.
       // Otherwise we might choose a rather small reduce dimension size for the
       // first step (in the worst case, sqrt(race_free_bound + 1)).
-      n_div_k = race_free_bound;
+      k2 = race_free_bound;
     }
-    uint64_t minimum_padding = (n_div_k - n % n_div_k) % n_div_k;
-    uint64_t best_k = (n + minimum_padding) / n_div_k;
-    for (uint64_t i = n_div_k - 1; i > n_div_k / 2; --i) {
-      uint64_t padding = (i - n % i) % i;
+    uint64_t minimum_padding = (k2 - reduced_dim_size % k2) % k2;
+    uint64_t best_k1 = (reduced_dim_size + minimum_padding) / k2;
+    for (uint64_t i = k2 - 1; i > k2 / 2; --i) {
+      uint64_t padding = (i - reduced_dim_size % i) % i;
       if (padding < minimum_padding ||
           (padding == minimum_padding && absl::has_single_bit(i))) {
         minimum_padding = padding;
-        best_k = (n + padding) / i;
+        best_k1 = (reduced_dim_size + padding) / i;
       }
     }
-    uint64_t padded_n = n + minimum_padding;
-    // We get the best {k, n_div_k} pair by the size of padding and whether
+    uint64_t padded_k = reduced_dim_size + minimum_padding;
+
+    // We get the best {k_1, k_2} pair by the size of padding and whether
     // index computation is fast. But we ignored the overhead of memory
     // read/write and blocks launch, which are also important for kernel
-    // performance. It is obvious that the swapped {k, n_div_k} pairs has same
+    // performance. It is obvious that the swapped {k1, k2} pairs has same
     // padding size and consumption of index computation as the original. So we
     // only need to compare the memory read/write and blocks launch to choose
     // the better one of them.
-    uint64_t best_n_div_k = padded_n / best_k;
+    uint64_t best_k2 = padded_k / best_k1;
     if (ShouldSwapInnerAndOuterReducedMinorDimension(
-            best_k, best_n_div_k, n, race_free_bound, is_row_reduction)) {
-      std::swap(best_k, best_n_div_k);
+            best_k1, best_k2, reduced_dim_size, race_free_bound,
+            reduction_dims.is_row_reduction)) {
+      std::swap(best_k1, best_k2);
     }
+    return SplitParams{static_cast<int64_t>(best_k1),
+                       static_cast<int64_t>(best_k2), reduced_dim};
+  }
 
-    // Pad reduced dimension to the required number of elements.
-    bool no_padding_necessary = n == padded_n;
-    using InstructionVector = absl::InlinedVector<HloInstruction *, 2>;
-    auto padded = [&]() -> InstructionVector {
-      if (no_padding_necessary) {
-        return InstructionVector(reduce->inputs().begin(),
-                                 reduce->inputs().end());
-      }
+  // Replaces the original reduce with pad->reshape>inner_reduce->outer_reduce.
+  // * 1. pads split dimension of the inputs to k1 * k2 if necessary.
+  // * 2. reshapes split dimension of the padded inputs into [k1, k2].
+  // * 3. inner reduction reduces the dims specified in the original reduction.
+  //      Instead of reducing the split dimension, reduces K2.
+  // * 4. outer_reduction reduces K1 only.
+  absl::Status SplitReductionDimension(
+      HloReduceInstruction *reduce, const SplitParams &split_params,
+      absl::Span<const int64_t> sorted_dims_to_reduce) {
+    absl::Span<int64_t const> reduce_input_dims =
+        reduce->inputs()[0]->shape().dimensions();
+    int64_t split_dim_size = reduce_input_dims[split_params.dim];
+    VLOG(2) << "dimension to split = " << split_params.dim << " with "
+            << split_dim_size << " elements into " << split_params.k1 << " by "
+            << split_params.k2;
 
+    // Pad 'k' to 'k1 * k2' if necessary.
+    HloInstruction::InstructionVector padded_inputs(reduce->inputs().begin(),
+                                                    reduce->inputs().end());
+    auto padded_size = split_params.k1 * split_params.k2;
+    absl::InlinedVector<int64_t, 3> padded_dimensions(reduce_input_dims.begin(),
+                                                      reduce_input_dims.end());
+    if (split_dim_size != padded_size) {
+      padded_dimensions[split_params.dim] = padded_size;
       PaddingConfig padding_config =
-          MakeNoPaddingConfig(input_shape_dims.size());
-      padding_config.mutable_dimensions(reduced_input_dimension)
-          ->set_edge_padding_high(padded_n - n);
-      std::vector<int64_t> padded_dimensions(input_shape_dims.begin(),
-                                             input_shape_dims.end());
-      padded_dimensions[reduced_input_dimension] = padded_n;
+          MakeNoPaddingConfig(reduce_input_dims.size());
+      padding_config.mutable_dimensions(split_params.dim)
+          ->set_edge_padding_high(padded_size - split_dim_size);
 
-      absl::InlinedVector<HloInstruction *, 2> out;
-      out.reserve(reduce->input_count());
-      for (int i = 0; i < reduce->input_count(); i++) {
-        HloInstruction *in = reduce->inputs()[i];
-        Shape padded_shape =
-            ShapeUtil::MakeShape(in->shape().element_type(), padded_dimensions);
-        VLOG(3) << "Generated padded shape: " << padded_shape.ToString();
-        out.push_back(hlo->parent()->AddInstruction(
-            HloInstruction::CreatePad(padded_shape, in,
-                                      reduce->init_values()[i], padding_config),
-            &in->metadata()));
+      for (int input_idx = 0; input_idx < padded_inputs.size(); ++input_idx) {
+        auto &reduction_input = padded_inputs[input_idx];
+        Shape padded_shape = ShapeUtil::MakeShape(
+            reduction_input->shape().element_type(), padded_dimensions);
+        VLOG(2) << "Generated padded shape: " << padded_shape.ToString();
+        reduction_input = reduce->parent()->AddInstruction(
+            HloInstruction::CreatePad(padded_shape, reduction_input,
+                                      reduce->init_values()[input_idx],
+                                      padding_config),
+            &reduction_input->metadata());
       }
-      return out;
-    }();
+    }
 
-    VLOG(2) << "Generated padding: " << padded[0]->ToString();
+    // Compute output type of reshape that expands the split dimension into
+    // [k1, k2].
     absl::InlinedVector<int64_t, 3> reshaped_dimensions;
-    for (int64_t dim_idx = 0; dim_idx < padded[0]->shape().dimensions_size();
-         dim_idx++) {
-      if (dim_idx == reduced_input_dimension) {
-        reshaped_dimensions.push_back(best_k);
-        reshaped_dimensions.push_back(padded_n / best_k);
+    int64_t input_rank = reduce_input_dims.size();
+    for (int64_t dim_idx = 0; dim_idx < input_rank; dim_idx++) {
+      if (dim_idx == split_params.dim) {
+        reshaped_dimensions.push_back(split_params.k1);
+        reshaped_dimensions.push_back(split_params.k2);
       } else {
-        reshaped_dimensions.push_back(padded[0]->shape().dimensions(dim_idx));
+        reshaped_dimensions.push_back(padded_dimensions[dim_idx]);
       }
     }
 
-    absl::InlinedVector<int64_t, 3> inner_reduce_dimensions =
-        reshaped_dimensions;
-    // We split reduced_input_dimension into two new dims.  We have the choice
-    // of reducing along either of them.  We choose to reduce along the second,
-    // more-minor dimension, because this should use the GPU caches better.
-    int64_t inner_reduced_dimension = is_row_reduction
-                                          ? inner_reduce_dimensions.size() - 1
-                                          : reduced_input_dimension + 1;
-    VLOG(2) << "inner_reduced_dimension = " << inner_reduced_dimension;
-    inner_reduce_dimensions.erase(inner_reduce_dimensions.begin() +
-                                  inner_reduced_dimension);
-    if (reduce_batch_dimension) {
-      inner_reduce_dimensions.erase(inner_reduce_dimensions.begin());
-    }
-    std::vector<int64_t> dims_to_reduce = {inner_reduced_dimension};
-    if (reduce_batch_dimension) {
-      dims_to_reduce.push_back(0);
-      inner_reduced_dimension -= 1;
-    }
+    // Compute dimensions to reduce for inner reduction.
+    absl::InlinedVector<int64_t, 2> inner_reduce_dims(
+        sorted_dims_to_reduce.begin(), sorted_dims_to_reduce.end());
+    auto split_dim_it = std::find(inner_reduce_dims.begin(),
+                                  inner_reduce_dims.end(), split_params.dim);
+    *split_dim_it += 1;
 
-    InstructionVector reshaped_padded_inputs;
+    // Compute dimension to reduce for outer reduction.
+    absl::InlinedVector<int64_t, 1> outer_reduce_dims{
+        split_params.dim -
+        std::distance(inner_reduce_dims.begin(), split_dim_it)};
+
+    // Compute output shape of the inner reduction.
+    absl::InlinedVector<int64_t, 3> inner_reduce_shape =
+        RemoveElements(inner_reduce_dims, reshaped_dimensions);
+
+    // Reshape the split dimensions of the padded inputs into [k1, k2].
+    HloInstruction::InstructionVector reshaped_padded_inputs;
     absl::InlinedVector<Shape, 2> inner_reduce_shapes;
-    for (int i = 0; i < padded.size(); i++) {
-      HloInstruction *p = padded[i];
-      Shape reshaped_shape =
-          ShapeUtil::MakeShape(p->shape().element_type(), reshaped_dimensions);
-      HloInstruction *reshaped_padded_input = hlo->parent()->AddInstruction(
-          HloInstruction::CreateBitcast(reshaped_shape, p), &p->metadata());
+    for (HloInstruction *padded_input : padded_inputs) {
+      Shape reshaped_shape = ShapeUtil::MakeShape(
+          padded_input->shape().element_type(), reshaped_dimensions);
+      HloInstruction *reshaped_padded_input = reduce->parent()->AddInstruction(
+          HloInstruction::CreateBitcast(reshaped_shape, padded_input),
+          &padded_input->metadata());
       VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
       reshaped_padded_inputs.push_back(reshaped_padded_input);
-      Shape inner_reduce_shape = ShapeUtil::MakeShape(p->shape().element_type(),
-                                                      inner_reduce_dimensions);
-      inner_reduce_shapes.push_back(inner_reduce_shape);
+      inner_reduce_shapes.push_back(ShapeUtil::MakeShape(
+          padded_input->shape().element_type(), inner_reduce_shape));
     }
 
-    HloInstruction *inner_reduce = hlo->parent()->AddInstruction(
+    // Inner reduce that reduces [k1, k2] to [k1].
+    HloInstruction *inner_reduce = reduce->parent()->AddInstruction(
         HloInstruction::CreateReduce(
             ShapeUtil::MakeMaybeTupleShape(inner_reduce_shapes),
-            reshaped_padded_inputs, reduce->init_values(), dims_to_reduce,
-            hlo->to_apply()),
+            reshaped_padded_inputs, reduce->init_values(), inner_reduce_dims,
+            reduce->to_apply()),
         &reduce->metadata());
     VLOG(1) << "Generated inner reduction: " << inner_reduce->ToString();
-    absl::InlinedVector<int64_t, 3> outer_reduce_dimensions =
-        inner_reduce_dimensions;
-    VLOG(3) << "outer_reduce_dimensions = "
-            << absl::StrJoin(outer_reduce_dimensions, ", ");
-    int64_t outer_reduced_dimension = is_row_reduction
-                                          ? outer_reduce_dimensions.size() - 1
-                                          : reduced_input_dimension;
 
-    // Remove reduced dimension.
-    outer_reduce_dimensions.erase(outer_reduce_dimensions.begin() +
-                                  outer_reduced_dimension);
+    // Outer reduce that reduces [k2].
     std::unique_ptr<HloInstruction> outer_reduce = HloInstruction::CreateReduce(
-        hlo->shape(), inner_reduce, reduce->init_values(),
-        {outer_reduced_dimension}, hlo->to_apply());
+        reduce->shape(), inner_reduce, reduce->init_values(), outer_reduce_dims,
+        reduce->to_apply());
 
     VLOG(1) << "Generated outer reduction: " << outer_reduce->ToString();
-    return ReplaceWithNewInstruction(hlo, std::move(outer_reduce));
+    return ReplaceWithNewInstruction(reduce, std::move(outer_reduce));
   }
 
   // Rewrites batch dimension reduction into a separate reduce operation.
   absl::Status RewriteBatchDimensionLargerThanTile(
       HloReduceInstruction *hlo,
       const ReductionDimensions &reduction_dimensions,
-      int64_t reduced_input_dimension) {
+      absl::Span<const int64_t> sorted_dims_to_reduce) {
     // TODO(cheshire): this codepath is essentially the exact reverse of what
     // algebraic_simplifier is doing, we need to make sure they don't keep
     // undoing each other.
     CHECK(reduction_dimensions.is_row_reduction);
 
     absl::InlinedVector<Shape, 2> tuple_shapes;
+    int64_t minor_reduction_dim = sorted_dims_to_reduce.back();
     for (HloInstruction *input : hlo->inputs()) {
       tuple_shapes.push_back(
-          ShapeUtil::DeleteDimension(reduced_input_dimension, input->shape()));
+          ShapeUtil::DeleteDimension(minor_reduction_dim, input->shape()));
     }
 
     HloInstruction *inner_reduce =
         hlo->parent()->AddInstruction(HloInstruction::CreateReduce(
             ShapeUtil::MakeMaybeTupleShape(tuple_shapes), hlo->inputs(),
-            hlo->init_values(), {reduced_input_dimension}, hlo->to_apply()));
+            hlo->init_values(), {minor_reduction_dim}, hlo->to_apply()));
 
     VLOG(1) << "Inner reduction: " << inner_reduce->ToString();
     std::unique_ptr<HloInstruction> out = HloInstruction::CreateReduce(

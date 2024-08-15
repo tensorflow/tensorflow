@@ -17,43 +17,92 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "Eigen/Core"
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/executable_run_options.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/conv_impl.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime_conv2d_acl.h"
-#include "xla/service/cpu/runtime_conv_impl.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 namespace {
 
-bool IsSupportedType(PrimitiveType primitive_type) {
-  return primitive_type == PrimitiveType::F16 ||
-         primitive_type == PrimitiveType::F32;
-}
-
 auto GetConvolutionRank(const Shape& input_shape) {
   // Convolution rank is the number of spatial dimensions. Besides spatial
   // dimensions, input shape contains two other dimensions (batch size and the
   // number of channels).
   return input_shape.dimensions_size() - 2;
+}
+
+absl::Status ValidateShapes(const Shape& input_shape, const Shape& kernel_shape,
+                            const Shape& output_shape,
+                            const ConvolutionDimensionNumbers& dnums) {
+  // Convolution rank.
+  int64_t convolution_rank = GetConvolutionRank(input_shape);
+  if (convolution_rank > 3 || convolution_rank < 1) {
+    return InvalidArgument("ConvolutionThunk: Incorrect convolution rank (%d)",
+                           convolution_rank);
+  }
+
+  // Rank of input, kernel and output buffers.
+  if (input_shape.dimensions_size() != kernel_shape.dimensions_size() ||
+      input_shape.dimensions_size() != output_shape.dimensions_size()) {
+    return InvalidArgument(
+        "ConvolutionThunk: Buffer ranks mismatch. Input rank (%d) vs kernel "
+        "rank (%d) vs output rank (%d)",
+        input_shape.dimensions_size(), kernel_shape.dimensions_size(),
+        output_shape.dimensions_size());
+  }
+
+  // Batch size.
+  auto input_batch = input_shape.dimensions(dnums.input_batch_dimension());
+  auto output_batch = output_shape.dimensions(dnums.output_batch_dimension());
+  if (input_batch != output_batch) {
+    return InvalidArgument(
+        "ConvolutionThunk: Batch sizes mismatch. Input batch (%d) vs output "
+        "batch (%d)",
+        input_batch, output_batch);
+  }
+
+  // Output channels / kernel filters.
+  auto kernel_filters =
+      kernel_shape.dimensions(dnums.kernel_output_feature_dimension());
+  auto output_channels =
+      output_shape.dimensions(dnums.output_feature_dimension());
+  if (kernel_filters != output_channels) {
+    return InvalidArgument(
+        "ConvolutionThunk: Output channels mismatch. Kernel filters count (%d) "
+        "should be the same as output channels count (%d)",
+        kernel_filters, output_channels);
+  }
+
+  return absl::OkStatus();
+}
+
+bool IsSupportedType(PrimitiveType primitive_type) {
+  return primitive_type == PrimitiveType::F16 ||
+         primitive_type == PrimitiveType::F32;
 }
 
 bool CanUseACL(const ConvolutionThunk::Options& options,
@@ -76,17 +125,12 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
     const Shape& kernel_shape, BufferAllocation::Slice output_buffer,
     const Shape& output_shape, const ConvolutionDimensionNumbers& dnums,
     const Window& window, int64_t feature_group_count) {
-  // TODO(abanas): Add shape verification (batch size, feature count, etc.)
+  TF_RETURN_IF_ERROR(
+      ValidateShapes(input_shape, kernel_shape, output_shape, dnums));
   auto primitive_type = input_shape.element_type();
   if (!IsSupportedType(primitive_type)) {
     return InvalidArgument("ConvolutionThunk: Unsupported element type (%s)",
                            PrimitiveType_Name(primitive_type));
-  }
-
-  int64_t convolution_rank = GetConvolutionRank(input_shape);
-  if (convolution_rank > 3) {
-    return InvalidArgument("ConvolutionThunk: Incorrect convolution rank (%d)",
-                           convolution_rank);
   }
 
   absl::InlinedVector<int64_t, 2> input_dims;
@@ -97,6 +141,8 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
   // convolutions, except that we pretend that the 1D convolution is really
   // a 2D convolution with the missing dimension set to 1.  We also adjust
   // the padding, dilation parameters as needed.
+
+  int64_t convolution_rank = GetConvolutionRank(input_shape);
   if (convolution_rank == 1) {
     input_dims.push_back(1);
     kernel_dims.push_back(1);
@@ -233,6 +279,12 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
       "  output: %s in slice %s (%p)", output_shape_.ToString(true),
       output_buffer_.ToString(), output_data.opaque());
 
+  if (options_.multi_threaded && params.intra_op_threadpool == nullptr) {
+    return Internal(
+        "Intra-op threadpool must be provided for ConvolutionThunk in "
+        "multi-threaded mode.");
+  }
+
   if (options_.use_acl) {
     HandleACLConvolution(params, input_data, kernel_data, output_data);
     return OkExecuteEvent();
@@ -240,14 +292,12 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
 
   // Eigen convolution
   if (convolution_rank_ == 2) {
-    HandleEigen2DConvolution(params, input_data, kernel_data, output_data);
+    return HandleEigen2DConvolution(params, input_data, kernel_data,
+                                    output_data);
   } else {
-    HandleEigen3DConvolution(params, input_data, kernel_data, output_data);
+    return HandleEigen3DConvolution(params, input_data, kernel_data,
+                                    output_data);
   }
-
-  // TODO(abanas): Execute asynchronously in multi-thread mode using
-  // Eigen::ThreadPoolDevice.
-  return OkExecuteEvent();
 }
 
 void ConvolutionThunk::HandleACLConvolution(const ExecuteParams& params,
@@ -269,13 +319,16 @@ void ConvolutionThunk::HandleACLConvolution(const ExecuteParams& params,
       feature_group_count_);
 }
 
-void ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
-                                                se::DeviceMemoryBase input,
-                                                se::DeviceMemoryBase kernel,
-                                                se::DeviceMemoryBase output) {
-  auto dispatch = [&](auto type_tag, const auto& eigen_device) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent>
+ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
+                                           se::DeviceMemoryBase input,
+                                           se::DeviceMemoryBase kernel,
+                                           se::DeviceMemoryBase output) {
+  auto dispatch = [&](auto type_tag, const auto& eigen_device,
+                      std::optional<std::function<void()>> done_callback =
+                          std::nullopt) {
     using scalar_type = decltype(type_tag);
-    tensorflow::xla::EigenConv2DImpl(
+    ::tensorflow::xla::EigenConv2DImpl(
         eigen_device, static_cast<scalar_type*>(output.opaque()),
         static_cast<scalar_type*>(input.opaque()),
         static_cast<scalar_type*>(kernel.opaque()), input_batch_, input_dims_.x,
@@ -283,31 +336,39 @@ void ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
         kernel_channels_, kernel_filters_, output_dims_.x, output_dims_.y,
         strides_.x, strides_.y, padding_before_.x, padding_after_.x,
         padding_before_.y, padding_after_.y, base_dilation_.x, base_dilation_.y,
-        window_dilation_.x, window_dilation_.y, feature_group_count_);
+        window_dilation_.x, window_dilation_.y, feature_group_count_,
+        std::move(done_callback));
   };
 
-  if (input_shape_.element_type() == PrimitiveType::F16) {
-    if (options_.multi_threaded) {
-      dispatch(Eigen::half(), *params.intra_op_threadpool);
+  if (options_.multi_threaded) {
+    auto state = std::make_shared<ExecuteState>(feature_group_count_);
+    auto done_callback = [state] { state->Notify(); };
+    if (input_shape_.element_type() == PrimitiveType::F16) {
+      dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
     } else {
-      dispatch(Eigen::half(), Eigen::DefaultDevice());
+      dispatch(float(), *params.intra_op_threadpool, done_callback);
     }
+    return state->event;
   } else {
-    if (options_.multi_threaded) {
-      dispatch(float(), *params.intra_op_threadpool);
+    if (input_shape_.element_type() == PrimitiveType::F16) {
+      dispatch(Eigen::half(), Eigen::DefaultDevice());
     } else {
       dispatch(float(), Eigen::DefaultDevice());
     }
+    return OkExecuteEvent();
   }
 }
 
-void ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
-                                                se::DeviceMemoryBase input,
-                                                se::DeviceMemoryBase kernel,
-                                                se::DeviceMemoryBase output) {
-  auto dispatch = [&](auto type_tag, const auto& eigen_device) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent>
+ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
+                                           se::DeviceMemoryBase input,
+                                           se::DeviceMemoryBase kernel,
+                                           se::DeviceMemoryBase output) {
+  auto dispatch = [&](auto type_tag, const auto& eigen_device,
+                      std::optional<std::function<void()>> done_callback =
+                          std::nullopt) {
     using scalar_type = decltype(type_tag);
-    tensorflow::xla::EigenConv3DImpl(
+    ::tensorflow::xla::EigenConv3DImpl(
         eigen_device, static_cast<scalar_type*>(output.opaque()),
         static_cast<scalar_type*>(input.opaque()),
         static_cast<scalar_type*>(kernel.opaque()), input_batch_, input_dims_.x,
@@ -317,21 +378,26 @@ void ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
         strides_.z, padding_before_.x, padding_after_.x, padding_before_.y,
         padding_after_.y, padding_before_.z, padding_after_.z, base_dilation_.x,
         base_dilation_.y, base_dilation_.z, window_dilation_.x,
-        window_dilation_.y, window_dilation_.z, feature_group_count_);
+        window_dilation_.y, window_dilation_.z, feature_group_count_,
+        std::move(done_callback));
   };
 
-  if (input_shape_.element_type() == PrimitiveType::F16) {
-    if (options_.multi_threaded) {
-      dispatch(Eigen::half(), *params.intra_op_threadpool);
+  if (options_.multi_threaded) {
+    auto state = std::make_shared<ExecuteState>(feature_group_count_);
+    auto done_callback = [state] { state->Notify(); };
+    if (input_shape_.element_type() == PrimitiveType::F16) {
+      dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
     } else {
-      dispatch(Eigen::half(), Eigen::DefaultDevice());
+      dispatch(float(), *params.intra_op_threadpool, done_callback);
     }
+    return state->event;
   } else {
-    if (options_.multi_threaded) {
-      dispatch(float(), *params.intra_op_threadpool);
+    if (input_shape_.element_type() == PrimitiveType::F16) {
+      dispatch(Eigen::half(), Eigen::DefaultDevice());
     } else {
       dispatch(float(), Eigen::DefaultDevice());
     }
+    return OkExecuteEvent();
   }
 }
 

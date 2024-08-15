@@ -39,15 +39,17 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunk::Create(
-    Info info, OpParams op_params, OpBuffers op_buffers) {
+    Info info, OpParams op_params, OpBuffers op_buffers,
+    OpResources op_resources) {
   return absl::WrapUnique(
-      new AllToAllThunk(std::move(info), op_params, std::move(op_buffers)));
+      new AllToAllThunk(std::move(info), std::move(op_params),
+                        std::move(op_buffers), std::move(op_resources)));
 }
 
 AllToAllThunk::AllToAllThunk(Info info, OpParams op_params,
-                             OpBuffers op_buffers)
-    : CollectiveThunk(Kind::kAllToAll, info, op_params, std::move(op_buffers)) {
-}
+                             OpBuffers op_buffers, OpResources op_resources)
+    : CollectiveThunk(Kind::kAllToAll, std::move(info), std::move(op_params),
+                      std::move(op_buffers), std::move(op_resources)) {}
 
 tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
     const ExecuteParams& params) {

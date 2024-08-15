@@ -19,8 +19,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "xla/status_macros.h"
+#include "absl/status/status.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
 namespace interpreter {
@@ -49,12 +54,6 @@ absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
     void *host_dst, const DeviceMemoryBase &dev_src, uint64_t size) {
   memcpy(host_dst, dev_src.opaque(), size);
   return absl::OkStatus();
-}
-
-bool XlaInterpreterExecutor::HostCallback(
-    Stream *stream, absl::AnyInvocable<absl::Status() &&> callback) {
-  AsExecutorStream(stream)->EnqueueTaskWithStatus(std::move(callback));
-  return true;
 }
 
 absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {

@@ -185,9 +185,8 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 #endif  // TFLITE_ENABLE_HEXAGON
 
 #ifdef TFLITE_WITHOUT_XNNPACK
-TfLiteDelegatePtr CreateXNNPACKDelegate(
-    int num_threads, bool force_fp16,
-    const char* experimental_weight_cache_file_path) {
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads, bool force_fp16,
+                                        const char* weight_cache_file_path) {
   return tools::CreateNullDelegate();
 }
 #else  // !defined(TFLITE_WITHOUT_XNNPACK)
@@ -222,10 +221,10 @@ TfLiteDelegatePtr CreateXNNPACKDelegate() {
 TfLiteDelegatePtr CreateXNNPACKDelegate(
     const TfLiteXNNPackDelegateOptions* xnnpack_options) {
   flatbuffers::FlatBufferBuilder flatbuffer_builder;
-  flatbuffers::Offset<flatbuffers::String> experimental_weight_cache_file_path;
-  if (xnnpack_options->experimental_weight_cache_file_path) {
-    experimental_weight_cache_file_path = flatbuffer_builder.CreateString(
-        xnnpack_options->experimental_weight_cache_file_path);
+  flatbuffers::Offset<flatbuffers::String> weight_cache_file_path;
+  if (xnnpack_options->weight_cache_file_path) {
+    weight_cache_file_path = flatbuffer_builder.CreateString(
+        xnnpack_options->weight_cache_file_path);
   }
 
   tflite::XNNPackSettingsBuilder xnnpack_settings_builder(flatbuffer_builder);
@@ -236,8 +235,7 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
   xnnpack_settings_builder.fbb_.AddElement<int32_t>(
       XNNPackSettings::VT_FLAGS, static_cast<int32_t>(xnnpack_options->flags),
       0);
-  xnnpack_settings_builder.add_experimental_weight_cache_file_path(
-      experimental_weight_cache_file_path);
+  xnnpack_settings_builder.add_weight_cache_file_path(weight_cache_file_path);
   flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings =
       xnnpack_settings_builder.Finish();
   tflite::TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder);
@@ -258,9 +256,8 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
   return TfLiteDelegatePtr(delegate, delegate_deleter);
 }
 
-TfLiteDelegatePtr CreateXNNPACKDelegate(
-    int num_threads, bool force_fp16,
-    const char* experimental_weight_cache_file_path) {
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads, bool force_fp16,
+                                        const char* weight_cache_file_path) {
   auto opts = XNNPackDelegateOptionsDefault();
   // Note that we don't want to use the thread pool for num_threads == 1.
   opts.num_threads = num_threads > 1 ? num_threads : 0;
@@ -268,11 +265,9 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
     TFLITE_LOG(INFO) << "XNNPack FP16 inference enabled.";
     opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16;
   }
-  if (experimental_weight_cache_file_path &&
-      experimental_weight_cache_file_path[0] != '\0') {
+  if (weight_cache_file_path && weight_cache_file_path[0] != '\0') {
     TFLITE_LOG(INFO) << "XNNPack file-backed weight cache enabled.";
-    opts.experimental_weight_cache_file_path =
-        experimental_weight_cache_file_path;
+    opts.weight_cache_file_path = weight_cache_file_path;
   }
   return CreateXNNPACKDelegate(&opts);
 }

@@ -27,6 +27,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/util/stat_summarizer_options.h"
+#include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/profiling/proto/profiling_info.pb.h"
 #include "tensorflow/lite/tools/logging.h"
 

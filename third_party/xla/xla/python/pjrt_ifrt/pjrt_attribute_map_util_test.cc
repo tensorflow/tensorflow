@@ -28,7 +28,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-TEST(PjRtAttributeMapUtilTest, FromPjRtDeviceAttributeMap) {
+TEST(PjRtAttributeMapUtilTest, FromPjRtAttributeMap) {
   absl::flat_hash_map<std::string, PjRtValueType> pjrt_map({
       {"string", xla::PjRtValueType(std::string("value"))},
       {"bool", xla::PjRtValueType(true)},
@@ -38,7 +38,7 @@ TEST(PjRtAttributeMapUtilTest, FromPjRtDeviceAttributeMap) {
       {"float", xla::PjRtValueType(1.23f)},
   });
 
-  EXPECT_EQ(FromPjRtDeviceAttributeMap(pjrt_map).map(),
+  EXPECT_EQ(FromPjRtAttributeMap(pjrt_map).map(),
             AttributeMap::Map({
                 {"string", AttributeMap::StringValue("value")},
                 {"bool", AttributeMap::BoolValue(true)},
@@ -49,7 +49,7 @@ TEST(PjRtAttributeMapUtilTest, FromPjRtDeviceAttributeMap) {
             }));
 }
 
-TEST(PjRtAttributeMapUtilTest, ToPjRtDeviceAttributeMap) {
+TEST(PjRtAttributeMapUtilTest, ToPjRtAttributeMap) {
   AttributeMap map({
       {"string", AttributeMap::StringValue("value")},
       {"bool", AttributeMap::BoolValue(true)},
@@ -59,7 +59,7 @@ TEST(PjRtAttributeMapUtilTest, ToPjRtDeviceAttributeMap) {
   });
 
   EXPECT_EQ(
-      ToPjRtDeviceAttributeMap(map),
+      ToPjRtAttributeMap(map),
       (absl::flat_hash_map<std::string, xla::PjRtValueType>({
           {"string", xla::PjRtValueType(std::string("value"))},
           {"bool", xla::PjRtValueType(true)},

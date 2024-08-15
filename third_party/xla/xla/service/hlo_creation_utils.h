@@ -394,9 +394,25 @@ absl::StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
 // adding and removing reshapes that changes only a single dimension.
 HloInstruction* ExpandDegenerateReshape(HloInstruction* inst);
 
-// Creates an integral constant with the given shape and integer value.
-std::unique_ptr<HloInstruction> MakeConstantWithShape(const Shape& shape,
-                                                      int64_t value);
+// Creates a scalar constant with the given shape and native value.
+template <typename NativeT>
+std::unique_ptr<HloInstruction> MakeScalarConstantWithShape(const Shape& shape,
+                                                            NativeT value) {
+  return primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+      [&](auto literal_constant) -> std::unique_ptr<HloInstruction> {
+        if constexpr (primitive_util::IsIntegralType(literal_constant) ||
+                      primitive_util::IsFloatingPointType(literal_constant)) {
+          auto constant = HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<NativeT>(value)
+                  .Convert(shape.element_type())
+                  .value());
+          *constant->mutable_shape() = shape;
+          return std::move(constant);
+        }
+        LOG(FATAL) << "Provided shape is not a float or int type.";
+      },
+      shape.element_type());
+}
 
 }  // namespace xla
 

@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/runtime_conv_impl.h"
+#include "xla/service/cpu/runtime/conv_impl.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF32(

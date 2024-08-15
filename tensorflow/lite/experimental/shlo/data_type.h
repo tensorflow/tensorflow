@@ -84,7 +84,8 @@ constexpr bool IsBool(DataType data_type) { return data_type == DataType::kI1; }
 
 constexpr bool IsSignedInteger(DataType data_type) {
   return data_type == DataType::kSI4 || data_type == DataType::kSI8 ||
-         data_type == DataType::kSI16 || data_type == DataType::kSI32;
+         data_type == DataType::kSI16 || data_type == DataType::kSI32 ||
+         data_type == DataType::kSI64;
 }
 
 constexpr bool IsUnsignedInteger(DataType data_type) { return false; }

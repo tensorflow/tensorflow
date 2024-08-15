@@ -450,10 +450,13 @@ absl::StatusOr<Memory*> GetMemorySpaceFromMemoryKind(
   return memory;
 }
 
-absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
-    std::shared_ptr<const Sharding> new_sharding,
+absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
+    std::optional<xla::ifrt::DeviceList> devices,
+    std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
   DCHECK(this);
+  TF_ASSIGN_OR_RETURN(auto new_sharding,
+                      sharding().WithDeviceAssignment(devices, memory_kind));
   if (new_sharding->devices().size() != sharding_->devices().size()) {
     return InvalidArgument(
         "Resharding to a different number of devices: %d; expected %d",

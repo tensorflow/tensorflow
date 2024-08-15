@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/time_utils.h"
 #include "xla/shape.h"
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
+#include "xla/error_spec.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"
@@ -1020,6 +1023,20 @@ INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest, ::testing::Bool());
 INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest,
                         ::testing::ValuesIn(std::vector<bool>{false}));
 #endif
+
+using ReshapeHloTest = HloTestBase;
+
+TEST_F(ReshapeHloTest, NoHloPasses) {
+  const std::string hlo_string = R"(
+    HloModule Bug, is_scheduled=true
+
+    ENTRY entry {
+      %p0 = u32[1,35]{1,0} parameter(0)
+      %reshape.4 = u32[35]{0} reshape(u32[1,35]{1,0} %p0)
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0.01, 0.01}));
+}
 
 }  // namespace
 }  // namespace xla

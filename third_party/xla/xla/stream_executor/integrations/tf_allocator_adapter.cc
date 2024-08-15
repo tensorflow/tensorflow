@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/framework/allocator.h"
 
 namespace stream_executor {
 

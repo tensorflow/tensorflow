@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_FFI_ATTRIBUTE_MAP_H_
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"
 #include "xla/ffi/call_frame.h"
 
 namespace xla::ffi {

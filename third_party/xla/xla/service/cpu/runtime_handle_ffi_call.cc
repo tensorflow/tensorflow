@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
@@ -108,17 +108,17 @@ static absl::Status BuildAndCallFfi(
       ffi::FindHandler(target_name, "Host");
 
   if (!registration.ok()) {
-    return absl::UnimplementedError(
+    return absl::NotFoundError(
         absl::StrCat("No registered implementation for custom call to ",
                      target_name, " for Host."));
   }
 
   // For FFI handlers backend config must be a compatible MLIR dictionary.
-  mlir::MLIRContext mlir_context;
   ffi::CallFrameBuilder::FlatAttributesMap attributes;
-  if (!backend_config.empty()) {
+  if (!backend_config.empty() && backend_config != "{}") {
     // Backend config not empty, so proceed to parse it into an MLIR attribute
     // and build an MLIR compatible map of attributes out of it.
+    mlir::MLIRContext mlir_context;
     mlir::Attribute attr = mlir::parseAttribute(backend_config, &mlir_context);
     if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
       TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
@@ -129,7 +129,7 @@ static absl::Status BuildAndCallFfi(
     }
   }
 
-  ffi::CallFrameBuilder builder;
+  ffi::CallFrameBuilder builder(inputs.size(), outputs.size());
 
   // Forward the constructed attributes to the call frame
   ffi::CallFrameBuilder::AttributesBuilder attrs;

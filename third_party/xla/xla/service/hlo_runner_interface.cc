@@ -61,14 +61,6 @@ HloRunnerInterface::ReadModuleFromBinaryProtoFile(
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::ReadModuleFromTextProtoFile(
-    const std::string& filename, const DebugOptions& debug_options) {
-  HloProto proto;
-  TF_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), filename, &proto));
-  return HloProtoToModule(proto, debug_options);
-}
-
-/*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
 HloRunnerInterface::ReadModuleFromHloTextFile(
     const std::string& filename, const DebugOptions& debug_options) {
   std::string hlo_string;

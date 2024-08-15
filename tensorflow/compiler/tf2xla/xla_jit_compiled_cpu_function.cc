@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_jit_compiled_cpu_function.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_computation.h"
 #include "xla/cpu_function_runtime.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -128,11 +131,16 @@ XlaJitCompiledCpuFunction::Compile(
     arg_shapes.push_back(&program_shape->parameters(i));
   }
 
+  // TODO(b/342515164): Implement XLA jit compiled functions + thunks.
+  xla::ExecutableBuildOptions build_options_copy = build_options;
+  build_options_copy.mutable_debug_options()->set_xla_cpu_use_thunk_runtime(
+      false);
+
   // Compile the executable. The static_cast to the CpuExecutable subclass is
   // necessary since the raw function and buffer assignments are only available
   // there.
-  TF_ASSIGN_OR_RETURN(auto executables,
-                      client->Compile(computation, arg_shapes, build_options));
+  TF_ASSIGN_OR_RETURN(auto executables, client->Compile(computation, arg_shapes,
+                                                        build_options_copy));
   TF_RET_CHECK(executables.size() == 1);
   std::unique_ptr<xla::LocalExecutable> executable = std::move(executables[0]);
   const xla::cpu::CpuExecutable* cpu_executable =

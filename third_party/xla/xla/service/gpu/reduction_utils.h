@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <ostream>
 
+#include "absl/container/inlined_vector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/util.h"
@@ -46,12 +47,25 @@ struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.
   bool is_row_reduction;
 
-  // Contains the size of the three contiguous components for
-  // the reduction [depth, height, width] (major-to-minor ordering).
+  // We collapse contiguous reduced or kept dimensions into a single dimension
+  // for the reduction. However, for historical reasons, this is not done at the
+  // HLO level. We only support reductions where either all the reduced or all
+  // the kept dimensions are contiguous, so we end up with two types:
   //
-  // For row reduction, we do: [D, H, W] -> [D, H].
-  // For column reduction, we do: [D, H, W] -> [D, W].
+  //   row reductions:    [a, b, c] -> [b]    (a and c are reduced).
+  //   column reductions: [a, b, c] -> [a, c] (b is reduced).
+  //
+  // If the input has less than three dimensions, a (and b if it's a 1d
+  // reduction) are set to 1.
   Vector3 dimensions;
+
+  absl::InlinedVector<int64_t, 2> GetOutputShape() const {
+    if (is_row_reduction) {
+      return {dimensions[kRowKeptDimension]};
+    }
+    return {dimensions[kColMajorKeptDimension],
+            dimensions[kColMinorKeptDimension]};
+  }
 
   bool operator==(const ReductionDimensions& other) const {
     return is_row_reduction == other.is_row_reduction &&

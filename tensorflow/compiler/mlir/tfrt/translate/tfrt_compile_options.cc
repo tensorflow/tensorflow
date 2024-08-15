@@ -58,6 +58,7 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << ", min_num_batch_threads = " << options.min_num_batch_threads
             << ", min_max_enqueued_batches = "
             << options.min_max_enqueued_batches
+            << ", batch_padding_policy = " << options.batch_padding_policy
             << ", merge_inter_dependent_streams = "
             << options.merge_inter_dependent_streams
             << ", decompose_resource_ops = " << options.decompose_resource_ops

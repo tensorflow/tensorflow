@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Types.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 

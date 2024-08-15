@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -80,18 +80,24 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
   } else {
     build_options.set_device_ordinal(devices.front()->Id().value());
     if (replicated) {
+      build_options.set_num_replicas(devices.size());
+      build_options.set_num_partitions(1);
+      build_options.set_use_spmd_partitioning(false);
       DeviceAssignment device_assignment(/*replica_count=*/devices.size(),
                                          /*computation_count=*/1);
       for (int i = 0; i < devices.size(); ++i) {
-        device_assignment(i, 0) = i;
+        device_assignment(i, 0) = devices[i]->Id().value();
       }
       build_options.set_device_assignment(device_assignment);
     } else {
+      build_options.set_num_replicas(1);
+      build_options.set_num_partitions(devices.size());
+      build_options.set_use_spmd_partitioning(true);
       DeviceAssignment device_assignment(
           /*replica_count=*/1,
           /*computation_count=*/devices.size());
       for (int i = 0; i < devices.size(); ++i) {
-        device_assignment(i, 0) = i;
+        device_assignment(0, i) = devices[i]->Id().value();
       }
       build_options.set_device_assignment(device_assignment);
     }

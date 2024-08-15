@@ -20,19 +20,19 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -114,7 +115,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
                               /*index*/ {});
   }
 
-  auto slice_adaptor = HloFindIf(
+  auto slice_adaptor = HloBfsFindIf(
       {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](HloInstructionAdaptor node) {
         return IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(
@@ -124,8 +125,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
     auto* slice_instr =
         const_cast<HloInstruction*>(&slice_adaptor->instruction());
 
-    if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
-                           slice_instr->shape())) {
+    if (!IsContiguousSlice(*slice_instr)) {
       return absl::InternalError(
           "DynamicSliceFusion only handles contiguous slices "
           "currently");
@@ -301,7 +301,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
     }
   }
 
-  auto slice_adaptor = HloFindIf(
+  auto slice_adaptor = HloBfsFindIf(
       {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kDynamicUpdateSlice; },
       /*visit_operands=*/false);
@@ -310,10 +310,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
         const_cast<HloInstruction*>(&slice_adaptor->instruction());
     slice_instrs[arg_idx] = slice_instr;
 
-    if (!IsContiguousSlice(slice_instr->shape(),
-                           Cast<HloDynamicUpdateSliceInstruction>(slice_instr)
-                               ->update()
-                               ->shape())) {
+    if (!IsContiguousSlice(*slice_instr)) {
       return absl::InternalError(
           "DynamicSliceFusion only handles contiguous slices "
           "currently");
@@ -414,16 +411,15 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         "operand/result");
   }
 
-  bool deterministic_ops =
-      ir_emitter_context.debug_options().xla_gpu_deterministic_ops() ||
-      ir_emitter_context.debug_options().xla_gpu_exclude_nondeterministic_ops();
+  const bool deterministic_ops =
+      RequireDeterminism(fusion.GetModule()->config());
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
 
   std::unique_ptr<Thunk> thunk;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&custom_call);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
   if (absl::c_any_of(slice_instrs, [&](auto slice_instr) {
         return DynCastOrNull<HloDynamicIndexInstruction>(slice_instr) !=
@@ -660,20 +656,20 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   }
 
   std::unique_ptr<Thunk> thunk;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&custom_call);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
   auto ffi_thunk = [&](Slices ops, Slices res) {
     auto& called_computations = custom_call.called_computations();
-    return std::make_unique<CustomCallThunk>(
+    return CustomCallThunk::Create(
         thunk_info, registration->bundle, std::move(ops), std::move(res),
         std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&](Slices ops, Slices res) {
-    return std::make_unique<CustomCallThunk>(
-        thunk_info, std::move(custom_call_target), std::move(ops),
-        std::move(res), std::move(opaque));
+    return CustomCallThunk::Create(thunk_info, std::move(custom_call_target),
+                                   std::move(ops), std::move(res),
+                                   std::move(opaque));
   };
 
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(num_args);
@@ -736,7 +732,8 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         }));
 
     ThunkSequence seq;
-    seq.emplace_back(
+    TF_ASSIGN_OR_RETURN(
+        seq.emplace_back(),
         found_ffi_handler
             ? ffi_thunk(std::move(fake_operands), std::move(fake_results))
             : legacy_thunk(std::move(fake_operands), std::move(fake_results)));
@@ -747,9 +744,10 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         std::move(orig_shapes), std::move(sliced_shapes),
         std::move(offset_byte_sizes));
   } else {
-    thunk = found_ffi_handler
-                ? ffi_thunk(std::move(operands), std::move(results))
-                : legacy_thunk(std::move(operands), std::move(results));
+    TF_ASSIGN_OR_RETURN(
+        thunk, found_ffi_handler
+                   ? ffi_thunk(std::move(operands), std::move(results))
+                   : legacy_thunk(std::move(operands), std::move(results)));
   }
 
   FusionEmissionResult result;
@@ -766,7 +764,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
                       fusion.backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
-  const auto& config = backend_config.custom_fusion_config();
+  const CustomFusionConfig& config = backend_config.custom_fusion_config();
 
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
 
@@ -795,14 +793,10 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
                      " returned empty custom kernels for a fused computation"));
   }
 
-  // TODO(ezhulenev): Add support for auto tuning to select the best kernel.
-  if (kernels.size() != 1) {
-    return absl::InternalError("Expected exactly one custom kernel");
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      auto thunk, BuildCustomKernelThunkForFusion(ir_emitter_context, fusion,
-                                                  std::move(kernels[0])));
+  TF_ASSIGN_OR_RETURN(auto thunk,
+                      BuildCustomKernelThunkForFusion(
+                          ir_emitter_context, fusion,
+                          std::move(kernels[config.kernel_index()])));
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
@@ -813,7 +807,7 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
-  auto maybe_custom_call_adaptor = HloFindIf(
+  auto maybe_custom_call_adaptor = HloBfsFindIf(
       adaptor.GetRoots(), adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
   if (maybe_custom_call_adaptor == std::nullopt) {

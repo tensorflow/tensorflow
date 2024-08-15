@@ -75,6 +75,7 @@ void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn,
     case Thunk::kCuDnn:
     case Thunk::kFft:
     case Thunk::kFusedMHA:
+    case Thunk::kFusedMHABackward:
     case Thunk::kGemm:
     case Thunk::kInfeed:
     case Thunk::kKernel:

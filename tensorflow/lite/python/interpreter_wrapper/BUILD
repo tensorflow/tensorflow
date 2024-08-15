@@ -65,8 +65,6 @@ cc_library(
     hdrs = ["python_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:string_util",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )

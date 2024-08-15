@@ -146,6 +146,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
 
   // Compute the shape and padding config of the pad to be inserted.
   PaddingConfig padding_config;
+  padding_config.mutable_dimensions()->Reserve(
+      kernel->shape().dimensions_size());
   for (size_t i = 0; i < kernel->shape().dimensions_size(); ++i) {
     padding_config.add_dimensions();
   }

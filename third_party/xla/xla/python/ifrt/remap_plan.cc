@@ -329,9 +329,9 @@ std::string RemapPlan::DebugString() const {
                       }),
         "]");
   };
-  return absl::StrCat(
-      "RemapPlan(output_specs=", format_array_specs(output_specs), ",",
-      "mappings=", format_mappings(*mappings), ")");
+  return absl::StrCat("RemapPlan(input_specs=", format_array_specs(input_specs),
+                      ",output_specs=", format_array_specs(output_specs), ",",
+                      "mappings=", format_mappings(*mappings), ")");
 }
 
 }  // namespace ifrt

@@ -27,8 +27,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/TypeName.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value_util.h"
@@ -208,10 +208,6 @@ void RegisterInterpreterOp(Ret (*fn)(InterpreterState&, Op, T...)) {
 void RegisterInterpreterOp(
     llvm::StringRef name,
     InterpreterValue (*fn)(MutableArrayRef<InterpreterValue>));
-
-// Simple variadic ops(no output).
-void RegisterInterpreterOp(llvm::StringRef name,
-                           void (*fn)(MutableArrayRef<InterpreterValue>));
 
 // Generic ops.
 void RegisterInterpreterOp(

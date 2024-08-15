@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/ffi.h"
 
@@ -34,13 +34,13 @@ static Error AlwaysSucceed(Result<AnyBuffer>) { return Error::Success(); }
 
 static Error Subtract(BufferR0<DataType::F32> a, BufferR0<DataType::F32> b,
                       Result<BufferR0<DataType::F32>> out) {
-  *out->data = *a.data - *b.data;
+  *out->typed_data() = *a.typed_data() - *b.typed_data();
   return Error::Success();
 }
 
 static Error SubtractCst(BufferR0<DataType::F32> a,
                          Result<BufferR0<DataType::F32>> out, float cst) {
-  *out->data = *a.data - cst;
+  *out->typed_data() = *a.typed_data() - cst;
   return Error::Success();
 }
 

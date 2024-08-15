@@ -14,14 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/assert_cardinality_dataset_op.h"
 
-#include <map>
+#include <cstdint>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -87,6 +90,16 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
 
   absl::Status RandomIndexingCompatible() const override {
     return random_indexing_compatible_;
+  }
+
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
+                   std::vector<Tensor>* out_tensors) const override {
+    return GetInternal(ctx, index, out_tensors);
+  }
+
+  absl::Status Get(AnyContext ctx, int64_t index,
+                   std::vector<Tensor>* out_tensors) const override {
+    return GetInternal(ctx, index, out_tensors);
   }
 
  protected:
@@ -175,16 +188,40 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    static string ElementString(int64_t n) {
-      if (n == kInfiniteCardinality) {
-        return strings::StrCat("an infinite number of elements");
-      }
-      return strings::StrCat(n, " element", n != 1 ? "s" : "");
-    }
-
     std::unique_ptr<IteratorBase> input_impl_;
     int64_t num_elements_;
   };
+
+  static string ElementString(int64_t n) {
+    if (n == kInfiniteCardinality) {
+      return absl::StrCat("an infinite number of elements");
+    }
+    return absl::StrCat(n, " element", n != 1 ? "s" : "");
+  }
+
+  template <typename Ctx>
+  absl::Status GetInternal(Ctx&& ctx, int64_t index,
+                           std::vector<Tensor>* out_tensors) const {
+    if (index < 0) {
+      return absl::OutOfRangeError(
+          absl::StrCat("Dataset index ", index, " must be non-negative"));
+    }
+    if (cardinality_ != kInfiniteCardinality && index >= cardinality_) {
+      return absl::OutOfRangeError(absl::StrCat(
+          "Index ", index, " greater than dataset size ", cardinality_));
+    }
+
+    absl::Status result =
+        input_->Get(std::forward<Ctx>(ctx), index, out_tensors);
+
+    if (absl::IsOutOfRange(result)) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Input dataset was expected to contain ", ElementString(cardinality_),
+          " but index ", index, " could not be retrieved: ", result.message()));
+    }
+
+    return result;
+  }
 
   const DatasetBase* input_;
   const int64_t cardinality_;

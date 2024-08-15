@@ -111,11 +111,6 @@ def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
   let constructor = "hlo::createUnbufferizePass()";
 }
 
-def UnrollLoopsPass : Pass<"unroll-loops"> {
-  let summary = "Unrolls scf.for loops with small static iteration counts.";
-  let constructor = "hlo::createUnrollLoopsPass()";
-}
-
 def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let summary = "Hoist memref allocations to function arguments.";
   let description = [{

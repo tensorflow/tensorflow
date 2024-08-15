@@ -223,4 +223,12 @@ TEST_F(PtxCompilerTest, AcceptsExtraArguments) {
       tsl::testing::StatusIs(absl::StatusCode::kInternal));
 }
 
+TEST_F(PtxCompilerTest, ReturnsReasonableVersion) {
+  constexpr stream_executor::LibNvPtxCompilerVersion kMinSupportedVersion = {
+      12, 0, 0};
+
+  EXPECT_THAT(stream_executor::GetLibNvPtxCompilerVersion(),
+              tsl::testing::IsOkAndHolds(testing::Ge(kMinSupportedVersion)));
+}
+
 }  // namespace

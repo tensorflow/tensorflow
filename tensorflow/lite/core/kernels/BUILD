@@ -24,7 +24,7 @@ cc_test(
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],

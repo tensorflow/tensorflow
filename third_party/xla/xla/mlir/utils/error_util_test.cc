@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/Twine.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 
@@ -30,7 +30,7 @@ namespace {
 
 TEST(ErrorUtilTest, BaseScopedDiagnosticHandler) {
   MLIRContext context;
-  auto id = StringAttr::get(&context, "//tensorflow/python/test.py");
+  auto id = StringAttr::get(&context, "test.py");
   auto loc = FileLineColLoc::get(&context, id, 0, 0);
 
   // Test OK without diagnostic gets passed through.

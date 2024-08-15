@@ -73,7 +73,8 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
 )"
                                          : R"(
 ; CHECK-LABEL: define void @{{[a-z_]*}}fusion
-; CHECK: slice2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
@@ -120,7 +121,8 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
 )"
                                          : R"(
 ; CHECK-LABEL: define void @{{[a-z_]*}}fusion
-; CHECK: slice2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,

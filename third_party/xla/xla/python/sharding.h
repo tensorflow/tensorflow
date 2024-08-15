@@ -22,7 +22,7 @@ limitations under the License.
 
 // placeholder for index annotation headers
 #include "absl/hash/hash.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"

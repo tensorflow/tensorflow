@@ -83,6 +83,18 @@ else
   fi
 fi
 
+# If building installer wheels, set the required environment variables that are
+# read by setup.py.
+if [[ "$TFCI_INSTALLER_WHL_ENABLE" == 1 ]]; then
+  export collaborator_build=True
+  # If building nightly installer wheels, set the project name to
+  # nightly equivalent.
+  if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
+    export TFCI_INSTALLER_WHL_PROJECT_NAME="$TFCI_INSTALLER_WHL_NIGHTLY_PROJECT_NAME"
+  fi
+  export project_name="$TFCI_INSTALLER_WHL_PROJECT_NAME"
+fi
+
 # Mac builds have some specific setup needs. See setup_macos.sh for details
 if [[ "${OSTYPE}" =~ darwin* ]]; then
   source ./ci/official/utilities/setup_macos.sh

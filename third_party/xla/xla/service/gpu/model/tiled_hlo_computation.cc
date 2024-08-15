@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {

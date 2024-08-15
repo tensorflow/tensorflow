@@ -31,6 +31,7 @@ cc_library(
         "hlo_evaluator_typed_visitor_float8.cc",
         "hlo_evaluator_typed_visitor_half.cc",
         "hlo_evaluator_typed_visitor_int16.cc",
+        "hlo_evaluator_typed_visitor_int2.cc",
         "hlo_evaluator_typed_visitor_int32.cc",
         "hlo_evaluator_typed_visitor_int4.cc",
         "hlo_evaluator_typed_visitor_int64.cc",
@@ -143,8 +144,10 @@ xla_cc_test(
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:endian",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

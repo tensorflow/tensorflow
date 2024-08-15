@@ -222,8 +222,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass();
 // tensors with fill op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
 
-// Creates a pass that adds control dependencies to keep the relative execution
-// order of operations with side effects frozen.
+// Creates a pass which is responsible for unfreezing mutable global tensors.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateUnfreezeMutableGlobalTensorsPass();
+
+// Creates a pass that adds control dependencies to keep the relative
+// execution order of operations with side effects frozen.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
 
 // Legalize TensorList Ops iff all of them are supported.

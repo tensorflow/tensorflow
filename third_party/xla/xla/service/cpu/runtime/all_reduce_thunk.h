@@ -30,13 +30,14 @@ class AllReduceThunk final : public CollectiveThunk {
  public:
   static absl::StatusOr<std::unique_ptr<AllReduceThunk>> Create(
       Info info, ReductionKind reduction_kind, OpParams op_params,
-      OpBuffers op_buffers, bool single_replica);
+      OpBuffers op_buffers, OpResources op_resources, bool single_replica);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
  private:
   AllReduceThunk(Info info, ReductionKind reduction_kind, OpParams op_params,
-                 OpBuffers op_buffers, bool single_replica);
+                 OpBuffers op_buffers, OpResources op_resources,
+                 bool single_replica);
 
   ReductionKind reduction_kind_;
   bool single_replica_;

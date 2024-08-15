@@ -325,7 +325,7 @@ TEST(SplitBatchCostsAndRecordMetricsTest, UpdatesGlobalBatchStats) {
   // sure that the CPU cost for this model name has either never been reported
   // before or, if this test is executed multiple times, has been reported by
   // this only.
-  const char kModelName[] = __FILE__;
+  const char kModelName[] = "test_updates_global_batch_stats";
 
   BatchResourceBase::SplitBatchCostsAndRecordMetrics(
       /* model_name= */ kModelName, /* op_name= */ "op_name",
@@ -337,6 +337,67 @@ TEST(SplitBatchCostsAndRecordMetricsTest, UpdatesGlobalBatchStats) {
                 .tpu_cost()
                 .mean(),
             absl::Hours(555));
+}
+
+TEST(SplitBatchCostsAndRecordMetricsTest, GlobalBatchStatsProcessedSize) {
+  // Create batch_cost_measurements with one TPU cost.
+  class FakeTpuCostMeasurement : public CostMeasurement {
+   public:
+    using CostMeasurement::CostMeasurement;
+    absl::Duration GetTotalCost() override { return absl::Hours(555); }
+    absl::string_view GetCostType() const override { return kTpuCostName; }
+  };
+  CostMeasurement::Context context{/* is_per_query= */ false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  batch_cost_measurements.push_back(
+      std::make_unique<FakeTpuCostMeasurement>(context));
+
+  // Create a non-empty batch.
+  BatchResourceBase::BatchT batch;
+  batch.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
+  batch.Close();
+
+  // Pick a model name that no other test would pick. This is so that we are
+  // sure that the CPU cost for this model name has either never been reported
+  // before or, if this test is executed multiple times, has been reported by
+  // this only.
+  const char kModelName[] = "test_global_batch_stats_processed_size";
+
+  // Get the original cumulative processed size.
+  int original_cumulative_processed_size =
+      GlobalBatchStats()
+          .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
+          .cumulative_processed_size();
+
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      /* model_name= */ kModelName, /* op_name= */ "op_name",
+      batch_cost_measurements, /* processed_size= */ 17, batch);
+
+  // Expect the cumulative processed size to be updated correctly. Note
+  // that even though the batch size is 17, there is only one non-padding task,
+  // so the cumulative processed size should be
+  // original_cumulative_processed_size + 1.
+  EXPECT_EQ(GlobalBatchStats()
+                .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
+                .cumulative_processed_size(),
+            original_cumulative_processed_size + 1);
+
+  // Add a second processed batch with three non-padding tasks and a different
+  // total batch size.
+  BatchResourceBase::BatchT batch2;
+  batch2.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
+  batch2.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
+  batch2.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
+  batch2.Close();
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      /* model_name= */ kModelName, /* op_name= */ "op_name",
+      batch_cost_measurements, /* processed_size= */ 8, batch2);
+
+  // Expect the cumulative processed size to be updated correctly.
+  EXPECT_EQ(GlobalBatchStats()
+                .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
+                .cumulative_processed_size(),
+            original_cumulative_processed_size + 4);
 }
 
 }  // namespace

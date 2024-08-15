@@ -318,6 +318,8 @@ class XLineBuilder {
     }
   }
 
+  XEventBuilder AddEvent(const Timespan& timespan,
+                         const XEventMetadata& metadata);
   XEventBuilder AddEvent(const XEventMetadata& metadata);
   XEventBuilder AddEvent(const XEvent& event);
 

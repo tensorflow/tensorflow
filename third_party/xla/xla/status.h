@@ -16,6 +16,14 @@ limitations under the License.
 #ifndef XLA_STATUS_H_
 #define XLA_STATUS_H_
 
+#include "absl/status/status.h"
+
 // This is an obsolete header.  Please use absl/status/status.h instead.
+namespace xla {
+// NOLINTBEGIN(misc-unused-using-decls)
+using absl::OkStatus;
+using absl::Status;
+// NOLINTEND(misc-unused-using-decls)
+}  // namespace xla
 
 #endif  // XLA_STATUS_H_

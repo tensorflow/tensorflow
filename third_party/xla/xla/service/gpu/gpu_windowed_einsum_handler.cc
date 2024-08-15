@@ -378,8 +378,16 @@ absl::StatusOr<bool> HandleAgWindowedEinsumLoop(HloComputation* comp,
   return changed;
 }
 
+static int64_t GetAgActivationCacheIndex(const HloInstruction* while_loop) {
+  const HloInstruction* loop_tuple = while_loop->operand(0);
+  const Shape& tuple_shape = loop_tuple->shape();
+  CHECK(tuple_shape.IsTuple());
+  return tuple_shape.tuple_shapes_size();
+}
+
 absl::Status ProcessWindowedEinsumLoopForActivationCaching(
-    GpuWindowedEinsumHandler::WindowedEinsumAgLoops& ag_loop) {
+    GpuWindowedEinsumHandler::WindowedEinsumAgLoops& ag_loop,
+    HloInstruction* ag_with_shared_operand) {
   HloInstruction* loop = ag_loop.loop;
   // Transform the while body to cache the allgathered result in the
   // output buffer to be consumed by the dot
@@ -392,15 +400,61 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
   }
   // Get the output operand of the full buffer.
   HloInstruction* root = while_body->root_instruction();
+  // Change loop body to include the new input and output element.
+  HloInstruction* input_tuple = while_body->parameter_instruction(0);
+  const Shape& input_shape = input_tuple->shape();
   // The full buffer that we will use to cache the accumulated activation
-  // is the 4th operand in the output tuple.
-  int64_t full_cache_buffer_index = 3;
+  // is the last operand in the output tuple.
+  int64_t full_cache_buffer_index = GetAgActivationCacheIndex(loop);
+  std::vector<Shape> new_input_shapes(input_shape.tuple_shapes().begin(),
+                                      input_shape.tuple_shapes().end());
+  new_input_shapes.push_back(ag_with_shared_operand->shape());
+  // Update body input shape
+  Shape new_input_shape = ShapeUtil::MakeTupleShape(new_input_shapes);
+  *input_tuple->mutable_shape() = new_input_shape;
   HloInstruction* full_buffer_output_gte =
-      root->mutable_operand(full_cache_buffer_index);
-  HloInstruction* new_full_buffer_output;
+      while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
+          ag_with_shared_operand->shape(), input_tuple,
+          full_cache_buffer_index));
+
+  // Update condition input shape
+  HloComputation* cond_comp = loop->while_condition();
+  HloInstruction* cond_input_tuple = cond_comp->parameter_instruction(0);
+  *cond_input_tuple->mutable_shape() = new_input_shape;
+
+  // Update input to the while instruction in parent computation
+  HloInstruction* original_while_input = loop->mutable_operand(0);
+  HloComputation* parent_comp = loop->parent();
+  std::vector<HloInstruction*> new_operands(
+      original_while_input->operands().begin(),
+      original_while_input->operands().end());
+  new_operands.push_back(
+      parent_comp->AddInstruction(HloInstruction::CreateBroadcast(
+          ag_with_shared_operand->shape(),
+          parent_comp->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::Zero(new_input_shapes[0].element_type()))),
+          {})));
+  HloInstruction* new_while_input =
+      parent_comp->AddInstruction(HloInstruction::CreateTuple(new_operands));
+  TF_RETURN_IF_ERROR(
+      loop->ReplaceOperandWithDifferentShape(0, new_while_input));
+  TF_RETURN_IF_ERROR(parent_comp->ReplaceInstructionWithDifferentShape(
+      original_while_input, new_while_input));
+  *loop->mutable_shape() = new_input_shape;
+
+  HloInstruction* new_full_buffer_output = nullptr;
   // Find the DUS in the loop body and re-use the slice indices
   // This should just be a constant(0)
   HloInstruction* dus_boundary_constant;
+  // The slice we need this time is the output of the first
+  // collective-permute
+  HloInstruction* first_cp_output;
+  for (HloInstruction* gte_user : input_gte->users()) {
+    if (gte_user->opcode() == HloOpcode::kCollectivePermute) {
+      first_cp_output = gte_user;
+      break;
+    }
+  }
   for (HloInstruction* inst : while_body->MakeInstructionPostOrder()) {
     HloInstruction* slice_indices;
     // If we have a DUS(PARAM,DS) pattern, we need to update the output
@@ -434,24 +488,68 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
           dus_boundary_constant->shape(), slice_indices));
       VLOG(5) << "Created slice op for second slice: "
               << slice_indices->ToString();
-      // The slice we need this time is the output of the first
-      // collective-permute
-      HloInstruction* cp_output;
-      for (HloInstruction* gte_user : input_gte->users()) {
-        if (gte_user->opcode() == HloOpcode::kCollectivePermute) {
-          cp_output = gte_user;
-          break;
-        }
-      }
       new_full_buffer_output =
           while_body->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
               full_buffer_output_gte->shape(), full_buffer_output_gte,
-              cp_output,
+              first_cp_output,
               {dus_boundary_constant, slice_indices, dus_boundary_constant}));
     }
+
+    // If we have a Dot(DS(parameter_index1)), then operands are sharded along
+    // the contracting dim. Slice indices will be the contracting dim's slices.
+    HloInstruction* slice_index;
+    HloInstruction* ds_index_constant;
+    HloInstruction* remainder;
+    HloInstruction* ds_param;
+    // There will be 2 dynamic-slices for unrolled loops, match for each one to
+    // get the slice index which will be used to write the corresponding
+    // received shard into cached activation buffer. For unrolled loops, we need
+    // to write to the final buffer twice per iteration, so we need to match for
+    // the correct slice index based on each DS.
+    if (Match(inst, m::Dot(m::Op(), m::DynamicSlice(&ds_param))) &&
+        Match(ds_param->operand(0), m::GetTupleElement(m::Parameter(), 1))) {
+      for (int64_t ds_op_i = 1; ds_op_i < ds_param->operands().size();
+           ds_op_i++) {
+        if (!Match(
+                ds_param->mutable_operand(ds_op_i),
+                m::Reshape(&slice_index, m::DynamicSlice(m::Constant(),
+                                                         m::Op(&remainder)))) &&
+            !Match(ds_param->mutable_operand(ds_op_i),
+                   m::Constant(&ds_index_constant))) {
+          return absl::OkStatus();
+        }
+      }
+      // First DS has slice index calculated based on loop iterator
+      // Remainder(add(gte, partition_id))
+      if (Match(remainder,
+                m::Remainder(m::Add(m::GetTupleElement(), m::Op()), m::Op()))) {
+        full_buffer_output_gte =
+            while_body->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+                full_buffer_output_gte->shape(), full_buffer_output_gte,
+                input_gte,
+                {ds_index_constant, ds_index_constant, slice_index}));
+      }
+      // Second DS has slice index calculated based on loop iterator+1 hence
+      // Remainder(add(add(gte, 1), partition_id))
+      if (Match(remainder,
+                m::Remainder(
+                    m::Add(m::Add(m::GetTupleElement(), m::Op()), m::Op()),
+                    m::Op()))) {
+        new_full_buffer_output =
+            while_body->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+                full_buffer_output_gte->shape(), full_buffer_output_gte,
+                first_cp_output,
+                {ds_index_constant, ds_index_constant, slice_index}));
+      }
+    }
   }
-  TF_RETURN_IF_ERROR(root->ReplaceOperandWith(full_cache_buffer_index,
-                                              new_full_buffer_output));
+  std::vector<HloInstruction*> original_operands(root->operands().begin(),
+                                                 root->operands().end());
+  original_operands.push_back(new_full_buffer_output);
+  HloInstruction* new_output_tuple = while_body->AddInstruction(
+      HloInstruction::CreateTuple(original_operands));
+  TF_RETURN_IF_ERROR(
+      while_body->ReplaceInstructionWithDifferentShape(root, new_output_tuple));
   return absl::OkStatus();
 }
 
@@ -620,17 +718,20 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
         VLOG(5) << "Found all-gather that shares the same operand with a "
                    "windowed einsum loop : "
                 << loop->ToString();
+
+        if (!ag_loop.consumed) {
+          TF_RETURN_IF_ERROR(ProcessWindowedEinsumLoopForActivationCaching(
+              ag_loop, ag_with_shared_operand));
+          ag_loop.consumed = true;
+        }
         int64_t cache_output_index = dot->operand_index(ag_with_shared_operand);
-        HloInstruction* new_gte = comp->AddInstruction(
-            HloInstruction::CreateGetTupleElement(loop, 3));
+        HloComputation* comp = dot->parent();
+        HloInstruction* new_gte =
+            comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+                loop, GetAgActivationCacheIndex(loop) - 1));
         TF_RETURN_IF_ERROR(
             dot->ReplaceOperandWith(cache_output_index, new_gte));
         TF_RETURN_IF_ERROR(comp->RemoveInstruction(ag_with_shared_operand));
-        if (!ag_loop.consumed) {
-          TF_RETURN_IF_ERROR(
-              ProcessWindowedEinsumLoopForActivationCaching(ag_loop));
-          ag_loop.consumed = true;
-        }
       }
     }
     // Rewrites an all-to-all+gemm into multiple independent partial a2a+gemms

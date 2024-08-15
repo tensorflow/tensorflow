@@ -15,8 +15,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/utils/dummy_delegate/dummy_delegate.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#include "tensorflow/lite/tools/tool_params.h"
 
 namespace tflite {
 namespace tools {

@@ -186,10 +186,17 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
     VLOG(3) << "Input parameter scan body = " << input_gte_inner->name()
             << ", index = " << input_gte_inner->tuple_index();
 
+    // Input must have to users, one is the dynamic-slice and the other is the
+    // root of the loop body.
+    if (input_gte_inner->user_count() != 2) {
+      continue;
+    }
+    // Get the first user of the input and check if it is a shape covering
+    // dynamic-slice.
     HloInstruction* gte_user = input_gte_inner->users().at(0);
-    // Check if the input_gte_inner is a shape covering read-only instruction
+    VLOG(3) << "User of the inner loop input = " << gte_user->ToString();
     if (MatchShapeCoveringDynamicIndexInstruction(
-            gte_user, input_gte_inner, HloOpcode::kDynamicUpdateSlice, config)
+            gte_user, input_gte_inner, HloOpcode::kDynamicSlice, config)
             .has_value()) {
       acc_input_pairs.emplace_back(acc, input_gte_inner);
     }

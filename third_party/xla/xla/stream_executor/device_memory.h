@@ -30,6 +30,7 @@ limitations under the License.
 #include <cstdint>
 #include <tuple>
 
+#include "absl/base/attributes.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
@@ -101,8 +102,8 @@ class DeviceMemoryBase {
 
   // Creates a memory region (slice) inside another allocated memory region.
   // Offset and size are in bytes.
-  DeviceMemoryBase GetByteSlice(uint64_t offset_bytes,
-                                uint64_t size_bytes) const {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE DeviceMemoryBase
+  GetByteSlice(uint64_t offset_bytes, uint64_t size_bytes) const {
     DCHECK(offset_bytes + size_bytes <= size_)
         << "requested slice allocation (offset + size) is greater "
         << "than parent allocation size: (" << offset_bytes << " + "

@@ -99,16 +99,6 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   return output;
 }
 
-void CompileOptions::SerializeEnvOptionOverrides(
-    google::protobuf::Map<std::string, xla::OptionOverrideProto>*
-        output_env_option_overrides) const {
-  for (auto& env_option_override : env_option_overrides) {
-    auto& tmp = (*output_env_option_overrides)[env_option_override.first];
-    std::visit([&](const auto& arg) { SetOptionOverride(tmp, arg); },
-               env_option_override.second);
-  }
-}
-
 absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     const CompileOptionsProto& proto) {
   if (!proto.serialized_multi_slice_config().empty()) {

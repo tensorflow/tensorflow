@@ -24,6 +24,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -73,16 +74,20 @@ struct CudaComputeCapability {
     this->minor = proto.minor();
   }
 
-  static CudaComputeCapability Hopper() {
-    return CudaComputeCapability{HOPPER, 0};
-  }
-
   static CudaComputeCapability Volta() {
     return CudaComputeCapability{VOLTA, 0};
   }
 
   static CudaComputeCapability Ampere() {
     return CudaComputeCapability{AMPERE, 0};
+  }
+
+  static CudaComputeCapability Hopper() {
+    return CudaComputeCapability{HOPPER, 0};
+  }
+
+  static CudaComputeCapability Blackwell() {
+    return CudaComputeCapability{BLACKWELL, 0};
   }
 
   bool IsAtLeast(int other_major, int other_minor = 0) const {
@@ -105,6 +110,10 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::HOPPER;
   }
 
+  bool IsAtLeastBlackwell() const {
+    return major >= CudaComputeCapabilities::BLACKWELL;
+  }
+
   bool operator<(const CudaComputeCapability &other) const {
     return ToPair() < other.ToPair();
   }
@@ -115,32 +124,6 @@ struct CudaComputeCapability {
 
   bool operator!=(const CudaComputeCapability &other) const {
     return !(*this == other);
-  }
-
-  // Maximum resident blocks per multiprocessor, values taken from
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities.
-  int GetMaxResidentBlocksPerSM() const {
-    if (IsAtLeast(8, 6)) {
-      return 16;
-    } else if (IsAtLeast(8)) {
-      return 32;
-    } else if (IsAtLeast(7, 5)) {
-      return 16;
-    }
-    return 32;
-  }
-
-  // Maximum resident warps per multiprocessor, values taken from
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities.
-  int GetMaxResidentWarpsPerSM() const {
-    if (IsAtLeast(8, 6)) {
-      return 48;
-    } else if (IsAtLeast(8)) {
-      return 64;
-    } else if (IsAtLeast(7, 5)) {
-      return 32;
-    }
-    return 64;
   }
 
   std::string ToString() const { return absl::StrCat(major, ".", minor); }
@@ -217,6 +200,11 @@ class RocmComputeCapability {
   }
 
   bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
+
+  bool has_amd_matrix_core() const {
+    return (gfx9_mi100_or_later() || gfx_version().find("gfx11") ||
+            gfx_version().find("gfx12"));
+  }
 
   bool has_fp16_atomics_support() const {
     // TODO(rocm): Check. This should be the same as has_fast_fp16_support().
@@ -469,53 +457,59 @@ class DeviceDescription {
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.
-  static const char *kUndefinedString;
+  static inline const char *const kUndefinedString = "<undefined>";
 
  private:
   friend class internal::DeviceDescriptionBuilder;
 
-  DeviceDescription();
+  DeviceDescription() = default;
 
   // For description of the following members, see the corresponding accessor
   // above.
   //
   // N.B. If another field is added, update ToMap() above.
-  std::string device_vendor_;
-  std::string platform_version_;
-  std::string driver_version_;
-  std::string runtime_version_;
-  std::string pci_bus_id_;
-  std::string name_;
-  std::string model_str_;
+  std::string device_vendor_ = kUndefinedString;
+  std::string platform_version_ = kUndefinedString;
+  std::string driver_version_ = kUndefinedString;
+  std::string runtime_version_ = kUndefinedString;
+  std::string pci_bus_id_ = kUndefinedString;
+  std::string name_ = kUndefinedString;
+  std::string model_str_ = kUndefinedString;
 
-  ThreadDim thread_dim_limit_;
-  BlockDim block_dim_limit_;
+  template <typename T>
+  static constexpr T kUninitialized = T(-1);
 
-  int64_t threads_per_core_limit_;
-  int64_t threads_per_block_limit_;
-  int64_t threads_per_warp_;
+  ThreadDim thread_dim_limit_{kUninitialized<uint64_t>,
+                              kUninitialized<uint64_t>,
+                              kUninitialized<uint64_t>};
+  BlockDim block_dim_limit_{kUninitialized<uint64_t>, kUninitialized<uint64_t>,
+                            kUninitialized<uint64_t>};
 
-  int64_t registers_per_core_limit_;
-  int64_t registers_per_block_limit_;
+  int64_t threads_per_core_limit_ = kUninitialized<int64_t>;
+  int64_t threads_per_block_limit_ = kUninitialized<int64_t>;
+  int64_t threads_per_warp_ = kUninitialized<int64_t>;
 
-  int64_t device_address_bits_;
-  int64_t device_memory_size_;
-  int64_t l2_cache_size_;
-  int64_t memory_bandwidth_;
+  int64_t registers_per_core_limit_ = kUninitialized<int64_t>;
+  int64_t registers_per_block_limit_ = kUninitialized<int64_t>;
+
+  int64_t device_address_bits_ = kUninitialized<int64_t>;
+  int64_t device_memory_size_ = kUninitialized<int64_t>;
+  int64_t l2_cache_size_ = kUninitialized<int64_t>;
+  int64_t memory_bandwidth_ = kUninitialized<int64_t>;
 
   // Shared memory limits on a given device.
-  int64_t shared_memory_per_core_;
-  int64_t shared_memory_per_block_;
-  int64_t shared_memory_per_block_optin_;
+  int64_t shared_memory_per_core_ = kUninitialized<int64_t>;
+  int64_t shared_memory_per_block_ = kUninitialized<int64_t>;
+  int64_t shared_memory_per_block_optin_ = kUninitialized<int64_t>;
 
-  float clock_rate_ghz_;
+  float clock_rate_ghz_ = kUninitialized<float>;
 
-  GpuComputeCapability gpu_compute_capability_;
+  GpuComputeCapability gpu_compute_capability_{};
 
-  int numa_node_;
-  int core_count_;
-  int fpus_per_core_;
-  bool ecc_enabled_;
+  int numa_node_ = kUninitialized<int>;
+  int core_count_ = kUninitialized<int>;
+  int fpus_per_core_ = kUninitialized<int>;
+  bool ecc_enabled_ = false;
 };
 
 namespace internal {

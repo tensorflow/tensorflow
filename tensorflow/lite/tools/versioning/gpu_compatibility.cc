@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
@@ -622,6 +623,54 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       }
       if (op_sig.inputs[0].type == kTfLiteInt16) {
         return absl::UnimplementedError("Unsupported dequantization type.");
+      }
+      return absl::OkStatus();
+    }
+
+    case kTfLiteBuiltinEmbeddingLookup: {
+      const int num_inputs = op_sig.inputs.size();
+      const OpSignatureTensorSpec ids_spec = op_sig.inputs[0];
+      const OpSignatureTensorSpec value_spec = op_sig.inputs[1];
+      const OpSignatureTensorSpec output_spec = op_sig.outputs[0];
+      if (num_inputs != 2) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected 2, but got ", num_inputs, " inputs."));
+      }
+
+      if (ids_spec.dims.size() != 1) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Expected 1D, but got ", ids_spec.dims.size(), "D input #0."));
+      }
+
+      if (value_spec.dims.size() < 2) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Expected > 1D, but got ", value_spec.dims.size(), "D input #1."));
+      }
+
+      if (op_sig.outputs.size() != 1) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Expected 1, but got ", op_sig.outputs.size(), " outputs."));
+      }
+
+      if (value_spec.dims.size() != output_spec.dims.size()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected ", value_spec.dims.size(), ", but got ",
+                         output_spec.dims.size(), " for output."));
+      }
+
+      for (int i = 1; i < output_spec.dims.size(); ++i) {
+        if (value_spec.dims[i] != output_spec.dims[i]) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Expected ", value_spec.dims[i], ", but got ",
+                           output_spec.dims[i], " for output.dim[", i, "]."));
+        }
+      }
+
+      if (value_spec.type != kTfLiteInt8 && value_spec.type != kTfLiteInt4 &&
+          value_spec.type != kTfLiteFloat32) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected int8, int4, or float32, but got ",
+                         TfLiteTypeGetName(value_spec.type), " for input #1."));
       }
       return absl::OkStatus();
     }

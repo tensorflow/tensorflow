@@ -40,15 +40,17 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<std::unique_ptr<AllGatherThunk>> AllGatherThunk::Create(
-    Info info, OpParams op_params, OpBuffers op_buffers) {
+    Info info, OpParams op_params, OpBuffers op_buffers,
+    OpResources op_resources) {
   return absl::WrapUnique(
-      new AllGatherThunk(std::move(info), op_params, std::move(op_buffers)));
+      new AllGatherThunk(std::move(info), std::move(op_params),
+                         std::move(op_buffers), std::move(op_resources)));
 }
 
 AllGatherThunk::AllGatherThunk(Info info, OpParams op_params,
-                               OpBuffers op_buffers)
-    : CollectiveThunk(Kind::kAllGather, info, op_params,
-                      std::move(op_buffers)) {}
+                               OpBuffers op_buffers, OpResources op_resources)
+    : CollectiveThunk(Kind::kAllGather, std::move(info), std::move(op_params),
+                      std::move(op_buffers), std::move(op_resources)) {}
 
 tsl::AsyncValueRef<AllGatherThunk::ExecuteEvent> AllGatherThunk::Execute(
     const ExecuteParams& params) {

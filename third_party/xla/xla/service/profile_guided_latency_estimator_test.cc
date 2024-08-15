@@ -22,18 +22,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 
 namespace {
+
+using ::tsl::testing::StatusIs;
 
 int GetIndex(absl::Span<HloInstruction* const> instruction_sequence,
              absl::string_view hlo_name) {
@@ -149,8 +156,8 @@ ENTRY entry {
     }
   }
 
-  // cp2s should come first since the latency between cp2s->cp2d is double that
-  // of cp1s->cp1d
+  // cp2s should come first since the latency between cp2s->cp2d is double
+  // that of cp1s->cp1d
   EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
             GetIndex(new_instruction_sequence, "cp1s"));
 }
@@ -262,6 +269,32 @@ ENTRY entry {
 
   EXPECT_EQ(send_latency, 110.0);
   EXPECT_EQ(recv_latency, 100.0);
+}
+
+TEST_F(ProfileGuidedLatencyEstimatorTest,
+       ProfileGuidedLatencyEstimatorCheckAccuracyFailsIfMissingAggregator) {
+  std::string kFdoProfile = "";
+  absl::string_view kHloModule = R"(
+    HloModule module
+
+    ENTRY main {
+      p0 = f32[1] parameter(0)
+      ROOT add0 = f32[1] add(p0,p0)
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
+  ASSERT_TRUE(
+      tsl::protobuf::TextFormat::ParseFromString(kFdoProfile, &fdo_profile));
+
+  auto sched_config = GetDefaultSchedConfig();
+  auto latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+      sched_config, std::make_unique<ApproximateLatencyEstimator>(),
+      fdo_profile);
+  EXPECT_THAT(latency_estimator->CheckAccuracy(*hlo_module),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace xla

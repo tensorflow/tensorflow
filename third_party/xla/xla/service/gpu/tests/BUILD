@@ -18,6 +18,7 @@ load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -68,21 +69,25 @@ cc_library(
 
 xla_test(
     name = "dynamic_slice_fusion_test",
-    srcs = ["dynamic_slice_fusion_test.cc"],
+    srcs = if_gpu_is_configured(["dynamic_slice_fusion_test.cc"]),
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = ["notsan"],  # TODO(b/345034145): Fix tsan error.
-    deps = [
-        "//xla:error_spec",
-        "//xla:shape_util",
-        "//xla/ffi",
-        "//xla/ffi:ffi_api",
-        "//xla/stream_executor",
-        "//xla/tests:hlo_test_base",
+    deps = if_gpu_is_configured(
+        #keep sorted
+        [
+            "//xla:error_spec",
+            "//xla:shape_util",
+            "//xla/ffi",
+            "//xla/ffi:ffi_api",
+            "//xla/stream_executor",
+            "//xla/tests:hlo_test_base",
+            "@com_google_absl//absl/algorithm:container",
+            "@com_google_absl//absl/status",
+            "@local_tsl//tsl/platform:test",
+        ],
+    ) + [
         "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -398,6 +403,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -468,9 +474,8 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
-        "gpu_amd_any",
     ],
-    tags = ["no_rocm"], #TODO(rocm) TEMP, sync 24-06-03
+    tags = ["no_rocm"], # TODO(rocm) 240729 Test checks only for cuda capability
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -566,6 +571,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
+        "//xla/tests:hlo_test_base",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -808,37 +814,20 @@ lit_test_suite(
     args = if_cuda_is_configured([
         "--param=PTX=PTX",
         "--param=GPU=a6000",
-        "--param=GPU1=v100",
-        "--param=SM=CHECK-SM70",
-        "--param=GPU2=a100_80",
     ]) + if_rocm_is_configured([
         "--param=PTX=GCN",
         "--param=GPU=mi200",
-        "--param=GPU1=mi200",
-        "--param=GPU2=mi200",
-        "--param=SM=CHECK-SM80",
     ]),
     cfg = "//xla:lit.cfg.py",
     data = [
-        "//xla/tools/hlo_opt:gpu_specs/a100_80.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/a100_pcie_80.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/h100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
     ],
     default_tags = tf_cuda_tests_tags(),
-    tags_override = {
-        "element_wise_row_vectorization.hlo": ["no_rocm"],
-        "scatter_bf16.hlo": ["no_rocm"],
-        "single_instruction.hlo": ["no_rocm"],
-        "reduce_unnested.hlo": ["no_rocm"],
-        "reduction_vectorization_sm_all.hlo": ["no_rocm"],
-        "kernel_reuse.hlo" : ["no_rocm"],
-        "reduce_column_layout_change.hlo" : ["no_rocm"],
-        "reduce_f64_column.hlo" : ["no_rocm"],
-        "triton_naming.hlo" : ["no_rocm"],
-    },
     tools = [
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
@@ -851,17 +840,18 @@ lit_test_suite(
 #     srcs = glob(["*.mlir"]),
 #     cfg = "//xla:lit.cfg.py",
 #     tools = [
-#         ":sparse-opt",
+#         ":xla-opt",
 #         "@llvm-project//llvm:FileCheck",
 #         "@triton//:triton-opt",
 #     ],
 # )
 #
 # cc_binary(
-#     name = "sparse-opt",
-#     srcs = ["sparse-opt.cc"],
+#     name = "xla-opt",
+#     srcs = ["xla-opt.cc"],
 #     deps = [
-#         "//xla/service/gpu:triton_sparse_extensions",
+#         "//xla/service/gpu/fusions/triton:prevent_mmav3_loop_unrolling",
+#         "//xla/service/gpu/fusions/triton:sparse_extensions",
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@triton//:AllPassesAndDialects",
@@ -947,7 +937,6 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    tags = ["no_rocm"],
     deps = if_cuda_is_configured(
         [
             ":gpu_codegen_test",
@@ -1055,7 +1044,6 @@ xla_test(
     name = "load_autotune_results_using_execpath_test",
     srcs = [],
     backends = ["gpu"],
-    tags = ["no_rocm"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
@@ -1074,7 +1062,6 @@ xla_test(
     name = "load_autotune_results_from_test_workspace_test",
     srcs = [],
     backends = ["gpu"],
-    tags = ["no_rocm"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/python/gpu_support.h"
 #include "xla/python/logging.h"
 #include "xla/python/py_client.h"  // IWYU pragma: keep

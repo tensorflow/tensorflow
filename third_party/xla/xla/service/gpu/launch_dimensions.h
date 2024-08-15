@@ -76,22 +76,10 @@ class LaunchDimensions {
                         thread_counts_per_block_.z, "}");
   }
 
-  bool operator==(const LaunchDimensions& other) const {
-    return block_counts_ == other.block_counts_ &&
-           thread_counts_per_block_ == other.thread_counts_per_block_;
-  }
-
-  bool operator!=(const LaunchDimensions& other) const {
-    return !(*this == other);
-  }
-
  private:
   se::BlockDim block_counts_;
   se::ThreadDim thread_counts_per_block_;
 };
-
-std::ostream& operator<<(std::ostream& out,
-                         const LaunchDimensions& launch_dims);
 
 struct LaunchDimensionsConfig {
   // The kernel implementation will be unrolled if `unroll_factor` is
@@ -108,12 +96,6 @@ struct LaunchDimensionsConfig {
   // `hlo.shape().dimensions().back()/unroll_factor`.
   // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;
-
-  std::string ToString() {
-    return absl::StrCat("unroll_factor=", unroll_factor,
-                        ", few_waves=", few_waves,
-                        ", row_vectorized=", row_vectorized);
-  }
 };
 
 // Returns -1 if the shape doesn't allow the row vectorization code path.

@@ -579,8 +579,8 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithSetAndGetTemporaries) {
   ASSERT_NE(model, nullptr);
 
   TfLiteOperator* reg =
-      TfLiteOperatorCreateWithData(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
-                                   /*user_data=*/nullptr);
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/nullptr);
   TfLiteOperatorSetPrepare(reg, my_custom_op::Prepare);
   TfLiteOperatorSetInit(reg, my_custom_op::Init);
   TfLiteOperatorSetFree(reg, my_custom_op::Free);
@@ -617,8 +617,8 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithLegacyCallbacks) {
   ASSERT_NE(model, nullptr);
 
   TfLiteOperator* reg =
-      TfLiteOperatorCreateWithData(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
-                                   /*user_data=*/nullptr);
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/nullptr);
   TfLiteOperatorSetPrepare(reg, [](auto context, auto node) {
     return my_custom_op::Prepare(context, node);
   });
@@ -662,8 +662,8 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithNoUserData) {
   ASSERT_NE(model, nullptr);
 
   TfLiteOperator* reg =
-      TfLiteOperatorCreateWithData(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
-                                   /*user_data=*/nullptr);
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/nullptr);
   TfLiteOperatorSetPrepareWithData(
       reg, [](auto user_data, auto context, auto node) {
         EXPECT_EQ(nullptr, user_data);
@@ -716,8 +716,8 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithData) {
   ASSERT_NE(model, nullptr);
 
   TfLiteOperator* reg =
-      TfLiteOperatorCreateWithData(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
-                                   /*user_data=*/reinterpret_cast<void*>(345));
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/reinterpret_cast<void*>(345));
   TfLiteOperatorSetPrepareWithData(
       reg, [](auto user_data, auto context, auto node) {
         EXPECT_EQ(reinterpret_cast<void*>(345), user_data);

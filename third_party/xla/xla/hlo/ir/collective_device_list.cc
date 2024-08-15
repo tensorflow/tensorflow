@@ -15,15 +15,78 @@ limitations under the License.
 
 #include "xla/hlo/ir/collective_device_list.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+std::string ReplicaGroupsToString(
+    absl::Span<const ReplicaGroup> replica_groups) {
+  std::vector<std::string> replica_group_str;
+  replica_group_str.reserve(replica_groups.size());
+  for (const ReplicaGroup& group : replica_groups) {
+    replica_group_str.push_back(
+        absl::StrCat("{", absl::StrJoin(group.replica_ids(), ","), "}"));
+  }
+  return absl::StrCat("{", absl::StrJoin(replica_group_str, ","), "}");
+}
+
+int64_t IotaReplicaGroupList::num_replica_groups() const {
+  DCHECK_GE(num_replica_groups_, 0);
+  return num_replica_groups_;
+}
+
+int64_t IotaReplicaGroupList::num_devices_per_group() const {
+  DCHECK_GE(num_devices_per_group_, 0);
+  return num_devices_per_group_;
+}
+
+std::string IotaReplicaGroupList::ToString() const {
+  return iota_tile_assignment_.ToString();
+}
+
+IotaReplicaGroupListProto IotaReplicaGroupList::ToProto() const {
+  IotaReplicaGroupListProto proto;
+  proto.set_num_replica_groups(num_replica_groups_);
+  proto.set_num_devices_per_group(num_devices_per_group_);
+  proto.mutable_iota_reshape_dims()->Assign(
+      iota_tile_assignment_.reshape_dims().begin(),
+      iota_tile_assignment_.reshape_dims().end());
+  proto.mutable_iota_transpose_perm()->Assign(
+      iota_tile_assignment_.transpose_perm().begin(),
+      iota_tile_assignment_.transpose_perm().end());
+  return proto;
+}
+
+IotaReplicaGroupList IotaReplicaGroupList::FromProto(
+    const IotaReplicaGroupListProto& proto) {
+  return IotaReplicaGroupList(
+      proto.num_replica_groups(), proto.num_devices_per_group(),
+      std::vector<int64_t>(proto.iota_reshape_dims().begin(),
+                           proto.iota_reshape_dims().end()),
+      std::vector<int>(proto.iota_transpose_perm().begin(),
+                       proto.iota_transpose_perm().end()));
+}
+
+CollectiveDeviceList::CollectiveDeviceList(
+    tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator start,
+    tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end) {
+  replica_groups_shared_ =
+      std::make_shared<std::vector<ReplicaGroup>>(start, end);
+  replica_groups_ = replica_groups_shared_.get();
+}
 
 CollectiveDeviceList::CollectiveDeviceList(
     absl::Span<const ReplicaGroup> replica_groups) {
@@ -85,20 +148,59 @@ const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
   return *replica_groups_;
 }
 
-int64_t IotaReplicaGroupList::num_replica_groups() const {
-  if (num_replica_groups_ == -1) {
-    num_replica_groups_ = iota_tile_assignment_.dim(0);
+std::string CollectiveDeviceList::ToString() const {
+  if (iota_replica_group_list_.has_value()) {
+    return iota_replica_group_list_->ToString();
   }
-  DCHECK_GE(num_replica_groups_, 0);
-  return num_replica_groups_;
+
+  return ReplicaGroupsToString(replica_groups());
 }
 
-int64_t IotaReplicaGroupList::num_devices_per_group() const {
-  if (num_devices_per_group_ == -1) {
-    num_devices_per_group_ = iota_tile_assignment_.dim(1);
+CollectiveDeviceListProto CollectiveDeviceList::ToProto() const {
+  CollectiveDeviceListProto proto;
+  if (iota_replica_group_list_.has_value()) {
+    *(proto.mutable_iota_replica_group_list()) =
+        iota_replica_group_list_->ToProto();
+    return proto;
   }
-  DCHECK_GE(num_devices_per_group_, 0);
-  return num_devices_per_group_;
+
+  proto.mutable_replica_groups()->Assign(replica_groups().begin(),
+                                         replica_groups().end());
+  return proto;
+}
+
+CollectiveDeviceList CollectiveDeviceList::FromProto(
+    const CollectiveDeviceListProto& proto) {
+  if (proto.has_iota_replica_group_list()) {
+    return CollectiveDeviceList(
+        IotaReplicaGroupList::FromProto(proto.iota_replica_group_list()));
+  }
+
+  if (proto.replica_groups_size() > 0) {
+    return CollectiveDeviceList(proto.replica_groups().begin(),
+                                proto.replica_groups().end());
+  }
+
+  return CollectiveDeviceList();
+}
+
+CollectiveDeviceList CollectiveDeviceList::FromProto(
+    const HloInstructionProto& proto) {
+  // Create CollectiveDeviceList from legacy field (replica_groups) if it is
+  // populated.
+  if (proto.replica_groups_size() > 0) {
+    VLOG(10) << "Creating collective device list from proto using legacy "
+                "replica groups field.";
+    return CollectiveDeviceList(proto.replica_groups().begin(),
+                                proto.replica_groups().end());
+  }
+
+  if (!proto.has_collective_device_list()) {
+    return CollectiveDeviceList();
+  }
+
+  // Create CollectiveDeviceList from non-legacy field (collective_device_list).
+  return FromProto(proto.collective_device_list());
 }
 
 }  // namespace xla

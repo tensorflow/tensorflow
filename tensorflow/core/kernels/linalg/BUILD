@@ -324,7 +324,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["eye_functor.h"],
-    visibility = [":__pkg__"],
+    visibility = ["//visibility:private"],
 )
 
 tf_cuda_cc_test(

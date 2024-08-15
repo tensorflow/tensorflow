@@ -1961,10 +1961,8 @@ struct ParallelState {
     absl::Span<int64_t const> dims_to_delete, Shape shape) {
   std::vector<int64_t> dims_to_delete_v(dims_to_delete.begin(),
                                         dims_to_delete.end());
-  absl::c_sort(dims_to_delete_v, std::greater<int64_t>());
-  for (int64_t dim : dims_to_delete_v) {
-    shape = DeleteDimension(dim, shape);
-  }
+  absl::c_sort(dims_to_delete_v);
+  shape.DeleteDimensions(dims_to_delete_v);
   return shape;
 }
 
@@ -1972,12 +1970,13 @@ struct ParallelState {
     absl::FunctionRef<bool(int64_t)> p, Shape shape) {
   CHECK(shape.IsArray());
   std::vector<int64_t> dims_to_delete;
-  for (int64_t i = shape.dimensions().size() - 1; i >= 0; --i) {
+  for (int64_t i = 0; i < shape.rank(); ++i) {
     if (!p(i)) {
       dims_to_delete.push_back(i);
     }
   }
-  return DeleteDimensions(dims_to_delete, shape);
+  shape.DeleteDimensions(dims_to_delete);
+  return shape;
 }
 
 // Returns the indices of the first elements of all consecutive subarrays of the

@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <ostream>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -72,19 +75,52 @@ Vector3 PartitionShapeByMiddleDimensions(
   }
   return values;
 }
+
 }  // namespace
 
 int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config) {
 #ifdef GOOGLE_CUDA
-  auto ptxas_config =
-      PtxOptsFromDebugOptions(hlo_module_config.debug_options());
-  auto ptxas_version_tuple =
-      se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir);
-  // ptxas versions prior to 12.2 have a very rare bug when very high register
-  // spilling occurs with some order of instructions, so use less threads to
-  // reduce register pressure.
-  if (!ptxas_version_tuple.ok() ||
-      ptxas_version_tuple.value() < std::array<int64_t, 3>{12, 2, 0}) {
+  // The call to `GetAsmCompilerVersion` is expensive, but the result never
+  // changes during one execution and doesn't really depend on
+  // `hlo_module_config`. To avoid repeated calls, we cache the result in a
+  // static variable.
+  static absl::Mutex mutex(absl::kConstInit);
+  static std::atomic<bool*> use_reduced_thread_count_atomic = nullptr;
+
+  bool* use_reduced_thread_count =
+      use_reduced_thread_count_atomic.load(std::memory_order_acquire);
+
+  if (use_reduced_thread_count == nullptr) {
+    absl::MutexLock lock(&mutex);
+    // We might have raced with another thread, so check again!
+    // Note: We can use relaxed memory ordering here because we hold
+    //       the mutex lock and all updates happen under the same lock.
+    //       When unsure, use release and acquire pairs for stores and loads.
+    use_reduced_thread_count =
+        use_reduced_thread_count_atomic.load(std::memory_order_relaxed);
+
+    if (use_reduced_thread_count == nullptr) {
+      auto ptxas_config =
+          PtxOptsFromDebugOptions(hlo_module_config.debug_options());
+      auto ptxas_version_tuple =
+          se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir);
+
+      use_reduced_thread_count = new bool(false);
+
+      // ptxas versions prior to 12.2 have a very rare bug when very high
+      // register spilling occurs with some order of instructions, so use less
+      // threads to reduce register pressure.
+      if (!ptxas_version_tuple.ok() ||
+          ptxas_version_tuple.value() < std::array<int64_t, 3>{12, 2, 0}) {
+        *use_reduced_thread_count = true;
+      }
+
+      use_reduced_thread_count_atomic.store(use_reduced_thread_count,
+                                            std::memory_order_release);
+    }
+  }
+
+  if (*use_reduced_thread_count) {
     return 512;
   }
 #endif  // GOOGLE_CUDA

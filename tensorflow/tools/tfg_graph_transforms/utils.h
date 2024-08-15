@@ -18,11 +18,15 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace mlir {
 namespace tfg {

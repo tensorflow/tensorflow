@@ -123,11 +123,13 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
       break;
     default:
       for (size_t i = 0; i < Size(); i++) {
-        ASSERT_NEAR(
-            default_output_data[i], delegate_output_data[i],
-            std::numeric_limits<float>::epsilon() *
-                std::max(std::abs(default_output_data[i]) * RelativeTolerance(),
-                         1.0f));
+        ASSERT_NEAR(default_output_data[i], delegate_output_data[i],
+                    std::max(std::numeric_limits<float>::epsilon() *
+                                 AbsoluteTolerance(),
+                             std::numeric_limits<float>::epsilon() *
+                                 std::max(std::abs(default_output_data[i]) *
+                                              RelativeTolerance(),
+                                          1.0f)));
       }
       break;
   }

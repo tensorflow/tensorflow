@@ -155,6 +155,7 @@ TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
 #endif  // TENSORFLOW_USE_ROCM
 
   debug_options_.set_xla_gpu_cublas_fallback(false);
+  ASSERT_TRUE(debug_options_.xla_gpu_exclude_nondeterministic_ops());
   ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
   AutotunerUtil::ClearAutotuneResults();
   // The default config is not used when autotuning is on.

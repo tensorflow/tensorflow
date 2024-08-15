@@ -16,9 +16,13 @@ cc_library(
     hdrs = ["pass.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:op_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/importexport:convert_types",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/transforms:PassIncGen",
         "//tensorflow/core/transforms:eval_utils",
         "//tensorflow/core/transforms:op_cat_helper",
@@ -29,9 +33,9 @@ cc_library(
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 

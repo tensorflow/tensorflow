@@ -30,13 +30,14 @@ class ReduceScatterThunk final : public CollectiveThunk {
  public:
   static absl::StatusOr<std::unique_ptr<ReduceScatterThunk>> Create(
       Info info, ReductionKind reduction_kind, OpParams op_params,
-      OpBuffers op_buffers);
+      OpBuffers op_buffers, OpResources op_resources);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
  private:
   ReduceScatterThunk(Info info, ReductionKind reduction_kind,
-                     OpParams op_params, OpBuffers op_buffers);
+                     OpParams op_params, OpBuffers op_buffers,
+                     OpResources op_resources);
 
   ReductionKind reduction_kind_;
 };

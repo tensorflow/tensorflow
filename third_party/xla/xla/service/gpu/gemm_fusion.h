@@ -38,8 +38,8 @@ bool ShouldTritonHandleGEMM(HloDotInstruction&,
 // that target Triton-based matmul emitter.
 class GemmFusion : public HloModulePass {
  public:
-  explicit GemmFusion(const se::GpuComputeCapability& gpu_version)
-      : gpu_version_(gpu_version) {}
+  explicit GemmFusion(const se::GpuComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 
   using HloPassInterface::Run;
@@ -48,7 +48,7 @@ class GemmFusion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::GpuComputeCapability gpu_version_;
+  se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace gpu

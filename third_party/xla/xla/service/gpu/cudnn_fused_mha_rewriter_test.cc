@@ -128,27 +128,6 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
   std::optional<absl::string_view> skip_reason_;
 };
 
-class CudnnFusedMhaRewriterPipelineTest
-    : public CudnnFusedMhaRewriterTestHloTest {
- public:
-  CudnnFusedMhaRewriterPipelineTest() {
-    if (skip_reason_) return;  // the parent might have set it.
-#if !defined(GOOGLE_CUDA) || CUDNN_VERSION < 8800  // NOLINT
-    skip_reason_ = "Pipeline test requires cuDNN 8.8.0 or later.";
-    return;
-#endif
-    stream_executor::CudaComputeCapability cc = GetRealCudaComputeCapability();
-    // Enforce capability minor == 0 because hardware with a non-zero minor
-    // number typically has insufficient shared memory for cuDNN FMHA.
-    if (!cc.IsAtLeastAmpere() || cc.minor != 0) {
-      skip_reason_ =
-          "Pipeline test requires Nvidia AMPERE+ GPUs with minor "
-          "compute capability == 0.";
-      return;
-    }
-  }
-};
-
 constexpr absl::string_view
     hlo_BF16Bmm1SoftmaxBmm2Pattern_k_hidden_not_most_minor = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}

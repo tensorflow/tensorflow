@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_MODULE_CONFIG_IMPORTER_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_MODULE_CONFIG_IMPORTER_H_
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla {

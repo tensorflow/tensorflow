@@ -29,4 +29,8 @@ message GpuTopologyProto {
 
   // The number of devices for each host.
   int32 num_devices_per_host = 6;
+
+  // The number of cores for each device. For Nvidia GPUs, this is the number of
+  // SMs(Streaming MultiProcessors) on the chip.
+  int32 core_count_per_chip = 7;
 }

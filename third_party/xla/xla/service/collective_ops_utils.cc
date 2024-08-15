@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -515,8 +516,12 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
   switch (group_mode) {
     case CollectiveOpGroupMode::kCrossReplica: {
-      participant_counts.resize(participating_replica_groups.size(),
-                                num_partitions);
+      for (const auto& replica_group : participating_replica_groups) {
+        for (int partition_id = 0; partition_id < num_partitions;
+             ++partition_id) {
+          participant_counts.push_back(replica_group.replica_ids().size());
+        }
+      }
       return participant_counts;
     }
     case CollectiveOpGroupMode::kCrossPartition: {
@@ -669,4 +674,37 @@ bool IsBackwardCycle(const SourceTargetPairs& pairs) {
   return true;
 }
 
+bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
+                              bool use_global_ids, bool has_channel_id,
+                              const DeviceAssignment& device_assignment) {
+  if (!has_channel_id) {
+    return false;
+  }
+  if (!use_global_ids) {
+    // Each id is a replica group is a replica id. If any group
+    // has more than one id then this is not exclusively cross module.
+    for (const ReplicaGroup& replica_group : replica_groups) {
+      if (replica_group.replica_ids_size() != 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+  // Each id in a replica group is a global id. Check if all replica groups are
+  // exclusively cross module (all participants in a group have the same replica
+  // id).
+  int64_t partition_count = device_assignment.computation_count();
+  for (const ReplicaGroup& replica_group : replica_groups) {
+    std::optional<int64_t> first_replica_id;
+    for (int64_t global_id : replica_group.replica_ids()) {
+      int64_t replica_id = global_id / partition_count;
+      if (!first_replica_id.has_value()) {
+        first_replica_id = replica_id;
+      } else if (replica_id != first_replica_id) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 }  // end namespace xla

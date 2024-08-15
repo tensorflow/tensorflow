@@ -17,17 +17,22 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/xla.pb.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
+
+using ::testing::IsEmpty;
 
 TEST(DumpHloIfEnabled, LargeConstantElided) {
   HloModuleConfig config;
@@ -83,6 +88,67 @@ TEST(DumpHloIfEnabled, LargeConstantPrinted) {
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
   EXPECT_TRUE(!absl::StrContains(data, "{...}"));
+}
+
+TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
+  std::string filename =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "disable_override");
+  std::string contents = "hello";
+  DebugOptions options;
+  options.set_xla_enable_dumping(false);
+  options.set_xla_dump_to(filename);
+  DumpToFileInDir(options, "disable_override", contents);
+
+  std::vector<std::string> matches;
+  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(filename, &matches));
+  EXPECT_THAT(matches, IsEmpty());
+}
+
+TEST(DumpTest, DumpingToFileWorksWhenEnabled) {
+  std::string filename =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "enable_dumping");
+  std::string contents = "hello";
+  DebugOptions options;
+  options.set_xla_dump_to(tsl::testing::TmpDir());
+  options.set_xla_enable_dumping(true);
+  DumpToFileInDir(options, "enable_dumping", contents);
+
+  std::string real_contents;
+  TF_ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), filename, &real_contents));
+  EXPECT_EQ(contents, real_contents);
+}
+
+TEST(DumpTest, DumpProtobufToFileWhenEnabled) {
+  HloModuleProto module;
+  module.set_name("hello");
+  std::string filename =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "enable_proto_dumping.txt");
+
+  DebugOptions options;
+  options.set_xla_dump_to(tsl::testing::TmpDir());
+  options.set_xla_enable_dumping(true);
+  DumpProtobufToFile(module, options, "enable_proto_dumping");
+
+  HloModuleProto mod;
+  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), filename, &mod));
+  EXPECT_EQ(mod.name(), module.name());
+}
+
+TEST(DumpTest, DumpProtobufToFileWhenDisabled) {
+  HloModuleProto module;
+  module.set_name("hello");
+  std::string filename =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "disable_proto_dumping.txt");
+
+  DebugOptions options;
+  options.set_xla_dump_to(tsl::testing::TmpDir());
+  options.set_xla_enable_dumping(false);
+  DumpProtobufToFile(module, options, "disable_proto_dumping");
+
+  std::vector<std::string> matches;
+  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(filename, &matches));
+  EXPECT_THAT(matches, IsEmpty());
 }
 
 }  // namespace

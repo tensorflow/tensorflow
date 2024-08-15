@@ -3664,7 +3664,7 @@ class ApplyAdamWithAmsgradOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const bool sparse = false;
     auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
-        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2, 3});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(

@@ -219,6 +219,25 @@ class SignatureRunner {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
 
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Set the delegate buffer handle to a input tensor.
+  /// TfLiteDelegate should be aware of how to handle the buffer handle.
+  /// `release_existing_buffer_handle`: If true, the existing buffer handle
+  // will be released by TfLiteDelegate::FreeBufferHandle.
+  TfLiteStatus SetInputBufferHandle(const char* input_name,
+                                    TfLiteBufferHandle buffer_handle,
+                                    TfLiteDelegate* delegate,
+                                    bool release_existing_buffer_handle = true);
+
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Set the delegate buffer handle to a output tensor.
+  /// TfLiteDelegate should be aware of how to handle the buffer handle.
+  /// `release_existing_buffer_handle`: If true, the existing buffer handle
+  /// will be released by TfLiteDelegate::FreeBufferHandle.
+  TfLiteStatus SetOutputBufferHandle(
+      const char* output_name, TfLiteBufferHandle buffer_handle,
+      TfLiteDelegate* delegate, bool release_existing_buffer_handle = true);
+
  private:
   // The life cycle of SignatureRunner depends on the life cycle of Subgraph,
   // which is owned by an Interpreter. Therefore, the Interpreter will takes the

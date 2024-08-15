@@ -226,6 +226,7 @@ class HloModuleConfig {
   std::string compilation_cache_key() const;
 
   const DebugOptions& debug_options() const { return debug_options_; }
+  DebugOptions& mutable_debug_options() { return debug_options_; }
   void set_debug_options(const DebugOptions& debug_options) {
     debug_options_ = debug_options;
   }
@@ -375,6 +376,11 @@ class HloModuleConfig {
     device_memory_size_ = device_memory_size;
   }
 
+  bool use_shardy_partitioner() const { return use_shardy_partitioner_; }
+  void set_use_shardy_partitioner(bool use_shardy_partitioner) {
+    use_shardy_partitioner_ = use_shardy_partitioner;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key and the
   // HloModuleConfigProto.
@@ -501,6 +507,8 @@ class HloModuleConfig {
   std::string fdo_profile_;
 
   int64_t device_memory_size_ = 0;
+
+  bool use_shardy_partitioner_ = false;
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };
 

@@ -43,10 +43,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
-#include "xla/service/gpu/triton_support.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
@@ -798,24 +798,14 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
 absl::StatusOr<bool> GemmFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version_);
-  if (!cuda_compute_capability) {
-    return absl::FailedPreconditionError(
-        "Triton support is only enabled for CUDA GPUs.");
-  } else if (!cuda_compute_capability->IsAtLeastAmpere()) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
-                     "capability 8.0) and up, but got compute capability ",
-                     cuda_compute_capability->major, ".",
-                     cuda_compute_capability->minor, "."));
-  }
+  TF_RETURN_IF_ERROR(
+      EnsureTritonSupportsComputeCapability(compute_capability_));
 
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result,
-                        RunOnComputation(computation, gpu_version_));
+                        RunOnComputation(computation, compute_capability_));
     changed |= result;
   }
   return changed;

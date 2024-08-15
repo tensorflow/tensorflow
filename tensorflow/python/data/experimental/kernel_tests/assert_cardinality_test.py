@@ -17,6 +17,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import global_shuffle_op
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -118,6 +119,22 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
         expected_error, expected_error_message):
       dataset = global_shuffle_op._global_shuffle(dataset)
       self.getDatasetOutput(dataset, requires_initialization=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRandomAccess(self):
+    num_elements = 10
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(cardinality.assert_cardinality(num_elements))
+    self.verifyRandomAccess(dataset, expected=range(num_elements))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRandomAccessOutOfRange(self):
+    dataset = dataset_ops.Dataset.range(5)
+    dataset = dataset.apply(cardinality.assert_cardinality(10))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=10))
+    with self.assertRaises(errors.FailedPreconditionError):
+      self.evaluate(random_access.at(dataset, index=5))
 
 
 class AssertCardinalityCheckpointTest(checkpoint_test_base.CheckpointTestBase,

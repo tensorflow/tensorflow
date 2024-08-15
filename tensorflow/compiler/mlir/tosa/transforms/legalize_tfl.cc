@@ -2073,6 +2073,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
   }
 
   Value input_val = tfl_fc_op.getInput();
+  Value filter_val = tfl_fc_op.getFilter();
 
   // tfl.fully_connected() can takes various dimension tensor as input
   // need to reshape it to rank 2 tensor, which tosa.fully_connected only
@@ -2090,11 +2091,35 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
     RankedTensorType reshape_type =
         RankedTensorType::get(shape_vals, input_type.getElementType());
     auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-        rewriter, op->getLoc(), reshape_type, tfl_fc_op.getInput(),
+        rewriter, op->getLoc(), reshape_type, input_val,
         rewriter.getDenseI64ArrayAttr(shape_vals));
 
     input_val = reshape_op.getResult();
+    input_type = reshape_type;
   }
+
+  // reshape input_val from [N, IC] to [N, 1, 1, IC] to use conv2d
+  // reshape filter_val from [OC, IC] to [OC, 1, 1, IC] to use conv2d
+  const int64_t N = input_type.getShape()[0];
+  const int64_t IC = input_type.getShape()[1];
+  const int64_t OC = filter_type.getShape()[0];
+
+  SmallVector<int64_t> new_input_shape({N, 1, 1, IC});
+  SmallVector<int64_t> new_filter_shape({OC, 1, 1, IC});
+
+  input_val = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
+      tensorflow::GetTypeFromTFTensorShape(new_input_shape,
+                                           input_type.getElementType()),
+      input_val, rewriter.getDenseI64ArrayAttr(new_input_shape));
+  input_type = cast<RankedTensorType>(input_val.getType());
+
+  filter_val = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
+      tensorflow::GetTypeFromTFTensorShape(new_filter_shape,
+                                           filter_type.getElementType()),
+      filter_val, rewriter.getDenseI64ArrayAttr(new_filter_shape));
+  filter_type = cast<RankedTensorType>(filter_val.getType());
 
   Value bias_val;
   if (!bias_type) {
@@ -2144,9 +2169,12 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
 
   Type bias_ety = mlir::cast<ShapedType>(bias_val.getType()).getElementType();
 
-  auto fc_op = CreateOpAndInfer<tosa::FullyConnectedOp>(
+  auto fc_op = CreateOpAndInfer<tosa::Conv2DOp>(
       rewriter, op->getLoc(), UnrankedTensorType::get(bias_ety), input_val,
-      tfl_fc_op.getFilter(), bias_val);
+      filter_val, bias_val,
+      /* pad = */ rewriter.getDenseI64ArrayAttr({0, 0, 0, 0}),
+      /* stride = */ rewriter.getDenseI64ArrayAttr({1, 1}),
+      /* dilation = */ rewriter.getDenseI64ArrayAttr({1, 1}));
 
   Value fc_output;
   if (input_is_qtype) {
@@ -2159,14 +2187,19 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
 
   // If we know the output rank, we need to ensure the output shape is correct.
   ShapedType fc_type = mlir::cast<ShapedType>(fc_output.getType());
-  if (output_type.hasRank()) {
-    llvm::SmallVector<int64_t> output_shape;
 
-    fc_output = CreateOpAndInfer<tosa::ReshapeOp>(
-        rewriter, op->getLoc(),
-        UnrankedTensorType::get(fc_type.getElementType()), fc_output,
-        rewriter.getDenseI64ArrayAttr(output_type.getShape()));
+  DenseI64ArrayAttr output_shape_attr;
+  if (output_type.hasRank()) {
+    output_shape_attr = rewriter.getDenseI64ArrayAttr(output_type.getShape());
+  } else {
+    // set output_shape to {N, OC} to match previous results
+    // with tosa::FullyConnectedOp
+    output_shape_attr = rewriter.getDenseI64ArrayAttr({N, OC});
   }
+
+  fc_output = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(), UnrankedTensorType::get(fc_type.getElementType()),
+      fc_output, output_shape_attr);
 
   auto fused_activation_fn = tfl_fc_op.getFusedActivationFunctionAttr();
 

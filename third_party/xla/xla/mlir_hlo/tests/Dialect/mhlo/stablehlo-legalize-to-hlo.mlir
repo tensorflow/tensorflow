@@ -1567,7 +1567,6 @@ func.func @op_subtract(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 func.func @op_tan_mhlo_v1(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.tan"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.custom_call"(%arg0) {
-    backend_config = "",
     call_target_name = "mhlo.tan",
     mhlo.attributes = {},
     mhlo.version = 1 : i64
@@ -1951,7 +1950,6 @@ func.func @op_custom_call_botched_mhlo_backend_config_version(%arg0: tensor<f32>
 func.func @op_topk_mhlo_v1(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>) {
   // CHECK: "mhlo.topk"([[ARG0:%arg[0-9]+]]) <{k = 8 : i64, largest = true}> : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
   %0:2 = "stablehlo.custom_call"(%arg0) {
-    backend_config = "",
     call_target_name = "mhlo.topk",
     mhlo.attributes = {k = 8 : i64, largest = true},
     mhlo.version = 1 : i64

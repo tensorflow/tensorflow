@@ -590,6 +590,29 @@ TEST(ShapeUtilTest, ForEachMutableSubshapeNestedTuple) {
   EXPECT_EQ(5, calls);
 }
 
+TEST(ShapeUtilTest, ForEachMutableLeafShapeTest) {
+  Shape shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {42}),
+       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {101}),
+                                  ShapeUtil::MakeShape(PRED, {33})})});
+  int calls = 0;
+  ShapeUtil::ForEachMutableLeafShape(
+      &shape, [&calls, &shape](const Shape* subshape, const ShapeIndex& index) {
+        // Pointer values should be equal.
+        EXPECT_EQ(subshape, ShapeUtil::GetMutableSubshape(&shape, index));
+        // Visitation should go from outside in.
+        if (calls == 0) {
+          EXPECT_EQ(42, ShapeUtil::ElementsIn(*subshape));
+        } else if (calls == 1) {
+          EXPECT_EQ(101, ShapeUtil::ElementsIn(*subshape));
+        } else if (calls == 2) {
+          EXPECT_EQ(33, ShapeUtil::ElementsIn(*subshape));
+        }
+        ++calls;
+      });
+  EXPECT_EQ(3, calls);
+}
+
 TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
   Shape shape0 = ShapeUtil::MakeShape(S32, {9, 1, 4});
   Shape shape1 = ShapeUtil::MakeShape(S32, {1, 9, 4, 1});

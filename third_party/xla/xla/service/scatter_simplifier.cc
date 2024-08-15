@@ -16,16 +16,19 @@ limitations under the License.
 #include "xla/service/scatter_simplifier.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/permutation_util.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
@@ -138,10 +141,26 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
         "got ",
         scatter->called_computations().size());
   }
+  HloComputation* called_computation = scatter->called_computations().front();
 
   const auto& attrs = scatter->scatter_dimension_numbers();
   const int operand_rank =
       attrs.update_window_dims().size() + attrs.inserted_window_dims().size();
+  // Rewrite the scatter into the scalar operand.
+  if (operand_rank == 0) {
+    absl::InlinedVector<HloInstruction*, 2> scatter_operands_and_updates;
+    scatter_operands_and_updates.reserve(2 * scatter->operand_count());
+    absl::c_copy(scatter->scatter_operands(),
+                 std::back_inserter(scatter_operands_and_updates));
+    absl::c_copy(scatter->scatter_updates(),
+                 std::back_inserter(scatter_operands_and_updates));
+
+    auto* call_op = scatter->AddInstruction(HloInstruction::CreateCall(
+        scatter->shape(), scatter_operands_and_updates, called_computation));
+    TF_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(call_op));
+    TF_ASSIGN_OR_RETURN(auto map, CallInliner::Inline(call_op));
+    return map[call_op];
+  }
 
   // We permute updates and operands according to scatter_dims_to_operand_dims.
   auto [operand_permutation, operand_permutation_inverse] =
@@ -175,7 +194,7 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
   }
   auto* result = scatter->AddInstruction(HloInstruction::CreateScatter(
       output_shape, scatter_operands, scatter_indices, scatter_updates,
-      scatter->called_computations().front(), dim_numbers,
+      called_computation, dim_numbers,
       // TODO(unknown): Is this still correct?
       scatter->indices_are_sorted(), scatter->unique_indices()));
 
@@ -205,6 +224,8 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
 bool ScatterSimplifier::IsSimplifiedScatter(
     const HloScatterInstruction* scatter) {
   const auto& dims = scatter->scatter_dimension_numbers();
+  auto operand_rank = scatter->scatter_operands().front()->shape().rank();
+  if (operand_rank == 0) return false;
 
   bool nonstandard_index_vector_dim =
       dims.index_vector_dim() != scatter->scatter_indices()->shape().rank() - 1;

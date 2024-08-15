@@ -167,12 +167,6 @@ absl::Status HostExecutor::SynchronousMemcpy(void* host_dst,
   return absl::OkStatus();
 }
 
-bool HostExecutor::HostCallback(
-    Stream* stream, absl::AnyInvocable<absl::Status() &&> callback) {
-  AsHostStream(stream)->EnqueueTaskWithStatus(std::move(callback));
-  return true;
-}
-
 void HostExecutor::DeallocateStream(Stream* stream) {}
 
 absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
