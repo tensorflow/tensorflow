@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
