@@ -126,6 +126,8 @@ filegroup(
     name = "tflite_internal_cc_3p_api_deps_src_all",
     srcs = [
         ":tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/compiler/mlir/lite:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/compiler/mlir/lite/core/api:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite/schema:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/lite/core:macros.h",
         "//tensorflow/lite/core/acceleration/configuration/c:tflite_internal_cc_3p_api_deps_src",
@@ -149,7 +151,6 @@ filegroup(
         ":minimal_logging.cc",
         ":minimal_logging.h",
         ":minimal_logging_android.cc",
-        ":mmap_allocation.cc",
         ":mutable_op_resolver.cc",
         ":mutable_op_resolver.h",
         ":op_resolver.h",
