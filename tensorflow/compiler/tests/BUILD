@@ -89,6 +89,9 @@ py_strict_test(
     ],
 )
 
+#LINT.IfChange(combined_tests)
+# If you add a new tf_xla_py_strict_test please either add the test file to one of the combined test
+# targets that matches in all tags and other settings or add a new combined test target.
 tf_xla_combined_py_test(
     name = "ops_test_mlir_false",
     size = "medium",
@@ -98,10 +101,24 @@ tf_xla_combined_py_test(
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
-    test_files = [
+    tests = [
         # go/keep-sorted start
-        "adadelta_test.py",
+        ":adadelta_test_lib",
         # go/keep-sorted end
+    ],
+)
+#LINT.ThenChange(:individual_tests)
+
+#LINT.IfChange(individual_tests)
+tf_xla_py_strict_test(
+    name = "adadelta_test",
+    size = "medium",
+    srcs = ["adadelta_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -2014,288 +2031,6 @@ tf_xla_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
-    name = "xla_device_gpu_test",
-    size = "small",
-    srcs = ["xla_device_gpu_test.py"],
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        "//tensorflow/python/client:session",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-cuda_py_strict_test(
-    name = "jit_test",
-    size = "medium",
-    srcs = ["jit_test.py"],
-    #shard_count = 5,
-    tags = [
-        "no_cuda_asan",  # Times out.
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        ":test_utils",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client:session",
-        "//tensorflow/python/compiler/xla:compiler_py",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:function",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:cond",
-        "//tensorflow/python/ops:control_flow_ops",
-        "//tensorflow/python/ops:gradients_impl",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:nn_ops",
-        "//tensorflow/python/ops:while_loop",
-        "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_strict_test(
-    name = "async_comp_test",
-    size = "medium",
-    srcs = ["async_comp_test.py"],
-    shard_count = 1,
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client:session",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:function",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-cuda_py_strict_test(
-    name = "dense_layer_test",
-    size = "medium",
-    srcs = ["dense_layer_test.py"],
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        ":test_utils",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/compiler/xla:compiler_py",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/layers",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:variables",
-        "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cc_library(
-    name = "randomized_tests_library",
-    testonly = 1,
-    srcs = ["randomized_tests.cc"],
-    deps = [
-        "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/jit:common",
-        "//tensorflow/compiler/jit:flags_headers",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
-        "//tensorflow/core:test",
-        "//tensorflow/core:testlib",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:status",
-        "@local_xla//xla:xla_data_proto_cc",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "randomized_tests",
-    size = "medium",
-    args = ["--tf_xla_test_use_mlir=false"],
-    shard_count = 20,
-    # This test is randomized, so only run it if explicitly requested.
-    tags = [
-        "manual",
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",
-    ] + tf_cuda_tests_tags(),
-    deps = [":randomized_tests_library"],
-)
-
-tf_cuda_cc_test(
-    name = "randomized_tests_mlir",
-    size = "medium",
-    args = ["--tf_xla_test_use_mlir=true"],
-    shard_count = 20,
-    # This test is randomized, so only run it if explicitly requested.
-    tags = [
-        "manual",
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",
-    ] + tf_cuda_tests_tags(),
-    deps = [":randomized_tests_library"],
-)
-
-# Create a deterministic version of randomized_tests_mlir with fixed seed.
-# This can be used in presubmit checks as it is no longer randomized.
-tf_cuda_cc_test(
-    name = "randomized_tests_mlir_seeded",
-    size = "medium",
-    args = [
-        "--tf_xla_random_seed=200839030",
-        "--tf_xla_test_use_mlir=true",
-        "--tf_xla_test_device=GPU:0",
-    ],
-    shard_count = 20,
-    tags = [
-        "config-cuda-only",
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",  # ROCmSoftwarePlatform #958
-        "noasan",  # TODO(b/201651800)
-        "requires-gpu-nvidia",
-    ] + tf_cuda_tests_tags(),
-    deps = [":randomized_tests_library"],
-)
-
-# Create a deterministic version of randomized_tests with fixed seed.
-# This can be used in presubmit checks as it is no longer randomized.
-tf_cuda_cc_test(
-    name = "randomized_tests_seeded",
-    size = "medium",
-    args = [
-        "--tf_xla_random_seed=200839030",
-        "--tf_xla_test_use_mlir=false",
-        "--tf_xla_test_device=GPU:0",
-    ],
-    shard_count = 20,
-    tags = [
-        "config-cuda-only",
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",  # ROCmSoftwarePlatform #958
-        "noasan",  # TODO(b/201651800)
-        "requires-gpu-nvidia",
-    ] + tf_cuda_tests_tags(),
-    deps = [":randomized_tests_library"],
-)
-
-tf_cuda_cc_test(
-    name = "unary_ops_composition_test",
-    srcs = ["unary_ops_composition_test.cc"],
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ] + tf_cuda_tests_tags(),
-    deps = [
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/jit:flags",
-        "//tensorflow/compiler/jit:xla_kernel_creator",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-py_strict_library(
-    name = "lstm",
-    testonly = 1,
-    srcs = ["lstm.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:random_ops",
-        "//tensorflow/python/ops:variable_v1",
-        "@six_archive//:six",
-    ],
-)
-
-cuda_py_strict_test(
-    name = "lstm_test",
-    srcs = ["lstm_test.py"],
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        ":lstm",
-        ":xla_test",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:gradients_impl",
-        "//tensorflow/python/ops:init_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:variables",
-        "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-# An example of ahead-of-time compilation using tfcompile.  The
-# lstm_layer_inference.pbtxt file was generated by running lstm_test
-# --dump_graph_dir, and the config file was written by hand.
-#
-# Run the following to build a minimal benchmark of the computation on Android:
-# $ bazel build -c opt --cxxopt='-std=c++11' --linkopt='-lm' \
-#   --cpu=armeabi-v7a \
-#   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-#   --crosstool_top=//external:android/crosstool \
-#   //tensorflow/compiler/tests:lstm_layer_inference_benchmark
-
-#
-# Currently the resulting binary size is ~190KB
-tf_library(
-    name = "lstm_layer_inference",
-    testonly = 1,
-    config = "lstm_layer_inference.config.pbtxt",
-    cpp_class = "LSTMLayerInference",
-    graph = "lstm_layer_inference.pbtxt",
-    tags = ["manual"],
-    tfcompile_flags = ["--xla_cpu_multi_thread_eigen=false"],
-)
-
 tf_xla_py_strict_test(
     name = "fake_quant_ops_test",
     size = "medium",
@@ -2692,48 +2427,6 @@ tf_xla_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
-    name = "const_test",
-    size = "small",
-    srcs = ["const_test.py"],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-tpu_py_strict_test(
-    name = "giant_const_op_test",
-    srcs = [
-        "giant_const_op_test.py",
-    ],
-    disable_experimental = True,
-    # TODO(b/188995810): Add an optimization in MLIR importer to not
-    # materialize giant splat constants.
-    disable_mlir_bridge = True,
-    python_version = "PY3",
-    tags = ["no_oss"],
-    deps = [
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:remote",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/platform:flags",
-        "//third_party/py/numpy",
-    ],
-)
-
 tf_xla_py_strict_test(
     name = "sharding_util_ops_test",
     srcs = ["sharding_util_ops_test.py"],
@@ -2982,3 +2675,328 @@ tf_xla_py_strict_test(
 #     ],
 # )
 # copybara:uncomment_end
+#LINT.ThenChange(:combined_tests)
+
+cuda_py_strict_test(
+    name = "xla_device_gpu_test",
+    size = "small",
+    srcs = ["xla_device_gpu_test.py"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "jit_test",
+    size = "medium",
+    srcs = ["jit_test.py"],
+    #shard_count = 5,
+    tags = [
+        "no_cuda_asan",  # Times out.
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":test_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/compiler/xla:compiler_py",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:gradients_impl",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "async_comp_test",
+    size = "medium",
+    srcs = ["async_comp_test.py"],
+    shard_count = 1,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "dense_layer_test",
+    size = "medium",
+    srcs = ["dense_layer_test.py"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":test_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/compiler/xla:compiler_py",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/layers",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cc_library(
+    name = "randomized_tests_library",
+    testonly = 1,
+    srcs = ["randomized_tests.cc"],
+    deps = [
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow_opensource",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla:xla_data_proto_cc",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "randomized_tests",
+    size = "medium",
+    args = ["--tf_xla_test_use_mlir=false"],
+    shard_count = 20,
+    # This test is randomized, so only run it if explicitly requested.
+    tags = [
+        "manual",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir",
+    size = "medium",
+    args = ["--tf_xla_test_use_mlir=true"],
+    shard_count = 20,
+    # This test is randomized, so only run it if explicitly requested.
+    tags = [
+        "manual",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+# Create a deterministic version of randomized_tests_mlir with fixed seed.
+# This can be used in presubmit checks as it is no longer randomized.
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir_seeded",
+    size = "medium",
+    args = [
+        "--tf_xla_random_seed=200839030",
+        "--tf_xla_test_use_mlir=true",
+        "--tf_xla_test_device=GPU:0",
+    ],
+    shard_count = 20,
+    tags = [
+        "config-cuda-only",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",  # ROCmSoftwarePlatform #958
+        "noasan",  # TODO(b/201651800)
+        "requires-gpu-nvidia",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+# Create a deterministic version of randomized_tests with fixed seed.
+# This can be used in presubmit checks as it is no longer randomized.
+tf_cuda_cc_test(
+    name = "randomized_tests_seeded",
+    size = "medium",
+    args = [
+        "--tf_xla_random_seed=200839030",
+        "--tf_xla_test_use_mlir=false",
+        "--tf_xla_test_device=GPU:0",
+    ],
+    shard_count = 20,
+    tags = [
+        "config-cuda-only",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",  # ROCmSoftwarePlatform #958
+        "noasan",  # TODO(b/201651800)
+        "requires-gpu-nvidia",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+tf_cuda_cc_test(
+    name = "unary_ops_composition_test",
+    srcs = ["unary_ops_composition_test.cc"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ] + tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+py_strict_library(
+    name = "lstm",
+    testonly = 1,
+    srcs = ["lstm.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/ops:variable_v1",
+        "@six_archive//:six",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "lstm_test",
+    srcs = ["lstm_test.py"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":lstm",
+        ":xla_test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradients_impl",
+        "//tensorflow/python/ops:init_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+# An example of ahead-of-time compilation using tfcompile.  The
+# lstm_layer_inference.pbtxt file was generated by running lstm_test
+# --dump_graph_dir, and the config file was written by hand.
+#
+# Run the following to build a minimal benchmark of the computation on Android:
+# $ bazel build -c opt --cxxopt='-std=c++11' --linkopt='-lm' \
+#   --cpu=armeabi-v7a \
+#   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+#   --crosstool_top=//external:android/crosstool \
+#   //tensorflow/compiler/tests:lstm_layer_inference_benchmark
+
+#
+# Currently the resulting binary size is ~190KB
+tf_library(
+    name = "lstm_layer_inference",
+    testonly = 1,
+    config = "lstm_layer_inference.config.pbtxt",
+    cpp_class = "LSTMLayerInference",
+    graph = "lstm_layer_inference.pbtxt",
+    tags = ["manual"],
+    tfcompile_flags = ["--xla_cpu_multi_thread_eigen=false"],
+)
+
+cuda_py_strict_test(
+    name = "const_test",
+    size = "small",
+    srcs = ["const_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "giant_const_op_test",
+    srcs = [
+        "giant_const_op_test.py",
+    ],
+    disable_experimental = True,
+    # TODO(b/188995810): Add an optimization in MLIR importer to not
+    # materialize giant splat constants.
+    disable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:flags",
+        "//third_party/py/numpy",
+    ],
+)
