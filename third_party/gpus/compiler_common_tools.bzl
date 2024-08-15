@@ -1,11 +1,22 @@
 """Common compiler functions. """
 
 load(
+    "@bazel_tools//tools/cpp:windows_cc_configure.bzl",
+    "find_msvc_tool",
+    "find_vc_path",
+)
+load(
     "//third_party/remote_config:common.bzl",
     "err_out",
+    "get_host_environ",
+    "is_windows",
     "raw_exec",
     "realpath",
+    "which",
 )
+
+def flag_enabled(repository_ctx, flag_name):
+    return get_host_environ(repository_ctx, flag_name) == "1"
 
 def to_list_of_strings(elements):
     """Convert the list of ["a", "b", "c"] into '"a", "b", "c"'.
@@ -27,8 +38,39 @@ _INC_DIR_MARKER_BEGIN = "#include <...>"
 _OSX_FRAMEWORK_SUFFIX = " (framework directory)"
 _OSX_FRAMEWORK_SUFFIX_LEN = len(_OSX_FRAMEWORK_SUFFIX)
 
+def _get_msvc_compiler(repository_ctx):
+    vc_path = find_vc_path(repository_ctx)
+    return find_msvc_tool(repository_ctx, vc_path, "cl.exe").replace("\\", "/")
+
 # TODO(dzc): Once these functions have been factored out of Bazel's
 # cc_configure.bzl, load them from @bazel_tools instead.
+def find_cc(repository_ctx, use_cuda_clang):
+    """Find the C++ compiler."""
+    if is_windows(repository_ctx):
+        return _get_msvc_compiler(repository_ctx)
+
+    if use_cuda_clang:
+        target_cc_name = "clang"
+        cc_path_envvar = "CLANG_CUDA_COMPILER_PATH"
+        if flag_enabled(repository_ctx, "TF_DOWNLOAD_CLANG"):
+            return "extra_tools/bin/clang"
+    else:
+        target_cc_name = "gcc"
+        cc_path_envvar = "GCC_HOST_COMPILER_PATH"
+    cc_name = target_cc_name
+
+    cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
+    if cc_name_from_env:
+        cc_name = cc_name_from_env
+    if cc_name.startswith("/"):
+        # Absolute path, maybe we should make this supported by our which function.
+        return cc_name
+    cc = which(repository_ctx, cc_name)
+    if cc == None:
+        fail(("Cannot find {}, either correct your path or set the {}" +
+              " environment variable").format(target_cc_name, cc_path_envvar))
+    return cc
+
 def _cxx_inc_convert(path):
     """Convert path returned by cc -E xc++ in a complete path."""
     path = path.strip()

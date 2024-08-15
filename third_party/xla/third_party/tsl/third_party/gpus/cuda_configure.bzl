@@ -57,6 +57,8 @@ load(
 )
 load(
     ":compiler_common_tools.bzl",
+    "find_cc",
+    "flag_enabled",
     "get_cxx_inc_directories",
     "to_list_of_strings",
 )
@@ -121,10 +123,6 @@ def _get_nvcc_tmp_dir_for_windows(repository_ctx):
         ),
     )
     return escaped_tmp_dir + "\\\\nvcc_inter_files_tmp_dir"
-
-def _get_msvc_compiler(repository_ctx):
-    vc_path = find_vc_path(repository_ctx)
-    return find_msvc_tool(repository_ctx, vc_path, "cl.exe").replace("\\", "/")
 
 def _get_win_cuda_defines(repository_ctx):
     """Return CROSSTOOL defines for Windows"""
@@ -204,33 +202,6 @@ def _get_win_cuda_defines(repository_ctx):
 # TODO(dzc): Once these functions have been factored out of Bazel's
 # cc_configure.bzl, load them from @bazel_tools instead.
 # BEGIN cc_configure common functions.
-def find_cc(repository_ctx, use_cuda_clang):
-    """Find the C++ compiler."""
-    if is_windows(repository_ctx):
-        return _get_msvc_compiler(repository_ctx)
-
-    if use_cuda_clang:
-        target_cc_name = "clang"
-        cc_path_envvar = _CLANG_CUDA_COMPILER_PATH
-        if _flag_enabled(repository_ctx, _TF_DOWNLOAD_CLANG):
-            return "extra_tools/bin/clang"
-    else:
-        target_cc_name = "gcc"
-        cc_path_envvar = _GCC_HOST_COMPILER_PATH
-    cc_name = target_cc_name
-
-    cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
-    if cc_name_from_env:
-        cc_name = cc_name_from_env
-    if cc_name.startswith("/"):
-        # Absolute path, maybe we should make this supported by our which function.
-        return cc_name
-    cc = which(repository_ctx, cc_name)
-    if cc == None:
-        fail(("Cannot find {}, either correct your path or set the {}" +
-              " environment variable").format(target_cc_name, cc_path_envvar))
-    return cc
-
 def auto_configure_fail(msg):
     """Output failure message when cuda configuration fails."""
     red = "\033[0;31m"
@@ -819,16 +790,13 @@ def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions = None
     cmd = \"""cp -rLf "%s/." "%s/" %s\""",
 )""" % (name, "\n".join(outs), src_dir, out_dir, post_cmd)
 
-def _flag_enabled(repository_ctx, flag_name):
-    return get_host_environ(repository_ctx, flag_name) == "1"
-
 def _use_cuda_clang(repository_ctx):
     # Returns the flag if we need to use clang both for C++ and Cuda.
-    return _flag_enabled(repository_ctx, "TF_CUDA_CLANG")
+    return flag_enabled(repository_ctx, "TF_CUDA_CLANG")
 
 def _use_nvcc_and_clang(repository_ctx):
     # Returns the flag if we need to use clang for C++ and NVCC for Cuda.
-    return _flag_enabled(repository_ctx, "TF_NVCC_CLANG")
+    return flag_enabled(repository_ctx, "TF_NVCC_CLANG")
 
 def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
@@ -1091,7 +1059,7 @@ def _create_local_cuda_repository(repository_ctx):
     is_nvcc_and_clang = _use_nvcc_and_clang(repository_ctx)
     tf_sysroot = _tf_sysroot(repository_ctx)
 
-    should_download_clang = is_cuda_clang and _flag_enabled(
+    should_download_clang = is_cuda_clang and flag_enabled(
         repository_ctx,
         _TF_DOWNLOAD_CLANG,
     )

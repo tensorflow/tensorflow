@@ -4,6 +4,7 @@
 
   * `TF_NEED_CUDA`: Whether to enable building with CUDA.
   * `TF_NVCC_CLANG`: Whether to use clang for C++ and NVCC for Cuda compilation.
+  * `TF_NVCC_GCC`: Whether to use gcc for C++ and NVCC for Cuda compilation.
   * `CLANG_CUDA_COMPILER_PATH`: The clang compiler path that will be used for
     both host and device code compilation.
   * `TF_SYSROOT`: The sysroot to use when compiling.
@@ -17,6 +18,8 @@
 
 load(
     "//third_party/gpus:compiler_common_tools.bzl",
+    "find_cc",
+    "flag_enabled",
     "get_cxx_inc_directories",
     "to_list_of_strings",
 )
@@ -26,23 +29,6 @@ load(
     "get_host_environ",
     "which",
 )
-
-def _find_cc(repository_ctx):
-    """Find the C++ compiler."""
-    cc_path_envvar = _CLANG_CUDA_COMPILER_PATH
-    cc_name = "clang"
-
-    cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
-    if cc_name_from_env:
-        cc_name = cc_name_from_env
-    if cc_name.startswith("/"):
-        # Return the absolute path.
-        return cc_name
-    cc = which(repository_ctx, cc_name)
-    if cc == None:
-        fail(("Cannot find {}, either correct your path or set the {}" +
-              " environment variable").format(cc_name, cc_path_envvar))
-    return cc
 
 def _auto_configure_fail(msg):
     """Output failure message when cuda configuration fails."""
@@ -96,12 +82,13 @@ def enable_cuda(repository_ctx):
     """Returns whether to build with CUDA support."""
     return int(get_host_environ(repository_ctx, TF_NEED_CUDA, False))
 
-def _flag_enabled(repository_ctx, flag_name):
-    return get_host_environ(repository_ctx, flag_name) == "1"
-
 def _use_nvcc_and_clang(repository_ctx):
     # Returns the flag if we need to use clang for C++ and NVCC for Cuda.
-    return _flag_enabled(repository_ctx, _TF_NVCC_CLANG)
+    return flag_enabled(repository_ctx, _TF_NVCC_CLANG)
+
+def _use_nvcc_and_gcc(repository_ctx):
+    # Returns the flag if we need to use gcc for C++ and NVCC for Cuda.
+    return flag_enabled(repository_ctx, _TF_NVCC_GCC)
 
 def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
@@ -319,10 +306,11 @@ def _create_local_cuda_repository(repository_ctx):
     )
 
     is_nvcc_and_clang = _use_nvcc_and_clang(repository_ctx)
+    is_nvcc_and_gcc = _use_nvcc_and_gcc(repository_ctx)
     tf_sysroot = _tf_sysroot(repository_ctx)
 
     # Set up crosstool/
-    cc = _find_cc(repository_ctx)
+    cc = find_cc(repository_ctx, is_nvcc_and_clang)
     host_compiler_includes = get_cxx_inc_directories(
         repository_ctx,
         cc,
@@ -346,9 +334,15 @@ def _create_local_cuda_repository(repository_ctx):
     })
 
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
-    cuda_defines["%{cuda_toolkit_path}"] = repository_ctx.attr.nvcc_binary.workspace_root
-    cuda_defines["%{compiler}"] = "clang"
-    cuda_defines["%{host_compiler_prefix}"] = "/usr/bin"
+    cuda_defines["%{cuda_toolkit_path}"] = ""
+    cuda_defines["%{compiler}"] = "unknown"
+    if is_nvcc_and_clang:
+        cuda_defines["%{cuda_toolkit_path}"] = repository_ctx.attr.nvcc_binary.workspace_root
+        cuda_defines["%{compiler}"] = "clang"
+    host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX)
+    if not host_compiler_prefix:
+        host_compiler_prefix = "/usr/bin"
+    cuda_defines["%{host_compiler_prefix}"] = host_compiler_prefix
     cuda_defines["%{linker_bin_path}"] = ""
     cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
     cuda_defines["%{unfiltered_compile_flags}"] = ""
@@ -359,7 +353,7 @@ def _create_local_cuda_repository(repository_ctx):
         nvcc_archive = repository_ctx.attr.nvcc_binary.repo_name,
     )
 
-    if not is_nvcc_and_clang:
+    if not is_nvcc_and_clang and not is_nvcc_and_gcc:
         cuda_defines["%{host_compiler_path}"] = str(cc)
         cuda_defines["%{host_compiler_warnings}"] = """
         # Some parts of the codebase set -Werror and hit this warning, so
@@ -380,6 +374,14 @@ def _create_local_cuda_repository(repository_ctx):
             repository_ctx.attr.nvcc_binary.name,
         )
         cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
+
+        # For gcc, do not canonicalize system header paths; some versions of gcc
+        # pick the shortest possible path for system includes when creating the
+        # .d file - given that includes that are prefixed with "../" multiple
+        # time quickly grow longer than the root of the tree, this can lead to
+        # bazel's header check failing.
+        if is_nvcc_and_gcc:
+            cuda_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
 
         wrapper_defines = {
             "%{cpu_compiler}": str(cc),
@@ -458,6 +460,8 @@ def _cuda_autoconf_impl(repository_ctx):
 
     repository_ctx.symlink(build_file, "BUILD")
 
+_GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
+_GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _CLANG_CUDA_COMPILER_PATH = "CLANG_CUDA_COMPILER_PATH"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 _HERMETIC_CUDA_COMPUTE_CAPABILITIES = "HERMETIC_CUDA_COMPUTE_CAPABILITIES"
@@ -466,12 +470,16 @@ HERMETIC_CUDA_VERSION = "HERMETIC_CUDA_VERSION"
 TF_CUDA_VERSION = "TF_CUDA_VERSION"
 TF_NEED_CUDA = "TF_NEED_CUDA"
 _TF_NVCC_CLANG = "TF_NVCC_CLANG"
+_TF_NVCC_GCC = "TF_NVCC_GCC"
 _TF_SYSROOT = "TF_SYSROOT"
 
 _ENVIRONS = [
+    _GCC_HOST_COMPILER_PATH,
+    _GCC_HOST_COMPILER_PREFIX,
     _CLANG_CUDA_COMPILER_PATH,
     TF_NEED_CUDA,
     _TF_NVCC_CLANG,
+    _TF_NVCC_GCC,
     TF_CUDA_VERSION,
     HERMETIC_CUDA_VERSION,
     _TF_CUDA_COMPUTE_CAPABILITIES,
