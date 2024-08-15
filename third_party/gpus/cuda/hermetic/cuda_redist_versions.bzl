@@ -26,6 +26,10 @@ CUDA_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.1.1.json",
         "bafea3cb83a4cf5c764eeedcaac0040d0d3c5db3f9a74550da0e7b6ac24d378c",
     ],
+    "12.2.0": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.2.0.json",
+        "d883762c6339c8ebb3ffb072facc8f7265cd257d2db16a475fff9a9306ecea89",
+    ],
     "12.3.1": [
         "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.3.1.json",
         "b3cc4181d711cf9b6e3718f323b23813c24f9478119911d7b4bceec9b437dbc3",
@@ -34,12 +38,36 @@ CUDA_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.3.2.json",
         "1b6eacf335dd49803633fed53ef261d62c193e5a56eee5019e7d2f634e39e7ef",
     ],
+    "12.4.0": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.4.0.json",
+        "a4f496b8d5299939b34c9ef88dc4274821f8c9451b2d7c9bcee53166932da067",
+    ],
+    "12.4.1": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.4.1.json",
+        "9cd815f3b71c2e3686ef2219b7794b81044f9dcefaa8e21dacfcb5bc4d931892",
+    ],
+    "12.5.0": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.5.0.json",
+        "166664b520bfe51f27abcc8c7a934f4cb6ea287f8c399b5f8255f6f4d214569a",
+    ],
+    "12.5.1": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.5.1.json",
+        "7ab9c76014ae4907fa1b51738af599607a5fd8ca3a5c4bb4c3b31338cc642a93",
+    ],
+    "12.6.0": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.0.json",
+        "87740b01676b3d18982982ab96ec7fa1a626d03a96df070a6b0f258d01ff5fab",
+    ],
 }
 
 CUDNN_REDIST_JSON_DICT = {
     "8.6": [
         "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.6.0.json",
         "7f6f50bed4fd8216dc10d6ef505771dc0ecc99cce813993ab405cb507a21d51d",
+    ],
+    "8.9.4.25": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.4.25.json",
+        "02258dba8384860c9230fe3c78522e7bd8e350e461ccd37a8d932cb64127ba57",
     ],
     "8.9.6": [
         "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.6.json",
@@ -52,6 +80,18 @@ CUDNN_REDIST_JSON_DICT = {
     "9.1.1": [
         "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.1.1.json",
         "d22d569405e5683ff8e563d00d6e8c27e5e6a902c564c23d752b22a8b8b3fe20",
+    ],
+    "9.2.0": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.2.0.json",
+        "6852eb279b95d2b5775f7a7737ec133bed059107f863cdd8588f3ae6f13eadd7",
+    ],
+    "9.2.1": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.2.1.json",
+        "9a4198c59b2e66b2b115a736ebe4dc8f3dc6d78161bb494702f824da8fc77b99",
+    ],
+    "9.3.0": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.3.0.json",
+        "d17d9a7878365736758550294f03e633a0b023bec879bf173349bfb34781972e",
     ],
 }
 
@@ -81,8 +121,14 @@ CUDA_11_NCCL_WHEEL_DICT = {
 CUDA_NCCL_WHEELS = {
     "11.8": CUDA_11_NCCL_WHEEL_DICT,
     "12.1.1": CUDA_12_NCCL_WHEEL_DICT,
+    "12.2.0": CUDA_12_NCCL_WHEEL_DICT,
     "12.3.1": CUDA_12_NCCL_WHEEL_DICT,
     "12.3.2": CUDA_12_NCCL_WHEEL_DICT,
+    "12.4.0": CUDA_12_NCCL_WHEEL_DICT,
+    "12.1.0": CUDA_12_NCCL_WHEEL_DICT,
+    "12.5.0": CUDA_12_NCCL_WHEEL_DICT,
+    "12.5.1": CUDA_12_NCCL_WHEEL_DICT,
+    "12.6.0": CUDA_12_NCCL_WHEEL_DICT,
 }
 
 REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
