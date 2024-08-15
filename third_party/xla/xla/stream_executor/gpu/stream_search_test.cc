@@ -60,18 +60,6 @@ TEST_F(StreamSearchTest, FoundPrevExecutor) {
   TF_ASSERT_OK_AND_ASSIGN(Stream * found2,
                           FindStream(GetPlatform(), gpu_ptr_2));
   EXPECT_EQ(found2, s2.get());
-  StreamExecutorConfig c;
-  c.gpu_stream = gpu_ptr;
-
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * found_executor,
-                          GetPlatform()->GetExecutor(c));
-  EXPECT_EQ(found_executor, executor);
-
-  Stream* found1_old = found_executor->FindAllocatedStream(gpu_ptr);
-  EXPECT_EQ(found1_old, s.get());
-
-  Stream* found2_old = found_executor->FindAllocatedStream(gpu_ptr_2);
-  EXPECT_EQ(found2_old, s2.get());
 }
 
 }  // namespace

@@ -53,18 +53,6 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::Get(
     const StreamExecutorConfig& config) {
   absl::ReaderMutexLock lock{&mutex_};
 
-  // If gpu stream is not nullptr we have to find StreamExecutor that owns it,
-  // and return NOT_FOUND error if we can't find it.
-  if (config.gpu_stream) {
-    for (auto& [ordinal, executor] : cache_) {
-      if (executor->FindAllocatedStream(config.gpu_stream)) {
-        return executor.get();
-      }
-    }
-    return absl::NotFoundError(
-        absl::StrFormat("No executors own stream %p", config.gpu_stream));
-  }
-
   if (auto it = cache_.find(config.ordinal); it != cache_.end()) {
     return it->second.get();
   }
