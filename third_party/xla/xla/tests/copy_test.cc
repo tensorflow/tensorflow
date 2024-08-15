@@ -136,6 +136,18 @@ XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic1310720) {
       bounded_shape);
 }
 
+XLA_TEST_F(CopyOpTest, CopyDynamicR1S512U32Dynamic64) {
+  // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
+  if (backend().platform()->Name() == "Host") {
+    GTEST_SKIP();
+  }
+  Shape bounded_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {512}, {true});
+  TestDynamicCopyOp(LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(
+                        ShapeUtil::MakeShape(PrimitiveType::F32, {64}), 0, 1)
+                        .value(),
+                    bounded_shape);
+}
+
 XLA_TEST_F(CopyOpTest, CopyR3F32_2x2x3) {
   TestCopyOp(LiteralUtil::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
                                     {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
