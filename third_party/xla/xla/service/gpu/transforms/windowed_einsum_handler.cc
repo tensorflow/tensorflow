@@ -248,9 +248,11 @@ absl::Status ShiftDequantizationF8(HloComputation* while_body) {
   }
 
   // Update the shape of the while call in the parent computation.
+  HloInstruction* new_while_instr = while_instr->AddInstruction(
+      while_instr->CloneWithNewShape(while_root->shape()));
   TF_RETURN_IF_ERROR(
-      while_instr->ReplaceAllUsesWithDifferentShape(while_instr->AddInstruction(
-          while_instr->CloneWithNewShape(while_root->shape()))));
+      while_instr->ReplaceAllUsesWithDifferentShape(new_while_instr));
+  while_instr->while_body()->SetWhileCallInstruction(new_while_instr);
   TF_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
 
   if (coll_perms[0]) {
