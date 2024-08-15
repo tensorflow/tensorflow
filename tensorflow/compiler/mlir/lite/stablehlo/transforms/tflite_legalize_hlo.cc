@@ -244,9 +244,10 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
-  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp,
-                      mhlo::ShiftRightArithmeticOp, mhlo::ShiftRightLogicalOp,
-                      mhlo::RemOp, mhlo::ReshapeOp, mhlo::DynamicReshapeOp>();
+  target.addIllegalOp<mhlo::ClampOp, mhlo::DynamicReshapeOp, mhlo::RemOp,
+                      mhlo::ReshapeOp, mhlo::ShiftRightArithmeticOp,
+                      mhlo::ShiftRightLogicalOp, mhlo::DotGeneralOp,
+                      mhlo::DotOp, mhlo::TransposeOp>();
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
 

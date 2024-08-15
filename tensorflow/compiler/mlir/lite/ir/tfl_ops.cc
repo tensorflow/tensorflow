@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <iterator>
 #include <numeric>
 #include <optional>
@@ -38,11 +39,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -54,6 +57,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
@@ -807,6 +811,59 @@ int64_t AddOp::GetArithmeticCount(Operation* op) {
   if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) return count;
 
   return -1;
+}
+
+//===----------------------------------------------------------------------===//
+// FloorOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult FloorOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  auto result_type = getType();
+  if (!IsF32ShapedType(result_type)) return {};
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::floor(f);
+    return APFloat(result);
+  };
+
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// ExpOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ExpOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  auto result_type = getType();
+  if (!IsF32ShapedType(result_type)) return {};
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::exp(f);
+    return APFloat(result);
+  };
+
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// LogicalNotOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult LogicalNotOp::fold(FoldAdaptor adaptor) {
+  auto data = llvm::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getLhs());
+  if (!data) {
+    return {};
+  }
+
+  auto compute = [](bool value) { return !value; };
+
+  return DenseIntElementsAttr::get(
+      data.getType(),
+      llvm::to_vector(llvm::map_range(data.getValues<bool>(), compute)));
 }
 
 //===----------------------------------------------------------------------===//
