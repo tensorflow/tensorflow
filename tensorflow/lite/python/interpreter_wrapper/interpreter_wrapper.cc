@@ -887,7 +887,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     return nullptr;
   }
   std::unique_ptr<InterpreterWrapper::Model> model =
-      Model::BuildFromBuffer(buf, length, error_reporter.get());
+      Model::VerifyAndBuildFromBuffer(buf, length, /*extra_verifier=*/nullptr,
+                                      error_reporter.get());
   return CreateInterpreterWrapper(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
