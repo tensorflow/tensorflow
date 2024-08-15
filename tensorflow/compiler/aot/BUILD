@@ -167,17 +167,14 @@ cc_library(
     deps = [
         ":tfcompile_lib",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
-        "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:debug_options_flags",
-        "@local_xla//xla/service:compiler",
     ],
 )
 
