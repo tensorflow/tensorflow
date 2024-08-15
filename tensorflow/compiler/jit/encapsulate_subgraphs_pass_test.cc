@@ -50,8 +50,7 @@ Status AddGraphDefToFunctionLibrary(const GraphDefBuilder& graphdef_builder,
                                     FunctionDefLibrary* library) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(graphdef_builder.ToGraphDef(&graphdef));
-  std::unique_ptr<Graph> graph =
-      std::unique_ptr<Graph>(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graphdef, graph.get()));

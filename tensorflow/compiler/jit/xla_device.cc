@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -229,8 +230,9 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
   VLOG(1) << "XlaDevice options: use_multiple_streams: "
           << options.use_multiple_streams << " use_global_compute_stream: "
           << options.use_global_compute_stream;
-  thread_pool_.reset(new thread::ThreadPool(session_options.env, "xla_device",
-                                            /*num_threads=*/1));
+  thread_pool_ =
+      std::make_unique<thread::ThreadPool>(session_options.env, "xla_device",
+                                           /*num_threads=*/1);
 
   // We have multiple device to device streams to allow for some concurrency
   // between transfers. The particular value of '4' is chosen fairly

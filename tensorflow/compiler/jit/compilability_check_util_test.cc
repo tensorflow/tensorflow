@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/compilability_check_util.h"
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
@@ -185,7 +187,8 @@ TEST_F(CompilabilityCheckUtilTest, CheckSimpleFunctionNode) {
       /*Attributes*/ {},
       // Node info
       {{{kUncompilableFunctionNodeName}, "MissingKernel", {"n_a"}}});
-  flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
+  flib_def_ =
+      std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(), flib);
 
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately, flib_def_.get());
   std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
@@ -237,7 +240,8 @@ TEST_F(CompilabilityCheckUtilTest, CheckFunctionalWhileNode) {
       // Node info
       {{{kUncompilableFunctionNodeName}, "MissingKernel", {"n_a"}}});
 
-  flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
+  flib_def_ =
+      std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(), flib);
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately, flib_def_.get());
 
   Node* const0 = ops::SourceOp("InputFloatOp", builder.opts());
@@ -336,7 +340,8 @@ TEST_F(CompilabilityCheckUtilTest, CheckFunctionalIfNode) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
-  flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
+  flib_def_ =
+      std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(), flib);
 
   auto if_node_it = std::find_if(
       graph->nodes().begin(), graph->nodes().end(),
@@ -433,7 +438,8 @@ TEST_F(CompilabilityCheckUtilTest, CheckFunctionalCaseNode) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
-  flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
+  flib_def_ =
+      std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(), flib);
 
   auto case_node_it = std::find_if(
       graph->nodes().begin(), graph->nodes().end(),
