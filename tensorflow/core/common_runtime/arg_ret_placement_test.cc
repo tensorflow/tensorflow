@@ -205,7 +205,7 @@ TEST_F(FullTypeGraphUtilsTest, MemoryTypeRetWithFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, AllowAttrRetWithFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
