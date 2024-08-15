@@ -44,7 +44,7 @@ struct ConvBackpropSpatialDimension {
 // Computed dimensions for a backwards convolution.
 struct ConvBackpropDimensions {
   // Information about each spatial dimension.
-  gtl::InlinedVector<ConvBackpropSpatialDimension, 3> spatial_dims;
+  absl::InlinedVector<ConvBackpropSpatialDimension, 3UL> spatial_dims;
 
   // Batch size.
   int64_t batch_size;
