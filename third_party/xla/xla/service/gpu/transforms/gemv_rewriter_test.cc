@@ -21,13 +21,48 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-class GemvRewriterTest : public HloTestBase {};
+namespace m = ::xla::match;
+
+class GemvRewriterTest : public GpuCodegenTest {};
+
+TEST_F(GemvRewriterTest, RewriteMatrixVectorMultiplicationToGemmPipeline) {
+  const char* hlo = R"(
+  HloModule m
+
+  ENTRY e {
+    p0 = f32[32,7] parameter(0)
+    p1 = f32[7] parameter(1)
+    ROOT d = f32[32] dot(p0, p1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+  debug_options.add_xla_disable_hlo_passes("algsimp");
+  debug_options.add_xla_disable_hlo_passes("cublas-gemm-rewriter");
+  debug_options.add_xla_disable_hlo_passes("layout_normalization");
+  config.set_debug_options(debug_options);
+  auto result = backend().compiler()->RunHloPasses(
+      ParseAndReturnVerifiedModule(hlo, config).value(),
+      backend().default_stream_executor(), backend().memory_allocator());
+
+  EXPECT_THAT(
+      (*result)->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Bitcast(m::Dot(m::Parameter(),
+                            m::Bitcast(m::Parameter().WithShape(F32, {7}))
+                                .WithShape(F32, {7, 1})))
+              .WithShape(F32, {32})));
+}
 
 TEST_F(GemvRewriterTest, RewriteMatrixVectorMultiplicationToGemm) {
   const char* hlo = R"(
