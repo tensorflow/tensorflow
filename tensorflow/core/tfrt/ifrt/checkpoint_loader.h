@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
