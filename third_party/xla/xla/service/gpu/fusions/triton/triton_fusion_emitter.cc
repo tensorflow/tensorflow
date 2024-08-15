@@ -134,6 +134,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -185,6 +186,10 @@ absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
     case PRED:
       return b.getI1Type();
     case S8:
+      return b.getI8Type();
+    case S4:  // The unpacking to i8 is supported by the emitter.
+      // We pass the s4 tensor as i8 tensor with the minor dimension having 2x
+      // less elements and unpack in the inner loop of the triton kernel.
       return b.getI8Type();
     case F8E5M2:
       return b.getFloat8E5M2Type();
@@ -653,6 +658,7 @@ struct Side {
   TritonFusionAnalysis::Scope scope;
   std::vector<DimProperties> tiled_dims;
   std::optional<int64_t> batch_dim_idx;
+  int64_t unpack_dim_idx = 0;
 };
 
 absl::StatusOr<Value> EmitBroadcast(ImplicitLocOpBuilder& b,
@@ -1021,6 +1027,31 @@ absl::StatusOr<Value> EmitTiledScope(
   return values[tiled_computation.GetRoot()];
 }
 
+// Emit sequence of operations for unpacking 2xi4 -> i8.
+absl::StatusOr<Value> EmitUnpackInt4(ImplicitLocOpBuilder& b,
+                                     const HloInstruction* hlo,
+                                     const Side& side, Value& value) {
+  VLOG(6) << "EmitUnpackInt4: " << hlo->ToString();
+  auto input_type = mlir::cast<mlir::RankedTensorType>(value.getType());
+  if (input_type.getShape().size() != 2) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("UnpackInt4 works only for 2d inputs: ", hlo->ToString()));
+  }
+  // We use shifts instead the mask because we need to keep the sign bit.
+  Value shift4 =
+      Splat(b, CreateConst(b, b.getI8Type(), 4), input_type.getShape());
+  Value lo = b.create<ma::ShRSIOp>(b.create<ma::ShLIOp>(value, shift4), shift4);
+  Value hi = b.create<ma::ShRSIOp>(value, shift4);
+  Value result = b.create<mt::JoinOp>(hi, lo);
+  SmallVector<int64_t> result_shape(input_type.getShape());
+  result_shape[side.unpack_dim_idx] *= 2;
+  if (side.unpack_dim_idx == 0) {
+    result = b.create<mt::TransOp>(result, b.getDenseI32ArrayAttr({0, 2, 1}));
+  }
+  auto type = mlir::RankedTensorType::get(result_shape, b.getI8Type());
+  return b.create<mt::ReshapeOp>(type, result, /*allow_reorder=*/false);
+}
+
 // Emit sequence of instructions using compatible tiling ordered producers
 // before consumers.
 absl::StatusOr<Value> EmitScope(
@@ -1031,8 +1062,23 @@ absl::StatusOr<Value> EmitScope(
     absl::flat_hash_map<const HloInstruction*, Value>& values) {
   for (const HloInstruction* hlo : instructions) {
     Value result;
-    if (hlo->opcode() == HloOpcode::kConcatenate ||
-        hlo->opcode() == HloOpcode::kDynamicSlice) {
+    if (hlo->opcode() == HloOpcode::kConvert &&
+        hlo->operand(0)->shape().element_type() == S4) {
+      if (!hlo->GetModule()
+               ->config()
+               .debug_options()
+               .xla_gpu_enable_triton_gemm_int4()) {
+        return absl::UnimplementedError(
+            "Int4 support is not enabled in the debug options.");
+      }
+
+      TF_ASSIGN_OR_RETURN(
+          auto unpacked, EmitUnpackInt4(b, hlo, side, values[hlo->operand(0)]));
+      std::vector<Value> operands({unpacked});
+      TF_ASSIGN_OR_RETURN(result, EmitElementwise(b, libdevice_path,
+                                                  device_info, *hlo, operands));
+    } else if (hlo->opcode() == HloOpcode::kConcatenate ||
+               hlo->opcode() == HloOpcode::kDynamicSlice) {
       // Parameter loads and their concatenations are handled outside EmitScope.
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
@@ -1469,6 +1515,7 @@ class MatMulEmitterHelper {
     Value base;
     std::vector<Value> bounds;
     std::vector<Value> strides;
+    std::vector<int32_t> strides_sizes;  // We use it to detect the minor dim.
     // Offsets from tensor origin, same for all thread blocks.
     std::vector<Value> tensor_offsets;
     std::vector<int32_t> block_dims;
@@ -1559,7 +1606,9 @@ class MatMulEmitterHelper {
       for (const HloInstruction* input : inputs) {
         specs.push_back(
             analysis_.IterSpec(side.scope, input, properties.index));
-        input_strides.push_back(Cst64(specs.back()->at(0).stride));
+        const auto stride = specs.back()->at(0).stride;
+        strides_sizes.push_back(stride);
+        input_strides.push_back(Cst64(stride));
         input_offsets.push_back(b_.create<ma::AddIOp>(
             pid_offset, Cst32(specs.back()->at(0).slice_start)));
         input_bounds.push_back(Cst64(specs.back()->at(0).count));
@@ -1734,9 +1783,14 @@ class MatMulEmitterHelper {
     if (has_batch_offset) {
       Value pid_batch =
           b_.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
+
       Value pid_offset_batch = b_.create<ma::MulIOp>(
           b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
           batch_stride);
+
+      if (hlo->shape().element_type() == PrimitiveType::S4) {
+        pid_offset_batch = b_.create<ma::DivSIOp>(pid_offset_batch, Cst(2));
+      }
       base = AddPtr(b_, base, pid_offset_batch);
     }
 
@@ -1754,6 +1808,18 @@ class MatMulEmitterHelper {
     if (block_dims.empty()) {
       // Load of a scalar.
       return base;
+    }
+    if (hlo->shape().element_type() == PrimitiveType::S4) {
+      // Divide the stride by 2 for S4 inputs except for the minor dimension.
+      for (int i = 0; i < strides.size(); ++i) {
+        // We assume that the pack happens along the minor dimension.
+        if (strides_sizes[i] == 1) {  // minor dimension
+          auto s4_bound = b_.create<ma::DivSIOp>(bounds[i], Cst64(2));
+          bounds[i] = s4_bound;
+          continue;
+        }
+        strides[i] = b_.create<ma::DivSIOp>(strides[i], Cst64(2));
+      }
     }
     auto tensor_ptr = mlir::cast<Value>(
         b_.create<mt::MakeTensorPtrOp>(base, bounds, strides, tensor_offsets,
@@ -2076,9 +2142,9 @@ absl::Status CheckGemmTilingComplexityHeuristic(
 
 class Scopes {
  public:
-  Scopes(ImplicitLocOpBuilder& b, const MatMulDims& dims,
-         const TritonGemmConfig& config, const MatMulLaunchConfig launch_config,
-         bool is_sparse)
+  Scopes(ImplicitLocOpBuilder& b, const TritonFusionAnalysis& analysis,
+         const MatMulDims& dims, const TritonGemmConfig& config,
+         const MatMulLaunchConfig launch_config, bool is_sparse)
       : lhs_(TritonFusionAnalysis::Scope::LHS),
         rhs_(TritonFusionAnalysis::Scope::RHS),
         out_(TritonFusionAnalysis::Scope::OUTPUT) {
@@ -2107,19 +2173,54 @@ class Scopes {
     pid_n_ = b.create<ma::DivSIOp>(b.create<ma::RemSIOp>(pid_nc, c32(width)),
                                    group_size);
 
+    int lhs_non_contracting_block_size = config.block_m;
+    int lhs_contracting_block_size = config.block_k;
+    int lhs_unpack_dim_idx = 0;
+    if (is_int4_param(analysis, TritonFusionAnalysis::Scope::LHS)) {
+      if (dims.lhs_contracting_dim_idx > dims.lhs_noncontracting_dim_idx) {
+        // lhs is int4 and the contracting dimension is minor.
+        lhs_contracting_block_size /= 2;
+        lhs_unpack_dim_idx = 1;
+      } else {
+        // lhs is int4 and the contracting dimension is major.
+        lhs_non_contracting_block_size /= 2;
+        lhs_unpack_dim_idx = 0;
+      }
+    }
+    if (is_sparse) {
+      lhs_contracting_block_size /= 2;
+    }
     lhs_.tiled_dims = {
-        DimProperties(dims.lhs_noncontracting_dim_idx, pid_m_, config.block_m,
+        DimProperties(dims.lhs_noncontracting_dim_idx, pid_m_,
+                      lhs_non_contracting_block_size,
                       /*split_value=*/1),
         DimProperties(dims.lhs_contracting_dim_idx, pid_k_,
-                      config.block_k / (1 + is_sparse), config.split_k)};
+                      lhs_contracting_block_size, config.split_k)};
     lhs_.batch_dim_idx = dims.lhs_batch_dim_idx;
+    lhs_.unpack_dim_idx = lhs_unpack_dim_idx;
 
+    int rhs_contracting_block_size = config.block_k;
+    int rhs_non_contracting_block_size = config.block_n;
+    int rhs_unpack_dim_idx = 0;
+    if (is_int4_param(analysis, TritonFusionAnalysis::Scope::RHS)) {
+      if (dims.rhs_contracting_dim_idx > dims.rhs_noncontracting_dim_idx) {
+        // rhs is int4 and the contracting dimension is minor.
+        rhs_contracting_block_size /= 2;
+        rhs_unpack_dim_idx = 0;
+      } else {
+        // rhs is int4 and the contracting dimension is major.
+        rhs_non_contracting_block_size /= 2;
+        rhs_unpack_dim_idx = 1;
+      }
+    }
     rhs_.tiled_dims = {
-        DimProperties(dims.rhs_contracting_dim_idx, pid_k_, config.block_k,
-                      config.split_k),
-        DimProperties(dims.rhs_noncontracting_dim_idx, pid_n_, config.block_n,
+        DimProperties(dims.rhs_contracting_dim_idx, pid_k_,
+                      rhs_contracting_block_size, config.split_k),
+        DimProperties(dims.rhs_noncontracting_dim_idx, pid_n_,
+                      rhs_non_contracting_block_size,
                       /*split_value=*/1)};
     rhs_.batch_dim_idx = dims.rhs_batch_dim_idx;
+    rhs_.unpack_dim_idx = rhs_unpack_dim_idx;
 
     out_.tiled_dims = {DimProperties(dims.out_lhs_noncontracting_dim_idx,
                                      pid_m_, config.block_m,
@@ -2154,6 +2255,13 @@ class Scopes {
   const Value& pid_m() const { return pid_m_; }
   const Value& pid_k() const { return pid_k_; }
   const Value& pid_n() const { return pid_n_; }
+
+  static bool is_int4_param(const TritonFusionAnalysis& analysis,
+                            TritonFusionAnalysis::Scope scope) {
+    const ConstHloInstructionSet& params = analysis.ScopeParameters(scope);
+    const HloInstruction* first = *params.cbegin();
+    return params.size() == 1 && first->shape().element_type() == S4;
+  }
 
  private:
   Side lhs_;
@@ -2261,7 +2369,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   absl::flat_hash_map<int, std::vector<int32_t>> iter_args_to_boundary_checks;
 
   // Calculate the sizes of the lhs, rhs, meta, and output sides.
-  Scopes scopes(b, dims, config, launch_config, is_sparse);
+  Scopes scopes(b, analysis, dims, config, launch_config, is_sparse);
 
   auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
 
@@ -2715,8 +2823,17 @@ absl::Status CreateInternalError(std::string_view message,
   os << message << "\n";
   os << fusion->fused_instructions_computation()->ToString() << "\n";
   os << "triton_module: \n";
-  triton_module->print(os);
+  triton_module->print(os, mlir::OpPrintingFlags().enableDebugInfo(true, true));
   return absl::InternalError(err);
+}
+
+absl::Status DoSupportType(const DebugOptions& debug_options,
+                           PrimitiveType type) {
+  if (type == S4 && !debug_options.xla_gpu_enable_triton_gemm_int4()) {
+    return absl::FailedPreconditionError(
+        "Int4 support is not enabled in the debug options.");
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
@@ -2735,10 +2852,12 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
       llvm_ir::CreateMlirModuleOp(loc);
   b.setInsertionPointToEnd(triton_module->getBody());
 
+  const auto debug_options = fusion->GetModule()->config().debug_options();
   // Build Triton kernel.
   SmallVector<Type> fn_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     PrimitiveType type = p->shape().element_type();
+    TF_RETURN_IF_ERROR(DoSupportType(debug_options, type));
     Type ir_type;
     if (type == U16) {
       ir_type = b.getI16Type();
@@ -2796,10 +2915,17 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
         "Failed to create Triton module for fusion:", fusion, *triton_module);
   }
 
-  VLOG(6) << llvm_ir::DumpToString(*triton_module);
+  auto dump_triton_ir = [&]() {
+    std::string triton_ir;
+    llvm::raw_string_ostream os(triton_ir);
+    triton_module->print(os,
+                         mlir::OpPrintingFlags().enableDebugInfo(true, true));
+    return triton_ir;
+  };
+  VLOG(6) << dump_triton_ir();
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir", "ttir",
-                            llvm_ir::DumpToString(*triton_module));
+                            dump_triton_ir());
   }
 
   return std::move(triton_module);
