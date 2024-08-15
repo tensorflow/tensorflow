@@ -141,6 +141,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/all_reduce_blueconnect.h"
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
 #include "xla/service/gpu/transforms/async_collective_annotator.h"
+#include "xla/service/gpu/transforms/async_wrapper.h"
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/transforms/command_buffer_scheduling.h"
@@ -1309,6 +1310,30 @@ absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
       .status();
 }
 
+namespace {
+void AddGemmRewriterPasses(HloPassPipeline& pipeline,
+                           const DebugOptions& debug_options,
+                           const se::GpuComputeCapability gpu_version,
+                           const int32_t toolkit_version) {
+  // Adding bias to GEMMs is helpful for skipping kernel launches for `add`
+  // operations. However, the bias term can add dependencies between the GEMMs
+  // that could otherwise be parallelized. Because of this, we disable bias
+  // addition when async dot is enabled.
+  GemmRewriterOptions::BiasMode bias_mode =
+      GemmRewriterOptions::BiasMode::kBias;
+  if (debug_options.xla_gpu_async_dot()) {
+    bias_mode = GemmRewriterOptions::BiasMode::kNoBias;
+  }
+
+  pipeline.AddPass<GemmRewriter>(
+      gpu_version, toolkit_version,
+      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only, bias_mode});
+  pipeline.AddPass<GemmRewriter>(
+      gpu_version, toolkit_version,
+      GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only, bias_mode});
+}
+}  // namespace
+
 absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
@@ -1401,12 +1426,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<GemmFusion>(gpu_version);
     }
 
-    pipeline.AddPass<GemmRewriter>(
-        gpu_version, GetToolkitVersion(),
-        GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
-    pipeline.AddPass<GemmRewriter>(
-        gpu_version, GetToolkitVersion(),
-        GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only});
+    // Rewrite GEMMs into custom calls.
+    AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
+                          GetToolkitVersion());
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -1474,14 +1496,22 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
-  pipeline.AddPass<GemmRewriter>(
-      gpu_version, GetToolkitVersion(),
-      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
-  pipeline.AddPass<GemmRewriter>(
-      gpu_version, GetToolkitVersion(),
-      GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only});
+  AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
+                        GetToolkitVersion());
+
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
+
+  // Wrap `dot` operations into async computations in an effort to parallelize
+  // matrix operations. This pass needs to run after the GEMM rewriter so that
+  // we still use the native GEMM implementation.
+  if (debug_options.xla_gpu_async_dot()) {
+    pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
+      // TODO(b/339654953): Use a better heuristic to determine whether a
+      // `dot` operation should be wrapped in an async computation.
+      return instruction->opcode() == HloOpcode::kCustomCall;
+    });
+  }
 
   pipeline.AddPass<HostOffloadLegalize>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost),

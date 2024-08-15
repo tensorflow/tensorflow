@@ -1848,6 +1848,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm_int4),
       debug_options->xla_gpu_enable_triton_gemm_int4(),
       "Experimental: Enable Triton gemm for int4 inputs."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_async_dot",
+                bool_setter_for(&DebugOptions::set_xla_gpu_async_dot),
+                debug_options->xla_gpu_async_dot(),
+                "Wrap `dot` operations into async computations in an effort to "
+                "parallelize matrix operations."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
