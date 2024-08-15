@@ -90,9 +90,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   absl::StatusOr<::stream_executor::StreamExecutor*> FindExisting(
       int ordinal) override {
-    stream_executor::StreamExecutorConfig config;
-    config.ordinal = ordinal;
-    return executor_cache_.Get(config);
+    return executor_cache_.Get(ordinal);
   }
 
   absl::StatusOr<::stream_executor::StreamExecutor*> GetExecutor(

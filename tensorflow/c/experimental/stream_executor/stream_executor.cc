@@ -454,14 +454,12 @@ absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 absl::StatusOr<StreamExecutor*> CPlatform::FindExisting(int ordinal) {
-  stream_executor::StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return executor_cache_.Get(config);
+  return executor_cache_.Get(ordinal);
 }
 absl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      config.ordinal, [&]() { return GetUncachedExecutor(config); });
 }
 absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {

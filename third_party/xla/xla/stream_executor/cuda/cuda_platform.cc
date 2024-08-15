@@ -65,15 +65,13 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
 }
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return executor_cache_.Get(config);
+  return executor_cache_.Get(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      config.ordinal, [&]() { return GetUncachedExecutor(config); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>

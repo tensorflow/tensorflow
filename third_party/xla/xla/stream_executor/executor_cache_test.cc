@@ -16,10 +16,9 @@ limitations under the License.
 #include "xla/stream_executor/executor_cache.h"
 
 #include <memory>
-#include <vector>
 
+#include "absl/log/log.h"
 #include "xla/stream_executor/mock_stream_executor.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -29,27 +28,36 @@ namespace {
 
 TEST(ExecutorCacheTest, GetOnEmptyCacheFails) {
   ExecutorCache cache;
-  StreamExecutorConfig config;
-  config.ordinal = 0;
-  EXPECT_FALSE(cache.Get(config).ok());
+  EXPECT_FALSE(cache.Get(0).ok());
 }
 
-TEST(ExecutorCacheTest, GetOrCreateConstructsAndRepeatedlyReturns) {
+TEST(ExecutorCacheTest, GetReturnsExpectedExecutor) {
   ExecutorCache cache;
-  StreamExecutorConfig config;
-  config.ordinal = 0;
-  StreamExecutor *created = nullptr;
-  auto factory = [&created]() {
+  StreamExecutor *executor0 = nullptr;
+  StreamExecutor *executor1 = nullptr;
+  auto factory = [&executor0, &executor1]() {
     auto executor = std::make_unique<MockStreamExecutor>();
-    created = executor.get();
+    if (executor0 == nullptr) {
+      executor0 = executor.get();
+    } else if (executor1 == nullptr) {
+      executor1 = executor.get();
+    } else {
+      LOG(FATAL) << "Bad call to factory.";
+    }
     return executor;
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto executor, cache.GetOrCreate(config, factory));
-  EXPECT_EQ(executor, created);
-  TF_ASSERT_OK_AND_ASSIGN(auto found, cache.GetOrCreate(config, factory));
-  EXPECT_EQ(found, created);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(config));
-  EXPECT_EQ(found, created);
+  TF_ASSERT_OK_AND_ASSIGN(auto found, cache.GetOrCreate(0, factory));
+  EXPECT_EQ(found, executor0);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
+  EXPECT_EQ(found, executor1);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(0, factory));
+  EXPECT_EQ(found, executor0);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
+  EXPECT_EQ(found, executor1);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(0));
+  EXPECT_EQ(found, executor0);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(1));
+  EXPECT_EQ(found, executor1);
 }
 
 }  // namespace

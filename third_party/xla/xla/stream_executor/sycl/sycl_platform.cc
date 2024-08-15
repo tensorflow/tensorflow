@@ -72,7 +72,7 @@ absl::StatusOr<StreamExecutor*> SyclPlatform::ExecutorForDevice(int ordinal) {
 absl::StatusOr<StreamExecutor*> SyclPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      config.ordinal, [&]() { return GetUncachedExecutor(config); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>

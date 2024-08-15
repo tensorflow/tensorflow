@@ -621,7 +621,6 @@ cc_library(
     srcs = ["executor_cache.cc"],
     hdrs = ["executor_cache.h"],
     deps = [
-        ":platform",
         ":stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -863,9 +862,8 @@ xla_cc_test(
     deps = [
         ":executor_cache",
         ":mock_stream_executor",
-        ":platform",
         ":stream",
-        "//xla:test",
+        "@com_google_absl//absl/log",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
