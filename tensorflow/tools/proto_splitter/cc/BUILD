@@ -309,18 +309,15 @@ tf_cc_test(
 
 cc_library(
     name = "large_node_splitter",
-    srcs = ["large_node_splitter.cc"],
     hdrs = ["large_node_splitter.h"],
     deps = [
         ":composable_splitter",
+        ":composable_splitter_base",
         ":max_size",
         ":size_splitter",
         ":util",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
