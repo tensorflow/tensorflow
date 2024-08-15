@@ -29,7 +29,9 @@ limitations under the License.
 //      .Doc(R"doc(<doc goes here>)doc").
 #include "tensorflow/core/api_def/update_api_def.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 int main(int argc, char** argv) {
