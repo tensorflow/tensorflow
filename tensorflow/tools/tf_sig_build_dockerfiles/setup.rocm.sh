@@ -137,6 +137,9 @@ elif [[ "$DISTRO" == "el8" ]]; then
 fi
 
 function ver { printf "%03d%03d%03d" $(echo "$1" | tr '.' ' '); }
+# If hipcc uses llvm-17, in case of ROCM 6.0.x and 6.1.x and
+# host compiler is llvm-18 leads to mismatch in name mangling resulting
+# in faliure to link compiled gpu kernels. This linker option circumvents that issue.
 if [ $(ver "$ROCM_VERSION") -lt $(ver "6.2.0") ]
 then
   echo "build:rocm_base --copt=-fclang-abi-compat=17" >> /etc/bazel.bazelrc
