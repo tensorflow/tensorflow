@@ -58,7 +58,7 @@ LogicalResult ConvertDotToDotGeneral(mhlo::DotOp op,
           /*rhsBatchingDimensions=*/{},
           /*lhsContractingDimensions=*/{lhs_type.getRank() - 1},
           /*rhsContractingDimensions=*/{0}),
-      op.getPrecisionConfigAttr());
+      op.getPrecisionConfigAttr(), mhlo::DotAlgorithmAttr{});
   return success();
 }
 
@@ -161,7 +161,7 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
           range(batch_dims_count + shape_y1.size(), contracting_dims_count),
           /*rhsContractingDimensions=*/
           range(batch_dims_count, contracting_dims_count)),
-      dot.getPrecisionConfigAttr());
+      dot.getPrecisionConfigAttr(), dot.getAlgorithmAttr());
   return success();
 }
 
@@ -273,7 +273,8 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
       rewriter.getI64IntegerAttr(new_concat_dim));
   rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
       concat, concat.getType(), new_concat, first_dot.getRhs(),
-      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr());
+      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr(),
+      first_dot.getAlgorithmAttr());
   return success();
 }
 
@@ -374,7 +375,8 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
       all_dot_rhs, rewriter.getI64IntegerAttr(rhs_batch_dim));
   rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
       concat, concat.getType(), lhs_new_concat, rhs_new_concat,
-      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr());
+      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr(),
+      first_dot.getAlgorithmAttr());
   return success();
 }
 
@@ -611,7 +613,7 @@ LogicalResult ConvertReshapeDotRhsToBatchedDot(mhlo::DotGeneralOp dot,
           /*rhsBatchingDimensions=*/{0},
           /*lhsContractingDimensions=*/dim_nums.getLhsContractingDimensions(),
           /*rhsContractingDimensions=*/new_rhs_contracting_dims),
-      dot.getPrecisionConfigAttr());
+      dot.getPrecisionConfigAttr(), dot.getAlgorithmAttr());
   return success();
 }
 

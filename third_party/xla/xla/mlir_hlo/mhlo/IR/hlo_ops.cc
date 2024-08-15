@@ -903,13 +903,31 @@ LogicalResult DotOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DotGeneralOp::verify() {
+  bool isDefaultPrecisionConfig =
+      !getPrecisionConfig().has_value() ||
+      llvm::all_of(getPrecisionConfig().value(), [](Attribute attr) {
+        return cast<PrecisionAttr>(attr).getValue() == Precision::DEFAULT;
+      });
+  bool hasAlgorithmSpecified = getAlgorithm().has_value();
+  if (hasAlgorithmSpecified) {
+    DotAlgorithmAttr attr = getAlgorithm().value();
+    if (failed(DotAlgorithmAttr::verify(
+            [&] { return this->emitError(); }, attr.getLhsPrecisionType(),
+            attr.getRhsPrecisionType(), attr.getAccumulationType(),
+            attr.getLhsComponentCount(), attr.getRhsComponentCount(),
+            attr.getNumPrimitiveOperations(),
+            attr.getAllowImpreciseAccumulation())))
+      return failure();
+  }
+
   return hlo::verifyDotGeneralOp(
       getLoc(), getLhs(), getRhs(),
       getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
       getDotDimensionNumbersAttr().getRhsBatchingDimensions(),
       getDotDimensionNumbersAttr().getLhsContractingDimensions(),
       getDotDimensionNumbersAttr().getRhsContractingDimensions(),
-      getPrecisionConfig(), getResult());
+      getPrecisionConfig(), isDefaultPrecisionConfig, hasAlgorithmSpecified,
+      getResult());
 }
 
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(
@@ -947,6 +965,17 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
   reifiedReturnShapes.push_back(
       builder.create<tensor::FromElementsOp>(getLoc(), dimensions));
   return success();
+}
+
+LogicalResult DotAlgorithmAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+    Type lhsPrecisionType, Type rhsPrecisionType, Type accumulationType,
+    int64_t lhsComponentCount, int64_t rhsComponentCount,
+    int64_t numPrimitiveOperations, bool allowImpreciseAccumulation) {
+  return hlo::verifyDotAlgorithmAttr(
+      emitError, lhsPrecisionType, rhsPrecisionType, accumulationType,
+      lhsComponentCount, rhsComponentCount, numPrimitiveOperations,
+      allowImpreciseAccumulation);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1633,7 +1662,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
           op.getContext(), {}, {}, {lhsContractDim}, {rhsContractDim});
       auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
           op.getLoc(), op.getType(), lhs, rhs, dotNums,
-          op.getPrecisionConfig().value_or(nullptr));
+          op.getPrecisionConfig().value_or(nullptr), DotAlgorithmAttr{});
 
       rewriter.replaceOp(op, dotOp.getResult());
       return success();
@@ -1669,7 +1698,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
         {lhsContractDim + 1}, {rhsContractDim == 0 ? 2 : 0});
     auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
         op.getLoc(), dotTy, lhs, rhs, dotNums,
-        op.getPrecisionConfig().value_or(nullptr));
+        op.getPrecisionConfig().value_or(nullptr), DotAlgorithmAttr{});
 
     llvm::SmallVector<int64_t> perms;
     perms.resize(3, dNums.getOutputBatchDimension() == 0 ? 0 : 2);

@@ -1585,6 +1585,8 @@ LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
+  // TODO: Support algorithm lowering in followup.
+  if (op.getAlgorithm().has_value()) return mlir::failure();
   if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op)))
     return mlir::failure();
   if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
