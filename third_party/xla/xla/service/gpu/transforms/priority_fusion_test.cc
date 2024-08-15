@@ -911,7 +911,16 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);
-  EXPECT_TRUE(IsGenericTritonFusion(*root));
+  ASSERT_TRUE(IsGenericTritonFusion(*root));
+
+  EXPECT_TRUE(root->backend_config<GpuBackendConfig>()
+                  ->fusion_backend_config()
+                  .has_block_level_fusion_config());
+  EXPECT_EQ(root->backend_config<GpuBackendConfig>()
+                ->fusion_backend_config()
+                .block_level_fusion_config()
+                .output_tile_sizes_size(),
+            2);
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseInsideReducer) {

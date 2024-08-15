@@ -49,11 +49,13 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
@@ -113,6 +115,19 @@ bool IsFusible(const HloInstruction& instr) {
     default:
       return false;
   }
+}
+
+// Returns a GpuBackendConfig proto for a Triton fusion with the given
+// BlockLevelParameters.
+GpuBackendConfig GetTritonGpuBackendConfig(
+    const BlockLevelParameters& block_level_parameters) {
+  GpuBackendConfig gpu_backend_config;
+  gpu_backend_config.mutable_fusion_backend_config()->set_kind(
+      std::string(kTritonFusionKind));
+  *gpu_backend_config.mutable_fusion_backend_config()
+       ->mutable_block_level_fusion_config() =
+      block_level_parameters.ToBlockLevelFusionConfig();
+  return gpu_backend_config;
 }
 
 // An implementation of FusionQueue that determines whether to fuse instructions
@@ -304,6 +319,14 @@ class PriorityFusionQueue {
       }
     }
 
+    block_level_parameters_cache_.erase(instruction);
+    for (const HloInstruction* operand : instruction->operands()) {
+      auto it = block_level_parameters_cache_.find(operand);
+      if (it != block_level_parameters_cache_.end()) {
+        it->second.erase(instruction);
+      }
+    }
+
     gpu_performance_model_cache_.Invalidate(*instruction);
     fusion_analysis_cache_.Invalidate(*instruction);
     fusion_info_cache_.Invalidate(instruction);
@@ -377,6 +400,17 @@ class PriorityFusionQueue {
     }
     producer_priority_queue_.erase(reverse_it->second);
     reverse_map_.erase(reverse_it);
+  }
+
+  // Returns a map from consumer to BlockLevelParameters. This is used to
+  // determine if a producer-consumer fusion is a Triton fusion.
+  absl::flat_hash_map<const HloInstruction*, BlockLevelParameters>
+  GetBlockLevelParametersMap(const HloInstruction* producer) {
+    auto it = block_level_parameters_cache_.find(producer);
+    if (it == block_level_parameters_cache_.end()) {
+      return {};
+    }
+    return it->second;
   }
 
   HloInstruction* current_producer() { return current_producer_; }
@@ -462,6 +496,18 @@ class PriorityFusionQueue {
       return {
           absl::StrCat("Fusion can not be tiled with SymbolicTileAnalysis: ",
                        fusion_decision->Explain())};
+    }
+
+    {
+      // TODO(b/331332678): Get block level parameters from Cost Model. Add a
+      // default value for now to indicate that producer-consumer fusion is a
+      // Triton fusion.
+      absl::MutexLock lock(&block_level_parameters_cache_mutex_);
+      BlockLevelParameters block_level_parameters;
+      block_level_parameters.output_tile_sizes.assign(
+          consumer->shape().dimensions_size(), 1);
+      block_level_parameters_cache_[producer][consumer] =
+          block_level_parameters;
     }
 
     return {};
@@ -657,6 +703,14 @@ class PriorityFusionQueue {
       can_fuse_cache_;
   absl::Mutex can_fuse_cache_mutex_;
 
+  // Caches block level parameters for a (producer, consumer) pair. A cache
+  // entry is invalidated if producer or consumer is modified.
+  absl::flat_hash_map<
+      const HloInstruction*,
+      absl::flat_hash_map<const HloInstruction*, BlockLevelParameters>>
+      block_level_parameters_cache_;
+  absl::Mutex block_level_parameters_cache_mutex_;
+
   GpuPerformanceModelCache gpu_performance_model_cache_;
 
   // Cache for `FusionFitsInBudget` to avoid recomputing expensive properties
@@ -765,6 +819,10 @@ absl::StatusOr<bool> PriorityFusion::Run(
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
 
+      absl::flat_hash_map<const HloInstruction*, BlockLevelParameters>
+          block_level_parameters_map =
+              fusion_queue->GetBlockLevelParametersMap(producer);
+
       for (auto* consumer : fusion_queue->current_consumers()) {
         // Don't fuse into single bitcasts. We ignore them in the check
         // CanFuseWithAllNonBitcastUsers(), so we need to check it here.
@@ -780,6 +838,12 @@ absl::StatusOr<bool> PriorityFusion::Run(
         auto fusion_instruction = Fuse(producer, consumer, computation);
         fusion_queue->OnFusingInstruction(fusion_instruction, producer,
                                           consumer);
+
+        auto backend_config_it = block_level_parameters_map.find(consumer);
+        if (backend_config_it != block_level_parameters_map.end()) {
+          TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(
+              GetTritonGpuBackendConfig(backend_config_it->second)));
+        }
 
         changed = true;
       }
@@ -867,11 +931,6 @@ HloInstruction* PriorityFusion::FuseInstruction(
     HloInstruction* fusion_instruction, HloInstruction* producer) {
   HloInstruction* result = fusion_instruction;
   if (producer->opcode() == HloOpcode::kFusion) {
-    if (IsGenericTritonFusion(*producer)) {
-      TF_CHECK_OK(fusion_instruction->set_backend_config(
-          *producer->backend_config<GpuBackendConfig>()));
-    }
-
     fusion_instruction->MergeFusionInstruction(producer);
   } else {
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
