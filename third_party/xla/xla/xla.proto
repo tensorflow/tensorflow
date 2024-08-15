@@ -26,6 +26,14 @@ message CompilationEnvironmentsProto {
   repeated google.protobuf.Any environments = 1;
 }
 
+message TristateProto {
+  enum Value {
+    AUTO = 0;
+    DISABLED = 1;
+    ENABLED = 2;
+  }
+}
+
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
 message DebugOptions {

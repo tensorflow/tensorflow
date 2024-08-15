@@ -90,56 +90,12 @@ class BuildType(enum.Enum):
 
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
-class DockerImage:
-  """Class representing a docker image."""
-
-  image_url: str
-
-  def _pull_docker_image_with_retries(self, retries=3) -> None:
-    """Pulls docker image with retries to avoid transient rate limit errors."""
-    for _ in range(retries):
-      pull_proc = sh(["docker", "pull", self.image_url], check=False)
-      if pull_proc.returncode == 0:
-        break  # Don't keep pulling after successful pull.
-      else:
-        time.sleep(15)
-
-    # write SHA of image to the sponge config
-    _write_to_sponge_config("TF_INFO_DOCKER_IMAGE", self.image_url)
-
-    _ = sh(["docker", "pull", self.image_url])
-    # TODO(ddunleavy): get sha
-    # _write_to_sponge_config("TF_INFO_DOCKER_SHA", sha)
-
-  def pull_and_run(
-      self,
-      name: str,
-      command: Tuple[str, ...] = ("bash",),
-      **kwargs: Any,
-  ):
-    """Context manager for the container that yields `docker exec` lambda.
-
-    Args:
-      name: The name of the docker container.
-      command: Command given to `docker run`, e.g. `bash`
-      **kwargs: Extra options passed to `docker run`.
-
-    Returns:
-      None.
-    """
-    self._pull_docker_image_with_retries()
-    options = _dict_to_cli_options(kwargs)
-
-    sh(["docker", "run", "--name", name, *options, self.image_url, *command])
-
-
-@dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
   """Class representing a build of XLA."""
 
   type_: BuildType
   repo: str
-  docker_image: DockerImage
+  image_url: str
   target_patterns: Tuple[str, ...]
   configs: Tuple[str, ...] = ()
   build_tag_filters: Tuple[str, ...] = ()
@@ -166,6 +122,49 @@ class Build:
     all_options = tag_filters + configs + action_env + test_env + options
     return ["bazel", "test", *all_options, "--", *self.target_patterns]
 
+  def _pull_docker_image_with_retries(self, retries=3) -> None:
+    """Pulls docker image with retries to avoid transient rate limit errors."""
+    for _ in range(retries):
+      pull_proc = sh(["docker", "pull", self.image_url], check=False)
+      if pull_proc.returncode == 0:
+        break  # Don't keep pulling after successful pull.
+      else:
+        time.sleep(15)
+
+    # write SHA of image to the sponge config
+    _write_to_sponge_config("TF_INFO_DOCKER_IMAGE", self.image_url)
+
+    _ = sh(["docker", "pull", self.image_url])
+    # TODO(ddunleavy): get sha
+    # _write_to_sponge_config("TF_INFO_DOCKER_SHA", sha)
+
+  def pull_and_run_docker_image(
+      self,
+      name: str,
+      command: Tuple[str, ...] = ("bash",),
+      **kwargs: Any,
+  ):
+    """Context manager for the container that yields `docker exec` lambda.
+
+    Args:
+      name: The name of the docker container.
+      command: Command given to `docker run`, e.g. `bash`
+      **kwargs: Extra options passed to `docker run`.
+
+    Returns:
+      None.
+    """
+    self._pull_docker_image_with_retries()
+
+    assert "workdir" not in kwargs
+    _, repo_name = self.repo.split("/")
+    workdir = f"/github/{repo_name}"
+
+    options = ["--name", name, "--workdir", workdir]
+    options += _dict_to_cli_options(kwargs)
+
+    sh(["docker", "run", *options, self.image_url, *command])
+
 
 def _tag_filters_for_compute_capability(
     compute_capability: int,
@@ -180,18 +179,12 @@ def _tag_filters_for_compute_capability(
   return tag_filters
 
 
-_DEFAULT_IMAGE = DockerImage(
-    image_url="gcr.io/tensorflow-sigs/build:latest-python3.11",
-)
+_DEFAULT_IMAGE = "gcr.io/tensorflow-sigs/build:latest-python3.11"
 
 # TODO(b/338885148): Remove this once the TF containers have cuDNN 9
-_CUDNN_9_IMAGE = DockerImage(
-    image_url="gcr.io/tensorflow-sigs/build@sha256:0a9728e258d7e0e5830d1960a65968ffdc1d138af5441e30948918e0d50ab2c7",
-)
+_CUDNN_9_IMAGE = "gcr.io/tensorflow-sigs/build@sha256:0a9728e258d7e0e5830d1960a65968ffdc1d138af5441e30948918e0d50ab2c7"
 
-_ARM64_JAX_MULTI_PYTHON_IMAGE = DockerImage(
-    image_url="us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python",
-)
+_ARM64_JAX_MULTI_PYTHON_IMAGE = "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python"
 
 
 def nvidia_gpu_build_with_compute_capability(
@@ -201,7 +194,7 @@ def nvidia_gpu_build_with_compute_capability(
   return Build(
       type_=type_,
       repo="openxla/xla",
-      docker_image=_CUDNN_9_IMAGE,
+      image_url=_CUDNN_9_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
       test_tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
@@ -223,7 +216,7 @@ cpu_x86_tag_filter = (
 _CPU_X86_BUILD = Build(
     type_=BuildType.CPU_X86,
     repo="openxla/xla",
-    docker_image=_DEFAULT_IMAGE,
+    image_url=_DEFAULT_IMAGE,
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=cpu_x86_tag_filter,
@@ -241,7 +234,7 @@ cpu_arm_tag_filter = (
 _CPU_ARM64_BUILD = Build(
     type_=BuildType.CPU_ARM64,
     repo="openxla/xla",
-    docker_image=_ARM64_JAX_MULTI_PYTHON_IMAGE,
+    image_url=_ARM64_JAX_MULTI_PYTHON_IMAGE,
     configs=("warnings", "rbe_cross_compile_linux_arm64_xla", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
@@ -258,7 +251,7 @@ _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
 _JAX_CPU_BUILD = Build(
     type_=BuildType.JAX_CPU,
     repo="google/jax",
-    docker_image=_DEFAULT_IMAGE,
+    image_url=_DEFAULT_IMAGE,
     configs=(
         "avx_posix",
         "mkl_open_source_only",
@@ -278,7 +271,7 @@ _JAX_CPU_BUILD = Build(
 _JAX_GPU_BUILD = Build(
     type_=BuildType.JAX_GPU,
     repo="google/jax",
-    docker_image=_DEFAULT_IMAGE,
+    image_url=_DEFAULT_IMAGE,
     configs=(
         "avx_posix",
         "mkl_open_source_only",
@@ -301,7 +294,7 @@ _JAX_GPU_BUILD = Build(
 _TENSORFLOW_CPU_BUILD = Build(
     type_=BuildType.TENSORFLOW_CPU,
     repo="tensorflow/tensorflow",
-    docker_image=_DEFAULT_IMAGE,
+    image_url=_DEFAULT_IMAGE,
     configs=(
         "release_cpu_linux",
         "rbe_linux_cpu",
@@ -325,7 +318,7 @@ _TENSORFLOW_CPU_BUILD = Build(
 _TENSORFLOW_GPU_BUILD = Build(
     type_=BuildType.TENSORFLOW_GPU,
     repo="tensorflow/tensorflow",
-    docker_image=_DEFAULT_IMAGE,
+    image_url=_DEFAULT_IMAGE,
     configs=(
         "release_gpu_linux",
         "rbe_linux_cuda",
@@ -400,9 +393,8 @@ def main():
     )
     sh(["nvidia-smi"])
 
-  build.docker_image.pull_and_run(
+  build.pull_and_run_docker_image(
       _CONTAINER_NAME,
-      workdir=f"/github/{repo_name}",
       **_DEFAULT_DOCKER_OPTIONS,
   )
   docker_exec = lambda cmd: sh(["docker", "exec", _CONTAINER_NAME, *cmd])

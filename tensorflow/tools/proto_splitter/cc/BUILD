@@ -179,11 +179,11 @@ cc_library(
     hdrs = ["graph_def_splitter.h"],
     deps = [
         ":composable_splitter",
+        ":composable_splitter_base",
         ":large_node_splitter",
         ":max_size",
         ":repeated_field_splitter",
         ":size_splitter",
-        ":split",
         ":util",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
