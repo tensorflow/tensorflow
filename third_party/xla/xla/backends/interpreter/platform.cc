@@ -49,9 +49,7 @@ XlaInterpreterPlatform::DescriptionForDevice(int ordinal) const {
 
 absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
     int ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return GetExecutor(config);
+  return GetExecutor(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::FindExisting(
@@ -60,23 +58,21 @@ absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::FindExisting(
 }
 
 absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
-    const StreamExecutorConfig& config) {
+    int ordinal) {
   return executor_cache_.GetOrCreate(
-      config.ordinal, [&]() { return GetUncachedExecutor(config); });
+      ordinal, [&]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-XlaInterpreterPlatform::GetUncachedExecutor(
-    const StreamExecutorConfig& config) {
-  auto executor =
-      std::make_unique<XlaInterpreterExecutor>(config.ordinal, this);
+XlaInterpreterPlatform::GetUncachedExecutor(int ordinal) {
+  auto executor = std::make_unique<XlaInterpreterExecutor>(ordinal, this);
   auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::Status{
         absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString())};
+            ordinal, init_status.ToString())};
   }
 
   return std::move(executor);

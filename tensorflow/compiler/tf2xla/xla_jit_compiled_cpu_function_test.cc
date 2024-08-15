@@ -331,8 +331,7 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       return nullptr;
     }
 
-    absl::StatusOr<se::StreamExecutor*> GetExecutor(
-        const se::StreamExecutorConfig& config) override {
+    absl::StatusOr<se::StreamExecutor*> GetExecutor(int ordinal) override {
       return nullptr;
     }
 
