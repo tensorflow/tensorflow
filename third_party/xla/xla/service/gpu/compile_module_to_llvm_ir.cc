@@ -50,13 +50,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
-#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
-#include "xla/service/gpu/runtime/conditional_thunk.h"
-#include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/runtime/thunk.h"
-#include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_ordering.h"
 #include "xla/service/logical_buffer.h"
@@ -102,8 +97,10 @@ void RemoveUnusedAndUninitializedGlobals(
   }
 }
 
-static absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
-                              absl::string_view cache_file_path) {
+}  // namespace
+
+absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
+                       absl::string_view cache_file_path) {
   std::string resolved_path;
   if (!tsl::io::ResolveTestPrefixes(cache_file_path, resolved_path)) {
     return FailedPrecondition("File path can not be resolved: %s",
@@ -130,8 +127,6 @@ static absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
   }
   return absl::OkStatus();
 }
-
-}  // namespace
 
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
