@@ -1358,8 +1358,12 @@ tsl_pybind_extension(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
     ] + select({
-        # gloo transport only builds on linux
-        "//xla/tsl:macos": [],
+        # gloo tcp transport only builds on linux
+        "//xla/tsl:macos": [
+            "//xla/pjrt/cpu:gloo_collectives",
+            "//xla/pjrt/cpu:gloo_kv_store",
+            "@gloo//:transport_uv",
+        ],
         "//xla/tsl:windows": [],
         "//conditions:default": [
             "//xla/pjrt/cpu:gloo_collectives",

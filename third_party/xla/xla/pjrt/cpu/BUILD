@@ -306,7 +306,7 @@ cc_library(
 xla_cc_test(
     name = "gloo_collectives_test",
     srcs = ["gloo_collectives_test.cc"],
-    tags = ["nomac"],
+    linkstatic = True,
     deps = [
         ":gloo_collectives",
         ":gloo_kv_store",
@@ -321,13 +321,21 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@gloo//:transport_tcp",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
-    ],
+    ] + select({
+        # Gloo's transport_tcp is not available on MacOS
+        "//xla/tsl:macos": [
+            "@gloo//:transport_uv",
+        ],
+        "//conditions:default": [
+            "@gloo//:transport_tcp",
+        ],
+    }),
 )
 
 cc_library(
