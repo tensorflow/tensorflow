@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHARDING_PROPAGATION_H_
 #define XLA_SERVICE_SHARDING_PROPAGATION_H_
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -36,15 +35,17 @@ namespace xla {
 // Infers the shardings for a dot HLO op from the shardings on its operands,
 // which are expected to have sharding annotations.
 bool InferDotShardingFromOperands(
-    HloInstruction* instruction,
+    HloInstruction* instruction, const CallGraph& call_graph,
     const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
-    int64_t aggressiveness, bool may_combine_partial_sharding);
+    bool may_combine_partial_sharding, bool is_spmd);
 
 // Infers the shardings for a convolution HLO op from the shardings on its
 // operands, which are expected to have sharding annotations.
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
+                                          const CallGraph& call_graph,
                                           int64_t aggressiveness,
-                                          bool may_combine_partial_sharding);
+                                          bool may_combine_partial_sharding,
+                                          bool is_spmd);
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
