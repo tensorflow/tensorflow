@@ -41,7 +41,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 64.
+// Next ID to use: 65.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -360,4 +360,16 @@ message TocoFlags {
   // Enables the attempt to directly lower composites into tflite ops.
   // WARNING: Experimental interface, subject to change.
   optional bool enable_composite_direct_lowering = 63 [default = false];
+
+  // The source model framework.
+  enum ModelOriginFramework {
+    UNSET = 0;
+    TENSORFLOW = 1;
+    KERAS = 2;
+    JAX = 3;
+    PYTORCH = 4;
+  }
+
+  // The source model type.
+  optional ModelOriginFramework model_origin_framework = 64 [default = UNSET];
 }

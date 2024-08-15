@@ -201,7 +201,7 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
   GraphExportConfig config;
   config.export_entry_func_to_flib = true;
   absl::flat_hash_set<Node*> control_ret_nodes;
-  return tensorflow::tf2xla::v2::ConvertMlirToGraph(
+  return tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
       module, config, /*graph=*/nullptr, flib_def, &control_ret_nodes);
 }
 
