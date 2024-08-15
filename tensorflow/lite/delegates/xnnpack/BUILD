@@ -237,6 +237,7 @@ cc_library(
     }) + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
     linkstatic = True,
     deps = [
+        ":flexbuffers_util",
         ":quantization_util",
         ":tflite_with_xnnpack_dynamic_fully_connected",
         ":tflite_with_xnnpack_logging",
@@ -282,6 +283,7 @@ cc_library(
     copts = tflite_copts() + ["-DXNNPACK_DELEGATE_TEST_MODE=1"] + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
     linkstatic = True,
     deps = [
+        ":flexbuffers_util",
         ":quantization_util",
         ":weight_cache",
         "//tensorflow/lite:kernel_api",
@@ -339,6 +341,15 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "@XNNPACK",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "flexbuffers_util",
+    hdrs = ["flexbuffers_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -2935,6 +2946,16 @@ cc_test(
         "//tensorflow/lite/c:common",
         "@XNNPACK",
         "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
+    name = "flexbuffers_util_test",
+    srcs = ["flexbuffers_util_test.cc"],
+    deps = [
+        ":flexbuffers_util",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ],
 )

@@ -34,7 +34,6 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "Eigen/Core"  // from @eigen_archive
-#include "flatbuffers/base.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/builtin_ops.h"
@@ -43,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -57,43 +57,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 struct TfLiteXNNPackDelegateWeightsCache;
-
-namespace {
-// We use this class defined with internal linkage as a key to prevent the
-// following workaround to leak into other translation units.
-struct FloatPointer {
-  const float* ptr = nullptr;
-};
-}  // namespace
-
-namespace flexbuffers {
-
-// TODO(b/359351192): switch to xnnpack builtin. This is a workaround until we
-// are able to use just the value.
-//
-// We go around the access policy of the `Reference` class by specializing a
-// template function that was not specialized for our use case.
-//
-// This is weakly tolerant to an update to the `Reference` class because:
-//   - THIS IS MEANT TO BE TEMPORARY until we actually use the XNNPack
-//     implementation of SDPA (and dependent on not needing data ptr).
-//   - The flexbuffer spec is public and set, so the layout should not evolve
-//     much.
-//
-// The alternative was to copy/paste the code to get to the map data and grab
-// the pointer which basically means rewriting flexbuffer.h.
-template <>
-FloatPointer flexbuffers::Reference::As<FloatPointer>() const {
-#if !FLATBUFFERS_LITTLEENDIAN
-  // Flexbuffers are always stored in little endian order. Returning a pointer
-  // to the float data on a big endian architecture is meaningless.
-  return nullptr;
-#else
-  return {IsFloat() ? reinterpret_cast<const float*>(data_) : nullptr};
-#endif
-}
-
-}  // namespace flexbuffers
 
 namespace tflite {
 namespace xnnpack {
@@ -6740,16 +6703,12 @@ class Subgraph {
       const TfLiteTensor* tensors, const uint8_t* buffer,
       const size_t buffer_size,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
-    if (buffer_size == 0) {
-      return VisitDotAttentionNode(subgraph, delegate, logging_context,
-                                   node_index, node, tensors, nullptr, nullptr,
-                                   input_output_tensors);
-    }
-    auto flexbuffer_map = flexbuffers::GetRoot(buffer, buffer_size).AsMap();
-
-    const float* scale_ptr = flexbuffer_map["scale"].As<FloatPointer>().ptr;
-    const float* cap_ptr = flexbuffer_map["logit_cap"].As<FloatPointer>().ptr;
-
+    flexbuffers::Map flexbuffer_map =
+        flexbuffers::GetRoot(buffer, buffer_size).AsMap();
+    const float* const scale_ptr =
+        flexbuffer_map["scale"].As<FloatPointer>().ptr;
+    const float* const cap_ptr =
+        flexbuffer_map["logit_cap"].As<FloatPointer>().ptr;
     return VisitDotAttentionNode(subgraph, delegate, logging_context,
                                  node_index, node, tensors, scale_ptr, cap_ptr,
                                  input_output_tensors);
