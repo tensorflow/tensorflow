@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -164,12 +163,24 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
       mlir::TFL::CreateOptimizePass());
 }
 
+void AddPytorchPasses(mlir::OpPassManager& pass_manager) {
+  pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+  pass_manager.addPass(mlir::odml::createBuildStableHLOCompositePass());
+  pass_manager.addPass(mlir::createInlinerPass());
+  pass_manager.addPass(mlir::odml::createLiftCallSiteLocCallerPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+}
+
 void AddPreQuantizationStableHloToTfPasses(
     const mlir::StringRef entry_function_name,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager& pass_manager) {
   pass_manager.addPass(
       mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
+
+  if (pass_config.model_origin_framework == toco::TocoFlags::PYTORCH) {
+    AddPytorchPasses(pass_manager);
+  }
 
   // Legalize MHLO to StableHLO should be moved closer to where it is needed
   // There are some entry points that start with HLO->MHLO like
@@ -259,11 +270,6 @@ void AddPostQuantizationStableHloToTfPasses(
 
   if (pass_config.enable_composite_direct_lowering) {
     pass_manager.addPass(mlir::odml::CreateCompositeLoweringPass());
-  }
-
-  if (pass_config.model_origin_framework == toco::TocoFlags::PYTORCH) {
-    LOG(WARNING) << "Running the PyTorch passes in the tflite converter is not "
-                    "implemented yet.";
   }
 
   // TFLite dialect passes.

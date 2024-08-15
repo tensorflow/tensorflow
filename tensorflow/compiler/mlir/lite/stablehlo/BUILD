@@ -804,6 +804,39 @@ cc_library(
 )
 
 cc_library(
+    name = "lift_callsite_loc_caller",
+    srcs = ["transforms/torch/lift_callsite_loc_caller_pass.cc"],
+    copts = ["-Ithird_party"],
+    deps = [
+        ":passes_inc_gen",
+        ":prepare_hlo",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "build_stablehlo_composite",
+    srcs = ["transforms/torch/build_stablehlo_composite_pass.cc"],
+    copts = ["-Ithird_party"],
+    deps = [
+        ":passes_inc_gen",
+        ":prepare_hlo",
+        "@com_google_absl//absl/strings",
+        "@jsoncpp_git//:jsoncpp",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "composite_lowering",
     srcs = [
         "transforms/composite_avg_pool.cc",
