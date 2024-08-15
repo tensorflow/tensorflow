@@ -448,15 +448,12 @@ CPlatform::DescriptionForDevice(int ordinal) const {
   builder.set_name(name_);
   return builder.Build();
 }
-absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
-  return GetExecutor(ordinal);
-}
 absl::StatusOr<StreamExecutor*> CPlatform::FindExisting(int ordinal) {
   return executor_cache_.Get(ordinal);
 }
-absl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(int ordinal) {
+absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
   return executor_cache_.GetOrCreate(
-      ordinal, [&]() { return GetUncachedExecutor(ordinal); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
     int ordinal) {

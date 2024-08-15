@@ -55,8 +55,6 @@ class CudaPlatform : public Platform {
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
   absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
-  absl::StatusOr<StreamExecutor*> GetExecutor(int ordinal) override;
-
   // Returns a device constructed with the ordinal without
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.

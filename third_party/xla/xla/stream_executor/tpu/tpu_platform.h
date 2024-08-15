@@ -82,17 +82,12 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   }
 
   absl::StatusOr<::stream_executor::StreamExecutor*> ExecutorForDevice(
-      int ordinal) override {
-    return GetExecutor(ordinal);
-  }
+      int ordinal) override;
 
   absl::StatusOr<::stream_executor::StreamExecutor*> FindExisting(
       int ordinal) override {
     return executor_cache_.Get(ordinal);
   }
-
-  absl::StatusOr<::stream_executor::StreamExecutor*> GetExecutor(
-      int ordinal) override;
 
   StreamMap* stream_map() { return &stream_map_; }
 

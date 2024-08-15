@@ -53,17 +53,12 @@ ROCmPlatform::DescriptionForDevice(int ordinal) const {
 }
 
 absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
-  return GetExecutor(ordinal);
+  return executor_cache_.GetOrCreate(
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<StreamExecutor*> ROCmPlatform::FindExisting(int ordinal) {
   return executor_cache_.Get(ordinal);
-}
-
-absl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
-    int ordinal {
-  return executor_cache_.GetOrCreate(
-      ordinal, [&]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>

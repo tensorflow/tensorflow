@@ -55,8 +55,6 @@ class SyclPlatform : public Platform {
 
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
-  absl::StatusOr<StreamExecutor*> GetExecutor(int ordinal) override;
-
  private:
   // Returns a device constructed with ordinal without
   // looking in or storing to the Platform's executor cache.

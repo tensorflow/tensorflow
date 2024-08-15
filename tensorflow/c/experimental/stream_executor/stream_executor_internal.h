@@ -98,7 +98,6 @@ class CPlatform : public Platform {
   absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
-  absl::StatusOr<StreamExecutor*> GetExecutor(int ordinal) override;
   absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
  private:

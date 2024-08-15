@@ -47,20 +47,15 @@ XlaInterpreterPlatform::DescriptionForDevice(int ordinal) const {
   return XlaInterpreterExecutor::CreateDeviceDescription(ordinal);
 }
 
-absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
-    int ordinal) {
-  return GetExecutor(ordinal);
-}
-
 absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::FindExisting(
     int ordinal) {
   return executor_cache_.Get(ordinal);
 }
 
-absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
+absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
     int ordinal) {
   return executor_cache_.GetOrCreate(
-      ordinal, [&]() { return GetUncachedExecutor(ordinal); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>

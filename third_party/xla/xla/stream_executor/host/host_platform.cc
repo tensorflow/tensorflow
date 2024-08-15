@@ -52,12 +52,8 @@ HostPlatform::DescriptionForDevice(int ordinal) const {
 }
 
 absl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
-  return GetExecutor(ordinal);
-}
-
-absl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(int ordinal) {
   return executor_cache_.GetOrCreate(
-      ordinal, [&]() { return GetUncachedExecutor(ordinal); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>

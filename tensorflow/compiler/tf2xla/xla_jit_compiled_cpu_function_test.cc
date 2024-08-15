@@ -331,10 +331,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       return nullptr;
     }
 
-    absl::StatusOr<se::StreamExecutor*> GetExecutor(int ordinal) override {
-      return nullptr;
-    }
-
    private:
     string name_;
   };

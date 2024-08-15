@@ -94,18 +94,13 @@ class Platform {
     return absl::NotFoundError("Not implemented for this platform.");
   }
 
-  // Returns a device with the given ordinal on this platform with a default
-  // plugin configuration or, if none can be found with the given ordinal or
-  // there is an error in opening a context to communicate with the device, an
-  // error status is returned.
+  // Returns a device with the given ordinal on this platform or, if none can
+  // be found with the given ordinal or there is an error in opening a context
+  // to communicate with the device, an error status is returned.
   //
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
   virtual absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
-
-  // Returns a device constructed with the ordinal.
-  // Ownership of the executor is NOT transferred to the caller.
-  virtual absl::StatusOr<StreamExecutor*> GetExecutor(int ordinal) = 0;
 };
 
 }  // namespace stream_executor

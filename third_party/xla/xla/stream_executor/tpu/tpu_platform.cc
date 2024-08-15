@@ -77,10 +77,10 @@ int TpuPlatform::VisibleDeviceCount() const {
       ->TpuPlatform_VisibleDeviceCountFn(platform_);
 }
 
-absl::StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
-    int ordinal) {
+absl::StatusOr<::stream_executor::StreamExecutor*>
+TpuPlatform::ExecutorForDevice(int ordinal) {
   return executor_cache_.GetOrCreate(
-      ordinal, [&]() { return GetUncachedExecutor(ordinal); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
