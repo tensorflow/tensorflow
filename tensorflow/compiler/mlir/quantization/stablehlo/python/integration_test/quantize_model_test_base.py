@@ -73,7 +73,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
             # Serialization in VHLO dialect.
             serialized = node_def.attr.get('module').s
             # MLIR bytecode matching StableHLO version.
-            mlir_bytecode = stablehlo.deserialize_portable_artifact(serialized)
+            mlir_bytecode = stablehlo.deserialize_portable_artifact_str(
+                serialized)
             stablehlo_module = ir.Module.parse(mlir_bytecode, context=context)
             return str(stablehlo_module)
     raise ValueError('No XlaCallModule found in saved model.')

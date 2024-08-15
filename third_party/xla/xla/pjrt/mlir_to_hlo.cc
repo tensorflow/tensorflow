@@ -55,6 +55,7 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/mlir/utils/error_util.h"
@@ -135,21 +136,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceString<mlir::ModuleOp>(
           llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
-          // IR may be invalid because some fields may be using DenseElements
-          // instead of DenseArray. We rectify that below and verify after.
-          mlir::ParserConfig{&context, /*verifyAfterParse=*/false});
+          mlir::ParserConfig{&context});
   if (!module) {
     return diagnostic_handler.ConsumeStatus();
   }
 
-  // In
-  // https://github.com/google/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
-  // fields on some ops were changed to use Dense{Bool,I64}ArrayAttr instead of
-  // I64DenseElementsAttr (DenseIntElementsAttr). Some clients still expect
-  // dense elements, not dense arrays, so when serializing we always convert the
-  // arrays to elements. The elements need to be converted back to arrays when
-  // deserializing.
-  // TODO: b/320507168 - Remove the conversion code, and verifyAfterParse.
   TF_RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
@@ -175,16 +166,10 @@ absl::StatusOr<std::string> SerializeUsingNativeBytecode(
   llvm::raw_string_ostream os(bytecode);
   mlir::BytecodeWriterConfig config;
   // Pin bytecode version to 1 until transition to stable.
-  // TODO: b/285913864 - Remove post enabling frameworks to set it.
+  // TODO (b/344930098, b/285913864): Delete this method once VHLO interop
+  // exists and VHLO is sent for all programs, until them this method may be
+  // used for programs that contain a mix of StableHLO and other dialects.
   config.setDesiredBytecodeVersion(1);
-  // In
-  // https://github.com/google/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
-  // fields on some ops were changed to use Dense{Bool,I64}ArrayAttr instead of
-  // I64DenseElementsAttr (DenseIntElementsAttr). Some clients still expect
-  // dense elements, not dense arrays, so convert the arrays to elements before
-  // serializing. The elements need to be converted back to arrays when
-  // deserializing.
-  // TODO: b/320507168 - Remove this conversion code.
   mlir::OwningOpRef<mlir::ModuleOp> cloned = module.clone();
   if (mlir::failed(mlir::writeBytecodeToFile(*cloned, os, config))) {
     return absl::InvalidArgumentError("mlir::writeBytecodeToFile failed");
@@ -246,10 +231,11 @@ absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
 }
 
 std::string GetDefaultStablehloVersion() {
-  // This version must be >=12w old.
-  // See https://github.com/openxla/stablehlo/tags
-  //   0.19.0 - Mar 13, 2024
-  return "0.19.0";
+  // By default PJRT uses a 12w forward compatibility allowing plugins to
+  // have a ~3mo update schedule.
+  return mlir::vhlo::Version::fromCompatibilityRequirement(
+             mlir::vhlo::Version::CompatibilityRequirement::WEEK_12)
+      .toString();
 }
 
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
