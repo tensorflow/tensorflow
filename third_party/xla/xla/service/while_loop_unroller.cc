@@ -98,8 +98,11 @@ std::unique_ptr<HloComputation> MakeTrivialLoopCondition(
 absl::Status HandleDynamicGteOrTuple(HloInstruction* instr) {
   if (instr->IsCustomCall("DynamicGte")) {
     HloEvaluator evaluator(/*max_loop_iterations=*/0);
-    TF_ASSIGN_OR_RETURN(Literal index_lit,
-                        evaluator.Evaluate(instr->mutable_operand(1), true));
+    TF_ASSIGN_OR_RETURN(
+        Literal index_lit,
+        evaluator.Evaluate(instr->mutable_operand(1),
+                           /*precomputed_analyses=*/{},
+                           /*recursively_evaluate_nonconstant_operands=*/true));
     auto index = LiteralUtil::LiteralAsScalarInt64(std::move(index_lit));
     // The index must have a compile-time integer value at this point.
     TF_RET_CHECK(index.has_value());
@@ -109,8 +112,11 @@ absl::Status HandleDynamicGteOrTuple(HloInstruction* instr) {
   } else if (instr->IsCustomCall("DynamicTuple")) {
     HloEvaluator evaluator(/*max_loop_iterations=*/0);
     std::vector<HloInstruction*> tuple_operands;
-    TF_ASSIGN_OR_RETURN(Literal index_lit,
-                        evaluator.Evaluate(instr->mutable_operand(2), true));
+    TF_ASSIGN_OR_RETURN(
+        Literal index_lit,
+        evaluator.Evaluate(instr->mutable_operand(2),
+                           /*precomputed_analyses=*/{},
+                           /*recursively_evaluate_nonconstant_operands=*/true));
     auto index = LiteralUtil::LiteralAsScalarInt64(std::move(index_lit));
     // The index must have a compile-time integer value at this point.
     TF_RET_CHECK(index.has_value());

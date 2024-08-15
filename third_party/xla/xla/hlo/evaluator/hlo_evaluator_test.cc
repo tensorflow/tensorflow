@@ -50,10 +50,12 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/hlo_element_type_converter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
+#include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
@@ -167,14 +169,15 @@ class HloEvaluatorTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(
         Literal result,
         evaluator_.Evaluate(
-            instruction,
+            instruction, /*precomputed_analyses=*/{},
             /*recursively_evaluate_nonconstant_operands=*/true));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
   void TestRecursiveEvaluationFailure(HloInstruction* instruction) {
-    absl::StatusOr<Literal> result = evaluator_.Evaluate(
-        instruction, /*recursively_evaluate_nonconstant_operands=*/true);
+    absl::StatusOr<Literal> result =
+        evaluator_.Evaluate(instruction, /*precomputed_analyses=*/{},
+                            /*recursively_evaluate_nonconstant_operands=*/true);
     EXPECT_TRUE(!result.ok());
   }
 
@@ -5033,6 +5036,79 @@ TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
   m_->AddEntryComputation(b.Build());
   Literal expected = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
   TestRecursivelyEvaluateInstruction(gte2, expected);
+}
+
+// Tests that we can evaluate a parameter instruction through the call graph.
+TEST_F(HloEvaluatorTest, ParameterThroughCallSucceeds) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule parameter_through_call
+
+    %identity {
+      ROOT %param = s32[] parameter(0)
+    }
+
+    ENTRY parameter_through_call {
+      %constant = s32[] constant(42)
+      ROOT %call = s32[] call(s32[] %constant), to_apply=%identity
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  const HloInstruction* parameter_instruction = nullptr;
+  for (const auto* computation : hlo_module->computations()) {
+    for (const auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        parameter_instruction = instruction;
+      }
+    }
+  }
+  ASSERT_NE(parameter_instruction, nullptr);
+
+  Literal expected = LiteralUtil::CreateR0<int32_t>(42);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator_.Evaluate(parameter_instruction, /*precomputed_analyses=*/{},
+                          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+// As above, but with analyses precomputed.
+TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule parameter_through_call
+
+    %identity {
+      ROOT %param = s32[] parameter(0)
+    }
+
+    ENTRY parameter_through_call {
+      %constant = s32[] constant(42)
+      ROOT %call = s32[] call(s32[] %constant), to_apply=%identity
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  const HloInstruction* parameter_instruction = nullptr;
+  for (const auto* computation : hlo_module->computations()) {
+    for (const auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        parameter_instruction = instruction;
+      }
+    }
+  }
+  ASSERT_NE(parameter_instruction, nullptr);
+
+  Literal expected = LiteralUtil::CreateR0<int32_t>(42);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
+      TuplePointsToAnalysis::Run(hlo_module.get()));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator_.Evaluate(parameter_instruction,
+                          {tuple_points_to.get(), call_graph.get()},
+                          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 class PatternMatchParseWhileLoopTest : public HloTestBase {};

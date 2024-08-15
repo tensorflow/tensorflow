@@ -92,6 +92,13 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
 // This class is not thread-safe.
 class HloEvaluator : public ConstDfsHloVisitorWithDefault {
  public:
+  // Precomputed analyses that can be passed to Evaluate functions to avoid
+  // recomputation during evaluation.
+  struct PrecomputedAnalyses {
+    TuplePointsToAnalysis* tuple_points_to;
+    CallGraph* call_graph;
+  };
+
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
@@ -167,8 +174,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // within its parent computation until it encounters something that cannot be
   // evaluated, such as an Infeed or a Parameter instruction.
   // It makes best effort to partially evaluate a dependency if possible.
+  // The caller may pass in non-null `precomputed_analyses` to avoid
+  // recomputation during evaluation; the caller must ensure that any
+  // precomputed analyses were performed on the module containing `instruction`.
   absl::StatusOr<Literal> Evaluate(
       const HloInstruction* instruction,
+      PrecomputedAnalyses precomputed_analyses = {},
       bool recursively_evaluate_nonconstant_operands = false);
 
   // Same as Evaluate, except returning false on error and accepts an output
@@ -270,13 +281,20 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // marked as undetermined unless it has been previously evaluated using
   // EvaluateInternal. Such partial evaluation reduces the computation and
   // memory overhead in cases where we need only one tuple element by avoiding
-  // the evaluation of a full tuple.
+  // the evaluation of a full tuple. Any non-null `precomputed_analyses` will be
+  // used instead of recomputing.
   absl::Status EvaluateInternal(
-      const HloInstruction* instruction, const ShapeIndex& shape_index = {},
+      const HloInstruction* instruction,
+      PrecomputedAnalyses precomputed_analyses,
+      const ShapeIndex& shape_index = {},
       bool recursively_evaluate_nonconstant_operands = false);
 
+  // Evaluates the result of a `parameter` instruction by traversing the call
+  // graph as given in `analyses`. `shape_index` has the same effect as in
+  // EvaluateInternal above.
   absl::Status EvaluateParameterFromCallerArgument(
-      const HloInstruction* parameter, const ShapeIndex& shape_index);
+      const HloInstruction* parameter, const ShapeIndex& shape_index,
+      PrecomputedAnalyses analyses);
 
   // Helper method to extract a list of int64_t from evaluated instruction for
   // start_indices for DynamicSlice and DynamicUpdateSlice.
