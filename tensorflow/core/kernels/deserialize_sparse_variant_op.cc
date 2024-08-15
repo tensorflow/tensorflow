@@ -366,6 +366,14 @@ REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<Variant>("Tserialized"),
                         DeserializeSparseOp)
+REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Variant>("Tserialized")
+                            .HostMemory("serialized_sparse")
+                            .HostMemory("sparse_indices")
+                            .HostMemory("sparse_values")
+                            .HostMemory("sparse_shape"),
+                        DeserializeSparseOp)
 
 }  // namespace
 

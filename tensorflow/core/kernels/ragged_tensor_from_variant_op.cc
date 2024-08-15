@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"
@@ -353,11 +354,19 @@ class RaggedTensorFromVariantOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, split_type)      \
-  REGISTER_KERNEL_BUILDER(Name("RaggedTensorFromVariant")             \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<value_type>("Tvalues")  \
-                              .TypeConstraint<split_type>("Tsplits"), \
+#define REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, split_type)             \
+  REGISTER_KERNEL_BUILDER(Name("RaggedTensorFromVariant")                    \
+                              .Device(DEVICE_CPU)                            \
+                              .TypeConstraint<value_type>("Tvalues")         \
+                              .TypeConstraint<split_type>("Tsplits"),        \
+                          RaggedTensorFromVariantOp<value_type, split_type>) \
+  REGISTER_KERNEL_BUILDER(Name("RaggedTensorFromVariant")                    \
+                              .Device(DEVICE_GPU)                            \
+                              .TypeConstraint<value_type>("Tvalues")         \
+                              .TypeConstraint<split_type>("Tsplits")         \
+                              .HostMemory("encoded_ragged")                  \
+                              .HostMemory("output_nested_splits")            \
+                              .HostMemory("output_dense_values"),            \
                           RaggedTensorFromVariantOp<value_type, split_type>);
 #define REGISTER_KERNELS(value_type)                  \
   REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int32) \
