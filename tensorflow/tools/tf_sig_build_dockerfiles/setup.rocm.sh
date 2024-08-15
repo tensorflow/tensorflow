@@ -139,7 +139,7 @@ fi
 function ver { printf "%03d%03d%03d" $(echo "$1" | tr '.' ' '); }
 if [ $(ver "$ROCM_VERSION") -lt $(ver "6.2.0") ]
 then
-  echo "build:rocm --copt=-fclang-abi-compat=17" >> /etc/bazel.bazelrc
+  echo "build:rocm_base --copt=-fclang-abi-compat=17" >> /etc/bazel.bazelrc
 fi
 
 GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100"}
