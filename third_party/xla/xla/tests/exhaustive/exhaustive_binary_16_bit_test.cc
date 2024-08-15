@@ -315,7 +315,7 @@ BINARY_TEST_16BIT(Div, {
 
 // Can be thought of as an absolute error of
 // `<= |std::numeric_limits::<float>::min()|`.
-double MaxCpuBf16AbsErr(xla::bfloat16 left, xla::bfloat16 right) {
+double MaxMinCpuBf16AbsErr(xla::bfloat16 left, xla::bfloat16 right) {
   // It seems subnormals are treated as 0 and max returns the first if all are
   // 0.
   if (IsSubnormal(left) && (right == 0.0 || IsSubnormal(right))) {
@@ -332,8 +332,8 @@ BINARY_TEST_16BIT(Max, {
     if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
       error_spec_gen = +[](NativeT left, NativeT right) {
         return ErrorSpec::Builder()
-            .abs_err(MaxCpuBf16AbsErr(static_cast<xla::bfloat16>(left),
-                                      static_cast<xla::bfloat16>(right)))
+            .abs_err(MaxMinCpuBf16AbsErr(static_cast<xla::bfloat16>(left),
+                                         static_cast<xla::bfloat16>(right)))
             .strict_signed_zeros()
             .build();
       };
@@ -349,7 +349,27 @@ BINARY_TEST_16BIT(Max, {
 })
 
 BINARY_TEST_16BIT(Min, {
-  Run(AddEmptyBroadcastDimension(Min), ReferenceMin<float>);
+  ErrorSpecGen error_spec_gen = +[](NativeT, NativeT) {
+    return ErrorSpec::Builder().strict_signed_zeros().build();
+  };
+  if (IsCpu(platform_)) {
+    if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+      error_spec_gen = +[](NativeT left, NativeT right) {
+        return ErrorSpec::Builder()
+            .abs_err(MaxMinCpuBf16AbsErr(static_cast<xla::bfloat16>(left),
+                                         static_cast<xla::bfloat16>(right)))
+            .strict_signed_zeros()
+            .build();
+      };
+    }
+  }
+  if (IsGpu(platform_)) {
+    error_spec_gen = +[](NativeT, NativeT) {
+      // A100 and H100 return 0 for min(0,-0).
+      return ErrorSpec::Builder().strict_signed_zeros(false).build();
+    };
+  }
+  Run(AddEmptyBroadcastDimension(Min), ReferenceMin<float>, error_spec_gen);
 })
 
 template <typename NativeT>
