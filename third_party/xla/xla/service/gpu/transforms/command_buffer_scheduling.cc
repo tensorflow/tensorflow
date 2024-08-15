@@ -232,6 +232,9 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
   }
 
   if (hlo->opcode() == HloOpcode::kAsyncStart) {
+    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
+      return config.enabled_commands.contains(DebugOptions::CUBLAS);
+    }
     if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
       return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
     }
@@ -248,6 +251,9 @@ static bool IsAsyncDoneCommand(const HloInstruction* hlo,
   }
 
   if (hlo->opcode() == HloOpcode::kAsyncDone) {
+    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
+      return config.enabled_commands.contains(DebugOptions::CUBLAS);
+    }
     if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
       return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
     }
