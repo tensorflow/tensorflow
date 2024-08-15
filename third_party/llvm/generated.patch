@@ -1,1 +1,30 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -342,6 +342,7 @@
+         "include/mlir/IR/PDLPatternMatch.h.inc",
+         "include/mlir/Interfaces/CallInterfaces.h",
+         "include/mlir/Interfaces/DataLayoutInterfaces.h",
++        "include/mlir/Interfaces/InferIntRangeInterface.h",
+         "include/mlir/Interfaces/SideEffectInterfaces.h",
+     ],
+     hdrs = glob([
+@@ -362,6 +363,7 @@
+         ":BytecodeOpInterfaceIncGen",
+         ":CallOpInterfacesIncGen",
+         ":DataLayoutInterfacesIncGen",
++        ":InferIntRangeInterfaceIncGen",
+         ":OpAsmInterfaceIncGen",
+         ":RegionKindInterfaceIncGen",
+         ":SideEffectInterfacesIncGen",
+@@ -5422,7 +5424,9 @@
+     hdrs = glob(["include/mlir/Dialect/LLVMIR/Transforms/*.h"]),
+     includes = ["include"],
+     deps = [
++	":DataLayoutInterfaces",
+         ":FuncDialect",
++	":InliningUtils",
+         ":IR",
+         ":LLVMDialect",
+         ":LLVMPassIncGen",
