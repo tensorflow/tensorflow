@@ -660,7 +660,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             // scratch space is deallocated between runs.
             BlasScratchAllocator scratch_allocator(context, max_scratch_size);
             Status cublas_launch_status =
-                plan_and_algorithms->DoBlasLtMatmul(stream, *a_ptrs[0],
+                plan_and_algorithms->ExecuteOnStream(stream, *a_ptrs[0],
                                *b_ptrs[0], *c_ptrs[0], i, scratch_allocator,
                                se::DeviceMemoryBase{}, &profile_result);
 
@@ -702,7 +702,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
         OP_REQUIRES_OK(
             context,
-            plan_and_algorithms->DoBlasLtMatmul(stream, *a_ptrs[0], *b_ptrs[0],
+            plan_and_algorithms->ExecuteOnStream(stream, *a_ptrs[0], *b_ptrs[0],
                            *c_ptrs[0], algorithm_idx, scratch_allocator));
       } else {  // requires mixed broadcasting
         const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();

@@ -184,7 +184,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
   return &ptr->second;
 }
 
-Status PlanAndAlgorithms::DoBlasLtMatmul(se::Stream* stream, 
+Status PlanAndAlgorithms::ExecuteOnStream(se::Stream* stream, 
                       const se::DeviceMemoryBase& a,
                       const se::DeviceMemoryBase& b, 
                       se::DeviceMemoryBase& c,
