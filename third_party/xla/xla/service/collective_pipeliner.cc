@@ -2033,6 +2033,17 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       << "Expected only one parameter";
   HloInstruction* loop_parameter = while_body->parameter_instructions()[0];
   HloInstruction* loop_init = while_loop->mutable_operand(0);
+
+  // Clean up the SunkByPreviousStep custom calls that were inserted before.
+  for (HloInstruction* inst : while_body->root_instruction()->operands()) {
+    if (inst->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        inst->operand(1)->IsCustomCall(
+            CollectivePipeliner::kSunkByPreviousStep)) {
+      HloInstruction* cc = inst->mutable_operand(1);
+      TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(1, cc->mutable_operand(0)));
+      TF_RETURN_IF_ERROR(cc->parent()->RemoveInstruction(cc));
+    }
+  }
   CHECK_EQ(while_body->root_instruction()->opcode(), HloOpcode::kTuple);
   for (int i = 0; i < while_body->root_instruction()->operand_count(); ++i) {
     is_output_instruction[while_body->root_instruction()->mutable_operand(i)] =
@@ -2123,7 +2134,6 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       new_parameter_shapes.push_back(expanded_shape);
       new_init_operands.push_back(CreateZero(loop_computation, expanded_shape,
                                              expanded_shape.element_type()));
-      indices_to_insert.insert(new_root_operands.size());
       Shape extra_trivial_dim_shape =
           ShapeUtil::PrependMajorDimension(1, pipelined->shape());
       HloInstruction* reshaped = body_computation->AddInstruction(
@@ -2253,8 +2263,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
     TF_RETURN_IF_ERROR(output->ReplaceOperandWith(0, new_param));
     TF_RETURN_IF_ERROR(
         old_operand_param->parent()->RemoveInstruction(old_operand_param));
-    // TODO(sacer): Consider relaxing this to all inserted operands.
-    if (insert_non_alias_custom_call && original_to_move_indices.contains(i)) {
+    if (insert_non_alias_custom_call && indices_to_insert.contains(i)) {
       auto* old_operand = output->mutable_operand(1);
       auto* custom_call =
           cloned_body->AddInstruction(HloInstruction::CreateCustomCall(
@@ -2487,17 +2496,6 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
                 ComputeFullOutputShape(to_move, formatting_op->shape()),
                 collect_operands(formatting_op)[0], new_dims));
         pipelined_map[formatting_op] = expanded_transpose;
-        continue;
-      }
-      if (formatting_op->IsCustomCall(
-              CollectivePipeliner::kSunkByPreviousStep)) {
-        HloInstruction* expanded_custom_call =
-            loop_computation->AddInstruction(HloInstruction::CreateCustomCall(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                collect_operands(formatting_op),
-                /*custom_call_target=*/
-                CollectivePipeliner::kSunkByPreviousStep));
-        pipelined_map[formatting_op] = expanded_custom_call;
         continue;
       }
       CHECK(false) << "Unsupported instruction " << formatting_op->ToString();
