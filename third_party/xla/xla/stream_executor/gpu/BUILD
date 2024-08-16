@@ -808,10 +808,12 @@ xla_test(
         "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/h100_pcie.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
     ],
     deps = [
+        "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:platform",
