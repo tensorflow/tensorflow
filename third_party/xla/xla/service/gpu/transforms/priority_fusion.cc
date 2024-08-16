@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
@@ -68,6 +70,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -155,6 +158,9 @@ class PriorityFusionQueue {
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(cost_analysis_options, *device_info),
+        gpu_indexing_performance_model_(device_info, &fusion_analysis_cache,
+                                        cost_analysis_options.shape_size,
+                                        mlir_context),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         mlir_context_(mlir_context),
@@ -172,7 +178,7 @@ class PriorityFusionQueue {
     // Initializes the priority queue.
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      UpdatePerformanceModelCache(instruction);
+      TF_CHECK_OK(UpdatePerformanceModelCache(instruction));
       if (instruction->opcode() == HloOpcode::kParameter ||
           instruction->user_count() == 0 || !instruction->IsFusible() ||
           instruction->opcode() == HloOpcode::kTuple ||
@@ -264,36 +270,49 @@ class PriorityFusionQueue {
     return !current_consumers_.empty();
   }
 
-  void UpdatePerformanceModelCache(HloInstruction* producer) {
-    if (!IsFusible(*producer) && !IsGenericTritonFusion(*producer)) {
-      return;
+  absl::Status UpdatePerformanceModelCache(HloInstruction* producer) {
+    bool is_triton_fusion = IsGenericTritonFusion(*producer);
+    if (!IsFusible(*producer) && !is_triton_fusion) {
+      return absl::OkStatus();
     }
 
-    auto config = GpuPerformanceModelOptions::PriorityFusion(
-        &fusion_analysis_cache_, &gpu_performance_model_cache_);
+    if (gpu_performance_model_cache_.Get(*producer)) {
+      return absl::OkStatus();
+    }
 
-    if (!gpu_performance_model_cache_.Get(*producer)) {
-      auto runtime_data = GpuPerformanceModel::EstimateRunTimeForInstruction(
+    EstimateRunTimeData runtime_data;
+    if (is_triton_fusion) {
+      TF_ASSIGN_OR_RETURN(
+          runtime_data,
+          gpu_indexing_performance_model_.EstimateRunTimeForTriton(producer));
+    } else {
+      auto config = GpuPerformanceModelOptions::PriorityFusion(
+          &fusion_analysis_cache_, &gpu_performance_model_cache_);
+      runtime_data = GpuPerformanceModel::EstimateRunTimeForInstruction(
           producer, *device_info_, &cost_analysis_, config);
-      gpu_performance_model_cache_.Set(*producer, runtime_data);
     }
+
+    gpu_performance_model_cache_.Set(*producer, runtime_data);
+
+    return absl::OkStatus();
   }
 
   // Update priorities of all affected ops.
-  void UpdatePriorities() {
+  absl::Status UpdatePriorities() {
     // Revisit costs of all updated ops. It's important to update cost analysis
     // before recalculating priorities.
     for (auto instruction : to_update_priority_) {
-      TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
+      TF_RETURN_IF_ERROR(cost_analysis_.RevisitInstruction(instruction));
     }
     for (auto producer : to_update_priority_) {
-      UpdatePerformanceModelCache(producer);
+      TF_RETURN_IF_ERROR(UpdatePerformanceModelCache(producer));
     }
 
     ComputeAndSetPriorities(std::vector<HloInstruction*>{
         to_update_priority_.begin(), to_update_priority_.end()});
 
     to_update_priority_.clear();
+    return absl::OkStatus();
   }
 
   // Prepares producer and consumer instruction to be fused. Invalidates caches
@@ -516,27 +535,32 @@ class PriorityFusionQueue {
 
     auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
 
-    SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
-        SymbolicTileAnalysis::AnalyzeFusion(
-            *fusion, mlir_context_, TritonEmitterConstraints::GetBuilder());
+    absl::StatusOr<TiledRunTimeDataOrError> tiled_run_time_data_or_error =
+        gpu_indexing_performance_model_.TryFindBestTilingForFusion(*fusion);
+
+    if (!tiled_run_time_data_or_error.ok()) {
+      return FusionDecision{
+          absl::StrCat("TiledRunTimeDataOrError return status: ",
+                       tiled_run_time_data_or_error.status().message())};
+    }
 
     if (const auto* fusion_decision =
-            std::get_if<FusionDecision>(&symbolic_tile_analysis_or)) {
+            std::get_if<FusionDecision>(&*tiled_run_time_data_or_error)) {
       return {
           absl::StrCat("Fusion can not be tiled with SymbolicTileAnalysis: ",
                        fusion_decision->Explain())};
     }
 
+    TiledRunTimeData tiled_run_time_data =
+        std::get<TiledRunTimeData>(*std::move(tiled_run_time_data_or_error));
+
+    gpu_performance_model_cache_.Set(
+        *producer, *consumer, tiled_run_time_data.runtime_data.exec_time);
+
     {
-      // TODO(b/331332678): Get block level parameters from Cost Model. Add a
-      // default value for now to indicate that producer-consumer fusion is a
-      // Triton fusion.
       absl::MutexLock lock(&block_level_parameters_cache_mutex_);
-      BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes.assign(
-          consumer->shape().dimensions_size(), 1);
       block_level_parameters_cache_[producer][consumer] =
-          block_level_parameters;
+          tiled_run_time_data.block_level_parameters;
     }
 
     return {};
@@ -688,8 +712,11 @@ class PriorityFusionQueue {
 
   const se::DeviceDescription* device_info_;
 
-  // Reference to cost model that defines priorities in the queue.
+  // Cost Analysis that is used to estimate the cost of a fusion.
   GpuHloCostAnalysis cost_analysis_;
+
+  // Performance model that is used to estimate the run time of a fusion.
+  GpuPerformanceModelWithIndexingAnalysis gpu_indexing_performance_model_;
 
   // The priority queue of producers, implemented as an ordered map, where a
   // key is a pair: the first element is the priority and the second element is
@@ -883,7 +910,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
       }
 
-      fusion_queue->UpdatePriorities();
+      TF_RETURN_IF_ERROR(fusion_queue->UpdatePriorities());
     }
 
     // Fuse all constants.
