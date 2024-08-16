@@ -207,12 +207,24 @@ bool IsNotOpLegal(mhlo::NotOp op) {
 // easily).
 void AddRoundingOpsAsUnknown(ConversionTarget& target) {
   target.addDynamicallyLegalOp<
-      mhlo::FloorOp, mhlo::SubtractOp, mhlo::AndOp, mhlo::SelectOp, mhlo::RemOp,
-      mhlo::AddOp, mhlo::SignOp, mhlo::MulOp, mhlo::DivOp, mhlo::OrOp,
-      mhlo::BroadcastInDimOp, mhlo::ConstantOp, mhlo::RoundOp, mhlo::TupleOp>(
-      [](Operation* op) { return std::nullopt; });
+      // go/keep-sorted start
+      // clang-format off
+      mhlo::AddOp,
+      mhlo::BroadcastInDimOp,
+      mhlo::ConstantOp,
+      mhlo::DivOp,
+      mhlo::FloorOp,
+      mhlo::MulOp,
+      mhlo::RemOp,
+      mhlo::RoundOp,
+      mhlo::SelectOp,
+      mhlo::SignOp,
+      mhlo::SubtractOp,
+      mhlo::TupleOp
+      // clang-format on
+      // go/keep-sorted end
+      >([](Operation* op) { return std::nullopt; });
 }
-
 bool IsCompareLegal(mhlo::CompareOp op) {
   return !SupportedComparisonType(op.getCompareTypeAttr());
 }
@@ -224,11 +236,44 @@ void SetUnaryOpLegal(ConversionTarget& target) {
                 .isIntOrFloat();
   };
   target.addDynamicallyLegalOp<
-      mhlo::AbsOp, mhlo::BitcastConvertOp, mhlo::CeilOp, mhlo::IsFiniteOp,
-      mhlo::CosineOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::ImagOp,
-      mhlo::LogOp, mhlo::NegOp, mhlo::RealOp, mhlo::Log1pOp, mhlo::RsqrtOp,
-      mhlo::SineOp, mhlo::LogisticOp, mhlo::SignOp, mhlo::SqrtOp, mhlo::TanhOp,
-      mhlo::ConvertOp>(is_legal);
+      // go/keep-sorted start
+      // clang-format off
+      mhlo::AbsOp,
+      mhlo::BitcastConvertOp,
+      mhlo::CeilOp,
+      mhlo::ConvertOp,
+      mhlo::CosineOp,
+      mhlo::ExpOp,
+      mhlo::Expm1Op,
+      mhlo::FloorOp,
+      mhlo::ImagOp,
+      mhlo::IsFiniteOp,
+      mhlo::Log1pOp,
+      mhlo::LogOp,
+      mhlo::LogisticOp,
+      mhlo::NegOp,
+      mhlo::RealOp,
+      mhlo::RsqrtOp,
+      mhlo::SignOp,
+      mhlo::SineOp,
+      mhlo::SqrtOp,
+      mhlo::TanhOp
+      // clang-format on
+      // go/keep-sorted end
+      >(is_legal);
+}
+
+// mhlo "bitwise ops" can be both bitwise (floats/ints) or logical (bools).
+// TFL ops are only one of logical or bitwise.
+void SetBinaryBitwiseLegal(ConversionTarget& target) {
+  auto is_logical = [](Operation* op) {
+    return llvm::cast<ShapedType>(op->getResultTypes()[0])
+        .getElementType()
+        .isInteger(1);
+  };
+  auto is_bitwise = [&](Operation* op) { return !is_logical(op); };
+  target.addDynamicallyLegalOp<mhlo::OrOp, mhlo::AndOp>(is_bitwise);
+  target.addDynamicallyLegalOp<mhlo::XorOp>(is_logical);
 }
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
@@ -244,15 +289,28 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
-  target.addIllegalOp<mhlo::ClampOp, mhlo::DynamicReshapeOp, mhlo::RemOp,
-                      mhlo::ReshapeOp, mhlo::ShiftRightArithmeticOp,
-                      mhlo::ShiftRightLogicalOp, mhlo::DotGeneralOp,
-                      mhlo::DotOp, mhlo::TransposeOp>();
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
 
+  target.addIllegalOp<
+      // clang-format off
+    // go/keep-sorted start
+    mhlo::ClampOp,
+    mhlo::DotGeneralOp,
+    mhlo::DotOp,
+    mhlo::DynamicReshapeOp,
+    mhlo::RemOp,
+    mhlo::ReshapeOp,
+    mhlo::ShiftRightArithmeticOp,
+    mhlo::ShiftRightLogicalOp,
+    mhlo::TransposeOp
+      // clang-format on
+      // go/keep-sorted end
+      >();
+
   AddRoundingOpsAsUnknown(target);
   SetUnaryOpLegal(target);
+  SetBinaryBitwiseLegal(target);
 
   PopulatePadPatterns(context, patterns, target);
   PopulateReducePatterns(context, patterns, target);
