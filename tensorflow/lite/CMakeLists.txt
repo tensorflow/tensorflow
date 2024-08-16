@@ -677,10 +677,12 @@ set(_ALL_TFLITE_SRCS
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/macros.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/verifier.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation.cc
