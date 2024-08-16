@@ -1508,10 +1508,10 @@ std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
 }
 
 // Create a HloSharding that tiles some tensor dims on some device mesh dims.
-HloSharding Tile(const Shape& tensor_shape,
-                 absl::Span<const int64_t> tensor_dims,
-                 const std::vector<std::vector<int64_t>>& mesh_dims,
-                 const DeviceMesh& device_mesh) {
+HloSharding TileV1(const Shape& tensor_shape,
+                   absl::Span<const int64_t> tensor_dims,
+                   const std::vector<std::vector<int64_t>>& mesh_dims,
+                   const DeviceMesh& device_mesh) {
   CHECK_EQ(tensor_dims.size(), mesh_dims.size());
   CHECK(tensor_shape.IsArray());
   std::vector<int64_t> tile_assignment_dimensions(tensor_shape.rank(), 1);
@@ -1604,6 +1604,79 @@ HloSharding Tile(const Shape& tensor_shape,
              : HloSharding::Tile(std::move(tile_assignment));
 }
 
+HloSharding TileV2(const Shape& tensor_shape,
+                   absl::Span<const int64_t> tensor_dims,
+                   const std::vector<std::vector<int64_t>>& mesh_dims,
+                   const DeviceMesh& device_mesh) {
+  CHECK_EQ(tensor_dims.size(), mesh_dims.size());
+  CHECK(tensor_shape.IsArray());
+  std::vector<int64_t> tile_assignment_dimensions(tensor_shape.rank(), 1);
+  std::vector<int> transpose_perm;
+  absl::Span<const int64_t> reshape_dims = device_mesh.dimensions();
+
+  struct TensorDimWithIndex {
+    int64_t tensor_dim;
+    int64_t idx_in_vector;
+  };
+
+  std::vector<TensorDimWithIndex> sorted_tensor_dims(tensor_dims.size());
+  for (size_t i = 0; i < tensor_dims.size(); ++i) {
+    sorted_tensor_dims[i].tensor_dim = tensor_dims[i];
+    sorted_tensor_dims[i].idx_in_vector = i;
+  }
+
+  absl::c_sort(sorted_tensor_dims,
+               [](const TensorDimWithIndex& a, const TensorDimWithIndex& b) {
+                 return a.tensor_dim < b.tensor_dim;
+               });
+
+  // Split on certain mesh dimensions
+  int64_t split_prod = 1;
+  for (const TensorDimWithIndex& tensor_dim_with_index : sorted_tensor_dims) {
+    int64_t tensor_dim = tensor_dim_with_index.tensor_dim;
+    const std::vector<int64_t>& mesh_dims_for_this_tensor_dim =
+        mesh_dims[tensor_dim_with_index.idx_in_vector];
+    int64_t num_devices_for_tensor_dim = 1;
+    for (int64_t mesh_dim_idx : mesh_dims_for_this_tensor_dim) {
+      num_devices_for_tensor_dim *= device_mesh.dim(mesh_dim_idx);
+      transpose_perm.push_back(mesh_dim_idx);
+    }
+    tile_assignment_dimensions[tensor_dim] = num_devices_for_tensor_dim;
+    split_prod *= num_devices_for_tensor_dim;
+  }
+  // Replicate on remaining mesh dimensions
+  bool replicate_on_last_tile_dim = false;
+  if (split_prod < device_mesh.num_elements()) {
+    tile_assignment_dimensions.push_back(device_mesh.num_elements() /
+                                         split_prod);
+    replicate_on_last_tile_dim = true;
+  }
+
+  for (int i = 0; i < device_mesh.num_dimensions(); ++i) {
+    if (absl::c_find(transpose_perm, i) == transpose_perm.end()) {
+      transpose_perm.push_back(i);
+    }
+  }
+
+  // Make HloSharding
+  TileAssignment tile_assignment(tile_assignment_dimensions, reshape_dims,
+                                 transpose_perm);
+
+  return replicate_on_last_tile_dim
+             ? HloSharding::PartialTile(std::move(tile_assignment))
+             : HloSharding::Tile(std::move(tile_assignment));
+}
+
+HloSharding Tile(const Shape& tensor_shape,
+                 absl::Span<const int64_t> tensor_dims,
+                 const std::vector<std::vector<int64_t>>& mesh_dims,
+                 const DeviceMesh& device_mesh) {
+  if (device_mesh.is_iota) {
+    return TileV2(tensor_shape, tensor_dims, mesh_dims, device_mesh);
+  }
+  return TileV1(tensor_shape, tensor_dims, mesh_dims, device_mesh);
+}
+
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
@@ -1612,7 +1685,10 @@ HloSharding Tile(const Shape& tensor_shape,
   for (int i = 0; i < mesh_dims.size(); ++i) {
     mesh_dims_general[i].push_back(mesh_dims[i]);
   }
-  return Tile(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
+  if (device_mesh.is_iota) {
+    return TileV2(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
+  }
+  return TileV1(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
 }
 
 AliasMap BuildAliasMap(const HloModule* module,

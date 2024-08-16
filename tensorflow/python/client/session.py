@@ -41,6 +41,7 @@ from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1186,7 +1187,7 @@ class BaseSession(SessionInterface):
             np_val = subfeed_val.to_numpy_array()
             feed_handles[subfeed_t.ref()] = subfeed_val
           else:
-            np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
+            np_val = numpy_compat.np_asarray(subfeed_val, subfeed_dtype)
 
           if (not is_tensor_handle_feed and
               not subfeed_t.get_shape().is_compatible_with(np_val.shape)):

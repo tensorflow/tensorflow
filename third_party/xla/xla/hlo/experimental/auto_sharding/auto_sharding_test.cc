@@ -71,27 +71,6 @@ using ::testing::Pair;
 using ::testing::ResultOf;
 using ::testing::UnorderedElementsAre;
 
-using DummyAutoShardingTest = HloTestBase;
-
-TEST_F(DummyAutoShardingTest, ReplicatedShardingDummy) {
-  constexpr absl::string_view kHloString = R"(
-HloModule module
-ENTRY %elementwise {
-  %param0 = f32[5,7,11,13]{3,2,1,0} parameter(0)
-  %param1 = f32[5,7,11,13]{3,2,1,0} parameter(1)
-  %add = f32[5,7,11,13]{3,2,1,0} add(%param0, %param1)
-  ROOT %copy = f32[5,7,11,13]{3,2,1,0} copy(%add)
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, DummyAutoSharding().Run(module.get()));
-  EXPECT_TRUE(changed);
-  auto* instruction = FindInstruction(module.get(), "param0");
-  ASSERT_NE(instruction, nullptr);
-  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
-}
-
 TEST(DeviceMeshTest, IotaDeviceMesh2DStartsWith0) {
   DeviceMesh device_mesh({2, 4});
   device_mesh.FillIota(0);

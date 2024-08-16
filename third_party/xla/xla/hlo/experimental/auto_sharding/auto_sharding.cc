@@ -4629,24 +4629,4 @@ absl::StatusOr<bool> AutoSharding::Run(
   return module_is_changed;
 }
 
-absl::StatusOr<bool> DummyAutoSharding::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  // ----- Set Dummy Replicated Sharding -----
-  HloComputation* entry = module->entry_computation();
-
-  for (HloInstruction* inst : entry->instructions()) {
-    const Shape& out_shape = inst->shape();
-    if (out_shape.IsTuple()) {
-      ShapeTree<HloSharding> tuple_sharding(out_shape,
-                                            HloSharding::Replicate());
-      inst->set_sharding(HloSharding::Tuple(tuple_sharding));
-    } else {
-      inst->set_sharding(HloSharding::Replicate());
-    }
-  }
-
-  return true;
-}
-
 }  // namespace xla
