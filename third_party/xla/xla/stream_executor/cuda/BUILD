@@ -247,6 +247,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["no_rocm"],
     deps = [
+        ":cuda_diagnostics",
         ":cuda_driver",
         ":cuda_status",
         "//xla/stream_executor/gpu:gpu_driver_header",
