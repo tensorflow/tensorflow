@@ -93,30 +93,11 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
   if (IsFwdCustomCallTofMHA(*custom_call)) {
     TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
                         xla::gpu::GetCudnnfMHAKind(custom_call));
-    std::optional<Shape> bias_shape;
-    {
-      bool has_bias = kind == CudnnfMHAKind::kScaleBiasSoftmax ||
-                      kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout;
-      if (has_bias) {
-        const HloInstruction *bias = custom_call->operand(3);
-        bias_shape = bias->shape();
-      }
-    }
-
     TF_ASSIGN_OR_RETURN(
         const auto gpu_config,
         custom_call->backend_config<xla::gpu::GpuBackendConfig>());
     const xla::gpu::CudnnfMHABackendConfig &config =
         gpu_config.cudnn_fmha_backend_config();
-    absl::InlinedVector<Shape, 2> output_shapes = {
-        ShapeUtil::GetSubshape(custom_call->shape(), {0})};
-
-    bool has_activation =
-        xla::ShapeUtil::TupleElementCount(custom_call->shape()) == 3;
-    if (has_activation) {
-      output_shapes.push_back(
-          ShapeUtil::GetSubshape(custom_call->shape(), {1}));
-    }
 
     TF_ASSIGN_OR_RETURN(
         MatmulTensorDescriptor lhs_bmm1,
@@ -130,18 +111,24 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
         MatmulTensorDescriptor rhs_bmm2,
         MatmulTensorDescriptorFor(custom_call->operand(2)->shape(),
                                   config.bmm2_dot_dimension_numbers(), RHS));
-    TF_ASSIGN_OR_RETURN(TensorDescriptor output,
-                        TensorDescriptorFor(output_shapes[0]));
+    TF_ASSIGN_OR_RETURN(
+        TensorDescriptor output,
+        TensorDescriptorFor(ShapeUtil::GetSubshape(custom_call->shape(), {0})));
 
     std::optional<se::dnn::TensorDescriptor> activation;
-    if (output_shapes.size() > 1) {
-      const Shape &activation_shape = output_shapes.back();
-      TF_ASSIGN_OR_RETURN(activation, TensorDescriptorFor(activation_shape));
+    const bool has_activation =
+        xla::ShapeUtil::TupleElementCount(custom_call->shape()) == 3;
+    if (has_activation) {
+      TF_ASSIGN_OR_RETURN(
+          activation, TensorDescriptorFor(
+                          ShapeUtil::GetSubshape(custom_call->shape(), {1})));
     }
 
     std::optional<se::dnn::TensorDescriptor> bias;
-    if (bias_shape.has_value()) {
-      TF_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(*bias_shape));
+    if (kind == CudnnfMHAKind::kScaleBiasSoftmax ||
+        kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout) {
+      const HloInstruction &bias_hlo = *custom_call->operand(3);
+      TF_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(bias_hlo.shape()));
     }
 
     const double dropout_rate = config.dropout_rate();
