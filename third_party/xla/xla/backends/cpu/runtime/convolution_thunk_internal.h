@@ -1,4 +1,4 @@
-/* Copyright 2017 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,36 +12,38 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_BACKENDS_CPU_RUNTIME_CONV_IMPL_H_
-#define XLA_BACKENDS_CPU_RUNTIME_CONV_IMPL_H_
+
+#ifndef XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_
+#define XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_
+
+#define EIGEN_USE_THREADS
 
 #include <functional>
 #include <optional>
 
+#include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
-#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
-#endif
+namespace xla::cpu::internal {
 
-// 'tensorflow' namespace is used so that types don't require qualification.
-namespace tensorflow {
-namespace xla {
+// TODO(ezhulenev): Make internal implementation a private static method of
+// ConvolutionThunk (for consistency with DotThunk). Today we keep it as a free
+// function to use it in the legacy XLA CPU runtime.
 
 template <typename EigenDevice, typename ScalarType>
-void EigenConv2DImpl(
-    const EigenDevice& device, ScalarType* out, ScalarType* lhs,
-    ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,
-    Eigen::Index input_y, Eigen::Index input_channels, Eigen::Index kernel_x,
-    Eigen::Index kernel_y, Eigen::Index kernel_channels,
-    Eigen::Index kernel_filters, Eigen::Index output_x, Eigen::Index output_y,
-    Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index padding_x_before,
-    Eigen::Index padding_x_after, Eigen::Index padding_y_before,
-    Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
-    Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
-    Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
-    std::optional<std::function<void()>> done_callback) {
+void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
+                 ScalarType* rhs, Eigen::Index input_batch,
+                 Eigen::Index input_x, Eigen::Index input_y,
+                 Eigen::Index input_channels, Eigen::Index kernel_x,
+                 Eigen::Index kernel_y, Eigen::Index kernel_channels,
+                 Eigen::Index kernel_filters, Eigen::Index output_x,
+                 Eigen::Index output_y, Eigen::Index x_stride,
+                 Eigen::Index y_stride, Eigen::Index padding_x_before,
+                 Eigen::Index padding_x_after, Eigen::Index padding_y_before,
+                 Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
+                 Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
+                 Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
+                 std::optional<std::function<void()>> done_callback) {
   const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
                          Eigen::Aligned>
       input(lhs, input_batch, input_x, input_y, input_channels);
@@ -114,22 +116,23 @@ void EigenConv2DImpl(
 }
 
 template <typename EigenDevice, typename ScalarType>
-void EigenConv3DImpl(
-    const EigenDevice& device, ScalarType* out, ScalarType* lhs,
-    ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,
-    Eigen::Index input_y, Eigen::Index input_z, Eigen::Index input_channels,
-    Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,
-    Eigen::Index kernel_channels, Eigen::Index kernel_filters,
-    Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,
-    Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,
-    Eigen::Index padding_x_before, Eigen::Index padding_x_after,
-    Eigen::Index padding_y_before, Eigen::Index padding_y_after,
-    Eigen::Index padding_z_before, Eigen::Index padding_z_after,
-    Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
-    Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,
-    Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,
-    Eigen::Index feature_group_count,
-    std::optional<std::function<void()>> done_callback) {
+void EigenConv3D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
+                 ScalarType* rhs, Eigen::Index input_batch,
+                 Eigen::Index input_x, Eigen::Index input_y,
+                 Eigen::Index input_z, Eigen::Index input_channels,
+                 Eigen::Index kernel_x, Eigen::Index kernel_y,
+                 Eigen::Index kernel_z, Eigen::Index kernel_channels,
+                 Eigen::Index kernel_filters, Eigen::Index output_x,
+                 Eigen::Index output_y, Eigen::Index output_z,
+                 Eigen::Index x_stride, Eigen::Index y_stride,
+                 Eigen::Index z_stride, Eigen::Index padding_x_before,
+                 Eigen::Index padding_x_after, Eigen::Index padding_y_before,
+                 Eigen::Index padding_y_after, Eigen::Index padding_z_before,
+                 Eigen::Index padding_z_after, Eigen::Index lhs_x_dilation,
+                 Eigen::Index lhs_y_dilation, Eigen::Index lhs_z_dilation,
+                 Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,
+                 Eigen::Index rhs_z_dilation, Eigen::Index feature_group_count,
+                 std::optional<std::function<void()>> done_callback) {
   using ConstTType =
       Eigen::TensorMap<Eigen::Tensor<const ScalarType, 5, Eigen::RowMajor>,
                        Eigen::Aligned>;
@@ -210,10 +213,10 @@ void EigenConv3DImpl(
 }
 
 // Extern Conv2D template for all supported devices and data types.
-#define CONV2D_EXTERN_TEMPLATE(EigenDevice, ScalarType)                    \
-  extern template void EigenConv2DImpl<EigenDevice, ScalarType>(           \
-      const EigenDevice& device, ScalarType* out, ScalarType* lhs,         \
-      ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,     \
+#define CONV2D_EXTERN_TEMPLATE(DEVICE, SCALAR_TYPE)                        \
+  extern template void EigenConv2D<DEVICE, SCALAR_TYPE>(                   \
+      const DEVICE& device, SCALAR_TYPE* out, SCALAR_TYPE* lhs,            \
+      SCALAR_TYPE* rhs, Eigen::Index input_batch, Eigen::Index input_x,    \
       Eigen::Index input_y, Eigen::Index input_channels,                   \
       Eigen::Index kernel_x, Eigen::Index kernel_y,                        \
       Eigen::Index kernel_channels, Eigen::Index kernel_filters,           \
@@ -233,10 +236,10 @@ CONV2D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
 #undef CONV2D_EXTERN_TEMPLATE
 
 // Extern Conv3D template for all supported devices and data types.
-#define CONV3D_EXTERN_TEMPLATE(EigenDevice, ScalarType)                        \
-  extern template void EigenConv3DImpl<EigenDevice, ScalarType>(               \
-      const EigenDevice& device, ScalarType* out, ScalarType* lhs,             \
-      ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,         \
+#define CONV3D_EXTERN_TEMPLATE(DEVICE, SCALAR_TYPE)                            \
+  extern template void EigenConv3D<DEVICE, SCALAR_TYPE>(                       \
+      const DEVICE& device, SCALAR_TYPE* out, SCALAR_TYPE* lhs,                \
+      SCALAR_TYPE* rhs, Eigen::Index input_batch, Eigen::Index input_x,        \
       Eigen::Index input_y, Eigen::Index input_z, Eigen::Index input_channels, \
       Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,     \
       Eigen::Index kernel_channels, Eigen::Index kernel_filters,               \
@@ -258,7 +261,39 @@ CONV3D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
 
 #undef CONV3D_EXTERN_TEMPLATE
 
-}  // namespace xla
-}  // namespace tensorflow
+}  // namespace xla::cpu::internal
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_CONV_IMPL_H_
+#define CONV2D_INSTANTIATE_TEMPLATE(DEVICE, SCALAR_TYPE)                   \
+  template void xla::cpu::internal::EigenConv2D<DEVICE, SCALAR_TYPE>(      \
+      const DEVICE& device, SCALAR_TYPE* out, SCALAR_TYPE* lhs,            \
+      SCALAR_TYPE* rhs, Eigen::Index input_batch, Eigen::Index input_x,    \
+      Eigen::Index input_y, Eigen::Index input_channels,                   \
+      Eigen::Index kernel_x, Eigen::Index kernel_y,                        \
+      Eigen::Index kernel_channels, Eigen::Index kernel_filters,           \
+      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index x_stride, \
+      Eigen::Index y_stride, Eigen::Index padding_x_before,                \
+      Eigen::Index padding_x_after, Eigen::Index padding_y_before,         \
+      Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
+      Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
+      Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
+      std::optional<std::function<void()>> done_callback)
+
+#define CONV3D_INSTANTIATE_TEMPLATE(DEVICE, SCALAR_TYPE)                       \
+  template void xla::cpu::internal::EigenConv3D<DEVICE, SCALAR_TYPE>(          \
+      const DEVICE& device, SCALAR_TYPE* out, SCALAR_TYPE* lhs,                \
+      SCALAR_TYPE* rhs, Eigen::Index input_batch, Eigen::Index input_x,        \
+      Eigen::Index input_y, Eigen::Index input_z, Eigen::Index input_channels, \
+      Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,     \
+      Eigen::Index kernel_channels, Eigen::Index kernel_filters,               \
+      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,     \
+      Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,     \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,             \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,             \
+      Eigen::Index padding_z_before, Eigen::Index padding_z_after,             \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,                \
+      Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
+      Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
+      Eigen::Index feature_group_count,                                        \
+      std::optional<std::function<void()>> done_callback)
+
+#endif  // XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_

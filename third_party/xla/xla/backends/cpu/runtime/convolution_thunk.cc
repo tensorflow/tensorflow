@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "xla/backends/cpu/runtime/conv_impl.h"
+#include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/buffer_assignment.h"
@@ -328,7 +328,7 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
                       std::optional<std::function<void()>> done_callback =
                           std::nullopt) {
     using scalar_type = decltype(type_tag);
-    ::tensorflow::xla::EigenConv2DImpl(
+    internal::EigenConv2D(
         eigen_device, static_cast<scalar_type*>(output.opaque()),
         static_cast<scalar_type*>(input.opaque()),
         static_cast<scalar_type*>(kernel.opaque()), input_batch_, input_dims_.x,
@@ -368,7 +368,7 @@ ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
                       std::optional<std::function<void()>> done_callback =
                           std::nullopt) {
     using scalar_type = decltype(type_tag);
-    ::tensorflow::xla::EigenConv3DImpl(
+    internal::EigenConv3D(
         eigen_device, static_cast<scalar_type*>(output.opaque()),
         static_cast<scalar_type*>(input.opaque()),
         static_cast<scalar_type*>(kernel.opaque()), input_batch_, input_dims_.x,

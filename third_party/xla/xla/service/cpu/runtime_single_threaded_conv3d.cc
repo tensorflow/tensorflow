@@ -18,7 +18,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/base/dynamic_annotations.h"
-#include "xla/backends/cpu/runtime/conv_impl.h"
+#include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedConv3DF32(
@@ -33,7 +33,7 @@ __xla_cpu_runtime_EigenSingleThreadedConv3DF32(
     int64_t lhs_y_dilation, int64_t lhs_z_dilation, int64_t rhs_x_dilation,
     int64_t rhs_y_dilation, int64_t rhs_z_dilation,
     int64_t feature_group_count) {
-  tensorflow::xla::EigenConv3DImpl(
+  xla::cpu::internal::EigenConv3D(
       Eigen::DefaultDevice(), out, lhs, rhs, input_batch, input_x, input_y,
       input_z, input_channels, kernel_x, kernel_y, kernel_z, kernel_channels,
       kernel_filters, output_x, output_y, output_z, x_stride, y_stride,
@@ -56,7 +56,7 @@ __xla_cpu_runtime_EigenSingleThreadedConv3DF16(
     int64_t lhs_y_dilation, int64_t lhs_z_dilation, int64_t rhs_x_dilation,
     int64_t rhs_y_dilation, int64_t rhs_z_dilation,
     int64_t feature_group_count) {
-  tensorflow::xla::EigenConv3DImpl(
+  xla::cpu::internal::EigenConv3D(
       Eigen::DefaultDevice(), out, lhs, rhs, input_batch, input_x, input_y,
       input_z, input_channels, kernel_x, kernel_y, kernel_z, kernel_channels,
       kernel_filters, output_x, output_y, output_z, x_stride, y_stride,

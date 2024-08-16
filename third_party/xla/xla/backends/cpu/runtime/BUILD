@@ -19,13 +19,16 @@ package_group(
 
 filegroup(
     name = "runtime_srcs",
-    srcs = ["conv_impl.cc"],
+    srcs = [
+        "convolution_thunk_f16.cc",
+        "convolution_thunk_f32.cc",
+    ],
     visibility = internal_visibility([":friends"]),
 )
 
 filegroup(
     name = "runtime_hdrs",
-    srcs = ["conv_impl.h"],
+    srcs = ["convolution_thunk_internal.h"],
     visibility = internal_visibility([":friends"]),
 )
 
@@ -272,16 +275,18 @@ cc_library(
 )
 
 cc_library(
-    name = "conv_impl",
-    srcs = ["conv_impl.cc"],
-    hdrs = ["conv_impl.h"],
+    name = "convolution_thunk_internal",
+    srcs = [
+        "convolution_thunk_f16.cc",
+        "convolution_thunk_f32.cc",
+    ],
+    hdrs = ["convolution_thunk_internal.h"],
     copts = runtime_copts(),
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
 
@@ -291,7 +296,7 @@ cc_library(
     hdrs = ["convolution_thunk.h"],
     copts = runtime_copts(),
     deps = [
-        ":conv_impl",
+        ":convolution_thunk_internal",
         ":thunk",
         "//xla:executable_run_options",
         "//xla:shape_util",

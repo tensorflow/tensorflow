@@ -1066,7 +1066,7 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
-        "//xla/backends/cpu/runtime:conv_impl",
+        "//xla/backends/cpu/runtime:convolution_thunk_internal",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
         "@com_google_absl//absl/base:dynamic_annotations",
@@ -1084,7 +1084,7 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
-        "//xla/backends/cpu/runtime:conv_impl",
+        "//xla/backends/cpu/runtime:convolution_thunk_internal",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
         "@com_google_absl//absl/base:dynamic_annotations",
@@ -1212,7 +1212,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/backends/cpu/runtime:conv_impl",
+        "//xla/backends/cpu/runtime:convolution_thunk_internal",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
         "@com_google_absl//absl/base:dynamic_annotations",
@@ -1228,7 +1228,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/backends/cpu/runtime:conv_impl",
+        "//xla/backends/cpu/runtime:convolution_thunk_internal",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
         "@com_google_absl//absl/base:dynamic_annotations",
