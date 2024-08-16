@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <optional>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -115,4 +117,72 @@ Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op) {
   return pad_op;
 }
 
+bool MatchWithResizeBilinearOp(const ConvView& data, bool& align_corners) {
+  if (data.InputLayout().Rank() != 4 || data.KernelLayout().Rank() != 4 ||
+      data.OutputLayout().Rank() != 4 ||
+      data.InputLayout().Spatials() != data.OutputLayout().Spatials()) {
+    return false;
+  }
+
+  if (data.InputDilations().size() != 2 ||
+      !(llvm::all_of(data.KernelDilations(), [](auto d) { return d == 1; })) ||
+      data.Strides().size() != 2 || data.Padding().size() != 2) {
+    return false;
+  }
+
+  // This is based on method in compiler/tf2xla/kernels/image_resize_ops.cc
+  auto can_convert_to_bilinear =
+      [](bool align_corners, int64_t dilation, int64_t padding, int64_t stride,
+         int64_t input_spatial, int64_t output_spatial) {
+        int64_t input_spatial_size =
+            align_corners ? input_spatial - 1 : input_spatial;
+        int64_t output_spatial_size =
+            align_corners ? output_spatial - 1 : output_spatial;
+
+        int64_t gcd = std::gcd(static_cast<uint64_t>(input_spatial_size),
+                               static_cast<uint64_t>(output_spatial_size));
+
+        if ((gcd == 0) || (input_spatial_size % gcd != 0) ||
+            (input_spatial_size / gcd != stride) || (dilation - 1 != padding)) {
+          return false;
+        }
+        return true;
+      };
+
+  if (data.InputDilations()[0] != 1 && data.InputDilations()[1] == 1) {
+    if (can_convert_to_bilinear(
+            /*align_corners=*/true, data.InputDilations()[0],
+            data.Padding()[0].Lo(), data.Strides()[0],
+            data.InputShape()[data.InputLayout().Spatials()[0]],
+            data.OutputShape()[data.OutputLayout().Spatials()[0]])) {
+      align_corners = true;
+      return true;
+    } else if (can_convert_to_bilinear(
+                   /*align_corners=*/false, data.InputDilations()[0],
+                   data.Padding()[0].Lo(), data.Strides()[0],
+                   data.InputShape()[data.InputLayout().Spatials()[0]],
+                   data.OutputShape()[data.OutputLayout().Spatials()[0]])) {
+      align_corners = false;
+      return true;
+    };
+  } else if (data.InputDilations()[0] == 1 && data.InputDilations()[1] != 1) {
+    if (can_convert_to_bilinear(
+            /*align_corners=*/true, data.InputDilations()[1],
+            data.Padding()[1].Lo(), data.Strides()[1],
+            data.InputShape()[data.InputLayout().Spatials()[1]],
+            data.OutputShape()[data.OutputLayout().Spatials()[1]])) {
+      align_corners = true;
+      return true;
+    } else if (can_convert_to_bilinear(
+                   /*align_corners=*/false, data.InputDilations()[1],
+                   data.Padding()[1].Lo(), data.Strides()[1],
+                   data.InputShape()[data.InputLayout().Spatials()[1]],
+                   data.OutputShape()[data.OutputLayout().Spatials()[1]])) {
+      align_corners = false;
+      return true;
+    };
+  }
+
+  return false;
+}
 }  // namespace mlir::odml

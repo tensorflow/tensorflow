@@ -77,13 +77,17 @@ bool IsWindowReversalSupported(const ConvView& data) {
 bool IsConvLegal(mhlo::ConvolutionOp op) {
   const ConvView data(op);
 
-  const bool supported_conv_type =
-      IsStandardConv(data) || IsDepthwiseConv(data);
+  const bool supported_conv_type = IsStandardConv(data) ||
+                                   IsDepthwiseConv(data) ||
+                                   IsSupportedNonTrivialConv(data);
+
+  const bool is_non_supported_trivial_conv =
+      (!IsSupportedNonTrivialConv(data) &&
+       (!IsPaddingSupported(data) || !IsInputDilationSupported(data)));
 
   return !supported_conv_type || !IsBatchGroupSupported(data) ||
-         !IsInputDilationSupported(data) || !AreShapesSupported(data) ||
-         !IsTFLNativeLayout(data) || !IsPaddingSupported(data) ||
-         !IsWindowReversalSupported(data);
+         !AreShapesSupported(data) || !IsTFLNativeLayout(data) ||
+         is_non_supported_trivial_conv || !IsWindowReversalSupported(data);
 }
 
 //===----------------------------------------------------------------------===//
@@ -289,6 +293,49 @@ LogicalResult LegalizeConv3D::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
+// mhlo.convolution -> TFL::ResizeBilinearOp
+//===----------------------------------------------------------------------===//
+
+// Convert a 2d mhlo.convolution op to a tfl.resize_bilinear
+class ConvertNonTrivialConvToResizeBilinearOp
+    : public OpConversionPattern<mhlo::ConvolutionOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+LogicalResult ConvertNonTrivialConvToResizeBilinearOp::matchAndRewrite(
+    mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  const ConvView data(conv_op);
+  bool align_corners;
+  if (!MatchWithResizeBilinearOp(data, align_corners)) {
+    return rewriter.notifyMatchFailure(
+        conv_op, "op does not match with resize_bilinear op");
+  }
+
+  // The output size attribute is an array of 32bit values.
+  SmallVector<int32_t, 4> output_shape_i32;
+  for (int64_t spatial_dim : data.InputLayout().Spatials()) {
+    output_shape_i32.push_back(
+        static_cast<int32_t>(data.OutputShape()[spatial_dim]));
+  }
+  Value output_sizes_attr = rewriter.create<mlir::arith::ConstantOp>(
+      conv_op.getLoc(), rewriter.getI32TensorAttr(output_shape_i32));
+  // The value of half_pixel_centers couldn't be inferred from the IR and XLA
+  // only support half_pixel_centers=True as in 01/11/2022. Here
+  // half_pixel_centers=False is hardcoded.
+  rewriter.replaceOpWithNewOp<TFL::ResizeBilinearOp>(
+      conv_op, conv_op.getType(), conv_op.getLhs(), output_sizes_attr,
+      /*align_corners=*/rewriter.getBoolAttr(align_corners),
+      /*half_pixel_centers=*/rewriter.getBoolAttr(false));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 
 class SliceDepthwiseTransposedConvolution
     : public OpRewritePattern<mhlo::ConvolutionOp> {
@@ -345,6 +392,11 @@ LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
   if (input_channels != feature_group_count) {
     return rewriter.notifyMatchFailure(
         conv_op, "Not a detphwise transposed convolution");
+  }
+
+  if (MatchWithResizeBilinearOp(data)) {
+    return rewriter.notifyMatchFailure(
+        conv_op, "Op will be legalized to ResizeBilinearOp");
   }
 
   if ((kernel_output_channels % feature_group_count != 0) ||
@@ -578,7 +630,8 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
 
 void PopulateLegalizeConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                                   ConversionTarget& target) {
-  patterns.add<LegalizeConv2D, LegalizeConv3D, LegalizeConvDepthwise>(ctx);
+  patterns.add<LegalizeConv2D, LegalizeConv3D, LegalizeConvDepthwise,
+               ConvertNonTrivialConvToResizeBilinearOp>(ctx);
   target.addDynamicallyLegalOp<mhlo::ConvolutionOp>(IsConvLegal);
 }
 

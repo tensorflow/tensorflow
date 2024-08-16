@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -50,31 +51,20 @@ using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
 enum class CycleType { kUnknown, kForward, kBackward };
 
-// Returns true if the CollectivePermute instruction has a cycle in its
-// source-target pairs and should be decomposed.
-CycleType ShouldDecomposeWithCycleType(
-    const HloCollectivePermuteInstruction& collective_permute,
-    int64_t threshold_in_bytes) {
-  if (!collective_permute.channel_id().has_value()) {
+// Returns kUnknown for unsupported cases. kForward and kBackward for
+// forward and backward cycles, respectively.
+CycleType IdentifyCycleType(const HloCollectivePermuteInstruction& cp,
+                            int64_t threshold_in_bytes) {
+  const Shape& result_shape = cp.shape();
+  if (!cp.channel_id().has_value()  // there must be a channel
+      || cp.operand_count() != 1 ||
+      result_shape.IsTuple()  // Skip if there is context data
+      || ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes  // too small
+  ) {
     return CycleType::kUnknown;
   }
 
-  if (collective_permute.operand_count() != 1) {
-    return CycleType::kUnknown;
-  }
-
-  const Shape& result_shape = collective_permute.shape();
-  // Skip the transformation if there is any context data.
-  if (result_shape.IsTuple()) {
-    return CycleType::kUnknown;
-  }
-
-  CHECK(result_shape.IsArray());
-  if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
-    return CycleType::kUnknown;
-  }
-
-  const SourceTargetPairs& pairs = collective_permute.source_target_pairs();
+  const SourceTargetPairs& pairs = cp.source_target_pairs();
   if (pairs.size() == 1) {
     return CycleType::kUnknown;
   }
@@ -86,29 +76,25 @@ CycleType ShouldDecomposeWithCycleType(
 
 // Constructs the frontend attributes for the two decomposed CollectivePermute
 // instructions.
-absl::Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
-                                   CycleType cycle_type,
-                                   xla::FrontendAttributes& cp1_attr,
-                                   xla::FrontendAttributes& cp2_attr) {
-  cp1_attr = cp->frontend_attributes();
-  cp2_attr = cp->frontend_attributes();
-  auto validation_it =
-      cp->frontend_attributes().map().find(kSendRecvValidationAttr);
-  if (validation_it == cp->frontend_attributes().map().end() ||
+absl::StatusOr<std::pair<FrontendAttributes, FrontendAttributes>>
+ConstructFrontendAttributes(const FrontendAttributes& orig_attr,
+                            CycleType cycle_type) {
+  FrontendAttributes cp1_attr = orig_attr, cp2_attr = orig_attr;
+  auto validation_it = orig_attr.map().find(kSendRecvValidationAttr);
+  if (validation_it == orig_attr.map().end() ||
       validation_it->second == "invalid") {
-    return absl::OkStatus();
+    return Internal(
+        "_xla_send_recv_validation attribute is not found or invalid");
   }
 
-  auto statusor_bounds = ParseReplicaGroupsOnly(validation_it->second);
-  if (!statusor_bounds.ok()) {
-    return statusor_bounds.status();
-  }
-  const std::vector<ReplicaGroup>& bounds = statusor_bounds.value();
-  if (bounds.size() < 2) {
+  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> bounds,
+                      ParseReplicaGroupsOnly(validation_it->second));
+
+  int64_t num_pairs = bounds.size();
+  if (num_pairs < 2) {
     return Internal("Invalid number of replica groups");
   }
 
-  int64_t num_pairs = bounds.size();
   // A forward cycle has its backedge at the end while a backward cycle has its
   // backedge at the beginning.
   auto backedge_start = cycle_type == CycleType::kBackward
@@ -132,7 +118,7 @@ absl::Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
   std::string cp2_validation_str = bounds_to_string(cp2_bounds);
   (*cp1_attr.mutable_map())[kSendRecvValidationAttr] = cp1_validation_str;
   (*cp2_attr.mutable_map())[kSendRecvValidationAttr] = cp2_validation_str;
-  return absl::OkStatus();
+  return std::make_pair(cp1_attr, cp2_attr);
 }
 
 // Decomposes a CollectivePermute instruction with a cycle in its source-target
@@ -154,8 +140,10 @@ absl::Status DecomposeCollectivePermuteCycle(
   SourceTargetPairs other_edges(other_edges_start,
                                 other_edges_start + num_pairs - 1);
   const OpMetadata& metadata = cp->metadata();
-  xla::FrontendAttributes cp1_attr, cp2_attr;
-  TF_RETURN_IF_ERROR(GetFrontendAttributes(cp, cycle_type, cp1_attr, cp2_attr));
+
+  TF_ASSIGN_OR_RETURN(
+      auto cp_attr_pair,
+      ConstructFrontendAttributes(cp->frontend_attributes(), cycle_type));
 
   // Create the CollectivePermute instruction for the communication represented
   // by the backedge.
@@ -164,16 +152,16 @@ absl::Status DecomposeCollectivePermuteCycle(
           cp->shape(), cp->mutable_operand(0), backedge,
           cp->channel_id().value()));
   cp1->set_metadata(metadata);
-  cp1->set_frontend_attributes(cp1_attr);
+  cp1->set_frontend_attributes(cp_attr_pair.first);
   int64_t cp1_receiver = backedge.back().second;
 
   // Create the CollectivePermute instruction for the communication represented
-  // byt other edges.
+  // by other edges.
   HloInstruction* cp2 =
       computation->AddInstruction(HloInstruction::CreateCollectivePermute(
           cp->shape(), cp->mutable_operand(0), other_edges, next_channel_id));
   cp2->set_metadata(metadata);
-  cp2->set_frontend_attributes(cp2_attr);
+  cp2->set_frontend_attributes(cp_attr_pair.second);
 
   // Calculate the received data as follows:
   //   partition = u32[] partition-id()
@@ -188,12 +176,12 @@ absl::Status DecomposeCollectivePermuteCycle(
   HloInstruction* compare0 = computation->AddInstruction(
       HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), partition,
                                     constant, Comparison::Direction::kEq));
-  HloInstruction* compare =
+  HloInstruction* broadcast =
       computation->AddInstruction(HloInstruction::CreateBroadcast(
           ShapeUtil::MakeShape(PRED, cp1->shape().dimensions()), compare0, {}));
   HloInstruction* recv_data =
       computation->AddInstruction(HloInstruction::CreateTernary(
-          cp1->shape(), HloOpcode::kSelect, compare, cp1, cp2));
+          cp1->shape(), HloOpcode::kSelect, broadcast, cp1, cp2));
 
   TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
   TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
@@ -202,9 +190,10 @@ absl::Status DecomposeCollectivePermuteCycle(
 }
 }  // namespace
 
+using StringSet = absl::flat_hash_set<absl::string_view>;
+
 absl::StatusOr<bool> CollectivePermuteCycleDecomposer::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    HloModule* module, const StringSet& execution_threads) {
   bool changed = false;
   int64_t next_channel_id;
   for (auto comp : module->computations(execution_threads)) {
@@ -212,16 +201,15 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::Run(
       if (hlo->opcode() != HloOpcode::kCollectivePermute) {
         continue;
       }
-      auto collective_permute = Cast<HloCollectivePermuteInstruction>(hlo);
-      CycleType cycle_type = ShouldDecomposeWithCycleType(*collective_permute,
-                                                          threshold_in_bytes_);
+      auto cp = Cast<HloCollectivePermuteInstruction>(hlo);
+      CycleType cycle_type = IdentifyCycleType(*cp, threshold_in_bytes_);
       if (cycle_type != CycleType::kUnknown) {
         if (changed == false) {
           next_channel_id = hlo_query::NextChannelId(*module);
           changed = true;
         }
         TF_RETURN_IF_ERROR(DecomposeCollectivePermuteCycle(
-            collective_permute, comp, module, next_channel_id++, cycle_type));
+            cp, comp, module, next_channel_id++, cycle_type));
       }
     }
   }

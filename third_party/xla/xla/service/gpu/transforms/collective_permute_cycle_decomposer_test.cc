@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 
+#include <initializer_list>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,12 +39,64 @@ namespace xla {
 namespace {
 
 using ::testing::HasSubstr;
-using CollectivePermuteCycleDecomposerTest = HloTestBase;
+using CPI = HloCollectivePermuteInstruction;
 
-using ::testing::HasSubstr;
-using CollectivePermuteDecomposerTest = HloTestBase;
+const char kSimpleCollectivePermuteTemplate[] = R"(
+      HloModule test
+      ENTRY test_computation {
+        p = u32[] partition-id()
+        ROOT start = u32[] collective-permute(p), channel_id=1,
+          source_target_pairs=$0,
+          frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10}}"},
+          metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
+      }
+    )";
 
-TEST_F(CollectivePermuteDecomposerTest, DefaultChannelNotTransformed) {
+class CollectivePermuteCycleDecomposerTest : public HloTestBase {
+ public:
+  // helper function to get the collective-permute instruction pair and do some
+  // basic checks.
+  CPI* GetCollectivePermute(HloModule* module, absl::string_view name) {
+    return DynCast<HloCollectivePermuteInstruction>(
+        FindInstruction(module, name));
+  }
+  std::pair<CPI*, CPI*> GetDecomposedPair(
+      HloModule* module, absl::string_view name1 = "collective-permute",
+      absl::string_view name2 = "collective-permute.1") {
+    CollectivePermuteCycleDecomposer decomposer(/*threshold_in_bytes=*/0);
+    absl::StatusOr<bool> changed = decomposer.Run(module);
+    EXPECT_TRUE(changed.value());
+    EXPECT_NE(FindInstruction(module, "broadcast"), nullptr);
+    EXPECT_NE(FindInstruction(module, "select"), nullptr);
+
+    auto cp_pair = std::make_pair(DynCast<HloCollectivePermuteInstruction>(
+                                      FindInstruction(module, name1)),
+                                  DynCast<HloCollectivePermuteInstruction>(
+                                      FindInstruction(module, name2)));
+
+    EXPECT_NE(cp_pair.first, nullptr);
+    EXPECT_NE(cp_pair.second, nullptr);
+    EXPECT_EQ(cp_pair.first->operand(0), cp_pair.second->operand(0));
+    EXPECT_GT(cp_pair.second->channel_id().value(),
+              cp_pair.first->channel_id().value());
+    return cp_pair;
+  }
+
+  void AssertRetainedMetadata(
+      std::initializer_list<const HloInstruction*> cps) {
+    for (const HloInstruction* cp : cps) {
+      EXPECT_EQ(cp->metadata().op_name(), "op1/op2/add");
+      EXPECT_EQ(cp->metadata().source_file(), "foo/bar/mysource.py");
+      EXPECT_EQ(cp->metadata().source_line(), 35);
+    }
+  }
+  void Has(HloInstruction& i, std::initializer_list<absl::string_view> strs) {
+    for (absl::string_view str : strs)
+      EXPECT_THAT(i.ToString(), HasSubstr(str));
+  }
+};
+
+TEST_F(CollectivePermuteCycleDecomposerTest, DefaultChannelNotTransformed) {
   const absl::string_view kModuleStr = R"(
       HloModule test
       ENTRY test_computation {
@@ -77,8 +135,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BelowThresholdNotTransformed) {
       HloModule test
       ENTRY test_computation {
         p = u32[] partition-id()
-        ROOT start = u32[] collective-permute(p), channel_id=1,
-          source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+        ROOT start = u32[] collective-permute(p), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
       }
     )";
 
@@ -90,47 +147,20 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BelowThresholdNotTransformed) {
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
-  const absl::string_view kModuleStr = R"(
-      HloModule test
-      ENTRY test_computation {
-        p = u32[] partition-id()
-        ROOT start = u32[3,2] collective-permute(p), channel_id=1,
-          source_target_pairs={{0,1},{1,2},{2,3},{3,0}},
-          frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10}}"},
-          metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
-      }
-    )";
-
+  const std::string kModuleStr = absl::Substitute(
+      kSimpleCollectivePermuteTemplate, "{{0,1},{1,2},{2,3},{3,0}}");
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
-  CollectivePermuteCycleDecomposer decomposer(/*threshold_in_bytes=*/0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
-  EXPECT_TRUE(changed);
-
-  auto check_metadata = [](const HloInstruction* inst) {
-    EXPECT_EQ(inst->metadata().op_name(), "op1/op2/add");
-    EXPECT_EQ(inst->metadata().source_file(), "foo/bar/mysource.py");
-    EXPECT_EQ(inst->metadata().source_line(), 35);
-  };
-
-  HloCollectivePermuteInstruction* cp1 =
-      DynCast<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), "collective-permute"));
-  HloCollectivePermuteInstruction* cp2 =
-      DynCast<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), "collective-permute.1"));
-  EXPECT_NE(cp1, nullptr);
-  EXPECT_NE(cp2, nullptr);
-  EXPECT_EQ(cp1->operand(0), cp2->operand(0));
-  EXPECT_GT(cp2->channel_id().value(), cp1->channel_id().value());
-  EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{3,0}}"));
-  EXPECT_THAT(cp1->ToString(), HasSubstr("_xla_send_recv_validation={{3,10}}"));
-  EXPECT_THAT(cp2->ToString(),
-              HasSubstr("source_target_pairs={{0,1},{1,2},{2,3}}"));
-  EXPECT_THAT(cp2->ToString(),
-              HasSubstr("_xla_send_recv_validation={{0,7},{1,8},{2,9}}"));
-  check_metadata(cp1);
-  check_metadata(cp2);
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  VLOG(10) << "input entry computation: \n"
+           << module->entry_computation()->ToString() << "\n\n";
+  auto [cp1, cp2] = GetDecomposedPair(module.get());
+  Has(*cp1,
+      {"source_target_pairs={{3,0}}", "_xla_send_recv_validation={{3,10}}"});
+  Has(*cp2, {"source_target_pairs={{0,1},{1,2},{2,3}}",
+             "_xla_send_recv_validation={{0,7},{1,8},{2,9}}"});
+  AssertRetainedMetadata({cp1, cp2});
+  VLOG(10) << "output entry computation: \n"
+           << module->entry_computation()->ToString() << "\n\n";
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
@@ -170,15 +200,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kModuleStr)));
-  CollectivePermuteCycleDecomposer decomposer(/*threshold_in_bytes=*/0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
-  EXPECT_TRUE(changed);
-  HloCollectivePermuteInstruction* cp1 =
-      DynCast<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), "collective-permute"));
-  HloCollectivePermuteInstruction* cp2 =
-      DynCast<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), "collective-permute.1"));
+  auto [cp1, cp2] = GetDecomposedPair(module.get());
   EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{3,0}}"));
   EXPECT_THAT(cp1->ToString(), HasSubstr("_xla_send_recv_validation={{3,10}}"));
   EXPECT_THAT(cp2->ToString(),
@@ -188,46 +210,17 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {
-  const absl::string_view kModuleStr = R"(
-      HloModule test
-      ENTRY test_computation {
-        p = u32[] partition-id()
-        ROOT start = u32[] collective-permute(p), channel_id=1,
-          source_target_pairs={{0,3},{1,0},{2,1},{3,2}},
-          frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10}}"},
-          metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
-      }
-    )";
+  const std::string kModuleStr = absl::Substitute(
+      kSimpleCollectivePermuteTemplate, "{{0,3},{1,0},{2,1},{3,2}}");
+  std::unique_ptr<HloModule> module =
+      ParseAndReturnUnverifiedModule(kModuleStr).value();
+  auto [cp1, cp2] = GetDecomposedPair(module.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
-  CollectivePermuteCycleDecomposer decomposer(/*threshold_in_bytes=*/0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
-  EXPECT_TRUE(changed);
-  auto check_metadata = [](const HloInstruction* inst) {
-    EXPECT_EQ(inst->metadata().op_name(), "op1/op2/add");
-    EXPECT_EQ(inst->metadata().source_file(), "foo/bar/mysource.py");
-    EXPECT_EQ(inst->metadata().source_line(), 35);
-  };
-
-  HloCollectivePermuteInstruction* cp1 =
-      DynCast<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), "collective-permute"));
-  HloCollectivePermuteInstruction* cp2 =
-      DynCast<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), "collective-permute.1"));
-  EXPECT_NE(cp1, nullptr);
-  EXPECT_NE(cp2, nullptr);
-  EXPECT_EQ(cp1->operand(0), cp2->operand(0));
-  EXPECT_GT(cp2->channel_id().value(), cp1->channel_id().value());
-  EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{0,3}}"));
-  EXPECT_THAT(cp1->ToString(), HasSubstr("_xla_send_recv_validation={{0,7}}"));
-  EXPECT_THAT(cp2->ToString(),
-              HasSubstr("source_target_pairs={{1,0},{2,1},{3,2}}"));
-  EXPECT_THAT(cp2->ToString(),
-              HasSubstr("_xla_send_recv_validation={{1,8},{2,9},{3,10}}"));
-  check_metadata(cp1);
-  check_metadata(cp2);
+  Has(*cp1,
+      {"source_target_pairs={{0,3}}", "_xla_send_recv_validation={{0,7}}"});
+  Has(*cp2, {"source_target_pairs={{1,0},{2,1},{3,2}}",
+             "_xla_send_recv_validation={{1,8},{2,9},{3,10}}"});
+  AssertRetainedMetadata({cp1, cp2});
 }
 
 }  // namespace

@@ -27,27 +27,34 @@ limitations under the License.
 namespace xla {
 
 // CollectivePermuteCycleDecomposer is a pass that converts CollectivePermute
-// instructions with all participants forming either a forward cycle (such as
-// {{0,1},{1,2},{2,3},{3,0}) or a backward cycle (such as {{3,2},{2,1},{1,0},
-// {0,3}}) into two CollectivePermute instructions. We currently restrict
-// this transformation to CollectivePermute using partition mode, with one
-// input, without any context data. Here is an example.
+// instructions with all participants forming either
+// 1. a forward cycle  e.g. {{0,1},{1,2},{2,3},{3,0}
+// 2. a backward cycle e.g. {{3,2},{2,1},{1,0},{0,3}}
+// into two CollectivePermute instructions if the size of the data is above the
+// threshold.
 //
+// We currently restrict this transformation to CollectivePermute using
+// partition mode, with one input, without any context data.
+//
+// **Example**:
 // before transformation:
-//     start = (<rt>, <rt>) collective-permute(data),
-//       source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+//  %p = u32[] partition-id()
+//  ROOT %start = u32[] collective-permute(u32[] %p), channel_id=1,
+//    source_target_pairs={{0,1},{1,2},{2,3},{3,0}})
 //
 // after transformation:
-//     partition-id = u32[] partition-id()
-//     constant = u32[] constant(0)
-//     compare = pred[] compare(u32[] partition-id, u32[] constant),
-//       direction=EQ
-//     pred = pred[] broadcast(pred[] compare), dimensions={}
-//     cp1 = (<rt>, <rt>) collective-permute(data), source_target_pairs={{3,0}}
-//     cp2 = (<rt>, <rt>) collective-permute(data),
-//       source_target_pairs={{0,1},{1,2},{2,3}}
-//     data = <rt> select(pred, cp1, cp2)
-//
+// %partition-id = u32[] partition-id()
+//   %constant = u32[] constant(0)
+//   %compare = pred[] compare(u32[] %partition-id, u32[] %constant),
+//     direction=EQ
+//   %broadcast = pred[] broadcast(pred[] %compare), dimensions={}
+//   %p = u32[] partition-id()
+//   %collective-permute = u32[] collective-permute(u32[] %p), channel_id=1,
+//     source_target_pairs={{3,0}})
+//   %collective-permute.1 = u32[] collective-permute(u32[] %p), channel_id=2,
+//     source_target_pairs={{0,1},{1,2},{2,3}})
+//   ROOT %select = u32[] select(pred[] %broadcast, u32[] %collective-permute,
+//     u32[] %collective-permute.1)
 class CollectivePermuteCycleDecomposer : public HloModulePass {
  public:
   explicit CollectivePermuteCycleDecomposer(int64_t threshold_in_bytes)
