@@ -62,7 +62,7 @@ absl::StatusOr<StreamExecutor*> ROCmPlatform::FindExisting(int ordinal) {
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-ROCmPlatform::GetUncachedExecutor(int ordinal {
+ROCmPlatform::GetUncachedExecutor(int ordinal) {
   auto executor = std::make_unique<GpuExecutor>(this, ordinal);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
