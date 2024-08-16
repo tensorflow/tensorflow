@@ -601,7 +601,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
                            size_t alg_idx,
                            se::blas::ProfileResult* profile_result) {
-      return plan_and_algorithms->DoBlasLtMatmul(stream, a_ptr, b_ptr, c_ptr,
+      return plan_and_algorithms->ExecuteOnStream(stream, a_ptr, b_ptr, c_ptr,
                             alg_idx, scratch_allocator, bias_ptr,
                             profile_result);
     };

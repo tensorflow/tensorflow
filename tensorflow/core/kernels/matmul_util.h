@@ -57,7 +57,7 @@ struct PlanAndAlgorithms {
     std::optional<int> max_algorithm_count = std::nullopt
   );
 
-  Status DoBlasLtMatmul(se::Stream* stream, 
+  Status ExecuteOnStream(se::Stream* stream, 
                     const se::DeviceMemoryBase& a,
                     const se::DeviceMemoryBase& b, 
                     se::DeviceMemoryBase& c,
