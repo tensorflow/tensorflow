@@ -979,6 +979,198 @@ func.func @ConstFoldEmbeddingLookup() -> (tensor<5x2xf32>, tensor<3x2x2xf32>) {
   // CHECK: return %[[LOOKUP0]], %[[LOOKUP1]] : tensor<5x2xf32>, tensor<3x2x2xf32>
 }
 
+// CHECK-LABEL: @less_int_both_splat
+func.func @less_int_both_splat() -> tensor<4xi1> {
+  %0 = arith.constant dense<3> : tensor<4xi32>
+  %1 = arith.constant dense<10> : tensor<4xi32>
+
+  %2 = "tfl.less"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<true> : tensor<4xi1>
+
+// CHECK-LABEL: @less_int_one_splat
+func.func @less_int_one_splat() -> tensor<4xi1> {
+  %0 = arith.constant dense<3> : tensor<4xi32>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
+
+  %2 = "tfl.less"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK:%cst = arith.constant dense<[true, false, false, false]> : tensor<4xi1>
+
+// CHECK-LABEL: @less_int
+func.func @less_int() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi32>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
+
+  %2 = "tfl.less"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, false, false, true]> : tensor<4xi1>
+
+// CHECK-LABEL: @less_float
+func.func @less_float() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
+  %1 = arith.constant dense<[10.0, 2.0, -1.0, 3.0]> : tensor<4xf32>
+
+  %2 = "tfl.less"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, false, false, true]> : tensor<4xi1>
+
+// CHECK-LABEL: @less_equal_int
+func.func @less_equal_int() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi32>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
+
+  %2 = "tfl.less_equal"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, true, false, true]> : tensor<4xi1>
+
+// CHECK-LABEL: @less_equal_float
+func.func @less_equal_float() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
+  %1 = arith.constant dense<[10.0, 2.0, -1.0, 3.0]> : tensor<4xf32>
+
+  %2 = "tfl.less_equal"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, true, false, true]> : tensor<4xi1>
+
+// CHECK-LABEL: @greater_int
+func.func @greater_int() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi32>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
+
+  %2 = "tfl.greater"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, false, true, false]> : tensor<4xi1>
+
+// CHECK-LABEL: @greater_float
+func.func @greater_float() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
+  %1 = arith.constant dense<[10.0, 2.0, -1.0, 3.0]> : tensor<4xf32>
+
+  %2 = "tfl.greater"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, false, true, false]> : tensor<4xi1>
+
+// CHECK-LABEL: @greater_equal_int
+func.func @greater_equal_int() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi32>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
+
+  %2 = "tfl.greater_equal"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, true, true, false]> : tensor<4xi1>
+
+// CHECK-LABEL: @greater_equal_float
+func.func @greater_equal_float() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
+  %1 = arith.constant dense<[10.0, 2.0, -1.0, 3.0]> : tensor<4xf32>
+
+  %2 = "tfl.greater_equal"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, true, true, false]> : tensor<4xi1>
+
+// CHECK-LABEL: @equal_int
+func.func @equal_int() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi32>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
+
+  %2 = "tfl.equal"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, true, false, false]> : tensor<4xi1>
+
+// CHECK-LABEL: @equal_float
+func.func @equal_float() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
+  %1 = arith.constant dense<[10.0, 2.0, -1.0, 3.0]> : tensor<4xf32>
+
+  %2 = "tfl.equal"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, true, false, false]> : tensor<4xi1>
+
+// CHECK-LABEL: @not_equal_int
+func.func @not_equal_int() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi32>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
+
+  %2 = "tfl.not_equal"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, false, true, true]> : tensor<4xi1>
+
+// CHECK-LABEL: @not_equal_float
+func.func @not_equal_float() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
+  %1 = arith.constant dense<[10.0, 2.0, -1.0, 3.0]> : tensor<4xf32>
+
+  %2 = "tfl.not_equal"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, false, true, true]> : tensor<4xi1>
+
+// CHECK-LABEL: @logical_or
+func.func @logical_or() -> tensor<3xi1> {
+  %0 = arith.constant dense<[true, false, true]> : tensor<3xi1>
+  %1 = arith.constant dense<[false, false, true]> : tensor<3xi1>
+
+  %2 = "tfl.logical_or"(%0, %1) : (tensor<3xi1>, tensor<3xi1>) -> tensor<3xi1>
+
+  func.return %2 : tensor<3xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, false, true]> : tensor<3xi1>
+
+// CHECK-LABEL: @logical_and
+func.func @logical_and() -> tensor<3xi1> {
+  %0 = arith.constant dense<[true, false, true]> : tensor<3xi1>
+  %1 = arith.constant dense<[false, false, true]> : tensor<3xi1>
+
+  %2 = "tfl.logical_and"(%0, %1) : (tensor<3xi1>, tensor<3xi1>) -> tensor<3xi1>
+
+  func.return %2 : tensor<3xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, false, true]> : tensor<3xi1>
+
 // CHECK-LABEL: @select_splat_cond
 func.func @select_splat_cond() -> tensor<4xi32> {
   %cond = arith.constant dense<true> : tensor<4xi1>
@@ -1053,6 +1245,31 @@ func.func @exp_f64() -> tensor<4xf64> {
 }
 
 // CHECK: tfl.exp
+
+
+// CHECK-LABEL: pow_float
+func.func @pow_float() -> tensor<3xf32> {
+  %0 = arith.constant dense<[1.0, 0.0, 2.0]> : tensor<3xf32>
+  %1 = arith.constant dense<[2.0, 3.0, -1.5]> : tensor<3xf32>
+
+  %2 = "tfl.pow"(%0, %1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+
+  func.return %2 : tensor<3xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[1.000000e+00, 0.000000e+00, 0.353553385]> : tensor<3xf32>
+
+// CHECK-LABEL: pow_int
+func.func @pow_int() -> tensor<3xi32> {
+  %0 = arith.constant dense<[1, 0, 2]> : tensor<3xi32>
+  %1 = arith.constant dense<[2, 3, -1]> : tensor<3xi32>
+
+  %2 = "tfl.pow"(%0, %1) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi32>
+
+  func.return %2 : tensor<3xi32>
+}
+
+// CHECK: %cst = arith.constant dense<[1, 0, 0]> : tensor<3xi32>
 
 // CHECK-LABEL: logical_not
 func.func @logical_not() -> tensor<3xi1> {
