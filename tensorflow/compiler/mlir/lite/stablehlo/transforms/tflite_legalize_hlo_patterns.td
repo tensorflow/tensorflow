@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
-include "mhlo/IR/hlo_ops.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/CommonTypeConstraints.td"
-include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
-include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "mhlo/IR/hlo_ops.td"
 
 
 def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
@@ -39,7 +39,7 @@ def : Pat<(MHLO_ShiftRightLogicalOp $l, $r), (TFL_RightShiftOp $l, $r)>;
 def : Pat<(MHLO_RemOp $l, $r), (TFL_FloorModOp $l, $r)>;
 
 def LegalizeReshape : Pat<(MHLO_ReshapeOp:$output $input),
-          (TFL_ReshapeOp $input, 
+          (TFL_ReshapeOp $input,
             (CreateTFLCastToInt32Op (ShapeToConst $output)))>;
 
 def LegalizeDynamicReshape : Pat<(MHLO_DynamicReshapeOp $input, $shape),
@@ -555,3 +555,10 @@ def : Pat<(MHLO_RoundOp
            (FloatOrDefaultCompare $compare_type, $cst_zero),
            (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
 
+
+//===----------------------------------------------------------------------===//
+// ternary op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(MHLO_ClampOp $min, $arg, $max),
+          (TFL_MaximumOp (TFL_MinimumOp $arg, $max), $min)>;
