@@ -50,20 +50,22 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
 HloModule module
 
 ENTRY entry {
-  p = f32[1,1536,64]{2,1,0} parameter(0)
-  ROOT t = f32[1,64,1536]{2,1,0} transpose(p), dimensions={0,2,1}
+  p = f32[1536,64]{1,0} parameter(0)
+  ROOT t = f32[64,1536]{1,0} transpose(p), dimensions={1,0}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, InlinedVector({1, 64, 1536}));
-  EXPECT_EQ(result->permutation, InlinedVector({0, 2, 1}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 1536}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogical102Transpose) {

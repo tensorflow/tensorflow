@@ -454,13 +454,13 @@ TEST_F(MlirTransposeFusionTest, Transpose_2D) {
     HloModule Transpose
 
     %fused_computation {
-      %param_0 = f64[1,64, 64] parameter(0)
-      ROOT %transpose= f64[1,64,64] transpose( %param_0),
-        dimensions={0,2,1}
+      %param_0 = f64[64, 64] parameter(0)
+      ROOT %transpose= f64[64,64] transpose( %param_0),
+        dimensions={1,0}
     }
     ENTRY main {
-      %param = f64[1,64,64] parameter(0)
-      ROOT %fusion = f64[1,64,64] fusion(%param), kind=kInput,
+      %param = f64[64,64] parameter(0)
+      ROOT %fusion = f64[64,64] fusion(%param), kind=kInput,
         calls=%fused_computation
     }
   )";
