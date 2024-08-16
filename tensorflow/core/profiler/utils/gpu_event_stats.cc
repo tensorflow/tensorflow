@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 
+#include <cstdint>
+
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -57,7 +59,7 @@ GpuEventStats::GpuEventStats(const XEventVisitor* event) {
         memcpy_details = stat.StrOrRefValue();
         break;
       case StatType::kCorrelationId:
-        correlation_id = stat.IntValue();
+        correlation_id = static_cast<int64_t>(stat.IntOrUintValue());
         break;
       case StatType::kGroupId:
         group_id = stat.IntValue();
@@ -79,7 +81,7 @@ LaunchEventStats::LaunchEventStats(const XEventVisitor* event) {
         device_id = stat.IntOrUintValue();
         break;
       case StatType::kCorrelationId:
-        correlation_id = stat.IntValue();
+        correlation_id = static_cast<int64_t>(stat.IntOrUintValue());
         break;
       case StatType::kGroupId:
         group_id = stat.IntValue();
