@@ -18,7 +18,6 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,6 +27,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -53,25 +54,22 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
-#include "xla/service/gpu/runtime/conditional_thunk.h"
-#include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/runtime/thunk.h"
-#include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_ordering.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
 
@@ -102,8 +100,10 @@ void RemoveUnusedAndUninitializedGlobals(
   }
 }
 
-static absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
-                              absl::string_view cache_file_path) {
+}  // namespace
+
+absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
+                       absl::string_view cache_file_path) {
   std::string resolved_path;
   if (!tsl::io::ResolveTestPrefixes(cache_file_path, resolved_path)) {
     return FailedPrecondition("File path can not be resolved: %s",
@@ -114,7 +114,7 @@ static absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
     TF_RETURN_IF_ERROR(
         tsl::ReadFileToString(tsl::Env::Default(), resolved_path, &serialized));
     CompilationCacheProto proto;
-    if (!proto.ParseFromString(std::string(serialized))) {
+    if (!proto.ParseFromString(serialized)) {
       return Internal("Failed to parse serialized CompilationCacheProto.");
     }
     // Register all cached kernel names with the name uniquer to avoid
@@ -130,8 +130,6 @@ static absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
   }
   return absl::OkStatus();
 }
-
-}  // namespace
 
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
