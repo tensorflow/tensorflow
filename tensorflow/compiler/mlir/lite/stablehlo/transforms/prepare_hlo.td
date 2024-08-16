@@ -67,6 +67,15 @@ def IsStandardConv : Constraint<CPred<
 def IsDepthwiseConv : Constraint<CPred<
   "IsDepthwiseConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
 
+def IsSupportedNonTrivialConv : Constraint<CPred<
+  "IsSupportedNonTrivialConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
+
+def IsSupportedConv : Constraint<Or
+  <[IsStandardConv.predicate, IsDepthwiseConv.predicate, IsSupportedNonTrivialConv.predicate]>>;
+
+def IsSupportedStandardOrNonTrivialConv : Constraint<Or
+  <[IsStandardConv.predicate, IsSupportedNonTrivialConv.predicate]>>;
+
 def IsStandardOrDepthwiseConv : Constraint<Or
   <[IsStandardConv.predicate, IsDepthwiseConv.predicate]>>;
 
@@ -135,7 +144,7 @@ def ReLayoutConvInput : Pat<(MHLO_ConvolutionOp:$conv
                             [(AreDnumsFullyDefined $conv),
                              (InputHasIotaSpatials $dnums),
                              (IsInputNotTFLNativeLayout $dnums),
-                             (IsStandardOrDepthwiseConv $conv)],
+                             (IsSupportedConv $conv)],
                              [],
                              (addBenefit 1)>;
 
@@ -210,7 +219,7 @@ def ReLayoutConvKernel : Pat<(MHLO_ConvolutionOp:$conv
                             [(AreDnumsFullyDefined $conv),
                              (KernelHasIotaSpatials $dnums),
                              (IsKernelNotTFLNativeStandardConvLayout $dnums),
-                             (IsStandardConv $conv)],
+                             (IsSupportedStandardOrNonTrivialConv $conv)],
                              [],
                              (addBenefit 1)>;
 
@@ -344,7 +353,7 @@ def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
                             [(AreDnumsFullyDefined $conv),
                              (KernelHasIotaSpatials $dnums),
                              (IsOutputNotTFLNativeLayout $dnums),
-                             (IsStandardOrDepthwiseConv $conv)]>;
+                             (IsSupportedConv $conv)]>;
 
 
 // Pull out non-trivial padding into separate explicit pad_op.
