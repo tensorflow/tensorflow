@@ -1053,7 +1053,7 @@ package_group(
         "//learning/serving/experimental/remote_predict/...",
         "//perftools/accelerators/xprof/convert/...",
         "//perftools/accelerators/xprof/integration_tests/...",
-        "//smartass/brain/configure/...",
+        "//smartass/brain/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
