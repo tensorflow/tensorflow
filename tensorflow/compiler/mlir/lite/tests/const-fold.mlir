@@ -979,6 +979,45 @@ func.func @ConstFoldEmbeddingLookup() -> (tensor<5x2xf32>, tensor<3x2x2xf32>) {
   // CHECK: return %[[LOOKUP0]], %[[LOOKUP1]] : tensor<5x2xf32>, tensor<3x2x2xf32>
 }
 
+// CHECK-LABEL: @select_splat_cond
+func.func @select_splat_cond() -> tensor<4xi32> {
+  %cond = arith.constant dense<true> : tensor<4xi1>
+  %0 = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+  %1 = arith.constant dense<[-1, -2, -3, -4]> : tensor<4xi32>
+
+  %2 = "tfl.select"(%cond, %0, %1) : (tensor<4xi1>, tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+  func.return %2 : tensor<4xi32>
+}
+
+// CHECK: %cst = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+
+// CHECK-LABEL: select_splat_lhs
+func.func @select_splat_lhs() -> tensor<4xi32> {
+  %cond = arith.constant dense<[true, true, false, false]> : tensor<4xi1>
+  %0 = arith.constant dense<0> : tensor<4xi32>
+  %1 = arith.constant dense<[-1, -2, -3, -4]> : tensor<4xi32>
+
+  %2 = "tfl.select"(%cond, %0, %1) : (tensor<4xi1>, tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+  func.return %2 : tensor<4xi32>
+}
+
+// CHECK: %cst = arith.constant dense<[0, 0, -3, -4]> : tensor<4xi32>
+
+// CHECK-LABEL: select_float
+func.func @select_float() -> tensor<4xf32> {
+  %cond = arith.constant dense<[true, true, false, false]> : tensor<4xi1>
+  %0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf32>
+  %1 = arith.constant dense<[-1.0, -2.0, -3.0, -4.0]> : tensor<4xf32>
+
+  %2 = "tfl.select"(%cond, %0, %1) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %2 : tensor<4xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00]> : tensor<4xf32
+
 // CHECK-LABEL: floor
 func.func @floor() -> tensor<3xf32> {
   %cst = arith.constant dense<[-1.0, 0.0, 0.99]> : tensor<3xf32>

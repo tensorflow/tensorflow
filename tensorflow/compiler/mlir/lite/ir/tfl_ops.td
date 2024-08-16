@@ -3163,6 +3163,8 @@ def TFL_SelectOp : TFL_Op<"select", [
   let results = (outs
     TFL_TensorOf<[F32, I1, I8, I16, I32, I64, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 
+  let hasFolder = 1;
+
   // TODO(jpienaar): autogenerate this.
   let builders = [
     OpBuilder<(ins "Value":$condition, "Value":$x, "Value":$y),

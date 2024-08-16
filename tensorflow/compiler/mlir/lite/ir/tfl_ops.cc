@@ -3169,6 +3169,73 @@ OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// SelectOp
+//===----------------------------------------------------------------------===//
+
+// TODO: b/359275356 - Expand this to handle the broadcast case similar
+// to `ConstFoldBinaryOpDense`.
+OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
+  auto lhs_type = getX().getType();
+  auto rhs_type = getY().getType();
+  auto condition_type = getCondition().getType();
+  auto out_type = getType();
+
+  if (lhs_type != rhs_type) {
+    return {};
+  }
+
+  if (lhs_type.getShape() != condition_type.getShape()) {
+    // "broadcasted" condition not yet supported.
+    return {};
+  }
+
+  auto condition_vals =
+      llvm::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getCondition());
+  if (!condition_vals || !condition_vals.getElementType().isInteger(1)) {
+    return {};
+  }
+
+  if (condition_vals.isSplat()) {
+    const bool val = condition_vals.getSplatValue<bool>();
+    return val ? adaptor.getX() : adaptor.getY();
+  }
+
+  auto lhs_vals = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getX());
+  auto rhs_vals = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getY());
+  if (!lhs_vals || !rhs_vals) {
+    return {};
+  }
+
+  llvm::SmallVector<Attribute> results;
+  results.reserve(condition_type.getNumElements());
+
+  auto lhs_it = lhs_vals.getValues<Attribute>().begin();
+  auto lhs_end = lhs_vals.getValues<Attribute>().end();
+  auto rhs_it = rhs_vals.getValues<Attribute>().begin();
+  auto rhs_end = rhs_vals.getValues<Attribute>().end();
+
+  auto condition_it = condition_vals.getValues<bool>().begin();
+  auto condition_end = condition_vals.getValues<bool>().end();
+
+  while (condition_it < condition_end && lhs_it < lhs_end && rhs_it < rhs_end) {
+    if (*condition_it++) {
+      results.push_back(*lhs_it);
+    } else {
+      results.push_back(*rhs_it);
+    }
+
+    if (!lhs_vals.isSplat()) {
+      lhs_it++;
+    }
+    if (!rhs_vals.isSplat()) {
+      rhs_it++;
+    }
+  }
+
+  return DenseElementsAttr::get(out_type, results);
+}
+
+//===----------------------------------------------------------------------===//
 // RankOp
 //===----------------------------------------------------------------------===//
 
