@@ -556,8 +556,9 @@ absl::Status HostOffloader::ValidateSliceLeadsToMoveToDeviceCustomCall(
           "the MoveToDevice custom call.",
           slice->name(), current_instruction->name()));
     }
-    TF_ASSIGN_OR_RETURN(const std::vector<InstructionAndShapeIndex> successors,
-                        GetSuccessors(instruction_and_shape));
+    TF_ASSIGN_OR_RETURN(
+        const std::vector<InstructionAndShapeIndex> successors,
+        host_offload_utils::GetSuccessors(instruction_and_shape));
     for (const InstructionAndShapeIndex& successor : successors) {
       queue.push(successor);
     }
@@ -643,7 +644,8 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                 kHostMemorySpaceColor);
             TF_ASSIGN_OR_RETURN(
                 const std::vector<InstructionAndShapeIndex> successors,
-                GetSuccessors(nested_instruction_and_shape));
+                host_offload_utils::GetSuccessors(
+                    nested_instruction_and_shape));
             for (const InstructionAndShapeIndex& successor : successors) {
               nested_queue.push(successor);
             }
