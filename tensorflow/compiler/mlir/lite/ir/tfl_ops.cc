@@ -3504,14 +3504,21 @@ llvm::SmallVector<OutType> MapStaticCast(DenseElementsAttr data) {
 
 OpFoldResult CastIntToFloat(DenseIntElementsAttr data, IntegerType in_type,
                             FloatType out_type) {
-  const bool from_i32 = in_type.isSignlessInteger(32);
-  const bool to_f32 = out_type.isF32();
-  if (!from_i32 || !to_f32) {
+  auto result_type = data.getType().clone(out_type);
+  if (!out_type.isF32()) {
     return {};
   }
 
-  return DenseFPElementsAttr::get(data.getType().clone(out_type),
-                                  MapStaticCast<int32_t, float>(data));
+  if (in_type.isSignlessInteger(32)) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<int32_t, float>(data));
+  }
+  if (in_type.isSignlessInteger(1)) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<bool, float>(data));
+  }
+
+  return {};
 }
 
 OpFoldResult CastFloatToFloat(DenseFPElementsAttr data, FloatType in_type,

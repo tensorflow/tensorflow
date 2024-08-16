@@ -815,6 +815,15 @@ func.func @cast_i32_to_f32() -> tensor<5xf32> {
 
 // CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 2.000000e+00, 2.14748365E+9, -2.14748365E+9]> : tensor<5xf32>
 
+// CHECK-LABEL: @cast_bool_to_f32
+func.func @cast_bool_to_f32() -> tensor<2xf32> {
+  %cst = arith.constant dense<[true, false]> : tensor<2xi1>
+  %0 = "tfl.cast"(%cst) : (tensor<2xi1>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[1.000000e+00, 0.000000e+00]> : tensor<2xf32>
+
 // CHECK-LABEL: @cast_f64_to_f32
 func.func @cast_f64_to_f32() -> tensor<4xf32> {
   %cst = arith.constant dense<[-1.0, 0.0, 1.5, 100.0]> : tensor<4xf64>

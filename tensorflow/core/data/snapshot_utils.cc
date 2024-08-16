@@ -579,7 +579,7 @@ class Reader::NestedDataset : public DatasetBase {
                          std::vector<DatasetBase*> datasets)
       : DatasetBase(std::move(ctx)), datasets_(datasets) {
     dtypes_.push_back(DT_VARIANT);
-    gtl::InlinedVector<int64_t, 1> element_dim_sizes;
+    absl::InlinedVector<int64_t, 1UL> element_dim_sizes;
     element_dim_sizes.push_back(1);
     partial_shapes_.emplace_back(element_dim_sizes);
   }
