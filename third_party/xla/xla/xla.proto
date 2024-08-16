@@ -28,7 +28,100 @@ message CompilationEnvironmentsProto {
 
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
+//
+// Debug options naming and organization:
+//
+// 1. Backend-agnostic options: `xla_$flag_name` - go first, and sorted
+//    alphabetically by the flag name.
+//
+// 2. Backend-specific options: `xla_$backend_$flag_name` - must be in the
+//    corresponding backend section, and sorted alphabetically by the flag name.
+//
 message DebugOptions {
+  //--------------------------------------------------------------------------//
+  // XLA backend-agnostic options.
+  //--------------------------------------------------------------------------//
+  // go/keep-sorted start
+
+  // go/keep-sorted end
+
+  //--------------------------------------------------------------------------//
+  // XLA:CPU options.
+  //--------------------------------------------------------------------------//
+
+  // go/keep-sorted start newline_separated=yes
+  //
+  // When true, XLA:CPU uses HLO module scheduler that is optimized for
+  // extracting concurrency at the cost of extra memory: we extend the live
+  // ranges of temporaries to allow XLA runtime to schedule independent
+  // operations in parallel on separate threads.
+  bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
+
+  // When true, "unsafe" mathematical optimizations are enabled. These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf (this
+  //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool xla_cpu_enable_fast_math = 99;
+
+  // When false we lower the Minimum and Maximum hlos in the CPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NaN.  In other words, if flag
+  // this is false we always propagate NaNs through Min and Max.
+  //
+  // Note, this does not correspond to the exact same behavior as the gpu flag
+  // below!
+  bool xla_cpu_enable_fast_min_max = 140;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to use the reciprocal of an argument instead of division. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_division = 126;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to approximate calculations for functions. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_functions = 129;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_infs = 121;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_nans = 120;
+
+  // When true, XLA:CPU uses the thunk runtime to execute compiled program.
+  bool xla_cpu_use_thunk_runtime = 298;
+
+  // A `prefer-vector-width` value that is passed to the LLVM backend. Default
+  // value is `256` (AVX2 on x86 platforms).
+  int32 xla_cpu_prefer_vector_width = 308;
+
+  // go/keep-sorted end
+
+  //--------------------------------------------------------------------------//
+  // XLA:GPU options.
+  //--------------------------------------------------------------------------//
+  // go/keep-sorted start
+
+  // go/keep-sorted end
+
+  //--------------------------------------------------------------------------//
+  // XLA:TPU options.
+  //--------------------------------------------------------------------------//
+  // go/keep-sorted start
+
+  // go/keep-sorted end
+
+  //--------------------------------------------------------------------------//
+  // A bag of XLA options that have to be categorized.
+  //--------------------------------------------------------------------------//
+
   // Show addresses of HLO ops in graph dump.
   bool xla_hlo_graph_addresses = 2;
 
@@ -115,57 +208,8 @@ message DebugOptions {
   bool xla_cpu_use_mkl_dnn = 97;
 
   reserved 177;  // Was xla_cpu_use_xla_runtime
-  bool xla_cpu_use_thunk_runtime = 298;
-
-  // When true, XLA:CPU uses HLO module scheduler that is optimized for
-  // extracting concurrency at the cost of extra memory: we extend the live
-  // ranges of temporaries to allow XLA runtime to schedule independent
-  // operations in parallel on separate threads.
-  bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
-
-  // A `prefer-vector-width` value that is passed to the LLVM backend. Default
-  // value is `256` (AVX2 on x86 platforms).
-  int32 xla_cpu_prefer_vector_width = 308;
 
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
-
-  // When true, "unsafe" mathematical optimizations are enabled. These
-  // transformations include but are not limited to:
-  //
-  //  - Reducing the precision of operations (e.g. using an approximate sin
-  //    function, or transforming x/y into x * (1/y)).
-  //  - Assuming that operations never produce or consume NaN or +/- Inf (this
-  //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
-  //  - Assuming that +0 and -0 are indistinguishable.
-  bool xla_cpu_enable_fast_math = 99;
-
-  // When xla_cpu_enable_fast_math is true then this controls whether we allow
-  // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
-  // false.
-  bool xla_cpu_fast_math_honor_nans = 120;
-
-  // When xla_cpu_enable_fast_math is true then this controls whether we allow
-  // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
-  // false.
-  bool xla_cpu_fast_math_honor_infs = 121;
-
-  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
-  // to use the reciprocal of an argument instead of division. Ignored when
-  // xla_cpu_enable_fast_math is false.
-  bool xla_cpu_fast_math_honor_division = 126;
-
-  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
-  // to approximate calculations for functions. Ignored when
-  // xla_cpu_enable_fast_math is false.
-  bool xla_cpu_fast_math_honor_functions = 129;
-
-  // When false we lower the Minimum and Maximum hlos in the CPU backend such
-  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NaN.  In other words, if flag
-  // this is false we always propagate NaNs through Min and Max.
-  //
-  // Note, this does not correspond to the exact same behavior as the gpu flag
-  // below!
-  bool xla_cpu_enable_fast_min_max = 140;
 
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
