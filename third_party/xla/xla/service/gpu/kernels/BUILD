@@ -8,7 +8,7 @@ load(
 load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "DEFAULT_DISABLED_BACKENDS", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_windows")
 
 package(
@@ -108,7 +108,7 @@ xla_test(
     srcs = ["cutlass_gemm_fusion_test.cc"],
     backends = ["gpu"],
     # TODO(b/332820384): Enable when it passes on H100.
-    disabled_backends = ["gpu_h100"],
+    disabled_backends = DEFAULT_DISABLED_BACKENDS + ["gpu_h100"],
     tags = ["no_rocm"],
     deps = [
         ":custom_kernel",
