@@ -410,6 +410,16 @@ GpuThunkAotCompilationResult::LoadExecutable(
       platform_name, gpu_device_info, mlir_context.get(), llvm_module.get(),
       /*llvm_module_constants=*/nullptr,
       /*emit_kernels=*/false);
+
+  absl::string_view cache_file_path =
+      hlo_module->config().debug_options().xla_gpu_kernel_cache_file();
+  if (!cache_file_path.empty() &&
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_llvm_module_compilation_parallelism()) {
+    TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
+  }
+
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
   TF_RETURN_IF_ERROR(
       ir_emitter->EmitHloComputation(hlo_module->entry_computation()));

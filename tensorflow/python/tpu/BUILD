@@ -120,7 +120,6 @@ tpu_py_strict_test(
     size = "medium",
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
-    disable_mlir_bridge = False,
     tags = ["no_oss"],
     deps = [
         ":async_checkpoint",
@@ -950,7 +949,6 @@ tpu_py_strict_test(
         "tpu_outside_compilation_test.py",
     ],
     disable_experimental = True,
-    disable_mlir_bridge = False,
     python_version = "PY3",
     deps = [
         ":functional",
@@ -1156,7 +1154,6 @@ tpu_py_strict_test(
     # copybara:uncomment disable_v5_grm = True,
     env = {
         "TF_XLA_FLAGS": (
-            "--tf_mlir_enable_mlir_bridge=true " +
             "--tf_mlir_enable_convert_control_to_data_outputs_pass=true " +
             "--tf_mlir_enable_merge_control_flow_pass=true " +
             "--tf_mlir_enable_strict_clusters=true " +
