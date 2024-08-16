@@ -72,9 +72,9 @@ tf_cc_test(
         "//tensorflow/lite/core:framework",  # to remove when mlir version is ready.
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/util:command_line_flags",
     ],
 )
