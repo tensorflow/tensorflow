@@ -87,6 +87,15 @@ class PriorityFusionTest : public HloTestBase {
                                   /*count_multiple_input_accesses=*/true}};
 };
 
+class PriorityFusionWithTritonEnabledTest : public PriorityFusionTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = PriorityFusionTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_softmax_priority_fusion(true);
+    return debug_options;
+  }
+};
+
 TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
@@ -861,7 +870,8 @@ TEST_F(PriorityFusionTest, DoNotFuseProducerConsumerMergedTooLarge) {
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
-TEST_F(PriorityFusionTest, CanMergeTritonFusionWithBothProducerAndConsumer) {
+TEST_F(PriorityFusionWithTritonEnabledTest,
+       CanMergeTritonFusionWithBothProducerAndConsumer) {
 #ifndef GOOGLE_CUDA
   GTEST_SKIP() << "Triton fusion only enable for CUDA devices.";
 #endif
@@ -902,9 +912,6 @@ ENTRY main {
   ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_1, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  auto debug_options = module->config().debug_options();
-  debug_options.set_xla_gpu_enable_triton_softmax_priority_fusion(true);
-  module->mutable_config().set_debug_options(debug_options);
 
   EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
@@ -922,6 +929,67 @@ ENTRY main {
                 .block_level_fusion_config()
                 .output_tile_sizes_size(),
             2);
+}
+
+TEST_F(PriorityFusionWithTritonEnabledTest,
+       TritonProducerNotSupported_DoNotFuse) {
+  const std::string kHloText = R"(
+HloModule t
+
+producer_computation {
+  parameter_0 = c64[] parameter(0)
+  broadcast = c64[125,127] broadcast(parameter_0), dimensions={}
+  ROOT real = f32[125,127] real(broadcast)
+}
+
+triton_computation {
+  parameter_0 = f32[125,127] parameter(0)
+  parameter_1 = f32[125,127] parameter(1)
+  ROOT add = f32[125,127] add(parameter_0, parameter_1)
+}
+
+ENTRY main {
+  param_0 = c64[] parameter(0)
+  param_1 = f32[125,127] parameter(1)
+  producer_fusion = f32[125,127] fusion(param_0), kind=kLoop, calls=producer_computation
+  ROOT triton_fusion = f32[125,127] fusion(producer_fusion, param_1), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  // Triton does not support c64, so producer_fusion and triton_fusion and will
+  // not be fused.
+  EXPECT_FALSE(priority_fusion_.Run(module.get()).value());
+}
+
+TEST_F(PriorityFusionWithTritonEnabledTest,
+       TritonConsumerNotSupported_DoNotFuse) {
+  const std::string kHloText = R"(
+HloModule t
+
+triton_computation {
+  parameter_0 = f32[] parameter(0)
+  ROOT boardcast = f32[125,127] broadcast(parameter_0), dimensions={}
+}
+
+consumer_computation {
+  parameter_0 = c64[] parameter(0)
+  parameter_1 = f32[125,127] parameter(1)
+  broadcast = c64[125,127] broadcast(parameter_0), dimensions={}
+  real = f32[125,127] real(broadcast)
+  ROOT add = f32[125,127] add(real, parameter_1)
+}
+
+ENTRY main {
+  param_0 = f32[] parameter(1)
+  param_1 = c64[] parameter(0)
+  triton_fusion = f32[125,127] fusion(param_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+  ROOT consumer_fusion = f32[125,127] fusion(param_1, triton_fusion), kind=kLoop, calls=consumer_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  // Triton does not support c64, so triton_fusion and consumer_fusion will not
+  // be fused.
+  EXPECT_FALSE(priority_fusion_.Run(module.get()).value());
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseInsideReducer) {

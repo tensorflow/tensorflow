@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -469,6 +470,24 @@ class PriorityFusionQueue {
                                     run_times.time_fused);
   }
 
+  FusionDecision IsTritonSupported(const HloInstruction& instruction) {
+    if (instruction.opcode() != HloOpcode::kFusion) {
+      return IsTritonSupportedInstruction(
+          instruction, device_info_->gpu_compute_capability());
+    }
+
+    for (const HloInstruction* instruction :
+         instruction.fused_instructions_computation()->instructions()) {
+      if (auto codegen_decision = IsTritonSupportedInstruction(
+              *instruction, device_info_->gpu_compute_capability());
+          !codegen_decision) {
+        return codegen_decision;
+      }
+    }
+
+    return {};
+  }
+
   FusionDecision CanFuseTriton(HloInstruction* producer,
                                HloInstruction* consumer) {
     if (!triton_softmax_priority_fusion_enabled_) {
@@ -479,9 +498,19 @@ class PriorityFusionQueue {
       if (!IsFusible(*consumer)) {
         return "the consumer is not fusible";
       }
+
+      if (auto fusion_decision = IsTritonSupported(*consumer);
+          !fusion_decision) {
+        return fusion_decision;
+      }
     } else {
       if (!IsFusible(*producer)) {
         return "the producer is not fusible";
+      }
+
+      if (auto fusion_decision = IsTritonSupported(*producer);
+          !fusion_decision) {
+        return fusion_decision;
       }
     }
 
