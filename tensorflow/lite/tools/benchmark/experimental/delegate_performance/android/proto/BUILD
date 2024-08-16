@@ -13,6 +13,7 @@ package(
 proto_library(
     name = "delegate_performance_proto",
     srcs = ["delegate_performance.proto"],
+    cc_api_version = 2,
 )
 
 cc_proto_library(

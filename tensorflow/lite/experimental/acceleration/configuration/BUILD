@@ -61,6 +61,7 @@ genrule(
 proto_library(
     name = "configuration_proto",
     srcs = ["configuration.proto"],
+    cc_api_version = 2,
     exports = ["//tensorflow/lite/acceleration/configuration:configuration_proto"],
     deps = ["//tensorflow/lite/acceleration/configuration:configuration_proto"],
 )

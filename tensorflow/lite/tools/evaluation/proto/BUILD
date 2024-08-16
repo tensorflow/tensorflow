@@ -31,6 +31,7 @@ proto_library(
     srcs = [
         "evaluation_stages.proto",
     ],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
     deps = [":preprocessing_steps_proto"],
 )
@@ -62,6 +63,7 @@ proto_library(
     srcs = [
         "evaluation_config.proto",
     ],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
     deps = [":evaluation_stages_proto"],
 )
@@ -81,6 +83,7 @@ proto_library(
     srcs = [
         "preprocessing_steps.proto",
     ],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 

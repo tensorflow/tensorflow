@@ -629,6 +629,7 @@ tf_proto_library(
             "framework/cpp_shape_inference.proto",
         ],
     ),
+    cc_api_version = 2,
     protodeps = ["//tensorflow/python/training:checkpoint_state"],
     visibility = visibility,
 )

@@ -15,6 +15,7 @@ package(
 proto_library(
     name = "profiling_info_proto",
     srcs = ["profiling_info.proto"],
+    cc_api_version = 2,
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
 )

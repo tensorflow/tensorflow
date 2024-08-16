@@ -120,6 +120,7 @@ proto_library(
     srcs = [
         "configuration.proto",
     ],
+    cc_api_version = 2,
     compatible_with = get_compatible_with_portable(),
 )
 

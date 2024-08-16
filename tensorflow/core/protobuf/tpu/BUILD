@@ -56,6 +56,7 @@ tf_proto_library(
     srcs = [
         "compilation_result.proto",
     ],
+    cc_api_version = 2,
     protodeps = tf_additional_all_protos() + [
         "@local_xla//xla:xla_data_proto",
         "@local_xla//xla/service:hlo_proto",
