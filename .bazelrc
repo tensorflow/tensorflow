@@ -223,7 +223,7 @@ build:cuda --@local_config_cuda//:enable_cuda
 build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
 build:cuda --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29"
 # This flag is needed to include hermetic CUDA libraries for bazel tests.
-test:cuda --@local_config_cuda//cuda:include_hermetic_cuda_libs=true
+test:cuda --@local_config_cuda//cuda:include_cuda_libs=true
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 build:cuda_clang --config=cuda

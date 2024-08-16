@@ -54,7 +54,8 @@ filegroup(
 alias(
   name = "nccl",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": "@cuda_nccl//:nccl",
+      "@local_config_cuda//cuda:cuda_libs": "@cuda_nccl//:nccl",
+      "@local_config_cuda//cuda:cuda_tools": "@cuda_nccl//:headers",
       "//conditions:default": "@nccl_archive//:nccl",
   }),
   visibility = ["//visibility:public"],
@@ -70,7 +71,7 @@ cc_library(
 alias(
   name = "nccl_config",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": ":hermetic_nccl_config",
+      "@local_config_cuda//cuda:cuda_tools": ":hermetic_nccl_config",
       "//conditions:default": "@nccl_archive//:nccl_config",
   }),
   visibility = ["//visibility:public"],
@@ -87,7 +88,8 @@ filegroup(
 alias(
   name = "nccl",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": "@cuda_nccl//:nccl",
+      "@local_config_cuda//cuda:cuda_libs": "@cuda_nccl//:nccl",
+      "@local_config_cuda//cuda:cuda_tools": "@cuda_nccl//:headers",
       "//conditions:default": "@nccl_archive//:nccl_via_stub",
   }),
   visibility = ["//visibility:public"],
@@ -96,7 +98,7 @@ alias(
 alias(
   name = "nccl_headers",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": "@cuda_nccl//:headers",
+      "@local_config_cuda//cuda:cuda_tools": "@cuda_nccl//:headers",
       "//conditions:default": "@nccl_archive//:nccl_headers",
   }),
   visibility = ["//visibility:public"],
@@ -112,7 +114,7 @@ cc_library(
 alias(
   name = "nccl_config",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": ":hermetic_nccl_config",
+      "@local_config_cuda//cuda:cuda_tools": ":hermetic_nccl_config",
       "//conditions:default": "@nccl_archive//:nccl_config",
   }),
   visibility = ["//visibility:public"],

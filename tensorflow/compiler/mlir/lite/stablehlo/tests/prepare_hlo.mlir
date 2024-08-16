@@ -15,6 +15,51 @@ func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
 // 2D
 //=--
 
+// CHECK-LABEL: transpose_conv2d_same_padding_nchw_ihwo
+func.func @transpose_conv2d_same_padding_nchw_ihwo(%input: tensor<1x2x256x256xf32>, %filter:tensor<2x2x4x4xf32>) -> tensor<1x2x512x512xf32> {
+  %1 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, f, 0, 1]x[i, o, 0, 1]->[b, f, 0, 1],
+    window = {pad = [[2, 2], [2, 2]], lhs_dilate = [2, 2]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+    : (tensor<1x2x256x256xf32>, tensor<2x2x4x4xf32>) -> tensor<1x2x512x512xf32>
+    func.return %1 : tensor<1x2x512x512xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [1, 2, 3, 0]
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 3, 1, 2]
+
+// CHECK-LABEL: transpose_conv2d_same_padding_nchw_oihw
+func.func @transpose_conv2d_same_padding_nchw_oihw(%input: tensor<1x2x256x256xf32>, %filter:tensor<2x2x4x4xf32>) -> tensor<1x2x512x512xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+   dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1],
+   window = {pad = [[2, 2], [2, 2]], lhs_dilate = [2, 2]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64
+    } : (tensor<1x2x256x256xf32>, tensor<2x2x4x4xf32>) -> tensor<1x2x512x512xf32>
+  func.return %0 : tensor<1x2x512x512xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 3, 1, 2]
+
 // CHECK-LABEL: conv2d_nhwc_ohwi_nhwc
 func.func @conv2d_nhwc_ohwi_nhwc(%input: tensor<1x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32> {
   %0 = mhlo.convolution(%input, %filter)

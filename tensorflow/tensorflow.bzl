@@ -70,7 +70,7 @@ load(
     "tsl_gpu_library",
     _cc_header_only_library = "cc_header_only_library",
     _if_cuda_or_rocm = "if_cuda_or_rocm",
-    _if_hermetic_cuda_tools = "if_hermetic_cuda_tools",
+    _if_cuda_tools = "if_cuda_tools",
     _if_nccl = "if_nccl",
     _transitive_hdrs = "transitive_hdrs",
 )
@@ -3578,5 +3578,5 @@ def replace_with_portable_tf_lib_when_required(non_portable_tf_deps, use_lib_wit
 def tf_python_framework_friends():
     return ["//tensorflow:__subpackages__"]
 
-def if_hermetic_cuda_tools(if_true, if_false = []):
-    return _if_hermetic_cuda_tools(if_true, if_false)
+def if_cuda_tools(if_true, if_false = []):
+    return _if_cuda_tools(if_true, if_false)

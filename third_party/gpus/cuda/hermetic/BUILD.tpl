@@ -231,27 +231,22 @@ py_library(
 
 # Config setting whether TensorFlow is built with hermetic CUDA.
 alias(
-    name = "hermetic_cuda_tools",
+    name = "cuda_tools",
     actual = "@local_config_cuda//:is_cuda_enabled",
 )
 
 # Flag indicating if we should include hermetic CUDA libs.
 bool_flag(
-    name = "include_hermetic_cuda_libs",
+    name = "include_cuda_libs",
     build_setting_default = False,
 )
 
 config_setting(
-    name = "hermetic_cuda_libs",
-    flag_values = {":include_hermetic_cuda_libs": "True"},
-)
-
-selects.config_setting_group(
-    name = "hermetic_cuda_tools_and_libs",
-    match_all = [
-        ":hermetic_cuda_libs",
-        ":hermetic_cuda_tools"
-    ],
+    name = "cuda_libs",
+    flag_values = {
+        ":include_cuda_libs": "True", 
+        "@local_config_cuda//:enable_cuda": "True",
+    },
 )
 
 cc_library(

@@ -15,7 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_CONV_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_CONV_UTIL_H_
 
+#include <cstdint>
+#include <optional>
+
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -100,8 +106,29 @@ inline bool HasSupportedOutFeatureDims(const ConvView& data) {
   return kernel_out_features == out_features;
 }
 
-inline bool IsNonTrivialConv(const ConvView& data) {
+inline bool IsTrivialConv(const ConvView& data) {
   return llvm::all_of(data.InputDilations(), [](auto d) { return d == 1; });
+}
+
+//
+// Supported non-trivial conv predicates
+//=-----
+
+inline bool IsSupportedNonTrivialConv(const ConvView& data) {
+  // Only non-trivial 2d convolutions are supported.
+  const bool valid_rank = data.InputLayout().Rank() == 4;
+
+  // Nagative padding is unsupported.
+  bool has_nagative_padding = llvm::all_of(
+      data.Padding(),
+      [](const DimPadding& p) { return p.Hi() < 0 || p.Lo() < 0; });
+
+  return (valid_rank && !IsTrivialConv(data) && !has_nagative_padding);
+}
+
+inline bool IsSupportedNonTrivialConv(mhlo::ConvolutionOp op) {
+  const ConvView data(op);
+  return IsSupportedNonTrivialConv(data);
 }
 
 //
@@ -122,7 +149,7 @@ inline bool HasStandardConvInFeatureDims(const ConvView& data) {
 }
 
 inline bool IsStandardConv(const ConvView& data) {
-  return HasSupportedRank(data) && IsNonTrivialConv(data) &&
+  return HasSupportedRank(data) && IsTrivialConv(data) &&
          HasStandardConvInFeatureDims(data) && HasSupportedOutFeatureDims(data);
 }
 
@@ -140,7 +167,7 @@ inline bool IsStandardConv(mhlo::ConvolutionOp op) {
 inline bool IsDepthwiseConv(const ConvView& data) {
   const bool valid_rank = data.InputLayout().Rank() == 4;
   if (!valid_rank || !HasSupportedOutFeatureDims(data) ||
-      !IsNonTrivialConv(data)) {
+      !IsTrivialConv(data)) {
     return false;
   }
   const int64_t in_channel_dim =

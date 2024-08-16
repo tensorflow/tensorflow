@@ -256,27 +256,19 @@ bool_setting(
 # Config settings whether TensorFlow is built with hermetic CUDA.
 # These configs are never satisfied.
 config_setting(
-    name = "hermetic_cuda_tools",
+    name = "cuda_tools",
     flag_values = {":true_setting": "False"},
 )
 
 # Flag indicating if we should include hermetic CUDA libs.
 bool_flag(
-    name = "include_hermetic_cuda_libs",
+    name = "include_cuda_libs",
     build_setting_default = False,
 )
 
 config_setting(
-    name = "hermetic_cuda_libs",
+    name = "cuda_libs",
     flag_values = {":true_setting": "False"},
-)
-
-selects.config_setting_group(
-    name = "hermetic_cuda_tools_and_libs",
-    match_all = [
-        ":hermetic_cuda_libs",
-        ":hermetic_cuda_tools"
-    ],
 )
 
 %{copy_rules}

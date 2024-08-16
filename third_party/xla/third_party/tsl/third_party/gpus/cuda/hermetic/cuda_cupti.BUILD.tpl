@@ -55,5 +55,5 @@ cc_library(
     include_prefix = "third_party/gpus/cuda/extras/CUPTI/include",
     includes = ["include/"],
     strip_include_prefix = "include",
-    visibility = ["@local_config_cuda//cuda:__pkg__"],
+    visibility = ["//visibility:public"],
 )
