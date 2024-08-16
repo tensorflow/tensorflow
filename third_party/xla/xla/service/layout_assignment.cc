@@ -482,7 +482,8 @@ absl::Status LayoutAssignment::SetInstructionLayout(
 
 absl::Status LayoutAssignment::SetInstructionLayout(
     const Shape& shape_with_layout, const HloInstruction* instruction,
-    bool mandatory, bool dfs, bool allow_alias, int64_t priority) {
+    bool mandatory, bool dfs, bool allow_alias, int64_t priority,
+    ShapeIndexView subshape_index) {
   VLOG(3) << "SetInstructionLayout : " << instruction->name() << ", "
           << ShapeUtil::HumanStringWithLayout(shape_with_layout)
           << ": priority = " << priority << " : mandatory = " << mandatory
@@ -499,8 +500,12 @@ absl::Status LayoutAssignment::SetInstructionLayout(
   // instruction.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       shape_with_layout,
-      [this, dfs, instruction, mandatory, allow_alias, priority](
-          const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+      [this, dfs, instruction, mandatory, allow_alias, priority,
+       subshape_index](const Shape& subshape,
+                       const ShapeIndex& index) -> absl::Status {
+        if (!subshape_index.empty() && index != subshape_index) {
+          return absl::OkStatus();
+        }
         auto buffers =
             points_to_analysis_->GetPointsToSet(instruction).element(index);
         CHECK_EQ(1, buffers.size());
