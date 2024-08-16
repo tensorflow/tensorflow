@@ -1,50 +1,71 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..821b0b2 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1 +1,30 @@
- Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+@@ -342,6 +342,7 @@
-+         "include/mlir/IR/PDLPatternMatch.h.inc",
-+         "include/mlir/Interfaces/CallInterfaces.h",
-+         "include/mlir/Interfaces/DataLayoutInterfaces.h",
-++        "include/mlir/Interfaces/InferIntRangeInterface.h",
-+         "include/mlir/Interfaces/SideEffectInterfaces.h",
-+     ],
-+     hdrs = glob([
-+@@ -362,6 +363,7 @@
-+         ":BytecodeOpInterfaceIncGen",
-+         ":CallOpInterfacesIncGen",
-+         ":DataLayoutInterfacesIncGen",
-++        ":InferIntRangeInterfaceIncGen",
-+         ":OpAsmInterfaceIncGen",
-+         ":RegionKindInterfaceIncGen",
-+         ":SideEffectInterfacesIncGen",
-+@@ -5422,7 +5424,9 @@
-+     hdrs = glob(["include/mlir/Dialect/LLVMIR/Transforms/*.h"]),
-+     includes = ["include"],
-+     deps = [
-++	":DataLayoutInterfaces",
-+         ":FuncDialect",
-++	":InliningUtils",
-+         ":IR",
-+         ":LLVMDialect",
-+         ":LLVMPassIncGen",
-diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index c96166b..5f8535b 100644
---- a/third_party/llvm/workspace.bzl
-+++ b/third_party/llvm/workspace.bzl
-@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+diff --git a/shardy/dialect/sdy/ir/parsers.cc b/shardy/dialect/sdy/ir/parsers.cc
+index 75d9f9c..746ce09 100644
+--- a/shardy/dialect/sdy/ir/parsers.cc
++++ b/shardy/dialect/sdy/ir/parsers.cc
+@@ -54,15 +54,21 @@ Attribute MeshAttr::parse(AsmParser& parser, Type type) {
+   if (parser.parseLess()) {
+     return MeshAttr();
+   }
+-  if (!parser.parseOptionalKeyword("device_id")) {
++  if (!parser.parseOptionalKeyword("device_ids")) {
+     if (parser.parseEqual()) {
+       return MeshAttr();
+     }
+     int64_t deviceId;
+-    if (parser.parseInteger(deviceId) || parser.parseGreater()) {
++    if (parser.parseLSquare()) {
++      return MeshAttr();
++    }
++    if (parser.parseInteger(deviceId)) {
+       return MeshAttr();
+     }
+     optDeviceId = deviceId;
++    if (parser.parseRSquare() || parser.parseGreater()) {
++      return MeshAttr();
++    }
+   } else if (parser.parseOptionalGreater()) {
+     auto parseElementFn = [&]() -> ParseResult {
+       if (auto meshAxis = MeshAxisAttr::parse(parser, type)) {
+diff --git a/shardy/dialect/sdy/ir/printers.cc b/shardy/dialect/sdy/ir/printers.cc
+index 4372304..079e52c 100644
+--- a/shardy/dialect/sdy/ir/printers.cc
++++ b/shardy/dialect/sdy/ir/printers.cc
+@@ -33,7 +33,7 @@ namespace sdy {
+ void MeshAttr::print(AsmPrinter& printer) const {
+   printer << "<";
+   if (getDeviceId().has_value()) {
+-    printer << "device_id=" << *getDeviceId();
++    printer << "device_ids=[" << *getDeviceId() << "]";
+   } else {
+     llvm::interleaveComma(getAxes(), printer,
+                           [&](MeshAxisAttr axis) { axis.print(printer); });
+diff --git a/shardy/dialect/sdy/ir/test/mesh_parse_print.mlir b/shardy/dialect/sdy/ir/test/mesh_parse_print.mlir
+index 01f62b8..3a99357 100644
+--- a/shardy/dialect/sdy/ir/test/mesh_parse_print.mlir
++++ b/shardy/dialect/sdy/ir/test/mesh_parse_print.mlir
+@@ -1,7 +1,7 @@
+ // RUN: sdy_opt %s 2>&1 | FileCheck %s
  
- def repo(name):
-     """Imports LLVM."""
--    LLVM_COMMIT = "6de04e6fe8b1520ef3e4073ff222e623b7dc9cb9"
--    LLVM_SHA256 = "a5c6bebe367780de800d58ad47adb72a79c3cc236507bae43576d193573ab892"
-+    LLVM_COMMIT = "1115dee248e68a155001ac3712a189299d104863"
-+    LLVM_SHA256 = "cbfe9694c137ed4489b1667dd01429b7595b40aa47b8d3ae4cafa8a6cff2ef8f"
+-// CHECK: sdy.mesh @mesh = <device_id=0>
+-sdy.mesh @mesh = <device_id=0>
++// CHECK: sdy.mesh @mesh = <device_ids=[0]>
++sdy.mesh @mesh = <device_ids=[0]>
  
-     tf_http_archive(
-         name = name,
+ // CHECK: sdy.mesh @mesh2 = <"a"=2>
+ sdy.mesh @mesh2 = <"a"=2>
+diff --git a/shardy/dialect/sdy/ir/test/mesh_verification.mlir b/shardy/dialect/sdy/ir/test/mesh_verification.mlir
+index ca2f873..c86b985 100644
+--- a/shardy/dialect/sdy/ir/test/mesh_verification.mlir
++++ b/shardy/dialect/sdy/ir/test/mesh_verification.mlir
+@@ -10,9 +10,9 @@ sdy.mesh @mesh = <"a"=2, "b"=2, "a"=4>
+ 
+ // -----
+ // expected-error @+1 {{device id must be non-negative, got: -1}}
+-sdy.mesh @mesh = <device_id=-1>
++sdy.mesh @mesh = <device_ids=[-1]>
+ 
+ // -----
+ // expected-error @below {{custom op 'sdy.mesh' expected string}}
+ // expected-error @below {{custom op 'sdy.mesh' failed to parse Sdy_MeshAxis parameter 'name' which is to be a `::llvm::StringRef`}}
+-sdy.mesh @mesh = <"a"=2, "b"=2, device_id=2>
++sdy.mesh @mesh = <"a"=2, "b"=2, device_ids=[2]>
