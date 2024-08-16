@@ -140,14 +140,19 @@ _REGISTERED_EXPANSIONS = [
 
 def _convert_to_numpy_obj(numpy_dtype, obj):
   """Explicitly convert obj based on numpy type except for string type."""
-  return numpy_dtype(obj) if numpy_dtype is not object else str(obj)
+  return (
+      numpy_dtype(np.array(obj).astype(numpy_dtype))
+      if numpy_dtype is not object
+      else str(obj)
+  )
 
 
 def register_session_run_conversion_functions(
     tensor_type,
     fetch_function,
     feed_function=None,
-    feed_function_for_partial_run=None):
+    feed_function_for_partial_run=None,
+):
   """Register fetch and feed conversion functions for `tf.Session.run()`.
 
   This function registers a triple of conversion functions for fetching and/or
