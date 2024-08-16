@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -312,6 +313,32 @@ absl::StatusOr<bool> HloCSE::Run(
           changed = true;
           if (b->IsDead()) {
             TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
+          }
+        }
+      }
+    }
+    if (auto fusion = computation->FusionInstruction()) {
+      if (fusion->IsMultiOutputFusion()) {
+        // Attach users to the representative instruction, thus making the
+        // duplicate fusion roots unused. HloDCE can then cleanup the unused
+        // fusion roots.
+        absl::flat_hash_map<const HloInstruction*, int64_t>
+            root_to_unique_index;
+        int64_t root_index = 0;
+        HloInstruction* root = computation->root_instruction();
+        for (const HloInstruction* hlo : root->operands()) {
+          if (root_to_unique_index.find(hlo) == root_to_unique_index.end()) {
+            root_to_unique_index[hlo] = root_to_unique_index[hlo] = root_index;
+          }
+          ++root_index;
+        }
+        if (root_to_unique_index.size() < root->operand_count()) {
+          for (HloInstruction* user : fusion->users()) {
+            if (user->opcode() == HloOpcode::kGetTupleElement) {
+              const HloInstruction* fusion_root =
+                  root->operand(user->tuple_index());
+              user->set_tuple_index(root_to_unique_index[fusion_root]);
+            }
           }
         }
       }
