@@ -625,6 +625,7 @@ gentbl_cc_library(
 cc_library(
     name = "tfl_legalize_hlo",
     srcs = [
+        "transforms/generated_tflite_legalize_hlo.inc",
         "transforms/tflite_legalize_hlo.cc",
     ],
     hdrs = [
