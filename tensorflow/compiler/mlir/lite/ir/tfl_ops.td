@@ -1697,6 +1697,8 @@ def TFL_ExpOp: TFL_Op<"exp", [
 
   let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
 
+  let hasFolder = 1;
+
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
@@ -1839,6 +1841,8 @@ def TFL_FloorOp: TFL_Op<"floor", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
@@ -2083,6 +2087,8 @@ def TFL_LogicalNotOp : TFL_Op<"logical_not", [
   let arguments = (ins TFL_BoolTensor:$lhs);
 
   let results = (outs TFL_BoolTensor:$output);
+
+  let hasFolder = 1;
 }
 
 def TFL_LogicalOrOp : TFL_Op<"logical_or", [Pure]> {

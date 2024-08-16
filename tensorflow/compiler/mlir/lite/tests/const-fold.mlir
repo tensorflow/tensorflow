@@ -942,3 +942,57 @@ func.func @ConstFoldEmbeddingLookup() -> (tensor<5x2xf32>, tensor<3x2x2xf32>) {
   // CHECK-DAG: %[[LOOKUP1:.*]] = arith.constant dense<{{\[\[\[}}1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]], {{\[\[}}5.000000e+00, 6.000000e+00], [7.000000e+00, 8.000000e+00]], {{\[\[}}1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]]> : tensor<3x2x2xf32>
   // CHECK: return %[[LOOKUP0]], %[[LOOKUP1]] : tensor<5x2xf32>, tensor<3x2x2xf32>
 }
+
+// CHECK-LABEL: floor
+func.func @floor() -> tensor<3xf32> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99]> : tensor<3xf32>
+  %0 = "tfl.floor"(%cst) : (tensor<3xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 0.000000e+00]> : tensor<3xf32>
+
+// CHECK-LABEL: floor_f64
+func.func @floor_f64() -> tensor<3xf64> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99]> : tensor<3xf64>
+  %0 = "tfl.floor"(%cst) : (tensor<3xf64>) -> tensor<3xf64>
+  func.return %0 : tensor<3xf64>
+}
+
+// CHECK: tfl.floor
+
+// CHECK-LABEL: exp
+func.func @exp() -> tensor<4xf32> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99, 0.36787944117]> : tensor<4xf32>
+  %0 = "tfl.exp"(%cst) : (tensor<4xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[0.36787945, 1.000000e+00, 2.69123459, 1.44466782]> : tensor<4xf32>
+
+// CHECK-LABEL: exp_f64
+func.func @exp_f64() -> tensor<4xf64> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99, 0.36787944117]> : tensor<4xf64>
+  %0 = "tfl.exp"(%cst) : (tensor<4xf64>) -> tensor<4xf64>
+  func.return %0 : tensor<4xf64>
+}
+
+// CHECK: tfl.exp
+
+// CHECK-LABEL: logical_not
+func.func @logical_not() -> tensor<3xi1> {
+  %cst = arith.constant dense<[false, true, false]> : tensor<3xi1>
+  %0 = "tfl.logical_not"(%cst) : (tensor<3xi1>) -> tensor<3xi1>
+  func.return %0 : tensor<3xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, false, true]> : tensor<3xi1>
+
+// CHECK-LABEL: logical_not_splat
+func.func @logical_not_splat() -> tensor<3xi1> {
+  %cst = arith.constant dense<false> : tensor<3xi1>
+  %0 = "tfl.logical_not"(%cst) : (tensor<3xi1>) -> tensor<3xi1>
+  func.return %0 : tensor<3xi1>
+}
+
+// CHECK: %cst = arith.constant dense<true> : tensor<3xi1>
