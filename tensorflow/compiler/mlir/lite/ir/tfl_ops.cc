@@ -34,9 +34,11 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -3248,35 +3250,12 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // CastOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
-  auto operands = adaptor.getOperands();
-  assert(operands.size() == 1);
-  if (getInput().getType() == getType()) {
-    return getInput();
-  }
-
-  // For now, only supports cast between integer types.
-  auto elements_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
-  if (!elements_attr) {
-    return nullptr;
-  }
-
-  auto result_element_type =
-      getType().cast<ShapedType>().getElementType().dyn_cast<IntegerType>();
-  auto operand_element_type = getInput()
-                                  .getType()
-                                  .cast<ShapedType>()
-                                  .getElementType()
-                                  .dyn_cast<IntegerType>();
-  // Returns nullptr if either result/operand element type is not integer.
-  if (!result_element_type || !operand_element_type) {
-    return nullptr;
-  }
-
-  const bool is_unsigned = operand_element_type.isUnsigned();
-  const bool involves_bool = operand_element_type.getWidth() == 1 ||
-                             result_element_type.getWidth() == 1;
-  const int output_bitwidth = result_element_type.getWidth();
+OpFoldResult CastIntToInt(DenseIntElementsAttr data, IntegerType in_type,
+                          IntegerType out_type) {
+  const bool is_unsigned = in_type.isUnsigned();
+  const bool involves_bool =
+      in_type.getWidth() == 1 || out_type.getWidth() == 1;
+  const int output_bitwidth = out_type.getWidth();
   // The integer cast op is the same as C integer cast. Depends on the operand
   // type's signedness, we will determine whether or not sign extension is
   // needed.
@@ -3287,13 +3266,107 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
       // true input should always be cast to 1 and not -1 as the sign extension
       // would do for signed outputs. Similarly, non-zero inputs should be cast
       // to true. Truncating even numbers to one bit will result in `false`.
-      return APInt(result_element_type.getWidth(), value != 0);
+      return APInt(out_type.getWidth(), value != 0);
     }
     return is_unsigned ? value.zextOrTrunc(output_bitwidth)
                        : value.sextOrTrunc(output_bitwidth);
   };
 
-  return elements_attr.mapValues(result_element_type, cast);
+  return data.mapValues(out_type, cast);
+}
+
+OpFoldResult CastFloatToInt(DenseFPElementsAttr data, FloatType in_type,
+                            IntegerType out_type) {
+  const bool from_f32 = in_type.isF32();
+  const bool to_i32 = out_type.isSignlessInteger(32);
+  if (!from_f32 || !to_i32) {
+    return {};
+  }
+
+  auto cast = [&](APFloat value) -> APInt {
+    APSInt result(32, false);
+    bool is_exact;
+    value.convertToInteger(result, llvm::RoundingMode::TowardZero, &is_exact);
+    return result;
+  };
+
+  return data.mapValues(out_type, cast);
+}
+
+template <typename InType, typename OutType>
+llvm::SmallVector<OutType> MapStaticCast(DenseElementsAttr data) {
+  return llvm::map_to_vector(data.getValues<InType>(),
+                             [](InType v) { return static_cast<OutType>(v); });
+}
+
+OpFoldResult CastIntToFloat(DenseIntElementsAttr data, IntegerType in_type,
+                            FloatType out_type) {
+  const bool from_i32 = in_type.isSignlessInteger(32);
+  const bool to_f32 = out_type.isF32();
+  if (!from_i32 || !to_f32) {
+    return {};
+  }
+
+  return DenseFPElementsAttr::get(data.getType().clone(out_type),
+                                  MapStaticCast<int32_t, float>(data));
+}
+
+OpFoldResult CastFloatToFloat(DenseFPElementsAttr data, FloatType in_type,
+                              FloatType out_type) {
+  auto result_type = data.getType().clone(out_type);
+  if (in_type.isF32() && out_type.isF64()) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<float, double>(data));
+  }
+
+  if (in_type.isF64() && out_type.isF32()) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<double, float>(data));
+  }
+  return {};
+}
+
+OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  if (operands.size() != 1) {
+    return {};
+  }
+  if (getInput().getType() == getType()) {
+    return getInput();
+  }
+
+  auto input = operands[0];
+
+  auto in_type = getInput().getType().getElementType();
+  auto out_type = getType().getElementType();
+
+  if (auto int_in_type = llvm::dyn_cast_or_null<IntegerType>(in_type)) {
+    auto in_data = llvm::dyn_cast_or_null<DenseIntElementsAttr>(input);
+    if (!in_data) {
+      return {};
+    }
+    if (auto float_out_type = llvm::dyn_cast_or_null<FloatType>(out_type)) {
+      return CastIntToFloat(in_data, int_in_type, float_out_type);
+    }
+    if (auto int_out_type = llvm::dyn_cast_or_null<IntegerType>(out_type)) {
+      return CastIntToInt(in_data, int_in_type, int_out_type);
+    }
+  }
+
+  if (auto float_in_type = llvm::dyn_cast_or_null<FloatType>(in_type)) {
+    auto in_data = llvm::dyn_cast_or_null<DenseFPElementsAttr>(input);
+    if (!in_data) {
+      return {};
+    }
+    if (auto float_out_type = llvm::dyn_cast_or_null<FloatType>(out_type)) {
+      return CastFloatToFloat(in_data, float_in_type, float_out_type);
+    }
+    if (auto int_out_type = llvm::dyn_cast_or_null<IntegerType>(out_type)) {
+      return CastFloatToInt(in_data, float_in_type, int_out_type);
+    }
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

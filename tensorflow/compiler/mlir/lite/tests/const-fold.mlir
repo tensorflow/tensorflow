@@ -779,6 +779,42 @@ func.func @cast_ui8_to_i1() -> tensor<4xi1> {
 // CHECK:  return %[[CST]]
 }
 
+// CHECK-LABEL: @cast_f32_to_i32
+func.func @cast_f32_to_i32() -> tensor<8xi32> {
+  %cst = arith.constant dense<[-1.0, 0.0, 1.5, 0.99, 1.175494351e-38, 3.402823466e+38, -3.402823466e+38, -1.175494351e-38]> : tensor<8xf32>
+  %0 = "tfl.cast"(%cst) : (tensor<8xf32>) -> tensor<8xi32>
+  func.return %0 : tensor<8xi32>
+}
+
+// CHECK: %cst = arith.constant dense<[-1, 0, 1, 0, 0, 2147483647, -2147483648, 0]> : tensor<8xi32>
+
+// CHECK-LABEL: @cast_i32_to_f32
+func.func @cast_i32_to_f32() -> tensor<5xf32> {
+  %cst = arith.constant dense<[-1, 0, 2, 2147483647, -2147483648]> : tensor<5xi32>
+  %0 = "tfl.cast"(%cst) : (tensor<5xi32>) -> tensor<5xf32>
+  func.return %0 : tensor<5xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 2.000000e+00, 2.14748365E+9, -2.14748365E+9]> : tensor<5xf32>
+
+// CHECK-LABEL: @cast_f64_to_f32
+func.func @cast_f64_to_f32() -> tensor<4xf32> {
+  %cst = arith.constant dense<[-1.0, 0.0, 1.5, 100.0]> : tensor<4xf64>
+  %0 = "tfl.cast"(%cst) : (tensor<4xf64>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.500000e+00, 1.000000e+02]> : tensor<4xf32>
+
+// CHECK-LABEL: @cast_f32_to_f64
+func.func @cast_f32_to_f64() -> tensor<4xf64> {
+  %cst = arith.constant dense<[-1.0, 0.0, 1.5, 100.0]> : tensor<4xf32>
+  %0 = "tfl.cast"(%cst) : (tensor<4xf32>) -> tensor<4xf64>
+  func.return %0 : tensor<4xf64>
+}
+
+// CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.500000e+00, 1.000000e+02]> : tensor<4xf64>
+
 // CHECK-LABEL: @ConstantFoldFullyConnectedSmall
 func.func @ConstantFoldFullyConnectedSmall() -> tensor<3xf32> {
   %cst_input = arith.constant dense<[2.0, 3.0]> : tensor<2xf32>
