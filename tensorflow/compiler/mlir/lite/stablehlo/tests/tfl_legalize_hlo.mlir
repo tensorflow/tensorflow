@@ -323,14 +323,10 @@ func.func @argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32
   func.return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
 
-// CHECK:     %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
-// CHECK-DAG: %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<256xi32>
-// CHECK:     %3 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<2> : tensor<1xi64>}> : (tensor<256xi32>) -> tensor<4x32x256xi32>
-// CHECK:     %cst = arith.constant dense<2> : tensor<1xi32>
-// CHECK:     %4 = "tfl.reduce_max"(%arg0, %cst) <{keep_dims = false}> : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xf32>
-// CHECK:     %5 = "tfl.arg_max"(%arg0, %cst) : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xi32>
-// CHECK:     return %4, %5 : tensor<4x32xf32>, tensor<4x32xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xf32>
+// CHECK: %[[ARG:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xi32>
+// CHECK: return %[[REDUCE]], %[[ARG]] : tensor<4x32xf32>, tensor<4x32xi32>
 
 // -----
 
@@ -415,12 +411,11 @@ func.func @argmax_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
   return %3#1 : tensor<i32>
 }
 
-// CHECK:     %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
 // CHECK-DAG: %1 = mhlo.constant dense<false> : tensor<i1>
-// CHECK:     %2 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %cst = arith.constant dense<0> : tensor<1xi32>
-// CHECK:     %3 = "tfl.reduce_any"(%arg0, %cst) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
-// CHECK:     %4 = "tfl.arg_max"(%arg0, %cst) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
+// CHECK-DAG: %2 = mhlo.constant dense<0> : tensor<i32>
+// CHECK:     %[[CST:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK:     %3 = "tfl.reduce_any"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
+// CHECK:     %4 = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
 // CHECK:     return %4 : tensor<i32>
 
 // -----
@@ -447,14 +442,10 @@ func.func @argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32
   func.return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0x7F800000> : tensor<f32>
-// CHECK:     %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<256xi32>
-// CHECK:     %3 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<2> : tensor<1xi64>}> : (tensor<256xi32>) -> tensor<4x32x256xi32>
-// CHECK:     %cst = arith.constant dense<2> : tensor<1xi32>
-// CHECK:     %4 = "tfl.reduce_min"(%arg0, %cst) <{keep_dims = false}> : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xf32>
-// CHECK:     %5 = "tfl.arg_min"(%arg0, %cst) : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xi32>
-// CHECK:     return %4, %5 : tensor<4x32xf32>, tensor<4x32xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xf32>
+// CHECK: %[[ARG:.*]] = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xi32>
+// CHECK: return %[[REDUCE]], %[[ARG]] : tensor<4x32xf32>, tensor<4x32xi32>
 
 // -----
 
@@ -479,14 +470,10 @@ func.func @argmin_i16(%arg0: tensor<2xi16>) -> (tensor<i16>, tensor<i32>) {
   func.return %4#0, %4#1 : tensor<i16>, tensor<i32>
 }
 
-// CHECK:     %0 = mhlo.constant dense<false> : tensor<i1>
-// CHECK:     %1 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
-// CHECK-DAG: %2 = mhlo.constant dense<32767> : tensor<i16>
-// CHECK:     %3 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %cst = arith.constant dense<0> : tensor<1xi32>
-// CHECK:     %4 = "tfl.reduce_min"(%arg0, %cst) <{keep_dims = false}> : (tensor<2xi16>, tensor<1xi32>) -> tensor<i16>
-// CHECK:     %5 = "tfl.arg_min"(%arg0, %cst) : (tensor<2xi16>, tensor<1xi32>) -> tensor<i32>
-// CHECK:     return %4, %5 : tensor<i16>, tensor<i32>
+// CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<2xi16>, tensor<1xi32>) -> tensor<i16>
+// CHECK: %[[ARG:.*]] = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<2xi16>, tensor<1xi32>) -> tensor<i32>
+// CHECK: return %[[REDUCE]], %[[ARG]] : tensor<i16>, tensor<i32>
 
 // -----
 
@@ -540,12 +527,11 @@ func.func @argmin_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
   return %3#1 : tensor<i32>
 }
 
-// CHECK:     %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
 // CHECK-DAG: %1 = mhlo.constant dense<false> : tensor<i1>
-// CHECK:     %2 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %cst = arith.constant dense<0> : tensor<1xi32>
-// CHECK:     %3 = "tfl.reduce_all"(%arg0, %cst) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
-// CHECK:     %4 = "tfl.arg_min"(%arg0, %cst) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
+// CHECK-DAG: %2 = mhlo.constant dense<0> : tensor<i32>
+// CHECK:     %[[CST:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK:     %3 = "tfl.reduce_all"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
+// CHECK:     %4 = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
 // CHECK:     return %4 : tensor<i32>
 
 // -----
@@ -572,16 +558,10 @@ func.func @argmax_with_reshaped_iota(%arg0: tensor<1x32x1xf32>) -> (tensor<1x1xf
   func.return %4#0, %4#1 : tensor<1x1xf32>, tensor<1x1xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
-// CHECK-DAG: %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<32xi32>
-// CHECK:     %cst = arith.constant dense<[1, 32, 1]> : tensor<3xi64>
-// CHECK:     %3 = "tfl.cast"(%cst) : (tensor<3xi64>) -> tensor<3xi32>
-// CHECK:     %4 = "tfl.reshape"(%2, %3) : (tensor<32xi32>, tensor<3xi32>) -> tensor<1x32x1xi32>
-// CHECK:     %cst_0 = arith.constant dense<1> : tensor<1xi32>
-// CHECK:     %5 = "tfl.reduce_max"(%arg0, %cst_0) <{keep_dims = false}> : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xf32>
-// CHECK:     %6 = "tfl.arg_max"(%arg0, %cst_0) : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xi32>
-// CHECK:     return %5, %6 : tensor<1x1xf32>, tensor<1x1xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xf32>
+// CHECK: %[[ARG:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xi32>
+// CHECK: return %[[REDUCE]], %[[ARG]] : tensor<1x1xf32>, tensor<1x1xi32>
 
 // -----
 
@@ -604,16 +584,9 @@ func.func @pytorch_argmax(%arg0: tensor<1x9xi32>) -> tensor<1xi32> {
   func.return %4#1 : tensor<1xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0> : tensor<i32>
-// CHECK-DAG: %1 = mhlo.constant dense<-2147483648> : tensor<i32>
-// CHECK:     %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<9xi32>
-// CHECK:     %cst = arith.constant dense<[1, 9]> : tensor<2xi64>
-// CHECK:     %3 = "tfl.cast"(%cst) : (tensor<2xi64>) -> tensor<2xi32>
-// CHECK:     %4 = "tfl.reshape"(%2, %3) : (tensor<9xi32>, tensor<2xi32>) -> tensor<1x9xi32>
-// CHECK:     %cst_0 = arith.constant dense<1> : tensor<1xi32>
-// CHECK:     %5 = "tfl.reduce_max"(%arg0, %cst_0) <{keep_dims = false}> : (tensor<1x9xi32>, tensor<1xi32>) -> tensor<1xi32>
-// CHECK:     %6 = "tfl.arg_max"(%arg0, %cst_0) : (tensor<1x9xi32>, tensor<1xi32>) -> tensor<1xi32>
-// CHECK:     return %6 : tensor<1xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %[[ARG:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<1x9xi32>, tensor<1xi32>) -> tensor<1xi32>
+// CHECK: return %[[ARG]] : tensor<1xi32>
 
 // -----
 
@@ -2171,8 +2144,9 @@ func.func @sort_to_topk_iota_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<3x6xf3
   func.return %2#0, %2#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
-// CHECK: %cst = arith.constant dense<6> : tensor<i32>
-// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %cst) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
+// CHECK: arith.constant dense<6> : tensor<i32>
+// CHECK: %[[CST:.*]] = arith.constant dense<6> : tensor<i32>
+// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %[[CST]]) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
 
 // -----
 
@@ -2188,8 +2162,8 @@ func.func @sort_to_topk_iota_cst_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<3x
   func.return %2#0, %2#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
-// CHECK: %cst = arith.constant dense<6> : tensor<i32>
-// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %cst) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
+// CHECK: %[[CST:.*]] = arith.constant dense<6> : tensor<i32>
+// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %[[CST]]) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
 
 // -----
 
@@ -2204,8 +2178,43 @@ func.func @sort_to_topk_const(%arg0: tensor<3x6xf32>) -> (tensor<3x6xf32>, tenso
   func.return %1#0, %1#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
-// CHECK: %cst = arith.constant dense<6> : tensor<i32>
-// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %cst) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<6> : tensor<i32>
+// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %[[CST]]) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.iota
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: iota_1d
+func.func @iota_1d() -> tensor<123xf32> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xf32>
+  func.return %0 : tensor<123xf32>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<1.230000e+02> : tensor<f32>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK:     "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<123xf32>
+
+// -----
+
+// CHECK-LABEL: iota_3d
+func.func @iota_3d() -> tensor<5x7x9xi32> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 1 : i64 }> : () -> tensor<5x7x9xi32>
+  func.return %0 : tensor<5x7x9xi32>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<7> : tensor<i32>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1> : tensor<i32>
+// CHECK:     %[[RANGE:.*]] = "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<7xi32>
+// CHECK:     %[[CST_4:.*]] = arith.constant dense<[1, 7, 1]> : tensor<3xi64>
+// CHECK:     %[[CAST:.*]] = "tfl.cast"(%[[CST_4]]) : (tensor<3xi64>) -> tensor<3xi32>
+// CHECK:     %[[RESHAPE:.*]] = "tfl.reshape"(%[[RANGE]], %[[CAST]]) : (tensor<7xi32>, tensor<3xi32>) -> tensor<1x7x1xi32>
+// CHECK:     %[[CST_5:.*]] = arith.constant dense<[5, 7, 9]> : tensor<3xi64>
+// CHECK:     "tfl.broadcast_to"(%[[RESHAPE]], %[[CST_5]]) : (tensor<1x7x1xi32>, tensor<3xi64>) -> tensor<5x7x9xi32>
 
 // -----
 

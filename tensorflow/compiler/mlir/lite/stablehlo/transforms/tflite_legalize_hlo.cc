@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/gather.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/iota.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce_window.h"
@@ -322,6 +323,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulateLegalizeConvPatterns(context, patterns, target);
   PopulateLegalizeSlicePatterns(context, patterns, target);
   PopulateSortPatterns(context, patterns, target);
+  PopulateIotaPatterns(context, patterns, target);
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
