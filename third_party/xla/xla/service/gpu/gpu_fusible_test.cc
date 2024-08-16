@@ -1704,6 +1704,33 @@ TEST_F(GpuFusibleTest, GetFusionRootsWithMakeTupleGTESequence) {
   EXPECT_EQ(roots, expected_result);
 }
 
+TEST_F(GpuFusibleTest, GetFusionRootsWithTupleMultipleSameOperands) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    fusion {
+      p1 = s32[32] parameter(0)
+      add0 = s32[32] add(p1, p1)
+      ROOT _ = (s32[32], s32[32]) tuple(add0, add0)
+    }
+
+    ENTRY entry {
+      p0 = s32[32] parameter(0)
+      ROOT fusion = (s32[32], s32[32]) fusion(p0), kind=kCustom, calls=fusion
+    }
+  )")
+                    .value();
+
+  auto called_computations =
+      module->entry_computation()->root_instruction()->called_computations();
+  ASSERT_EQ(called_computations.size(), 1);
+
+  auto fusion = called_computations.front();
+  auto roots = GetFusionRoots(*fusion);
+  auto add0 = fusion->root_instruction()->operand(0);
+  EXPECT_THAT(GetFusionRoots(*fusion), ElementsAre(add0, add0));
+}
+
 TEST_F(GpuFusibleTest, GetFusibleComputations) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduce {

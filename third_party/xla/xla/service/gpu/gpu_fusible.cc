@@ -968,9 +968,6 @@ static void GetFusionRootsRec(const HloInstruction* root,
       GetFusionRootsRec(root->operand(i), out);
     }
   } else {
-    CHECK(!absl::c_linear_search(out, root))
-        << "Fusion root contains instruction " << root->ToString()
-        << " multiple times";
     out.push_back(root);
   }
 }
