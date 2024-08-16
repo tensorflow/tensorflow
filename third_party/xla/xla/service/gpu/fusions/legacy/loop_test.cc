@@ -88,20 +88,20 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    (bl_x * 128 + chunk_id * 129024 + th_x) floordiv 15000,
-    ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 75) mod 200,
-    ((bl_x * 128 + chunk_id * 129024 + th_x) mod 75) * 4 + unroll_id
+    (bl_x * 128 + th_x) floordiv 15000,
+    ((bl_x * 128 + th_x) floordiv 75) mod 200,
+    ((bl_x * 128 + th_x) mod 75) * 4 + unroll_id
   )
   domain:
   th_x in [0, 127]
   th_y in [0, 0]
   th_z in [0, 0]
-  bl_x in [0, 1007]
+  bl_x in [0, 11718]
   bl_y in [0, 0]
   bl_z in [0, 0]
-  chunk_id in [0, 11]
+  chunk_id in [0, 0]
   unroll_id in [0, 3]
-  bl_x * 128 + chunk_id * 129024 + th_x in [0, 1499999]
+  bl_x * 128 + th_x in [0, 1499999]
 )"));
 }
 

@@ -78,84 +78,6 @@ int ComputeMaxUnrollFactor(int64_t num_elements) {
   return 1;
 }
 
-// Determines if we enable the row optimized codegen. When we have a fusion with
-// only pointwise operations, scalar broadcasting and row broadcasting, we can
-// trigger a kernel that vectorizes the row loads. This speeds up the kernel, in
-// particular on A100. The int is the number of inputs with rank `out_rank`. Its
-// value is only defined if row vectorization is enabled.
-std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
-    const HloFusionAdaptor& fusion, int64_t out_rank) {
-  auto roots = fusion.GetRoots();
-  const auto is_row_major = [](const HloInstruction* instr) {
-    // Only tested when the inputs are row-major. So only enable that case.
-    // Maybe it would work if only the inner dimensions is contiguous.
-    return LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout());
-  };
-  bool row_vectorized = roots.size() == 1 && !roots[0].shape().IsTuple() &&
-                        is_row_major(&roots[0].instruction());
-  if (!row_vectorized) {
-    return {false, 0};
-  }
-
-  // Check that the operations in the fusion are supported.  Each
-  // supported operation (or category) must be manually vetted as XLA
-  // only unrolls and relies on LLVM to vectorize. But this is brittle.
-  // Currently tested and supported operations:
-  // Elementwise, scalar and row broadcasting.
-  //
-  // We also detect at the same time if there is a row broadcasting
-  // operation.
-  int num_big_inputs = 0;
-  bool some_row_broadcasting = false;
-  HloBfsConsumersFirstTraversal(
-      roots, fusion, [&](auto node) -> TraversalResult {
-        if (!row_vectorized) {
-          return TraversalResult::kInterrupt;
-        }
-
-        if (node.instruction().IsElementwise()) {
-          return TraversalResult::kAdvance;
-        }
-
-        switch (node.opcode()) {
-          case HloOpcode::kConstant:
-            return TraversalResult::kSkip;
-          case HloOpcode::kParameter:
-            return TraversalResult::kAdvance;
-          case HloOpcode::kBroadcast: {
-            auto dims = node.instruction().dimensions();
-            if (dims.empty()) {
-              return TraversalResult::kAdvance;
-            }
-
-            if (dims.size() == 1 && dims.front() == node.shape().rank() - 1) {
-              some_row_broadcasting = true;
-              return TraversalResult::kAdvance;
-            }
-            TF_FALLTHROUGH_INTENDED;
-          }
-          default:
-            VLOG(2) << "Row vectorization not enabled due to: "
-                    << node.ToString();
-            row_vectorized = false;
-            return TraversalResult::kInterrupt;
-        }
-      });
-  if (row_vectorized) {
-    for (const HloInstruction* argument : fusion.GetParameters()) {
-      if (argument->shape().rank() == out_rank) {
-        ++num_big_inputs;
-      }
-      if (!is_row_major(argument)) {
-        row_vectorized = false;
-      }
-    };
-  }
-  // Trigger only when there is a row broadcasting.
-  return std::make_pair(row_vectorized && some_row_broadcasting,
-                        num_big_inputs);
-}
-
 }  // namespace
 
 bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
@@ -1163,39 +1085,7 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
   VLOG(2) << "Unroll factor: " << unroll_factor;
 
-  bool row_vectorized;
-  int num_big_inputs;
-  std::tie(row_vectorized, num_big_inputs) =
-      RowVectorizationEnabled(analysis.fusion(), element_shape.rank());
-  bool few_waves = !HloAnyOf(analysis.fusion(), [&](auto instr) {
-    if (instr.opcode() == HloOpcode::kParameter ||
-        instr.opcode() == HloOpcode::kConstant ||
-        HloInstruction::IsOpElementwise(instr.opcode())) {
-      return false;
-    }
-    if (auto broadcast =
-            DynCast<HloBroadcastInstruction>(&instr.instruction())) {
-      if (broadcast->dimensions().empty() ||
-          // More than 3 big inputs cause a speed regression.
-          (row_vectorized && num_big_inputs <= 3)) {
-        return false;
-      }
-    }
-    VLOG(2) << "few_waves not enabled due to: "
-            << instr.instruction().ToString();
-    return true;
-  });
-
-  LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
-                                       row_vectorized};
-  // Check that the shapes is supported.
-  if (launch_config.row_vectorized &&
-      ThreadsPerBlockRowVectorized(element_shape, analysis.device_info(),
-                                   launch_config) <= 0) {
-    VLOG(2) << "Cancelling row_vectorization as the shape isn't supported.";
-    launch_config.row_vectorized = false;
-    launch_config.few_waves = false;
-  }
+  LaunchDimensionsConfig launch_config{unroll_factor};
   return launch_config;
 }
 
