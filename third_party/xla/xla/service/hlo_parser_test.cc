@@ -3385,8 +3385,10 @@ ENTRY %CustomCall () -> f32[1] {
                   "with that of its root instruction foo, f32[1,2,3]");
 }
 
-TEST_F(HloParserTest, EntryComputationWithLayout) {
-  const std::string original = R"(HloModule layout:
+TEST_F(HloParserTest, EntryComputationLayoutNotDefined) {
+  const std::string original = R"(
+HloModule layout_not_defined
+
 add_F32.v3 {
   lhs = f32[] parameter(0)
   rhs = f32[] parameter(1)
@@ -3412,6 +3414,28 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1}), result_layout))
       << "actual layout of result is "
       << LayoutUtil::HumanString(result_layout);
+}
+
+TEST_F(HloParserTest, EntryComputationLayoutDefined) {
+  const std::string original = R"(
+HloModule layout_defined, entry_computation_layout={(f32[8,16,256]) -> f32[8,16]}
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  auto module = ParseAndReturnVerifiedModule(original);
+  TF_ASSERT_OK(module.status());
+  // entry_computation_layout is defined explicitly. Do not overwrite it.
+  EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
 }
 
 TEST_F(HloParserTest, NoEntry) {

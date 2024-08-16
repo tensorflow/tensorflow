@@ -541,7 +541,7 @@ class HloParserImpl : public HloParser {
   bool ParseJsonDict(std::string* result);
   bool ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
                            std::vector<bool>* dynamic_dimensions);
-  bool ParseShape(Shape* result);
+  bool ParseShape(Shape* result, bool set_to_default_layout = true);
   bool ParseLayout(Layout* layout);
   bool ParseLayoutIntAttribute(int64_t* attr_value,
                                absl::string_view attr_description);
@@ -907,7 +907,7 @@ bool HloParserImpl::ParseComputationLayout(
   }
   while (lexer_.GetKind() != TokKind::kRparen) {
     Shape param;
-    if (!ParseShape(&param)) {
+    if (!ParseShape(&param, /*set_to_default_layout=*/false)) {
       return false;
     }
     computation_layout->add_parameter_layout(ShapeLayout(param));
@@ -927,7 +927,7 @@ bool HloParserImpl::ParseComputationLayout(
     return false;
   }
   Shape result;
-  if (!ParseShape(&result)) {
+  if (!ParseShape(&result, /*set_to_default_layout=*/false)) {
     return false;
   }
   *computation_layout->mutable_result_layout() = ShapeLayout(result);
@@ -1117,9 +1117,6 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
 
   if (parse_module_without_header) {
     name = absl::StrCat("module_", module->entry_computation()->name());
-    entry_computation_layout =
-        ComputationLayout(module->entry_computation()->ComputeProgramShape(),
-                          /*ignore_layouts*/ false);
   }
 
   module->set_name(name);
@@ -1145,6 +1142,21 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   if (entry_computation_layout.has_value()) {
     *config.mutable_entry_computation_layout() = *entry_computation_layout;
     default_config = false;
+  } else {
+    // If entry_computation_layout is not specified explicitly, we infer the
+    // layout from parameter and root instructions.
+    HloComputation* entry_computation = module->entry_computation();
+    for (int64_t p = 0; p < entry_computation->num_parameters(); p++) {
+      const Shape& param_shape =
+          entry_computation->parameter_instruction(p)->shape();
+      TF_CHECK_OK(module->mutable_entry_computation_layout()
+                      ->mutable_parameter_layout(p)
+                      ->CopyLayoutFromShape(param_shape));
+    }
+    const Shape& result_shape = entry_computation->root_instruction()->shape();
+    TF_CHECK_OK(module->mutable_entry_computation_layout()
+                    ->mutable_result_layout()
+                    ->CopyLayoutFromShape(result_shape));
   }
   if (frontend_attributes) {
     module->set_frontend_attributes(frontend_attributes.value());
@@ -1209,19 +1221,7 @@ bool HloParserImpl::ParseComputations(HloModule* module) {
       module->AddEmbeddedComputation(std::move(computations_[i]));
       continue;
     }
-    auto computation = module->AddEntryComputation(std::move(computations_[i]));
-    // The parameters and result layouts were set to default layout. Here we
-    // set the layouts to what the hlo text says.
-    for (int p = 0; p < computation->num_parameters(); p++) {
-      const Shape& param_shape = computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module->mutable_entry_computation_layout()
-                      ->mutable_parameter_layout(p)
-                      ->CopyLayoutFromShape(param_shape));
-    }
-    const Shape& result_shape = computation->root_instruction()->shape();
-    TF_CHECK_OK(module->mutable_entry_computation_layout()
-                    ->mutable_result_layout()
-                    ->CopyLayoutFromShape(result_shape));
+    module->AddEntryComputation(std::move(computations_[i]));
   }
   return true;
 }
@@ -6088,7 +6088,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 // tuple_elements
 //   ::= /*empty*/
 //   ::= shape (',' shape)*
-bool HloParserImpl::ParseShape(Shape* result) {
+bool HloParserImpl::ParseShape(Shape* result, bool set_to_default_layout) {
   if (EatIfPresent(TokKind::kLparen)) {  // Tuple
     std::vector<Shape> shapes;
     if (lexer_.GetKind() == TokKind::kRparen) {
@@ -6097,7 +6097,7 @@ bool HloParserImpl::ParseShape(Shape* result) {
       // shape (',' shape)*
       do {
         shapes.emplace_back();
-        if (!ParseShape(&shapes.back())) {
+        if (!ParseShape(&shapes.back(), set_to_default_layout)) {
           return false;
         }
       } while (EatIfPresent(TokKind::kComma));
@@ -6123,7 +6123,9 @@ bool HloParserImpl::ParseShape(Shape* result) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
-  LayoutUtil::SetToDefaultLayout(result);
+  if (set_to_default_layout) {
+    LayoutUtil::SetToDefaultLayout(result);
+  }
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
   //
