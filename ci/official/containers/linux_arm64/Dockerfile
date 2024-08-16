@@ -62,6 +62,9 @@ COPY devel.usertools /usertools
 COPY devel.bashrc /root/.bashrc
 COPY ld.so.conf /dt10/etc/
 
+# Make sure clang is on the path
+RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
+
 # Setup JAX Python environment.
 FROM devel as jax
 RUN /setup.packages.sh /cuda.packages.txt
