@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/sharding_propagation.h"
@@ -1915,6 +1916,20 @@ std::vector<int64_t> VectorGreaterThanOneElementIndices(
   return result;
 }
 
+std::vector<int64_t> VectorGreaterThanOneElements(
+    absl::Span<const int64_t> span, bool omit_last_dim) {
+  std::vector<int64_t> result;
+  for (size_t i = 0; i < span.size(); i++) {
+    if (i == span.size() - 1 && omit_last_dim) {
+      continue;
+    }
+    if (span.at(i) > 1) {
+      result.push_back(span.at(i));
+    }
+  }
+  return result;
+}
+
 // Given a sharding, and a shape index, obtains the subsharding corresponding to
 // that shape index. This function works whether or not the provided sharding is
 // a tuple, unlike HloSharding::GetSubSharding.
@@ -2278,9 +2293,9 @@ void EnumerateAllPossibleMeshShapesHelper(
 
 std::vector<std::vector<int64_t>> InferMeshShapesToTry(
     const HloModule& module) {
-  int64_t sharding_1d = -1;
-  absl::flat_hash_set<std::vector<int64_t>> shardings_nd;
-  int max_shardings_nd_dimension = -1;
+  std::vector<HloSharding> tiled_shardings;
+  size_t max_tile_dimensions = 0;
+  size_t max_reshape_dims = 0;
   std::function<void(const HloSharding&)> process_sharding;
   process_sharding = [&](const HloSharding& sharding) {
     if (sharding.IsTuple()) {
@@ -2293,23 +2308,15 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
         sharding.IsManual()) {
       return;
     }
-    absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
-    std::vector<int64_t> dims_greater_than_one;
-    for (const int64_t dim : dims) {
-      if (dim > 1) {
-        dims_greater_than_one.push_back(dim);
-      }
-    }
-    if (dims_greater_than_one.size() == 1) {
-      CHECK(sharding_1d == -1 || sharding_1d == dims_greater_than_one[0]);
-      sharding_1d = dims_greater_than_one[0];
-    } else {
-      std::sort(dims_greater_than_one.begin(), dims_greater_than_one.end());
-      shardings_nd.insert(dims_greater_than_one);
-
-      max_shardings_nd_dimension =
-          std::max(max_shardings_nd_dimension,
-                   static_cast<int>(dims_greater_than_one.size()));
+    tiled_shardings.push_back(sharding);
+    max_tile_dimensions = std::max(
+        max_tile_dimensions, VectorGreaterThanOneElementCount(
+                                 sharding.tile_assignment().dimensions()));
+    if (sharding.tile_assignment().iota().has_value()) {
+      max_reshape_dims =
+          std::max(max_reshape_dims,
+                   VectorGreaterThanOneElementCount(
+                       sharding.tile_assignment().iota()->reshape_dims()));
     }
   };
 
@@ -2321,29 +2328,43 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
     }
   }
 
-  for (auto mesh_shape_it = shardings_nd.begin(), end = shardings_nd.end();
-       mesh_shape_it != end;) {
-    // `erase()` will invalidate `mesh_shape_it`, so advance `mesh_shape_it`
-    // first.
-    auto copy_it = mesh_shape_it++;
-    if (copy_it->size() < max_shardings_nd_dimension) {
-      shardings_nd.erase(copy_it);
+  std::vector<HloSharding> tiled_shardings_with_all_dims_in_order;
+  for (const HloSharding& sharding : tiled_shardings) {
+    if (VectorGreaterThanOneElementCount(
+            sharding.tile_assignment().dimensions()) != max_tile_dimensions ||
+        !sharding.tile_assignment().iota().has_value()) {
+      continue;
+    }
+    if (spmd::AreValuesIota(
+            sharding.tile_assignment().iota()->transpose_perm())) {
+      tiled_shardings_with_all_dims_in_order.push_back(sharding);
     }
   }
 
-  if (shardings_nd.empty() && sharding_1d < 0) {
-    return {};
+  absl::flat_hash_set<std::vector<int64_t>> mesh_shape_candidates;
+  if (!tiled_shardings_with_all_dims_in_order.empty()) {
+    for (const HloSharding& sharding : tiled_shardings_with_all_dims_in_order) {
+      mesh_shape_candidates.insert(VectorGreaterThanOneElements(
+          sharding.tile_assignment().dimensions()));
+    }
+  } else {
+    for (const HloSharding& sharding : tiled_shardings) {
+      if (!sharding.tile_assignment().iota().has_value() ||
+          VectorGreaterThanOneElementCount(
+              sharding.tile_assignment().iota()->reshape_dims()) !=
+              max_reshape_dims) {
+        continue;
+      }
+      const IotaTileAssignment& iota = *sharding.tile_assignment().iota();
+      std::vector<int64_t> reshape_dims(iota.reshape_dims().size());
+      for (int i = 0; i < iota.transpose_perm().size(); ++i) {
+        reshape_dims[iota.transpose_perm()[i]] = iota.reshape_dims()[i];
+      }
+      mesh_shape_candidates.insert(VectorGreaterThanOneElements(reshape_dims));
+    }
   }
-  if (shardings_nd.empty()) {
-    return {{1, sharding_1d}};
-  }
-  std::vector<std::vector<int64_t>> result;
-  for (std::vector<int64_t> mesh : shardings_nd) {
-    do {
-      result.push_back(std::vector<int64_t>(mesh));
-    } while (std::next_permutation(std::begin(mesh), std::end(mesh)));
-  }
-  return result;
+  return std::vector<std::vector<int64_t>>(mesh_shape_candidates.begin(),
+                                           mesh_shape_candidates.end());
 }
 
 std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(

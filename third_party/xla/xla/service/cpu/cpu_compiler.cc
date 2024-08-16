@@ -233,6 +233,9 @@ using tsl::Chain;
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
 
+// A module identifier (prefix) for emitted LLVM modules.
+static constexpr std::string_view kXlaModuleIdentifier = "__compute_module";
+
 // Returns a global (per-process) thread pool for XLA CPU compilation tasks.
 static tsl::thread::ThreadPool* GetCompilationThreadPool() {
   // LLVM compilation has a lot of memory-bound pointer chasing and not
@@ -917,7 +920,13 @@ std::pair<LLVMCompiler::ModuleHook, LLVMCompiler::ModuleHook> GetIRModuleHooks(
     if (user_hook) {
       user_hook(llvm_module);
     }
-    llvm_ir::DumpIrIfEnabled(*hlo_module_ptr, llvm_module, optimized);
+
+    // Include LLVM module identifier suffix in case `llvm_module` is just a
+    // part of the original LLVM module constructed by the XLA.
+    std::string_view id = llvm_module.getModuleIdentifier();
+    size_t pos = std::min(id.size(), 1 + kXlaModuleIdentifier.size());
+    llvm_ir::DumpIrIfEnabled(*hlo_module_ptr, llvm_module, optimized,
+                             /*filename_suffix=*/id.substr(pos));
   };
   return {[hook](const llvm::Module& llvm_module) {
             return hook(/*optimized=*/false, llvm_module);
@@ -1210,8 +1219,9 @@ static llvm::orc::ThreadSafeModule CloneAsThreadSafeModule(
   // Parse module back into its own LLVM context.
   auto clone_context = std::make_unique<llvm::LLVMContext>();
   auto clone_module = llvm::parseBitcodeFile(
-      llvm::MemoryBufferRef(llvm::StringRef(bc.data(), bc.size()),
-                            absl::StrCat("__compute_module_part_", part)),
+      llvm::MemoryBufferRef(
+          llvm::StringRef(bc.data(), bc.size()),
+          absl::StrFormat("%s_part_%02d", kXlaModuleIdentifier, part)),
       *clone_context);
 
   return llvm::orc::ThreadSafeModule(std::move(*clone_module),
@@ -1278,7 +1288,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   mlir::MLIRContext mlir_context;
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   auto llvm_module =
-      std::make_unique<llvm::Module>("__compute_module", *llvm_context);
+      std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
 
   const DebugOptions& debug_options = module->config().debug_options();
 
@@ -1437,8 +1447,12 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     // issue compile tasks in parallel without any interference.
     std::vector<CompiledSymbolsPart> compiled_parts;
 
+    VLOG(2) << "Compile LLVM module with " << ir_emitter2.kernels().size()
+            << " kernels and " << ir_emitter2.comparators().size()
+            << " comparators";
+
     if (num_parts > 1) {
-      VLOG(3) << "Splitting LLVM module into " << num_parts
+      VLOG(3) << "Split LLVM module into " << num_parts
               << " parts before codegen to enable parallel compilation"
               << " (max split count: " << parallel_codegen_split_count << ")";
 
@@ -1461,7 +1475,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
           /*PreserveLocals=*/true, /*RoundRobin=*/true);
 
     } else {
-      VLOG(3) << "Compiled LLVM module without splitting (max split count: "
+      VLOG(3) << "Compile LLVM module without splitting (max split count: "
               << parallel_codegen_split_count << ")";
       compiled_parts.push_back(
           CollectCompiledSymbolsPart(ir_emitter2, *llvm_module));
@@ -1794,7 +1808,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
       // Set required information before emitting IR
       auto llvm_module =
-          std::make_unique<llvm::Module>("__compute_module", llvm_context);
+          std::make_unique<llvm::Module>(kXlaModuleIdentifier, llvm_context);
       llvm_module->setDataLayout(target_machine->createDataLayout());
       llvm_module->setTargetTriple(triple.getTriple());
       if (pic_level != llvm::PICLevel::NotPIC) {
@@ -2020,7 +2034,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     // required metadata to instantiate host kernel thunks.
     auto llvm_context = std::make_unique<llvm::LLVMContext>();
     auto llvm_module =
-        std::make_unique<llvm::Module>("__compute_module", *llvm_context);
+        std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
 
     LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
 

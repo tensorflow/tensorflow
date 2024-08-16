@@ -39,9 +39,9 @@ bazel build --config=cuda <target> \
 --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
 --repo_env=HERMETIC_CUDNN_VERSION="9.1.1"
 
-# OR set the environment variable globally in your shell:
+# If .bazelrc doesn't have corresponding entries and the environment variables
+# are not passed to bazel command, you can set them globally in your shell:
 export HERMETIC_CUDA_VERSION="12.3.2"
-export LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn"
 export HERMETIC_CUDNN_VERSION="9.1.1"
 ```
 
@@ -104,7 +104,8 @@ bazel build --config=cuda <target> \
 --repo_env=LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn" \
 --repo_env=LOCAL_NCCL_PATH="/foo/bar/nvidia/nccl"
 
-# OR set the environment variable globally in your shell:
+# If .bazelrc doesn't have corresponding entries and the environment variables
+# are not passed to bazel command, you can set them globally in your shell:
 export LOCAL_CUDA_PATH="/foo/bar/nvidia/cuda"
 export LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn"
 export LOCAL_NCCL_PATH="/foo/bar/nvidia/nccl"

@@ -290,6 +290,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:ptrvec",
+        "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:call_graph",
         "//xla/service:sharding_propagation",

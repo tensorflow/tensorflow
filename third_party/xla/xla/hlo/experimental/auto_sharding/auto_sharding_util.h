@@ -497,6 +497,9 @@ size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
     absl::Span<const int64_t> span, bool omit_last_dim = false);
 
+std::vector<int64_t> VectorGreaterThanOneElements(
+    absl::Span<const int64_t> span, bool omit_last_dim = false);
+
 // Computes bytes size of a shape recursively if it is sharded according to an
 // optionally provided sharding
 int64_t ByteSizeOfShapeWithSharding(const Shape& shape,

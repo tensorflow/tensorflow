@@ -4395,21 +4395,10 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   std::vector<std::vector<int64_t>> mesh_shapes;
   if (option_.try_multiple_mesh_shapes || module_is_manually_partitioned) {
-    bool asymmetrical_mesh_dims = false;
-    for (size_t i = 0; i < option_.device_mesh_shape.size(); ++i) {
-      if (option_.device_mesh_beta[0] != option_.device_mesh_beta[i] ||
-          option_.device_mesh_alpha[0] != option_.device_mesh_alpha[i]) {
-        asymmetrical_mesh_dims = true;
-        break;
-      }
-    }
-
     mesh_shapes = spmd::InferOrEnumerateMeshShapesToTry(
-        *module,
-        absl::c_accumulate(option_.device_mesh_shape, 1,
-                           [](int64_t a, int64_t b) { return a * b; }),
+        *module, Product(option_.device_mesh_shape),
         option_.device_mesh_shape.size(),
-        /* symmetrical_mesh_dims */ !asymmetrical_mesh_dims);
+        /*symmetrical_mesh_dims=*/false);
   } else {
     mesh_shapes.push_back(option_.device_mesh_shape);
   }
