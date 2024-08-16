@@ -1288,3 +1288,27 @@ func.func @logical_not_splat() -> tensor<3xi1> {
 }
 
 // CHECK: %cst = arith.constant dense<true> : tensor<3xi1>
+
+// CHECK-LABEL: bitwise_xor_i32
+func.func @bitwise_xor_i32() -> tensor<3xi32> {
+  %0 = arith.constant dense<[0, 5, 3]> : tensor<3xi32>
+  %1 = arith.constant dense<[5, 0, 7]> : tensor<3xi32>
+
+  %2 = "tfl.bitwise_xor"(%0, %1) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi32>
+
+  func.return %2 : tensor<3xi32>
+}
+
+// CHECK: %cst = arith.constant dense<[5, 5, 4]> : tensor<3xi32>
+
+// CHECK-LABEL: bitwise_xor_ui8
+func.func @bitwise_xor_ui8() -> tensor<3xui8> {
+  %0 = arith.constant dense<[0, 5, 3]> : tensor<3xui8>
+  %1 = arith.constant dense<[5, 0, 7]> : tensor<3xui8>
+
+  %2 = "tfl.bitwise_xor"(%0, %1) : (tensor<3xui8>, tensor<3xui8>) -> tensor<3xui8>
+
+  func.return %2 : tensor<3xui8>
+}
+
+// CHECK: %cst = arith.constant dense<[5, 5, 4]> : tensor<3xui8>

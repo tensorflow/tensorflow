@@ -210,13 +210,11 @@ void AddRoundingOpsAsUnknown(ConversionTarget& target) {
       // go/keep-sorted start
       // clang-format off
       mhlo::AddOp,
-      mhlo::AndOp,
       mhlo::BroadcastInDimOp,
       mhlo::ConstantOp,
       mhlo::DivOp,
       mhlo::FloorOp,
       mhlo::MulOp,
-      mhlo::OrOp,
       mhlo::RemOp,
       mhlo::RoundOp,
       mhlo::SelectOp,
@@ -227,7 +225,6 @@ void AddRoundingOpsAsUnknown(ConversionTarget& target) {
       // go/keep-sorted end
       >([](Operation* op) { return std::nullopt; });
 }
-
 bool IsCompareLegal(mhlo::CompareOp op) {
   return !SupportedComparisonType(op.getCompareTypeAttr());
 }
@@ -266,6 +263,19 @@ void SetUnaryOpLegal(ConversionTarget& target) {
       >(is_legal);
 }
 
+// mhlo "bitwise ops" can be both bitwise (floats/ints) or logical (bools).
+// TFL ops are only one of logical or bitwise.
+void SetBinaryBitwiseLegal(ConversionTarget& target) {
+  auto is_logical = [](Operation* op) {
+    return llvm::cast<ShapedType>(op->getResultTypes()[0])
+        .getElementType()
+        .isInteger(1);
+  };
+  auto is_bitwise = [&](Operation* op) { return !is_logical(op); };
+  target.addDynamicallyLegalOp<mhlo::OrOp, mhlo::AndOp>(is_bitwise);
+  target.addDynamicallyLegalOp<mhlo::XorOp>(is_logical);
+}
+
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext* context = &getContext();
@@ -300,6 +310,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 
   AddRoundingOpsAsUnknown(target);
   SetUnaryOpLegal(target);
+  SetBinaryBitwiseLegal(target);
 
   PopulatePadPatterns(context, patterns, target);
   PopulateReducePatterns(context, patterns, target);

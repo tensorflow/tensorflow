@@ -92,6 +92,21 @@ def : Pat<(MHLO_NotOp TensorOf<[UI32]>:$input),
               (Arith_ConstantOp
                 (GetRankedScalarAttr<"u", 32, ", false", "0xFFFFFFFFUL">)))>;
 
+foreach pair = [
+  [MHLO_AndOp, TFL_LogicalAndOp],
+  [MHLO_OrOp, TFL_LogicalOrOp]]
+in {
+  def : Pat<
+    (pair[0] TFL_BoolTensor:$l, TFL_BoolTensor:$r),
+    (pair[1] $l, $r)>;
+}
+
+def LegalizeXor : Pat<
+  (MHLO_XorOp
+    TFL_IntTensor:$l,
+    TFL_IntTensor:$r),
+  (TFL_BitwiseXorOp $l, $r)>;
+
 //===----------------------------------------------------------------------===//
 // comparison ops
 //===----------------------------------------------------------------------===//

@@ -833,6 +833,20 @@ OpFoldResult FloorOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// BitwiseXorOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult BitwiseXorOp::fold(FoldAdaptor adaptor) {
+  auto compute = [](APInt lhs, APInt rhs) -> APInt {
+    lhs ^= rhs;
+    return lhs;
+  };
+
+  return ConstFoldBinaryOp<DenseElementsAttr, APInt>(
+      getType(), adaptor.getLhs(), adaptor.getRhs(), compute);
+}
+
+//===----------------------------------------------------------------------===//
 // ExpOp
 //===----------------------------------------------------------------------===//
 

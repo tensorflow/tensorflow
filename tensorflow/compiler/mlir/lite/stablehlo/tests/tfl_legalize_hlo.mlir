@@ -684,6 +684,62 @@ func.func @dynamic_reshape_i64(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi64>) -> 
 // -----
 
 //===----------------------------------------------------------------------===//
+// mhlo binary bit-wise ops
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: logical_and
+func.func @logical_and(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
+  %0 = mhlo.and %arg0, %arg1 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.logical_and
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: bitwise_and
+func.func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.and %arg0, %arg1 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK: mhlo.and
+// CHECK-NOT: tfl
+
+// -----
+
+// CHECK-LABEL: logical_or
+func.func @logical_or(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
+  %0 = mhlo.or %arg0, %arg1 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.logical_or
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: bitwise_or
+func.func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.or %arg0, %arg1 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK: mhlo.or
+// CHECK-NOT: tfl
+
+// -----
+
+// CHECK-LABEL: logical_xor
+func.func @logical_xor(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
+  %0 = mhlo.xor %arg0, %arg1 : tensor<4xi1>
+  func.return %0 : tensor<4xi1>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // mhlo.convolution
 //===----------------------------------------------------------------------===//
 
