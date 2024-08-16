@@ -1350,7 +1350,7 @@ tf_cc_shared_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/data:standalone",
         # Exports for pywrap_tensorflow_internal. Many of these are transitive
-        # depedencies of the above, but must be explicitly listed for
+        # dependencies of the above, but must be explicitly listed for
         # cc_shared_library to work.
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
