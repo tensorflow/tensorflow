@@ -878,9 +878,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         }
         module_allocations_[executor][i] =
             buffer_allocations.GetDeviceAddress(i);
-        VLOG(5) << "Gpu address changed for module " << module_name_
-                << ", allocation info: \n"
-                << allocations[i].ToShortString();
+        VLOG(5) << "Gpu address changed for module " << module_name_;
       }
     }
   }
