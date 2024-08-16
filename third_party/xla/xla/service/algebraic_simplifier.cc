@@ -8817,6 +8817,50 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
   TF_RETURN_IF_ERROR(
       SimplifyTransposeOfBroadcast(transpose, transpose->dimensions()));
 
+  // Replace transpose(reshape(x)) with reshape(transpose(x)) if reshape merely
+  // inserts 1 sized dims.
+  if (!options_.is_layout_sensitive() &&
+      operand->opcode() == HloOpcode::kReshape &&
+      transpose->user_count() == 1) {
+    std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_degenerate =
+        operand->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+    if (reshape_degenerate.has_value() &&
+        !reshape_degenerate->inserted_dimensions.empty() &&
+        reshape_degenerate->deleted_dimensions.empty()) {
+      const auto& inserted_dims = reshape_degenerate->inserted_dimensions;
+      // Count how many dims were inserted before every index, so that we can
+      // use it to decrement the non-trivial dims in the permutation.
+      std::vector<int64_t> removed_dims_prefix;
+      removed_dims_prefix.reserve(transpose->dimensions().size());
+      int64_t prefix_sum = 0;
+      for (int64_t i = 0; i < transpose->dimensions().size(); ++i) {
+        auto it = std::find(inserted_dims.begin(), inserted_dims.end(), i);
+        if (it != inserted_dims.end()) {
+          ++prefix_sum;
+        }
+        removed_dims_prefix.push_back(prefix_sum);
+      }
+      HloInstruction* reshape_operand = operand->mutable_operand(0);
+      const int64_t new_permute_size = reshape_operand->shape().rank();
+      std::vector<int64_t> new_permute;
+      new_permute.reserve(new_permute_size);
+      for (auto dim : transpose->dimensions()) {
+        auto it = std::find(inserted_dims.begin(), inserted_dims.end(), dim);
+        if (it == inserted_dims.end()) {
+          new_permute.push_back(dim - removed_dims_prefix[dim]);
+        }
+      }
+      auto transposed_shape =
+          ShapeUtil::PermuteDimensions(new_permute, reshape_operand->shape());
+      auto new_transpose =
+          transpose->AddInstruction(HloInstruction::CreateTranspose(
+              transposed_shape, reshape_operand, new_permute));
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+          transpose,
+          HloInstruction::CreateReshape(transpose->shape(), new_transpose)));
+    }
+  }
+
   return absl::OkStatus();
 }
 

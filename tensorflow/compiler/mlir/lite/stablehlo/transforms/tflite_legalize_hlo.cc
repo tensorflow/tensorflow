@@ -210,11 +210,17 @@ void AddRoundingOpsAsUnknown(ConversionTarget& target) {
   target.addDynamicallyLegalOp<
       // go/keep-sorted start
       // clang-format off
+      mhlo::AddOp,
       mhlo::BroadcastInDimOp,
       mhlo::ConstantOp,
+      mhlo::DivOp,
+      mhlo::FloorOp,
+      mhlo::MulOp,
+      mhlo::RemOp,
       mhlo::RoundOp,
       mhlo::SelectOp,
       mhlo::SignOp,
+      mhlo::SubtractOp,
       mhlo::TupleOp
       // clang-format on
       // go/keep-sorted end
@@ -279,7 +285,6 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   populateWithGenerated(patterns);
 
   ConversionTarget target(*context);
-
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
 
@@ -289,25 +294,17 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
 
   target.addIllegalOp<
-      // go/keep-sorted start
       // clang-format off
-      mhlo::AddOp,
-      mhlo::Atan2Op,
-      mhlo::ClampOp,
-      mhlo::DivOp,
-      mhlo::DotGeneralOp,
-      mhlo::DotOp,
-      mhlo::DynamicReshapeOp,
-      mhlo::MaxOp,
-      mhlo::MinOp,
-      mhlo::MulOp,
-      mhlo::PowOp,
-      mhlo::RemOp,
-      mhlo::ReshapeOp,
-      mhlo::ShiftRightArithmeticOp,
-      mhlo::ShiftRightLogicalOp,
-      mhlo::SubtractOp,
-      mhlo::TransposeOp
+    // go/keep-sorted start
+    mhlo::ClampOp,
+    mhlo::DotGeneralOp,
+    mhlo::DotOp,
+    mhlo::DynamicReshapeOp,
+    mhlo::RemOp,
+    mhlo::ReshapeOp,
+    mhlo::ShiftRightArithmeticOp,
+    mhlo::ShiftRightLogicalOp,
+    mhlo::TransposeOp
       // clang-format on
       // go/keep-sorted end
       >();

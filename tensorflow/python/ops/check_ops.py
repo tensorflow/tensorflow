@@ -1416,8 +1416,15 @@ def assert_rank_in(
     except ValueError as e:
       if e.args[0] == 'Static rank condition failed':
         raise ValueError(
-            '%sTensor %s must have rank in %s.  Received rank %d, '
-            'shape %s' % (message, name, e.args[2], e.args[1], x.get_shape()))
+            '%sTensor %s must have rank in %s.  Received rank %d, shape %s'
+            % (
+                message,
+                name,
+                tuple(r.item() for r in e.args[2]),
+                e.args[1],
+                x.get_shape(),
+            )
+        )
       else:
         raise
 
