@@ -1281,6 +1281,8 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
 
   let hasCustomAssemblyFormat = 1;
 
+  let hasFolder = 1;
+
   let extraClassDefinition = [{
     ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
       return parseOneResultSameOperandTypeOp(parser, result);
@@ -1356,6 +1358,8 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
   let builders = [TFL_ComparisonBinaryBuilder];
 
   let hasCustomAssemblyFormat = 1;
+
+  let hasFolder = 1;
 
   let extraClassDefinition = [{
     ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
@@ -1554,6 +1558,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
 
   let results = (outs TFL_BoolTensor:$output);
 
+  let hasFolder = 1;
+
   let builders =
   [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs),
@@ -1681,6 +1687,8 @@ def TFL_EqualOp: TFL_Op<"equal", [
   let results = (outs TFL_BoolTensor:$output);
 
   let builders = [TFL_ComparisonBinaryBuilder];
+
+  let hasFolder = 1;
 }
 
 def TFL_ExpOp: TFL_Op<"exp", [
@@ -1929,6 +1937,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 
   let hasCustomAssemblyFormat = 1;
 
+  let hasFolder = 1;
+
   let extraClassDefinition = [{
     ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
       return parseOneResultSameOperandTypeOp(parser, result);
@@ -2040,6 +2050,8 @@ def TFL_LessOp : TFL_Op<"less", [
 
   let hasCustomAssemblyFormat = 1;
 
+  let hasFolder = 1;
+
   let extraClassDefinition = [{
     ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
       return parseOneResultSameOperandTypeOp(parser, result);
@@ -2064,6 +2076,8 @@ def TFL_LogicalAndOp : TFL_Op<"logical_and", [Pure]> {
   let results = (outs TFL_BoolTensor:$output);
 
   let hasCustomAssemblyFormat = 1;
+
+  let hasFolder = 1;
 
   let extraClassDefinition = [{
     ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
@@ -2105,6 +2119,8 @@ def TFL_LogicalOrOp : TFL_Op<"logical_or", [Pure]> {
   let results = (outs TFL_BoolTensor:$output);
 
   let hasCustomAssemblyFormat = 1;
+
+  let hasFolder = 1;
 
   let extraClassDefinition = [{
     ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
@@ -2809,6 +2825,8 @@ def TFL_PowOp : TFL_Op<"pow", [
 
   let hasCustomAssemblyFormat = 1;
 
+  let hasFolder = 1;
+
   let extraClassDefinition = [{
     ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
       return parseOneResultSameOperandTypeOp(parser, result);
@@ -3162,6 +3180,8 @@ def TFL_SelectOp : TFL_Op<"select", [
 
   let results = (outs
     TFL_TensorOf<[F32, I1, I8, I16, I32, I64, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$output);
+
+  let hasFolder = 1;
 
   // TODO(jpienaar): autogenerate this.
   let builders = [

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/lookup_interface.h"
@@ -96,7 +98,8 @@ class TextFileLineIterator
     status_ = env->NewRandomAccessFile(filename_, &file_);
     if (!status_.ok()) return status_;
 
-    input_buffer_.reset(new io::InputBuffer(file_.get(), kInputBufferSize));
+    input_buffer_ =
+        std::make_unique<io::InputBuffer>(file_.get(), kInputBufferSize);
     valid_ = true;
     next_id_ = 0;
     offset_ = offset;

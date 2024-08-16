@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/range_sampler.h"
 
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -81,25 +82,25 @@ class RangeSamplerTest : public ::testing::Test {
 };
 
 TEST_F(RangeSamplerTest, UniformProbabilities) {
-  sampler_.reset(new UniformSampler(10));
+  sampler_ = std::make_unique<UniformSampler>(10);
   for (int i = 0; i < 10; i++) {
     CHECK_EQ(sampler_->Probability(i), sampler_->Probability(0));
   }
 }
 
 TEST_F(RangeSamplerTest, UniformChecksum) {
-  sampler_.reset(new UniformSampler(10));
+  sampler_ = std::make_unique<UniformSampler>(10);
   CheckProbabilitiesSumToOne();
 }
 
 TEST_F(RangeSamplerTest, UniformHistogram) {
-  sampler_.reset(new UniformSampler(10));
+  sampler_ = std::make_unique<UniformSampler>(10);
   CheckHistogram(1000, 0.05);
 }
 
 TEST_F(RangeSamplerTest, LogUniformProbabilities) {
   int range = 1000000;
-  sampler_.reset(new LogUniformSampler(range));
+  sampler_ = std::make_unique<LogUniformSampler>(range);
   for (int i = 100; i < range; i *= 2) {
     float ratio = sampler_->Probability(i) / sampler_->Probability(i / 2);
     EXPECT_NEAR(ratio, 0.5, 0.1);
@@ -107,17 +108,17 @@ TEST_F(RangeSamplerTest, LogUniformProbabilities) {
 }
 
 TEST_F(RangeSamplerTest, LogUniformChecksum) {
-  sampler_.reset(new LogUniformSampler(10));
+  sampler_ = std::make_unique<LogUniformSampler>(10);
   CheckProbabilitiesSumToOne();
 }
 
 TEST_F(RangeSamplerTest, LogUniformHistogram) {
-  sampler_.reset(new LogUniformSampler(10));
+  sampler_ = std::make_unique<LogUniformSampler>(10);
   CheckHistogram(1000, 0.05);
 }
 
 TEST_F(RangeSamplerTest, UnigramProbabilities1) {
-  sampler_.reset(new UnigramSampler(10));
+  sampler_ = std::make_unique<UnigramSampler>(10);
   Update1();
   EXPECT_NEAR(sampler_->Probability(3), 0.55, 1e-4);
   for (int i = 0; i < 10; i++) {
@@ -127,20 +128,20 @@ TEST_F(RangeSamplerTest, UnigramProbabilities1) {
   }
 }
 TEST_F(RangeSamplerTest, UnigramProbabilities2) {
-  sampler_.reset(new UnigramSampler(10));
+  sampler_ = std::make_unique<UnigramSampler>(10);
   Update2();
   for (int i = 0; i < 10; i++) {
     ASSERT_NEAR(sampler_->Probability(i), (i + 1) / 55.0, 1e-4);
   }
 }
 TEST_F(RangeSamplerTest, UnigramChecksum) {
-  sampler_.reset(new UnigramSampler(10));
+  sampler_ = std::make_unique<UnigramSampler>(10);
   Update1();
   CheckProbabilitiesSumToOne();
 }
 
 TEST_F(RangeSamplerTest, UnigramHistogram) {
-  sampler_.reset(new UnigramSampler(10));
+  sampler_ = std::make_unique<UnigramSampler>(10);
   Update1();
   CheckHistogram(1000, 0.05);
 }
@@ -281,7 +282,7 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve2FromVector) {
 // We will test SampleBatchGetExpectedCount instead.
 TEST_F(RangeSamplerTest, All) {
   int batch_size = 10;
-  sampler_.reset(new AllSampler(10));
+  sampler_ = std::make_unique<AllSampler>(10);
   std::vector<int64_t> batch(batch_size);
   std::vector<float> batch_expected(batch_size);
   std::vector<int64_t> extras(2);
@@ -310,7 +311,7 @@ TEST_F(RangeSamplerTest, Unique) {
   const int range = 100;
   const int batch_size = 50;
   const int num_batches = 100;
-  sampler_.reset(new LogUniformSampler(range));
+  sampler_ = std::make_unique<LogUniformSampler>(range);
   std::vector<int> histogram(range);
   std::vector<int64_t> batch(batch_size);
   std::vector<int64_t> all_values(range);
@@ -350,7 +351,7 @@ TEST_F(RangeSamplerTest, Unique) {
 TEST_F(RangeSamplerTest, Avoid) {
   random::PhiloxRandom philox(123, 17);
   random::SimplePhilox rnd(&philox);
-  sampler_.reset(new LogUniformSampler(100));
+  sampler_ = std::make_unique<LogUniformSampler>(100);
   std::vector<int64_t> avoided(2);
   avoided[0] = 17;
   avoided[1] = 23;

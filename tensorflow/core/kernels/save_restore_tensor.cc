@@ -182,8 +182,8 @@ void RestoreTensor(OpKernelContext* context,
                                                       preferred_shard);
   }
   if (!reader) {
-    allocated_reader.reset(new checkpoint::TensorSliceReader(
-        file_pattern, open_func, preferred_shard));
+    allocated_reader = std::make_unique<checkpoint::TensorSliceReader>(
+        file_pattern, open_func, preferred_shard);
     reader = allocated_reader.get();
   }
   OP_REQUIRES_OK(context, CHECK_NOTNULL(reader)->status());
@@ -448,8 +448,8 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     // Avoid creating a pool if there are no large restore ops.
     std::unique_ptr<thread::ThreadPool> reader_pool;
     if (!large_restore_ops.empty()) {
-      reader_pool.reset(
-          new thread::ThreadPool(Env::Default(), "restore_tensors", 8));
+      reader_pool = std::make_unique<thread::ThreadPool>(Env::Default(),
+                                                         "restore_tensors", 8);
       for (auto* op : large_restore_ops) {
         reader_pool->Schedule(
             [op, &cache]() { op->run_with_new_reader(&cache); });

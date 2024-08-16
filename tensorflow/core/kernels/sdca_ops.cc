@@ -71,15 +71,15 @@ struct ComputeOptions {
     string loss_type;
     OP_REQUIRES_OK(context, context->GetAttr("loss_type", &loss_type));
     if (loss_type == "logistic_loss") {
-      loss_updater.reset(new LogisticLossUpdater);
+      loss_updater = std::make_unique<LogisticLossUpdater>();
     } else if (loss_type == "squared_loss") {
-      loss_updater.reset(new SquaredLossUpdater);
+      loss_updater = std::make_unique<SquaredLossUpdater>();
     } else if (loss_type == "hinge_loss") {
-      loss_updater.reset(new HingeLossUpdater);
+      loss_updater = std::make_unique<HingeLossUpdater>();
     } else if (loss_type == "smooth_hinge_loss") {
-      loss_updater.reset(new SmoothHingeLossUpdater);
+      loss_updater = std::make_unique<SmoothHingeLossUpdater>();
     } else if (loss_type == "poisson_loss") {
-      loss_updater.reset(new PoissonLossUpdater);
+      loss_updater = std::make_unique<PoissonLossUpdater>();
     } else {
       OP_REQUIRES(
           context, false,

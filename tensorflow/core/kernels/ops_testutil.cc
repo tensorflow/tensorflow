@@ -171,12 +171,13 @@ void OpsTestBase::CreateContext() {
   managed_outputs_.clear();
   managed_outputs_.resize(0);
 
-  params_.reset(new OpKernelContext::Params);
+  params_ = std::make_unique<OpKernelContext::Params>();
   params_->device = device_;
   params_->frame_iter = FrameAndIter(0, 0);
   params_->inputs = inputs_;
   params_->op_kernel = kernel_.get();
-  step_container_.reset(new ScopedStepContainer(0, [](const string&) {}));
+  step_container_ =
+      std::make_unique<ScopedStepContainer>(0, [](const string&) {});
   params_->step_container = step_container_.get();
   test::SetOutputAttrs(params_.get(), &out_alloc_attrs_);
   params_->slice_reader_cache = &slice_reader_cache_wrapper_;
@@ -186,7 +187,7 @@ void OpsTestBase::CreateContext() {
   params_->runner = GetDefaultRunner();
   params_->session_metadata = &session_metadata();
 
-  context_.reset(new OpKernelContext(params_.get()));
+  context_ = std::make_unique<OpKernelContext>(params_.get());
 }
 
 Status OpsTestBase::RunOpKernel() {

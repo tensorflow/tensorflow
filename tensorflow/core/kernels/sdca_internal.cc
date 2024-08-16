@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sdca_internal.h"
 
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <random>
 
@@ -463,13 +464,13 @@ Status Examples::CreateSparseFeatureRepresentation(
             &(*examples)[example_id].sparse_features_[i];
         if (start_id < example_indices.size() &&
             example_indices(start_id) == example_id) {
-          sparse_features->indices.reset(new UnalignedInt64Vector(
-              &(feature_indices(start_id)), end_id - start_id));
+          sparse_features->indices = std::make_unique<UnalignedInt64Vector>(
+              &(feature_indices(start_id)), end_id - start_id);
           if (sparse_feature_values_inputs.size() > i) {
             auto feature_weights =
                 sparse_feature_values_inputs[i].flat<float>();
-            sparse_features->values.reset(new UnalignedFloatVector(
-                &(feature_weights(start_id)), end_id - start_id));
+            sparse_features->values = std::make_unique<UnalignedFloatVector>(
+                &(feature_weights(start_id)), end_id - start_id);
           }
           // If features are non empty.
           if (end_id - start_id > 0) {
@@ -488,14 +489,14 @@ Status Examples::CreateSparseFeatureRepresentation(
           }
         } else {
           // Add a Tensor that has size 0.
-          sparse_features->indices.reset(
-              new UnalignedInt64Vector(&(feature_indices(0)), 0));
+          sparse_features->indices =
+              std::make_unique<UnalignedInt64Vector>(&(feature_indices(0)), 0);
           // If values exist for this feature group.
           if (sparse_feature_values_inputs.size() > i) {
             auto feature_weights =
                 sparse_feature_values_inputs[i].flat<float>();
-            sparse_features->values.reset(
-                new UnalignedFloatVector(&(feature_weights(0)), 0));
+            sparse_features->values = std::make_unique<UnalignedFloatVector>(
+                &(feature_weights(0)), 0);
           }
         }
       }
@@ -524,8 +525,9 @@ Status Examples::CreateDenseFeatureRepresentation(
     for (int i = static_cast<int>(begin); i < end; ++i) {
       auto dense_features = dense_features_inputs[i].template matrix<float>();
       for (int example_id = 0; example_id < num_examples; ++example_id) {
-        (*examples)[example_id].dense_vectors_[i].reset(
-            new Example::DenseVector{dense_features, example_id});
+        (*examples)[example_id].dense_vectors_[i] =
+            std::make_unique<Example::DenseVector>(
+                Example::DenseVector{dense_features, example_id});
       }
       if (!weights.DenseIndexValid(i, dense_features.dimension(1) - 1)) {
         mutex_lock l(mu);

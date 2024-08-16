@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/range_sampler.h"
 
 #include <cmath>
+#include <memory>
 #include <unordered_set>
 #include <vector>
 
@@ -248,7 +249,7 @@ Status FixedUnigramSampler::SetDistributionSampler(Env* env,
     return (errors::InvalidArgument("range is ", FixedUnigramSampler::range(),
                                     " must be equal to weights size  ",
                                     weights_.size()));
-  dist_sampler_.reset(new random::DistributionSampler(weights_));
+  dist_sampler_ = std::make_unique<random::DistributionSampler>(weights_);
   return absl::OkStatus();
 }
 
@@ -259,7 +260,7 @@ Status FixedUnigramSampler::SetDistributionSampler(
     return (errors::InvalidArgument("range is ", FixedUnigramSampler::range(),
                                     " must be equal to weights size  ",
                                     weights_.size()));
-  dist_sampler_.reset(new random::DistributionSampler(weights_));
+  dist_sampler_ = std::make_unique<random::DistributionSampler>(weights_);
   return absl::OkStatus();
 }
 

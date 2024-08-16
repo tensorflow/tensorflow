@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,7 +57,7 @@ class RecordInputOp : public OpKernel {
     yopts.file_shuffle_shift_ratio = file_shuffle_shift_ratio;
     yopts.parallelism = file_parallelism;
     yopts.compression_type = compression_type;
-    yielder_ = std::unique_ptr<RecordYielder>(new RecordYielder(ctx, yopts));
+    yielder_ = std::make_unique<RecordYielder>(ctx, yopts);
 
     batch_size_ = batch_size;
   }
