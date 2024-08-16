@@ -384,6 +384,8 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     if (absl::StrContains(stderr_output, "ptxas fatal") &&
         absl::StrContains(stderr_output, "Register allocation failed")) {
       LOG(INFO) << stderr_output;
+      std::move(ptx_cleaner).Cancel();
+      LOG(ERROR) << "Failed execution: " << absl::StrJoin(ptxas_args, " ");
       return absl::ResourceExhaustedError("Register allocation failed");
     }
 
