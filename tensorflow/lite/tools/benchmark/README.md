@@ -90,6 +90,15 @@ and the following optional parameters:
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
 
+*  `output_filepath`: `str` (default="") \
+    File path to save output tensor data to. If specified, the output tensor
+    values are saved as binary data in the file.
+
+*  `output_proto_filepath`: `str` (default="") \
+    File path to save output tensor data as tensorflow example proto. If
+    specified, the output tensor values are saved in tensorflow example and then
+    serialized to the file.
+
 *   `print_preinvoke_state`: `bool` (default=false) \
     Whether to print out the TfLite interpreter internals just before calling
     tflite::Interpreter::Invoke. The internals will include allocated memory
