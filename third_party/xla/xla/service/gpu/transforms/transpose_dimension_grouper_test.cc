@@ -52,5 +52,26 @@ ENTRY main {
       )");
 }
 
+// TODO(b/328656780): Do not normalize to 3D once the emitter supports any
+// number of dimensions.
+TEST_F(TransposeDimensionGrouperTest, Normalize2DTo3D) {
+  const char* hlo = R"(
+HloModule TransposeWithGrouping
+
+ENTRY main {
+  input = f32[50,20,30]{2,1,0} parameter(0)
+  ROOT out = f32[20,30,50]{2,1,0} transpose(input), dimensions={1,2,0}
+}
+)";
+
+  CheckDimensionGrouper(hlo,
+                        R"(
+// CHECK:  [[input_0:%[^ ]+]] = f32[50,20,30]{2,1,0} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1,50,600]{2,1,0} bitcast([[input_0]])
+// CHECK:  [[transpose:%[^ ]+]] = f32[1,600,50]{2,1,0} transpose([[bitcast_1]]), dimensions={0,2,1}
+// CHECK:  ROOT {{.*}} = f32[20,30,50]{2,1,0} bitcast([[transpose]])
+      )");
+}
+
 }  // namespace
 }  // namespace xla

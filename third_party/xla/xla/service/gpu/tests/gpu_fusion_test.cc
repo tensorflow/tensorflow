@@ -181,18 +181,18 @@ TEST_F(TransposeFusionTest, ElementaryLogical) {
 HloModule module
 
 ENTRY main {
-  p = f32[16,32]{1,0} parameter(0)
-  s = sqrt(p)
-  ROOT c = f32[32,16]{1,0} transpose(s), dimensions={1,0}
+  p = f32[1,16,32]{2,1,0} parameter(0)
+  s = f32[1,16,32]{2,1,0} sqrt(p)
+  ROOT c = f32[1,32,16]{2,1,0} transpose(s), dimensions={0,2,1}
 }
   )";
 
   CheckGpuFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f32[16,32]) -> f32[32,16] {
-// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
-// CHECK-NEXT:   ROOT [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]]), dimensions={1,0}
-// CHECK: ROOT [[fusion_3:%[^ ]+]] = f32[32,16]{1,0} fusion([[p_4:%[^ ]+]]), kind=kInput, calls=[[fused_computation_5:%[^ ]+]]
+// CHECK: %fused_computation ({{[^:]+}}: f32[1,16,32]) -> f32[1,32,16] {
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[1,16,32]{2,1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[1,16,32]{2,1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[c_1_2:%[^ ]+]] = f32[1,32,16]{2,1,0} transpose([[s_1_1]]), dimensions={0,2,1}
+// CHECK: ROOT [[fusion_3:%[^ ]+]] = f32[1,32,16]{2,1,0} fusion([[p_4:%[^ ]+]]), kind=kInput, calls=[[fused_computation_5:%[^ ]+]]
 )");
 }
 

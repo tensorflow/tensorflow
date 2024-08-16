@@ -2774,10 +2774,12 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Transpose(
-                  m::Fusion(m::Parameter(), m::Parameter())
-                      .WithFusionKind(HloInstruction::FusionKind::kCustom))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(
+          m::Fusion(m::Fusion(m::Parameter(), m::Parameter())
+                        .WithFusionKind(HloInstruction::FusionKind::kCustom))
+              .WithFusionKind(HloInstruction::FusionKind::kInput))));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }

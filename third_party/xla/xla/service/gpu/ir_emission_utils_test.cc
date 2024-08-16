@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/backend_config.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -48,8 +50,8 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
 HloModule module
 
 ENTRY entry {
-  p = f32[32,48,64]{2,1,0} parameter(0)
-  ROOT t = f32[64,32,48]{2,1,0} transpose(p), dimensions={2,0,1}
+  p = f32[1,1536,64]{2,1,0} parameter(0)
+  ROOT t = f32[1,64,1536]{2,1,0} transpose(p), dimensions={0,2,1}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -389,8 +391,10 @@ fusion {
   p = f32[32,48,64]{2,1,0} parameter(0)
   p2 = f32[48,32,64]{2,1,0} parameter(1)
   t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
-  t2 = f32[64,48,32]{2,1,0} transpose(p2), dimensions={2,0,1}
-  ROOT add = f32[64,48,32]{2,1,0} add(t, t2)
+  bc = f32[1,1536,64]{2,1,0} bitcast(p2)
+  t2 = f32[1,64,1536]{2,1,0} transpose(bc), dimensions={0,2,1}
+  bc2 = f32[64,48,32]{2,1,0} bitcast(t2)
+  ROOT add = f32[64,48,32]{2,1,0} add(t, bc2)
 }
 
 ENTRY main {
@@ -571,13 +575,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
 HloModule module
 
 fusion {
-  p = f32[100,11,12,8]{3,2,1,0} parameter(0)
-  ROOT t = f32[8,12,100,11]{3,2,1,0} transpose(p), dimensions={3,2,0,1}
+  p = f32[1100,12,8]{2,1,0} parameter(0)
+  ROOT t = f32[8,12,1100]{2,1,0} transpose(p), dimensions={2,1,0}
 }
 
 ENTRY main {
-  param = f32[100,11,12,8]{3,2,1,0} parameter(0)
-  ROOT fusion = f32[8,12,100,11]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
+  param = f32[1100,12,8]{2,1,0} parameter(0)
+  ROOT fusion = f32[8,12,1100]{2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -625,13 +629,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
 HloModule module
 
 fusion {
-  p = f32[8,12,100,11]{3,2,1,0} parameter(0)
-  ROOT t = f32[100,11,12,8]{3,2,1,0} transpose(p), dimensions={2,3,1,0}
+  p = f32[8,12,1100]{2,1,0} parameter(0)
+  ROOT t = f32[1100,12,8]{2,1,0} transpose(p), dimensions={2,1,0}
 }
 
 ENTRY main {
-  param = f32[8,12,100,11]{3,2,1,0} parameter(0)
-  ROOT fusion = f32[100,11,12,8]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
+  param = f32[8,12,1100]{2,1,0} parameter(0)
+  ROOT fusion = f32[1100,12,8]{2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

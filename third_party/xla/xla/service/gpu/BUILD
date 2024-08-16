@@ -687,6 +687,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla/hlo/ir:backend_config",
+        "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -1458,6 +1459,7 @@ cc_library(
         "//xla/service/gpu/transforms:stream_attribute_async_wrapper",
         "//xla/service/gpu/transforms:topk_specializer",
         "//xla/service/gpu/transforms:topk_splitter",
+        "//xla/service/gpu/transforms:transpose_dimension_grouper",
         "//xla/service/gpu/transforms:tree_reduction_rewriter",
         "//xla/service/gpu/transforms:triton_fusion_numerics_verifier",
         "//xla/service/gpu/transforms:windowed_einsum_handler",

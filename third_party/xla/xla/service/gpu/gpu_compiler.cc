@@ -175,6 +175,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
 #include "xla/service/gpu/transforms/topk_specializer.h"
 #include "xla/service/gpu/transforms/topk_splitter.h"
+#include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
 #include "xla/service/gpu/transforms/tree_reduction_rewriter.h"
 #include "xla/service/gpu/transforms/triton_fusion_numerics_verifier.h"
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
@@ -1443,6 +1444,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ScatterSimplifier>();
     pipeline.AddPass<BroadcastCanonicalizer>();
 
+    pipeline.AddPass<TransposeDimensionGrouper>();
     pipeline.AddPass<ReductionDegenerateDimRemover>();
     pipeline.AddPass<ReductionLayoutNormalizer>();
     // Run Softmax fusion after layout normalization. We expect a default layout

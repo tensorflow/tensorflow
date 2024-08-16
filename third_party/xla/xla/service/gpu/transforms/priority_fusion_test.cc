@@ -332,9 +332,10 @@ TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
       broadcast.18310.clone.1 = f32[2048,24576]{1,0} broadcast(convert.30039.clone.1), dimensions={}
       multiply.12550.clone.1 = f32[2048,24576]{1,0} multiply(tanh.798.clone.1, broadcast.18310.clone.1)
       convert.29370.clone.1 = bf16[2048,24576]{1,0} convert(multiply.12550.clone.1)
-      bitcast.22330 = bf16[1,2048,2048,12]{3,2,1,0} bitcast(convert.29370.clone.1)
-      transpose.6582 = bf16[1,12,2048,2048]{3,2,1,0} transpose(bitcast.22330), dimensions={0,3,2,1}
-      convert.33705 = f32[1,12,2048,2048]{3,2,1,0} convert(transpose.6582)
+      bitcast.1 = bf16[2048,2048,12]{2,1,0} bitcast(convert.29370.clone.1)
+      transpose.6582 = bf16[12,2048,2048]{2,1,0} transpose(bitcast.1), dimensions={2,1,0}
+      bitcast = bf16[1,12,2048,2048]{3,2,1,0} bitcast(transpose.6582)
+      convert.33705 = f32[1,12,2048,2048]{3,2,1,0} convert(bitcast)
       constant_10212 = f32[] constant(-2.38197633e+38)
       broadcast.22828 = f32[1,12,2048,2048]{3,2,1,0} broadcast(constant_10212), dimensions={}
       select.589 = f32[1,12,2048,2048]{3,2,1,0} select(broadcast.22829, convert.33705, broadcast.22828)
@@ -346,9 +347,9 @@ TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
       bitcast.11069 = pred[2048,2048]{1,0} bitcast(predarg)
 
       broadcast.22825 = pred[1,12,2048,2048]{3,2,1,0} broadcast(bitcast.11069), dimensions={2,3}
-      bitcast.22331 = bf16[1,2048,2048,12]{3,2,1,0} bitcast(convert.29370.clone.1)
-      transpose.6580 = bf16[1,12,2048,2048]{3,2,1,0} transpose(bitcast.22331), dimensions={0,3,2,1}
-      convert.33703 = f32[1,12,2048,2048]{3,2,1,0} convert(transpose.6580)
+      transpose.6580 = bf16[12,2048,2048]{2,1,0} transpose(bitcast.1), dimensions={2,1,0}
+      bitcast.2 = bf16[1,12,2048,2048]{3,2,1,0} bitcast(transpose.6580)
+      convert.33703 = f32[1,12,2048,2048]{3,2,1,0} convert(bitcast.2)
       constant_10213 = f32[] constant(-2.38197633e+38)
       broadcast.22824 = f32[1,12,2048,2048]{3,2,1,0} broadcast(constant_10213), dimensions={}
       select.587 = f32[1,12,2048,2048]{3,2,1,0} select(broadcast.22825, convert.33703, broadcast.22824)
@@ -361,9 +362,9 @@ TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
 
       constant_468 = f32[] constant(-2.38197633e+38)
       broadcast.22833 = pred[1,12,2048,2048]{3,2,1,0} broadcast(bitcast.11069), dimensions={2,3}
-      bitcast.22332 = bf16[1,2048,2048,12]{3,2,1,0} bitcast(convert.29370.clone.1)
-      transpose.6584 = bf16[1,12,2048,2048]{3,2,1,0} transpose(bitcast.22332), dimensions={0,3,2,1}
-      convert.33707 = f32[1,12,2048,2048]{3,2,1,0} convert(transpose.6584)
+      transpose.6584 = bf16[12,2048,2048]{2,1,0} transpose(bitcast.1), dimensions={2,1,0}
+      bitcast.3 = bf16[1,12,2048,2048]{3,2,1,0} bitcast(transpose.6584)
+      convert.33707 = f32[1,12,2048,2048]{3,2,1,0} convert(bitcast.3)
       broadcast.22832 = f32[1,12,2048,2048]{3,2,1,0} broadcast(constant_468), dimensions={}
       select.591 = f32[1,12,2048,2048]{3,2,1,0} select(broadcast.22833, convert.33707, broadcast.22832)
       broadcast.22821 = f32[1,12,2048,2048]{3,2,1,0} broadcast(reduce.1614), dimensions={1,2}

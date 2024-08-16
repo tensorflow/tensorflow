@@ -544,7 +544,9 @@ TEST_F(GpuFusibleTest, FusionHeroesAreCompatible_TransposeFusionNotCompatible) {
     fused_computation_1 {
       p0.1 = f32[64,32]{1,0} parameter(0)
       neg = f32[64,32]{1,0} negate(p0.1)
-      ROOT transpose = f32[32,64]{1,0} transpose(neg), dimensions={1,0}
+      bc = f32[1,64,32]{2,1,0} bitcast(neg)
+      transpose = f32[1,32,64]{2,1,0} transpose(bc), dimensions={0,2,1}
+      ROOT bc2 = f32[32,64]{1,0} bitcast(transpose)
     }
 
     fused_computation_2 {
@@ -562,10 +564,12 @@ TEST_F(GpuFusibleTest, FusionHeroesAreCompatible_TransposeFusionNotCompatible) {
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction();
   const HloInstruction* fusion_2 = fusion_1->operand(0);
-  EXPECT_FALSE(FusionHeroesAreCompatible(fusion_1->fused_expression_root(),
-                                         fusion_2->fused_expression_root()));
-  EXPECT_FALSE(FusionHeroesAreCompatible(fusion_2->fused_expression_root(),
-                                         fusion_1->fused_expression_root()));
+  EXPECT_FALSE(
+      FusionHeroesAreCompatible(fusion_1->fused_expression_root(),
+                                fusion_2->fused_expression_root()->operand(0)));
+  EXPECT_FALSE(
+      FusionHeroesAreCompatible(fusion_2->fused_expression_root()->operand(0),
+                                fusion_1->fused_expression_root()));
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_LoopFusions) {
@@ -1520,9 +1524,9 @@ TEST_F(GpuFusibleTest, ChooseFusionKind) {
 HloModule module
 
 ENTRY computation {
-    p = f32[5000,6000]{1,0} parameter(0)
-    c = f32[6000,5000] transpose(p), dimensions={1,0}
-    ROOT r = f32[300,20,5000] reshape(c)
+    p = f32[1,5000,6000]{2,1,0} parameter(0)
+    c = f32[1,6000,5000]{2,1,0} transpose(p), dimensions={0,2,1}
+    ROOT r = f32[300,20,5000]{2,1,0} reshape(c)
 }
 )")
                     .value();

@@ -61,7 +61,7 @@ TEST_F(TransposeEmitterTest, SimpleLogicalTranspose) {
 )";
   CompileAndVerifyIr(kHloString, MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true,
-                     /*run_optimization_passes=*/false);
+                     /*run_optimization_passes=*/true);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -90,7 +90,8 @@ HloModule m
 %fused_computation {
   %param_0.1 = f32[16,32]{1,0} parameter(0)
   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-  %t.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
+  bc = f32[1,16,32]{2,1,0} bitcast(%s.1)
+  %t.1 = f32[1,32,16]{2,1,0} transpose(bc), dimensions={0,2,1}
   b = f32[32,16,1]{2,1,0} bitcast(%t.1)
   ROOT o = f32[32,16,1]{2,1,0} sqrt(b)
 }
@@ -116,8 +117,10 @@ HloModule m
 %fused_computation {
   %param_0.1 = f32[16,32]{1,0} parameter(0)
   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-  %t.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
-  %t1.1 = f32[32,16]{1,0} transpose(%param_0.1), dimensions={1,0}
+  %bc.1 = f32[1,16,32]{2,1,0} bitcast(%s.1)
+  %bc.2 = f32[1,16,32]{2,1,0} bitcast(%param_0.1)
+  %t.1 = f32[1,32,16]{2,1,0} transpose(%bc.1), dimensions={0,2,1}
+  %t1.1 = f32[1,32,16]{2,1,0} transpose(%bc.2), dimensions={0,2,1}
   %r.1 = f32[32,16,1]{2,1,0} reshape(%t.1)
   %r1.1 = f32[32,16,1]{2,1,0} reshape(%t1.1)
   ROOT %tuple = (f32[32,16,1]{2,1,0}, f32[32,16,1]{2,1,0}) tuple(%r.1, %r1.1)
@@ -170,14 +173,16 @@ HloModule m
 %fused_computation {
   %param_0.1 = f32[16,32]{1,0} parameter(0)
   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-  %c.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
-  %c1.1 = f32[32,16]{1,0} transpose(%param_0.1), dimensions={1,0}
-  ROOT %tuple = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple(%c.1, %c1.1)
+  %bc.1 = f32[1,16,32]{2,1,0} bitcast(%s.1)
+  %bc.2 = f32[1,16,32]{2,1,0} bitcast(%param_0.1)
+  %c.1 = f32[1,32,16]{2,1,0} transpose(%bc.1), dimensions={0,2,1}
+  %c1.1 = f32[1,32,16]{2,1,0} transpose(%bc.2), dimensions={0,2,1}
+  ROOT %tuple = (f32[1,32,16]{2,1,0}, f32[1,32,16]{2,1,0}) tuple(%c.1, %c1.1)
 }
 
 ENTRY main {
   %p = f32[16,32]{1,0} parameter(0)
-  ROOT %fusion = (f32[32,16]{1,0}, f32[32,16]{1,0}) fusion(%p), kind=kInput, calls=%fused_computation
+  ROOT %fusion = (f32[1,32,16]{2,1,0}, f32[1,32,16]{2,1,0}) fusion(%p), kind=kInput, calls=%fused_computation
 }
   )";
 
@@ -251,14 +256,15 @@ HloModule m
 %fused_computation {
   %param_0.1 = f32[16,32]{1,0} parameter(0)
   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-  %c.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
+  %bc.1 = f32[1,16,32]{2,1,0} bitcast(%s.1)
+  %c.1 = f32[1,32,16]{2,1,0} transpose(%bc.1), dimensions={0,2,1}
   %c1.1 = f32[16,32]{1,0} exponential(%param_0.1)
-  ROOT %tuple = (f32[32,16]{1,0}, f32[16,32]{1,0}) tuple(%c.1, %c1.1)
+  ROOT %tuple = (f32[1,32,16]{2,1,0}, f32[16,32]{1,0}) tuple(%c.1, %c1.1)
 }
 
 ENTRY entry {
   %p = f32[16,32]{1,0} parameter(0)
-  ROOT %fusion = (f32[32,16]{1,0}, f32[16,32]{1,0}) fusion(%p), kind=kInput, calls=%fused_computation
+  ROOT %fusion = (f32[1,32,16]{2,1,0}, f32[16,32]{1,0}) fusion(%p), kind=kInput, calls=%fused_computation
 }
   )";
 

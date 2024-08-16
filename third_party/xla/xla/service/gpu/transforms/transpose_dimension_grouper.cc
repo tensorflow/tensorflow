@@ -42,7 +42,7 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
     auto normalized_dims = ShapeUtil::GetNormalizedLogicalTransposeShape(
         transpose->shape(), transpose->dimensions(), permutation);
     if (!normalized_dims.has_value() ||
-        normalized_dims->size() == transpose->shape().rank()) {
+        normalized_dims == transpose->shape().dimensions()) {
       return absl::OkStatus();
     }
     auto normalized_operand_dims =

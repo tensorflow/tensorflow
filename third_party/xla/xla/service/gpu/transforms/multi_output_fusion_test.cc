@@ -1797,28 +1797,28 @@ TEST_F(TransposeMultiOutputFusionTest, MultipleTransposes) {
 HloModule module
 
 fused_computation {
-  param_0.1 = f32[16,32]{1,0} parameter(0)
-  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
-  ROOT c.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
+  param_0.1 = f32[1,16,32]{2,1,0} parameter(0)
+  s.1 = f32[1,16,32]{2,1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[1,32,16]{2,1,0} transpose(s.1), dimensions={0,2,1}
 }
 
 ENTRY main {
-  p = f32[16,32]{1,0} parameter(0)
-  fusion = f32[32,16]{1,0} fusion(p), kind=kInput, calls=fused_computation
-  c1 = f32[32,16]{1,0} transpose(p), dimensions={1,0}
-  ROOT t = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple(fusion, c1)
+  p = f32[1,16,32]{2,1,0} parameter(0)
+  fusion = f32[1,32,16]{2,1,0} fusion(p), kind=kInput, calls=fused_computation
+  c1 = f32[1,32,16]{2,1,0} transpose(p), dimensions={0,2,1}
+  ROOT t = (f32[1,32,16]{2,1,0}, f32[1,32,16]{2,1,0}) tuple(fusion, c1)
 }
   )";
 
   CheckMultiOutputFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[32,16], f32[32,16]) {
-// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
-// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]]), dimensions={1,0}
-// CHECK-NEXT:   [[c1_1_3:%[^ ]+]] = f32[32,16]{1,0} transpose([[param_0_1_0]]), dimensions={1,0}
-// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple([[c_1_2]], [[c1_1_3]])
+// CHECK: %fused_computation (param_0.1: f32[1,16,32]) -> (f32[1,32,16], f32[1,32,16]) {
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[1,16,32]{2,1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[1,16,32]{2,1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[1,32,16]{2,1,0} transpose([[s_1_1]]), dimensions={0,2,1}
+// CHECK-NEXT:   [[c1_1_3:%[^ ]+]] = f32[1,32,16]{2,1,0} transpose([[param_0_1_0]]), dimensions={0,2,1}
+// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[1,32,16]{2,1,0}, f32[1,32,16]{2,1,0}) tuple([[c_1_2]], [[c1_1_3]])
 // CHECK-NEXT: }
-// CHECK: [[fusion_0:%[^ ]+]] = (f32[32,16]{1,0}, f32[32,16]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+// CHECK: [[fusion_0:%[^ ]+]] = (f32[1,32,16]{2,1,0}, f32[1,32,16]{2,1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 
@@ -1827,27 +1827,27 @@ TEST_F(TransposeMultiOutputFusionTest, CopyAndTranspose) {
 HloModule module
 
 fused_computation {
-  param_0.1 = f32[16,32]{1,0} parameter(0)
-  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
-  ROOT c.1 = f32[16,32]{0,1} copy(s.1)
+  param_0.1 = f32[1,16,32]{2,1,0} parameter(0)
+  s.1 = f32[1,16,32]{2,1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[1,16,32]{1,2,0} copy(s.1)
 }
 
 ENTRY main {
-  p = f32[16,32]{1,0} parameter(0)
-  fusion = f32[16,32]{0,1} fusion(p), kind=kInput, calls=fused_computation
-  c1 = f32[32,16]{1,0} transpose(p), dimensions={1,0}
-  ROOT t = (f32[16,32]{0,1}, f32[32,16]{1,0}) tuple(fusion, c1)
+  p = f32[1,16,32]{2,1,0} parameter(0)
+  fusion = f32[1,16,32]{1,2,0} fusion(p), kind=kInput, calls=fused_computation
+  c1 = f32[1,32,16]{2,1,0} transpose(p), dimensions={0,2,1}
+  ROOT t = (f32[1,16,32]{1,2,0}, f32[1,32,16]{2,1,0}) tuple(fusion, c1)
 }
   )";
 
   CheckMultiOutputFusion(hlo, R"(
-  // CHECK: %fused_computation ({{[^ ]+}} f32[16,32]) -> (f32[16,32], f32[32,16]) {
-  // CHECK-NEXT: [[param_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
-  // CHECK-NEXT: [[s_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0]])
-  // CHECK-NEXT: [[copy:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1]])
-  // CHECK-NEXT: [[transpose:[^ ]+]] = f32[32,16]{1,0} transpose([[param_0]]), dimensions={1,0}
-  // CHECK-NEXT: ROOT {{[^ ]+}} = (f32[16,32]{0,1}, f32[32,16]{1,0}) tuple([[copy]], [[transpose]])
-  // CHECK: %fusion = (f32[16,32]{0,1}, f32[32,16]{1,0}) fusion(%{{.*}}), kind=kInput, calls=%fused_computation
+  // CHECK: %fused_computation ({{[^ ]+}} f32[1,16,32]) -> (f32[1,16,32], f32[1,32,16]) {
+  // CHECK-NEXT: [[param_0:%[^ ]+]] = f32[1,16,32]{2,1,0} parameter(0)
+  // CHECK-NEXT: [[s_1:%[^ ]+]] = f32[1,16,32]{2,1,0} sqrt([[param_0]])
+  // CHECK-NEXT: [[copy:%[^ ]+]] = f32[1,16,32]{1,2,0} copy([[s_1]])
+  // CHECK-NEXT: [[transpose:[^ ]+]] = f32[1,32,16]{2,1,0} transpose([[param_0]]), dimensions={0,2,1}
+  // CHECK-NEXT: ROOT {{[^ ]+}} = (f32[1,16,32]{1,2,0}, f32[1,32,16]{2,1,0}) tuple([[copy]], [[transpose]])
+  // CHECK: %fusion = (f32[1,16,32]{1,2,0}, f32[1,32,16]{2,1,0}) fusion(%{{.*}}), kind=kInput, calls=%fused_computation
 )");
 }
 
@@ -2011,30 +2011,30 @@ TEST_F(TransposeMultiOutputFusionTest, TransposeAndInputEpilogueFusion) {
 HloModule module
 
 fused_computation {
-  param_0.1 = f32[16,32]{1,0} parameter(0)
-  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
-  t.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
+  param_0.1 = f32[1,16,32]{2,1,0} parameter(0)
+  s.1 = f32[1,16,32]{2,1,0} sqrt(param_0.1)
+  t.1 = f32[1,32,16]{2,1,0} transpose(s.1), dimensions={0,2,1}
   ROOT out = f32[32,16,1]{2,1,0} bitcast(t.1)
 }
 
 ENTRY main {
-  p = f32[16,32]{1,0} parameter(0)
+  p = f32[1,16,32]{2,1,0} parameter(0)
   fusion = f32[32,16,1]{2,1,0} fusion(p), kind=kInput, calls=fused_computation
-  c1 = exponential(p)
-  ROOT t = tuple(fusion, c1)
+  c1 = f32[1,16,32]{2,1,0} exponential(p)
+  ROOT t = (f32[32,16,1]{2,1,0}, f32[1,16,32]{2,1,0}) tuple(fusion, c1)
 }
   )";
 
   CheckMultiOutputFusion(hlo, R"(
 // CHECK: %fused_computation
-// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
-// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]])
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[1,16,32]{2,1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[1,16,32]{2,1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[1,32,16]{2,1,0} transpose([[s_1_1]])
 // CHECK-NEXT:   [[out_3:%[^ ]+]] = f32[32,16,1]{2,1,0} bitcast([[c_1_2]])
-// CHECK-NEXT:   [[c1_1_4:%[^ ]+]] = f32[16,32]{1,0} exponential([[param_0_1_0]])
-// CHECK-NEXT:   ROOT [[tuple_5:%[^ ]+]] = (f32[32,16,1]{2,1,0}, f32[16,32]{1,0}) tuple([[out_3]], [[c1_1_4]])
+// CHECK-NEXT:   [[c1_1_4:%[^ ]+]] = f32[1,16,32]{2,1,0} exponential([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[tuple_5:%[^ ]+]] = (f32[32,16,1]{2,1,0}, f32[1,16,32]{2,1,0}) tuple([[out_3]], [[c1_1_4]])
 // CHECK-NEXT: }
-// CHECK: [[fusion_0:%[^ ]+]] = (f32[32,16,1]{2,1,0}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+// CHECK: [[fusion_0:%[^ ]+]] = (f32[32,16,1]{2,1,0}, f32[1,16,32]{2,1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 
