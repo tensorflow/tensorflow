@@ -2280,6 +2280,43 @@ func.func @dynamic_slice_splat_sizes(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>,
 // -----
 
 //===----------------------------------------------------------------------===//
+// mhlo.dynamic_update_slice
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: dynamic_update_slice
+func.func @dynamic_update_slice(%arg0: tensor<28x1x100xf32>, %arg1: tensor<1x1x100xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<28x1x100xf32> {
+  %0 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<28x1x100xf32>
+  func.return %0 : tensor<28x1x100xf32>
+}
+
+// CHECK: %0 = "tfl.pack"(%arg2, %arg3, %arg4) <{axis = 0 : i32, values_count = 3 : i32}> : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+// CHECK: %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<3xi32>) -> tensor<28x1x100xf32>
+
+// -----
+
+// CHECK-LABEL: dynamic_update_slice_inputs_have_dynamic_dim
+func.func @dynamic_update_slice_inputs_have_dynamic_dim(%arg0: tensor<?x4xi32>, %arg1: tensor<?x2xi32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<?x4xi32> {
+  %0 = mhlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3 : (tensor<?x4xi32>, tensor<?x2xi32>, tensor<i32>, tensor<i32>) -> tensor<?x4xi32>
+  func.return %0 : tensor<?x4xi32>
+}
+
+// CHECK: %0 = "tfl.pack"(%arg2, %arg3) <{axis = 0 : i32, values_count = 2 : i32}> : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+// CHECK: %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<?x4xi32>, tensor<?x2xi32>, tensor<2xi32>) -> tensor<?x4xi32>
+
+// -----
+
+// CHECK-LABEL: dynamic_update_slice_operand_has_dynamic_dim
+func.func @dynamic_update_slice_operand_has_dynamic_dim(%arg0: tensor<1x?x256xf32>, %arg1: tensor<1x1x256xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<1x?x256xf32> {
+  %0 = mhlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3, %arg4 : (tensor<1x?x256xf32>, tensor<1x1x256xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<1x?x256xf32>
+  func.return %0 : tensor<1x?x256xf32>
+}
+
+// CHECK: %0 = "tfl.pack"(%arg2, %arg3, %arg4) <{axis = 0 : i32, values_count = 3 : i32}> : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+// CHECK: %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<1x?x256xf32>, tensor<1x1x256xf32>, tensor<3xi32>) -> tensor<1x?x256xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // rounding
 //===----------------------------------------------------------------------===//
 
