@@ -145,7 +145,7 @@ Status NodeNameMapping::UseOutputName(const string& name) {
         "' appears more than once in 'output_names' array.");
   }
   used_names_.emplace(name, 0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string NodeNameMapping::Lookup(const string& name) const {
@@ -318,7 +318,7 @@ Status FillFunctionBody(
       func_attr_names.insert(func_attr_name);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphToFunctionDefHelper(
@@ -536,7 +536,7 @@ Status GraphToFunctionDefHelper(
     fdef->mutable_signature()->add_control_output(control_output);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphToFunctionDefHelper(
@@ -560,7 +560,7 @@ Status GraphToFunctionDefHelper(
           (*args_or_retvals)[index].node->DebugString(), "\nNow we have:\n",
           node->DebugString());
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   std::vector<const Node*> body_nodes;
@@ -599,7 +599,7 @@ Status GraphToFunctionDefHelper(
                                            "' node at index ", i);
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       };
 
   TF_RETURN_IF_ERROR(validate_args_retvals(inputs, "_Arg"));
@@ -631,7 +631,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
       copy_placeholder_attrs_from_nodes, body_nodes, inputs, outputs,
       output_names, control_outputs, control_output_names, description,
       /*allow_destructive_reads=*/false, fdef);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphToFunctionDef(
