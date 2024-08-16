@@ -786,8 +786,11 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       sharding_tile_dims_stack.pop_back();
     }
 
-    if (s_partitions > 1 && s_size % s_partitions == 0 &&
-        t_size % s_partitions == 0) {
+    if (s_size == t_size) {
+      // Same dimension.
+      append_sharding_dim(s_partitions);
+    } else if (s_partitions > 1 && s_size % s_partitions == 0 &&
+               t_size % s_partitions == 0) {
       // If s_partitions evenly divides both s_size and t_size, we can add this
       // sharding dim and work on shard sized shapes in the next iteration.
       source_dims_stack.push_back(s_size / s_partitions);
@@ -795,9 +798,6 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       sharding_tile_dims_stack.push_back(1);
       append_sharding_dim(s_partitions);
       inplace_add_sharding_dim = true;
-    } else if (s_size == t_size) {
-      // Same dimension.
-      append_sharding_dim(s_partitions);
     } else if (t_size == 1) {
       // Trivial dimension added.
       append_sharding_dim(1);
