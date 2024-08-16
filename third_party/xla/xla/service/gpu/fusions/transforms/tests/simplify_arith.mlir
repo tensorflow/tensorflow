@@ -288,5 +288,5 @@ func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
   }
   return %0 : tensor<2400000x9xf32>
 }
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> ((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768),
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3) -> (d2 * 32768 + (d0 * 4 + d1 * 512 + d3) floordiv 9),
 // CHECK-LABEL: func.func @refine_constraints_for_symbol

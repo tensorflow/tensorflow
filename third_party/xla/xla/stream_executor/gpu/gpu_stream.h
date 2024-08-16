@@ -78,6 +78,9 @@ class GpuStream : public StreamCommon {
   // event is owned by this stream.
   GpuEvent* completed_event() { return completed_event_.get(); }
 
+  // Returns true if no work is pending or executing on the stream.
+  bool IsIdle() const;
+
   // Returns the GpuStreamHandle value for passing to the CUDA API.
   //
   // Precond: this GpuStream has been allocated (otherwise passing a nullptr

@@ -746,6 +746,26 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(CuDnnFusionLevel2Test, SlicingExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  p0 = f16[11,23,64] parameter(0)
+  s0 = f16[8,16,64] slice(p0), slice={[1:9], [3:19], [0:64]}
+  p1 = f16[8,64,32] parameter(1)
+  ROOT r = f16[8,16,32] dot(s0, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f16[11,23,64] parameter(0)
+  p1 = f16[8,64,32] parameter(1)
+  ROOT _ = f16[8,16,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 class CuDnnFusionLevel3Test : public CuDnnFusionExecutionTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {

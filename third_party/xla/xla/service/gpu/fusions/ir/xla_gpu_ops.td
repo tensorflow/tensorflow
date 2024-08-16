@@ -238,17 +238,17 @@ def XLAGPU_PredicatedExtractOp : XLAGPU_Op<"predicated_extract",
 def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
   let summary = "Applies indexing map to a list of SSA values";
   let description = [{
-    The `apply_indexing` operation applies an affine map to a list
+    The `apply_indexing` operation applies an indexing_map to a list
     of SSA values, yielding a single SSA value. The number of dimension and
     symbol arguments must be equal to the respective number of dimensional and
-    symbolic inputs in the affine map. The affine mapping can be
+    symbolic inputs in the indexing_map. The index mapping can be
     multi-dimensional, and so the `apply_indexing` operation always returns one
     value. The operands and results must all have ‘index’ type.
 
     Example:
 
     ```mlir
-    #map = affine_map<(d0, d1)[s0] -> (d0 floordiv 8 + d1 floordiv 128, s0)>
+    #map = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 floordiv 8 + d1 floordiv 128, s0)>
     %results:2 = xla_gpu_ops.apply_indexing #map (%0 in [0, 10], %1 in [0, 11])[%2 in [11, 32]]
     ```
   }];

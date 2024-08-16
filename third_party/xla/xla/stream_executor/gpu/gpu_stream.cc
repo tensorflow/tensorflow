@@ -189,6 +189,10 @@ GpuStream::~GpuStream() {
   GpuDriver::DestroyStream(parent_->gpu_context(), &gpu_stream_);
 }
 
+bool GpuStream::IsIdle() const {
+  return GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_);
+}
+
 void GpuStream::set_name(absl::string_view name) {
   name_ = name;
   tsl::profiler::NameStream(
