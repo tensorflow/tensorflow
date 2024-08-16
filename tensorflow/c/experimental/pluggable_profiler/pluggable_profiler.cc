@@ -175,7 +175,7 @@ Status InitPluginProfiler(TFInitProfilerFn init_fn) {
         return factory.CreatePluggableProfiler(options);
       };
 
-  tensorflow::profiler::RegisterProfilerFactory(std::move(create_func));
+  tsl::profiler::RegisterProfilerFactory(std::move(create_func));
   return OkStatus();
 }
 
