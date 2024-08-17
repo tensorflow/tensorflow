@@ -20,12 +20,17 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "tensorflow/core/framework/types.h"
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"

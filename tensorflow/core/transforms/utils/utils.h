@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TRANSFORMS_UTILS_UTILS_H_
 #define TENSORFLOW_CORE_TRANSFORMS_UTILS_UTILS_H_
 
+#include "llvm/ADT/BitVector.h"
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
