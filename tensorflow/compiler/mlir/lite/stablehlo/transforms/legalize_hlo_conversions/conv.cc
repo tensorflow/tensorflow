@@ -16,18 +16,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <tuple>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv_util.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
@@ -285,6 +288,145 @@ LogicalResult LegalizeConv3D::matchAndRewrite(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+
+class SliceDepthwiseTransposedConvolution
+    : public OpRewritePattern<mhlo::ConvolutionOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
+                                PatternRewriter& rewriter) const final;
+};
+
+// Pattern rewriter to match a depthwise transposed convolution and rewrite it
+// to depth-times slices of input and filter to perform the transposed
+// convolution on individual slices of tensors and concatenate the results of.
+// the convolutions. This is a. workaround because the TFLite runtime doesn't
+// support depthwise-transposed-conv op natively.
+LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
+    mhlo::ConvolutionOp conv_op, PatternRewriter& rewriter) const {
+  const ConvView data(conv_op);
+
+  //
+  // Test if the op is a supported non-trivial convolution.
+  //===-----
+  if (!IsSupportedNonTrivialConv(data)) {
+    return rewriter.notifyMatchFailure(conv_op,
+                                       "Not a non-trivial convolution.");
+  }
+
+  // These checks narrow down the support to depthwise transpose conv2d.
+  mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
+  const int64_t input_feature_dimension = dnums.getInputFeatureDimension();
+  const int64_t input_channels =
+      mlir::cast<ShapedType>(conv_op.getLhs().getType())
+          .getDimSize(input_feature_dimension);
+  const int64_t feature_group_count = conv_op.getFeatureGroupCount();
+  const int64_t kernel_input_feature_dimension =
+      dnums.getKernelInputFeatureDimension();
+  const int64_t kernel_input_channels =
+      mlir::cast<ShapedType>(conv_op.getRhs().getType())
+          .getDimSize(kernel_input_feature_dimension);
+  const int64_t kernel_output_feature_dimension =
+      dnums.getKernelOutputFeatureDimension();
+  const int64_t kernel_output_channels =
+      mlir::cast<ShapedType>(conv_op.getRhs().getType())
+          .getDimSize(kernel_output_feature_dimension);
+
+  // To support a depthwise convolution, we need-
+  // 1. feature_group_count != 1 (except when input_channels==1)
+  // 2. feature_group_count == input_channels
+  // 3. kernel_input_channels == 1
+  // 4. kernel_output_channels % kernel_input_channels == 0
+  if (feature_group_count == 1) {
+    return rewriter.notifyMatchFailure(conv_op, "Not a depthwise convolution");
+  }
+
+  if (input_channels != feature_group_count) {
+    return rewriter.notifyMatchFailure(
+        conv_op, "Not a detphwise transposed convolution");
+  }
+
+  if ((kernel_output_channels % feature_group_count != 0) ||
+      (kernel_input_channels != 1)) {
+    return rewriter.notifyMatchFailure(
+        conv_op, "Not a supported detphwise transposed convolution");
+  }
+
+  // This needs to be checked because the TFLite runtime generated incorrect
+  // results for depthwise transpose convolutions with non-1 channel
+  // multiplier.
+  if ((kernel_output_channels / feature_group_count) != 1) {
+    return rewriter.notifyMatchFailure(
+        conv_op,
+        "Unsupported detphwise transpose convolution with non-1 channel "
+        "multiplier");
+  }
+
+  // Slicing with dynamic offsets (helper method advised)
+  auto create_slice = [&](mlir::Value tensor, int64_t depth_idx,
+                          int64_t channel_idx,
+                          bool is_kernel = false) -> mlir::Value {
+    auto tensor_shape =
+        mlir::cast<ShapedType>(tensor.getType()).getShape().vec();
+
+    // Calculate offsets based on depth_idx, channel_idx and tensor_shape
+    llvm::SmallVector<int64_t> start_indices(tensor_shape.size(), 0);
+    auto limit_indices = tensor_shape;
+    const llvm::SmallVector<int64_t> strides(tensor_shape.size(), 1);
+    start_indices[channel_idx] = depth_idx;
+    if (is_kernel) {
+      // kernel can have a channel_multiplier that needs to be accounted for
+      limit_indices[channel_idx] =
+          depth_idx + (kernel_output_channels / feature_group_count);
+    } else {
+      limit_indices[channel_idx] = depth_idx + 1;
+    }
+    return rewriter.create<mhlo::SliceOp>(
+        conv_op.getLoc(), tensor, rewriter.getI64TensorAttr(start_indices),
+        rewriter.getI64TensorAttr(limit_indices),
+        rewriter.getI64TensorAttr(strides));
+  };
+
+  // Storage for smaller convolution results
+  llvm::SmallVector<mlir::Value> conv_results;
+
+  // Iterative Slicing and Convolutions
+  for (int i = 0; i < feature_group_count; ++i) {
+    auto sliced_input =
+        create_slice(conv_op.getLhs(), i, input_feature_dimension);
+    auto sliced_kernel = create_slice(conv_op.getRhs(), i,
+                                      kernel_output_feature_dimension, true);
+
+    // Calculate convolution output_type based on sliced_input and
+    // sliced_kernel
+    auto output_type = mlir::cast<ShapedType>(conv_op->getResult(0).getType());
+    auto new_output_shape = output_type.getShape().vec();
+    new_output_shape[dnums.getOutputFeatureDimension()] /= feature_group_count;
+    auto new_output_type =
+        RankedTensorType::get(new_output_shape, output_type.getElementType());
+
+    // Create a Smaller Convolution (Ensure compatibility)
+    auto conv_result = rewriter.create<mhlo::ConvolutionOp>(
+        conv_op.getLoc(), new_output_type, sliced_input, sliced_kernel,
+        conv_op.getWindowStridesAttr(), conv_op.getPaddingAttr(),
+        conv_op.getLhsDilationAttr(), conv_op.getRhsDilationAttr(),
+        conv_op.getWindowReversalAttr(), conv_op.getDimensionNumbers(),
+        /*feature_group_count*/ 1, /*batch_group_count*/ 1,
+        conv_op.getPrecisionConfigAttr());
+
+    conv_results.push_back(conv_result);
+  }
+
+  auto final_output = rewriter.create<mhlo::ConcatenateOp>(
+      conv_op.getLoc(), conv_results,
+      rewriter.getI64IntegerAttr(dnums.getOutputFeatureDimension()));
+  rewriter.replaceOp(conv_op, final_output.getResult());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+
 // Convert a 1-D convolution into a 2-D convolution (which TF supports) so that
 // it can be rewritten by the pattern `Convert2DConvOp`.
 class Conv1DToConv2D : public OpRewritePattern<mhlo::ConvolutionOp> {
@@ -442,6 +584,6 @@ void PopulateLegalizeConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
 
 void PopulatePrepareConvPatterns(MLIRContext* ctx,
                                  RewritePatternSet& patterns) {
-  patterns.add<Conv1DToConv2D>(ctx);
+  patterns.add<Conv1DToConv2D, SliceDepthwiseTransposedConvolution>(ctx);
 }
 }  // namespace mlir::odml
