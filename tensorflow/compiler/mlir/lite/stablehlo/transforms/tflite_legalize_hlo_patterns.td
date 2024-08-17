@@ -33,11 +33,6 @@ def LegalizeTranspose : Pat<(MHLO_TransposeOp $arg, $perm),
                             (TFL_TransposeOp $arg,
                             (CreateTFLCastToInt32Op (TFL_ConstOp $perm)))>;
 
-
-def : Pat<(MHLO_ShiftRightArithmeticOp $l, $r), (TFL_RightShiftOp $l, $r)>;
-def : Pat<(MHLO_ShiftRightLogicalOp $l, $r), (TFL_RightShiftOp $l, $r)>;
-def : Pat<(MHLO_RemOp $l, $r), (TFL_FloorModOp $l, $r)>;
-
 def LegalizeReshape : Pat<(MHLO_ReshapeOp:$output $input),
           (TFL_ReshapeOp $input,
             (CreateTFLCastToInt32Op (ShapeToConst $output)))>;
@@ -106,6 +101,33 @@ def LegalizeXor : Pat<
     TFL_IntTensor:$l,
     TFL_IntTensor:$r),
   (TFL_BitwiseXorOp $l, $r)>;
+
+//===----------------------------------------------------------------------===//
+// binary element-wise ops
+//===----------------------------------------------------------------------===//
+
+def : Pat<
+  (MHLO_ShiftRightArithmeticOp $l, $r),
+  (TFL_RightShiftOp $l, $r)>;
+
+def : Pat<
+  (MHLO_ShiftRightLogicalOp $l, $r),
+  (TFL_RightShiftOp $l, $r)>;
+
+def : Pat<
+  (MHLO_RemOp $l, $r),
+  (TFL_FloorModOp $l, $r)>;
+
+// Binary ops with no attrs.
+foreach pair = [
+  [MHLO_MaxOp, TFL_MaximumOp],
+  [MHLO_MinOp, TFL_MinimumOp],
+] in {
+  def : Pat<
+    (pair[0] $l, $r),
+    (pair[1] $l, $r)>;
+}
+
 
 //===----------------------------------------------------------------------===//
 // comparison ops
