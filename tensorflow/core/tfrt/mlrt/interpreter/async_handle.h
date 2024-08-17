@@ -144,9 +144,9 @@ class AsyncHandle {
 
     auto& execution_context = *arg->Get<ExecutionContext*>();
     execution_context.LogError(absl::InternalError(absl::StrCat(
-        "UnwindOnError: unwind AsyncHandle at context ",
+        "UnwindOnError: unwind AsyncHandle of context ",
         absl::Hex(reinterpret_cast<std::uintptr_t>(execution_context_.get())),
-        " of state ", execution_context_->state_, " from context ",
+        " from context ",
         absl::Hex(reinterpret_cast<std::uintptr_t>(&execution_context)),
         " of state ", execution_context.state_)));
     execution_context.Await(std::move(*this));
