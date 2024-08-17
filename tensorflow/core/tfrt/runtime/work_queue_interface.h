@@ -20,12 +20,20 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+#include "tfrt/host_context/task_function.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace tensorflow {
