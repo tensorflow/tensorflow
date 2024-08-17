@@ -191,12 +191,30 @@ func.func @max_with_neg_f32_max_val(%arg0 : tensor<f32>) -> (tensor<f32>, tensor
   // CHECK: return %[[ARG0]], %[[ARG0]]
 }
 
+// CHECK-LABEL: @max_with_neg_inf
+func.func @max_with_neg_inf(%arg0 : tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %neg_inf = arith.constant dense<0xFF800000> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %neg_inf) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tfl.maximum"(%neg_inf, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0, %1 : tensor<f32>, tensor<f32>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
 // CHECK-LABEL: @min_with_f32_max_val
 // CHECK-SAME: (%[[ARG0:.+]]: tensor<f32>)
 func.func @min_with_f32_max_val(%arg0 : tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %f32_max = arith.constant dense<3.40282347E+38> : tensor<f32>
   %0 = "tfl.minimum"(%arg0, %f32_max) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %1 = "tfl.minimum"(%f32_max, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0, %1 : tensor<f32>, tensor<f32>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
+// CHECK-LABEL: @min_with_inf
+func.func @min_with_inf(%arg0 : tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %inf = arith.constant dense<0x7F800000> : tensor<f32>
+  %0 = "tfl.minimum"(%arg0, %inf) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tfl.minimum"(%inf, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0, %1 : tensor<f32>, tensor<f32>
   // CHECK: return %[[ARG0]], %[[ARG0]]
 }

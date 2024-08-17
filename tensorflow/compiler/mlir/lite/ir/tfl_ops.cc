@@ -3171,12 +3171,12 @@ OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
   if (lhs && lhs.isSplat()) {
     APFloat lhs_value = lhs.getSplatValue<APFloat>();
     lhs_value.changeSign();
-    if (lhs_value.isLargest()) return getRhs();
+    if (lhs_value.isLargest() || lhs_value.isInfinity()) return getRhs();
   }
   if (rhs && rhs.isSplat()) {
     APFloat rhs_value = rhs.getSplatValue<APFloat>();
     rhs_value.changeSign();
-    if (rhs_value.isLargest()) return getLhs();
+    if (rhs_value.isLargest() || rhs_value.isInfinity()) return getLhs();
   }
   return nullptr;
 }
@@ -3193,10 +3193,14 @@ OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
 
   auto lhs = adaptor.getLhs().dyn_cast_or_null<DenseElementsAttr>();
   auto rhs = adaptor.getRhs().dyn_cast_or_null<DenseElementsAttr>();
-  if (lhs && lhs.isSplat() && lhs.getSplatValue<APFloat>().isLargest())
-    return getRhs();
-  if (rhs && rhs.isSplat() && rhs.getSplatValue<APFloat>().isLargest())
-    return getLhs();
+  if (lhs && lhs.isSplat()) {
+    auto splat = lhs.getSplatValue<APFloat>();
+    if (splat.isLargest() || splat.isInfinity()) return getRhs();
+  }
+  if (rhs && rhs.isSplat()) {
+    auto splat = rhs.getSplatValue<APFloat>();
+    if (splat.isLargest() || splat.isInfinity()) return getLhs();
+  }
   return nullptr;
 }
 
