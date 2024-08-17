@@ -224,7 +224,8 @@ class DeserializeSparseOp : public OpKernel {
         // to outermost/major dimension). The `cumulative_product` represents
         // the size of the inner subtensor for which `sparse_tensor_index` has
         // already been built.
-        gtl::InlinedVector<int64_t, 4> sparse_tensor_index(input_dims_to_stack);
+        absl::InlinedVector<int64_t, 4UL> sparse_tensor_index(
+            input_dims_to_stack);
         int cumulative_product = 1;
         for (size_t j = 0; j < sparse_tensor_index.size(); ++j) {
           size_t reverse_index = sparse_tensor_index.size() - j - 1;

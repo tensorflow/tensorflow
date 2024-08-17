@@ -291,10 +291,10 @@ Status DoInplace(const CPUDevice& device, InplaceOpType op, const Tensor& i,
   if (op == I_UPDATE) {
     if (v.dtype() == DT_STRING) {
       DoInplaceStringUpdateOp(device, i, v, y);
-      return OkStatus();
+      return absl::OkStatus();
     } else if (v.dtype() == DT_BOOL) {
       DoInplaceOp<bool>(device, op, i, v, y);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   switch (v.dtype()) {
@@ -308,7 +308,7 @@ Status DoInplace(const CPUDevice& device, InplaceOpType op, const Tensor& i,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(v.dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace functor
@@ -378,7 +378,7 @@ Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(x.dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace functor

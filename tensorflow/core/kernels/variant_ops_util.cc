@@ -33,8 +33,8 @@ namespace tensorflow {
 // the inputs into temp at the lowest levels of the summation tree.
 static inline Status AddVariantTo(
     OpKernelContext* ctx, const int lhs_ix, const int rhs_ix,
-    gtl::InlinedVector<Variant, 4>* temp,
-    gtl::InlinedVector<bool, 4>* temp_filled,
+    absl::InlinedVector<Variant, 4UL>* temp,
+    absl::InlinedVector<bool, 4UL>* temp_filled,
     std::function<Status(OpKernelContext*, const Variant&, const Variant&,
                          Variant*)>
         binary_add_variant) {
@@ -84,8 +84,8 @@ void AddNVariant(OpKernelContext* ctx,
   //   https://en.wikipedia.org/wiki/Pairwise_summation
   //
   // These two vectors are used to store and mark intermediate sums.
-  gtl::InlinedVector<bool, 4> temp_filled(num, false);
-  gtl::InlinedVector<Variant, 4> temp(num);
+  absl::InlinedVector<bool, 4UL> temp_filled(num, false);
+  absl::InlinedVector<Variant, 4UL> temp(num);
 
   // Tree-based summation.
   int skip = 1;
