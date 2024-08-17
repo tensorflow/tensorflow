@@ -72,11 +72,11 @@ Status FuseResizePadAndConv(const GraphDef& input_graph_def,
         CopyNodeAttr(conv_node, "strides", "strides", &fused_conv);
         new_nodes->push_back(fused_conv);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, &replaced_graph_def));
   *output_graph_def = replaced_graph_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FuseResizeAndConv(const GraphDef& input_graph_def,
@@ -127,11 +127,11 @@ Status FuseResizeAndConv(const GraphDef& input_graph_def,
         CopyNodeAttr(conv_node, "strides", "strides", &fused_conv);
         new_nodes->push_back(fused_conv);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, &replaced_graph_def));
   *output_graph_def = replaced_graph_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FusePadAndConv(const GraphDef& input_graph_def,
@@ -181,11 +181,11 @@ Status FusePadAndConv(const GraphDef& input_graph_def,
         CopyNodeAttr(conv_node, "strides", "strides", &fused_conv);
         new_nodes->push_back(fused_conv);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, &replaced_graph_def));
   *output_graph_def = replaced_graph_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("fuse_resize_pad_and_conv", FuseResizePadAndConv);
