@@ -349,9 +349,8 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
 }
 
 std::string HloSharding::DebugString() const {
-  return absl::StrFormat("HloSharding(memory_kind: %s, hlo_sharding: %s)",
-                         memory_kind_.DebugString(),
-                         xla_hlo_sharding_.ToString());
+  return absl::StrFormat("HloSharding(memory_kind: %v, hlo_sharding: %s)",
+                         memory_kind_, xla_hlo_sharding_.ToString());
 }
 
 std::vector<IndexDomain> TEST_HloShardingIndexDomainsSlowPath(
