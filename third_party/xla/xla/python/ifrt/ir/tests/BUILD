@@ -12,6 +12,7 @@ lit_test_suite(
         [
             "ifrt_duplicated_callee_elimination.mlir",
             "ifrt_merge_reshards.mlir",
+            "ifrt_outline_atom_program_to_module.mlir",
             "ifrt_verify_donation.mlir",
             "ifrt_verify_sharding_specified.mlir",
             "spmd_expansion.mlir",

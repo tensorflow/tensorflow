@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_CONSTANTS_H_
-#define XLA_PYTHON_IFRT_IR_TRANSFORMS_CONSTANTS_H_
+#ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
+#define XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
 
-#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
 
-namespace xla::ifrt {
+namespace xla {
+namespace ifrt {
 
-inline constexpr llvm::StringLiteral kIfrtDevicesAttrName = "ifrt.devices";
-inline constexpr llvm::StringLiteral kIfrtNumDevicesAttrName =
-    "ifrt.num_devices";
-inline constexpr llvm::StringLiteral kIfrtShardingAttrName = "ifrt.sharding";
-inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
-    "ifrt.entry_function";
+// Retrieves the function named "main" from the given module, if it exists, and
+// fails otherwise.
+mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module);
 
-}  // namespace xla::ifrt
+}  // namespace ifrt
+}  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_CONSTANTS_H_
+#endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_

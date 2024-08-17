@@ -20,10 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Support/LogicalResult.h"
 
 namespace xla {
 namespace ifrt {
@@ -42,6 +39,9 @@ CreateIfrtDuplicatedCalleeEliminationPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateIfrtMergeReshardsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtOutlineAtomProgramToModulePass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtVerifyDonationPass();
