@@ -2242,7 +2242,6 @@ xla_test(
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
-        ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:shape_util",
@@ -2250,7 +2249,6 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/client:local_client",
         "//xla/client:xla_builder",
-        "//xla/stream_executor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@local_tsl//tsl/platform:ml_dtypes",

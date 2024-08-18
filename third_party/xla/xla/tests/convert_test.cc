@@ -14,20 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <random>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
-#include "xla/primitive_util.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -666,6 +665,52 @@ XLA_TEST_F(ConvertTest, ConvertBF16F32) {
       // NaNs may not be preserved, any NaN will do.
       ASSERT_TRUE(std::isnan(absl::bit_cast<float>(correct)));
       EXPECT_TRUE(std::isnan(absl::bit_cast<float>(result)));
+    } else {
+      EXPECT_EQ(result, correct);
+    }
+  }
+}
+
+XLA_TEST_F(ConvertTest, ConvertF32BF16) {
+  XlaBuilder builder(TestName());
+
+  std::vector<float> floats(100);
+  std::minstd_rand0 generator;
+  for (int i = 0; i < floats.size(); ++i) {
+    floats[i] = generator();
+
+    // Ensure the first 10 cases has rounding.
+    if (i < 10) {
+      auto val = absl::bit_cast<uint32_t>(floats[i]);
+      val |= 1 << 15;
+      floats[i] = absl::bit_cast<float>(val);
+    }
+  }
+
+  std::vector<bfloat16> expected(floats.size());
+  for (int i = 0; i < expected.size(); ++i) {
+    expected[i] = static_cast<bfloat16>(floats[i]);
+  }
+
+  xla::XlaOp lit_f32 = ConstantR1<float>(&builder, floats);
+  xla::XlaOp lit_bf16 = ConvertElementType(lit_f32, BF16);
+  BitcastConvertType(lit_bf16, U16);
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto results, ExecuteAndTransfer(&builder, {}));
+  for (int i = 0; i < expected.size(); ++i) {
+    const auto result = results.Get<uint16_t>({i});
+    const auto correct = absl::bit_cast<uint16_t>(expected[i]);
+    if (floats[i] != 0.0f && floats[i] < std::numeric_limits<float>::min()) {
+      // Subnormals may not be preserved, zero will do.
+      const bfloat16 same_signed_zero =
+          bfloat16(std::signbit(floats[i]) ? -0.0f : 0.0f);
+      if (result != correct) {
+        EXPECT_EQ(result, absl::bit_cast<uint16_t>(same_signed_zero));
+      }
+    } else if (std::isnan(floats[i])) {
+      // NaNs may not be preserved, any NaN will do.
+      ASSERT_TRUE(std::isnan(absl::bit_cast<bfloat16>(correct)));
+      EXPECT_TRUE(std::isnan(absl::bit_cast<bfloat16>(result)));
     } else {
       EXPECT_EQ(result, correct);
     }
