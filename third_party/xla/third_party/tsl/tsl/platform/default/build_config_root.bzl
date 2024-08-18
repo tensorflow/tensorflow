@@ -61,11 +61,7 @@ def if_static(extra_deps, otherwise = [], macos = []):
 # TODO(b/356020232): remove completely after migration is done
 def if_static_and_not_mobile(extra_deps, otherwise = []):
     if use_pywrap_rules():
-        select({
-            str(Label("@local_xla//xla/tsl:android")): otherwise,
-            str(Label("@local_xla//xla/tsl:ios")): otherwise,
-            "//conditions:default": extra_deps,
-        })
+        return extra_deps
 
     return select({
         str(Label("@local_xla//xla/tsl:framework_shared_object")): otherwise,
