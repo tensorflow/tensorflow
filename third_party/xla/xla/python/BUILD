@@ -559,7 +559,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = [":friends"],  # For the functions to access C++ flags/thread-local variables
+    visibility = ["//visibility:private"],  # For the functions to access C++ flags/thread-local variables
     deps = [
         ":nb_absl_inlined_vector",
         ":nb_absl_span",
@@ -1060,7 +1060,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = [":friends"],
+    visibility = ["//visibility:private"],
     deps = [
         # placeholder for index annotation deps
         "@com_google_absl//absl/functional:function_ref",
