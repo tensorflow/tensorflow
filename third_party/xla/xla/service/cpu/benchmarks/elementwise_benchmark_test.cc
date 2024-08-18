@@ -52,13 +52,40 @@ static void BM_AddF32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
-BENCHMARK(BM_AddF32)
-    ->MeasureProcessCPUTime()
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024)
-    ->Arg(8192)
-    ->Arg(16384);
+static void BM_AddBF16(benchmark::State& state) {
+  int64_t d0 = state.range(0);
+
+  std::string_view hlo = R"(
+    HloModule add_bf16_$d0
+
+    ENTRY e {
+      p0 = bf16[1,2,1,$d0,256] parameter(0)
+      p1 = bf16[1,2,1,$d0,256] parameter(1)
+      ROOT add = bf16[1,2,1,$d0,256] add(p0, p1)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(BF16, {1, 2, 1, d0, 256});
+  auto p0 = *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, 1.0f, 0.1f);
+  auto p1 = *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, 1.0f, 0.1f);
+
+  std::vector<const Literal*> args = {&p0, &p1};
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+}
+
+#define BENCHMARK_SIZES(NAME)   \
+  BENCHMARK(NAME)               \
+      ->MeasureProcessCPUTime() \
+      ->Arg(128)                \
+      ->Arg(256)                \
+      ->Arg(512)                \
+      ->Arg(1024)               \
+      ->Arg(8192)               \
+      ->Arg(16384)
+
+BENCHMARK_SIZES(BM_AddF32);
+BENCHMARK_SIZES(BM_AddBF16);
 
 }  // namespace xla::cpu
