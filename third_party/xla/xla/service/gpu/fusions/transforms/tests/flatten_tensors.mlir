@@ -194,6 +194,19 @@ func.func @index_switch(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>,
 
 // -----
 
+func.func @constant() -> tensor<2x3xf32> {
+   %cst = arith.constant dense<[
+    [-3.000000e+00, 2.000000e+00, 1.000000e+00],
+    [0.000000e+00, -3.000000e+00, 1.000000e+00]
+   ]> : tensor<2x3xf32>
+   return %cst : tensor<2x3xf32>
+}
+// CHECK-LABEL: func.func @constant
+// CHECK-SAME: -> tensor<6xf32>
+// CHECK-NOT:  builtin.unrealized_conversion_cast
+
+// -----
+
 func.func @dangling_cast(%arg0: tensor<6xf32>, %arg1: index) -> i32 {
   %v = tensor.extract %arg0[%arg1] : tensor<6xf32>
 	%cast = builtin.unrealized_conversion_cast %v : f32 to i32

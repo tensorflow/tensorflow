@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
@@ -238,6 +239,24 @@ struct RewriteAllocateShared : OpRewritePattern<AllocateSharedOp> {
     auto cast_to_orig_type =
         rewriter.create<UnrealizedConversionCastOp>(loc, tensor_type, new_op);
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
+    return mlir::success();
+  }
+};
+
+struct RewriteTensorConstant : OpRewritePattern<mlir::arith::ConstantOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::arith::ConstantOp op,
+                                PatternRewriter& rewriter) const override {
+    if (IsScalarOrFlat(op.getType())) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+    auto tensor_type = mlir::cast<RankedTensorType>(op.getType());
+    auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(op.getValue());
+    Value new_constant = rewriter.create<mlir::arith::ConstantOp>(
+        op.getLoc(), dense_attr.reshape(GetFlattenedType(tensor_type)));
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, tensor_type,
+                                                            new_constant);
     return mlir::success();
   }
 };
@@ -597,6 +616,7 @@ class FlattenTensorsPass
         RewriteIndexSwitch,
         RewritePureCall,
         RewriteSyncThreads,
+        RewriteTensorConstant,
         RewriteTensorExtract,
         RewriteTensorInsert
     >(mlir_context);
