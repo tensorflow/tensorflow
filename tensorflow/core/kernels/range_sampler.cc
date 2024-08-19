@@ -184,8 +184,7 @@ ThreadUnsafeUnigramSampler::ThreadUnsafeUnigramSampler(int64_t range)
     : RangeSampler(range), picker_(range) {
   if (range > kint32max ) {
       absl::InvalidArgumentError(absl::StrCat(
-          "Expected range < kint32max.",
-          " Got range: ", range));
+          "Expected range <= kint32max. Got range: ", range));
   }
 
 
