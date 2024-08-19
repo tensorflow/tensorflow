@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
@@ -140,7 +140,7 @@ namespace spmd {
 // Their comments can be found in their definitions in *.cc files.
 HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
-                 const Array<int64_t>& device_mesh);
+                 const DeviceMesh& device_mesh);
 
 std::vector<double> CommunicationReshardingCostVector(
     const StrategyGroup* strategy_group, const Shape& shape,
@@ -319,7 +319,7 @@ std::unique_ptr<StrategyGroup> CreateTupleStrategyGroup(size_t instruction_id);
 
 // Enumerate all 1d partition strategies.
 void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
-                             const Array<int64_t>& device_mesh,
+                             const DeviceMesh& device_mesh,
                              const ClusterEnvironment& cluster_env,
                              const StrategyMap& strategy_map,
                              std::unique_ptr<StrategyGroup>& strategy_group,
@@ -329,7 +329,7 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
 
 // Enumerate all partitions recursively.
 void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
-                           const Array<int64_t>& device_mesh,
+                           const DeviceMesh& device_mesh,
                            const ClusterEnvironment& cluster_env,
                            const StrategyMap& strategy_map,
                            std::unique_ptr<StrategyGroup>& strategy_group,

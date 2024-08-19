@@ -37,12 +37,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "json/json.h"
 #include "xla/array.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -870,7 +870,7 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
   }
 }
 
-bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
+bool IsDivisible(const HloInstruction* ins, const DeviceMesh& device_mesh,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims) {
   CHECK_EQ(tensor_dims.size(), mesh_dims.size());
@@ -1080,7 +1080,7 @@ int64_t NumTileDimensions(const HloSharding& spec) {
 }
 
 bool TileAssignmentMatchesMesh(const HloSharding& spec,
-                               const Array<int64_t>& mesh) {
+                               const DeviceMesh& mesh) {
   int sharded_dims = 0;
   for (int i = 0; i < spec.tile_assignment().num_dimensions(); ++i) {
     if (spec.tile_assignment().dim(i) > 1) {
@@ -1096,7 +1096,7 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
 }
 
 absl::StatusOr<std::vector<int64_t>> GetMeshDimPermutationOrderInShardingSpec(
-    const HloSharding& spec, const Array<int64_t>& device_mesh,
+    const HloSharding& spec, const DeviceMesh& device_mesh,
     bool consider_reverse_device_meshes) {
   auto check_mesh =
       [&](const Array<int64_t>& mesh) -> std::optional<std::vector<int64_t>> {
@@ -1149,7 +1149,7 @@ absl::StatusOr<std::vector<int64_t>> GetMeshDimPermutationOrderInShardingSpec(
 
 absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh, bool consider_reverse_device_meshes) {
+    const DeviceMesh& device_mesh, bool consider_reverse_device_meshes) {
   if (spec.IsReplicated()) {
     return std::vector<int64_t>(tensor_shape_rank, -1);
   }
@@ -1185,7 +1185,7 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
 
 std::vector<int64_t> GetTensorDimToMeshDim(
     int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh, bool consider_reverse_device_meshes) {
+    const DeviceMesh& device_mesh, bool consider_reverse_device_meshes) {
   auto mapping_or = GetTensorDimToMeshDimNoCrash(
       tensor_shape_rank, spec, device_mesh, consider_reverse_device_meshes);
   if (mapping_or.ok()) {
@@ -1195,9 +1195,10 @@ std::vector<int64_t> GetTensorDimToMeshDim(
   }
 }
 
-absl::StatusOr<Shape> ComputeIntermediateShape(
-    const HloSharding& src_sharding, const HloSharding& dst_sharding,
-    const Shape& shape, const Array<int64_t>& device_mesh) {
+absl::StatusOr<Shape> ComputeIntermediateShape(const HloSharding& src_sharding,
+                                               const HloSharding& dst_sharding,
+                                               const Shape& shape,
+                                               const DeviceMesh& device_mesh) {
   int64_t src_n_dim = NumTileDimensions(src_sharding);
 
   const HloSharding* sharding_1d;
@@ -1233,7 +1234,7 @@ absl::StatusOr<Shape> ComputeIntermediateShape(
 HloInstruction* ReshardTensor(HloInstruction* tensor,
                               const HloSharding& src_sharding,
                               const HloSharding& dst_sharding,
-                              const Array<int64_t>& device_mesh) {
+                              const DeviceMesh& device_mesh) {
   const Shape& shape = tensor->shape();
   HloComputation* computation = tensor->parent();
 
@@ -1281,7 +1282,7 @@ HloInstruction* ReshardTensor(HloInstruction* tensor,
 absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
     HloInstruction* inst,
     const std::vector<std::optional<HloSharding>>& dst_shardings,
-    const Array<int64_t>& device_mesh) {
+    const DeviceMesh& device_mesh) {
   size_t tuple_size = inst->shape().tuple_shapes_size();
   const HloSharding& current_sharding = inst->sharding();
 
@@ -1345,7 +1346,7 @@ absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
 
 absl::Status FixMixedMeshShapeReshardingGetTupleElement(
     HloInstruction* inst, const HloSharding& dst_sharding,
-    const Array<int64_t>& device_mesh,
+    const DeviceMesh& device_mesh,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings) {
   const HloInstruction* operand = inst->operand(0);
@@ -1387,7 +1388,7 @@ absl::Status FixMixedMeshShapeReshardingGetTupleElement(
 
 absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                          const HloSharding& dst_sharding,
-                                         const Array<int64_t>& device_mesh,
+                                         const DeviceMesh& device_mesh,
                                          ReshardingCache* resharding_cache) {
   HloInstruction* operand = inst->mutable_operand(operand_num);
   if (operand->opcode() == HloOpcode::kOutfeed ||
@@ -1486,7 +1487,7 @@ bool IsDivisible(int64_t numerator, int64_t denominator) {
 }
 
 std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
-    const Array<int64_t>& device_mesh, int32_t communication_dim) {
+    const DeviceMesh& device_mesh, int32_t communication_dim) {
   CHECK_LT(communication_dim, device_mesh.num_dimensions());
   std::vector<int64_t> indices(device_mesh.num_dimensions(), 0);
   std::vector<std::vector<int64_t>> replica_groups;
@@ -1510,7 +1511,7 @@ std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
                  const std::vector<std::vector<int64_t>>& mesh_dims,
-                 const Array<int64_t>& device_mesh) {
+                 const DeviceMesh& device_mesh) {
   CHECK_EQ(tensor_dims.size(), mesh_dims.size());
   CHECK(tensor_shape.IsArray());
   std::vector<int64_t> tile_assignment_dimensions(tensor_shape.rank(), 1);
@@ -1555,7 +1556,7 @@ HloSharding Tile(const Shape& tensor_shape,
 
     if (proceed_to_next_tensor_dim &&
         current_tensor_dim == tensor_shape.rank() - 1) {
-      AppendFlattenElements(&tile_assignment_devices, device_mesh,
+      AppendFlattenElements(&tile_assignment_devices, device_mesh.device_array,
                             mesh_indices);
       return;
     }
@@ -1606,7 +1607,7 @@ HloSharding Tile(const Shape& tensor_shape,
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
-                 const Array<int64_t>& device_mesh) {
+                 const DeviceMesh& device_mesh) {
   std::vector<std::vector<int64_t>> mesh_dims_general(mesh_dims.size());
   for (int i = 0; i < mesh_dims.size(); ++i) {
     mesh_dims_general[i].push_back(mesh_dims[i]);

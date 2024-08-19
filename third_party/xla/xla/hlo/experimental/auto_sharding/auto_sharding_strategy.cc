@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_wrapper.h"
@@ -77,7 +78,7 @@ std::optional<HloSharding> ConstructImprovedSharding(
 std::pair<HloSharding, double>
 ComputeSliceShardingAndCommunicationCostFromOperand(
     const HloSharding& input_spec, const Shape& old_shape,
-    const Shape& new_shape, const Array<int64_t>& device_mesh,
+    const Shape& new_shape, const DeviceMesh& device_mesh,
     const ClusterEnvironment& cluster_env) {
   if (input_spec.IsReplicated()) {
     return std::make_pair(input_spec, 0);
@@ -135,7 +136,7 @@ BuildStrategyAndCost(
     const ClusterEnvironment& cluster_env, AutoShardingOption& option,
     const CallGraph& call_graph, const HloCostAnalysis& hlo_cost_analysis,
     bool trying_multiple_mesh_shapes) {
-  // const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
+  // const DeviceMesh& device_mesh = cluster_env.device_mesh_;
   StrategyMap strategy_map;
   // This map stores all of the trimmed strategies due to user specified
   // sharding. The key is the instruction id, the value is the strategies. This

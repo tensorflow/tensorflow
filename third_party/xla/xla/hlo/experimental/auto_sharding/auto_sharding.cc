@@ -50,6 +50,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_memory.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
@@ -121,7 +122,7 @@ std::vector<double> CommunicationReshardingCostVector(
 double ComputeMemoryReshardingCost(const Shape& shape,
                                    const HloSharding& src_sharding,
                                    const HloSharding& dst_sharding,
-                                   const Array<int64_t>& device_mesh) {
+                                   const DeviceMesh& device_mesh) {
   int64_t src_n_dim = NumTileDimensions(src_sharding);
   int64_t dst_n_dim = NumTileDimensions(dst_sharding);
 
@@ -889,7 +890,7 @@ double ComputeSortCommunicationCost(const int64_t sort_dim,
 
 // Enumerate all 1d partition strategies.
 void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
-                             const Array<int64_t>& device_mesh,
+                             const DeviceMesh& device_mesh,
                              const ClusterEnvironment& cluster_env,
                              const StrategyMap& strategy_map,
                              std::unique_ptr<StrategyGroup>& strategy_group,
@@ -961,7 +962,7 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
 }
 
 void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
-                               const Array<int64_t>& device_mesh,
+                               const DeviceMesh& device_mesh,
                                const ClusterEnvironment& cluster_env,
                                const StrategyMap& strategy_map,
                                std::unique_ptr<StrategyGroup>& strategy_group,
@@ -969,7 +970,7 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
                                absl::Span<const int64_t> tensor_dims);
 
 void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
-                           const Array<int64_t>& device_mesh,
+                           const DeviceMesh& device_mesh,
                            const ClusterEnvironment& cluster_env,
                            const StrategyMap& strategy_map,
                            std::unique_ptr<StrategyGroup>& strategy_group,
@@ -1012,7 +1013,7 @@ void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
 }
 
 void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
-                               const Array<int64_t>& device_mesh,
+                               const DeviceMesh& device_mesh,
                                const ClusterEnvironment& cluster_env,
                                const StrategyMap& strategy_map,
                                std::unique_ptr<StrategyGroup>& strategy_group,
@@ -1075,7 +1076,7 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
 }
 
 void EnumerateAll1DPartitionReshape(
-    const HloInstruction* ins, const Array<int64_t>& device_mesh,
+    const HloInstruction* ins, const DeviceMesh& device_mesh,
     const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
     std::unique_ptr<StrategyGroup>& strategy_group, bool only_allow_divisible,
     const std::string& suffix) {
@@ -1129,14 +1130,14 @@ void EnumerateAll1DPartitionReshape(
 }
 
 void BuildStrategyAndCostForReshape(
-    const HloInstruction* ins, const Array<int64_t>& device_mesh,
+    const HloInstruction* ins, const DeviceMesh& device_mesh,
     const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
     std::unique_ptr<StrategyGroup>& strategy_group,
     absl::Span<const int64_t> tensor_dims);
 
 // Enumerate all partitions for reshape. Batch dim is always partitioned.
 void EnumeratePartitionReshape(const HloInstruction* ins,
-                               const Array<int64_t>& device_mesh,
+                               const DeviceMesh& device_mesh,
                                const ClusterEnvironment& cluster_env,
                                const StrategyMap& strategy_map,
                                const InstructionBatchDimMap& batch_dim_map,
@@ -1181,7 +1182,7 @@ void EnumeratePartitionReshape(const HloInstruction* ins,
 }
 
 void BuildStrategyAndCostForReshape(
-    const HloInstruction* ins, const Array<int64_t>& device_mesh,
+    const HloInstruction* ins, const DeviceMesh& device_mesh,
     const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
     std::unique_ptr<StrategyGroup>& strategy_group,
     absl::Span<const int64_t> tensor_dims) {
@@ -1876,7 +1877,7 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     const InstructionBatchDimMap& batch_dim_map,
     const AutoShardingOption& option, StrategyGroups& strategy_groups,
     const CallGraph& call_graph) {
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
+  const DeviceMesh& device_mesh = cluster_env.device_mesh_;
 
   int mesh_nn_dims = VectorGreaterThanOneElementCount(device_mesh.dimensions());
   std::unique_ptr<StrategyGroup> strategy_group = CreateLeafStrategyGroup(
@@ -2336,7 +2337,7 @@ absl::Status InsertReshardReshapes(
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
+  const DeviceMesh& device_mesh = cluster_env.device_mesh_;
   // Post process: fix some corner cases.
   ReshardingCache resharding_cache_entity;
   ReshardingCache* resharding_cache = &resharding_cache_entity;
@@ -3292,8 +3293,8 @@ absl::Status GenerateReduceScatter(
 void AnnotateShardingWithSimpleHeuristic(
     HloModule* module, const std::string& heuristic, const AliasMap& alias_map,
     const ClusterEnvironment& cluster_env) {
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
-  const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
+  const DeviceMesh& device_mesh = cluster_env.device_mesh_;
+  const DeviceMesh& device_mesh_1d = cluster_env.device_mesh_1d_;
   int64_t num_devices = device_mesh.num_elements();
 
   // Count the non-one mesh dimension.
@@ -3414,7 +3415,7 @@ absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
                             const AutoShardingOption& option) {
   int mesh_dim = option.force_batch_dim_to_mesh_dim;
   int batch_dim = batch_map.at(GetBatchDimMapKey(ins));
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
+  const DeviceMesh& device_mesh = cluster_env.device_mesh_;
 
   if (shape.dimensions(batch_dim) % device_mesh.dim(mesh_dim) != 0) {
     return absl::InvalidArgumentError(
@@ -3452,8 +3453,8 @@ absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env) {
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
-  const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
+  const DeviceMesh& device_mesh = cluster_env.device_mesh_;
+  const DeviceMesh& device_mesh_1d = cluster_env.device_mesh_1d_;
 
   if (ins->opcode() == HloOpcode::kDot) {
     const DotDimensionNumbers& dot_dnums = ins->dot_dimension_numbers();
@@ -3964,7 +3965,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   // batch_dim_map = spmd::BuildInstructionBatchDimMap(sequence);
 
   // ----- Read parameters of device mesh -----
-  Array<int64_t> original_device_mesh(option_.device_mesh_shape);
+  spmd::DeviceMesh original_device_mesh(option_.device_mesh_shape);
   original_device_mesh.SetValues(option_.device_mesh_ids);
   const int64_t original_memory_budget = option_.memory_budget_per_device;
 
@@ -3991,7 +3992,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<int64_t> mesh_shape = partial_mesh_shapes[mesh_idx];
     LOG(INFO) << "Processing partial mesh shape: "
               << spmd::ToString(mesh_shape);
-    Array<int64_t> device_mesh(mesh_shape);
+    spmd::DeviceMesh device_mesh(mesh_shape);
 
     int64_t total_devices = 1;
     for (int64_t i : mesh_shape) {
@@ -4015,10 +4016,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
       // use the actual device order only for the final full mesh.
       device_mesh.SetValues(option_.device_mesh_ids);
     } else {
-      std::vector<int64_t> device_mesh_ids =
-          std::vector<int64_t>(total_devices);
-      std::iota(device_mesh_ids.begin(), device_mesh_ids.end(), 0);
-      device_mesh.SetValues(device_mesh_ids);
+      device_mesh.FillIota(0);
     }
 
     // TODO (zhuohan): Include the prof result as an option.

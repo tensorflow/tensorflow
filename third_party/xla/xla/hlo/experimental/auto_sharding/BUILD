@@ -33,6 +33,7 @@ cc_library(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_cost_graph",
+        ":auto_sharding_device_mesh",
         ":auto_sharding_option",
         ":auto_sharding_solver",
         ":auto_sharding_strategy",
@@ -110,6 +111,7 @@ cc_library(
     hdrs = ["auto_sharding_memory.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":auto_sharding_device_mesh",
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
         "//xla:status_macros",
@@ -148,6 +150,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":auto_sharding_device_mesh",
         ":auto_sharding_proto_cc",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -170,6 +173,7 @@ cc_library(
     hdrs = ["auto_sharding_cost_graph.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":auto_sharding_device_mesh",
         ":auto_sharding_strategy",
         ":matrix",
         "//xla:shape_util",
@@ -188,7 +192,9 @@ cc_library(
     hdrs = ["auto_sharding_option.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":auto_sharding_device_mesh",
         ":auto_sharding_util",
+        "//xla:array",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -219,6 +225,7 @@ cc_library(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_cost_graph",
+        ":auto_sharding_device_mesh",
         ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_wrapper",
@@ -247,6 +254,7 @@ cc_library(
     hdrs = ["cluster_environment.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":auto_sharding_device_mesh",
         ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
@@ -273,6 +281,7 @@ cc_library(
     hdrs = ["auto_sharding_util.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":auto_sharding_device_mesh",
         ":auto_sharding_strategy",
         "//xla:array",
         "//xla:shape_tree",
@@ -328,6 +337,20 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "auto_sharding_device_mesh",
+    srcs = ["auto_sharding_device_mesh.cc"],
+    hdrs = [
+        "auto_sharding_device_mesh.h",
+    ],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla:array",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 build_test(
     name = "auto_sharding_runner_build_test",
     targets = [
@@ -346,6 +369,7 @@ xla_cc_test(
     deps = [
         ":auto_sharding",
         ":auto_sharding_cost_graph",
+        ":auto_sharding_device_mesh",
         ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
@@ -360,6 +384,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

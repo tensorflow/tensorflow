@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
@@ -92,7 +93,7 @@ class HandlerBase {
                          double compute_cost, double communication_cost);
 
   HloSharding CreateInputSpec(const HloInstruction* ins, const DimMap& dim_map,
-                              const Array<int64_t>& device_mesh) const {
+                              const DeviceMesh& device_mesh) const {
     if (dim_map.empty()) return HloSharding::Replicate();
     std::vector<int64_t> tensor_dims;
     std::vector<std::vector<int64_t>> mesh_dims;
@@ -179,7 +180,7 @@ class HandlerBase {
   }
 
   bool IsFullyReplicatedSharding(const DimMap& dim_map,
-                                 const Array<int64_t>& device_mesh) {
+                                 const DeviceMesh& device_mesh) {
     if (dim_map.empty()) {
       return true;
     }
@@ -194,7 +195,7 @@ class HandlerBase {
   bool IsFullyReplicatedStrategy(const DimMap& output_dim_map,
                                  const DimMap& lhs_dim_map,
                                  const DimMap& rhs_dim_map,
-                                 const Array<int64_t>& device_mesh) {
+                                 const DeviceMesh& device_mesh) {
     return IsFullyReplicatedSharding(output_dim_map, device_mesh) &&
            IsFullyReplicatedSharding(lhs_dim_map, device_mesh) &&
            IsFullyReplicatedSharding(rhs_dim_map, device_mesh);
@@ -223,7 +224,7 @@ class HandlerBase {
   const AutoShardingOption& option_;
   const CallGraph& call_graph_;
 
-  const Array<int64_t>& device_mesh_;
+  const DeviceMesh& device_mesh_;
   const HloInstruction* lhs_;
   const HloInstruction* rhs_;
 };

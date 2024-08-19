@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
@@ -88,6 +90,74 @@ ENTRY %elementwise {
   auto* instruction = FindInstruction(module.get(), "param0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
+TEST(DeviceMeshTest, IotaDeviceMesh2DStartsWith0) {
+  DeviceMesh device_mesh({2, 4});
+  device_mesh.FillIota(0);
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4));
+  EXPECT_EQ(device_mesh.num_elements(), 8);
+}
+
+TEST(DeviceMeshTest, IotaDeviceMesh3DStartsWithNonZero) {
+  DeviceMesh device_mesh({2, 4, 8});
+  device_mesh.FillIota(55);
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+}
+
+TEST(DeviceMeshTest, ExplicitSetValuesInferIotaIotaValues) {
+  DeviceMesh device_mesh({2, 4, 8});
+  std::vector<int64_t> device_mesh_values(64);
+  absl::c_iota(device_mesh_values, 34);
+  device_mesh.SetValues(device_mesh_values);
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+}
+
+TEST(DeviceMeshTest, ExplicitSetValuesInferIotaNonIotaValues) {
+  DeviceMesh device_mesh({2, 4, 8});
+  std::vector<int64_t> device_mesh_values(64);
+  absl::c_iota(device_mesh_values, 34);
+  device_mesh_values[54] = 54;
+  device_mesh.SetValues(device_mesh_values);
+  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+}
+
+TEST(DeviceMeshTest, ReshapeTestWithoutIota) {
+  DeviceMesh device_mesh({2, 4, 8});
+  std::vector<int64_t> device_mesh_values(64);
+  absl::c_iota(device_mesh_values, 34);
+  device_mesh_values[54] = 54;
+  device_mesh.SetValues(device_mesh_values);
+  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+
+  device_mesh.Reshape({2, 32});
+  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 32));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+}
+
+TEST(DeviceMeshTest, ReshapeTestWithIota) {
+  DeviceMesh device_mesh({2, 4, 8});
+  std::vector<int64_t> device_mesh_values(64);
+  absl::c_iota(device_mesh_values, 34);
+  device_mesh.SetValues(device_mesh_values);
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+
+  device_mesh.Reshape({2, 32});
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 32));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
 }
 
 class AutoShardingTest : public HloTestBase {
