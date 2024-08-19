@@ -194,6 +194,7 @@ cc_library(
         ":allocator",
         ":metrics",
         ":shared_counter",
+        "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -210,7 +211,6 @@ cc_library(
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/protobuf:bfc_memory_map_proto_cc",
     ],
 )
 
