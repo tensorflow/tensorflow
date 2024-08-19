@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -36,8 +37,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -111,6 +115,36 @@ absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
   return builder.Build();
 }
 
+absl::Status InstantiateHandlerState(absl::string_view target_name,
+                                     ffi::ExecutionState* execution_state) {
+  // Find the registered FFI handler for this target.
+  auto handler = ffi::FindHandler(target_name, "Host");
+  if (!handler.ok()) {
+    return NotFound(
+        "No registered implementation for FFI custom call to %s for Host",
+        target_name);
+  }
+
+  // Initialize FFI handler state if it has an instantiate callback.
+  if (handler->bundle.instantiate) {
+    // At FFI handler instantiation time, we don't have any arguments or
+    // results or access to the underlying device (stream, etc.)
+    ffi::CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+
+    // TODO(abanas): Add attributes support. All attributes should be accessible
+    // at all phases, namely instantiation and execution. Also add tests for CPU
+    // and GPU backends (GPU supports it, but tests are missing there).
+    ffi::CallFrame instantiate_call_frame = builder.Build();
+
+    ffi::CallOptions options;
+    options.execution_state = execution_state;
+    TF_RETURN_IF_ERROR(Call(handler->bundle.instantiate, instantiate_call_frame,
+                            options, XLA_FFI_ExecutionStage_INSTANTIATE));
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
@@ -121,7 +155,13 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     TF_ASSIGN_OR_RETURN(
         call_frame,
         BuildCallFrameForTypedFFI(api_version, op_buffers, backend_config));
+
+    // TODO(abanas): Pass execution state to thunk.
+    auto execution_state = std::make_unique<ffi::ExecutionState>();
+    TF_RETURN_IF_ERROR(
+        InstantiateHandlerState(target_name, execution_state.get()));
   }
+
   return absl::WrapUnique(new CustomCallThunk(
       std::move(info), target_name, std::move(op_buffers), api_version,
       std::move(backend_config), std::move(call_frame)));

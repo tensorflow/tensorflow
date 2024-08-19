@@ -1664,5 +1664,99 @@ XLA_TEST_F(FfiCustomCallTest, IntraOpThreadPool) {
   EXPECT_EQ(status, absl::OkStatus());
 }
 
+//===----------------------------------------------------------------------===//
+// Stateful XLA:FFI handler
+//===----------------------------------------------------------------------===//
+
+struct SomeState {
+  explicit SomeState(float value) : value(value) {}
+  float value = 0;
+};
+
+int instantiate_called_counter = 0;
+
+// Every time custom call HLO operation is instantiated as a CPU runtime Thunk,
+// XLA calls instantiate callback to create a new instance of the handler state,
+// that will be passed to all other FFI handler calls.
+static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateState() {
+  ++instantiate_called_counter;
+  return std::make_unique<SomeState>(42.f);
+}
+
+// At run time we can access the state created by the instantiate callback.
+static absl::Status IncrementState(R0F32ResultBuffer out, SomeState* state) {
+  state->value += 1.f;
+  auto out_data = out->typed_data();
+  *out_data = state->value;
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kInstantiateState, InstantiateState,
+                       ffi::Ffi::BindInstantiate());
+
+XLA_FFI_DEFINE_HANDLER(
+    kIncrementState, IncrementState,
+    ffi::Ffi::Bind().Ret<R0F32Buffer>().Ctx<ffi::State<SomeState>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$ffi_execution_state",
+                         "Host",
+                         {
+                             /*instantiate=*/kInstantiateState,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kIncrementState,
+                         });
+
+// This test doesn't care about execution results, its intent is just to test if
+// instantiate function was called.
+TEST_F(CustomCallTest, FfiExecutionStateInstantiate) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      ROOT result = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Execute the module, but don't verify the results.
+  instantiate_called_counter = 0;
+  auto result = Execute(std::move(module), {});
+
+  // Check that instantiate callback was called.
+  EXPECT_EQ(instantiate_called_counter, 1);
+}
+
+TEST_F(CustomCallTest, FfiExecutionStateExecute) {
+  // Execution state is only partially implemented at the moment.
+  GTEST_SKIP() << "Not implemented yet.";
+
+  // TODO(abanas): Actually, this HLO probably creates two custom call thunks,
+  // each one is called once. If yes then fix it, cause the intent is to call
+  // the same custom call twice.
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      first = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
+      second = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
+      ROOT result = (f32[], f32[]) tuple(first, second)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  Literal expected0 =
+      LiteralUtil::CreateR0<int32_t>(43.f);  // Incremented once.
+  Literal expected1 =
+      LiteralUtil::CreateR0<int32_t>(44.f);  // Incremented twice.
+  Literal expected = LiteralUtil::MakeTuple({&expected0, &expected1});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  EXPECT_EQ(result, expected);
+}
+
 }  // namespace
 }  // namespace xla
