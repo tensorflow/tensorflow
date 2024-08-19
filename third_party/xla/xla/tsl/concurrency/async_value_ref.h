@@ -82,12 +82,34 @@ template <typename T>
 struct IsStatusOr<absl::StatusOr<T>> : std::true_type {};
 
 // Type predicates for detecting absl::Status-like types.
-template <class T>
+template <typename T>
 static constexpr bool is_status_v = std::is_same_v<T, absl::Status>;
-template <class T>
+template <typename T>
 static constexpr bool is_status_or_v = IsStatusOr<T>::value;
-template <class T>
+template <typename T>
 static constexpr bool is_status_like_v = is_status_v<T> || is_status_or_v<T>;
+
+// Deduces the result type of invoking `F` with a first compatible `Arg`.
+template <typename F, typename... Args>
+struct FirstInvokeResult {
+  template <typename Arg, bool invocable = std::is_invocable_v<F, Arg>>
+  struct is_invocable : std::false_type {
+    using type = void;
+  };
+
+  template <typename Arg>
+  struct is_invocable<Arg, true> : std::true_type {
+    using type = std::invoke_result_t<F, Arg>;
+  };
+
+  using type = typename std::disjunction<is_invocable<Args>...>::type;
+};
+
+// In contrast to `std::invoke_result_t` `Args` are not passed to `F` all
+// together, but instead they are passed one-by-one, and the first valid one
+// determines the result type.
+template <typename F, typename... Args>
+using first_invoke_result_t = typename FirstInvokeResult<F, Args...>::type;
 
 }  // namespace internal
 
@@ -699,7 +721,7 @@ class AsyncValuePtr {
     return TryMap<typename R::value_type>(executor, std::forward<F>(f));
   }
 
-  // Returns and AsyncValueRef<R> that will be forwarded to the AsyncValueRef
+  // Returns an AsyncValueRef<R> that will be forwarded to the AsyncValueRef
   // returned from a functor.
   //
   // Sample usage:
@@ -708,14 +730,28 @@ class AsyncValuePtr {
   //   return LaunchAsyncTask(value);
   // })
   //
-  template <typename F, typename R = std::invoke_result_t<F, T&>,
-            std::enable_if_t<internal::is_async_value_ref_v<R>>* = nullptr>
+  // Functor argument can be a `T&` or an `AsyncValueRef<T>`, where async value
+  // pointer is guaranteed to be in concrete state. Async value pointer allows
+  // the functor to extend the lifetime of underlying async value if needed.
+  //
+  // async_value_ptr.FlatMap([](AsyncValuePtr<T> ptr) -> AsyncValueRef<R> {
+  //   return LaunchAsyncTask([ref = ptr.CopyRef()] { ... });
+  // })
+  //
+  template <
+      typename F,
+      typename R = internal::first_invoke_result_t<F, T&, AsyncValuePtr<T>>,
+      std::enable_if_t<internal::is_async_value_ref_v<R>>* = nullptr>
   AsyncValueRef<typename R::value_type> FlatMap(F&& f) {
     // If async value is in concrete state, we can immediately call the functor.
     // We don't handle errors here and prefer a generic code path below because
     // error handling is never on a performance critical path.
     if (ABSL_PREDICT_TRUE(IsConcrete())) {
-      return f(get());
+      if constexpr (std::is_invocable_v<F, T&>) {
+        return f(get());
+      } else {
+        return f(*this);
+      }
     }
 
     auto promise = MakePromise<R>();
@@ -723,15 +759,21 @@ class AsyncValuePtr {
       if (ABSL_PREDICT_FALSE(ptr.IsError())) {
         promise->SetError(ptr.GetError());
       } else {
-        promise->ForwardTo(f(*ptr));
+        if constexpr (std::is_invocable_v<F, T&>) {
+          promise->ForwardTo(f(*ptr));
+        } else {
+          promise->ForwardTo(f(ptr));
+        }
       }
     });
     return AsyncValueRef<typename R::value_type>(promise);
   }
 
   // An overload that executes `f` on a user-provided executor.
-  template <typename F, typename R = std::invoke_result_t<F, T&>,
-            std::enable_if_t<internal::is_async_value_ref_v<R>>* = nullptr>
+  template <
+      typename F,
+      typename R = internal::first_invoke_result_t<F, T&, AsyncValuePtr<T>>,
+      std::enable_if_t<internal::is_async_value_ref_v<R>>* = nullptr>
   AsyncValueRef<typename R::value_type> FlatMap(AsyncValue::Executor& executor,
                                                 F&& f) {
     // We don't have a special handling for concrete values here because
@@ -745,7 +787,11 @@ class AsyncValuePtr {
               if (ABSL_PREDICT_FALSE(ref.IsError())) {
                 promise->SetError(ref.GetError());
               } else {
-                promise->ForwardTo(f(*ref));
+                if constexpr (std::is_invocable_v<F, T&>) {
+                  promise->ForwardTo(f(*ref));
+                } else {
+                  promise->ForwardTo(f(ref.AsPtr()));
+                }
               }
             });
     return AsyncValueRef<typename R::value_type>(promise);
