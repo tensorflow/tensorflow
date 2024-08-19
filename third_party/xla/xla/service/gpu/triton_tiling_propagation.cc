@@ -1011,15 +1011,10 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
   if (hlo.opcode() == HloOpcode::kPad) {
     return "Pads are not fused yet.";
   }
-  for (const HloInstruction* operand : hlo.operands()) {
-    if (!legacy_triton::IsTritonSupportedDataType(
-            operand->shape().element_type(), gpu_version)) {
-      return "Unsupported input data type.";
-    }
-  }
-  if (!legacy_triton::IsTritonSupportedDataType(hlo.shape().element_type(),
-                                                gpu_version)) {
-    return "Unsupported output data type.";
+  if (auto decision =
+          legacy_triton::IsTritonSupportedInstruction(hlo, gpu_version);
+      !decision.CanFuse()) {
+    return decision;
   }
   DimOrdersAndReqsOrError result_or_error =
       GetPropagatedDimOrdersAndRequirements(hlo, src_dim_order,

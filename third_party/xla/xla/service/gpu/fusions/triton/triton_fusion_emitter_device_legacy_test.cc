@@ -220,6 +220,31 @@ TEST_F(TritonGemmTest, LHSInt4MinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
+TEST_F(TritonGemmTest, Int4ConvertPlusNegate) {
+  const std::string kHloText = R"(
+    HloModule t
+
+    triton_computation {
+      lhs = s4[8,1024]{1,0} parameter(0)
+      lhs_converted = bf16[8,1024]{1,0} convert(lhs)
+      lhs_negated = bf16[8,1024]{1,0} negate(lhs_converted)
+      rhs = bf16[1024,4]{1,0} parameter(1)
+      ROOT dot = bf16[8,4]{1,0} dot(lhs_negated, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      lhs = s4[8,1024]{1,0} parameter(0)
+      rhs = bf16[1024,4]{1,0} parameter(1)
+      ROOT dot = bf16[8,4]{1,0} fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+}
+
 TEST_F(TritonGemmTest, LHSInt4MinorContractingDimWithBatchDim0) {
   // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
   const std::string kHloText = R"(
