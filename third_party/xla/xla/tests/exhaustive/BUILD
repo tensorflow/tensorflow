@@ -66,6 +66,7 @@ filegroup(
 
 xla_test(
     name = "exhaustive_unary_f32_or_smaller_test",
+    timeout = "long",
     srcs = [
         "exhaustive_test_main.cc",
         ":exhaustive_unary_f32_or_smaller_test_srcs",
