@@ -165,11 +165,18 @@ xla_test(
     ],
 )
 
+filegroup(
+    name = "exhaustive_binary_16_bit_test_srcs",
+    srcs = [
+        "exhaustive_binary_16_bit_test.cc",
+    ],
+)
+
 xla_test(
     name = "exhaustive_binary_16_bit_test",
     srcs = [
-        "exhaustive_binary_16_bit_test.cc",
         "exhaustive_test_main.cc",
+        ":exhaustive_binary_16_bit_test_srcs",
     ],
     backends = [
         "gpu",
