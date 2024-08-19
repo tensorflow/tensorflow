@@ -1342,16 +1342,7 @@ ENTRY e {
 TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kInt4Dot));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_enable_triton_gemm_int4(true);
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
-}
-
-TEST_F(SmallDotGemmFusionTest, Int4DotIsNotRewritten) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kInt4Dot));
-  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
 TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
@@ -1368,9 +1359,6 @@ TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kInt4Dot));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_enable_triton_gemm_int4(true);
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
 
   // Check that the fusion is present and that the lhs is not converted.
@@ -1395,9 +1383,6 @@ TEST_F(SmallDotGemmFusionTest, Int4ConvertPlusNegateIsRewritten) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kInt4Dot));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_enable_triton_gemm_int4(true);
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
   // Check that the fusion is present and that convert and negation is fused in
   // it.
