@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -65,6 +66,9 @@ class IrEmitter2 {
  public:
   friend class IrEmitter2Test;
 
+ private:
+  struct KernelPrototype;
+
  public:
   IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
              IrEmitter* nested_ir_emitter);
@@ -93,9 +97,14 @@ class IrEmitter2 {
 
   // Emitted kernel information that defines how to launch it at run time.
   struct KernelInfo {
+    explicit KernelInfo(KernelPrototype prototype,
+                        const se::BlockDim& block_dims,
+                        const se::ThreadDim& thread_dims);
+
     std::string name;
     se::BlockDim block_dims;
     se::ThreadDim thread_dims;
+    absl::flat_hash_set<BufferAllocation::Slice> invariant_buffers;
   };
 
   // Emitted comparator function information (for sort operation).
@@ -170,6 +179,10 @@ class IrEmitter2 {
     // read and write data from/to leaf arrays.
     std::vector<llvm_ir::IrArray> arguments;
     std::vector<llvm_ir::IrArray> results;
+
+    // Set containing all invariant (read-only) buffers. A buffer is read-only
+    // if it is not aliased with any result.
+    absl::flat_hash_set<BufferAllocation::Slice> invariant_buffers;
   };
 
   // Emits a host kernel prototype and prepares function for emitting kernel

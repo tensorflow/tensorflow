@@ -224,6 +224,13 @@ IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
 bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
 }
+IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
+                                   const se::BlockDim& block_dims,
+                                   const se::ThreadDim& thread_dims)
+    : name(prototype.function->getName().str()),
+      block_dims(block_dims),
+      thread_dims(thread_dims),
+      invariant_buffers(std::move(prototype.invariant_buffers)) {}
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     const HloInstruction* instr) {
@@ -252,8 +259,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
       se::ThreadDim thread_dims,
       EmitElementalLoops(b, instr, kernel_prototype, element_generator));
 
-  return kernels_.emplace_back(KernelInfo{
-      kernel_prototype.function->getName().str(), se::BlockDim(), thread_dims});
+  return kernels_.emplace_back(
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), thread_dims));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
@@ -283,8 +290,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
   nested_ir_emitter_->PopComputeFunction();
 
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
@@ -328,9 +334,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
         const_cast<HloFusionInstruction*>(fusion), kernel_prototype.results[0],
         &fused_emitter, &b));
 
-    return kernels_.emplace_back(
-        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                   se::ThreadDim()});
+    return kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
+                                            se::BlockDim(), se::ThreadDim()));
   }
 
   // Emit plain elemental loops for the fusion operation.
@@ -342,8 +347,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
       se::ThreadDim thread_dims,
       EmitElementalLoops(b, fusion, kernel_prototype, element_generator));
 
-  return kernels_.emplace_back(KernelInfo{
-      kernel_prototype.function->getName().str(), se::BlockDim(), thread_dims});
+  return kernels_.emplace_back(
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), thread_dims));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitReductionHostKernel(
@@ -395,8 +400,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotHostKernel(
       /*allow_runtime_calls=*/false));
 
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitConcatenateHostKernel(
@@ -416,9 +420,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitConcatenateHostKernel(
     llvm_ir::IrArray output_array = kernel_prototype.results[0];
     TF_RETURN_IF_ERROR(::xla::cpu::EmitFastConcatenate(
         instr, kernel_prototype.arguments, output_array, module_, ir_builder));
-    return kernels_.emplace_back(
-        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                   se::ThreadDim()});
+    return kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
+                                            se::BlockDim(), se::ThreadDim()));
   }
   VLOG(1) << "Could not emit fast concatenate for " << instr->ToString() << ": "
           << fast_impl_reason.message();
@@ -479,8 +482,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
       /*allow_runtime_calls=*/false));
 
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
@@ -498,8 +500,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
   TF_RETURN_IF_ERROR(nested_ir_emitter_->EmitSliceToDynamic(
       instr, kernel_prototype.arguments, output_array));
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo>
@@ -516,8 +517,7 @@ IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
       output_array));
 
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo>
@@ -537,9 +537,8 @@ IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
         kernel_prototype.arguments, kernel_prototype.results.front(),
         llvm_ir::IrName(instr, "in_place"), &b));
 
-    return kernels_.emplace_back(
-        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                   se::ThreadDim()});
+    return kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
+                                            se::BlockDim(), se::ThreadDim()));
   }
 
   return EmitElementalHostKernel(instr);
@@ -796,10 +795,6 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
 
   // Collect a set of invariant (read-only) buffer slices. If a buffer slice is
   // not a part of result set, then it must be a read-only buffer.
-  //
-  // TODO(ezhulenev): Pass this information to KernelThunk and add an extra run
-  // time check to verify that this property holds, as otherwise it can lead to
-  // hard to debug errors.
   absl::flat_hash_set<BufferAllocation::Slice> invariant_slices;
   for (const KernelParameter& argument : arguments) {
     if (!result_slices.contains(argument.slice)) {
@@ -880,7 +875,8 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
                          kernel_thread_dims,
                          kernel_thread,
                          std::move(ir_arguments),
-                         std::move(ir_results)};
+                         std::move(ir_results),
+                         std::move(invariant_slices)};
 }
 
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(

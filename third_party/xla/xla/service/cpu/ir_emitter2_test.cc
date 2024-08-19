@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
@@ -53,6 +56,49 @@ class IrEmitter2Test : public HloTestBase {
       const std::vector<IrEmitter2::KernelParameter>& results) {
     return ir_emitter.EmitKernelPrototype("test", arguments, results);
   }
+
+  absl::StatusOr<IrEmitter2> MakeIrEmitter2(llvm::Module& module,
+                                            const HloModule& hlo) {
+    TF_ASSIGN_OR_RETURN(
+        buffer_assignment_,
+        BufferAssigner::Run(
+            &hlo, std::make_unique<DependencyHloOrdering>(&hlo),
+            backend().compiler()->BufferSizeBytesFunction(),
+            [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+
+    target_machine_ =
+        std::make_unique<TargetMachineFeaturesWithFakeAlignmentLogic>(
+            [](int64_t size) { return 1; });
+
+    nested_ir_emitter_ = absl::WrapUnique(
+        new IrEmitter(nullptr, hlo, *buffer_assignment_, &module, {}, {}, {},
+                      target_machine_.get(), false));
+
+    return IrEmitter2(hlo, &module, nested_ir_emitter_.get());
+  }
+
+  // TODO(abanas): This function could be static. It requires making the
+  // underlying FindInstruction function static first.
+  absl::StatusOr<IrEmitter2::KernelInfo> EmitElementalHostKernel(
+      IrEmitter2& ir_emitter, HloModule& hlo,
+      std::string_view instruction_name) {
+    HloInstruction* instruction = FindInstruction(&hlo, instruction_name);
+
+    if (instruction == nullptr) {
+      return absl::InternalError("Instruction not found");
+    }
+    TF_ASSIGN_OR_RETURN(IrEmitter2::KernelInfo kernel,
+                        ir_emitter.EmitElementalHostKernel(instruction));
+    return kernel;
+  }
+
+ private:
+  // Dependencies of IrEmitter2. These are created in MakeIrEmitter2 and kept
+  // alive for the duration of the test, because IrEmitter2 does not take
+  // ownership of them.
+  std::unique_ptr<BufferAssignment> buffer_assignment_;
+  std::unique_ptr<TargetMachineFeaturesWithFakeAlignmentLogic> target_machine_;
+  std::unique_ptr<IrEmitter> nested_ir_emitter_;
 };
 
 namespace {
@@ -177,25 +223,9 @@ TEST_F(IrEmitter2Test, EmitElementalKernel) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  HloInstruction* convert = FindInstruction(hlo.get(), "convert");
-  ASSERT_NE(convert, nullptr);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(
-          hlo.get(), std::make_unique<DependencyHloOrdering>(hlo.get()),
-          backend().compiler()->BufferSizeBytesFunction(),
-          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
-
-  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
-      [](int64_t size) { return 1; });
-
-  IrEmitter nested_ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(),
-                              {}, {}, {}, &target_machine, false);
-
-  IrEmitter2 ir_emitter(*hlo, module.get(), &nested_ir_emitter);
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
-                          ir_emitter.EmitElementalHostKernel(convert));
+                          EmitElementalHostKernel(ir_emitter, *hlo, "convert"));
 
   ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
     CHECK: define ptr @convert(ptr %0) #0 {
@@ -217,25 +247,9 @@ TEST_F(IrEmitter2Test, EmitParallelKernel) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  HloInstruction* convert = FindInstruction(hlo.get(), "convert");
-  ASSERT_NE(convert, nullptr);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(
-          hlo.get(), std::make_unique<DependencyHloOrdering>(hlo.get()),
-          backend().compiler()->BufferSizeBytesFunction(),
-          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
-
-  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
-      [](int64_t size) { return 1; });
-
-  IrEmitter nested_ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(),
-                              {}, {}, {}, &target_machine, false);
-
-  IrEmitter2 ir_emitter(*hlo, module.get(), &nested_ir_emitter);
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
-                          ir_emitter.EmitElementalHostKernel(convert));
+                          EmitElementalHostKernel(ir_emitter, *hlo, "convert"));
 
   ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
     CHECK: @convert_parallel_bounds = private constant [8 x [4 x [2 x i64]]]
@@ -252,6 +266,67 @@ TEST_F(IrEmitter2Test, EmitParallelKernel) {
     CHECK:   fptosi float {{.*}} to i32
     CHECK: }
   )"));
+}
+
+using IrEmitter2InvariantBuffersTest = IrEmitter2Test;
+
+TEST_F(IrEmitter2InvariantBuffersTest, AllInvariantBuffers) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      ROOT add.0 = f32[2,2] add(p0, p0)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+
+  ASSERT_EQ(kernel.invariant_buffers.size(), 1);
+}
+
+TEST_F(IrEmitter2InvariantBuffersTest, NoInvariantBuffers) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m, input_output_alias={ {}: (0, {}, must-alias) }
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      ROOT add.0 = f32[2,2] add(p0, p0)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+
+  ASSERT_EQ(kernel.invariant_buffers.size(), 0);
+}
+
+TEST_F(IrEmitter2InvariantBuffersTest, MixedBuffers) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m, input_output_alias={ {}: (1, {}, must-alias) }
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      p1 = f32[2,2] parameter(1)
+      ROOT add.0 = f32[2,2] add(p0, p1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+
+  // TODO(abanas): Verify also which buffer is read-only, not only the count.
+  ASSERT_EQ(kernel.invariant_buffers.size(), 1);
 }
 
 }  // namespace
