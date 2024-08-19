@@ -5160,6 +5160,59 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
   EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 5);
 }
 
+TEST_F(PatternMatchParseWhileLoopTest,
+       LoopBoundDefinedInsideOfCondWithPrecomputation) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %while_condition {
+      %param = (s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %loop_bound = s32[] constant(5)
+      ROOT result = pred[] compare(%gte.0, %loop_bound), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[1024, 1024] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %gte.1, f32[1024, 1024] %gte.2)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %accumulation)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.1 = f32[1024, 1024] parameter(0)
+      %constant.0 = s32[] constant(0)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      %while = (s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
+      ROOT %result = f32[1024, 1024] get-tuple-element((s32[], f32[1024, 1024], f32[1024, 1024]) %while), index=2
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
+      TuplePointsToAnalysis::Run(hlo_module.get()));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module.get());
+
+  HloInstruction* while_op =
+      hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
+  std::optional<ParsedWhileLoop> parsed_while_loop = PatternMatchParseWhileLoop(
+      while_op, {tuple_points_to.get(), call_graph.get()});
+  ASSERT_TRUE(parsed_while_loop.has_value());
+  EXPECT_FALSE(parsed_while_loop->is_dynamic());
+  EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 5);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_index, 0);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_init_value, 0);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->step_size, 1);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 5);
+}
+
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedOutsideOfCond) {
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce

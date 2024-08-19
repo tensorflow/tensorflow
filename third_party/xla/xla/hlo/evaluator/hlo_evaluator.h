@@ -55,38 +55,6 @@ limitations under the License.
 
 namespace xla {
 
-// Represents a parsed static while loop. We normalize the loop representation
-// so that it starts from the induction_var_init_value and increments by
-// step_size until it exceeds or goes below loop_bound.
-struct ParsedStaticWhileLoop {
-  // The number of iterations to be executed.
-  int64_t trip_count = -1;
-  // The tuple index of the induction variable in the while argument tuple.
-  int64_t induction_var_index = -1;
-  // The induction variable's initial value.
-  int64_t induction_var_init_value = -1;
-  // The induction variable is incremented by this number (could be negative)
-  // in each iteration.
-  int64_t step_size = -1;
-  int64_t loop_bound = -1;
-};
-
-// Indicates whether a parsed while loop is static or dynamic. If the loop is
-// static, it contains a value for StaticLoopInfo; otherwise the loop is
-// dynamic. We consider a loop dynamic if its induction variable's initial
-// value or the loop bound's value depends on the while's parent computation's
-// parameter.
-struct ParsedWhileLoop {
-  std::optional<ParsedStaticWhileLoop> static_while_loop;
-  bool is_dynamic() const { return !static_while_loop.has_value(); }
-};
-constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
-
-// Tries to parse a while loop using a set of predefined patterns.
-// Returns the parsing result.
-std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
-    const HloInstruction* while_op);
-
 // Responsible for evaluating HLO and obtain literal as the evaluation results.
 //
 // This class is not thread-safe.
@@ -535,6 +503,41 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
 std::unique_ptr<Array2D<float>> MatmulArray2D(const Array2D<float>& lhs,
                                               const Array2D<float>& rhs);
+
+// Represents a parsed static while loop. We normalize the loop representation
+// so that it starts from the induction_var_init_value and increments by
+// step_size until it exceeds or goes below loop_bound.
+struct ParsedStaticWhileLoop {
+  // The number of iterations to be executed.
+  int64_t trip_count = -1;
+  // The tuple index of the induction variable in the while argument tuple.
+  int64_t induction_var_index = -1;
+  // The induction variable's initial value.
+  int64_t induction_var_init_value = -1;
+  // The induction variable is incremented by this number (could be negative)
+  // in each iteration.
+  int64_t step_size = -1;
+  int64_t loop_bound = -1;
+};
+
+// Indicates whether a parsed while loop is static or dynamic. If the loop is
+// static, it contains a value for StaticLoopInfo; otherwise the loop is
+// dynamic. We consider a loop dynamic if its induction variable's initial
+// value or the loop bound's value depends on the while's parent computation's
+// parameter.
+struct ParsedWhileLoop {
+  std::optional<ParsedStaticWhileLoop> static_while_loop;
+  bool is_dynamic() const { return !static_while_loop.has_value(); }
+};
+constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
+
+// Tries to parse a while loop using a set of predefined patterns.
+// Returns the parsing result. Any non-null `precompute_analyses` will be used
+// instead of recomputing, and it is the caller's responsibility to ensure that
+// the analyses are valid for the module that contains `while_op`.
+std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+    const HloInstruction* while_op,
+    HloEvaluator::PrecomputedAnalyses precomputed_analyses = {});
 
 // Functionality exposed for testing. Do not rely on anything in this namespace
 // outside this file.
