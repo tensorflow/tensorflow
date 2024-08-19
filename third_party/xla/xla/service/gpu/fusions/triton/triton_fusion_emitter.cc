@@ -2259,8 +2259,8 @@ class Scopes {
   static bool is_int4_param(const TritonFusionAnalysis& analysis,
                             TritonFusionAnalysis::Scope scope) {
     const ConstHloInstructionSet& params = analysis.ScopeParameters(scope);
-    const HloInstruction* first = *params.cbegin();
-    return params.size() == 1 && first->shape().element_type() == S4;
+    return params.size() == 1 &&
+           (*params.cbegin())->shape().element_type() == S4;
   }
 
  private:
