@@ -211,6 +211,11 @@ alias(
     actual = "@cuda_nvcc//:nvvm",
 )
 
+alias(
+    name = "nvjitlink",
+    actual = "@cuda_nvjitlink//:nvjitlink"
+)
+
 cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
