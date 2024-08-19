@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -30,7 +31,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -352,20 +353,15 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>(s0, "add", args, args_access,
+  commands.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
 
   // Initialize command sequence and load device kernels.
-  Thunk::ExecutableSource source = {
-#if defined(GOOGLE_CUDA)
-      /*text=*/se::gpu::internal::kAddI32Kernel,
-      /*binary=*/{}
-#elif defined(TENSORFLOW_USE_ROCM)
-      /*text=*/{},
-      /*binary=*/se::gpu::internal::kAddI32KernelModule
-#endif
-  };
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
+                          se::gpu::GetGpuTestKernelsFatbin());
+  Thunk::ExecutableSource source = {/*text=*/{},
+                                    /*binary=*/fatbin};
 
   CommandBufferCmd::StateManager state;
   TF_ASSERT_OK(commands.Initialize({executor, source}, state));

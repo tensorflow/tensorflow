@@ -655,40 +655,89 @@ cc_library(
 gpu_kernel_library(
     name = "gpu_test_kernels",
     testonly = 1,
-    srcs = if_gpu_is_configured(["gpu_test_kernels.cu.cc"]),
-    hdrs = if_gpu_is_configured(["gpu_test_kernels.h"]),
+    srcs = ["gpu_test_kernels.cu.cc"],
+    hdrs = ["gpu_test_kernels.h"],
+    tags = ["gpu"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
-        "//xla/stream_executor/rocm:add_i32_kernel",
     ]),
+)
+
+genrule(
+    name = "gpu_test_kernels_fatbin_extractor",
+    testonly = True,
+    srcs = [":gpu_test_kernels"],
+    outs = ["gpu_test_kernels.fatbin"],
+    cmd = """
+      STATIC_LIBRARY=""
+      for src in $(SRCS); do
+        if [[ $$src == *.a ]]; then
+          STATIC_LIBRARY=$$src
+          break
+        fi
+      done
+
+      if [[ -z $$STATIC_LIBRARY ]]; then
+        echo "No static library found in $(SRCS)" >&2
+        exit 1
+      fi
+
+      $(OBJCOPY) "--dump-section=.nv_fatbin=$@" "$$STATIC_LIBRARY" || true
+      
+      if [ ! -f "$@" ]; then
+        # binutils' objcopy doesn't return a non-zero exit code if the
+        # section was not found, so we need to check for the file's existence instead.
+        $(OBJCOPY) "--dump-section=.hip_fatbin=$@" "$$STATIC_LIBRARY"
+      fi
+    """,
+    tags = ["gpu"],
+    toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
+)
+
+cc_library(
+    name = "gpu_test_kernels_fatbin",
+    testonly = True,
+    srcs = ["gpu_test_kernels_fatbin.cc"],
+    hdrs = ["gpu_test_kernels_fatbin.h"],
+    data = [":gpu_test_kernels_fatbin_extractor"],
+    local_defines = [
+        "FATBIN_SRC=\\\"$(rootpath :gpu_test_kernels_fatbin_extractor)\\\"",
+    ],
+    tags = ["gpu"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
+    ],
 )
 
 xla_test(
     name = "gpu_kernel_test",
-    srcs = if_gpu_is_configured(["gpu_kernel_test.cc"]),
+    srcs = ["gpu_kernel_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":gpu_test_kernels",
+        ":gpu_test_kernels_fatbin",
         "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(

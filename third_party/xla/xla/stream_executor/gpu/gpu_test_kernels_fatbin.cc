@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
+#include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 
-extern "C" __global__ void add(int32_t* a, int32_t* b, int32_t* c) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  c[index] = a[index] + b[index];
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/status/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+
+namespace stream_executor::gpu {
+
+absl::StatusOr<std::vector<uint8_t>> GetGpuTestKernelsFatbin() {
+  tsl::Env* env = tsl::Env::Default();
+  std::string file_contents;
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, FATBIN_SRC, &file_contents));
+  return std::vector<uint8_t>(file_contents.begin(), file_contents.end());
 }
+}  // namespace stream_executor::gpu
