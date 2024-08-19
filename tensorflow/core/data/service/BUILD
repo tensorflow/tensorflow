@@ -1053,6 +1053,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:platform_port",
     ] + tf_grpc_cc_dependencies(),
 )
 

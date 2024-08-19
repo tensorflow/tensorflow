@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/host_info.h"
 
 namespace tensorflow {
 namespace data {
@@ -91,7 +92,7 @@ Status DataServiceWorkerClient::EnsureInitialized() {
 }
 
 std::string DataServiceWorkerClient::GetDataTransferProtocol() const {
-  if (LocalWorkers::Get(address_) != nullptr) {
+  if (ForceLocalProtocol(address_)) {
     return kLocalTransferProtocol;
   }
   return transfer_protocol_;
@@ -274,6 +275,14 @@ class LocalTransferClientRegistrar {
   }
 };
 static LocalTransferClientRegistrar local_client_registrar;
+
+bool ForceLocalProtocol(const std::string& worker_address) {
+  // TODO(b/291994182): Use remote workers in unit tests.
+  if (tsl::port::JobUid() == -1) {
+    return false;
+  }
+  return LocalWorkers::Get(worker_address) != nullptr;
+}
 
 }  // namespace data
 }  // namespace tensorflow
