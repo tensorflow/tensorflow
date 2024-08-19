@@ -736,25 +736,24 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           // a special case for nans.
           auto* i32 = b_->CreateBitCast(operand_value, b_->getInt32Ty());
 
-          // Convert f32 to i16 bit pattern with rounding.
+          // Rounding bias for non-nan values.
           auto* lsb =
               b_->CreateAnd(b_->CreateLShr(i32, 16),
                             llvm::ConstantInt::get(b_->getInt32Ty(), 1));
           auto* rounding_bias = b_->CreateAdd(
               llvm::ConstantInt::get(b_->getInt32Ty(), 0x7fff), lsb);
+
+          // For nan values, we simply truncate the original value.
+          auto* is_nan =
+              b_->createIsFPClass(operand_value, llvm::FPClassTest::fcNan);
           auto* i16 = b_->CreateTrunc(
-              b_->CreateLShr(b_->CreateAdd(i32, rounding_bias), 16),
+              b_->CreateLShr(
+                  b_->CreateSelect(is_nan, i32,
+                                   b_->CreateAdd(i32, rounding_bias)),
+                  16),
               b_->getInt16Ty());
 
-          // Forward nan if f32 input is a nan, or bitcast rounded i16 value.
-          auto* nan = llvm::ConstantInt::get(b_->getInt16Ty(), 0x7FC0);
-          auto* sign = b_->CreateAnd(i16, 0x8000);
-          auto* signed_nan = b_->CreateOr(sign, nan);
-          return b_->CreateBitCast(
-              b_->CreateSelect(
-                  b_->createIsFPClass(operand_value, llvm::FPClassTest::fcNan),
-                  signed_nan, i16),
-              b_->getBFloatTy(), "convert_f32_to_bf16");
+          return b_->CreateBitCast(i16, b_->getBFloatTy());
         }
         if (from_type == BF16 && to_type == F32) {
           auto* i16 = b_->CreateBitCast(operand_value, b_->getInt16Ty());
