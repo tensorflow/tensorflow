@@ -16,6 +16,8 @@ limitations under the License.
 // This transformation pass takes operations in TensorFlowLite dialect and
 // optimizes them to resulting operations in TensorFlowLite dialect.
 
+#include "tensorflow/compiler/mlir/lite/transforms/optimize.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -54,7 +56,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -70,8 +71,6 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual Optimize Pass.
 namespace {
-#define GEN_PASS_DEF_OPTIMIZEPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kRelu[] = "RELU";
 constexpr char kRelu6[] = "RELU6";
@@ -235,27 +234,6 @@ bool HasSameStridedShape(TFL::Conv3DOp op, ArrayRef<int64_t> pre_pad_shape) {
 }
 
 using ::llvm::cast;
-
-// Optimize TFLite operations in functions.
-class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
-
-  OptimizePass() = default;
-  OptimizePass(const OptimizePass &) {}
-  explicit OptimizePass(bool enable_canonicalization,
-                        bool disable_fuse_mul_and_fc = false) {
-    this->enable_canonicalization_ = enable_canonicalization;
-    this->disable_fuse_mul_and_fc_ = disable_fuse_mul_and_fc;
-  }
-
-  explicit OptimizePass(const OptimizePassOptions &options) {
-    this->enable_canonicalization_ = options.enable_canonicalization_;
-    this->disable_fuse_mul_and_fc_ = options.disable_fuse_mul_and_fc_;
-  }
-
-  void runOnOperation() override;
-};
 
 // Return true if the product of dimension values of a subsection of the
 // tensor is equal to the non-contracting dimension after a reshape
@@ -2636,6 +2614,7 @@ void AddCanonicalizationPatterns(MLIRContext *context,
   for (auto op : context->getRegisteredOperations())
     op.getCanonicalizationPatterns(*patterns, context);
 }
+}  // namespace
 
 void OptimizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
@@ -2691,14 +2670,6 @@ void OptimizePass::runOnOperation() {
   if (this->enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
-}
-}  // namespace
-
-// Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    bool enable_canonicalization, bool disable_fuse_mul_and_fc) {
-  return std::make_unique<OptimizePass>(enable_canonicalization,
-                                        disable_fuse_mul_and_fc);
 }
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.

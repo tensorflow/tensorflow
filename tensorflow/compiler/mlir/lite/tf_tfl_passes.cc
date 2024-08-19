@@ -511,7 +511,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
 
     mlir::TFL::OptimizePassOptions optimize_pass_options;
-    optimize_pass_options.disable_fuse_mul_and_fc_ =
+    optimize_pass_options.disable_fuse_mul_and_fc =
         toco_flags.disable_fuse_mul_and_fc();
 
     auto add_tfl_optimization_passes = [&]() {

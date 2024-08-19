@@ -180,20 +180,6 @@ def ModifyIONodesPass : Pass<"tfl-modify-io-nodes", "mlir::func::FuncOp"> {
   ];
 }
 
-def OptimizePass : Pass<"tfl-optimize", "mlir::func::FuncOp"> {
-  let summary = "Optimize within the TensorFlow Lite dialect";
-  let constructor = "CreateOptimizePass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
-  let options = [
-      Option<"enable_canonicalization_", "enable-canonicalization",
-             "bool", "true",
-             "Enable canonicalization during optimization pass.">,
-      Option<"disable_fuse_mul_and_fc_", "disable-fuse-mul-and-fc",
-             "bool", "false",
-             "Disable folding mul and fully connected ops during optimization pass.">,
-  ];
-}
-
 def OptimizeBatchMatmulPass : Pass<"tfl-optimize-batch-matmul", "mlir::func::FuncOp"> {
   let summary = "Optimize FC with BatchMatmul within the TensorFlow Lite dialect";
   let constructor = "CreateOptimizeBatchMatmulPass()";
