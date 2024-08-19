@@ -36,7 +36,6 @@ filegroup(
     srcs = [
         "bitmap.h",
         "bits.h",
-        "status_test_util.h",
         "@local_xla//xla/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -68,7 +67,6 @@ filegroup(
 filegroup(
     name = "legacy_lib_core_status_test_util_header",
     srcs = [
-        "status_test_util.h",
         "@local_xla//xla/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -88,17 +86,6 @@ cc_library(
         "@com_google_absl//absl/numeric:bits",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "status_test_util",
-    testonly = 1,
-    hdrs = ["status_test_util.h"],
-    deps = [
-        "//tsl/platform:status_matchers",
-        "//tsl/platform:test",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-    ],
 )
 
 cc_library(
