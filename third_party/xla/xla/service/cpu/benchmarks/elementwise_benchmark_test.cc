@@ -75,6 +75,27 @@ static void BM_AddBF16(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
+static void BM_ConvertF32ToBF16(benchmark::State& state) {
+  int64_t d0 = state.range(0);
+
+  std::string_view hlo = R"(
+    HloModule convert_f32_to_bf16_$d0
+
+    ENTRY e {
+      p0 = f32[1,2,1,$d0,256] parameter(0)
+      ROOT convert = bf16[1,2,1,$d0,256] convert(p0)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
+  auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+}
+
 #define BENCHMARK_SIZES(NAME)   \
   BENCHMARK(NAME)               \
       ->MeasureProcessCPUTime() \
@@ -88,5 +109,6 @@ static void BM_AddBF16(benchmark::State& state) {
 
 BENCHMARK_SIZES(BM_AddF32);
 BENCHMARK_SIZES(BM_AddBF16);
+BENCHMARK_SIZES(BM_ConvertF32ToBF16);
 
 }  // namespace xla::cpu
