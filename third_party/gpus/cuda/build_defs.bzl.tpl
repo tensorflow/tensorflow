@@ -149,9 +149,13 @@ def cuda_header_library(
         **kwargs
     )
 
-def cuda_library(copts = [], **kwargs):
+def cuda_library(copts = [], tags = [],**kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
-    native.cc_library(copts = cuda_default_copts() + copts, **kwargs)
+    native.cc_library(
+        copts = cuda_default_copts() + copts,
+        tags = tags + ["gpu"],
+        **kwargs
+    )
 
 def cuda_cc_test(copts = [], **kwargs):
     """Wrapper over cc_test which adds default CUDA options."""

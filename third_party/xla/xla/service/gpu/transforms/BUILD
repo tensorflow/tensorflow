@@ -1389,7 +1389,11 @@ cc_library(
 
 xla_cc_test(
     name = "dynamic_slice_fusion_rewriter_test",
-    srcs = if_cuda_is_configured(["dynamic_slice_fusion_rewriter_test.cc"]),
+    srcs = ["dynamic_slice_fusion_rewriter_test.cc"],
+    tags = [
+        "gpu",
+        "no_rocm",
+    ],
     deps = [
         ":dynamic_slice_fusion_rewriter",
         "//xla:shape_util",

@@ -2254,7 +2254,8 @@ xla_cc_test(
 
 cuda_library(
     name = "stream_executor_util_kernel",
-    srcs = if_cuda_is_configured(["stream_executor_util_kernel.cu.cc"]),
+    srcs = ["stream_executor_util_kernel.cu.cc"],
+    tags = ["no_rocm"],
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
@@ -2267,7 +2268,6 @@ cc_library(
     deps = [
         ":cublas_cudnn",
         ":launch_dimensions",
-        ":stream_executor_util_kernel",
         "//xla:autotuning_proto_cc",
         "//xla:shape_util",
         "//xla:util",
@@ -2296,7 +2296,9 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ],
+    ] + if_cuda_is_configured([
+        ":stream_executor_util_kernel",
+    ]),
 )
 
 xla_cc_test(

@@ -283,6 +283,8 @@ def xla_test(
             ]
             if backend in NVIDIA_GPU_BACKENDS:
                 this_backend_tags += tf_gpu_tests_tags()
+            if backend in AMD_GPU_DEFAULT_BACKENDS:
+                this_backend_tags.append("gpu")
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
         elif backend == "interpreter":
             backend_deps += [
