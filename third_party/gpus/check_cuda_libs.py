@@ -31,10 +31,7 @@ import subprocess
 import sys
 
 # pylint: disable=g-import-not-at-top,g-importing-member
-try:
-  from shutil import which
-except ImportError:
-  from distutils.spawn import find_executable as which
+from shutil import which
 # pylint: enable=g-import-not-at-top,g-importing-member
 
 

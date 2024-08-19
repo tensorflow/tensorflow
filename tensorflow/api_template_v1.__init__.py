@@ -14,8 +14,8 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-import distutils as _distutils
 import importlib
+import sysconfig
 import inspect as _inspect
 import os as _os
 import site as _site
@@ -147,8 +147,9 @@ _site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
 if "getsitepackages" in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 
-if "sysconfig" in dir(_distutils):
-  _site_packages_dirs += [_distutils.sysconfig.get_python_lib()]
+for scheme in sysconfig.get_scheme_names():
+  for name in ['purelib', 'platlib']:
+    _site_packages_dirs += [sysconfig.get_path(name, scheme)]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 

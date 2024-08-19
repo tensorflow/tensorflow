@@ -25,12 +25,9 @@ from tensorflow.python.ops import manip_ops
 from tensorflow.python.platform import test as test_lib
 
 # pylint: disable=g-import-not-at-top
-try:
-  from distutils.version import StrictVersion as Version
-  # numpy.roll for multiple shifts was introduced in numpy version 1.12.0
-  NP_ROLL_CAN_MULTISHIFT = Version(np.version.version) >= Version("1.12.0")
-except ImportError:
-  NP_ROLL_CAN_MULTISHIFT = False
+from packaging.version import StrictVersion as Version
+# numpy.roll for multiple shifts was introduced in numpy version 1.12.0
+NP_ROLL_CAN_MULTISHIFT = Version(np.version.version) >= Version("1.12.0")
 # pylint: enable=g-import-not-at-top
 
 

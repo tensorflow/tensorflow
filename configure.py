@@ -24,10 +24,7 @@ import subprocess
 import sys
 
 # pylint: disable=g-import-not-at-top
-try:
-  from shutil import which
-except ImportError:
-  from distutils.spawn import find_executable as which
+from shutil import which
 # pylint: enable=g-import-not-at-top
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
@@ -164,8 +161,8 @@ def get_python_path(environ_cp, python_bin_path):
     library_paths = [
         run_shell([
             python_bin_path, '-c',
-            'from distutils.sysconfig import get_python_lib;'
-            'print(get_python_lib())'
+            'import sysconfig;'
+            'print(sysconfig.get_path("purelib")'
         ])
     ]
 

@@ -29,7 +29,6 @@ cat >pythons.txt <<EOF
 $VERSION
 $VERSION-dev
 $VERSION-venv
-$VERSION-distutils
 EOF
 /setup.packages.sh pythons.txt
 
