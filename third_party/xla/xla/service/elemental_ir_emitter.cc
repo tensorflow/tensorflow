@@ -30,10 +30,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -60,6 +64,11 @@ limitations under the License.
 namespace xla {
 
 using absl::StrCat;
+using llvm::PatternMatch::m_BitCast;
+using llvm::PatternMatch::m_Intrinsic;
+using llvm::PatternMatch::m_Select;
+using llvm::PatternMatch::m_Value;
+using llvm::PatternMatch::match;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
@@ -713,6 +722,49 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
       CHECK(primitive_util::IsFloatingPointType(from_type)) << from_type;
+
+      // LLVM optimizes away `fpcast` and `fpext` operations and optimized
+      // LLVM IR has arithmetic operations on `bfloat16` that are not natively
+      // supported on any of the CPUs, and LLVM inserts very expensive calls to
+      // fp conversion functions around bf16 operations. To avoid this, we use
+      // bitcasts and shifts to convert bf16 to f32 and back using truncation
+      // with rounding, and suppress LLVM optimizations that hurt performance.
+      // This is enabled explicitly by a flag only for XLA:CPU backend.
+      if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
+        if (from_type == F32 && to_type == BF16) {
+          // This implementation is based on Eigen `float_to_bfloat16_rtne` with
+          // a special case for nans.
+          auto* i32 = b_->CreateBitCast(operand_value, b_->getInt32Ty());
+
+          // Bit pattern of bf16 nan.
+          auto* nan = llvm::ConstantInt::get(b_->getInt16Ty(), 0x7FC0);
+
+          // Convert f32 to i16 bit pattern with rounding.
+          auto* lsb =
+              b_->CreateAnd(b_->CreateLShr(i32, 16),
+                            llvm::ConstantInt::get(b_->getInt32Ty(), 1));
+          auto* rounding_bias = b_->CreateAdd(
+              llvm::ConstantInt::get(b_->getInt32Ty(), 0x7fff), lsb);
+          auto* i16 = b_->CreateTrunc(
+              b_->CreateLShr(b_->CreateAdd(i32, rounding_bias), 16),
+              b_->getInt16Ty());
+
+          // Forward nan if f32 input is a nan, or bitcast rounded i16 value.
+          return b_->CreateBitCast(
+              b_->CreateSelect(
+                  b_->createIsFPClass(operand_value, llvm::FPClassTest::fcNan),
+                  nan, i16),
+              b_->getBFloatTy(), "convert_f32_to_bf16");
+        }
+        if (from_type == BF16 && to_type == F32) {
+          auto* i16 = b_->CreateBitCast(operand_value, b_->getInt16Ty());
+          auto* i32 = b_->CreateZExt(i16, b_->getInt32Ty());
+          auto* i32s = b_->CreateShl(i32, 16);
+          auto* f32 = b_->CreateBitCast(i32s, b_->getFloatTy());
+          return f32;
+        }
+      }
+
       if (from_type == to_type) {
         return operand_value;
       }

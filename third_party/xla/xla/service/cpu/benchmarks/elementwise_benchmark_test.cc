@@ -83,7 +83,8 @@ static void BM_AddBF16(benchmark::State& state) {
       ->Arg(512)                \
       ->Arg(1024)               \
       ->Arg(8192)               \
-      ->Arg(16384)
+      ->Arg(16384)              \
+      ->Arg(32768)
 
 BENCHMARK_SIZES(BM_AddF32);
 BENCHMARK_SIZES(BM_AddBF16);

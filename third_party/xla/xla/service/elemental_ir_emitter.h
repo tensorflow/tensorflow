@@ -37,11 +37,21 @@ namespace xla {
 
 class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
  public:
+  struct Options {
+    // Instead of relying on builtin `fpext` and `fpcast` emit a bitcast and
+    // truncate to convert f32 to bf16 (and emit extend to convert bf16 to f32).
+    bool xla_cpu_use_truncate_f32_to_bf16_conversion = false;
+  };
+
   using HloToElementGeneratorMap =
       absl::flat_hash_map<const HloInstruction*, llvm_ir::ElementGenerator>;
 
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b,
+                     const Options& options)
+      : b_(b), module_(module), options_(options) {}
+
   ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b)
-      : b_(b), module_(module) {}
+      : ElementalIrEmitter(module, b, Options()) {}
 
   virtual ~ElementalIrEmitter() = default;
 
@@ -313,6 +323,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::IRBuilder<>* const b_;
 
   llvm::Module* module_;
+
+  Options options_;
 
   friend class ElementalIrEmitterForTests;
 };

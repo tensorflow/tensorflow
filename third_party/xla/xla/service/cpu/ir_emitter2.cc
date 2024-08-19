@@ -129,7 +129,9 @@ class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
   ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b,
                      const HloModule* hlo_module, IrEmitter* nested_ir_emitter,
                      bool fast_min_max)
-      : xla::ElementalIrEmitter(module, b),
+      : xla::ElementalIrEmitter(
+            module, b,
+            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/true}),
         hlo_module_(hlo_module),
         nested_ir_emitter_(nested_ir_emitter),
         fast_min_max_(fast_min_max) {}
