@@ -549,7 +549,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
