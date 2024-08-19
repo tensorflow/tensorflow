@@ -92,6 +92,8 @@ DistributedRuntimeCoordinationServiceClient::
       absl::ToInt64Milliseconds(options.shutdown_timeout));
   config.set_agent_destruction_without_shutdown(
       !options.shutdown_on_destruction);
+  config.set_poll_for_error_from_service_at_startup(
+      options.poll_for_error_from_service_at_startup);
   auto error_fn = [timeout_fn = options.missed_heartbeat_callback](
                       const absl::Status& status) {
     LOG(ERROR) << "Coordination service agent in error status: " << status;
