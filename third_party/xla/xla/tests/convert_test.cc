@@ -686,6 +686,9 @@ XLA_TEST_F(ConvertTest, ConvertF32BF16) {
       floats[i] = absl::bit_cast<float>(val);
     }
   }
+  // Test NaN and -Nan.
+  floats.push_back(std::numeric_limits<float>::quiet_NaN());
+  floats.push_back(-std::numeric_limits<float>::quiet_NaN());
 
   std::vector<bfloat16> expected(floats.size());
   for (int i = 0; i < expected.size(); ++i) {
@@ -711,6 +714,10 @@ XLA_TEST_F(ConvertTest, ConvertF32BF16) {
       // NaNs may not be preserved, any NaN will do.
       ASSERT_TRUE(std::isnan(absl::bit_cast<bfloat16>(correct)));
       EXPECT_TRUE(std::isnan(absl::bit_cast<bfloat16>(result)));
+      if (client_->platform()->Name() == "Host") {
+        // The sign bits must match.
+        EXPECT_EQ(result >> 15, correct >> 15);
+      }
     } else {
       EXPECT_EQ(result, correct);
     }
