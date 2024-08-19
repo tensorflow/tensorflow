@@ -2206,6 +2206,9 @@ void HloInstruction::SetupDerivedInstruction(
   } else if (!ShapeUtil::CompatibleKind(shape_, derived_instruction->shape())) {
     derived_instruction->clear_sharding();
   }
+  if (original_value_) {
+    derived_instruction->set_original_value(original_value_);
+  }
   derived_instruction->set_metadata(*metadata_);
   if (has_rare()) {
     derived_instruction->set_frontend_attributes(frontend_attributes());

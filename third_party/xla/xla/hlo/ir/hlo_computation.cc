@@ -1425,6 +1425,14 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }
+  if (auto old_original_value = old_instruction->original_value()) {
+    // Fusion instructions are handled separately. The original_value attribute
+    // of fused instructions is copied when they are added into the fused
+    // computation.
+    if (new_instruction->opcode() != HloOpcode::kFusion) {
+      new_instruction->set_original_value(old_original_value);
+    }
+  }
 
   // Like the metadata above, if the user didn't specify any sharding
   // information on the new instruction we should copy the old sharding
