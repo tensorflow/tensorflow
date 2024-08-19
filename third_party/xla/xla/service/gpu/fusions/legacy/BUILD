@@ -10,6 +10,7 @@ cc_library(
     name = "in_place_dynamic_update_slice",
     srcs = ["in_place_dynamic_update_slice.cc"],
     hdrs = ["in_place_dynamic_update_slice.h"],
+    tags = ["gpu"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -33,6 +34,7 @@ cc_library(
 xla_cc_test(
     name = "in_place_dynamic_update_slice_test",
     srcs = ["in_place_dynamic_update_slice_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":in_place_dynamic_update_slice",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -53,6 +55,7 @@ cc_library(
     name = "loop",
     srcs = ["loop.cc"],
     hdrs = ["loop.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla:util",
@@ -83,6 +86,7 @@ cc_library(
 xla_cc_test(
     name = "loop_test",
     srcs = ["loop_test.cc"],
+    tags = ["gpu"],
     deps = [
         "//xla:status_macros",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -105,6 +109,7 @@ cc_library(
     name = "scatter",
     srcs = ["scatter.cc"],
     hdrs = ["scatter.h"],
+    tags = ["gpu"],
     deps = [
         ":loop",
         "//xla:shape_util",
@@ -135,6 +140,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":scatter",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -155,6 +161,7 @@ cc_library(
     name = "tiling_util",
     srcs = ["tiling_util.cc"],
     hdrs = ["tiling_util.h"],
+    tags = ["gpu"],
     visibility = ["//xla/service/gpu:__subpackages__"],
     deps = [
         "//xla:shape_util",
@@ -183,6 +190,7 @@ cc_library(
     name = "reduction",
     srcs = ["reduction.cc"],
     hdrs = ["reduction.h"],
+    tags = ["gpu"],
     deps = [
         ":tiling_util",
         "//xla:shape_util",
@@ -236,6 +244,7 @@ cc_library(
 xla_cc_test(
     name = "reduction_test",
     srcs = ["reduction_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":reduction",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -255,6 +264,7 @@ cc_library(
     name = "concatenate",
     srcs = ["concatenate.cc"],
     hdrs = ["concatenate.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -282,6 +292,7 @@ cc_library(
 xla_cc_test(
     name = "concatenate_test",
     srcs = ["concatenate_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":concatenate",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -301,6 +312,7 @@ cc_library(
     name = "transpose",
     srcs = ["transpose.cc"],
     hdrs = ["transpose.h"],
+    tags = ["gpu"],
     deps = [
         ":tiling_util",
         "//xla:permutation_util",
@@ -335,6 +347,7 @@ cc_library(
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":transpose",
         "//xla:status_macros",
@@ -357,6 +370,7 @@ cc_library(
     name = "input_slices",
     srcs = ["input_slices.cc"],
     hdrs = ["input_slices.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla:util",
@@ -388,6 +402,7 @@ cc_library(
 xla_cc_test(
     name = "input_slices_test",
     srcs = ["input_slices_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":input_slices",
         "//xla/service/gpu:gpu_device_info_for_tests",

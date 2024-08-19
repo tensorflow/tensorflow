@@ -246,6 +246,8 @@ def lit_test(
         )
         test_file = output_file
 
+    env["LD_LIBRARY_PATH"] = lib_dir
+
     native_test(
         name = name,
         src = lit_name,

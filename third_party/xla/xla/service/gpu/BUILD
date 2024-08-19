@@ -146,7 +146,7 @@ cc_library(
 
 xla_test(
     name = "custom_call_test",
-    srcs = if_gpu_is_configured(["custom_call_test.cc"]),
+    srcs = ["custom_call_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
@@ -278,6 +278,7 @@ cc_library(
     name = "ir_emitter_context",
     srcs = ["ir_emitter_context.cc"],
     hdrs = ["ir_emitter_context.h"],
+    tags = ["gpu"],
     deps = [
         ":execution_stream_assignment",
         ":gpu_constants",
@@ -308,6 +309,7 @@ cc_library(
     ]) + if_rocm_hipblaslt([
         "TF_HIPBLASLT=1",
     ]),
+    tags = ["gpu"],
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -350,12 +352,14 @@ cc_library(
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:topk_custom_kernel",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/service/gpu/runtime:cholesky_thunk",
         "//xla/service/gpu/runtime:command_buffer_cmd",
         "//xla/service/gpu/runtime:command_buffer_cmd_emitter",
         "//xla/service/gpu/runtime:command_buffer_thunk",
         "//xla/service/gpu/runtime:conditional_thunk",
         "//xla/service/gpu/runtime:convolution_thunk",
         "//xla/service/gpu/runtime:copy_thunk",
+        "//xla/service/gpu/runtime:cub_sort_thunk",
         "//xla/service/gpu/runtime:cudnn_thunk",
         "//xla/service/gpu/runtime:custom_call_thunk",
         "//xla/service/gpu/runtime:fft_thunk",
@@ -367,6 +371,7 @@ cc_library(
         "//xla/service/gpu/runtime:nccl_all_reduce_thunk",
         "//xla/service/gpu/runtime:nccl_all_to_all_thunk",
         "//xla/service/gpu/runtime:nccl_api",
+        "//xla/service/gpu/runtime:nccl_clique_key",
         "//xla/service/gpu/runtime:nccl_collective_broadcast_thunk",
         "//xla/service/gpu/runtime:nccl_collective_permute_thunk",
         "//xla/service/gpu/runtime:nccl_collective_thunk",
@@ -379,6 +384,7 @@ cc_library(
         "//xla/service/gpu/runtime:send_recv_thunk",
         "//xla/service/gpu/runtime:sequential_thunk",
         "//xla/service/gpu/runtime:thunk",
+        "//xla/service/gpu/runtime:triangular_solve_thunk",
         "//xla/service/gpu/runtime:wait_for_streams_thunk",
         "//xla/service/gpu/runtime:while_thunk",
         "//xla/service/llvm_ir:buffer_assignment_util",
@@ -390,6 +396,7 @@ cc_library(
         "//xla/service/llvm_ir:sort_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/tsl/protobuf:dnn_proto_cc",
@@ -421,11 +428,7 @@ cc_library(
         "@local_tsl//tsl/platform:human_readable_json",
         "@local_tsl//tsl/platform:statusor",
         "@triton//:TritonDialects",
-    ] + if_gpu_is_configured([
-        "//xla/service/gpu/runtime:cholesky_thunk",
-        "//xla/service/gpu/runtime:cub_sort_thunk",
-        "//xla/service/gpu/runtime:triangular_solve_thunk",
-    ]) + if_rocm_is_configured([
+    ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -442,7 +445,7 @@ cc_library(
         "ir_emitter.h",
         "ir_emitter_nested.h",
     ],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    tags = ["gpu"],
     deps = [
         ":backend_configs_cc",
         ":hlo_to_ir_bindings",
@@ -486,11 +489,9 @@ cc_library(
 
 cc_library(
     name = "triton_call",
-    srcs = if_gpu_is_configured(["triton_call.cc"]),
+    srcs = ["triton_call.cc"],
     hdrs = ["triton_call.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
+    tags = ["gpu"],
     deps = [
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
@@ -553,15 +554,14 @@ cc_library(
     hdrs = [
         "gpu_executable.h",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
+    tags = ["gpu"],
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
         ":gpu_constants",
         ":gpu_executable_run_options",
         ":ir_emission_utils",
+        ":make_batch_pointers",
         ":stream_executor_util",
         "//xla:executable_run_options",
         "//xla:shape_tree",
@@ -621,13 +621,8 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cublas_plugin",
-        "//xla/stream_executor/cuda:cudnn_plugin",
-        "//xla/stream_executor/cuda:cufft_plugin",
-        "//xla/stream_executor/cuda:stream_executor_cuda",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -766,16 +761,17 @@ cc_library(
 
 build_cub_sort_kernels(
     name = "cub_sort_kernel",
-    srcs = if_gpu_is_configured(["cub_sort_kernel.cu.cc"]),
-    hdrs = if_gpu_is_configured(["cub_sort_kernel.h"]),
+    srcs = ["cub_sort_kernel.cu.cc"],
+    hdrs = ["cub_sort_kernel.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
+    tags = ["gpu"],
     types = get_cub_sort_kernel_types(),
-    deps = if_gpu_is_configured([
+    deps = [
         ":gpu_prim",
         "//xla/stream_executor/gpu:gpu_types_header",
-    ]),
+    ],
 )
 
 cc_library(
@@ -921,9 +917,7 @@ cc_library(
     srcs = ["matmul_utils.cc"],
     hdrs = ["matmul_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils",
@@ -938,6 +932,7 @@ cc_library(
         "//xla/service:algorithm_util",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
+        "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:numeric_options",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "@com_google_absl//absl/algorithm:container",
@@ -950,10 +945,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_gpu_is_configured([
-        #keep sorted
-        "//xla/stream_executor:host_or_device_scalar",
-    ]) + if_cuda_is_configured([
+    ] + if_cuda_is_configured([
         #keep sorted
         "//xla/stream_executor/cuda:cublas_lt_header",
         "//xla/stream_executor/cuda:cublas_plugin",
@@ -1034,9 +1026,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 cc_library(
@@ -1253,7 +1243,7 @@ cc_library(
     hdrs = [
         "compile_module_to_llvm_ir.h",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["gpu"],
     deps = [
         ":executable_proto_cc",
         ":execution_stream_assignment",
@@ -1305,6 +1295,7 @@ cc_library(
     name = "fusion_pipeline",
     srcs = ["fusion_pipeline.cc"],
     hdrs = ["fusion_pipeline.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:xla_proto_cc",
         "//xla/hlo/pass:hlo_pass",
@@ -1353,14 +1344,14 @@ cc_library(
 
 cc_library(
     name = "gpu_compiler",
-    srcs = if_gpu_is_configured([
+    srcs = [
         "gpu_compiler.cc",
-    ]),
-    hdrs = if_gpu_is_configured([
+    ],
+    hdrs = [
         "gpu_compiler.h",
-    ]),
-    deps = if_gpu_is_configured([
-        # go/keep-sorted start prefix_order=":,,
+    ],
+    tags = ["gpu"],
+    deps = [
         ":buffer_sharing",
         ":compile_module_to_llvm_ir",
         ":conv_layout_normalization",
@@ -1387,27 +1378,14 @@ cc_library(
         ":reduction_utils",
         ":runtime_intrinsics",
         ":stream_executor_util",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
-        "@llvm-project//llvm:AsmParser",
-        "@llvm-project//llvm:BitReader",
-        "@llvm-project//llvm:BitWriter",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TransformUtils",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
+        "//xla:autotune_results_proto_cc",
+        "//xla:debug_options_flags",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/pass:hlo_pass",
@@ -1415,58 +1393,6 @@ cc_library(
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/hlo/translate/mhlo_to_hlo:location_exporter",
         "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/service/gpu/autotuning:autotuner_util",
-        "//xla/service/gpu/autotuning:custom_kernel_fusion_autotuner",
-        "//xla/service/gpu/fusions/triton:triton_support",
-        "//xla/service/gpu/model:gpu_cost_model_stats_collection",
-        "//xla/service/gpu/model:gpu_hlo_cost_analysis",
-        "//xla/service/gpu/runtime:thunk",
-        "//xla/service/gpu/transforms:algebraic_simplifier",
-        "//xla/service/gpu/transforms:algorithm_checker",
-        "//xla/service/gpu/transforms:all_gather_optimizer",
-        "//xla/service/gpu/transforms:all_reduce_blueconnect",
-        "//xla/service/gpu/transforms:all_reduce_splitter",
-        "//xla/service/gpu/transforms:async_collective_annotator",
-        "//xla/service/gpu/transforms:async_wrapper",
-        "//xla/service/gpu/transforms:collective_permute_cycle_decomposer",
-        "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
-        "//xla/service/gpu/transforms:command_buffer_scheduling",
-        "//xla/service/gpu/transforms:conv_rewriter",
-        "//xla/service/gpu/transforms:convert_async_collectives_to_sync",
-        "//xla/service/gpu/transforms:cudnn_custom_call_converter",
-        "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
-        "//xla/service/gpu/transforms:dot_dimension_sorter",
-        "//xla/service/gpu/transforms:dot_operand_converter",
-        "//xla/service/gpu/transforms:double_buffer_loop_unrolling",
-        "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
-        "//xla/service/gpu/transforms:fusion_wrapper",
-        "//xla/service/gpu/transforms:gemm_broadcast_folding_rewriter",
-        "//xla/service/gpu/transforms:gemm_fusion",
-        "//xla/service/gpu/transforms:gemm_rewriter",
-        "//xla/service/gpu/transforms:gemv_rewriter",
-        "//xla/service/gpu/transforms:layout_assignment",
-        "//xla/service/gpu/transforms:move_copy_to_users",
-        "//xla/service/gpu/transforms:pipelined_p2p_rewriter",
-        "//xla/service/gpu/transforms:reduce_scatter_creator",
-        "//xla/service/gpu/transforms:reduction_degenerate_dim_remover",
-        "//xla/service/gpu/transforms:reduction_dimension_grouper",
-        "//xla/service/gpu/transforms:reduction_layout_normalizer",
-        "//xla/service/gpu/transforms:reduction_splitter",
-        "//xla/service/gpu/transforms:rename_fusions",
-        "//xla/service/gpu/transforms:sanitize_constant_names",
-        "//xla/service/gpu/transforms:scatter_expander",
-        "//xla/service/gpu/transforms:scatter_slice_simplifier",
-        "//xla/service/gpu/transforms:softmax_rewriter_triton",
-        "//xla/service/gpu/transforms:stream_attribute_annotator",
-        "//xla/service/gpu/transforms:stream_attribute_async_wrapper",
-        "//xla/service/gpu/transforms:topk_specializer",
-        "//xla/service/gpu/transforms:topk_splitter",
-        "//xla/service/gpu/transforms:transpose_dimension_grouper",
-        "//xla/service/gpu/transforms:tree_reduction_rewriter",
-        "//xla/service/gpu/transforms:triton_fusion_numerics_verifier",
-        "//xla/service/gpu/transforms:windowed_einsum_handler",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/spmd:collective_permute_motion",
         "//xla/service:algebraic_simplifier",
         "//xla/service:all_gather_broadcast_reorder",
         "//xla/service:all_gather_combiner",
@@ -1565,23 +1491,86 @@ cc_library(
         "//xla/service:while_loop_simplifier",
         "//xla/service:while_loop_trip_count_annotator",
         "//xla/service:zero_sized_hlo_elimination",
+        "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/service/gpu/autotuning:custom_kernel_fusion_autotuner",
+        "//xla/service/gpu/fusions/triton:triton_support",
+        "//xla/service/gpu/model:gpu_cost_model_stats_collection",
+        "//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "//xla/service/gpu/runtime:thunk",
+        "//xla/service/gpu/transforms:algebraic_simplifier",
+        "//xla/service/gpu/transforms:algorithm_checker",
+        "//xla/service/gpu/transforms:all_gather_optimizer",
+        "//xla/service/gpu/transforms:all_reduce_blueconnect",
+        "//xla/service/gpu/transforms:all_reduce_splitter",
+        "//xla/service/gpu/transforms:async_collective_annotator",
+        "//xla/service/gpu/transforms:async_wrapper",
+        "//xla/service/gpu/transforms:collective_permute_cycle_decomposer",
+        "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
+        "//xla/service/gpu/transforms:command_buffer_scheduling",
+        "//xla/service/gpu/transforms:conv_rewriter",
+        "//xla/service/gpu/transforms:convert_async_collectives_to_sync",
+        "//xla/service/gpu/transforms:cudnn_custom_call_converter",
+        "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
+        "//xla/service/gpu/transforms:dot_dimension_sorter",
+        "//xla/service/gpu/transforms:dot_operand_converter",
+        "//xla/service/gpu/transforms:double_buffer_loop_unrolling",
+        "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
+        "//xla/service/gpu/transforms:fusion_wrapper",
+        "//xla/service/gpu/transforms:gemm_broadcast_folding_rewriter",
+        "//xla/service/gpu/transforms:gemm_fusion",
+        "//xla/service/gpu/transforms:gemm_rewriter",
+        "//xla/service/gpu/transforms:gemv_rewriter",
+        "//xla/service/gpu/transforms:layout_assignment",
+        "//xla/service/gpu/transforms:move_copy_to_users",
+        "//xla/service/gpu/transforms:pipelined_p2p_rewriter",
+        "//xla/service/gpu/transforms:reduce_scatter_creator",
+        "//xla/service/gpu/transforms:reduction_degenerate_dim_remover",
+        "//xla/service/gpu/transforms:reduction_dimension_grouper",
+        "//xla/service/gpu/transforms:reduction_layout_normalizer",
+        "//xla/service/gpu/transforms:reduction_splitter",
+        "//xla/service/gpu/transforms:rename_fusions",
+        "//xla/service/gpu/transforms:sanitize_constant_names",
+        "//xla/service/gpu/transforms:scatter_expander",
+        "//xla/service/gpu/transforms:scatter_slice_simplifier",
+        "//xla/service/gpu/transforms:softmax_rewriter_triton",
+        "//xla/service/gpu/transforms:stream_attribute_annotator",
+        "//xla/service/gpu/transforms:stream_attribute_async_wrapper",
+        "//xla/service/gpu/transforms:topk_specializer",
+        "//xla/service/gpu/transforms:topk_splitter",
+        "//xla/service/gpu/transforms:transpose_dimension_grouper",
+        "//xla/service/gpu/transforms:tree_reduction_rewriter",
+        "//xla/service/gpu/transforms:triton_fusion_numerics_verifier",
+        "//xla/service/gpu/transforms:windowed_einsum_handler",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/service/spmd:collective_permute_motion",
         "//xla/stream_executor",
-        "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
         "//xla/tsl/lib/monitoring:counter",
-        "//xla:autotune_results_proto_cc",
-        "//xla:debug_options_flags",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:BitReader",
+        "@llvm-project//llvm:BitWriter",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
@@ -1594,8 +1583,7 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
-        # go/keep-sorted end
-    ]) + xla_internal(["service:export_hlo"]) + if_google([
+    ] + xla_internal(["service:export_hlo"]) + if_google([
         "//xla/hlo/experimental/auto_sharding",
     ]),
 )
@@ -1909,12 +1897,9 @@ xla_test(
 
 xla_cc_test(
     name = "gpu_aot_compilation_test",
-    srcs = if_gpu_is_configured([
+    srcs = [
         "gpu_aot_compilation_test.cc",
-    ]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
+    ],
     tags = [
         "gpu",
         "no_oss",
@@ -1957,6 +1942,7 @@ cc_library(
     tags = [
         "gpu",
         "manual",
+        "rocm-only",
     ],
     deps = [
         ":amdgpu_compiler_impl",
@@ -1977,6 +1963,7 @@ cc_library(
     tags = [
         "gpu",
         "manual",
+        "rocm-only",
     ],
     deps = [
         ":cublas_padding_requirements",
@@ -2021,13 +2008,11 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:ir_headers",
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_rocm_is_configured([
-        # keep sorted
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )
 
 cc_library(
@@ -2076,6 +2061,7 @@ cc_library(
     name = "gpu_hlo_schedule",
     srcs = ["gpu_hlo_schedule.cc"],
     hdrs = ["gpu_hlo_schedule.h"],
+    tags = ["gpu"],
     deps = [
         ":backend_configs_cc",
         ":gpu_latency_hiding_scheduler",
@@ -2386,13 +2372,13 @@ xla_cc_test(
 
 cc_library(
     name = "buffer_comparator",
-    srcs = if_gpu_is_configured(["buffer_comparator.cc"]),
-    hdrs = if_gpu_is_configured(["buffer_comparator.h"]),
+    srcs = ["buffer_comparator.cc"],
+    hdrs = ["buffer_comparator.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    deps = if_gpu_is_configured([
-        # keep sorted
+    tags = ["gpu"],
+    deps = [
         ":buffer_comparator_kernel",
         ":gpu_asm_opts_util",
         ":launch_dimensions",
@@ -2412,7 +2398,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
-    ]) + if_rocm_is_configured([
+    ] + if_rocm_is_configured([
         # keep sorted
         "@local_config_rocm//rocm:rocm_headers",
     ]),
@@ -2420,7 +2406,7 @@ cc_library(
 
 gpu_kernel_library(
     name = "buffer_comparator_kernel",
-    srcs = if_gpu_is_configured(["buffer_comparator.cu.cc"]),
+    srcs = ["buffer_comparator.cu.cc"],
     copts = rocm_copts(),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
@@ -2434,28 +2420,24 @@ gpu_kernel_library(
 
 xla_test(
     name = "buffer_comparator_test",
-    srcs = if_gpu_is_configured(["buffer_comparator_test.cc"]),
+    srcs = ["buffer_comparator_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = [
+        ":buffer_comparator",
         ":stream_executor_util",
         "//xla:shape_util",
         "//xla:types",
-        "//xla/service:hlo_module_config",
+        "//xla/service:platform_util",
         "//xla/stream_executor",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_handle",
         "//xla/stream_executor:platform_manager",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ] + if_gpu_is_configured([
-        ":buffer_comparator",
-        "//xla/stream_executor:device_memory",
-    ]),
+    ],
 )
 
 cc_library(
@@ -2630,8 +2612,9 @@ cc_library(
 
 cc_library(
     name = "make_batch_pointers",
-    srcs = if_gpu_is_configured(["make_batch_pointers.cc"]),
-    hdrs = if_gpu_is_configured(["make_batch_pointers.h"]),
+    srcs = ["make_batch_pointers.cc"],
+    hdrs = ["make_batch_pointers.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:types",
         "//xla:util",
@@ -2652,7 +2635,8 @@ cc_library(
 
 cuda_library(
     name = "make_batch_pointers_kernel",
-    srcs = if_cuda_is_configured(["make_batch_pointers.cu.cc"]),
+    srcs = ["make_batch_pointers.cu.cc"],
+    tags = ["cuda-only"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",  # build_cleaner: keep
     ],
@@ -2948,6 +2932,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_latency_hiding_scheduler_test",
     srcs = ["gpu_latency_hiding_scheduler_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",

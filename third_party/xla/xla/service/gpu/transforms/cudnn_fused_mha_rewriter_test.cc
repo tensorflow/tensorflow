@@ -18,13 +18,13 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <optional>
-#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
-#include "xla/error_spec.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/computation_layout.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/reshape_decomposer.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/test_helpers.h"
@@ -48,11 +49,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
-#endif
 
 namespace xla {
 namespace gpu {
@@ -87,7 +83,7 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/false,
                     /*instruction_can_change_layout_func=*/{}) {
-#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
+#if CUDA_VERSION < 12000
     skip_reason_ = "cuDNN fused MHA requires CUDA 12 or later.";
     return;
 #endif

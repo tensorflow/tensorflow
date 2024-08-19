@@ -10,6 +10,7 @@ lit_test_suite(
     srcs = glob(["**/*.hlo"]),
     cfg = "//xla:lit.cfg.py",
     default_tags = ["requires-gpu-sm80-only"],
+    tags = ["gpu"],
     tools = [
         "//xla/service/gpu/fusions/tools:fusion_to_mlir",
         "//xla/service/gpu/fusions/tools:mlir_fusions_opt",

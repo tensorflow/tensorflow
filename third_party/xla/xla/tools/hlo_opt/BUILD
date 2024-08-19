@@ -55,7 +55,7 @@ cc_library(
 cc_library(
     name = "gpu_opt",
     testonly = True,
-    srcs = if_gpu_is_configured(["gpu_opt.cc"]),
+    srcs = ["gpu_opt.cc"],
     tags = ["gpu"],
     deps = [
         ":opt_lib",
@@ -66,12 +66,14 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:dump",
         "//xla/service:executable",
+        "//xla/service:gpu_plugin",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:platform_util",
         "//xla/service/gpu:buffer_sharing",
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor",
@@ -82,10 +84,7 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_gpu_is_configured([
-        "//xla/service:gpu_plugin",
-        "//xla/service/gpu:gpu_executable",
-    ]) + if_cuda_is_configured([
+    ] + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor:rocm_platform",
@@ -176,6 +175,7 @@ lit_test_suite(
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags(),
     hermetic_cuda_data_dir = "%S/../../../../cuda_nvcc",
+    tags = ["gpu"],
     tags_override = {
         "gpu_hlo_ptx.hlo": ["cuda-only"],
     },
