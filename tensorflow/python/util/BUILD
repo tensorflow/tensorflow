@@ -890,6 +890,20 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "numpy_compat",
+    srcs = ["numpy_compat.py"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = util_subpackage_visibility,
+    deps = [
+        # global_test_configuration is added here because all major tests depend on this
+        # library. It isn't possible to add these test dependencies via tensorflow.bzl's
+        # py test because not all tensorflow tests use tensorflow.bzl's py test.
+        "//tensorflow/python:global_test_configuration",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
     name = "object_identity",
     srcs = ["object_identity.py"],
     compatible_with = get_compatible_with_portable(),

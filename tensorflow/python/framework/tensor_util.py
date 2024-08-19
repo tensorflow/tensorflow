@@ -13,8 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities to create TensorProtos."""
+
 import typing
 from typing import Protocol
+
 import numpy as np
 
 from tensorflow.core.framework import tensor_pb2
@@ -27,7 +29,9 @@ from tensorflow.python.types import core
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
+
 
 # Fallback in case fast_tensor_util is not properly compiled.
 # pylint: disable=g-import-not-at-top
@@ -519,10 +523,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
       nparray = np.empty(shape, dtype=np_dt)
     else:
       _AssertCompatible(values, dtype)
-      if np_dt is not None and np.issubdtype(np_dt, np.number):
-        nparray = np.array(values).astype(np_dt)
-      else:
-        nparray = np.array(values, dtype=np_dt)
+      nparray = numpy_compat.np_array(values, np_dt)
       # check to them.
       # We need to pass in quantized values as tuples, so don't apply the shape
       if (list(nparray.shape) != _GetDenseDimensions(values) and
