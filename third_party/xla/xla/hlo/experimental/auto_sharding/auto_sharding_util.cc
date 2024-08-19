@@ -2201,29 +2201,36 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
     const HloModule& module) {
   int64_t sharding_1d = -1;
   absl::flat_hash_set<std::vector<int64_t>> shardings_nd;
+  int max_shardings_nd_dimension = -1;
   std::function<void(const HloSharding&)> process_sharding;
-  process_sharding = [&sharding_1d, &shardings_nd,
-                      &process_sharding](const HloSharding& sharding) {
+  process_sharding = [&](const HloSharding& sharding) {
     if (sharding.IsTuple()) {
       for (const HloSharding& child : sharding.tuple_elements()) {
         process_sharding(child);
       }
-    } else if (!sharding.IsReplicated() && !sharding.IsTileMaximal() &&
-               !sharding.IsManual()) {
-      absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
-      std::vector<int64_t> dims_greater_than_one;
-      for (const int64_t dim : dims) {
-        if (dim > 1) {
-          dims_greater_than_one.push_back(dim);
-        }
+      return;
+    }
+    if (sharding.IsReplicated() || sharding.IsTileMaximal() ||
+        sharding.IsManual()) {
+      return;
+    }
+    absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
+    std::vector<int64_t> dims_greater_than_one;
+    for (const int64_t dim : dims) {
+      if (dim > 1) {
+        dims_greater_than_one.push_back(dim);
       }
-      if (dims_greater_than_one.size() == 1) {
-        CHECK(sharding_1d == -1 || sharding_1d == dims_greater_than_one[0]);
-        sharding_1d = dims_greater_than_one[0];
-      } else {
-        std::sort(dims_greater_than_one.begin(), dims_greater_than_one.end());
-        shardings_nd.insert(dims_greater_than_one);
-      }
+    }
+    if (dims_greater_than_one.size() == 1) {
+      CHECK(sharding_1d == -1 || sharding_1d == dims_greater_than_one[0]);
+      sharding_1d = dims_greater_than_one[0];
+    } else {
+      std::sort(dims_greater_than_one.begin(), dims_greater_than_one.end());
+      shardings_nd.insert(dims_greater_than_one);
+
+      max_shardings_nd_dimension =
+          std::max(max_shardings_nd_dimension,
+                   static_cast<int>(dims_greater_than_one.size()));
     }
   };
 
@@ -2235,20 +2242,29 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
     }
   }
 
+  for (auto mesh_shape_it = shardings_nd.begin(), end = shardings_nd.end();
+       mesh_shape_it != end;) {
+    // `erase()` will invalidate `mesh_shape_it`, so advance `mesh_shape_it`
+    // first.
+    auto copy_it = mesh_shape_it++;
+    if (copy_it->size() < max_shardings_nd_dimension) {
+      shardings_nd.erase(copy_it);
+    }
+  }
+
   if (shardings_nd.empty() && sharding_1d < 0) {
     return {};
-  } else if (shardings_nd.empty()) {
-    CHECK_GE(sharding_1d, 0);
-    return {{1, sharding_1d}};
-  } else {
-    std::vector<std::vector<int64_t>> result;
-    for (std::vector<int64_t> mesh : shardings_nd) {
-      do {
-        result.push_back(std::vector<int64_t>(mesh));
-      } while (std::next_permutation(std::begin(mesh), std::end(mesh)));
-    }
-    return result;
   }
+  if (shardings_nd.empty()) {
+    return {{1, sharding_1d}};
+  }
+  std::vector<std::vector<int64_t>> result;
+  for (std::vector<int64_t> mesh : shardings_nd) {
+    do {
+      result.push_back(std::vector<int64_t>(mesh));
+    } while (std::next_permutation(std::begin(mesh), std::end(mesh)));
+  }
+  return result;
 }
 
 std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
@@ -2265,9 +2281,7 @@ std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
       dedup_result.insert(
           absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
     }
-
     mesh_shapes.clear();
-
     for (const absl::btree_multiset<int64_t>& mesh_shape_set : dedup_result) {
       mesh_shapes.push_back(
           std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
