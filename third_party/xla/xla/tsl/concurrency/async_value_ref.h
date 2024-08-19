@@ -412,6 +412,24 @@ class AsyncValuePtr {
                         !std::is_invocable_v<Waiter, absl::StatusOr<T*>> &&
                         !internal::is_status_v<T>)>;
 
+  // Map async value of type `T` to an async value of type `R`.
+  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>>
+  using MapFunctor = std::enable_if_t<std::is_constructible_v<R, U>>;
+
+  // Try map async value of type `T` to an async value of type `R`.
+  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>>
+  using TryMapFunctor =
+      std::enable_if_t<internal::is_status_or_v<U> &&
+                       std::is_constructible_v<R, typename U::value_type>>;
+
+  // Flat map async value of type `T` to an async value `R` (`R` itself is an
+  // async value ref). Returns `R` value type (async payload type).
+  template <typename F,
+            typename R =
+                internal::first_invoke_result_t<F, T&, AsyncValuePtr<T>>>
+  using FlatMapFunctor = std::enable_if_t<internal::is_async_value_ref_v<R>,
+                                          typename R::value_type>;
+
  public:
   // AsyncValuePtr<T>::value_type
   using value_type = T;
@@ -601,8 +619,7 @@ class AsyncValuePtr {
   //   return U(value); // R must be constructible from U
   // })
   //
-  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            std::enable_if_t<std::is_constructible_v<R, U>>* = nullptr>
+  template <typename R, typename F, MapFunctor<R, F>* = nullptr>
   AsyncValueRef<R> Map(F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     AndThen([f = std::forward<F>(f), result, ptr = *this]() mutable {
@@ -616,8 +633,7 @@ class AsyncValuePtr {
   }
 
   // An overload that executes `f` on a user-provided executor.
-  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            std::enable_if_t<std::is_constructible_v<R, U>>* = nullptr>
+  template <typename R, typename F, MapFunctor<R, F>* = nullptr>
   AsyncValueRef<R> Map(AsyncValue::Executor& executor, F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     // We don't know when the executor will run the callback, so we need to
@@ -647,10 +663,7 @@ class AsyncValuePtr {
   //
   // If returned status container will have an error status, it will be
   // automatically converted to async value error.
-  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            std::enable_if_t<
-                internal::is_status_or_v<U> &&
-                std::is_constructible_v<T, typename U::value_type>>* = nullptr>
+  template <typename R, typename F, TryMapFunctor<R, F>* = nullptr>
   AsyncValueRef<R> TryMap(F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     AndThen([f = std::forward<F>(f), result, ptr = *this]() mutable {
@@ -669,10 +682,7 @@ class AsyncValuePtr {
   }
 
   // An overload that executes `f` on a user-provided executor.
-  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            std::enable_if_t<
-                internal::is_status_or_v<U> &&
-                std::is_constructible_v<T, typename U::value_type>>* = nullptr>
+  template <typename R, typename F, TryMapFunctor<R, F>* = nullptr>
   AsyncValueRef<R> TryMap(AsyncValue::Executor& executor, F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     // We don't know when the executor will run the callback, so we need to
@@ -738,11 +748,8 @@ class AsyncValuePtr {
   //   return LaunchAsyncTask([ref = ptr.CopyRef()] { ... });
   // })
   //
-  template <
-      typename F,
-      typename R = internal::first_invoke_result_t<F, T&, AsyncValuePtr<T>>,
-      std::enable_if_t<internal::is_async_value_ref_v<R>>* = nullptr>
-  AsyncValueRef<typename R::value_type> FlatMap(F&& f) {
+  template <typename F, typename R = FlatMapFunctor<F>>
+  AsyncValueRef<R> FlatMap(F&& f) {
     // If async value is in concrete state, we can immediately call the functor.
     // We don't handle errors here and prefer a generic code path below because
     // error handling is never on a performance critical path.
@@ -766,16 +773,12 @@ class AsyncValuePtr {
         }
       }
     });
-    return AsyncValueRef<typename R::value_type>(promise);
+    return AsyncValueRef<R>(promise);
   }
 
   // An overload that executes `f` on a user-provided executor.
-  template <
-      typename F,
-      typename R = internal::first_invoke_result_t<F, T&, AsyncValuePtr<T>>,
-      std::enable_if_t<internal::is_async_value_ref_v<R>>* = nullptr>
-  AsyncValueRef<typename R::value_type> FlatMap(AsyncValue::Executor& executor,
-                                                F&& f) {
+  template <typename F, typename R = FlatMapFunctor<F>>
+  AsyncValueRef<R> FlatMap(AsyncValue::Executor& executor, F&& f) {
     // We don't have a special handling for concrete values here because
     // we must execute user functor on a separate executor and can't call it in
     // the caller thread.
@@ -794,7 +797,7 @@ class AsyncValuePtr {
                 }
               }
             });
-    return AsyncValueRef<typename R::value_type>(promise);
+    return AsyncValueRef<R>(promise);
   }
 
  private:
@@ -803,8 +806,8 @@ class AsyncValuePtr {
   // types and this will be a run time error.
   template <typename R>
   RCReference<IndirectAsyncValue> MakePromise() {
-    if constexpr (std::is_final_v<typename R::value_type>) {
-      return MakeIndirectAsyncValue<typename R::value_type>();
+    if constexpr (std::is_final_v<R>) {
+      return MakeIndirectAsyncValue<R>();
     } else {
       return MakeIndirectAsyncValue();
     };
