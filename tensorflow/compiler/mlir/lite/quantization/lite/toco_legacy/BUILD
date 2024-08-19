@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -81,11 +82,15 @@ tf_cc_test(
 
 cc_library(
     name = "quantize_weights",
-    srcs = ["quantize_weights.cc"],
+    srcs = select({
+        "//tensorflow:ios": ["quantize_weights_portable.cc"],
+        "//tensorflow:android": ["quantize_weights_portable.cc"],
+        "//conditions:default": ["quantize_weights.cc"],
+    }),
     hdrs = ["quantize_weights.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights",
         "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:model_utils",
         "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:portable_tensor_utils",
         "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:quantization_utils",
@@ -96,7 +101,13 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@flatbuffers//:runtime_cc",
-    ],
+    ] + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -110,6 +121,10 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/quantized_with_gather.bin",
         "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin",
         "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/weight_shared_between_convs.bin",
+    ],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":quantize_weights",
