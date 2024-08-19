@@ -416,5 +416,21 @@ TEST(TfrtCpuClientTest, ForwardUserDataToFfiHandler) {
       *result_literal));
 }
 
+TEST(TfrtCpuClientTest, FillLayoutBitSize) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto s4_layout, client->GetDefaultLayout(S4, {}));
+  EXPECT_EQ(s4_layout.element_size_in_bits(), 4);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto s8_layout, client->GetDefaultLayout(S8, {}));
+  EXPECT_EQ(s8_layout.element_size_in_bits(), 8);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto s16_layout, client->GetDefaultLayout(S16, {}));
+  EXPECT_EQ(s16_layout.element_size_in_bits(), 16);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto s32_layout, client->GetDefaultLayout(S32, {}));
+  EXPECT_EQ(s32_layout.element_size_in_bits(), 32);
+}
+
 }  // namespace
 }  // namespace xla

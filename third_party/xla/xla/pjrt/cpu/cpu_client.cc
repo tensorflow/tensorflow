@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
-#define EIGEN_USE_THREADS
-
 #include <algorithm>
 #include <cfenv>  // NOLINT
 #include <cstddef>
@@ -29,6 +27,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+
+#define EIGEN_USE_THREADS
 
 #include "absl/algorithm/container.h"
 #include "absl/base/dynamic_annotations.h"
@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
+#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
@@ -292,6 +293,7 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
 absl::StatusOr<Layout> TfrtCpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  VLOG(0) << "GET DEFAULT LAYOYT: " << shape.ToString();
   return LayoutUtil::GetWithDefaultLayout(shape).layout();
 }
 
@@ -517,7 +519,9 @@ absl::StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(
 absl::StatusOr<Layout> TfrtCpuClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  return LayoutUtil::GetWithDefaultLayout(shape).layout();
+  Layout layout = LayoutUtil::GetWithDefaultLayout(shape).layout();
+  layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
+  return layout;
 }
 
 absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
