@@ -252,7 +252,7 @@ Literal::Literal(const Shape& shape)
 void Literal::SetShape(const Shape& shape) {
   Shape shape_storage;
   const Shape* shape_ptr = &shape;
-  if (LayoutUtil::HasCustomElementSizeInBits(shape)) {
+  if (shape.IsArray() && LayoutUtil::HasCustomElementSizeInBits(shape)) {
     shape_storage = shape;
     shape_storage.mutable_layout()->set_element_size_in_bits(0);
     shape_ptr = &shape_storage;

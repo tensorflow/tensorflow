@@ -2583,6 +2583,14 @@ TEST_F(LiteralUtilTest, CreateFromShapeWithUnknownLeafArrays) {
   EXPECT_FALSE(c1.IsKnown());
 }
 
+TEST_F(LiteralUtilTest, CreateFromShapeWithUnknownLeafArraysS4Tuple) {
+  auto inner_shape = ShapeUtil::MakeShape(S4, {4, 4});
+  inner_shape.mutable_layout()->set_element_size_in_bits(4);
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeTupleShape({inner_shape}));
+  EXPECT_FALSE(c1.IsKnown());
+}
+
 TEST_F(LiteralUtilTest, CreatePartiallyKnownTuple) {
   Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
       ShapeUtil::MakeShape(F32, {4, 4}));
