@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,20 +12,196 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/versioning/runtime_version.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
 
+#include <cstdint>
 #include <cstring>
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 
-namespace tflite {
+namespace tflite_migration {
+using tflite::BuiltinOperator;
+using tflite::BuiltinOperator_ABS;
+using tflite::BuiltinOperator_ADD;
+using tflite::BuiltinOperator_ADD_N;
+using tflite::BuiltinOperator_ARG_MAX;
+using tflite::BuiltinOperator_ARG_MIN;
+using tflite::BuiltinOperator_ASSIGN_VARIABLE;
+using tflite::BuiltinOperator_ATAN2;
+using tflite::BuiltinOperator_AVERAGE_POOL_2D;
+using tflite::BuiltinOperator_BATCH_MATMUL;
+using tflite::BuiltinOperator_BATCH_TO_SPACE_ND;
+using tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM;
+using tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN;
+using tflite::BuiltinOperator_BITCAST;
+using tflite::BuiltinOperator_BITWISE_XOR;
+using tflite::BuiltinOperator_BROADCAST_ARGS;
+using tflite::BuiltinOperator_BROADCAST_TO;
+using tflite::BuiltinOperator_BUCKETIZE;
+using tflite::BuiltinOperator_CALL_ONCE;
+using tflite::BuiltinOperator_CAST;
+using tflite::BuiltinOperator_CEIL;
+using tflite::BuiltinOperator_COMPLEX_ABS;
+using tflite::BuiltinOperator_CONCATENATION;
+using tflite::BuiltinOperator_CONV_2D;
+using tflite::BuiltinOperator_CONV_3D;
+using tflite::BuiltinOperator_CONV_3D_TRANSPOSE;
+using tflite::BuiltinOperator_COS;
+using tflite::BuiltinOperator_CUMSUM;
+using tflite::BuiltinOperator_DENSIFY;
+using tflite::BuiltinOperator_DEPTH_TO_SPACE;
+using tflite::BuiltinOperator_DEPTHWISE_CONV_2D;
+using tflite::BuiltinOperator_DEQUANTIZE;
+using tflite::BuiltinOperator_DILATE;
+using tflite::BuiltinOperator_DIV;
+using tflite::BuiltinOperator_DYNAMIC_UPDATE_SLICE;
+using tflite::BuiltinOperator_ELU;
+using tflite::BuiltinOperator_EMBEDDING_LOOKUP;
+using tflite::BuiltinOperator_EMBEDDING_LOOKUP_SPARSE;
+using tflite::BuiltinOperator_EQUAL;
+using tflite::BuiltinOperator_EXP;
+using tflite::BuiltinOperator_EXPAND_DIMS;
+using tflite::BuiltinOperator_FAKE_QUANT;
+using tflite::BuiltinOperator_FILL;
+using tflite::BuiltinOperator_FLOOR;
+using tflite::BuiltinOperator_FLOOR_DIV;
+using tflite::BuiltinOperator_FLOOR_MOD;
+using tflite::BuiltinOperator_FULLY_CONNECTED;
+using tflite::BuiltinOperator_GATHER;
+using tflite::BuiltinOperator_GATHER_ND;
+using tflite::BuiltinOperator_GELU;
+using tflite::BuiltinOperator_GREATER;
+using tflite::BuiltinOperator_GREATER_EQUAL;
+using tflite::BuiltinOperator_HARD_SWISH;
+using tflite::BuiltinOperator_HASHTABLE;
+using tflite::BuiltinOperator_HASHTABLE_FIND;
+using tflite::BuiltinOperator_HASHTABLE_IMPORT;
+using tflite::BuiltinOperator_HASHTABLE_LOOKUP;
+using tflite::BuiltinOperator_HASHTABLE_SIZE;
+using tflite::BuiltinOperator_IF;
+using tflite::BuiltinOperator_IMAG;
+using tflite::BuiltinOperator_L2_NORMALIZATION;
+using tflite::BuiltinOperator_L2_POOL_2D;
+using tflite::BuiltinOperator_LEAKY_RELU;
+using tflite::BuiltinOperator_LESS;
+using tflite::BuiltinOperator_LESS_EQUAL;
+using tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION;
+using tflite::BuiltinOperator_LOG;
+using tflite::BuiltinOperator_LOG_SOFTMAX;
+using tflite::BuiltinOperator_LOGICAL_AND;
+using tflite::BuiltinOperator_LOGICAL_NOT;
+using tflite::BuiltinOperator_LOGICAL_OR;
+using tflite::BuiltinOperator_LOGISTIC;
+using tflite::BuiltinOperator_LSH_PROJECTION;
+using tflite::BuiltinOperator_LSTM;
+using tflite::BuiltinOperator_MATRIX_DIAG;
+using tflite::BuiltinOperator_MATRIX_SET_DIAG;
+using tflite::BuiltinOperator_MAX_POOL_2D;
+using tflite::BuiltinOperator_MAXIMUM;
+using tflite::BuiltinOperator_MEAN;
+using tflite::BuiltinOperator_MINIMUM;
+using tflite::BuiltinOperator_MIRROR_PAD;
+using tflite::BuiltinOperator_MUL;
+using tflite::BuiltinOperator_MULTINOMIAL;
+using tflite::BuiltinOperator_NEG;
+using tflite::BuiltinOperator_NON_MAX_SUPPRESSION_V4;
+using tflite::BuiltinOperator_NON_MAX_SUPPRESSION_V5;
+using tflite::BuiltinOperator_NOT_EQUAL;
+using tflite::BuiltinOperator_ONE_HOT;
+using tflite::BuiltinOperator_PACK;
+using tflite::BuiltinOperator_PAD;
+using tflite::BuiltinOperator_PADV2;
+using tflite::BuiltinOperator_POW;
+using tflite::BuiltinOperator_PRELU;
+using tflite::BuiltinOperator_QUANTIZE;
+using tflite::BuiltinOperator_RANDOM_STANDARD_NORMAL;
+using tflite::BuiltinOperator_RANDOM_UNIFORM;
+using tflite::BuiltinOperator_RANGE;
+using tflite::BuiltinOperator_RANK;
+using tflite::BuiltinOperator_READ_VARIABLE;
+using tflite::BuiltinOperator_REAL;
+using tflite::BuiltinOperator_REDUCE_ALL;
+using tflite::BuiltinOperator_REDUCE_ANY;
+using tflite::BuiltinOperator_REDUCE_MAX;
+using tflite::BuiltinOperator_REDUCE_MIN;
+using tflite::BuiltinOperator_REDUCE_PROD;
+using tflite::BuiltinOperator_REDUCE_WINDOW;
+using tflite::BuiltinOperator_RELU;
+using tflite::BuiltinOperator_RELU6;
+using tflite::BuiltinOperator_RELU_0_TO_1;
+using tflite::BuiltinOperator_RELU_N1_TO_1;
+using tflite::BuiltinOperator_RESHAPE;
+using tflite::BuiltinOperator_RESIZE_BILINEAR;
+using tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR;
+using tflite::BuiltinOperator_REVERSE_SEQUENCE;
+using tflite::BuiltinOperator_REVERSE_V2;
+using tflite::BuiltinOperator_RFFT2D;
+using tflite::BuiltinOperator_RIGHT_SHIFT;
+using tflite::BuiltinOperator_RNN;
+using tflite::BuiltinOperator_ROUND;
+using tflite::BuiltinOperator_RSQRT;
+using tflite::BuiltinOperator_SCATTER_ND;
+using tflite::BuiltinOperator_SEGMENT_SUM;
+using tflite::BuiltinOperator_SELECT;
+using tflite::BuiltinOperator_SELECT_V2;
+using tflite::BuiltinOperator_SHAPE;
+using tflite::BuiltinOperator_SIGN;
+using tflite::BuiltinOperator_SIN;
+using tflite::BuiltinOperator_SKIP_GRAM;
+using tflite::BuiltinOperator_SLICE;
+using tflite::BuiltinOperator_SOFTMAX;
+using tflite::BuiltinOperator_SPACE_TO_BATCH_ND;
+using tflite::BuiltinOperator_SPACE_TO_DEPTH;
+using tflite::BuiltinOperator_SPARSE_TO_DENSE;
+using tflite::BuiltinOperator_SPLIT;
+using tflite::BuiltinOperator_SPLIT_V;
+using tflite::BuiltinOperator_SQRT;
+using tflite::BuiltinOperator_SQUARE;
+using tflite::BuiltinOperator_SQUARED_DIFFERENCE;
+using tflite::BuiltinOperator_SQUEEZE;
+using tflite::BuiltinOperator_STABLEHLO_ADD;
+using tflite::BuiltinOperator_STABLEHLO_AND;
+using tflite::BuiltinOperator_STABLEHLO_CBRT;
+using tflite::BuiltinOperator_STABLEHLO_COMPOSITE;
+using tflite::BuiltinOperator_STABLEHLO_GATHER;
+using tflite::BuiltinOperator_STABLEHLO_MAXIMUM;
+using tflite::BuiltinOperator_STABLEHLO_MINIMUM;
+using tflite::BuiltinOperator_STABLEHLO_MULTIPLY;
+using tflite::BuiltinOperator_STABLEHLO_PAD;
+using tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW;
+using tflite::BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR;
+using tflite::BuiltinOperator_STABLEHLO_SCATTER;
+using tflite::BuiltinOperator_STABLEHLO_SHIFT_LEFT;
+using tflite::BuiltinOperator_STRIDED_SLICE;
+using tflite::BuiltinOperator_SUB;
+using tflite::BuiltinOperator_SUM;
+using tflite::BuiltinOperator_SVDF;
+using tflite::BuiltinOperator_TANH;
+using tflite::BuiltinOperator_TILE;
+using tflite::BuiltinOperator_TOPK_V2;
+using tflite::BuiltinOperator_TRANSPOSE;
+using tflite::BuiltinOperator_TRANSPOSE_CONV;
+using tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM;
+using tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN;
+using tflite::BuiltinOperator_UNIQUE;
+using tflite::BuiltinOperator_UNPACK;
+using tflite::BuiltinOperator_UNSORTED_SEGMENT_MAX;
+using tflite::BuiltinOperator_UNSORTED_SEGMENT_MIN;
+using tflite::BuiltinOperator_UNSORTED_SEGMENT_PROD;
+using tflite::BuiltinOperator_UNSORTED_SEGMENT_SUM;
+using tflite::BuiltinOperator_VAR_HANDLE;
+using tflite::BuiltinOperator_WHERE;
+using tflite::BuiltinOperator_WHILE;
+using tflite::BuiltinOperator_ZEROS_LIKE;
 
 bool CompareRuntimeVersion(const std::string& v1, const std::string& v2) {
   const std::vector<std::string> vec1 = absl::StrSplit(v1, '.');
@@ -44,7 +220,7 @@ bool CompareRuntimeVersion(const std::string& v1, const std::string& v2) {
   return i < vec2.size();
 }
 
-std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
+std::string FindMinimumRuntimeVersionForOp(BuiltinOperator op_code,
                                            int op_version) {
   // A map from the version key of an op to its minimum runtime version.
   // For example, {{kAveragePool, 1}, "1.5.0"},  means the 1st version of
@@ -461,14 +637,14 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
 }
 
 void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
-  auto model = GetMutableModel(model_buffer_pointer);
+  auto model = tflite::GetMutableModel(model_buffer_pointer);
   std::string model_min_version;
   auto subgraphs = model->subgraphs();
-  for (int i = 0; i < subgraphs->Length(); ++i) {
-    const SubGraph* subgraph = subgraphs->Get(i);
-    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
-      const Operator* op = subgraph->operators()->Get(j);
-      const OperatorCode* op_code =
+  for (int i = 0; i < subgraphs->size(); ++i) {
+    const tflite::SubGraph* subgraph = subgraphs->Get(i);
+    for (int j = 0; j < subgraph->operators()->size(); ++j) {
+      const tflite::Operator* op = subgraph->operators()->Get(j);
+      const tflite::OperatorCode* op_code =
           model->operator_codes()->Get(op->opcode_index());
       std::string runtime_version = FindMinimumRuntimeVersionForOp(
           GetBuiltinCode(op_code), op_code->version());
@@ -487,9 +663,8 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
   // generated `model_min_version` is equal or longer than 16 bytes, print a
   // warning message and return.
   if (model_min_version.size() >= 16) {
-    TFLITE_LOG(TFLITE_LOG_WARNING,
-               "Skip writing minimum runtime version string since it's "
-               "longer than 16 bytes.");
+    LOG(WARNING) << "Skip writing minimum runtime version string since it's "
+                 << "longer than 16 bytes.";
     return;
   }
   // Copy over the bytes from `model_min_version` into the buffer.
@@ -506,4 +681,4 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
   }
 }
 
-}  // namespace tflite
+}  // namespace tflite_migration

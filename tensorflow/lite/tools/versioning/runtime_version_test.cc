@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/versioning/runtime_version.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
 
 #include <string>
 
@@ -21,6 +21,9 @@ limitations under the License.
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 namespace tflite {
+
+using tflite_migration::CompareRuntimeVersion;
+using tflite_migration::FindMinimumRuntimeVersionForOp;
 
 TEST(OpVersionTest, CompareRuntimeVersion) {
   EXPECT_TRUE(CompareRuntimeVersion("1.9", "1.13"));

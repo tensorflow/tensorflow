@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 
 namespace toco {
@@ -70,7 +71,7 @@ class BuiltinOperator : public BaseOperator {
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    return ::tflite::GetBuiltinOperatorVersion(
+    return ::tflite_migration::GetBuiltinOperatorVersion(
         GetVersioningOpSig(builtin_op_, op_signature));
   }
 

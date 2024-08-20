@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_VERSIONING_RUNTIME_VERSION_H_
-#define TENSORFLOW_LITE_TOOLS_VERSIONING_RUNTIME_VERSION_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_VERSIONING_RUNTIME_VERSION_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_VERSIONING_RUNTIME_VERSION_H_
 
+#include <cstdint>
 #include <string>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"  // IWYU pragma: keep
 
-namespace tflite {
+namespace tflite_migration {
 // Update minimum runtime version of the given TFL flatbuffer model.
 void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer);
 
@@ -34,6 +34,6 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
 // '1.14.1'. If two version string is equal, then false will be returned.
 bool CompareRuntimeVersion(const std::string&, const std::string&);
 
-}  // namespace tflite
+}  // namespace tflite_migration
 
-#endif  // TENSORFLOW_LITE_TOOLS_VERSIONING_RUNTIME_VERSION_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_VERSIONING_RUNTIME_VERSION_H_

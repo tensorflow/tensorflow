@@ -96,6 +96,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
@@ -117,8 +119,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/tools/versioning/op_version.h"
-#include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/tstring.h"
@@ -3941,8 +3941,9 @@ std::optional<std::string> Translator::TranslateInternal() {
     LOG(ERROR) << "Model structure size is bigger than 2gb";
     return std::nullopt;
   }
-  tflite::UpdateOpVersion(builder_.GetBufferPointer());
-  tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
+  tflite_migration::UpdateOpVersion(builder_.GetBufferPointer());
+  tflite_migration::UpdateMinimumRuntimeVersionForModel(
+      builder_.GetBufferPointer());
 
   absl::Cord result;
   auto fbs = absl::string_view(

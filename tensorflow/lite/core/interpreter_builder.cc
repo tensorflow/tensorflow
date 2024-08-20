@@ -19,7 +19,6 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -29,9 +28,9 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -309,7 +308,7 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
 }
 
 // Used to determine how the op data parsing function creates its working space.
-class MallocDataAllocator : public BuiltinDataAllocator {
+class MallocDataAllocator : public tflite_migration::BuiltinDataAllocator {
  public:
   void* Allocate(size_t size, size_t alignment_hint) override {
 #ifdef TFLITE_USE_STD_ALIGNED_ALLOC
@@ -391,8 +390,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       }
     } else {
       MallocDataAllocator malloc_allocator;
-      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
-                                        &malloc_allocator, &builtin_data));
+      if (!ParseOpData(op, op_type, &malloc_allocator, &builtin_data).ok()) {
+        return kTfLiteError;
+      }
     }
     subgraph->AddNodeWithParameters(
         FlatBufferIntArrayToVector(op->inputs()),
@@ -609,8 +609,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
 
     TfLiteType type;
-    if (ConvertTensorType(tensor->type(), &type, error_reporter_) !=
-        kTfLiteOk) {
+    if (!tflite_migration::ConvertTensorType(tensor->type(), &type).ok()) {
       status = kTfLiteError;
       continue;
     }
