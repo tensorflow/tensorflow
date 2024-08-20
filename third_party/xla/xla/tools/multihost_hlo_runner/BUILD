@@ -175,6 +175,7 @@ xla_test(
         "gpu": [
             "multi_gpu_h100",
             "no_oss",
+            "nomsan",
         ],
     },
     backends = [
