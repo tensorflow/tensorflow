@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/platform/test.h"
@@ -233,6 +234,43 @@ TEST(AlgorithmTest, TopologicalOrderingOnMultipleOutputs) {
   };
   string error;
   EXPECT_TRUE(ExpectBefore(desired_order, order, &error)) << error;
+}
+
+TEST(AlgorithmTest, TopologicalOrderingSameAsReversePostOrder) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  using namespace ::tensorflow::ops;  // NOLINT
+  Node* n = SourceOp("TestTwoOutputs", b.opts().WithName("n"));
+  Node* n0 = UnaryOp("TestUnary", {n, 0}, b.opts().WithName("n2"));
+  Node* n1 = UnaryOp("TestUnary", {n, 1}, b.opts().WithName("n1"));
+  UnaryOp("TestUnary", n0, b.opts().WithName("n1a"));
+  UnaryOp("TestUnary", n0, b.opts().WithName("n8a"));
+  UnaryOp("TestUnary", n0, b.opts().WithName("n2a"));
+  UnaryOp("TestUnary", n0, b.opts().WithName("n7a"));
+  UnaryOp("TestUnary", n1, b.opts().WithName("n1b"));
+  UnaryOp("TestUnary", n1, b.opts().WithName("n8b"));
+  UnaryOp("TestUnary", n1, b.opts().WithName("n2b"));
+  UnaryOp("TestUnary", n1, b.opts().WithName("n7b"));
+  UnaryOp("TestUnary", n0, b.opts().WithName("n3a"));
+  UnaryOp("TestUnary", n0, b.opts().WithName("n6a"));
+  UnaryOp("TestUnary", n0, b.opts().WithName("n4a"));
+  UnaryOp("TestUnary", n0, b.opts().WithName("n5a"));
+  UnaryOp("TestUnary", n1, b.opts().WithName("n3b"));
+  UnaryOp("TestUnary", n1, b.opts().WithName("n6b"));
+  UnaryOp("TestUnary", n1, b.opts().WithName("n4b"));
+  UnaryOp("TestUnary", n1, b.opts().WithName("n5b"));
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
+
+  std::vector<Node*> order;
+  TopologicalOrdering(g, [&](Node* n) { order.push_back(n); }, GroupByDevice());
+
+  std::vector<Node*> desired_order;
+  GetReversePostOrder(g, &desired_order, [](const Node* n1, const Node* n2) {
+    return n1->name() < n2->name();
+  });
+
+  EXPECT_EQ(desired_order, order);
 }
 
 }  // namespace

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/node_order.h"
 
+#include <algorithm>
 #include <cassert>
 #include <functional>
 #include <iterator>
@@ -35,12 +36,14 @@ void TopologicalOrdering(
   std::unordered_map<std::string, int> group_key_string_to_integer;
   absl::flat_hash_map<Node*, int> node_to_group;
   absl::flat_hash_map<Node*, int> remaining_incoming_nodes;
+  absl::flat_hash_map<Node*, int> node_to_position;
   using Ready = std::vector<Node*>;
   std::vector<Ready> group_members_that_are_ready;
   std::set<int> groups_that_are_ready;
 
   // Visit all nodes once, for initialization. It doesn't matter whether we use
   // BFS or DFS.
+  int i = 0;
   DFS(
       g, [](Node*) {},
       [&](Node* n) {
@@ -49,6 +52,7 @@ void TopologicalOrdering(
         auto entry = group_key_string_to_integer.try_emplace(
             group_key_string, group_key_string_to_integer.size());
         int group_key = entry.first->second;
+        node_to_position[n] = i++;
         node_to_group[n] = group_key;
         if (!entry.second) {
           group_members_that_are_ready.push_back({});
@@ -64,7 +68,8 @@ void TopologicalOrdering(
           group_members_that_are_ready[group_key].push_back(n);
           groups_that_are_ready.emplace(group_key);
         }
-      });
+      },
+      [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
 
   int num_nodes = remaining_incoming_nodes.size();
 
@@ -90,7 +95,13 @@ void TopologicalOrdering(
     // Emit the operation and make its results available.
     emit(node);
 
-    for (Node* out : node->out_nodes()) {
+    auto out_nodes = node->out_nodes();
+    std::vector<Node*> nodes_sorted(out_nodes.begin(), out_nodes.end());
+    std::sort(nodes_sorted.begin(), nodes_sorted.end(), [&](Node* a, Node* b) {
+      return node_to_position[a] < node_to_position[b];
+    });
+
+    for (Node* out : nodes_sorted) {
       remaining_incoming_nodes[out]--;
       if (remaining_incoming_nodes[out] == 0) {
         int group_key = node_to_group[out];

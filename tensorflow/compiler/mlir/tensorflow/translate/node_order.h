@@ -37,10 +37,11 @@ struct GroupByDevice {
 // This has the property that any child node of a parent node p is emitted
 // before p. A grouping function is used to break ties if multiple child nodes
 // (of possibly different parents) are ready to be emitted at some point, which
-// is when we prefer to stay in the current group.
+// is when we prefer to stay in the current group. Remaining ties are broken by
+// node name.
 // The "emit" function is used for outputing the result, and is called once
 // for each node.
-// This algorithm is O(n).
+// This algorithm is O(n * k * log k), with k the largest node degree.
 void TopologicalOrdering(
     const Graph& g, const std::function<void(Node*)>& emit,
     const std::function<std::string(Node*)>& get_grouping_key);
