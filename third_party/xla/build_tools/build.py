@@ -135,10 +135,15 @@ class Build:
 
     # pyformat:disable
 
-    # This is a slightly odd use of parallel, we aren't doing anything besides
-    # retrying after 15 seconds up to 3 times if `docker pull` fails.
-    cmds.append(["parallel", "--ungroup", "--retries", "3", "--delay", "15",
-                 "docker", "pull", ":::", self.image_url])
+    if self.type_ == BuildType.CPU_ARM64:
+      # We would need to install parallel, but `apt` hangs regularly on Kokoro
+      # VMs due to yaqs/eng/q/4506961933928235008
+      cmds.append(["docker", "pull", self.image_url])
+    else:
+      # This is a slightly odd use of parallel, we aren't doing anything besides
+      # retrying after 15 seconds up to 3 times if `docker pull` fails.
+      cmds.append(["parallel", "--ungroup", "--retries", "3", "--delay", "15",
+                   "docker", "pull", ":::", self.image_url])
 
     container_name = "xla_ci"
     _, repo_name = self.repo.split("/")
@@ -247,7 +252,6 @@ _CPU_ARM64_BUILD = Build(
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
-    extra_setup_commands=(["sudo", "apt", "-y", "install", "parallel"],),
 )
 # TODO(ddunleavy): Setup additional build for a100 tests once L4 RBE is ready.
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
