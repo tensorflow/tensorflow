@@ -2489,9 +2489,30 @@ OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
-  return ConstFoldBinaryOp(
-      getType(), operands, [](APFloat a, APFloat b) { return a - b; },
-      [](APInt a, APInt b) { return a - b; });
+
+  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
+  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+
+  if (lhs && rhs) {
+    return ConstFoldBinaryOp(
+        getType(), operands, [](APFloat a, APFloat b) { return a - b; },
+        [](APInt a, APInt b) { return a - b; });
+  }
+
+  auto is_zero = [](Attribute a) {
+    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
+  };
+
+  if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
+    // Quant types not supported for the following.
+    return {};
+  }
+
+  if (rhs && is_zero(rhs) && getLhs().getType() == getType()) {
+    return getLhs();
+  }
+
+  return {};
 }
 
 int64_t SubOp::GetArithmeticCount(Operation* op) {

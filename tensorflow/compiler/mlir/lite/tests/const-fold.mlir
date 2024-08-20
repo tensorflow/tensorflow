@@ -88,6 +88,46 @@ func.func @sub_int() -> (tensor<i32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32
   func.return %5, %6, %7, %8 : tensor<i32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>
 }
 
+// CHECK-LABEL: @sub_zero
+func.func @sub_zero(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %zero_int = arith.constant dense<0> : tensor<4xi32>
+  %zero_float = arith.constant dense<0.0> : tensor<4xf32>
+
+  // CHECK-NOT: tfl.sub
+  // CHECK: return %arg0, %arg1
+
+  %0 = "tfl.sub"(%arg0, %zero_int) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.sub"(%arg1, %zero_float) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @sub_zero_lhs
+func.func @sub_zero_lhs(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %zero_int = arith.constant dense<0> : tensor<4xi32>
+  %zero_float = arith.constant dense<0.0> : tensor<4xf32>
+
+  // CHECK: tfl.sub
+  // CHECK: return %0, %1
+
+  %0 = "tfl.sub"(%zero_int, %arg0) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.sub"(%zero_float, %arg1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @sub_zero_quant
+func.func @sub_zero_quant(%arg0: tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32x!quant.uniform<u8:f32, 1.0>> {
+  %zero = "tfl.pseudo_qconst"() {qtype = tensor<32x!quant.uniform<u8:f32, 1.0>>, value = dense<0> : tensor<32xi8>} : () -> tensor<32x!quant.uniform<u8:f32, 1.0>>
+
+  // CHECK: %[[SUB:.*]] = tfl.sub
+  // CHECK: return %[[SUB]]
+
+  %0 = "tfl.sub"(%arg0, %zero) {fused_activation_function = "NONE"} : (tensor<32x!quant.uniform<u8:f32, 1.0>>, tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32x!quant.uniform<u8:f32, 1.0>>
+
+  func.return %0 : tensor<32x!quant.uniform<u8:f32, 1.0>>
+}
+
 // CHECK-LABEL: @mul_float
 func.func @mul_float() -> (tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {
   %0 = arith.constant dense<4.5> : tensor<f32>
