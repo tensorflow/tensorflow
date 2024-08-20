@@ -125,6 +125,7 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
       block_sizes_.back() = block_size_;
       block_sizes_[permutation_.back()] = block_size_;
     }
+    output_block_sizes_ = Permute(block_sizes_, permutation_);
     block_counts_.resize(block_sizes_.size());
     for (int64_t i = 0; i < block_sizes_.size(); ++i) {
       block_counts_[i] = CeilOfRatio(input_shape_[i], block_sizes_[i]);
@@ -198,9 +199,16 @@ LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
 
 IndexingMap MlirTransposeFusion::GetSharedMemoryIndexing(
     bool read, mlir::MLIRContext* ctx) const {
-  auto thread_offsets = GetThreadOffsets(ctx);
+  auto thread_offsets = GetThreadOffsets(/*read=*/true, ctx);
   if (!read) {
-    absl::c_copy(Permute(thread_offsets, permutation_), thread_offsets.begin());
+    // Regarding shared memory indexing, the permutation we need to apply is
+    // just a swap of the two dimensions that are tiled.
+    if (MostMinorDimensionUnchanged()) {
+      std::swap(thread_offsets[thread_offsets.size() - 2],
+                thread_offsets[permutation_[permutation_.size() - 2]]);
+    } else {
+      std::swap(thread_offsets.back(), thread_offsets[permutation_.back()]);
+    }
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
   dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
@@ -395,7 +403,7 @@ absl::Status MlirTransposeFusion::EmitEntryFunction(
 }
 
 llvm::SmallVector<mlir::AffineExpr, 4> MlirTransposeFusion::GetThreadOffsets(
-    mlir::MLIRContext* ctx) const {
+    bool read, mlir::MLIRContext* ctx) const {
   auto thread = mlir::getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
   auto loop = mlir::getAffineSymbolExpr(0, ctx);
@@ -406,7 +414,8 @@ llvm::SmallVector<mlir::AffineExpr, 4> MlirTransposeFusion::GetThreadOffsets(
     auto minor_dim = mlir::getAffineSymbolExpr(2, ctx);
     linear_index = linear_index * input_shape_.back() + minor_dim;
   }
-  return DelinearizeInBoundsIndex(linear_index, block_sizes_);
+  return DelinearizeInBoundsIndex(linear_index,
+                                  read ? block_sizes_ : output_block_sizes_);
 }
 
 IndexingMap MlirTransposeFusion::GetIndexing(bool input,
@@ -418,10 +427,11 @@ IndexingMap MlirTransposeFusion::GetIndexing(bool input,
   if (!input) {
     absl::c_copy(Permute(block_ids, permutation_), block_ids.begin());
   }
-  auto thread_offsets = GetThreadOffsets(ctx);
+  auto thread_offsets = GetThreadOffsets(input, ctx);
+  const auto& permuted_block_sizes = input ? block_sizes_ : output_block_sizes_;
   llvm::SmallVector<AffineExpr, 3> offsets;
   for (auto [block_id, block_size, thread] :
-       llvm::zip(block_ids, block_sizes_, thread_offsets)) {
+       llvm::zip(block_ids, permuted_block_sizes, thread_offsets)) {
     offsets.push_back(block_id * block_size + thread);
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
