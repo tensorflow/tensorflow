@@ -128,6 +128,16 @@ foreach pair = [
     (pair[1] $l, $r)>;
 }
 
+// Binary ops with fused activiation attr.
+foreach pair = [
+  [MHLO_MulOp, TFL_MulOp],
+] in {
+  def : Pat<
+    (pair[0] $l, $r),
+    (pair[1] $l, $r, TFL_AF_None)>;
+}
+
+
 
 //===----------------------------------------------------------------------===//
 // comparison ops
