@@ -49,6 +49,8 @@ install_build_env_tools
 TARGET_FILTER="-//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/... -//xla/service/gpu/..."
 TAGS_FILTER="-no_oss,-oss_excluded,-gpu,-no_mac,-nomac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd"
 
+bazel --version
+
 bazel test \
     --output_filter="" \
     --macos_minimum_os=10.15 \
