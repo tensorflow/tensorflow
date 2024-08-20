@@ -1869,6 +1869,8 @@ static void AllocateFlags(DebugOptions* defaults) {
   flag_objects = new std::vector<tsl::Flag>();
   MakeDebugOptionsFlags(flag_objects, flag_values);
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
+  LOG(INFO) << "Debug options obtained from env: "
+            << flag_values->DebugString();
 }
 
 void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
