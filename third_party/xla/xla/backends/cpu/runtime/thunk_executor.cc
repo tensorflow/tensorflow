@@ -178,7 +178,7 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
 
   // Move execute state to the execute event callback to ensure that it is kept
   // alive while thunk executor has pending tasks.
-  auto execute_event = state->execute_event;
+  tsl::AsyncValueRef<ExecuteEvent> execute_event = state->execute_event;
   execute_event.AndThen([state = std::move(state)] {
     auto cnt = state->pending_sink_nodes.load(std::memory_order_acquire);
     DCHECK_EQ(cnt, 0)
@@ -268,22 +268,22 @@ void ThunkExecutor::Execute(ExecuteState* state,
                             const Thunk::ExecuteParams& params,
                             ReadyQueue ready_queue,
                             Thunk::ExecuteSession::Lock lock) {
-  tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
-
   DCHECK(!ready_queue.Empty()) << "Ready queue must not be empty";
-  DCHECK(lock) << "Execute session lock must be set";
 
+  tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
   bool has_runner = state->runner != nullptr;
 
   // Threshold for splitting ready queue into separate thunk executor tasks.
   int64_t split_threshold = params.session.split_threshold();
 
   while (!ready_queue.Empty()) {
+    DCHECK(lock) << "Execute session lock must be held";
+
     NodeId id = ready_queue.Pop();
     ExecuteState::Node& node = state->node(id);
 
     int64_t cnt = node.counter.load(std::memory_order_acquire);
-    DCHECK_EQ(cnt, 0) << "Node counter must be 0";  // Crash Ok
+    DCHECK_EQ(cnt, 0) << "Node counter must be 0";
 
     // If we have multiple ready thunks, split the ready queue and offload
     // thunks processing to the task runner.
@@ -310,22 +310,26 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // event and resume execution on the continuation thread (ready queue
       // processing will continue on a thread that marked event completed).
       //
-      // We unconditionally join the execute session, because having a pending
-      // execute event means that we have at least one thread that is processing
-      // the same execute session.
-      execute_event.AndThen([&params, &node, state,
-                             execute_event = execute_event.AsPtr(),
-                             ready_queue = ready_queue.CreateEmptyReadyQueue(),
-                             lock = params.session.Join()]() mutable {
-        state->executor->ProcessOutEdges(state, execute_event, node,
-                                         ready_queue);
-        // If ready queue is empty it might mean that we have completed an
-        // execution and destroyed the `state`.
-        if (ABSL_PREDICT_TRUE(!ready_queue.Empty())) {
-          state->executor->Execute(state, params, std::move(ready_queue),
-                                   std::move(lock));
-        }
-      });
+      // We unconditionally join the execute session by passing the session
+      // lock to the callback, because having a pending execute event means
+      // that we have at least one more thread that is processing the same
+      // execute session. If we happen to process the last thunk in the ready
+      // queue, we will forward the lock that we already hold.
+      execute_event.AndThen(
+          [&params, &node, state, execute_event = execute_event.AsPtr(),
+           ready_queue = ready_queue.CreateEmptyReadyQueue(),
+           lock = ready_queue.Empty() ? std::move(lock)
+                                      : params.session.Join()]() mutable {
+            state->executor->ProcessOutEdges(state, execute_event, node,
+                                             ready_queue);
+            // If ready queue is empty, it might mean that we have completed an
+            // execution and destroyed the `state`, so we make sure we don't
+            // touch `state` if we don't have to.
+            if (ABSL_PREDICT_TRUE(!ready_queue.Empty())) {
+              state->executor->Execute(state, params, std::move(ready_queue),
+                                       std::move(lock));
+            }
+          });
     }
   }
 }
