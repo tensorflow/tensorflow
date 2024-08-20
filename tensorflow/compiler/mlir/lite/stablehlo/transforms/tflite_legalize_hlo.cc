@@ -308,6 +308,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::ReshapeOp,
       mhlo::ShiftRightArithmeticOp,
       mhlo::ShiftRightLogicalOp,
+      mhlo::SubtractOp,
       mhlo::TransposeOp
       // clang-format on
       // go/keep-sorted end

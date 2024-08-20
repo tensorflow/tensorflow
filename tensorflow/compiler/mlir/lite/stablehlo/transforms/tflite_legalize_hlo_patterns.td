@@ -133,6 +133,7 @@ foreach pair = [
 foreach pair = [
   [MHLO_DivOp, TFL_DivOp],
   [MHLO_MulOp, TFL_MulOp],
+  [MHLO_SubtractOp, TFL_SubOp],
 ] in {
   def : Pat<
     (pair[0] $l, $r),

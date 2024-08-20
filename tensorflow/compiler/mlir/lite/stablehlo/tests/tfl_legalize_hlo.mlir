@@ -3055,6 +3055,17 @@ func.func @pow(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 
 // -----
 
+// CHECK-LABEL: sub
+func.func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  %0 = mhlo.subtract %arg0, %arg0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// CHECK: tfl.sub %arg0, %arg0
+// CHECK-NOT: mhlo
+
+// -----
+
 // CHECK-LABEL: div
 func.func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %0 = mhlo.divide %arg0, %arg0 : tensor<2xi32>
