@@ -76,7 +76,7 @@ class DummyCopyFusionEmitter : public MlirFusionEmitterBase {
       const mlir_converter::PartitionedComputations& computations,
       const mlir_converter::CallTargetProvider& call_targets,
       mlir::func::FuncOp entry_function,
-      const HloFusionInstruction& fusion) const {
+      const HloFusionInstruction& fusion) const override {
     mlir::ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
     b.setInsertionPointToStart(entry_function.addEntryBlock());
     auto thread_id = EmitThreadId(b, 0);
