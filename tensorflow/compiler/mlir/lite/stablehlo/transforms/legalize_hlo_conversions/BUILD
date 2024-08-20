@@ -285,3 +285,20 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
     ],
 )
+
+cc_library(
+    name = "while",
+    srcs = ["while.cc"],
+    hdrs = ["while.h"],
+    deps = [
+        ":op_util_common",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
