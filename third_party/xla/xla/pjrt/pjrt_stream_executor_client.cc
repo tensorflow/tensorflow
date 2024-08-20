@@ -458,11 +458,9 @@ AllocateDestinationBuffer(
   // callback.
   auto memory_space_shape_fn = [is_pinned_host_memory,
                                 transfer_manager](const Shape& shape) {
-    Shape result = shape;
+    Shape result = transfer_manager->HostShapeToDeviceShape(shape);
     if (is_pinned_host_memory) {
       result.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
-    } else {
-      result = transfer_manager->HostShapeToDeviceShape(result);
     }
     return result;
   };
