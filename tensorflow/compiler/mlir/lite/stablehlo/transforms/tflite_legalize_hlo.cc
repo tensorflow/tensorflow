@@ -213,7 +213,6 @@ void AddRoundingOpsAsUnknown(ConversionTarget& target) {
       mhlo::AddOp,
       mhlo::BroadcastInDimOp,
       mhlo::ConstantOp,
-      mhlo::DivOp,
       mhlo::FloorOp,
       mhlo::MulOp,
       mhlo::RemOp,
@@ -297,6 +296,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       // go/keep-sorted start
       // clang-format off
       mhlo::ClampOp,
+      mhlo::DivOp,
       mhlo::DotGeneralOp,
       mhlo::DotOp,
       mhlo::DynamicReshapeOp,
