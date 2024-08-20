@@ -150,7 +150,8 @@ class DeviceNameUtils {
 
   // Parses the device name, first as a full name, then, if it fails, as a
   // global one. Returns `false` if both attempts fail.
-  static bool ParseFullOrLocalName(StringPiece fullname, ParsedName* parsed);
+  static bool ParseFullOrLocalName(absl::string_view fullname,
+                                   ParsedName* parsed);
 
   // Parses "fullname" into "*parsed". Returns true iff succeeds.
   // Legacy names like "/cpu:0" that don't contain "device",
@@ -161,15 +162,15 @@ class DeviceNameUtils {
   // Also, note that lower case "cpu" and "gpu" device types in current syntax
   // are not capitalized. For example, "/device:CPU:0" is different from
   // "/device:cpu:0"
-  static bool ParseFullName(StringPiece fullname, ParsedName* parsed);
+  static bool ParseFullName(absl::string_view fullname, ParsedName* parsed);
 
   // Canonicalizes "fullname" into "*canonical_name". Uses a fully specified
   // basename to fill in fields that are missing. Accepts both legacy, newer
   // and local versions of the device spec. Returns the newer version of the
   // device spec. If we were unable to interpret / parse "fullname" returns
   // an error and *canonical_name is set to "".
-  static absl::Status CanonicalizeDeviceName(StringPiece fullname,
-                                             StringPiece basename,
+  static absl::Status CanonicalizeDeviceName(absl::string_view fullname,
+                                             absl::string_view basename,
                                              std::string* canonical_name);
 
   // Returns true if "name" specifies any non-trivial constraint on the device.
@@ -220,7 +221,7 @@ class DeviceNameUtils {
 
   // Returns true iff devices identified by 'src' and 'dst' are in the
   // same address space.
-  static bool IsSameAddressSpace(StringPiece src, StringPiece dst);
+  static bool IsSameAddressSpace(absl::string_view src, absl::string_view dst);
   static bool IsSameAddressSpace(const ParsedName& src, const ParsedName& dst);
 
   // Returns true iff devices identified by 'a' and 'b' are in different
@@ -232,16 +233,16 @@ class DeviceNameUtils {
   static const ParsedName AddressSpace(const ParsedName& name);
 
   // Returns the local device given its "type" and "id".
-  static std::string LocalName(StringPiece type, int id);
+  static std::string LocalName(absl::string_view type, int id);
 
   // Returns a short local device name (cpu:0, gpu:1, etc) based on
   // the given fullname.
-  static std::string LocalName(StringPiece fullname);
+  static std::string LocalName(absl::string_view fullname);
 
   // If "name" is a valid local device name (cpu:0, gpu:1, etc.),
   // fills in parsed.type and parsed.id accordingly. Returns true iff
   // succeeds.
-  static bool ParseLocalName(StringPiece name, ParsedName* parsed);
+  static bool ParseLocalName(absl::string_view name, ParsedName* parsed);
 
   // Splits a fully-qualified device name into a task identifier and a
   // relative device identifier. It first parses "name" using
@@ -250,7 +251,7 @@ class DeviceNameUtils {
   // component into *device.  This function will still return true if
   // the task component is empty, but it requires the relative device
   // component to be fully specified.
-  static bool SplitDeviceName(StringPiece name, std::string* task,
+  static bool SplitDeviceName(absl::string_view name, std::string* task,
                               std::string* device);
 
   // Get the task name from ParsedName. Return false if the task component is
@@ -275,7 +276,8 @@ class DeviceNameUtils {
   static absl::Status DeviceNameToCpuDeviceName(const std::string& device_name,
                                                 std::string* host_device_name);
 
-  static bool CompareFullNames(const StringPiece& a, const StringPiece& b) {
+  static bool CompareFullNames(const absl::string_view& a,
+                               const absl::string_view& b) {
     ParsedName parsed_a;
     ParsedName parsed_b;
     bool a_status = ParseFullName(a, &parsed_a);
