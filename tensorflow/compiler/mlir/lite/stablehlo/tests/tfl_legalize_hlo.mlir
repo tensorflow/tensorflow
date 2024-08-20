@@ -3167,3 +3167,23 @@ func.func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> 
 // CHECK:     "tfl.yield"(%1, %arg3, %arg4, %arg5, %4) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> ()
 // CHECK:     }) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>)
 // CHECK:     return %0#0, %0#1, %0#2, %0#4 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>
+
+// -----
+
+
+//===----------------------------------------------------------------------===//
+// mhlo.get_dimension_size
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @get_dimension_size(
+func.func @get_dimension_size(%arg0: tensor<4x256x?xf32>) -> tensor<i32> {
+  %0 = "mhlo.get_dimension_size"(%arg0) <{dimension = 1 : i64}> : (tensor<4x256x?xf32>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK: %0  = "tfl.shape"(%arg0) : (tensor<4x256x?xf32>) -> tensor<3xi64>
+// CHECK-DAG: %cst = arith.constant dense<1> : tensor<1xi64>
+// CHECK-DAG: %cst_0 = arith.constant dense<1> : tensor<1xi64>
+// CHECK:     %1 = "tfl.slice"(%0, %cst_0, %cst) : (tensor<3xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
+// CHECK:     %2 = "tfl.squeeze"(%1) <{squeeze_dims = [0]}> : (tensor<1xi64>) -> tensor<i32>
+// CHECK:     return %2 : tensor<i32>

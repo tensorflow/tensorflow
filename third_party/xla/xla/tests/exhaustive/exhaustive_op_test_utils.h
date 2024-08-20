@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iomanip>
 #include <iterator>
 #include <limits>
 #include <string>
@@ -676,10 +677,13 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     bool passed = abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
                   distance_err <= spec.distance_err;
     if (should_emit_debug_logging_ && !passed) {
-      LOG(INFO) << "actual: " << actual << "; expected: " << expected
+      LOG(INFO) << std::setprecision(std::numeric_limits<NativeT>::max_digits10)
+                << "actual: " << actual << "; expected: " << expected
+                << std::setprecision(std::numeric_limits<double>::max_digits10)
                 << "\n\tabs_err: " << abs_err
                 << "; spec.abs_err: " << spec.abs_err
-                << "\n\trel_err: " << rel_err << "; spec.rel_err: " << rel_err
+                << "\n\trel_err: " << rel_err
+                << "; spec.rel_err: " << spec.rel_err
                 << "\n\tdistance_err: " << distance_err
                 << "; spec.distance_err: " << spec.distance_err;
     }
