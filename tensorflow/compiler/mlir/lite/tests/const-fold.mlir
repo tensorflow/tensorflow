@@ -759,6 +759,32 @@ func.func @div_dense_different_rank() -> tensor<1x2x2xf32> {
 // CHECK:  return %[[CST]]
 }
 
+// CHECK-LABEL: @div_one
+func.func @div_one(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %one_int = arith.constant dense<1> : tensor<4xi32>
+  %one_float = arith.constant dense<1.0> : tensor<4xf32>
+
+  // CHECK-NOT: tfl.div
+  // CHECK: return %arg0, %arg1
+
+  %0 = "tfl.div"(%arg0, %one_int) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.div"(%arg1, %one_float) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @div_one_quant
+func.func @div_one_quant(%arg0: tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32x!quant.uniform<u8:f32, 1.0>> {
+  %one = "tfl.pseudo_qconst"() {qtype = tensor<32x!quant.uniform<u8:f32, 1.0>>, value = dense<1> : tensor<32xi8>} : () -> tensor<32x!quant.uniform<u8:f32, 1.0>>
+
+  // CHECK: %[[DIV:.*]] = tfl.div
+  // CHECK: return %[[DIV]]
+
+  %0 = "tfl.div"(%arg0, %one) {fused_activation_function = "NONE"} : (tensor<32x!quant.uniform<u8:f32, 1.0>>, tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32x!quant.uniform<u8:f32, 1.0>>
+
+  func.return %0 : tensor<32x!quant.uniform<u8:f32, 1.0>>
+}
+
 // CHECK-LABEL: @rsqrt_bf16
 func.func @rsqrt_bf16() -> tensor<bf16> {
   %cst = arith.constant dense<4.0> : tensor<bf16>
@@ -1341,7 +1367,6 @@ func.func @exp_f64() -> tensor<4xf64> {
 }
 
 // CHECK: tfl.exp
-
 
 // CHECK-LABEL: pow_float
 func.func @pow_float() -> tensor<3xf32> {

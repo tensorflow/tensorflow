@@ -1846,9 +1846,30 @@ OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
-  return ConstFoldBinaryOp(
-      getType(), operands, [](APFloat a, APFloat b) { return a / b; },
-      [](APInt a, APInt b) { return a.sdiv(b); });
+
+  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
+
+  if (rhs && lhs) {
+    return ConstFoldBinaryOp(
+        getType(), operands, [](APFloat a, APFloat b) { return a / b; },
+        [](APInt a, APInt b) { return a.sdiv(b); });
+  }
+
+  if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
+    // Quantized folding not supported for the following.
+    return {};
+  }
+
+  auto is_one = [](Attribute a) {
+    return matchPattern(a, m_One()) || matchPattern(a, m_OneFloat());
+  };
+
+  if (rhs && is_one(rhs) && getLhs().getType() == getType()) {
+    return getLhs();
+  }
+
+  return {};
 }
 
 int64_t DivOp::GetArithmeticCount(Operation* op) {

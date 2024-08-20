@@ -308,7 +308,7 @@ cc_library(
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite:array",
         "//tensorflow/lite:util",
