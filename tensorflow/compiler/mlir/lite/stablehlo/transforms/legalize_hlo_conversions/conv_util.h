@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_CONV_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_CONV_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -119,6 +120,16 @@ inline bool MatchWithResizeBilinearOp(const ConvView& data) {
   bool align_corners = false;
   return MatchWithResizeBilinearOp(data, align_corners);
 }
+
+bool IsTransposeConvPaddingValid(mhlo::ConvolutionOp conv_op,
+                                 size_t num_spatial_dims,
+                                 const ArrayRef<int64_t>& strides,
+                                 const ArrayRef<int64_t>& padding);
+
+bool IsTransposeConvPaddingSame(mhlo::ConvolutionOp conv_op,
+                                size_t num_spatial_dims,
+                                const ArrayRef<int64_t>& strides,
+                                const ArrayRef<int64_t>& padding);
 
 inline bool IsSupportedNonTrivialConv(const ConvView& data) {
   // Only non-trivial 2d convolutions are supported.

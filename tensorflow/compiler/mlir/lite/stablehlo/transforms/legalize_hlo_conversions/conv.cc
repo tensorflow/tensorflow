@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"
 
 #include <cstdint>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -336,6 +337,108 @@ LogicalResult ConvertNonTrivialConvToResizeBilinearOp::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
+// mhlo.convolution -> TFL::TransposeConv2dOp
+//===----------------------------------------------------------------------===//
+
+// Convert a 2d mhlo.convolution op to a tfl.transpose_conv2d
+class ConvertNonTrivialConvToTransposeConvOp
+    : public OpConversionPattern<mhlo::ConvolutionOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+LogicalResult ConvertNonTrivialConvToTransposeConvOp::matchAndRewrite(
+    mhlo::ConvolutionOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  const ConvView data(op);
+
+  //
+  // Test if the op is a supported non-trivial convolution.
+  //===-----
+
+  if (!IsSupportedNonTrivialConv(data)) {
+    return rewriter.notifyMatchFailure(op, "Not a non-trivial convolution.");
+  }
+
+  // For depthwise and group convolutions, feature_group_count != 1
+  if (op.getFeatureGroupCount() != 1) {
+    // Depthwise or Group convolution is not supported yet.
+    return rewriter.notifyMatchFailure(
+        op, "group or depthwise convolution is not supported");
+  }
+
+  //
+  // strides
+  //===-----
+
+  // TFL::TravsposeConv2D applies strides on LHS. strides == lhs_dilation
+  auto strides = data.InputDilations();
+  auto tfl_h_stride = rewriter.getI32IntegerAttr(strides[0]);
+  auto tfl_w_stride = rewriter.getI32IntegerAttr(strides[1]);
+
+  //
+  // padding
+  //===-----
+
+  std::string padding;
+  SmallVector<int64_t, 4> padding_array;
+  for (auto& padding : data.Padding()) {
+    padding_array.push_back(padding.Lo());
+    padding_array.push_back(padding.Hi());
+  }
+
+  if (IsTransposeConvPaddingValid(op, /*num_spatial_dims*/ 2, strides,
+                                  padding_array)) {
+    padding = "VALID";
+  } else if (IsTransposeConvPaddingSame(op, /*num_spatial_dims*/ 2, strides,
+                                        padding_array)) {
+    padding = "SAME";
+  } else {
+    return rewriter.notifyMatchFailure(op,
+                                       "requires padding to be SAME or VALID");
+  }
+
+  //
+  // build tfl op
+  //===-------
+
+  auto bias = BuildEmptyBias(rewriter, op->getLoc(), data);
+  auto tfl_faf_none = rewriter.getStringAttr("NONE");
+
+  // Need to reverse the kernel data inorder to run TFL::TransposeConv2d
+  // The axis along which to reverse. In this case, we want to mirror the
+  // kernel's spatial dimensions.
+  SmallVector<int32_t> kernel_spatial_dims_i32(
+      data.KernelLayout().Spatials().begin(),
+      data.KernelLayout().Spatials().end());
+  Value axis = rewriter.create<arith::ConstantOp>(
+      op.getLoc(), rewriter.getI32TensorAttr(kernel_spatial_dims_i32));
+
+  // Create the tfl::ReverseV2Op
+  auto filter = rewriter.create<TFL::ReverseV2Op>(
+      op.getLoc(), op.getRhs().getType(), op.getRhs(), axis);
+
+  // Calculate the output size and shape for TFL::TransposeConv2dOp
+  SmallVector<int32_t, 4> output_shape_i32(data.OutputShape().begin(),
+                                           data.OutputShape().end());
+
+  auto output_sizes = rewriter.create<arith::ConstantOp>(
+      op.getLoc(), rewriter.getI32TensorAttr(output_shape_i32));
+
+  rewriter.replaceOpWithNewOp<TFL::TransposeConvOp>(
+      op, op.getResult().getType(), /*output_shape=*/output_sizes,
+      /*filter=*/filter, /*input=*/op.getLhs(), /*bias=*/bias,
+      /*padding=*/rewriter.getStringAttr(padding),
+      /*stride_h=*/tfl_h_stride, /*stride_w=*/tfl_w_stride,
+      /*fused_activation_function=*/tfl_faf_none);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 
 class SliceDepthwiseTransposedConvolution
     : public OpRewritePattern<mhlo::ConvolutionOp> {
@@ -631,7 +734,8 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
 void PopulateLegalizeConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                                   ConversionTarget& target) {
   patterns.add<LegalizeConv2D, LegalizeConv3D, LegalizeConvDepthwise,
-               ConvertNonTrivialConvToResizeBilinearOp>(ctx);
+               ConvertNonTrivialConvToResizeBilinearOp,
+               ConvertNonTrivialConvToTransposeConvOp>(ctx);
   target.addDynamicallyLegalOp<mhlo::ConvolutionOp>(IsConvLegal);
 }
 
