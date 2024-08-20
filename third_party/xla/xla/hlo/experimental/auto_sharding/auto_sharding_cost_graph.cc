@@ -101,16 +101,13 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
     }
 
     if (strategy_group->following) {
-      if (strategy_group->strategies.size() ==
-          strategy_group->following->strategies.size()) {
-        to_merge_pairs_.push_back(
-            {strategy_group->node_idx, strategy_group->following->node_idx});
-      } else {
-        LOG(WARNING) << "Different strategy counts for instruction ID "
-                     << strategy_group->instruction_id
-                     << " and following instruction ID "
-                     << strategy_group->following->instruction_id;
-      }
+      CHECK_EQ(strategy_group->strategies.size(),
+               strategy_group->following->strategies.size())
+          << "Different strategy counts for instruction ID "
+          << strategy_group->instruction_id << " and following instruction ID "
+          << strategy_group->following->instruction_id;
+      to_merge_pairs_.push_back(
+          {strategy_group->node_idx, strategy_group->following->node_idx});
     }
   }
 

@@ -396,6 +396,56 @@ ENTRY %elementwise {
             op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}")));
 }
 
+TEST_F(AutoShardingTest, SliceInvalidStrategyFollowingTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY %elementwise {
+  param = s32[512,2084]{1,0} parameter(0)
+  slice = s32[32,2048]{1,0} slice(param), slice={[0:32], [0:2048]}
+  ROOT copy = s32[32,2048]{1,0} copy(slice)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, AutoSharding(/* option */ {.enable = true,
+                                               .device_mesh_shape = {64, 1},
+                                               .device_mesh_alpha = {1.0, 1.0},
+                                               .device_mesh_beta = {0.01, 1.0}})
+                        .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* slice = FindInstruction(module.get(), "slice");
+  ASSERT_NE(slice, nullptr);
+  EXPECT_THAT(slice, op::Sharding("{replicated}"));
+}
+
+TEST_F(AutoShardingTest, SliceForcedInvalidStrategyFollowingTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY %elementwise {
+  param = s32[512,2084]{1,0} parameter(0), sharding={devices=[64,1]<=[64]}
+  slice = s32[32,2048]{1,0} slice(param), slice={[0:32], [0:2048]}
+  ROOT copy = s32[32,2048]{1,0} copy(slice)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, AutoSharding(/* option */ {.enable = true,
+                                               .device_mesh_shape = {64, 1},
+                                               .device_mesh_alpha = {1.0, 1.0},
+                                               .device_mesh_beta = {0.01, 1.0}})
+                        .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* slice = FindInstruction(module.get(), "slice");
+  ASSERT_NE(slice, nullptr);
+  EXPECT_THAT(slice, op::Sharding("{devices=[64,1]<=[64]}"));
+}
+
 TEST_F(AutoShardingTest, IotaPartiallyReplicatedShardingTest) {
   constexpr absl::string_view kHloString = R"(
 HloModule module

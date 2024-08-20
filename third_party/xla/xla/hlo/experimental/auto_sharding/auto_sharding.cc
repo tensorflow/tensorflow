@@ -1649,40 +1649,37 @@ void RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
           shape.tuple_shapes().at(i), strategy_group->childs[i].get(),
           instruction_has_user_sharding);
     }
-  } else {
-    if (instruction_has_user_sharding &&
-        strategy_group->strategies.size() == 1) {
-      // If an instruction has a specified user sharding, and there is only a
-      // single strategy, removing that strategy would mean we won't have any
-      // strategy for that instruction. Further, given that the user has
-      // specified this sharding strategy, we should respect it, and hence not
-      // remove it anyway.
-      return;
+    return;
+  }
+  if (instruction_has_user_sharding && strategy_group->strategies.size() == 1) {
+    // If an instruction has a specified user sharding, and there is only a
+    // single strategy, removing that strategy would mean we won't have any
+    // strategy for that instruction. Further, given that the user has
+    // specified this sharding strategy, we should respect it, and hence not
+    // remove it anyway.
+    return;
+  }
+  std::vector<int> invalid_strategy_indices;
+  for (int strategy_idx = 0; strategy_idx < strategy_group->strategies.size();
+       strategy_idx++) {
+    const ShardingStrategy& strategy = strategy_group->strategies[strategy_idx];
+    if (strategy.output_sharding.IsReplicated()) {
+      continue;
     }
-    std::vector<ShardingStrategy> new_vector;
-    for (const auto& strategy : strategy_group->strategies) {
-      if (strategy.output_sharding.IsReplicated()) {
-        new_vector.push_back(strategy);
-        continue;
-      }
-
-      const auto& tile_assignment = strategy.output_sharding.tile_assignment();
-      bool is_strategy_valid = true;
-      for (int64_t i = 0; i < shape.rank(); ++i) {
-        if (tile_assignment.dim(i) > 1 &&
-            tile_assignment.dim(i) > shape.dimensions(i)) {
-          VLOG(1) << "May remove invalid strategy if valid ones exist: "
-                  << strategy.ToString();
-          is_strategy_valid = false;
-          break;
-        }
-      }
-      if (is_strategy_valid) {
-        new_vector.push_back(strategy);
+    const auto& tile_assignment = strategy.output_sharding.tile_assignment();
+    for (int64_t i = 0; i < shape.rank(); ++i) {
+      if (tile_assignment.dim(i) > 1 &&
+          tile_assignment.dim(i) > shape.dimensions(i)) {
+        invalid_strategy_indices.push_back(strategy_idx);
+        break;
       }
     }
-    if (!new_vector.empty()) {
-      strategy_group->strategies = std::move(new_vector);
+  }
+  if (invalid_strategy_indices.size() < strategy_group->strategies.size()) {
+    for (int strategy_idx : invalid_strategy_indices) {
+      VLOG(1) << "Removing invalid strategy: "
+              << strategy_group->strategies[strategy_idx].ToString();
+      strategy_group->strategies[strategy_idx].compute_cost = kInfinityCost;
     }
   }
 }
