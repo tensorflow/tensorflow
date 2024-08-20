@@ -64,7 +64,7 @@ class SnappyOutputBuffer : public WritableFile {
   //
   // The input data is buffered internally and will be written to disk at a
   // later time. To immediately write contents to file call `Flush()`.
-  absl::Status Append(StringPiece data) override;
+  absl::Status Append(absl::string_view data) override;
 
 #if defined(TF_CORD_SUPPORT)
   absl::Status Append(const absl::Cord& cord) override;
@@ -81,7 +81,7 @@ class SnappyOutputBuffer : public WritableFile {
   absl::Status Close() override;
 
   // Returns the name of the underlying file.
-  absl::Status Name(StringPiece* result) const override;
+  absl::Status Name(absl::string_view* result) const override;
 
   // Deflates any cached input, writes all output to file and syncs it.
   absl::Status Sync() override;
@@ -98,7 +98,7 @@ class SnappyOutputBuffer : public WritableFile {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  absl::Status Write(StringPiece data);
+  absl::Status Write(absl::string_view data);
 
   // Compresses any cached input and writes all output to file. This must be
   // called before the destructor to avoid any data loss.
@@ -107,7 +107,7 @@ class SnappyOutputBuffer : public WritableFile {
  private:
   // Appends `data` to `input_buffer_`.
   // Throws if `data.size()` > AvailableInputSpace().
-  void AddToInputBuffer(StringPiece data);
+  void AddToInputBuffer(absl::string_view data);
 
   // Appends `data` to `output_buffer_`. Flushes buffer contents to file when
   // buffer gets full.

@@ -57,6 +57,10 @@ CreateTfRestorePruningPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateLowerToIfrtRestoreVariablePass();
 
+// Creates a pass that cleans up device attributes from all ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfDeviceCleanupPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -33,10 +34,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
@@ -44,11 +49,17 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+<<<<<<< HEAD
 #include "xla/tests/test_macros.h"
+=======
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+>>>>>>> upstream/master
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -398,11 +409,14 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+<<<<<<< HEAD
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
   }
   GTEST_SKIP() << "TODO(b/344573710): this test is flaky, disable it "
                << " until flakiness is fixed.";
+=======
+>>>>>>> upstream/master
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()
@@ -439,8 +453,7 @@ ENTRY main {
 
   HloModuleConfig config;
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
-  triton_enabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
-      false);
+  triton_enabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_enabled_debug_options
       .set_xla_gpu_require_complete_aot_autotune_results(true);
   config.set_debug_options(triton_enabled_debug_options);
@@ -459,8 +472,7 @@ ENTRY main {
                           GetOptimizedModule(std::move(module)));
   AutotunerUtil::ClearAutotuneResults();
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
-  triton_disabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
-      false);
+  triton_disabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
   config.set_debug_options(triton_disabled_debug_options);
   TF_ASSERT_OK_AND_ASSIGN(module,
@@ -658,12 +670,12 @@ CHECK:       %[[AFTER_ALL:.*]] = after-all
 CHECK:       %[[RESULT_RECV:.*]] = recv(%[[AFTER_ALL]])
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[CUSTOM_CALL]]}
 CHECK:       %[[RESULT_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[AFTER_ALL]])
 CHECK-SAME:    channel_id=1
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[RESULT_RECV]]}
 CHECK:       ROOT
 // We actually expect both RESULT_RECV and RESULT_SEND to match on this line.
@@ -677,11 +689,11 @@ CHECK:       %[[ENTRY_AFTER_ALL:.*]] = after-all
 CHECK:       %[[ENTRY_RECV:.*]] = recv(%[[ENTRY_AFTER_ALL]])
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}}
 CHECK:       %[[ENTRY_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[ENTRY_AFTER_ALL]])
 CHECK-SAME:    channel_id=1
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[ENTRY_RECV]]}
 CHECK:       %[[WHILE_INIT:.*]] = tuple
 // Check here that the send argument is likewise passed to the while loop, as
@@ -818,6 +830,78 @@ TEST_F(KernelCacheTest, AllKernelsAreCachedBecauseSplitModuleUsesRoundRobin) {
   EXPECT_EQ(CacheEntryCount(), 4);
 }
 
+TEST_F(KernelCacheTest, CachingWorksWithLoadedExecutables) {
+  const std::string kHloAdd1 = R"(
+add1 {
+  p = s32[] parameter(0)
+  c = s32[] constant(1)
+  ROOT a = s32[] add(p, c)
+}
+
+ENTRY e {
+  p = s32[] parameter(0)
+  ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
+})";
+
+  const std::string kHloAdd2 = R"(
+add2 {
+  p = s32[] parameter(0)
+  c = s32[] constant(2)
+  ROOT a = s32[] add(p, c)
+}
+
+ENTRY e {
+  p = s32[] parameter(0)
+  ROOT r = s32[] fusion(p), kind=kLoop, calls=add2
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("cuda"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                          platform->ExecutorForDevice(0));
+
+  Compiler* compiler = backend().compiler();
+  AotCompilationOptions aot_options(compiler->PlatformId());
+  aot_options.set_executor(stream_exec);
+
+  auto test = [this, &compiler, &aot_options](absl::string_view hlo, int input,
+                                              int expected_result) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo));
+    auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+        compiler->CompileAheadOfTime(std::move(module_group), aot_options));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                            aot_results[0]->SerializeAsString());
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<AotCompilationResult> aot_result,
+        compiler->LoadAotCompilationResult(serialized_aot_result));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Executable> executable,
+        aot_result->LoadExecutable(compiler, aot_options.executor()));
+
+    const xla::Literal literal_input =
+        xla::LiteralUtil::CreateR0<int32_t>(input);
+    const xla::Literal literal_expected_result =
+        xla::LiteralUtil::CreateR0<int32_t>(expected_result);
+
+    TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                            GetHloRunner().value()->ExecuteWithExecutable(
+                                executable.get(), {&literal_input}));
+
+    EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
+  };
+
+  test(kHloAdd1, 1, 2);
+  test(kHloAdd2, 1, 3);
+  // The test used to fail on the second execution of the second module when it
+  // was already cached.
+  test(kHloAdd2, 1, 3);
+}
+
 class KernelCacheTestSingleThreaded : public KernelCacheTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -874,10 +958,10 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
     })";
 
   const char* kExpected = R"(
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
-  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
-  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
   )";
 
   DebugOptions debug_options;

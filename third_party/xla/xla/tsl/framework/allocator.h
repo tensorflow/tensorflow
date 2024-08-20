@@ -146,6 +146,13 @@ class Allocator {
   // REQUIRES: "ptr" was previously returned by a call to AllocateRaw
   virtual void DeallocateRaw(void* ptr) = 0;
 
+  virtual void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) {
+    (void)alignment;
+    (void)num_bytes;
+
+    DeallocateRaw(ptr);
+  }
+
   // Returns true if this allocator tracks the sizes of allocations.
   // RequestedSize and AllocatedSize must be overridden if
   // TracksAllocationSizes is overridden to return true.

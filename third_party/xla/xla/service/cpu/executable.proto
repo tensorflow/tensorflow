@@ -17,7 +17,6 @@ syntax = "proto3";
 
 package xla.cpu;
 
-import "xla/service/cpu/xla_framework.proto";
 import "xla/service/hlo.proto";
 import "xla/xla.proto";
 

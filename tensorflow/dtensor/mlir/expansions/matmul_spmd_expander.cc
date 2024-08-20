@@ -61,7 +61,6 @@ void GetTransposeSettings(mlir::Operation* op, bool* left_transposed,
 }  // namespace
 
 StatusOr<mlir::Operation*> MatMulSPMDExpander::ExpandOp(mlir::Operation* op) {
-  absl::flat_hash_set<std::string> reduced_dims;
   bool left_transposed;
   bool right_transposed;
   TF_ASSIGN_OR_RETURN(const Layout left_layout,

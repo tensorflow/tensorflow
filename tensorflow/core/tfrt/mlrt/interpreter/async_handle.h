@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
@@ -141,6 +143,12 @@ class AsyncHandle {
     }
 
     auto& execution_context = *arg->Get<ExecutionContext*>();
+    execution_context.LogError(absl::InternalError(absl::StrCat(
+        "UnwindOnError: unwind AsyncHandle of context ",
+        absl::Hex(reinterpret_cast<std::uintptr_t>(execution_context_.get())),
+        " from context ",
+        absl::Hex(reinterpret_cast<std::uintptr_t>(&execution_context)),
+        " of state ", execution_context.state_)));
     execution_context.Await(std::move(*this));
   }
 

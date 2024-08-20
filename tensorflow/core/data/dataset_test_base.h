@@ -766,7 +766,7 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Creates a new op kernel context.
   Status CreateDatasetContext(
-      OpKernel* dateset_kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
+      OpKernel* dateset_kernel, absl::InlinedVector<TensorValue, 4>* inputs,
       std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
       std::unique_ptr<OpKernelContext>* dataset_context);
 
@@ -798,16 +798,16 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Checks that the size of `inputs` matches the requirement of the op kernel.
   Status CheckOpKernelInput(const OpKernel& kernel,
-                            const gtl::InlinedVector<TensorValue, 4>& inputs);
+                            const absl::InlinedVector<TensorValue, 4>& inputs);
 
   // Creates a new context for running the dataset operation.
   Status CreateOpKernelContext(OpKernel* kernel,
-                               gtl::InlinedVector<TensorValue, 4>* inputs,
+                               absl::InlinedVector<TensorValue, 4>* inputs,
                                std::unique_ptr<OpKernelContext>* context);
 
   // Creates a new context for running the dataset operation.
   Status CreateOpKernelContext(OpKernel* kernel,
-                               gtl::InlinedVector<TensorValue, 4>* inputs,
+                               absl::InlinedVector<TensorValue, 4>* inputs,
                                std::unique_ptr<OpKernelContext::Params>* params,
                                std::unique_ptr<OpKernelContext>* context);
 
@@ -856,7 +856,7 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Adds an empty tensor with the specified dtype and shape to the input
   // vector.
-  Status AddDatasetInput(gtl::InlinedVector<TensorValue, 4>* inputs,
+  Status AddDatasetInput(absl::InlinedVector<TensorValue, 4>* inputs,
                          DataTypeVector input_types, DataType dtype,
                          const TensorShape& shape);
 

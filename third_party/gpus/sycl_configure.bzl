@@ -17,10 +17,13 @@ load(
     "which",
 )
 load(
+    ":compiler_common_tools.bzl",
+    "to_list_of_strings",
+)
+load(
     ":cuda_configure.bzl",
     "make_copy_dir_rule",
     "make_copy_files_rule",
-    "to_list_of_strings",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"

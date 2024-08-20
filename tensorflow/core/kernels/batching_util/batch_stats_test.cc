@@ -27,12 +27,12 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-TEST(BatchStatsTest, GlobalBatchStatsAlwaysReturnsTheSameInstance) {
-  ASSERT_EQ(&GlobalBatchStats(), &GlobalBatchStats());
+TEST(BatchStatsTest, GlobalBatchStatsRegistryAlwaysReturnsTheSameInstance) {
+  ASSERT_EQ(&GlobalBatchStatsRegistry(), &GlobalBatchStatsRegistry());
 }
 
 TEST(BatchStatsTest, BasicOperation) {
-  BatchStats stats;
+  BatchStatsRegistry stats;
   stats.model(/* model_name= */ "m", /* op_name= */ "o")
       .batch_size(1)
       .tpu_cost()
@@ -45,7 +45,7 @@ TEST(BatchStatsTest, BasicOperation) {
 }
 
 TEST(BatchStatsTest, ModelBatchStatsAreUniqueForEachModel) {
-  BatchStats stats;
+  BatchStatsRegistry stats;
   ASSERT_NE(&stats.model(/* model_name= */ "m", /* op_name= */ "o"),
             &stats.model(/* model_name= */ "m", /* op_name= */ "o2"));
 }
@@ -79,7 +79,7 @@ TEST(BatchStatsTest, ProcessedSizeIsCorrect) {
 }
 
 TEST(BatchStatsTest, ModelOpNamesAreCorrect) {
-  BatchStats stats;
+  BatchStatsRegistry stats;
 
   // Register a cost for model "m" and op "o".
   stats.model(/* model_name= */ "m", /* op_name= */ "o")
@@ -124,6 +124,28 @@ TEST(BatchStatsTest, BatchSizesAreCorrect) {
 
   // Check that the batch sizes are correct.
   ASSERT_THAT(stats.BatchSizes(), UnorderedElementsAre(1, 2, 4));
+}
+
+TEST(BatchStatsTest, BatchTimeoutIsCorrect) {
+  ModelBatchStats stats;
+
+  // Originally the batch timeout is -1 if unassigned.
+  ASSERT_EQ(stats.batch_timeout_micros(), -1);
+
+  // Assign a batch timeout of 100 microseconds.
+  stats.SetBatchTimeoutMicros(100);
+  ASSERT_EQ(stats.batch_timeout_micros(), 100);
+}
+
+TEST(BatchStatsTest, NumBatchThreadsIsCorrect) {
+  ModelBatchStats stats;
+
+  // Originally the number of batch threads is -1 if unassigned.
+  ASSERT_EQ(stats.num_batch_threads(), -1);
+
+  // Assign a number of per-model batch threads.
+  stats.SetNumBatchThreads(16);
+  ASSERT_EQ(stats.num_batch_threads(), 16);
 }
 
 }  // namespace

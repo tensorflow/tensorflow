@@ -69,6 +69,10 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
       p0 = f32[2,2] parameter(0)
       ROOT add = f32[2,2] add(p0, p0)
     }
+    leaf3 {
+      p0 = f32[2,2] parameter(0)
+      ROOT add = f32[2,2] add(p0, p0)
+    }
 
     // Entry computation that calls each of the leaves asynchronously.
     ENTRY entry {
@@ -77,21 +81,30 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
           kind=kLoop, calls=leaf1
       start2 = ((f32[2,2]), f32[2,2], s32[]) fusion-start(p0),
           kind=kLoop, calls=leaf2
+      start3 = ((f32[2,2]), f32[2,2], s32[]) fusion-start(p0),
+          kind=kLoop, calls=leaf3
       update1 = ((f32[2,2]), f32[2,2], s32[]) fusion-update(start1)
       update2 = ((f32[2,2]), f32[2,2], s32[]) fusion-update(start2)
+      update3 = ((f32[2,2]), f32[2,2], s32[]) fusion-update(start3)
       done1 = f32[2,2] fusion-done(update1)
       done2 = f32[2,2] fusion-done(update2)
-      ROOT done = f32[2,2] add(done1, done2)
+      done3 = f32[2,2] fusion-done(update3)
+      ROOT done = f32[2,2] custom-call(done1, done2, done3),
+          custom_call_target="target"
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  ExecutionStreamAssignment assignment(module.get());
+  ExecutionStreamAssignment assignment(
+      module.get(),
+      ExecutionStreamAssignmentOptions{/*number_of_execution_streams=*/2});
 
   // The outermost computation should run on `ExecutionStreamId(0)`. The two
   // asynchronous branches should be launched on `ExecutionStreamId(1)` and
-  // `ExecutionStreamId(2)`, respectively.
+  // `ExecutionStreamId(2)`, respectively. The third asynchronous branch should
+  // reuse `ExecutionStreamId(1)` because we set `number_of_execution_streams`
+  // to `2`.
   ExpectExecutionStreamForSyncInstructions(
       assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
   for (std::string_view instruction : {"start1", "update1", "done1"}) {
@@ -107,6 +120,13 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
                 IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
                     /*destination_stream_id=*/ExecutionStreamId(2)}));
+  }
+  for (std::string_view instruction : {"start3", "update3", "done3"}) {
+    EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
+                    FindInstruction(module.get(), instruction))),
+                IsOkAndHolds(AsyncExecutionStreamIds{
+                    /*source_stream_id=*/ExecutionStreamId(0),
+                    /*destination_stream_id=*/ExecutionStreamId(1)}));
   }
 
   // Leaf computations should run on the respective asynchronous

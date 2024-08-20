@@ -97,12 +97,12 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -179,7 +179,6 @@ tf_cc_test(
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "//tensorflow/core/tpu/kernels/xla:host_compute_ops",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
@@ -187,6 +186,7 @@ tf_cc_test(
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -247,8 +247,8 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -299,7 +299,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

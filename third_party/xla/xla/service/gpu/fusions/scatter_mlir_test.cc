@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -77,7 +77,7 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
   thread_id_printer_.SetSymbolName(2, "index_id");
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirScatterFusion fusion(analysis);
 
   constexpr auto kUpdatesIndexing = R"(
@@ -187,8 +187,8 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[$MAP0:.*]] = affine_map<(d0) -> (d0 floordiv 2)>
-    // CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0 mod 2)>
+    // CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 2)
+    // CHECK: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 2)
 
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>

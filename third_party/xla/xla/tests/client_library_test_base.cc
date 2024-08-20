@@ -98,6 +98,12 @@ ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
       ->set_xla_hlo_evaluator_use_fast_path(true);
 }
 
+std::string ClientLibraryTestBase::SuiteName() const {
+  return ::testing::UnitTest::GetInstance()
+      ->current_test_info()
+      ->test_suite_name();
+}
+
 std::string ClientLibraryTestBase::TestName() const {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }

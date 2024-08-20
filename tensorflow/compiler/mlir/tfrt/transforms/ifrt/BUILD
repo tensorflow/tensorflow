@@ -69,6 +69,7 @@ cc_library(
         "lower_to_ifrt_restore_variable.cc",
         "rewrite_cluster_to_ifrt_call.cc",
         "sink_variable_as_named_array.cc",
+        "tf_device_cleanup.cc",
         "tf_identity_propagation.cc",
         "tf_ifrt_passes.cc",
         "tf_restore_merging.cc",

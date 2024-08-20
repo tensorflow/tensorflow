@@ -45,7 +45,7 @@ TEST_F(MlirInputSlicesFusionTest, ThreadIndexing) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
 
   auto emitter = GetEmitter(analysis);
 

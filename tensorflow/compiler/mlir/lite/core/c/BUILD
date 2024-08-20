@@ -11,9 +11,12 @@ package(
 
 # LINT.IfChange(common)
 cc_library(
-    name = "common",
+    name = "tflite_common",
     srcs = [],
-    hdrs = ["builtin_op_data.h"],
+    hdrs = [
+        "builtin_op_data.h",
+        "dimension_type.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
@@ -23,17 +26,3 @@ cc_library(
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 # LINT.ThenChange(//tensorflow/lite/core/c:common)
-
-# LINT.IfChange(private_common)
-# This is a private target, its visibility is set to public only to be
-# used by "tflite_custom_c_library" and "tflite_flex_cc_library".
-# Do not use this target directly and don't consider it as a part of the public API.
-alias(
-    name = "private_common",
-    actual = ":common",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//visibility:public",
-    ],
-)
-# LINT.ThenChange(//tensorflow/lite/core/c:private_common)

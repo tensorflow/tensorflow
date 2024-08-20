@@ -64,6 +64,9 @@ class Flags {
   // TODO(b/341325107): Make this behavior the default and remove the flag.
   TF_DECLARE_FLAG(enable_function_pruning_before_inlining, false,
                   "If true, functions will be pruned before inlining.")
+  TF_DECLARE_FLAG(enable_skip_encapsulation_for_non_tpu_graphs, false,
+                  "If true, TF2XLA encapsulation will be skipped for non-TPU "
+                  "graphs.")
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 
+#include <cstdint>
 #include <memory>
-#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,19 +24,24 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -938,6 +943,33 @@ TEST_F(HloComputationTest, CloneWrappedAsyncInstructionSameWrappedFunc) {
       done->CloneWithNewOperands(done->shape(), {cloned_start.get()});
   EXPECT_EQ(cloned_start.get()->async_wrapped_computation(),
             cloned_done.get()->async_wrapped_computation());
+}
+
+TEST_F(HloComputationTest, CompositeCall) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  add (x: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    %constant = f32[] constant(2)
+    ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+  }
+
+  ENTRY %CallR0F32AddScalar.v2 () -> f32[] {
+    %constant.1 = f32[] constant(42)
+    ROOT %call = f32[] call(f32[] %constant.1), to_apply=add, is_composite=true,
+      frontend_attributes={
+        composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},
+        composite.name="foo.bar",
+        composite.version="1"
+      }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* composite_call = FindInstruction(module.get(), "call");
+  EXPECT_EQ(composite_call->opcode(), HloOpcode::kCall);
+  EXPECT_TRUE(composite_call->is_composite());
+  EXPECT_EQ(composite_call->frontend_attributes().map().size(), 3);
 }
 
 }  // namespace

@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
@@ -97,6 +97,7 @@ ENTRY e {
   if (!rocm.has_hipblaslt()) {
     GTEST_SKIP() << "No hipblas-lt support on this architecture!";
   }
+  debug_options_.set_xla_gpu_enable_triton_gemm(false);
 #endif  // TENSORFLOW_USE_ROCM
 
   debug_options_.set_xla_gpu_triton_fusion_level(0);

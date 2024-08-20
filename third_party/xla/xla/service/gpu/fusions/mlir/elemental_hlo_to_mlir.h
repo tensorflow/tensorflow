@@ -62,19 +62,6 @@ llvm::SmallVector<mlir::Value, 2> ProvideParameterRange(
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     mlir::ImplicitLocOpBuilder& builder);
 
-// Checks whether the given HLO instruction can be converted to MLIR.
-bool IsHloOpSupported(const HloInstruction* instr,
-                      se::CudaComputeCapability compute_capability);
-
-// Checks whether the given HLO computation is supported by the MLIR converter:
-// - all instructions in it are supported
-// - the signature is supported: if the computation is not a fusion computation,
-//   all arguments have rank 0.
-bool IsHloConversionSupported(const HloComputation* computation,
-                              se::GpuComputeCapability compute_capability);
-bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
-                              se::GpuComputeCapability compute_capability);
-
 // Converts a function (subgraph) to an MLIR function producing one element of
 // the result. The function must have the correct interface.
 absl::Status SubgraphToMlirFunction(
@@ -94,7 +81,7 @@ mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
                             mlir::ImplicitLocOpBuilder& b);
 
 // Creates an `apply_indexing` op for the given map.
-llvm::SmallVector<mlir::Value, 3> ApplyIndexing(const IndexingMap& map,
+llvm::SmallVector<mlir::Value, 3> ApplyIndexing(IndexingMap map,
                                                 mlir::ValueRange dims,
                                                 mlir::ValueRange symbols,
                                                 mlir::ImplicitLocOpBuilder& b);
@@ -147,6 +134,13 @@ mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
 mlir::SmallVector<mlir::Value, 2> InlineBlock(mlir::OpBuilder& builder,
                                               mlir::Block& src_block,
                                               mlir::ValueRange mapped_args);
+
+// Populates `lbs`, `ubs` and `steps` with the loop bounds from `indexing_map`.
+void GetLoopBoundsFromIndexingMap(mlir::ImplicitLocOpBuilder& b,
+                                  const IndexingMap& indexing_map,
+                                  llvm::SmallVectorImpl<mlir::Value>* lbs,
+                                  llvm::SmallVectorImpl<mlir::Value>* ubs,
+                                  llvm::SmallVectorImpl<mlir::Value>* steps);
 
 }  // namespace mlir_converter
 }  // namespace gpu

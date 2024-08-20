@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
+#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -52,13 +52,6 @@ struct MixTypeParams {
 class MixedTypeTest : public GpuCodegenTest,
                       public ::testing::WithParamInterface<MixTypeParams> {
  public:
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
-  }
-
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // We are testing Triton, remove cuBLAS fallback for these tests.
@@ -802,13 +795,6 @@ class TritonSoftmaxTest : public GpuCodegenTest,
     // folding.
     debug_options.clear_xla_disable_hlo_passes();
     return debug_options;
-  }
-
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
   }
 };
 

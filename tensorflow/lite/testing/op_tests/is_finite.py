@@ -52,7 +52,7 @@ def make_is_finite_tests(options):
 
     input_values[random_index(input_values.shape)] = np.inf
     input_values[random_index(input_values.shape)] = -np.inf
-    input_values[random_index(input_values.shape)] = np.NAN
+    input_values[random_index(input_values.shape)] = np.nan
     input_values[random_index(input_values.shape)] = tf.float32.max
     input_values[random_index(input_values.shape)] = tf.float32.min
 

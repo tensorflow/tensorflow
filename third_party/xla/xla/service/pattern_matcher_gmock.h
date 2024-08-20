@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <ostream>
 
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/test.h"
 #include "tsl/platform/test.h"
 

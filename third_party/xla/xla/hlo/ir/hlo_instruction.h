@@ -25,6 +25,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iosfwd>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/layout.h"
@@ -97,6 +99,7 @@ class HloPrintOptions {
         print_metadata_(true),
         print_metadata_only_op_name_(false),
         print_backend_config_(true),
+        sort_backend_config_(false),
         print_infeed_outfeed_config_(true),
         compact_operands_(false),
         include_layout_in_shapes_(true),
@@ -214,6 +217,14 @@ class HloPrintOptions {
   // If true, backend_config will be printed.
   HloPrintOptions& set_print_backend_config(bool value) {
     print_backend_config_ = value;
+    return *this;
+  }
+
+  // If true, will attempt to sort the backend config's json representation
+  // before printing it. If the backend config is a raw string that is not json,
+  // it will be printed as is, without sorting.
+  HloPrintOptions& set_sort_backend_config(bool value) {
+    sort_backend_config_ = value;
     return *this;
   }
 
@@ -381,6 +392,7 @@ class HloPrintOptions {
     return print_metadata_only_op_name_;
   }
   bool print_backend_config() const { return print_backend_config_; }
+  bool sort_backend_config() const { return sort_backend_config_; }
   bool print_infeed_outfeed_config() const {
     return print_infeed_outfeed_config_;
   }
@@ -421,6 +433,7 @@ class HloPrintOptions {
   bool print_metadata_;
   bool print_metadata_only_op_name_;
   bool print_backend_config_;
+  bool sort_backend_config_;
   bool print_infeed_outfeed_config_;
   bool compact_operands_;
   bool include_layout_in_shapes_;
@@ -1350,6 +1363,17 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* computation);
 
+  // Creates a composite call instruction that applies the given computation on
+  // the given operands. "shape" is the resultant shape.
+  static std::unique_ptr<HloInstruction> CreateCompositeCall(
+      const Shape& shape, HloInstruction* decomposition_root,
+      const std::string& name, const std::string& attributes, int64_t version);
+
+  static std::unique_ptr<HloInstruction> CreateCompositeCall(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* decomposition, const std::string& name,
+      const std::string& attributes, int64_t version);
+
   // Creates a custom call instruction that applies the given custom call target
   // to the given operands. "opaque" can be an arbitrary string with a
   // backend-specific interpretation. "shape" is the resultant shape.
@@ -2092,6 +2116,9 @@ class HloInstruction {
     mutable_rare()->frontend_attributes = std::move(frontend_attributes);
   }
 
+  // Appends the given frontend attributes to the existing ones. If existing
+  // frontend attributes are empty, then create it and set it to the provided
+  // one.
   void add_frontend_attributes(FrontendAttributes frontend_attributes) {
     if (!frontend_attributes.map().empty()) {
       mutable_rare()->frontend_attributes.mutable_map()->insert(
@@ -2099,9 +2126,24 @@ class HloInstruction {
     }
   }
 
+  bool has_frontend_attributes() const {
+    return has_rare() && !rare()->frontend_attributes.map().empty();
+  }
+
   const FrontendAttributes& frontend_attributes() const {
     return rare()->frontend_attributes;
   }
+
+  void set_is_composite(bool is_composite) {
+    if (!has_rare() && !is_composite) {
+      return;
+    }
+    mutable_rare()->is_composite = is_composite;
+  }
+
+  // Return the is_composite attribute. This attribute is only relevant for
+  // kCall instructions used as a Composite op.
+  bool is_composite() const { return has_rare() && rare()->is_composite; }
 
   void add_single_statistic(Statistic statistic) {
     *mutable_rare()->statistics_viz.add_statistics() = std::move(statistic);
@@ -2198,8 +2240,8 @@ class HloInstruction {
   void set_metadata_preserve_layout(bool preserve_layout) {
     metadata_->set_preserve_layout(preserve_layout);
   }
-  void set_metadata_scheduling_name(const std::string& name) {
-    metadata_->set_scheduling_name(name);
+  void set_metadata_scheduling_name(absl::string_view name) {
+    metadata_->set_scheduling_name(std::string(name));
   }
   const OpMetadata& metadata() const { return *metadata_; }
 
@@ -2549,6 +2591,9 @@ class HloInstruction {
   HloInstruction(const HloInstruction&) = delete;
   HloInstruction& operator=(const HloInstruction&) = delete;
 
+  std::shared_ptr<OriginalValue> original_value() const;
+  void set_original_value(std::shared_ptr<OriginalValue> original_value);
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
@@ -2684,6 +2729,9 @@ class HloInstruction {
     //    z' = const(20), frontend_attributes={?}
     FrontendAttributes frontend_attributes;
 
+    // Used by kCall to determine if the Call instruction is a composite.
+    bool is_composite;
+
     // Used to render an HLO graph when tracking the propagation desired values
     // through it.
     StatisticsViz statistics_viz;
@@ -2799,6 +2847,10 @@ class HloInstruction {
   // String identifier for instruction.
   std::string name_;
 
+  // Original value this instruction corresponds to in the unoptimized HLO
+  // graph.
+  std::shared_ptr<OriginalValue> original_value_ = nullptr;
+
   // Metadata for debugging.  Allocate it on heap, so that it does not increase
   // the memory footprint of HloInstruction.
   std::unique_ptr<OpMetadata> metadata_ = std::make_unique<OpMetadata>();
@@ -2819,6 +2871,14 @@ absl::StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.
 std::string PaddingConfigToString(const PaddingConfig& padding);
+
+// Returns string representation of frontend attributes.
+// Frontend attribute is a list of attribute=<value> pairs where value is either
+// a "string" or a JSON-like dict surrounded in {}. Similar to custom_call
+// backend config, this can be used to store stringified MLIR-dictionaries with
+// pretty printing.
+std::string FrontendAttributesToString(
+    const FrontendAttributes& frontend_attributes);
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {

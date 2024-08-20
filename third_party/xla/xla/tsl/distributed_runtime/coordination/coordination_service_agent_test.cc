@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
@@ -452,6 +452,58 @@ TEST_F(CoordinationServiceAgentTest, ConnectAfterReset_WithErrorPolling) {
   absl::SleepFor(absl::Seconds(2));
   // The agent should again be in ERROR state after Connect().
   EXPECT_TRUE(agent_->IsError());
+}
+
+TEST_F(CoordinationServiceAgentTest, CancelledPollForErrorRequest) {
+  // Connect coordination agent.
+  PollForErrorResponse mocked_response;
+  EXPECT_CALL(*GetClient(), PollForErrorAsync(_, _, _, _))
+      .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
+                      InvokeArgument<3>(absl::CancelledError("Test Error."))));
+
+  CoordinationServiceConfig config;
+  config.set_poll_for_error_from_service_at_startup(true);
+  InitializeAgent(config);
+  TF_ASSERT_OK(agent_->Connect());
+  // Wait a bit for the error polling thread to start.
+  absl::SleepFor(absl::Seconds(2));
+  // Cancelled error polling request will not set agent to error.
+  ASSERT_FALSE(agent_->IsError());
+}
+
+TEST_F(CoordinationServiceAgentTest, InvalidPollForErrorRequest) {
+  // Connect coordination agent.
+  PollForErrorResponse mocked_response;
+  EXPECT_CALL(*GetClient(), PollForErrorAsync(_, _, _, _))
+      .WillOnce(
+          DoAll(SetArgPointee<2>(mocked_response),
+                InvokeArgument<3>(absl::InvalidArgumentError("Test Error."))));
+
+  CoordinationServiceConfig config;
+  config.set_poll_for_error_from_service_at_startup(true);
+  InitializeAgent(config);
+  TF_ASSERT_OK(agent_->Connect());
+  // Wait a bit for the error polling thread to start.
+  absl::SleepFor(absl::Seconds(2));
+  ASSERT_TRUE(agent_->IsError());
+}
+
+TEST_F(CoordinationServiceAgentTest,
+       PollForErrorRequestWithFailedPrecondition) {
+  // Connect coordination agent.
+  PollForErrorResponse mocked_response;
+  EXPECT_CALL(*GetClient(), PollForErrorAsync(_, _, _, _))
+      .WillOnce(DoAll(
+          SetArgPointee<2>(mocked_response),
+          InvokeArgument<3>(absl::FailedPreconditionError("Test Error."))));
+
+  CoordinationServiceConfig config;
+  config.set_poll_for_error_from_service_at_startup(true);
+  InitializeAgent(config);
+  TF_ASSERT_OK(agent_->Connect());
+  // Wait a bit for the error polling thread to start.
+  absl::SleepFor(absl::Seconds(2));
+  ASSERT_TRUE(agent_->IsError());
 }
 
 TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {

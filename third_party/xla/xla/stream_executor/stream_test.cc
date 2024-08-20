@@ -29,31 +29,30 @@ namespace {
 
 class StreamTest : public ::testing::Test {
  protected:
-  std::unique_ptr<StreamExecutor> NewStreamExecutor() {
+  StreamExecutor* NewStreamExecutor() {
     Platform* platform = PlatformManager::PlatformWithName("Host").value();
-    StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetUncachedExecutor(config).value();
+    return platform->ExecutorForDevice(/*ordinal=*/0).value();
   }
 };
 
 TEST_F(StreamTest, InitOk) {
-  std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
+  StreamExecutor* executor = NewStreamExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 }
 
 TEST_F(StreamTest, InitWithIntPriorityOk) {
-  std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
+  StreamExecutor* executor = NewStreamExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream(1));
 }
 
 TEST_F(StreamTest, InitWithStreamPriorityOk) {
-  std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
+  StreamExecutor* executor = NewStreamExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream,
                           executor->CreateStream(StreamPriority::Highest));
 }
 
 TEST_F(StreamTest, OneSubStream) {
-  std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
+  StreamExecutor* executor = NewStreamExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   // Get and return a sub-stream. Sub-streams are always initialized.
@@ -72,7 +71,7 @@ TEST_F(StreamTest, OneSubStream) {
 }
 
 TEST_F(StreamTest, TwoSubStreams) {
-  std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
+  StreamExecutor* executor = NewStreamExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   // Get two sub-streams.

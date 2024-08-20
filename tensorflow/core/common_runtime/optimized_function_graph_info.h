@@ -71,9 +71,10 @@ struct OptimizedFunctionGraphInfo {
   OptimizedFunctionGraphInfo(OptimizedFunctionGraphInfo& info) = delete;
   OptimizedFunctionGraphInfo& operator=(OptimizedFunctionGraphInfo& info) =
       delete;
-  OptimizedFunctionGraphInfo(OptimizedFunctionGraphInfo&& info) = default;
+  OptimizedFunctionGraphInfo(OptimizedFunctionGraphInfo&& info) =
+      default;  // NOLINT
   OptimizedFunctionGraphInfo& operator=(OptimizedFunctionGraphInfo&& info) =
-      default;
+      default;  // NOLINT
 
   // Converts from the struct to OptimizedFunctionGraph proto.
   static OptimizedFunctionGraph ToProto(const OptimizedFunctionGraphInfo& info);

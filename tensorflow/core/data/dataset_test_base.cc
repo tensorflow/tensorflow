@@ -348,7 +348,7 @@ Status DatasetOpsTestBase::CreateOpKernel(
 
 Status DatasetOpsTestBase::CreateDatasetContext(
     OpKernel* const dateset_kernel,
-    gtl::InlinedVector<TensorValue, 4>* const inputs,
+    absl::InlinedVector<TensorValue, 4>* const inputs,
     std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
     std::unique_ptr<OpKernelContext>* dataset_context) {
   Status status = CheckOpKernelInput(*dateset_kernel, *inputs);
@@ -515,13 +515,13 @@ Status DatasetOpsTestBase::RunFunction(
 }
 
 Status DatasetOpsTestBase::CreateOpKernelContext(
-    OpKernel* kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
+    OpKernel* kernel, absl::InlinedVector<TensorValue, 4>* inputs,
     std::unique_ptr<OpKernelContext>* context) {
   return CreateOpKernelContext(kernel, inputs, &params_, context);
 }
 
 Status DatasetOpsTestBase::CreateOpKernelContext(
-    OpKernel* kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
+    OpKernel* kernel, absl::InlinedVector<TensorValue, 4>* inputs,
     std::unique_ptr<OpKernelContext::Params>* context_params,
     std::unique_ptr<OpKernelContext>* context) {
   auto params = std::make_unique<OpKernelContext::Params>();
@@ -565,7 +565,7 @@ Status DatasetOpsTestBase::CreateSerializationContext(
 }
 
 Status DatasetOpsTestBase::CheckOpKernelInput(
-    const OpKernel& kernel, const gtl::InlinedVector<TensorValue, 4>& inputs) {
+    const OpKernel& kernel, const absl::InlinedVector<TensorValue, 4>& inputs) {
   if (kernel.num_inputs() != inputs.size()) {
     return errors::InvalidArgument("The number of input elements should be ",
                                    kernel.num_inputs(),
@@ -575,7 +575,7 @@ Status DatasetOpsTestBase::CheckOpKernelInput(
 }
 
 Status DatasetOpsTestBase::AddDatasetInput(
-    gtl::InlinedVector<TensorValue, 4>* inputs, DataTypeVector input_types,
+    absl::InlinedVector<TensorValue, 4>* inputs, DataTypeVector input_types,
     DataType dtype, const TensorShape& shape) {
   if (input_types.size() < inputs->size()) {
     return errors::InvalidArgument("Adding more inputs than types: ",
@@ -862,7 +862,7 @@ Status DatasetOpsTestBase::RunDatasetOp(
     input_datasets.push_back(t.get());
     created_tensors->push_back(std::move(t));
   }
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   inputs.reserve(input_datasets.size());
   for (auto input_dataset : input_datasets) {
     inputs.emplace_back(TensorValue(input_dataset));
@@ -985,7 +985,7 @@ Status DatasetOpsTestBase::MakeDatasetTensor(
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
 
   auto input_tensors = dataset_params.GetInputTensors();
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   inputs.reserve(input_datasets.size() + input_tensors.size());
   for (auto input_dataset : input_datasets) {
     inputs.emplace_back(TensorValue(input_dataset));
@@ -1165,7 +1165,7 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
     const std::vector<Tensor>& input_components) {
   std::vector<PartialTensorShape> shapes;
   for (const auto& component : input_components) {
-    gtl::InlinedVector<int64_t, 4> partial_dim_sizes;
+    absl::InlinedVector<int64_t, 4> partial_dim_sizes;
     for (int i = 1; i < component.dims(); ++i) {
       partial_dim_sizes.push_back(component.dim_size(i));
     }

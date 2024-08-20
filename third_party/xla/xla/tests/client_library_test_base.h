@@ -71,6 +71,9 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   ClientLibraryTestBase(se::Platform* platform,
                         const LocalClientOptions& client_options);
 
+  // Returns the name of the suite currently being run.
+  std::string SuiteName() const;
+
   // Returns the name of the test currently being run.
   std::string TestName() const;
 

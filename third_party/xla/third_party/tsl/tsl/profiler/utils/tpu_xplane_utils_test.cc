@@ -21,11 +21,13 @@ limitations under the License.
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tsl {
 namespace profiler {
 namespace {
 
+using ::testing::Optional;
 using ::testing::UnorderedElementsAre;
 
 TEST(TpuXPlaneUtilsTest, GetTensorCoreXPlanesFromXSpace) {
@@ -63,6 +65,22 @@ TEST(TpuXPlaneUtilsTest, IsNotTensorCorePlaneName) {
 TEST(TpuXPlaneUtilsTest, IsNotTensorCorePlaneNameWithPrefix) {
   EXPECT_FALSE(
       GetTensorCoreId(absl::StrCat("/prefix", TpuPlaneName(0))).has_value());
+}
+
+TEST(TpuXplaneUtilsTest, GetSparseCorePlanesFromXSpace) {
+  XSpace space;
+  XPlane* p1 = FindOrAddMutablePlaneWithName(&space, TpuPlaneName(0));
+  XPlane* p2 = FindOrAddMutablePlaneWithName(&space, TpuPlaneName(1));
+  XPlane* p3 = FindOrAddMutablePlaneWithName(
+      &space, absl::StrCat(TpuPlaneName(0), " SparseCore 0"));
+  XPlane* p4 = FindOrAddMutablePlaneWithName(
+      &space, absl::StrCat(TpuPlaneName(0), " SparseCore 1"));
+
+  EXPECT_THAT(FindTensorCorePlanes(space), UnorderedElementsAre(p1, p2));
+  EXPECT_THAT(FindPlanesWithPrefix(space, kTpuPlanePrefix),
+              UnorderedElementsAre(p1, p2, p3, p4));
+  EXPECT_THAT(GetSparseCoreId(p3->name()), Optional(0));
+  EXPECT_THAT(GetSparseCoreId(p4->name()), Optional(1));
 }
 
 }  // namespace

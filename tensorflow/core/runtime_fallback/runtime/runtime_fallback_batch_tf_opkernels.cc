@@ -137,7 +137,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
             options.num_batch_threads, options.max_batch_size,
             options.batch_timeout_micros, options.max_enqueued_batches,
             options.allowed_batch_sizes, enable_large_batch_splitting,
-            disable_padding, options.low_priority_max_batch_size,
+            disable_padding, options.batch_padding_policy,
+            options.low_priority_max_batch_size,
             options.low_priority_batch_timeout_micros,
             options.low_priority_max_enqueued_batches,
             options.low_priority_allowed_batch_sizes,
@@ -437,7 +438,7 @@ REGISTER_OP("_BatchFunctionFallback")
     // BatchFunction in core/ops/batch_ops.cc.
     .Attr(
         "batch_padding_policy: "
-        "{'PAD_UP'} = 'PAD_UP'")
+        "{'PAD_UP', 'BATCH_DOWN', 'MINIMIZE_TPU_COST_PER_REQUEST'} = 'PAD_UP'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")

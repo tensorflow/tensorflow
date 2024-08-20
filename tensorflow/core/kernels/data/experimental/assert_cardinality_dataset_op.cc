@@ -173,17 +173,8 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (ctx->restored_element_count().has_value()) {
-        num_elements_ = *(ctx->restored_element_count());
-        // If the dataset has reached the end of sequence, the restored element
-        // count could be cardinality + 1.
-        if (num_elements_ > dataset()->Cardinality()) {
-          num_elements_ = dataset()->Cardinality();
-        }
-      } else {
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("num_elements"), &num_elements_));
-      }
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name("num_elements"), &num_elements_));
       return RestoreInput(ctx, reader, input_impl_);
     }
 

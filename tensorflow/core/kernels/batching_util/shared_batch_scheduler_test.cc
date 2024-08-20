@@ -27,11 +27,14 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/status/status.h"
 #include "absl/time/time.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
@@ -39,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/criticality.h"
 
 namespace tensorflow {
@@ -1050,6 +1052,79 @@ TEST_P(SharedBatchSchedulerTest, ZeroQueueRewrittenToOneQueue) {
         callback, &queue));
     EXPECT_EQ(queue->SchedulingCapacity(), input_batch_size_limit);
   }
+}
+
+TEST_P(SharedBatchSchedulerTest, BatchPaddingPolicyBatchDown) {
+  if (enable_lazy_split()) {
+    GTEST_SKIP()
+        << "BatchPaddingPolicy::kBatchDown is not supported for lazy split.";
+  }
+
+  // Set up a fake clock, which only advances when we explicitly tell it to.
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    Notification first_batch_processed;
+    Notification second_batch_processed;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      if (!first_batch_processed.HasBeenNotified()) {
+        // This is the main expectation of the test.
+        //
+        // The scheduler should  have trimmed the batch to a smaller allowed
+        // size which requires no padding.
+        EXPECT_EQ(batch->size(), 2);
+
+        first_batch_processed.Notify();
+        return;
+      }
+
+      if (!second_batch_processed.HasBeenNotified()) {
+        // Leftovers after the first batch.
+        EXPECT_EQ(batch->size(), 1);
+
+        second_batch_processed.Notify();
+        return;
+      }
+
+      ADD_FAILURE() << "Batch callback must not be invoked more than expected";
+    };
+
+    auto scheduler = CreateSharedBatchScheduler(1, &env);
+
+    QueueOptions options =
+        CreateQueueOptions(/* max_execution_batch_size= */ 10,
+                           /* input_batch_size_limit= */ 10,
+                           /* batch_timeout_micros= */ 10,
+                           /* max_enqueued_batches= */ 10);
+
+    // The most interesting option for this test.
+    options.allowed_batch_sizes = {1, 2, 4, 8};
+    options.batch_padding_policy = kBatchDownPolicy;
+
+    auto queue = CreateQueue(scheduler, options, callback);
+
+    // Schedule some tasks and ensure the scheduler calls the callback after a
+    // batch timeout has expired.
+    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+    env.AdvanceByMicroseconds(options.batch_timeout_micros);
+    first_batch_processed.WaitForNotification();
+
+    // Ensure the scheduler correctly updates the starting time of the new
+    // batch.
+    env.AdvanceByMicroseconds(options.batch_timeout_micros - 1);
+    EXPECT_FALSE(second_batch_processed.WaitForNotificationWithTimeout(
+        absl::Milliseconds(10)));
+    env.AdvanceByMicroseconds(1);
+    second_batch_processed.WaitForNotification();
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
 }
 
 // TODO(b/161857471):

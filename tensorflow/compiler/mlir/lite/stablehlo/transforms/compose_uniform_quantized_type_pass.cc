@@ -1144,7 +1144,8 @@ class ComposeUniformQuantizedDotGeneralOp
             .clone(output_uniform_quantized_type),
         /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
         /*dot_dimension_numbers=*/op.getDotDimensionNumbers(),
-        /*precision_config=*/op.getPrecisionConfigAttr());
+        /*precision_config=*/op.getPrecisionConfigAttr(),
+        /*algorithm=*/op.getAlgorithmAttr());
 
     rewriter.replaceAllUsesWith(op.getResult(), new_dot_general_op.getResult());
 
@@ -1489,7 +1490,8 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
             .clone(output_uniform_quantized_type),
         /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
         /*dot_dimension_numbers=*/op.getDotDimensionNumbers(),
-        /*precision_config=*/op.getPrecisionConfigAttr());
+        /*precision_config=*/op.getPrecisionConfigAttr(),
+        /*algorithm=*/op.getAlgorithmAttr());
 
     rewriter.replaceAllUsesWith(op.getResult(), new_dot_general_op.getResult());
 

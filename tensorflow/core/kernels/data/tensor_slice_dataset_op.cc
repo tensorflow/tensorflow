@@ -55,7 +55,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         replicate_on_split_(replicate_on_split) {
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
-      gtl::InlinedVector<int64_t, 4> element_dim_sizes;
+      absl::InlinedVector<int64_t, 4UL> element_dim_sizes;
       // Handle scalar here. Check that everyone matches here? Or fail
       // at runtime?
       for (int i = 1; i < t.dims(); ++i) {
@@ -206,14 +206,16 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return split_provider_->Save(
-          [this](const std::string& key) { return full_name(key); }, writer);
+      TF_RETURN_IF_ERROR(split_provider_->Save(
+          [this](const std::string& key) { return full_name(key); }, writer));
+      TF_RETURN_IF_ERROR(global_shuffle_iterator_.Save(prefix(), ctx, writer));
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       if (ctx->restored_element_count().has_value()) {
-        return global_shuffle_iterator_.Restore(ctx);
+        return global_shuffle_iterator_.Restore(prefix(), ctx, reader);
       }
       return split_provider_->Restore(
           [this](const std::string& key) { return full_name(key); }, reader);

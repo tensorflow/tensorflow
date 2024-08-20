@@ -61,17 +61,18 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
 #include "xla/service/cpu/collectives_interface.h"
-#include "xla/tsl/python/lib/core/numpy.h"  //NOLINT
-#ifdef XLA_PYTHON_ENABLE_GPU
-#include "xla/python/gpu_support.h"
-#endif  // XLA_PYTHON_ENABLE_GPU
+#include "xla/tsl/python/lib/core/numpy.h"  // NOLINT
 
-#ifdef __linux__
+#if defined(__linux__)
 #include "gloo/transport/tcp/attr.h"
 #include "gloo/transport/tcp/device.h"
 #include "xla/pjrt/cpu/gloo_collectives.h"
 #include "xla/pjrt/cpu/gloo_kv_store.h"
-#endif  // __linux__
+#elif defined(__APPLE__)
+#include "gloo/transport/uv/device.h"
+#include "xla/pjrt/cpu/gloo_collectives.h"  // NOLINT
+#include "xla/pjrt/cpu/gloo_kv_store.h"  // NOLINT
+#endif  // defined(__linux__)
 
 #if !defined(_WIN32) && !defined(PLATFORM_GOOGLE)
 #include "xla/pjrt/cpu/mpi_collectives.h"
@@ -257,7 +258,7 @@ NB_MODULE(xla_extension, m_nb) {
          std::optional<std::string> hostname,
          std::optional<std::string> interface)
           -> std::shared_ptr<xla::cpu::CollectivesInterface> {
-#ifdef __linux__
+#if defined(__linux__)
         std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
         if (distributed_client != nullptr) {
           kv_store = GetDistributedKeyValueStore(distributed_client,
@@ -274,10 +275,27 @@ NB_MODULE(xla_extension, m_nb) {
         auto tcp_device = gloo::transport::tcp::CreateDevice(tcp_attrs);
         return std::make_shared<cpu::GlooCollectives>(std::move(gloo_kv_store),
                                                       std::move(tcp_device));
-#else   // __linux__
+#elif defined(__APPLE__)
+        std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
+        if (distributed_client != nullptr) {
+          kv_store = GetDistributedKeyValueStore(distributed_client,
+                                                 /*key_prefix=*/"cpu:");
+        }
+        auto gloo_kv_store = std::make_unique<cpu::GlooKeyValueStore>(kv_store);
+        auto uv_attrs = gloo::transport::uv::attr();
+        if (hostname) {
+          uv_attrs.hostname = *hostname;
+        }
+        if (interface) {
+          uv_attrs.iface = *interface;
+        }
+        auto uv_device = gloo::transport::uv::CreateDevice(uv_attrs);
+        return std::make_shared<cpu::GlooCollectives>(std::move(gloo_kv_store),
+                                                      std::move(uv_device));
+#else   // defined(__linux__)
         throw xla::XlaRuntimeError(
-            "make_gloo_tcp_collectives only implemented for linux");
-#endif  // __linux__
+            "make_gloo_tcp_collectives only implemented for linux and macos");
+#endif  // defined(__linux__)
       },
       nb::arg("distributed_client"), nb::arg("hostname").none() = std::nullopt,
       nb::arg("interface").none() = std::nullopt);
@@ -365,10 +383,6 @@ NB_MODULE(xla_extension, m_nb) {
   m_nb.def("initialize_pjrt_plugin", [](std::string platform_name) {
     return xla::ThrowIfError(pjrt::InitializePjrtPlugin(platform_name));
   });
-
-#ifdef XLA_PYTHON_ENABLE_GPU
-  RegisterGpuClientAndDefineGpuAllocatorConfig(m_nb);
-#endif  // XLA_PYTHON_ENABLE_GPU
 
   m_nb.def(
       "get_c_api_client",

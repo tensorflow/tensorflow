@@ -369,7 +369,9 @@ absl::StatusOr<std::unique_ptr<Executable>> HloRunnerPjRt::CreateExecutable(
                       CreateExecutable(module.get(), compile_options));
 
   auto executable = std::make_unique<PjRtWrappedExecutable>(
-      std::shared_ptr<HloModule>(std::move(module)), pjrt_executable.release());
+      std::shared_ptr<HloModule>(
+          std::move(pjrt_executable->GetHloModules().value()[0])),
+      pjrt_executable.release());
 
   std::unique_ptr<Executable> exec =
       static_cast<std::unique_ptr<Executable>>(executable.release());

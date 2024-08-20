@@ -13,6 +13,7 @@
 // CHECK: sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
 sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
 
+// CHECK-LABEL: func @main
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>})
   %arg0: tensor<8x16xf32>           {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}
@@ -35,6 +36,7 @@ func.func @main(
 // CHECK: sdy.mesh @mesh = <"a"=2, "b"=2>
 sdy.mesh @mesh = <"a"=2, "b"=2>
 
+// CHECK-LABEL: func @main
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32>)
   %arg0: tensor<8x16xf32>
@@ -55,6 +57,7 @@ func.func @main(
 // CHECK: sdy.mesh @mesh = <"a"=2, "b"=2>
 sdy.mesh @mesh = <"a"=2, "b"=2>
 
+// CHECK-LABEL: func @main
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32>)
   %arg0: tensor<8x16xf32>
@@ -78,6 +81,7 @@ func.func @main(
 // CHECK: sdy.mesh @mesh = <"a"=2, "b"=2>
 sdy.mesh @mesh = <"a"=2, "b"=2>
 
+// CHECK-LABEL: func @main
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32>)
   %arg0: tensor<8x16xf32>
@@ -97,7 +101,7 @@ func.func @main(
 // CHECK: sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
 sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
 
-// CHECK:      @main(
+// CHECK-LABEL:      @main(
 // CHECK-SAME:   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}p4]>},
 // CHECK-SAME:   %arg1: tensor<8x8xf32>, %arg2: tensor<8x8xf32>
 // CHECK-SAME:   ) -> tensor<8x8xf32> {
@@ -122,6 +126,7 @@ func.func @main(
 // CHECK: sdy.mesh @mesh = <"data"=2>
 sdy.mesh @mesh = <"data"=2>
 
+// CHECK-LABEL: func @main
 func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   // CHECK:  sdy.sharding_constraint %arg0 <@mesh, [{"data", ?}, {?}]> :  tensor<8x8xf32>
   %0 = sdy.sharding_constraint %arg0       <@mesh, [{"data", ?}, {?}]> :  tensor<8x8xf32>
@@ -144,6 +149,7 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 // CHECK: sdy.mesh @mesh_2 = <"x"=8, "y"=4>
 sdy.mesh @mesh_2 = <"x"=8, "y"=4>
 
+// CHECK-LABEL: func @main
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>}) {
   %arg0: tensor<8x16xf32>) ->           (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>}) {
@@ -157,36 +163,41 @@ func.func @main(
 
 // -----
 
+// CHECK: sdy.mesh @mesh = <"x"=2>
+sdy.mesh @mesh = <"x"=2>
+
 // Test WhileOp with lifted free variables and sinked constants.
 
-// CHECK: func @main
-func.func @main(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
+// CHECK-LABEL: func @main
+func.func @main(
+    %arg0: tensor<32x96xf32>,
+    %arg1: tensor<32x96xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh, [{}, {}]>"}})
+    -> tensor<32x96xf32> {
   // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
   // CHECK-NEXT: %[[C32:.*]] = sdy.constant dense<32>
-  // CHECK-NEXT: %[[WHILE:.*]]:3 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]], %iterArg_1 = %[[C32]])
+  // CHECK-NEXT: %[[SC:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{?}, {?}]>
+  // CHECK-NEXT: %[[WHILE:.*]]:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
   // CHECK-NEXT:   cond {
-  // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %iterArg_1
+  // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %[[C32]]
   // CHECK-NEXT:   mhlo.return %[[COND]]
   // CHECK-NEXT: } do {
   // CHECK-DAG:    %[[C1:.*]] = sdy.constant dense<1>
   // CHECK-DAG:    %[[ADD_0:.*]] = mhlo.add %iterArg_0, %[[C1]]
-  // CHECK-DAG:    %[[ADD_1:.*]] = mhlo.add %iterArg, %iterArg
-  // CHECK-DAG:    %[[IDENTITY:.*]] = sdy.identity %iterArg_1
-  // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]], %[[IDENTITY]]
+  // CHECK-DAG:    %[[ADD_1:.*]] = mhlo.add %iterArg, %[[SC]]
+  // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]]
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[WHILE]]#0
   %0 = sdy.constant dense<0> : tensor<i32>
   %1 = sdy.constant dense<32> : tensor<i32>
-  %2:3 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %0, %iterArg_1 = %1) : tensor<32x96xf32>, tensor<i32>, tensor<i32>
+  %2:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %0) : tensor<32x96xf32>, tensor<i32>
     cond {
-    %3 = mhlo.compare LT, %iterArg_0, %iterArg_1 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %3 = mhlo.compare LT, %iterArg_0, %1 : (tensor<i32>, tensor<i32>) -> tensor<i1>
     mhlo.return %3 : tensor<i1>
   } do {
     %3 = sdy.constant dense<1> : tensor<i32>
     %4 = mhlo.add %iterArg_0, %3 : tensor<i32>
-    %5 = mhlo.add %iterArg, %iterArg : tensor<32x96xf32>
-    %6 = sdy.identity %iterArg_1 : tensor<i32>
-    mhlo.return %5, %4, %6 : tensor<32x96xf32>, tensor<i32>, tensor<i32>
+    %5 = mhlo.add %iterArg, %arg1 : tensor<32x96xf32>
+    mhlo.return %5, %4 : tensor<32x96xf32>, tensor<i32>
   }
   return %2#0 : tensor<32x96xf32>
 }

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace checkpoint {

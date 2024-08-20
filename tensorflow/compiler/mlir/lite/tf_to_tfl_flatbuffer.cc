@@ -61,10 +61,12 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantize_weights.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
@@ -96,7 +98,6 @@ limitations under the License.
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 
@@ -107,7 +108,6 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::Operation;
 using mlir::OwningOpRef;
-using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
 bool IsControlFlowV1Op(Operation* op) {
@@ -310,13 +310,13 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
       reinterpret_cast<const uint8_t*>(translated_result.c_str());
   const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
 
-  ::tflite::optimize::BufferType quantized_type;
+  mlir::lite::toco_legacy::BufferType quantized_type;
   switch (quant_specs.inference_type) {
     case DT_QINT8:
-      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
+      quantized_type = mlir::lite::toco_legacy::BufferType::QUANTIZED_INT8;
       break;
     case DT_HALF:
-      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
+      quantized_type = mlir::lite::toco_legacy::BufferType::QUANTIZED_FLOAT16;
       break;
     default:
       return absl::InvalidArgumentError("Quantized type not supported");
@@ -324,9 +324,10 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
   }
 
   bool use_updated_hybrid_scheme = !quant_specs.disable_per_channel;
-  absl::Status quantize_weights_status = ::tflite::optimize::QuantizeWeights(
-      &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
-      ::tflite::optimize::QuantizerType::OLD_QUANTIZER);
+  absl::Status quantize_weights_status =
+      mlir::lite::toco_legacy::QuantizeWeights(
+          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
+          mlir::lite::toco_legacy::QuantizerType::OLD_QUANTIZER);
   if (!quantize_weights_status.ok()) return quantize_weights_status;
   const uint8_t* q_buffer = q_builder.GetBufferPointer();
   *result =

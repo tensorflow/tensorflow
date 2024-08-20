@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -49,8 +50,8 @@ bool IsPadValCstZero(mhlo::PadOp op) {
 }
 
 DenseIntElementsAttr BuildTFLPaddingAttr(OpBuilder& b, mhlo::PadOp op) {
-  auto lows = UnrollSplat(op.getEdgePaddingLow());
-  auto highs = UnrollSplat(op.getEdgePaddingHigh());
+  auto lows = UnrollI64Splat(op.getEdgePaddingLow());
+  auto highs = UnrollI64Splat(op.getEdgePaddingHigh());
 
   llvm::SmallVector<int64_t> res;
   for (auto [l, h] : llvm::zip(lows, highs)) {

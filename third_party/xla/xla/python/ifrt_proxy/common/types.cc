@@ -83,7 +83,6 @@ proto::ArrayCopySemantics ToArrayCopySemanticsProto(ArrayCopySemantics s) {
 
 absl::StatusOr<ArrayCopySemantics> FromArrayCopySemanticsProto(
     proto::ArrayCopySemantics s) {
-  MakeArrayFromHostBufferRequest req;
   switch (s) {
     case proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY:
       return ArrayCopySemantics::kAlwaysCopy;

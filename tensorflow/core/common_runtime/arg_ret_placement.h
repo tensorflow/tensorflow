@@ -93,7 +93,7 @@ Status SetAllocAttrsForRets(const gtl::InlinedVector<Node*, 4>& nodes,
 // ops) based on dtype. Logging of warnings if an int32 ret does not have
 // expected full_type information (i.e. if the source of the input to the ret
 // does not have expected full type information) can be enabled.
-Status WeakSetAllocAttrsForRets(const gtl::InlinedVector<Node*, 4>& nodes,
+Status WeakSetAllocAttrsForRets(const absl::InlinedVector<Node*, 4UL>& nodes,
                                 const DataTypeVector& dtypes,
                                 std::vector<AllocatorAttributes>& alloc_attrs);
 

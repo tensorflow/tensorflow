@@ -34,7 +34,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
-ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
+ExecutionStreamAssignment::ExecutionStreamAssignment(
+    const HloModule* module, ExecutionStreamAssignmentOptions options) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
   // We'll walk the `CallGraph` starting from the entrypoint. The instructions
@@ -88,14 +89,18 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
         // Asynchronous calls will result in a new `ExecutionStreamId` being
         // dispensed for the called computations.
         CHECK_EQ(callsite.instruction()->opcode(), HloOpcode::kAsyncStart);
-        const ExecutionStreamId async_stream_id = next_stream_id++;
-        enqueue_called_computations(callsite, async_stream_id);
+        enqueue_called_computations(callsite, next_stream_id);
 
         AsyncExecutionStreamIds streams;
         streams.source_stream_id = pending.stream_id;
-        streams.destination_stream_id = async_stream_id;
+        streams.destination_stream_id = next_stream_id;
         CHECK(async_instructions_.try_emplace(callsite.instruction(), streams)
                   .second);
+
+        next_stream_id++;
+        if (next_stream_id.value() > options.number_of_execution_streams) {
+          next_stream_id = ExecutionStreamId(1);
+        }
       } else {
         // Synchronous calls will result in the called computations being
         // invoked using the same `ExecutionStreamId`.

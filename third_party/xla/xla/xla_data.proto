@@ -661,6 +661,13 @@ message GatherDimensionNumbers {
   // The dimension in the start_indices input that contains the starting
   // indices.
   int64 index_vector_dim = 4;
+
+  // This is the batch dimensions in the operand.
+  repeated int64 operand_batching_dims = 5;
+
+  // This is the batch dimensions in the index, and it should be the same size
+  // as operand_batching_dims.
+  repeated int64 start_indices_batching_dims = 6;
 }
 
 // Describes the dimension numbers for a scatter operation.
@@ -675,6 +682,12 @@ message ScatterDimensionNumbers {
 
   repeated int64 scatter_dims_to_operand_dims = 3;
   int64 index_vector_dim = 4;
+
+  // This is the batch dimension in the input.
+  repeated int64 input_batching_dims = 5;
+
+  // This is the batch dimension in the index.
+  repeated int64 scatter_indices_batching_dims = 6;
 }
 
 message ConvolutionDimensionNumbers {
@@ -1086,4 +1099,14 @@ message OutputOperandAliasing {
   repeated int64 output_shape_index = 1;
   int64 operand_index = 2;
   repeated int64 operand_shape_index = 3;
+}
+
+message OriginalArrayProto {
+  repeated int64 leaf_shape_index = 1;
+  string instruction_name = 2;
+  repeated int64 shape_index = 3;
+}
+
+message OriginalValueProto {
+  repeated OriginalArrayProto leaves = 1;
 }

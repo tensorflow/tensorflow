@@ -41,16 +41,6 @@ class SyclPlatform : public Platform {
   SyclPlatform();
   ~SyclPlatform() override;
 
-  // SyclPlatform-specific functionality
-  // Returns the number of distinct buses / NUMA nodes on the machine.
-  int BusCount();
-
-  // Returns the bus/NUMA node for the specified device ordinal.
-  int DeviceToBus(int device_ordinal);
-
-  // Returns the lowest-ordinal-number StreamExecutor on the specified bus.
-  absl::StatusOr<StreamExecutor*> FirstExecutorForBus(int bus_ordinal);
-
   // Platform interface implementation:
   // Returns the same value as kSyclPlatform above.
   Platform::Id id() const override;
@@ -65,30 +55,18 @@ class SyclPlatform : public Platform {
 
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
-  absl::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) override;
-
-  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) override;
-
  private:
-  // Determines the number of NUMA nodes and the assignment of executor to each.
-  void InspectNumaNodes();
+  // Returns a device constructed with ordinal without
+  // looking in or storing to the Platform's executor cache.
+  // Ownership IS transferred to the caller.
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+      int ordinal) override;
 
   // This platform's name.
   std::string name_;
 
   // Cache of created executors.
   ExecutorCache executor_cache_;
-
-  // The smallest NUMA node value for any device managed by this machine
-  // manager. Used, along with limit_numa_node_, to convert NUMA nodes into bus
-  // ordinals. The NUMA node space occupied by GPUs is assumed to be dense.
-  int min_numa_node_;
-
-  // Larger than the NUMA node value for any device managed by this machine
-  // manager.
-  int limit_numa_node_;
 
   SyclPlatform(const SyclPlatform&) = delete;
   void operator=(const SyclPlatform&) = delete;

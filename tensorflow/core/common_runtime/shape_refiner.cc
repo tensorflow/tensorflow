@@ -742,19 +742,29 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
           // performing inference on the function body.
           auto const_tensor_map_copy = const_tensor_map_;
           const_tensor_map_.clear();
+          VLOG(4) << "Running shape inference for function \""
+                  << function.name() << "\".";
           Status function_inference_status = InferShapesForFunction(
               function_def, AttrSlice(&function.attr()), c);
           const_tensor_map_ = const_tensor_map_copy;
+          VLOG(4) << "Shape inference for function \"" << function.name()
+                  << "\" returned status " << function_inference_status << ".";
           return function_inference_status;
         }
       }
     }
 
     if (op_reg_data->shape_inference_fn) {
+      VLOG(4) << "Running shape inference function for node \"" << node->name()
+              << "\" of type \"" << node->type_string() << "\".";
       TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
     } else {
+      VLOG(4) << "Unknown shape inference function for node \"" << node->name()
+              << "\" of type \"" << node->type_string() << "\".";
       TF_RETURN_IF_ERROR(c->Run(shape_inference::UnknownShape));
     }
+    VLOG(4) << "Shape inference passed for node \"" << node->name()
+            << "\" of type \"" << node->type_string() << "\".";
     return absl::OkStatus();
   };
   TF_RETURN_IF_ERROR(run_inference_lambda());

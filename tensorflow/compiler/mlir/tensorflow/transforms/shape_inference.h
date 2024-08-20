@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SHAPE_INFERENCE_H_
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -30,6 +31,9 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
+
+inline constexpr char kMLIRContextSingleThreadVar[] =
+    "TF_USE_SINGLE_THREAD_MLIR_CONTEXT";
 
 // Returns whether type can be further refined.
 bool CanBeRefined(Type type);
@@ -70,6 +74,9 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
                                       int64_t graph_version,
                                       int64_t max_iterations = 10,
                                       ArrayRef<TypeID> ops_to_skip = {});
+
+// Create a MLIRContext based on the threading setup in the env var.
+std::unique_ptr<MLIRContext> MakeMLIRContextWithThreading();
 
 }  // namespace TF
 

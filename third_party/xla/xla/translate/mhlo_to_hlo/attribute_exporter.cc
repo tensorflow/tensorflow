@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Support/LLVM.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
@@ -185,4 +187,99 @@ std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   return std::nullopt;
 }
 
+std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
+    llvm::ArrayRef<mlir::Attribute> aliasing) {
+  if (aliasing.empty()) return std::nullopt;
+
+  xla::HloInputOutputAliasProto input_output_alias_proto;
+  for (auto attr : aliasing) {
+    auto entry_attr = mlir::cast<mlir::DictionaryAttr>(attr);
+    auto alias_attr = mlir::cast<mlir::DictionaryAttr>(entry_attr.get("alias"));
+    mlir::ArrayRef<int64_t> output_index =
+        mlir::cast<mlir::DenseI64ArrayAttr>(entry_attr.get("output_index"))
+            .asArrayRef();
+    mlir::ArrayRef<int64_t> parameter_index =
+        mlir::cast<mlir::DenseI64ArrayAttr>(alias_attr.get("parameter_index"))
+            .asArrayRef();
+    HloInputOutputAliasProto::AliasEntryProto entry;
+    entry.mutable_output_shape_index()->Add(output_index.begin(),
+                                            output_index.end());
+    entry.set_parameter_number(
+        mlir::cast<mlir::IntegerAttr>(alias_attr.get("parameter_number"))
+            .getInt());
+    entry.mutable_parameter_shape_index()->Add(parameter_index.begin(),
+                                               parameter_index.end());
+    mlir::StringRef kind =
+        mlir::cast<mlir::StringAttr>(alias_attr.get("kind")).getValue();
+    if (kind == "may_alias")
+      entry.set_kind(xla::Kind::MAY_ALIAS);
+    else if (kind == "must_alias")
+      entry.set_kind(xla::Kind::MUST_ALIAS);
+    else
+      entry.set_kind(xla::Kind::UNDEFINED_ALIAS);
+    input_output_alias_proto.add_entries()->Swap(&entry);
+  }
+  return input_output_alias_proto;
+}
+
+DotDimensionNumbers ConvertDotDimensionNumbers(
+    mlir::mhlo::DotDimensionNumbersAttr input) {
+  DotDimensionNumbers output;
+
+  for (auto v : input.getLhsBatchingDimensions()) {
+    output.add_lhs_batch_dimensions(v);
+  }
+
+  for (auto v : input.getRhsBatchingDimensions()) {
+    output.add_rhs_batch_dimensions(v);
+  }
+
+  for (auto v : input.getLhsContractingDimensions()) {
+    output.add_lhs_contracting_dimensions(v);
+  }
+
+  for (auto v : input.getRhsContractingDimensions()) {
+    output.add_rhs_contracting_dimensions(v);
+  }
+
+  return output;
+}
+
+DotDimensionNumbers ConvertDotDimensionNumbers(
+    absl::Span<const int64_t> lhs_batch, absl::Span<const int64_t> lhs_contract,
+    absl::Span<const int64_t> rhs_batch,
+    absl::Span<const int64_t> rhs_contract) {
+  DotDimensionNumbers output;
+  for (auto v : lhs_batch) {
+    output.add_lhs_batch_dimensions(v);
+  }
+
+  for (auto v : rhs_batch) {
+    output.add_rhs_batch_dimensions(v);
+  }
+
+  for (auto v : lhs_contract) {
+    output.add_lhs_contracting_dimensions(v);
+  }
+
+  for (auto v : rhs_contract) {
+    output.add_rhs_contracting_dimensions(v);
+  }
+
+  return output;
+}
+
+absl::StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
+    const mlir::ArrayAttr& array) {
+  int rank = array.size();
+  std::vector<int64_t> converted_array(rank);
+  for (int i = 0; i < rank; i++) {
+    mlir::IntegerAttr attr = mlir::dyn_cast<mlir::IntegerAttr>(array[i]);
+    if (!attr) {
+      return Internal("Type Error: Expected layout integer attribute");
+    }
+    converted_array[i] = attr.getInt();
+  }
+  return converted_array;
+}
 }  // namespace xla

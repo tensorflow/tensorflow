@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -30,24 +30,36 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
+#include "xla/service/name_uniquer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/map_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
@@ -405,8 +417,8 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    // Don't print async computations when the sytax sugar is enabled since that
-    // is redundant information.
+    // Don't print async computations when the syntax sugar is enabled since
+    // that is redundant information.
     if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation() &&
         computation->CanExpandIntoSingleInstruction()) {
       continue;
@@ -848,7 +860,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
                 outlined_instruction);
 
     // Mark instruction_to_outline an output if it is used outside the
-    // subcomputation or is the output of the original computation (i.e. used
+    // sub-computation or is the output of the original computation (i.e. used
     // externally).
     if (instruction_to_outline->user_count() == 0 ||
         IsUsedOutsideSubcomputation(*instruction_to_outline,
@@ -917,7 +929,7 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   if (computations_.empty()) {
     return {};
   }
-  // First determine all root computations by building a set of nonroot
+  // First determine all root computations by building a set of non-root
   // computations (computations which are called by an instruction in the
   // module).
   absl::flat_hash_set<HloComputation*> nonroot_computations;

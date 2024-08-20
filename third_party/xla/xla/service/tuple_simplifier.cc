@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -116,6 +117,11 @@ absl::StatusOr<bool> TupleSimplifier::Run(
       }
     }
   }
+
+  if (module->has_schedule()) {
+    TF_RETURN_IF_ERROR(module->schedule().Update());
+  }
+
   return changed;
 }
 

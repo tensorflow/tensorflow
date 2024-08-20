@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compilation_method.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
@@ -101,12 +102,20 @@ ENTRY e {
          "num_ctas":1}}}
 })";
 
+constexpr std::string_view kResultsInNoPtxHlo = R"(
+  ENTRY e {
+    a = f32[5,5] parameter(0)
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+      backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
+  })";
+
 std::string_view GetHlo(std::string_view name) {
   static const absl::flat_hash_map<std::string_view, std::string_view>* const
       kHloMap = new absl::flat_hash_map<std::string_view, std::string_view>(
           {{"simple", kSimpleHlo},
            {"parallel_compilation", kParallelCompilationHlo},
-           {"requires_sm90a", kSM90AHlo}});
+           {"requires_sm90a", kSM90AHlo},
+           {"results_in_no_ptx", kResultsInNoPtxHlo}});
   return kHloMap->at(name);
 }
 
@@ -155,6 +164,29 @@ class NVPTXCompilationTests
       // Compiled without libnvptxcompiler support
       GTEST_SKIP() << "libnvptxcompiler is not supported in this build.";
     }
+
+    if (!stream_executor::IsLibNvJitLinkSupported() &&
+        (compilation_method == PtxCompilationMethod::kNvJitLink ||
+         linking_method == PtxLinkingMethod::kNvJitLink)) {
+      // Compiled without libnvjitlink support
+      GTEST_SKIP() << "libnvjitlink is not supported in this build.";
+    }
+
+    if (compilation_method == PtxCompilationMethod::kNvJitLink &&
+        linking_method != PtxLinkingMethod::kNvJitLink) {
+      // When compilation method is NvJitLink, linking method must be NvJitLink
+      // as well.
+      GTEST_SKIP() << "Compilation method NvJitLink is only supported if the "
+                      "linking method is NvJitLink as well.";
+    }
+
+    if (compilation_method == PtxCompilationMethod::kPtxas &&
+        linking_method == PtxLinkingMethod::kNvJitLink) {
+      // We could support this combination, but it would require some
+      // refactoring of the flags.
+      GTEST_SKIP() << "Compilation method Ptxas is not supported with linking "
+                      "method NvJitLink.";
+    }
   }
 
   void SetDebugOptionsFromPtxSettings(DebugOptions* debug_options,
@@ -162,6 +194,10 @@ class NVPTXCompilationTests
                                       PtxLinkingMethod linking_method) {
     debug_options->set_xla_gpu_enable_libnvptxcompiler(
         compilation_method == PtxCompilationMethod::kNvPtxCompiler);
+
+    debug_options->set_xla_gpu_enable_libnvjitlink(
+        compilation_method == PtxCompilationMethod::kNvJitLink ||
+        linking_method == PtxLinkingMethod::kNvJitLink);
 
     debug_options->set_xla_gpu_enable_llvm_module_compilation_parallelism(
         linking_method != PtxLinkingMethod::kNone);
@@ -260,14 +296,19 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::Span<const uint8_t> reference_binary =
       static_cast<GpuExecutable*>(reference.value().get())->binary();
 
-  if (executable_binary != reference_binary) {
-    std::string test_name =
-        GenerateParametrizedTestname(name, compilation_method, linking_method);
-    DumpArtifactIfEnabled(absl::StrCat(test_name, "_executable.bin"),
-                          executable_binary);
-    DumpArtifactIfEnabled(absl::StrCat(test_name, "_reference.bin"),
-                          reference_binary);
+  if (executable_binary == reference_binary) {
+    // If the binaries are exactly the same, we can short circuit and don't need
+    // to parse them.
+    SUCCEED();
+    return;
   }
+
+  std::string test_name =
+      GenerateParametrizedTestname(name, compilation_method, linking_method);
+  DumpArtifactIfEnabled(absl::StrCat(test_name, "_executable.bin"),
+                        executable_binary);
+  DumpArtifactIfEnabled(absl::StrCat(test_name, "_reference.bin"),
+                        reference_binary);
 
   auto get_text_sections = [&](absl::Span<const uint8_t> binary)
       -> absl::StatusOr<absl::btree_map<std::string, std::string>> {
@@ -313,12 +354,15 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
 
 INSTANTIATE_TEST_SUITE_P(
     NVPTXCompilationTest, NVPTXCompilationTests,
-    ::testing::Combine(
-        ::testing::Values("simple", "parallel_compilation", "requires_sm90a"),
-        ::testing::Values(PtxCompilationMethod::kNvPtxCompiler,
-                          PtxCompilationMethod::kPtxas),
-        ::testing::Values(PtxLinkingMethod::kNone, PtxLinkingMethod::kNvLink,
-                          PtxLinkingMethod::kDriver)),
+    ::testing::Combine(::testing::Values("simple", "parallel_compilation",
+                                         "requires_sm90a", "results_in_no_ptx"),
+                       ::testing::Values(PtxCompilationMethod::kNvPtxCompiler,
+                                         PtxCompilationMethod::kPtxas,
+                                         PtxCompilationMethod::kNvJitLink),
+                       ::testing::Values(PtxLinkingMethod::kNone,
+                                         PtxLinkingMethod::kNvLink,
+                                         PtxLinkingMethod::kDriver,
+                                         PtxLinkingMethod::kNvJitLink)),
     [](const ::testing::TestParamInfo<std::tuple<
            std::string_view, PtxCompilationMethod, PtxLinkingMethod>>& info) {
       return GenerateParametrizedTestname(std::get<0>(info.param),

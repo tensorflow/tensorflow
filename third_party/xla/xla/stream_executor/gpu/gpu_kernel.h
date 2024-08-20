@@ -39,7 +39,9 @@ namespace stream_executor::gpu {
 
 class GpuKernel : public Kernel {
  public:
-  explicit GpuKernel(GpuExecutor* gpu_executor) : gpu_executor_(gpu_executor) {}
+  explicit GpuKernel(GpuExecutor* gpu_executor)
+      : gpu_executor_(gpu_executor),
+        gpu_context_(gpu_executor->gpu_context()) {}
 
   // Note that the function is unloaded when the module is unloaded, and the
   // module that the function is contained in is owned by the GpuExecutor.
@@ -51,17 +53,6 @@ class GpuKernel : public Kernel {
   unsigned Arity() const override { return arity_; }
 
   void set_name(std::string name) { name_ = std::move(name); }
-  void set_gpu_context(GpuContext* gpu_context) { gpu_context_ = gpu_context; }
-
-  // Returns the GpuFunctionHandle value for passing to the CUDA API.
-  GpuFunctionHandle AsGpuFunctionHandle() const {
-    DCHECK(gpu_function_ != nullptr);
-    return const_cast<GpuFunctionHandle>(gpu_function_);
-  }
-
-  // Returns the slot that the GpuFunctionHandle is stored within for this
-  // object, for the CUDA API which wants to load into a GpuFunctionHandle*.
-  GpuFunctionHandle* gpu_function_ptr() { return &gpu_function_; }
 
   // Returns the current kernel cache configuration preference as a
   // GpuFuncCachePreference.
@@ -69,6 +60,12 @@ class GpuKernel : public Kernel {
 
   absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
+
+  // Simple accessor methods.
+  GpuFunctionHandle gpu_function() const { return gpu_function_; }
+  void set_gpu_function(GpuFunctionHandle gpu_function) {
+    gpu_function_ = gpu_function;
+  }
 
  private:
   GpuExecutor* gpu_executor_ = nullptr;

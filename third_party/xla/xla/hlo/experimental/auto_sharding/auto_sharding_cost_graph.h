@@ -55,6 +55,10 @@ struct EdgeReshardingCost {
 
 using EdgeReshardingCostMatrix = Matrix<EdgeReshardingCost>;
 
+// Normalizes the edge cost matrix by a fixed constant to ensure there are no
+// negative communication costs.
+EdgeReshardingCostMatrix Normalize(const EdgeReshardingCostMatrix& edge_cost);
+
 // A graph data structure to simplify the edge cost graph. It merges nodes and
 // performs path compression.
 class CostGraph {

@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -65,7 +64,7 @@ class IfrtServingExecutable {
       absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
-      const tsl::thread::ThreadPool* thread_pool,
+      tsl::thread::ThreadPool* thread_pool,
       IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       const IfrtRestoreTensorRegistry* ifrt_restore,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
@@ -136,7 +135,7 @@ class IfrtServingExecutable {
       absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
-      const tsl::thread::ThreadPool* thread_pool,
+      tsl::thread::ThreadPool* thread_pool,
       IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       const IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
@@ -144,12 +143,14 @@ class IfrtServingExecutable {
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
+      xla::ifrt::DeviceList assigned_device_list,
       tsl::protobuf::Message* compilation_environment_proto)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
         module_(std::move(module)),
         original_compile_metadata_(std::move(original_compile_metadata)),
+        assigned_device_list_(std::move(assigned_device_list)),
         ifrt_client_(std::move(client)),
         thread_pool_(*thread_pool),
         ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
@@ -168,12 +169,13 @@ class IfrtServingExecutable {
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ ABSL_GUARDED_BY(mutex_);
   // The original compile metadata. We need to keep it around to be able to
-  // test portable execution condition even if the Module itsel is already
+  // test portable execution condition even if the Module itself is already
   // released.
   tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata_;
+  const xla::ifrt::DeviceList assigned_device_list_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
-  const tsl::thread::ThreadPool& thread_pool_;
+  tsl::thread::ThreadPool& thread_pool_;
 
   IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
   const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry_;
@@ -196,7 +198,7 @@ class IfrtServingExecutable {
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices,
       const CachedExecutableBundle& executable_bundle,
-      const std::vector<xla::ifrt::Device*>& devices);
+      const xla::ifrt::DeviceList& devices);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
       const tensorflow::Tensor& tensor,

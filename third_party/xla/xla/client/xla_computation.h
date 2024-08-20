@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"

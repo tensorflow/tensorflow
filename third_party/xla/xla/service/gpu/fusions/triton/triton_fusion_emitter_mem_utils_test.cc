@@ -48,10 +48,11 @@ limitations under the License.
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -112,7 +113,9 @@ TritonMakeTensorPtrTest::CreateAndTileParameterHloInstruction(
       verified_hlo_module->entry_computation()->root_instruction());
 
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
-      SymbolicTileAnalysis::AnalyzeFusion(*fusion_adaptor, &mlir_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(
+          *fusion_adaptor, &mlir_context_,
+          TritonEmitterConstraints::GetBuilder());
   CHECK(
       std::holds_alternative<SymbolicTileAnalysis>(symbolic_tile_analysis_or));
 

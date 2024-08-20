@@ -8,6 +8,10 @@ once and avoid it in subsequent compilations. Otherwise due to fluctuations in
 measurements different kernels can be picked as the fastest ones in different
 compilation runs.
 
+`--xla_gpu_require_complete_aot_autotune_results` can be used to ensure that no
+autotuning happens on repeated compilations - they either reuse compatible
+results of previous runs or fail.
+
 ## Execution
 
 Programs compiled by XLA can be non-deterministic on operations like scatter,

@@ -51,6 +51,9 @@ class AbstractStackTrace {
   // The returned span is alive as long as the AbstractStackTrace is alive.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
 
+  // Returns the stack frames without caching any generated data.
+  virtual std::vector<StackFrame> ToUncachedFrames() const = 0;
+
   // Returns the last stack frame from user code, attempting to ignore the
   // framework code. Returns an empty frame if no such stack frame was found.
   virtual StackFrame LastUserFrame() const = 0;
@@ -83,6 +86,8 @@ class FrozenStackTrace : public AbstractStackTrace {
   ~FrozenStackTrace() override = default;
 
   absl::Span<StackFrame const> ToFrames() const override;
+
+  std::vector<StackFrame> ToUncachedFrames() const override;
 
   StackFrame LastUserFrame() const override;
 

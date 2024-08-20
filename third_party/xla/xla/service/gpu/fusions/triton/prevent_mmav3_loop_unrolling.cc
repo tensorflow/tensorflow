@@ -13,29 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/triton/prevent_mmav3_loop_unrolling.h"
-
 #include <memory>
 
-#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/service/gpu/fusions/triton/passes.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 
-class PreventMmaV3LoopUnrollingPass
-    : public mlir::PassWrapper<PreventMmaV3LoopUnrollingPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
- public:
-  llvm::StringRef getArgument() const override {
-    return "prevent-mmav3-loop-unrolling";
-  }
+namespace xla::gpu {
+namespace {
 
+#define GEN_PASS_DEF_PREVENTMMAV3LOOPUNROLLINGPASS
+#include "xla/service/gpu/fusions/triton/passes.h.inc"
+
+struct PreventMmaV3LoopUnrollingPass
+    : public impl::PreventMmaV3LoopUnrollingPassBase<
+          PreventMmaV3LoopUnrollingPass> {
   // TODO(b/344841434): Remove this if NVIDIA fixes compile-time issue.
   // PTX sometimes unrolls wgmma loops that can cause a 1000x slow down in
   // compilation time. Most unrolling has already been done before PTX;
@@ -60,10 +58,10 @@ class PreventMmaV3LoopUnrollingPass
   }
 };
 
-std::unique_ptr<mlir::Pass> xla::gpu::CreatePreventMmaV3LoopUnrollingPass() {
+}  // namespace
+
+std::unique_ptr<mlir::Pass> CreatePreventMmaV3LoopUnrollingPass() {
   return std::make_unique<PreventMmaV3LoopUnrollingPass>();
 }
 
-void xla::gpu::RegisterPreventMmaV3LoopUnrollingPass() {
-  registerPass(CreatePreventMmaV3LoopUnrollingPass);
-}
+}  // namespace xla::gpu

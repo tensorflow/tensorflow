@@ -102,7 +102,7 @@ class WritableFileWrapper : public llvm::raw_ostream {
   }
 
   void write_impl(const char* ptr, size_t size) override {
-    if (file_ && !file_->Append(tsl::StringPiece(ptr, size)).ok()) {
+    if (file_ && !file_->Append(absl::string_view(ptr, size)).ok()) {
       file_ = nullptr;
     }
   }

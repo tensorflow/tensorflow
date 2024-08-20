@@ -447,8 +447,8 @@ inline SparseTensor SparseTensor::Concat(
           << "All SparseTensors' shapes must match except on the concat dim.  "
           << "Concat dim: " << primary_dim
           << ", mismatched shape at dim: " << cdim
-          << ".  Expecting shape like: [" << str_util::Join(final_shape, ",")
-          << "] but saw shape: [" << str_util::Join(st_shape, ",") << "]";
+          << ".  Expecting shape like: [" << absl::StrJoin(final_shape, ",")
+          << "] but saw shape: [" << absl::StrJoin(st_shape, ",") << "]";
     }
 
     // Update dimension of final shape

@@ -147,10 +147,7 @@ def LiftTfliteFlexOpsPass : Pass<"tfl-lift-tflite-flex-ops", "mlir::func::FuncOp
 def LowerStaticTensorListPass : Pass<"tfl-lower-static-tensor-list", "mlir::ModuleOp"> {
   let summary = "Lower TensorList ops within TensorFlow Lite dialect.";
   let constructor = "CreateLowerStaticTensorListPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect",
-    "quant::QuantizationDialect",
-    "quantfork::QuantizationForkDialect"
-  ];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
   let options = [
       Option<"allow_tensorlist_pass_through_", "allow-tensorlist-pass-through",
              "bool", "false",
@@ -180,20 +177,6 @@ def ModifyIONodesPass : Pass<"tfl-modify-io-nodes", "mlir::func::FuncOp"> {
   let options = [
       ListOption<"io_node_types_", "test-io-types", "std::string",
                  "comma separated type strings. Allowed values: 'int8', 'uint8', 'float32']">,
-  ];
-}
-
-def OptimizePass : Pass<"tfl-optimize", "mlir::func::FuncOp"> {
-  let summary = "Optimize within the TensorFlow Lite dialect";
-  let constructor = "CreateOptimizePass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
-  let options = [
-      Option<"enable_canonicalization_", "enable-canonicalization",
-             "bool", "false",
-             "Enable canonicalization during optimization pass.">,
-      Option<"disable_fuse_mul_and_fc_", "disable-fuse-mul-and-fc",
-             "bool", "false",
-             "Disable folding mul and fully connected ops during optimization pass.">,
   ];
 }
 

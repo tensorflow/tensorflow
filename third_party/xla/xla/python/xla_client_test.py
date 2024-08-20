@@ -65,8 +65,12 @@ xla_computation_to_mlir_module = (
 
 
 # pylint: disable=invalid-name
-def jax_array_convert_to_array(self):
-  return self._single_device_array_to_np_array()
+def jax_array_convert_to_array(self, dtype=None, copy=None):
+  del copy
+  out = self._single_device_array_to_np_array()
+  if dtype is not None:
+    out = out.astype(dtype)
+  return out
 
 
 def jax_array_device(self):
@@ -586,7 +590,10 @@ def TestFactory(xla_backend,
     def testScalarTimesVector(self, dtype):
       c = self._NewComputation()
       arg0 = np.array(3, dtype=dtype)
-      arg1 = np.array([10, 15, -2, 7], dtype=dtype)
+      if np.issubdtype(dtype, np.unsignedinteger):
+        arg1 = np.array([10, 15, 2, 7], dtype=dtype)
+      else:
+        arg1 = np.array([10, 15, -2, 7], dtype=dtype)
       p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
       p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(arg1))
       ops.Mul(p0, p1)
@@ -2989,6 +2996,49 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       python_tb = tb.as_python_traceback()
       for frame, _ in traceback.walk_tb(python_tb):
         _ = frame.f_locals  # should not crash
+
+    def testTracebackFromFrames(self):
+      def FooFn(x):
+        return x + 1
+
+      def BarFn(y):
+        y = y + 1
+        y = y + 2
+        return y * 2
+
+      frame_foo = xla_client.Frame(
+          __file__,
+          FooFn.__code__.co_name,
+          FooFn.__code__.co_firstlineno,
+          FooFn.__code__.co_firstlineno + 1,
+      )
+      frame_bar = xla_client.Frame(
+          __file__,
+          BarFn.__code__.co_name,
+          BarFn.__code__.co_firstlineno,
+          BarFn.__code__.co_firstlineno + 2,
+      )
+      frames = [frame_foo, frame_bar]
+      tb = xla_client.Traceback.traceback_from_frames(frames)
+
+      with self.subTest("WalkDoesNotError"):
+        for frame, _ in traceback.walk_tb(tb):
+          _ = frame.f_locals  # should not crash
+
+      with self.subTest("TracebackCorrectness"):
+        tb_string = traceback.format_tb(tb)
+        # The traceback should have the format:
+        # File <this file>, line N in BarFn
+        #   y = y + 2
+        # File <this file>, line N in FooFn
+        #   return x + 1
+        self.assertLen(tb_string, len(frames))
+        bar_frame = tb_string[0].split("\n")
+        self.assertEndsWith(bar_frame[0], "BarFn")
+        self.assertEqual(bar_frame[1].strip(), "y = y + 2")
+        foo_frame = tb_string[1].split("\n")
+        self.assertEndsWith(foo_frame[0], "FooFn")
+        self.assertEqual(foo_frame[1].strip(), "return x + 1")
 
   tests.append(TracebackTest)
 

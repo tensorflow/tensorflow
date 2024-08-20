@@ -26,22 +26,21 @@ namespace {
 
 class StreamPoolTest : public ::testing::Test {
  protected:
-  std::unique_ptr<se::StreamExecutor> NewStreamExecutor() {
+  se::StreamExecutor* NewStreamExecutor() {
     se::Platform* platform =
         se::PlatformManager::PlatformWithName("Host").value();
-    se::StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetUncachedExecutor(config).value();
+    return platform->ExecutorForDevice(/*ordinal=*/0).value();
   }
 };
 
 TEST_F(StreamPoolTest, EmptyPool) {
-  std::unique_ptr<se::StreamExecutor> executor = NewStreamExecutor();
-  StreamPool pool(executor.get());
+  se::StreamExecutor* executor = NewStreamExecutor();
+  StreamPool pool(executor);
 }
 
 TEST_F(StreamPoolTest, OneStreamPool) {
-  std::unique_ptr<se::StreamExecutor> executor = NewStreamExecutor();
-  StreamPool pool(executor.get());
+  se::StreamExecutor* executor = NewStreamExecutor();
+  StreamPool pool(executor);
 
   // Borrow and return a stream.
   StreamPool::Ptr stream1 = pool.BorrowStream();
@@ -61,8 +60,8 @@ TEST_F(StreamPoolTest, OneStreamPool) {
 }
 
 TEST_F(StreamPoolTest, TwoStreamPool) {
-  std::unique_ptr<se::StreamExecutor> executor = NewStreamExecutor();
-  StreamPool pool(executor.get());
+  se::StreamExecutor* executor = NewStreamExecutor();
+  StreamPool pool(executor);
 
   // Borrow two streams.
   StreamPool::Ptr stream1 = pool.BorrowStream();

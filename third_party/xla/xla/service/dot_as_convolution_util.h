@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_DOT_AS_CONVOLUTION_UTIL_H_
 #define XLA_SERVICE_DOT_AS_CONVOLUTION_UTIL_H_
 
+#include <cstdint>
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,6 +55,10 @@ struct DotConvolutionDimsInfo {
   std::vector<DimNums> lhs_non_contracting_dims;
   std::vector<DimNums> rhs_non_contracting_dims;
   std::vector<DimNums> conv_spatial_dims;
+
+  int64_t lhs_shape_rank;
+  int64_t rhs_shape_rank;
+  int64_t output_shape_rank;
 };
 
 // Parses a convolution and returns a DotGeneralAsConvolutionDimsInfo. If it can

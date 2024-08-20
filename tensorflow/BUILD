@@ -1053,7 +1053,7 @@ package_group(
         "//learning/serving/experimental/remote_predict/...",
         "//perftools/accelerators/xprof/convert/...",
         "//perftools/accelerators/xprof/integration_tests/...",
-        "//smartass/brain/configure/...",
+        "//smartass/brain/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
@@ -1350,7 +1350,7 @@ tf_cc_shared_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/data:standalone",
         # Exports for pywrap_tensorflow_internal. Many of these are transitive
-        # depedencies of the above, but must be explicitly listed for
+        # dependencies of the above, but must be explicitly listed for
         # cc_shared_library to work.
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
@@ -1445,7 +1445,7 @@ tf_cc_shared_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:reference_ops",
-        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite/toco/logging:conversion_log_util",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
         "//tensorflow/lite/toco:model_flags_proto_cc",

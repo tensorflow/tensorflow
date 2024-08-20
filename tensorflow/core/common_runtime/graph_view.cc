@@ -157,7 +157,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   // a given output slot.  For all but the last, we need to do a copy of the
   // Tensor when propagating results downstream in the graph, but for the
   // last one, we can just do a move of the Tensor object to propagate it.
-  gtl::InlinedVector<EdgeInfo*, 4> last_indices(num_outputs, nullptr);
+  absl::InlinedVector<EdgeInfo*, 4UL> last_indices(num_outputs, nullptr);
   EdgeInfo* dst_edge = item->output_edge_base();
   for (auto e : n->out_edges()) {
     if (e->IsControlEdge()) continue;

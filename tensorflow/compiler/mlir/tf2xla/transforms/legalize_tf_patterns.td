@@ -60,6 +60,8 @@ def CastElementsToI64Elements : NativeCodeCall<
   "hlo::convertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
 
+def EmptyDotAlgorithmAttr : NativeCodeCall<"mlir::mhlo::DotAlgorithmAttr{}">;
+
 //===----------------------------------------------------------------------===//
 // ApproximateEqual op pattern.
 //===----------------------------------------------------------------------===//
@@ -760,7 +762,8 @@ def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
 def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
           (MHLO_DotGeneralOp $lhs, $rhs,
                             (ToDotDimNumsAttr $dimension_numbers),
-                            (ToPrecisionConfigsAttr $precision_config)),
+                            (ToPrecisionConfigsAttr $precision_config),
+                            (EmptyDotAlgorithmAttr)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
 
 //===----------------------------------------------------------------------===//
@@ -770,7 +773,8 @@ def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
 def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
           (MHLO_DotGeneralOp $lhs, $rhs,
                             (ToDotDimNumsAttr $dimension_numbers),
-                            (ToPrecisionConfigsAttr $precision_config)),
+                            (ToPrecisionConfigsAttr $precision_config),
+                            (EmptyDotAlgorithmAttr)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
 
 //===----------------------------------------------------------------------===//

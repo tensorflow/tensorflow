@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
@@ -43,8 +44,10 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tensorflow/core/tfrt/ifrt/checkpoint_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_model_restore_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
@@ -57,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/status.h"
@@ -402,6 +404,13 @@ class KernelTest : public ::testing::Test {
                 "IfrtModelContext")
             .value();
     ifrt_model_context_->set_checkpoint_loader_queue(restore_work_queue_.get());
+
+    resource_context_
+        .CreateResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+            ifrt_serving::kIfrtModelRestoreContextName,
+            std::make_unique<tensorflow::ifrt_serving::CheckpointLoader>(
+                &ifrt_model_context_->GetRestoreTensorRegistry(),
+                ifrt_model_context_->checkpoint_loader_queue()));
 
     serving_device_selector_ =
         std::make_unique<tsl::test_util::MockServingDeviceSelector>();

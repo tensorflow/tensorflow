@@ -943,8 +943,10 @@ Status InstantiatedCapturedFunction::RunInstantiated(
 }
 
 void InstantiatedCapturedFunction::RunAsync(
-    IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
-    FunctionLibraryRuntime::DoneCallback done,
+    std::function<void(std::function<void()>)> runner,
+    CancellationManager* parent_cancellation_manager,
+    CollectiveExecutor* collective_executor, std::vector<Tensor>&& args,
+    std::vector<Tensor>* rets, FunctionLibraryRuntime::DoneCallback done,
     const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
@@ -952,7 +954,7 @@ void InstantiatedCapturedFunction::RunAsync(
     // potentially do a non-trivial amount of (e.g. copying) work, and we may
     // want to run that concurrently with the next invocation.
     Status s = RunShortCircuit(info, std::move(args), captured_func_, rets);
-    (*ctx->runner())(
+    runner(
         std::bind([s](FunctionLibraryRuntime::DoneCallback& done) { done(s); },
                   std::move(done)));
     return;
@@ -971,18 +973,18 @@ void InstantiatedCapturedFunction::RunAsync(
         resource_mgr->Cleanup(name).IgnoreError();
       });
   f_opts.step_container = step_container;
-  f_opts.runner = ctx->runner();
+  f_opts.runner = &runner;
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   auto cancellation_manager =
-      std::make_unique<CancellationManager>(ctx->cancellation_manager());
+      std::make_unique<CancellationManager>(parent_cancellation_manager);
   f_opts.cancellation_manager = cancellation_manager.get();
-  f_opts.collective_executor = ctx->collective_executor();
+  f_opts.collective_executor = collective_executor;
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
-  if (node || ctx->stats_aggregator()) {
+  if (node) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage = node && ctx->model();
+  const bool collect_usage = node != nullptr;
   f_opts.stats_collector = stats_collector.get();
 
   // Transfer ownership of the cancellation manager to `callback`.
@@ -992,7 +994,6 @@ void InstantiatedCapturedFunction::RunAsync(
       [this, rets, step_container, raw_cancellation_manager, frame, node,
        collect_usage](
           const FunctionLibraryRuntime::DoneCallback& done,
-          IteratorContext* ctx,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
           Status s) {
@@ -1003,18 +1004,6 @@ void InstantiatedCapturedFunction::RunAsync(
         }
         delete frame;
         if (node) {
-          // TODO(b/129085499) Utilize the `node_name` which would be unique
-          // than the prefix for the function execution time statistics.
-          // prefix_with_func_name would then be node_name + func_name.
-          if (ctx->stats_aggregator()) {
-            string prefix_with_func_name =
-                strings::StrCat(node->name(), stats_utils::kDelimiter,
-                                captured_func_->func().name());
-            ctx->stats_aggregator()->AddToHistogram(
-                stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
-                {static_cast<float>(stats_collector->processing_time())},
-                node->num_elements());
-          }
           node->add_processing_time(stats_collector->processing_time());
         }
         if (collect_usage) {
@@ -1025,7 +1014,7 @@ void InstantiatedCapturedFunction::RunAsync(
           node->record_stop(EnvTime::NowNanos());
         }
       },
-      std::move(done), ctx, std::move(stats_collector), std::placeholders::_1);
+      std::move(done), std::move(stats_collector), std::placeholders::_1);
 
   tsl::profiler::TraceMe activity(
       [&] {

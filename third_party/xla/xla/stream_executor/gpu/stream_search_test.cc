@@ -16,7 +16,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_finder.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -37,19 +39,15 @@ class StreamSearchTest : public ::testing::Test {
 TEST_F(StreamSearchTest, NoMatchBadPtr) {
   void* bad_ptr = reinterpret_cast<void*>(0xdeadbeef);
 
-  StreamExecutorConfig config;
-  config.gpu_stream = bad_ptr;
-
-  absl::StatusOr<StreamExecutor*> found_executor =
-      GetPlatform()->GetExecutor(config);
-
-  // No executor found.
-  EXPECT_FALSE(found_executor.ok());
+  EXPECT_FALSE(FindStream(GetPlatform(), bad_ptr).ok());
 }
 
 TEST_F(StreamSearchTest, FoundPrevExecutor) {
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          GetPlatform()->ExecutorForDevice(0));
+  int number_devices = GetPlatform()->VisibleDeviceCount();
+  EXPECT_GT(number_devices, 0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      StreamExecutor * executor,
+      GetPlatform()->ExecutorForDevice(number_devices > 1 ? 1 : 0));
 
   TF_ASSERT_OK_AND_ASSIGN(auto s, executor->CreateStream());
   TF_ASSERT_OK_AND_ASSIGN(auto s2, executor->CreateStream());
@@ -57,17 +55,10 @@ TEST_F(StreamSearchTest, FoundPrevExecutor) {
   void* gpu_ptr = s->platform_specific_handle().stream;
   void* gpu_ptr_2 = s2->platform_specific_handle().stream;
 
-  StreamExecutorConfig c;
-  c.gpu_stream = gpu_ptr;
-
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * found_executor,
-                          GetPlatform()->GetExecutor(c));
-  EXPECT_EQ(found_executor, executor);
-
-  Stream* found1 = found_executor->FindAllocatedStream(gpu_ptr);
+  TF_ASSERT_OK_AND_ASSIGN(Stream * found1, FindStream(GetPlatform(), gpu_ptr));
   EXPECT_EQ(found1, s.get());
-
-  Stream* found2 = found_executor->FindAllocatedStream(gpu_ptr_2);
+  TF_ASSERT_OK_AND_ASSIGN(Stream * found2,
+                          FindStream(GetPlatform(), gpu_ptr_2));
   EXPECT_EQ(found2, s2.get());
 }
 

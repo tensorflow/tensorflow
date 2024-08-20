@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 // The kept headers are provided for the included file `passes.h.inc`.
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -35,8 +39,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/gather.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/iota.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce_window.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/slice.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/sort.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
@@ -47,8 +55,136 @@ namespace mlir {
 namespace odml {
 namespace {
 
+// Returns the shape of the given value in a Constant Op.
+arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
+  ArrayRef<int64_t> shape = mlir::cast<ShapedType>(value.getType()).getShape();
+  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
+                                         rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, shape);
+  return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
+}
+
+bool IsSign(APInt a, APInt sign) {
+  if (a.isZero()) return a == sign;
+  if (a.isNegative()) return sign == -1;
+  return sign == 1;
+}
+
+bool IsSign(APFloat a, APFloat sign) {
+  if (a.isNaN() || a.isZero()) return a == sign;
+  if (a.isNegative()) return sign.isExactlyValue(-1.0);
+  return sign.isExactlyValue(1.0);
+}
+
+bool IsDenseSplatIntAttr(ElementsAttr float_or_int) {
+  return mlir::isa<SplatElementsAttr>(float_or_int) &&
+         mlir::isa<DenseIntElementsAttr>(float_or_int);
+}
+
+bool IsDenseSplatFloatAttr(ElementsAttr float_or_int) {
+  return mlir::isa<SplatElementsAttr>(float_or_int) &&
+         mlir::isa<DenseFPElementsAttr>(float_or_int);
+}
+
+bool ValueEquals(ElementsAttr float_or_int, double rhs) {
+  if (IsDenseSplatFloatAttr(float_or_int)) {
+    return mlir::cast<SplatElementsAttr>(float_or_int)
+        .getSplatValue<APFloat>()
+        .isExactlyValue(rhs);
+  } else if (IsDenseSplatIntAttr(float_or_int)) {
+    return mlir::cast<SplatElementsAttr>(float_or_int).getSplatValue<APInt>() ==
+           static_cast<int>(rhs);
+  }
+  return false;
+}
+
+// Returns whether the splat constant is the sign of the int or float Tensor.
+bool TensorIsSign(PatternRewriter& rewriter, ElementsAttr float_or_int,
+                  ElementsAttr sgn_cst) {
+  auto sgn_splat = llvm::dyn_cast<SplatElementsAttr>(sgn_cst);
+  if (!sgn_splat) return false;
+
+  auto splat = dyn_cast<SplatElementsAttr>(float_or_int);
+  if (auto float_spl = llvm::dyn_cast_if_present<FloatAttr>(splat),
+      sgn_cst_spl = llvm::dyn_cast_if_present<FloatAttr>(sgn_splat);
+      float_spl && sgn_cst_spl) {
+    return IsSign(float_spl.getValue(), sgn_cst_spl.getValue());
+  }
+  if (auto int_spl = llvm::dyn_cast_if_present<IntegerAttr>(splat),
+      sgn_cst_spl = llvm::dyn_cast_if_present<IntegerAttr>(sgn_splat);
+      int_spl && sgn_cst_spl) {
+    return IsSign(int_spl.getValue(), sgn_cst_spl.getValue());
+  }
+  if (mlir::isa<DenseFPElementsAttr>(float_or_int)) {
+    auto sgn_splat_value = sgn_splat.getSplatValue<APFloat>();
+    return llvm::all_of(float_or_int.getValues<APFloat>(), [&](APFloat value) {
+      return IsSign(value, sgn_splat_value);
+    });
+  }
+  if (mlir::isa<DenseIntElementsAttr>(float_or_int)) {
+    auto sgn_splat_value = sgn_splat.getSplatValue<APInt>();
+    return llvm::all_of(float_or_int.getValues<APInt>(), [&](APInt value) {
+      return IsSign(value, sgn_splat_value);
+    });
+  }
+  return false;
+}
+
+bool SameTypeOrDefaultCompare(mhlo::ComparisonTypeAttr comparison_type_attr,
+                              ElementsAttr cst) {
+  if (!comparison_type_attr) return true;
+  auto comparison_type_attr_value = comparison_type_attr.getValue();
+  if (comparison_type_attr_value == mhlo::ComparisonType::FLOAT &&
+      IsDenseSplatFloatAttr(cst)) {
+    return true;
+  }
+  if ((comparison_type_attr_value == mhlo::ComparisonType::SIGNED ||
+       comparison_type_attr_value == mhlo::ComparisonType::UNSIGNED) &&
+      IsDenseSplatIntAttr(cst)) {
+    return true;
+  }
+  return false;
+}
+
+bool ValueIsReciprocal(ElementsAttr float_or_int, ElementsAttr rhs) {
+  if (IsDenseSplatFloatAttr(float_or_int) &&
+      IsDenseSplatFloatAttr(float_or_int)) {
+    return (mlir::cast<SplatElementsAttr>(float_or_int)
+                .getSplatValue<APFloat>() *
+            mlir::cast<SplatElementsAttr>(rhs).getSplatValue<APFloat>())
+        .isExactlyValue(1.0);
+  } else if (IsDenseSplatIntAttr(float_or_int) &&
+             IsDenseSplatIntAttr(float_or_int)) {
+    return (mlir::cast<SplatElementsAttr>(float_or_int).getSplatValue<APInt>() *
+            mlir::cast<SplatElementsAttr>(rhs).getSplatValue<APInt>()) == 1;
+  }
+  return false;
+}
+
+bool ValueGreaterThanZero(ElementsAttr float_or_int) {
+  if (IsDenseSplatIntAttr(float_or_int)) {
+    auto value =
+        mlir::cast<SplatElementsAttr>(float_or_int).getSplatValue<APInt>();
+    return !value.isNegative() && !value.isZero();
+  } else if (IsDenseSplatFloatAttr(float_or_int)) {
+    auto value =
+        mlir::cast<SplatElementsAttr>(float_or_int).getSplatValue<APFloat>();
+    return !value.isNaN() && !value.isNegative() && !value.isZero();
+  }
+  return false;
+}
+
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+
+bool SupportedComparisonType(mhlo::ComparisonTypeAttr comp_type) {
+  if (!comp_type) return true;
+  auto c_ty = comp_type.getValue();
+  return c_ty == mhlo::ComparisonType::FLOAT ||
+         c_ty == mhlo::ComparisonType::SIGNED ||
+         c_ty == mhlo::ComparisonType::UNSIGNED ||
+         c_ty == mhlo::ComparisonType::NOTYPE;
+}
 
 class LegalizeHloToTfLitePass
     : public impl::LegalizeHloToTfLitePassBase<LegalizeHloToTfLitePass> {
@@ -62,10 +198,88 @@ std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
   return !op.getType().getElementType().isF32();
 }
 
+bool IsNotOpLegal(mhlo::NotOp op) {
+  return op.getType().getElementType().isInteger(64);
+}
+
+// Mark possible target ops from rounding patterns as having "unknown"
+// legality. This is required to schedule patterns on these ops even
+// though MhloDialect is explicitly marked legal (which cannot be changed
+// easily).
+void AddRoundingOpsAsUnknown(ConversionTarget& target) {
+  target.addDynamicallyLegalOp<
+      // go/keep-sorted start
+      // clang-format off
+      mhlo::AddOp,
+      mhlo::BroadcastInDimOp,
+      mhlo::ConstantOp,
+      mhlo::DivOp,
+      mhlo::FloorOp,
+      mhlo::MulOp,
+      mhlo::RemOp,
+      mhlo::RoundOp,
+      mhlo::SelectOp,
+      mhlo::SignOp,
+      mhlo::SubtractOp,
+      mhlo::TupleOp
+      // clang-format on
+      // go/keep-sorted end
+      >([](Operation* op) { return std::nullopt; });
+}
+bool IsCompareLegal(mhlo::CompareOp op) {
+  return !SupportedComparisonType(op.getCompareTypeAttr());
+}
+
+void SetUnaryOpLegal(ConversionTarget& target) {
+  auto is_legal = [](Operation* op) {
+    return !llvm::cast<ShapedType>(op->getOperand(0).getType())
+                .getElementType()
+                .isIntOrFloat();
+  };
+  target.addDynamicallyLegalOp<
+      // go/keep-sorted start
+      // clang-format off
+      mhlo::AbsOp,
+      mhlo::BitcastConvertOp,
+      mhlo::CeilOp,
+      mhlo::ConvertOp,
+      mhlo::CosineOp,
+      mhlo::ExpOp,
+      mhlo::Expm1Op,
+      mhlo::FloorOp,
+      mhlo::ImagOp,
+      mhlo::IsFiniteOp,
+      mhlo::Log1pOp,
+      mhlo::LogOp,
+      mhlo::LogisticOp,
+      mhlo::NegOp,
+      mhlo::RealOp,
+      mhlo::RsqrtOp,
+      mhlo::SignOp,
+      mhlo::SineOp,
+      mhlo::SqrtOp,
+      mhlo::TanhOp
+      // clang-format on
+      // go/keep-sorted end
+      >(is_legal);
+}
+
+// mhlo "bitwise ops" can be both bitwise (floats/ints) or logical (bools).
+// TFL ops are only one of logical or bitwise.
+void SetBinaryBitwiseLegal(ConversionTarget& target) {
+  auto is_logical = [](Operation* op) {
+    return llvm::cast<ShapedType>(op->getResultTypes()[0])
+        .getElementType()
+        .isInteger(1);
+  };
+  auto is_bitwise = [&](Operation* op) { return !is_logical(op); };
+  target.addDynamicallyLegalOp<mhlo::OrOp, mhlo::AndOp>(is_bitwise);
+  target.addDynamicallyLegalOp<mhlo::XorOp>(is_logical);
+}
+
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext* context = &getContext();
-
   RewritePatternSet patterns(context);
   patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp>(context);
   populateWithGenerated(patterns);
@@ -73,14 +287,44 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   ConversionTarget target(*context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
+
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
-  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
+  target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
+  target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
+
+  target.addIllegalOp<
+      // go/keep-sorted start
+      // clang-format off
+      mhlo::ClampOp,
+      mhlo::DotGeneralOp,
+      mhlo::DotOp,
+      mhlo::DynamicReshapeOp,
+      mhlo::MaxOp,
+      mhlo::MinOp,
+      mhlo::MulOp,
+      mhlo::PowOp,
+      mhlo::RemOp,
+      mhlo::ReshapeOp,
+      mhlo::ShiftRightArithmeticOp,
+      mhlo::ShiftRightLogicalOp,
+      mhlo::TransposeOp
+      // clang-format on
+      // go/keep-sorted end
+      >();
+
+  AddRoundingOpsAsUnknown(target);
+  SetUnaryOpLegal(target);
+  SetBinaryBitwiseLegal(target);
 
   PopulatePadPatterns(context, patterns, target);
   PopulateReducePatterns(context, patterns, target);
+  PopulateLegalizeReduceWindowPatterns(context, patterns, target);
   PopulateGatherPatterns(context, patterns, target);
-  PopulateConvPatterns(context, patterns, target);
+  PopulateLegalizeConvPatterns(context, patterns, target);
+  PopulateLegalizeSlicePatterns(context, patterns, target);
+  PopulateSortPatterns(context, patterns, target);
+  PopulateIotaPatterns(context, patterns, target);
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {

@@ -47,6 +47,9 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/array.h"
+#include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
@@ -83,9 +86,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/cpu_xfeed.h"
-#include "xla/service/cpu/runtime/buffer_allocations.h"
-#include "xla/service/cpu/runtime/thunk.h"
-#include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -103,10 +103,10 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
@@ -398,6 +398,11 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
       num_threads, options.asynchronous));
 }
 
+// An upper bound on the number of threads to use for intra-op parallelism. It
+// is nearly impossible to utilize efficiently more than 256 threads for compute
+// intensive operations that are supposed to run inside the intra-op threadpool.
+static const size_t kMaxIntraOpThreads = 256;
+
 static tsl::ThreadOptions GetThreadOptions() {
   tsl::ThreadOptions thread_options;
   // On Mac OS the default stack size is 512KiB, which is too small for some
@@ -415,16 +420,17 @@ TfrtCpuClient::TfrtCpuClient(
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
+      eigen_intraop_pool_(new tsl::thread::ThreadPool(
+          tsl::Env::Default(), "XLAEigen",
+          std::min(num_threads, kMaxIntraOpThreads))),
+      eigen_intraop_device_(
+          new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
+                                      eigen_intraop_pool_->NumThreads())),
       pjrt_client_thread_pool_(
           new tsl::thread::ThreadPool(tsl::Env::Default(), GetThreadOptions(),
                                       "XLATfrtCpuClient", num_threads)),
       async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
           pjrt_client_thread_pool_.get())),
-      eigen_intraop_pool_(new tsl::thread::ThreadPool(tsl::Env::Default(),
-                                                      "XLAEigen", num_threads)),
-      eigen_intraop_device_(
-          new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
-                                      eigen_intraop_pool_->NumThreads())),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024),
@@ -463,10 +469,10 @@ TfrtCpuClient::TfrtCpuClient(
     owned_memory_spaces_.push_back(std::move(memory_space));
   }
 
-  LOG(INFO) << "TfrtCpuClient created.";
+  VLOG(1) << "TfrtCpuClient created.";
 }
 
-TfrtCpuClient::~TfrtCpuClient() { LOG(INFO) << "TfrtCpuClient destroyed."; }
+TfrtCpuClient::~TfrtCpuClient() { VLOG(1) << "TfrtCpuClient destroyed."; }
 
 absl::StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(
     xla::PjRtGlobalDeviceId global_device_id) const {
@@ -857,10 +863,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false,
-      exec_build_options.has_debug_options()
-          ? exec_build_options.debug_options().xla_use_shardy()
-          : false));
+      /*return_tuple=*/false, exec_build_options.use_shardy_partitioner()));
   return Compile(xla_computation, options);
 }
 

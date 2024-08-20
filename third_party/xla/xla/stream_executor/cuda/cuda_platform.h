@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
@@ -41,16 +40,6 @@ class CudaPlatform : public Platform {
   CudaPlatform();
   ~CudaPlatform() override;
 
-  // CudaPlatform-specific functionality
-  // Returns the number of distinct buses / NUMA nodes on the machine.
-  int BusCount();
-
-  // Returns the bus/NUMA node for the specified device ordinal.
-  int DeviceToBus(int device_ordinal);
-
-  // Returns the lowest-ordinal-number StreamExecutor on the specified bus.
-  absl::StatusOr<StreamExecutor*> FirstExecutorForBus(int bus_ordinal);
-
   // Platform interface implementation:
   // Returns the same value as kCudaPlatform above.
   Platform::Id id() const override;
@@ -64,31 +53,20 @@ class CudaPlatform : public Platform {
       int ordinal) const override;
 
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
-  absl::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) override;
-
+  // Returns a device constructed with the ordinal without
+  // looking in or storing to the Platform's executor cache.
+  // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) override;
+      int ordinal);
 
  private:
-  // Determines the number of NUMA nodes and the assignment of executor to each.
-  void InspectNumaNodes();
-
   // This platform's name.
   std::string name_;
 
   // Cache of created executors.
   ExecutorCache executor_cache_;
-
-  // The smallest NUMA node value for any device managed by this machine
-  // manager. Used, along with limit_numa_node_, to convert NUMA nodes into bus
-  // ordinals. The NUMA node space occupied by GPUs is assumed to be dense./
-  int min_numa_node_;
-
-  // Larger than the NUMA node value for any device managed by this machine
-  // manager.
-  int limit_numa_node_;
 
   CudaPlatform(const CudaPlatform&) = delete;
   void operator=(const CudaPlatform&) = delete;

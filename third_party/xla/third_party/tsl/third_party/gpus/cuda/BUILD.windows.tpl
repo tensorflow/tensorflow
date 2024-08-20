@@ -1,3 +1,7 @@
+# NB: DEPRECATED! This file is a part of the deprecated `cuda_configure` rule.
+# Hermetic CUDA repository rule doesn't support Windows.
+# Please use `hermetic/cuda_configure`.
+
 load(":build_defs.bzl", "cuda_header_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")

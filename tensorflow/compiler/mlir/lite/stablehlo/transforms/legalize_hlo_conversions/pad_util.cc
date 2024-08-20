@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
@@ -28,16 +29,8 @@ ShapedType GetPaddingAttrType(mhlo::PadOp op) {
   return op.getEdgePaddingLow().getType();
 }
 
-llvm::SmallVector<int64_t> UnrollSplat(DenseElementsAttr data) {
-  if (!data.isSplat()) {
-    return llvm::SmallVector<int64_t>(data.getValues<int64_t>());
-  }
-  return llvm::SmallVector<int64_t>(data.getType().getNumElements(),
-                                    data.getSplatValue<int64_t>());
-}
-
 DenseIntElementsAttr SliceStartFromNegPadLows(mhlo::PadOp op) {
-  auto vals = UnrollSplat(op.getEdgePaddingLow());
+  auto vals = UnrollI64Splat(op.getEdgePaddingLow());
   auto starts = llvm::map_range(
       vals, [](auto v) -> int64_t { return (v >= 0) ? 0 : -1 * v; });
   return DenseIntElementsAttr::get(GetPaddingAttrType(op),
@@ -45,7 +38,7 @@ DenseIntElementsAttr SliceStartFromNegPadLows(mhlo::PadOp op) {
 }
 
 DenseIntElementsAttr SliceEndFromNegPadHighs(mhlo::PadOp op) {
-  auto vals = UnrollSplat(op.getEdgePaddingHigh());
+  auto vals = UnrollI64Splat(op.getEdgePaddingHigh());
   auto zip = llvm::zip(vals, op.getOperand().getType().getShape());
   auto ends = llvm::map_range(zip, [](auto it) -> int64_t {
     return (std::get<0>(it) >= 0) ? std::get<1>(it)
@@ -56,7 +49,7 @@ DenseIntElementsAttr SliceEndFromNegPadHighs(mhlo::PadOp op) {
 }
 
 DenseIntElementsAttr ReplaceNegsWithZero(DenseElementsAttr data) {
-  auto vals = UnrollSplat(data);
+  auto vals = UnrollI64Splat(data);
   auto res =
       llvm::map_range(vals, [](auto v) -> int64_t { return (v < 0) ? 0 : v; });
   return DenseIntElementsAttr::get(data.getType(), llvm::to_vector(res));
@@ -64,8 +57,8 @@ DenseIntElementsAttr ReplaceNegsWithZero(DenseElementsAttr data) {
 
 bool AnyNegativePads(mhlo::PadOp op) {
   auto is_neg = [](int64_t v) { return v < 0; };
-  auto lows_data = UnrollSplat(op.getEdgePaddingLow());
-  auto highs_data = UnrollSplat(op.getEdgePaddingHigh());
+  auto lows_data = UnrollI64Splat(op.getEdgePaddingLow());
+  auto highs_data = UnrollI64Splat(op.getEdgePaddingHigh());
   return llvm::any_of(lows_data, is_neg) || llvm::any_of(highs_data, is_neg);
 }
 

@@ -150,14 +150,19 @@ def constant_value(
     return ragged_tensor_value.RaggedTensorValue(values, row_splits)
 
   def _inner_factory(pylist, dtype, shape, name=None):  # pylint: disable=unused-argument
-    return np.reshape(np.array(pylist, dtype=dtype), shape)
+    if dtype is object or dtype is None:
+      return np.reshape(np.array(pylist, dtype=dtype), shape)
+    else:
+      return np.reshape(np.array(pylist).astype(dtype), shape)
 
-  return _constant_value(_ragged_factory, _inner_factory, pylist, dtype,
-                         ragged_rank, inner_shape)
+  return _constant_value(
+      _ragged_factory, _inner_factory, pylist, dtype, ragged_rank, inner_shape
+  )
 
 
-def _constant_value(ragged_factory, inner_factory, pylist, dtype, ragged_rank,
-                    inner_shape):
+def _constant_value(
+    ragged_factory, inner_factory, pylist, dtype, ragged_rank, inner_shape
+):
   """Constructs a constant RaggedTensor or RaggedTensorValue.
 
   Args:

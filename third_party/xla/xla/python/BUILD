@@ -3,10 +3,6 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("//xla:pytype.default.bzl", "pytype_strict_library")
 load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load(
@@ -368,7 +364,9 @@ cc_library(
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@nanobind",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:literal",
@@ -410,8 +408,12 @@ cc_library(
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:platform_util",
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
+        "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/python/lib/core:numpy",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
@@ -425,9 +427,9 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
-        # TODO(b/324133505): remove this dependency after JAX OSS migrates to cuda plugin.
-        "//xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm([
+        # keep sorted
+        "@local_config_rocm//rocm:hip",
         "@local_config_rocm//rocm:rocm_headers",
     ]) + if_cuda_or_rocm([
         ":py_client_gpu",  # TODO(b/337876408): remove after migration to plugin
@@ -752,11 +754,13 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "//xla:shape_util",
         "//xla:util",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:lru_cache",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
@@ -1045,12 +1049,7 @@ cc_library(
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:capture_profile",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-    ] + select({
-        ":gpu_enabled": [
-            "//xla/backends/profiler/gpu:device_tracer",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -1173,7 +1172,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:name_uniquer",
         "//xla/service:tuple_simplifier",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
+        "//xla/tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -1185,26 +1184,6 @@ tf_proto_library(
     name = "py_host_callback_proto",
     srcs = ["py_host_callback.proto"],
     cc_api_version = 2,
-)
-
-# TODO(phawkins): the configuration settings here are overly confusing. The right fix is to split
-# xla_extension.so so that each backend is a separate plugin, however that must wait for a clean
-# ABI separation between devices.
-config_setting(
-    name = "link_gpu_plugin",
-    define_values = {"xla_python_enable_gpu": "true"},
-)
-
-bool_flag(
-    name = "enable_gpu",
-    build_setting_default = True,
-)
-
-config_setting(
-    name = "gpu_enabled",
-    flag_values = {
-        ":enable_gpu": "True",
-    },
 )
 
 # If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
@@ -1219,17 +1198,6 @@ config_setting(
     flag_values = {
         ":jax_cuda_pip_rpaths": "True",
     },
-)
-
-# We cannot nest select and if_cuda_is_configured so we introduce
-# a standalone cc_library target.
-cc_library(
-    name = "gpu_plugin_deps",
-    deps = [
-        "//xla/service:gpu_plugin",
-    ] + if_cuda_is_configured([
-        "//xla/stream_executor:cuda_platform",
-    ]),
 )
 
 cc_library(
@@ -1294,13 +1262,6 @@ tsl_pybind_extension(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_google(
-        [],
-        select({
-            ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
-            "//conditions:default": [],
-        }),
-    ),
     features = ["-use_header_modules"],
     linkopts = select({
         ":use_jax_cuda_pip_rpaths": [
@@ -1399,8 +1360,12 @@ tsl_pybind_extension(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
     ] + select({
-        # gloo transport only builds on linux
-        "//xla/tsl:macos": [],
+        # gloo tcp transport only builds on linux
+        "//xla/tsl:macos": [
+            "//xla/pjrt/cpu:gloo_collectives",
+            "//xla/pjrt/cpu:gloo_kv_store",
+            "@gloo//:transport_uv",
+        ],
         "//xla/tsl:windows": [],
         "//conditions:default": [
             "//xla/pjrt/cpu:gloo_collectives",
@@ -1413,20 +1378,7 @@ tsl_pybind_extension(
         "//conditions:default": [
             "//xla/pjrt/cpu:mpi_collectives",
         ],
-    }) + if_google(
-        [],
-        select({
-            ":gpu_enabled": [
-                ":gpu_support",
-            ],
-            "//conditions:default": [],
-        }) + select({
-            ":link_gpu_plugin": [
-                ":gpu_plugin_deps",
-            ],
-            "//conditions:default": [],
-        }),
-    ),
+    }),
 )
 
 cc_library(

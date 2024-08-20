@@ -23,18 +23,22 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#if defined(PLATFORM_GOOGLE)
-#include "absl/types/source_location.h"
-#endif
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/status_to_from_proto.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
+
+using ::tsl::profiler::XFlow;
 
 // DoRpc is a templated function that implements the logic of all RPC-wrapping
 // functions of `RpcHelper`, such as `RpcHelper::MakeArrayFromHostBuffer()`.
@@ -44,14 +48,28 @@ Future<std::shared_ptr<Resp>> DoRpc(ClientSession* session,
                                     void (IfrtRequest::*set_req)(Req*),
                                     Resp* (IfrtResponse::*get_resp)(),
                                     bool (IfrtResponse::*has_resp)() const,
-                                    std::unique_ptr<Req> req) {
+                                    std::unique_ptr<Req> req,
+                                    absl::string_view profiling_send_name,
+                                    absl::string_view profiling_recv_name) {
   auto ifrt_req = std::make_unique<IfrtRequest>();
   *ifrt_req->mutable_request_metadata() = metadata;
   (ifrt_req.get()->*set_req)(req.release());
 
+  const uint64_t xflow_id = tsl::random::New64() >> 8;  // XFlow IDs are 56 bits
+  tsl::profiler::TraceMe traceme([xflow_id, profiling_send_name]() {
+    const XFlow flow(xflow_id, XFlow::FlowDirection::kFlowOut);
+    return tsl::profiler::TraceMeEncode(profiling_send_name,
+                                        {{"flow", flow.ToStatValue()}});
+  });
+
   auto promise = Future<std::shared_ptr<Resp>>::CreatePromise();
-  auto on_ready = [promise, has_resp, get_resp](
+  auto on_ready = [promise, has_resp, get_resp, xflow_id, profiling_recv_name](
                       absl::StatusOr<std::shared_ptr<IfrtResponse>> r) mutable {
+    tsl::profiler::TraceMe traceme([xflow_id, profiling_recv_name]() {
+      const XFlow flow(xflow_id, XFlow::FlowDirection::kFlowIn);
+      return tsl::profiler::TraceMeEncode(profiling_recv_name,
+                                          {{"flow", flow.ToStatValue()}});
+    });
     if (!r.ok()) {
       LOG_EVERY_N_SEC(ERROR, 10)
           << "Connection to IFRT proxy server was terminated: " << r.status();
@@ -127,13 +145,14 @@ void RpcHelper::Disconnect() {
 // TODO(b/266635130): Remove this preprocessor macro. Preprocessor macros
 // go against the style guide, but are convenient as we are introducing more
 // RPCs and are making changes to the exact signature of the DoRpc function.
-#define RPC(METHOD, PROPERTY)                                               \
-  RpcHelper::ResponseFuture<METHOD##Response> RpcHelper::METHOD(            \
-      std::unique_ptr<METHOD##Request> req) {                               \
-    return DoRpc(session_.get(), ManufactureRequestMetadata(),              \
-                 &IfrtRequest::set_allocated_##PROPERTY##_request,          \
-                 &IfrtResponse::mutable_##PROPERTY##_response,              \
-                 &IfrtResponse::has_##PROPERTY##_response, std::move(req)); \
+#define RPC(METHOD, PROPERTY)                                              \
+  RpcHelper::ResponseFuture<METHOD##Response> RpcHelper::METHOD(           \
+      std::unique_ptr<METHOD##Request> req) {                              \
+    return DoRpc(session_.get(), ManufactureRequestMetadata(),             \
+                 &IfrtRequest::set_allocated_##PROPERTY##_request,         \
+                 &IfrtResponse::mutable_##PROPERTY##_response,             \
+                 &IfrtResponse::has_##PROPERTY##_response, std::move(req), \
+                 "" #PROPERTY "_send", "" #PROPERTY "_recv");              \
   }
 
 RPC(Init, init);

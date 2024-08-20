@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 namespace tsl {
@@ -97,6 +98,55 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
   EXPECT_EQ(actual_payload.source_task().task_id(),
             payload.source_task().task_id());
   EXPECT_EQ(actual_payload.is_reported_error(), payload.is_reported_error());
+}
+
+TEST(CoordinationServiceErrorUtil,
+     TrimCoordinationErrorMessage_CoordinationError) {
+  absl::Status error = MakeCoordinationError(absl::InternalError(
+      "Coordination service has stopped. RecordHeartbeat() from task: "
+      "/job:jax_worker/replica:0/task:2 failed. Additional GRPC error "
+      "information from remote target coordination_service while calling "
+      "/tensorflow.CoordinationService/Heartbeat::UNKNOWN:Error received from "
+      "peer  "
+      "{file:'third_party/grpc/src/core/lib/surface/filter_stack_call.cc', "
+      "file_line:464, created_time:'2024-08-05T13:57:51.331198242-07:00', "
+      "grpc_status:13, grpc_message:'Coordination service has stopped. "
+      "RecordHeartbeat() from task: /job:jax_worker/replica:0/task:2 failed. "
+      "'} "));
+
+  absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
+  EXPECT_EQ(trimmed_error.code(), error.code());
+  EXPECT_EQ(trimmed_error.message(),
+            "Coordination service has stopped. RecordHeartbeat() from task: "
+            "/job:jax_worker/replica:0/task:2 failed. \nRPC: "
+            "/tensorflow.CoordinationService/Heartbeat");
+  // Payload exists but has no value.
+  EXPECT_EQ(trimmed_error.GetPayload(CoordinationErrorPayloadKey()).value(),
+            "");
+}
+
+TEST(CoordinationServiceErrorUtil, TrimCoordinationErrorMessage_NetworkError) {
+  absl::Status error = absl::UnavailableError(
+      "failed to connect to all addresses; last error: UNKNOWN: "
+      "ipv4:127.0.0.1:10001: Failed to connect to remote host: Connection "
+      "refused. Additional GRPC error information from remote target "
+      "coordination_service while calling "
+      "/tensorflow.CoordinationService/Heartbeat::UNKNOWN:Error received from "
+      "peer "
+      "{file:'third_party/grpc/src/core/lib/surface/filter_stack_call.cc', "
+      "file_line:464, created_time:'2024-08-05T13:57:53.123562608-07:00', "
+      "grpc_status:14, grpc_message:'failed to connect to all addresses; last "
+      "error: UNKNOWN: ipv4:127.0.0.1:10001: Failed to connect to remote host: "
+      "Connection refused'} ");
+
+  absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
+  auto message = trimmed_error.message();
+  EXPECT_EQ(trimmed_error.code(), error.code());
+  EXPECT_TRUE(absl::StrContains(message, "Check earlier logs"));
+  // Message is not duplicated.
+  EXPECT_EQ(message.find("failed to connect"),
+            message.rfind("failed to connect"))
+      << trimmed_error;
 }
 
 }  // namespace

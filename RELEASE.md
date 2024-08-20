@@ -11,7 +11,23 @@
 
 * `tf.lite`
     * C API:
-        * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step forward towards a cleaner API for `TfLiteOperator`. Function `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0, released on 7/11/2024, and we do not expect there will be much code using this function yet. Any code breakages can be easily resolved by passing nullptr as the new, 4th parameter.
+      * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step
+        forward towards a cleaner API for `TfLiteOperator`. Function
+        `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0,
+        released on 7/11/2024, and we do not expect there will be much code using this
+        function yet. Any code breakages can be easily resolved by passing nullptr as
+        the new, 4th parameter.
+    * SignatureRunner is now supported for models with no signatures.
+
+* TensorRT support is disabled in CUDA builds for code health improvement.
+
+* Hermetic CUDA support is added.
+
+  Hermetic CUDA uses a specific downloadable version of CUDA instead of the
+  user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL
+  distributions, and then use CUDA libraries and tools as dependencies in
+  various Bazel targets. This enables more reproducible builds for Google ML
+  projects and supported CUDA versions.
 
 ### Known Caveats
 
@@ -35,6 +51,11 @@
       should run synchronously, as opposed to be parallelizable when
       `options.experimental_optimization.map_parallelization=True`. This saves
       memory compared to setting `num_parallel_calls=1`.
+    * Add optional `use_unbounded_threadpool` argument to `map`, to specify that
+      the `map` should use an unbounded threadpool instead of the default pool
+      that is based on the number of cores on the machine. This can improve 
+      throughput for map functions which perform IO or otherwise release the 
+      CPU.
 * `tf.lite`
     * `Dequantize` op supports `TensorType_INT4`.
         * This change includes per-channel dequantization.

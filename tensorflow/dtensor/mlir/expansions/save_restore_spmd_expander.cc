@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -388,9 +389,6 @@ StatusOr<mlir::Operation*> ExpandSaveV2Op(mlir::Operation* op) {
   auto save_v2 = mlir::cast<mlir::TF::SaveV2Op>(op);
 
   mlir::OpBuilder builder(save_v2);
-
-  absl::flat_hash_map<int64_t, std::pair<std::vector<int64_t>, Layout>>
-      tensor_shape_layout_map;
   std::vector<SavingTensorMetadata> metadata;
   for (const auto& it : llvm::enumerate(save_v2.getTensors())) {
     mlir::Value tensor = it.value();

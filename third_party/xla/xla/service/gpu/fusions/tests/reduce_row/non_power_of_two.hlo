@@ -1,0 +1,31 @@
+// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-simplify-arith -inline -canonicalize | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+fused_computation {
+  param_0 = f32[100,568] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT reduce = f32[100] reduce(param_0, param_1), dimensions={1}, to_apply=add
+}
+
+// CHECK-DAG: #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0] -> ((d1 mod 64) * 2 + s0 * 128 + d0), domain: d0 in [0, 1], d1 in [0, 255], s0 in [0, 3]>
+// CHECK-DAG: #[[MAP2:.*]] = #xla_gpu.indexing_map<(d0, d1) -> ((d1 mod 64) * 2 + d0 + 512), domain: d0 in [0, 1], d1 in [0, 255]>
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG: %[[C4:.*]] = arith.constant 4 : index
+
+// The full loop without bounds checks:
+// CHECK: %[[FULL_TILES:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
+// CHECK-NEXT: scf.for %[[J:.*]] = %[[C0]] to %[[C2]] step %[[C1]]
+// CHECK-NOT: scf.if
+// CHECK: xla_gpu.apply_indexing #[[MAP1]](%[[J]], %thread_id_x)[%[[I]]]
+
+// The tail loop:
+// CHECK: scf.for %[[J:.*]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%{{.*}} = %[[FULL_TILES]])
+// CHECK: scf.if
+// CHECK: xla_gpu.apply_indexing #[[MAP2]](%[[J]], %thread_id_x)

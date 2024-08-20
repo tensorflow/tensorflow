@@ -331,16 +331,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       return nullptr;
     }
 
-    absl::StatusOr<se::StreamExecutor*> GetExecutor(
-        const se::StreamExecutorConfig& config) override {
-      return nullptr;
-    }
-
-    absl::StatusOr<std::unique_ptr<se::StreamExecutor>> GetUncachedExecutor(
-        const se::StreamExecutorConfig& config) override {
-      return std::unique_ptr<se::StreamExecutor>(nullptr);
-    }
-
    private:
     string name_;
   };

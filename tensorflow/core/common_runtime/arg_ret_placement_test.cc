@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/cc/framework/scope.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
@@ -205,7 +205,7 @@ TEST_F(FullTypeGraphUtilsTest, MemoryTypeRetWithFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, AllowAttrRetWithFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 

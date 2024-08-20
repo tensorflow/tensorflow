@@ -63,7 +63,7 @@ class FlatSet {
 
   // Move constructor leaves src in a valid but unspecified state (same as
   // std::unordered_set).
-  FlatSet(FlatSet&& src) : rep_(std::move(src.rep_)) {}
+  FlatSet(FlatSet&& src) noexcept : rep_(std::move(src.rep_)) {}
 
   template <typename InputIter>
   FlatSet(InputIter first, InputIter last, size_t N = 1,
@@ -83,14 +83,14 @@ class FlatSet {
 
   // Move-assignment operator leaves src in a valid but unspecified state (same
   // as std::unordered_set).
-  FlatSet& operator=(FlatSet&& src) {
+  FlatSet& operator=(FlatSet&& src) noexcept {
     rep_.MoveFrom(std::move(src.rep_));
     return *this;
   }
 
   ~FlatSet() {}
 
-  void swap(FlatSet& x) { rep_.swap(x.rep_); }
+  void swap(FlatSet& x) noexcept { rep_.swap(x.rep_); }
   void clear_no_resize() { rep_.clear_no_resize(); }
   void clear() { rep_.clear(); }
   void reserve(size_t N) { rep_.Resize(std::max(N, size())); }

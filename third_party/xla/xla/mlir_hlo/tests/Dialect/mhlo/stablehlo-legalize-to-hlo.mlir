@@ -786,6 +786,45 @@ func.func @op_dot_general(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) 
   func.return %0 : tensor<8x8x8xf32>
 }
 
+// CHECK-LABEL: "op_dot_general_algorithm"
+func.func @op_dot_general_algorithm(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) -> tensor<8x8x8xf32> {
+  //      CHECK: "mhlo.dot_general"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{
+  // CHECK-SAME:   algorithm = #mhlo.dot_algorithm<
+  // CHECK-SAME:     lhs_precision_type = tf32,
+  // CHECK-SAME:     rhs_precision_type = tf32,
+  // CHECK-SAME:     accumulation_type = f32,
+  // CHECK-SAME:     lhs_component_count = 1,
+  // CHECK-SAME:     rhs_component_count = 1,
+  // CHECK-SAME:     num_primitive_operations = 1,
+  // CHECK-SAME:     allow_imprecise_accumulation = false
+  // CHECK-SAME:   >,
+  // CHECK-SAME:   dot_dimension_numbers = #mhlo.dot<
+  // CHECK-SAME:     lhs_batching_dimensions = [0],
+  // CHECK-SAME:     rhs_batching_dimensions = [0],
+  // CHECK-SAME:     lhs_contracting_dimensions = [2],
+  // CHECK-SAME:     rhs_contracting_dimensions = [1]
+  // CHECK-SAME:   >
+  // CHECK-SAME: }> : (tensor<8x8x16xf32>, tensor<8x16x8xf32>) -> tensor<8x8x8xf32>
+  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    algorithm = #stablehlo.dot_algorithm<
+      lhs_precision_type = tf32,
+      rhs_precision_type = tf32,
+      accumulation_type = f32,
+      lhs_component_count = 1,
+      rhs_component_count = 1,
+      num_primitive_operations = 1,
+      allow_imprecise_accumulation = false
+    >
+  } : (tensor<8x8x16xf32>, tensor<8x16x8xf32>) -> tensor<8x8x8xf32>
+  func.return %0 : tensor<8x8x8xf32>
+}
+
 // CHECK-LABEL: "op_dot"
 func.func @op_dot(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   //      CHECK: "mhlo.dot"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{

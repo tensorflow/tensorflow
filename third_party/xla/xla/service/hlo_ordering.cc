@@ -363,14 +363,13 @@ bool HloOrdering::UsesBeforeValueDefinition(
         return true;
       }
     }
-    // The use at an async call occurs before values that are defined in the
-    // called computation of the async wrapped instruction.
-    if (use.instruction->IsAsynchronous() &&
-        use.instruction->async_wrapped_opcode() == HloOpcode::kCall) {
+    // The use at an async op occurs before values that are defined in the async
+    // wrapped computation or any of its nested computations.
+    if (use.instruction->IsAsynchronous()) {
       const HloInstruction* async = use.instruction;
       if (call_graph_->InstructionIsNestedIn(
               value.defining_instruction(),
-              async->async_wrapped_instruction()->to_apply())) {
+              async->async_wrapped_computation())) {
         VLOG(4) << "  use is async " << use.instruction->name()
                 << " and def is in called computation";
         return true;

@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
@@ -256,7 +256,7 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
 
 // Name of the test binary.
 static const char* binary_name;
-constexpr int kNumNodes = 3;
+constexpr int kNumNodes = 2;
 
 TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
   if (IsTestingCpu()) {
@@ -308,13 +308,8 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
                         env.kv_store->Get("gemm_fusion_autotuning_results_1_1",
                                           absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "run_time"));
-    // First two nodes autotune two different fusions.
+    // The nodes autotune different fusions.
     CHECK_NE(results0, results1);
-    TF_ASSIGN_OR_RETURN(std::string results2,
-                        env.kv_store->Get("gemm_fusion_autotuning_results_1_2",
-                                          absl::Seconds(1)));
-    // Third node has nothing to autotune.
-    CHECK(!absl::StrContains(results2, "run_time"));
   }
   return absl::OkStatus();
 }
@@ -360,9 +355,9 @@ int main(int argc, char* argv[]) {
   xla::AppendDebugOptionsFlags(&flag_list);
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
   tsl::Flags::Parse(&argc, argv, flag_list);
+  testing::InitGoogleTest(&argc, argv);
   if (node_id >= 0) {
     return !xla::ShardedAutotuningWorksTestBody(node_id).ok();
   }
-  testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

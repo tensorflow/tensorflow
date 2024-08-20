@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
@@ -31,7 +32,13 @@ namespace {
 
 TEST(DeviceInfoTest, DeviceInfoMatches) {
   absl::flat_hash_map<std::string, GpuDeviceInfoProto> gpu_specs;
+<<<<<<< HEAD
   for (const std::string file_name : GPU_SPEC_FILE_NAMES) {
+=======
+  for (const std::string file_name :
+       {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "h100_pcie",
+        "h100_sxm", "p100", "v100", "mi200"}) {
+>>>>>>> upstream/master
     GpuTargetConfigProto proto;
     std::string spec_string;
     TF_ASSERT_OK(tsl::ReadFileToString(
@@ -44,9 +51,14 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
         tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));
     gpu_specs[proto.device_description_str()] = proto.gpu_device_info();
   }
-
+  auto name = absl::AsciiStrToUpper(
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+<<<<<<< HEAD
                           PlatformManager::PlatformWithName(PLATFORM_NAME));
+=======
+                          PlatformManager::PlatformWithName(name));
+>>>>>>> upstream/master
   bool all_skipped = false;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
     TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,

@@ -151,3 +151,19 @@ def PrepareHloPass
   ];
 }
 
+def LiftCallSiteLocCallerPass : Pass<"lift-callsite-loc-caller", "ModuleOp"> {
+  let summary = "Lifts CallSites in pytorch generated stablehlo.";
+  let description = [{
+    Lifts CallSites in pytorch generated stablehlo to make the Loc's consitent
+    after inlining.
+  }];
+  let dependentDialects = ["func::FuncDialect"];
+}
+
+def BuildStableHLOCompositePass : Pass<"build-stablehlo-composite", "ModuleOp"> {
+  let summary = "Build stablehlo.composite from inlined stablehlo.custom_call mark_tensor ops.";
+  let description = [{
+    Build stablehlo.composite from inlined stablehlo.custom_call mark_tensor ops.
+  }];
+  let dependentDialects = ["func::FuncDialect", "stablehlo::StablehloDialect"];
+}

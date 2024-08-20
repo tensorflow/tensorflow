@@ -17,6 +17,12 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/check.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+
 namespace xla {
 namespace sharding_builder {
 

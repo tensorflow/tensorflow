@@ -130,7 +130,7 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   auto graph =
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
   absl::flat_hash_set<tensorflow::Node*> control_ret_nodes;
-  auto status = tensorflow::tf2xla::v2::ConvertMlirToGraph(
+  auto status = tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
       module, confs, &graph, flib_def.get(), &control_ret_nodes);
   if (!status.ok()) {
     LOG(ERROR) << "Export to Graph failed: " << status;
@@ -179,7 +179,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
   absl::flat_hash_set<tensorflow::Node*> control_ret_nodes;
 
-  auto status = tensorflow::tf2xla::v2::ConvertMlirToGraph(
+  auto status = tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
       module, confs, &graph, &flib_def, &control_ret_nodes);
   if (!status.ok()) {
     LOG(ERROR) << "Export to Graph failed: " << status;

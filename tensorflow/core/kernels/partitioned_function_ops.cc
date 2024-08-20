@@ -257,7 +257,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
-  profiler::TraceMe trace_me("PartitionedCallOp");
+  tsl::profiler::TraceMe trace_me("PartitionedCallOp");
   lib->Run(run_opts, handle, inputs, rets,
            [rets, done = std::move(done), ctx, func_name,
             step_container](const Status& status) {

@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -84,6 +85,80 @@ ENTRY entry {
       complex_a_raised_to_complex_b(std::numeric_limits<float>::infinity(), 0));
   EXPECT_TRUE(complex_a_raised_to_complex_b(
       std::numeric_limits<float>::quiet_NaN(), 0));
+}
+
+// Case from one of XLA users, the following code produced incorrect results on
+// CPU thunks backend (due to incorrect LLVM IR generated).
+// This is an HLO module optimized for CPU backend, it may be invalid for other
+// backends.
+XLA_TEST_F(NumericsTest,
+           DISABLED_ON_GPU(DISABLED_ON_TPU(MultiplySubtractConcatTest))) {
+  const char* test_hlo = R"(
+    HloModule jit_step, is_scheduled=true
+
+    fused_computation {
+      param_0.2 = f32[1,5] parameter(0)
+      slice.11 = f32[1,1] slice(param_0.2), slice={[0:1], [1:2]}
+      slice.10 = f32[1,1] slice(param_0.2), slice={[0:1], [4:5]}
+      multiply.11 = f32[1,1] multiply(slice.11, slice.10)
+      slice.9 = f32[1,1] slice(param_0.2), slice={[0:1], [2:3]}
+      slice.8 = f32[1,1] slice(param_0.2), slice={[0:1], [3:4]}
+      multiply.10 = f32[1,1] multiply(slice.9, slice.8)
+      subtract.5 = f32[1,1] subtract(multiply.11, multiply.10)
+      slice.6 = f32[1,1] slice(param_0.2), slice={[0:1], [0:1]}
+      multiply.8 = f32[1,1] multiply(slice.6, slice.10)
+      subtract.4 = f32[1,1] subtract(slice.9, multiply.8)
+      ROOT concatenate.1 = f32[1,3] concatenate(
+        subtract.5, subtract.4, subtract.4), dimensions={1}
+    } // fused_computation
+
+    ENTRY main {
+      Arg_0.0 = f32[1,5] parameter(0)
+      ROOT fusion = f32[1,3] fusion(Arg_0.0), kind=kLoop,
+        calls=fused_computation
+    } // main
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto test_module,
+                          ParseAndReturnVerifiedModule(test_hlo));
+  auto argument = LiteralUtil::CreateR2<float>(
+      {{0.261473775, -0.642940283, -0.719902277, 0.712947428, 0.543724537}});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto test_result,
+                          Execute(std::move(test_module), {&argument},
+                                  /*run_hlo_passes=*/false));
+
+  // Reference HLO module. It's a subgraph of the test module, it performs only
+  // the calculations needed for the first output element from the test module.
+  const char* reference_hlo = R"(
+    HloModule jit_step, is_scheduled=true
+
+    fused_computation {
+      param_0.2 = f32[1,5] parameter(0)
+      slice.11 = f32[1,1] slice(param_0.2), slice={[0:1], [1:2]}
+      slice.10 = f32[1,1] slice(param_0.2), slice={[0:1], [4:5]}
+      multiply.11 = f32[1,1] multiply(slice.11, slice.10)
+      slice.9 = f32[1,1] slice(param_0.2), slice={[0:1], [2:3]}
+      slice.8 = f32[1,1] slice(param_0.2), slice={[0:1], [3:4]}
+      multiply.10 = f32[1,1] multiply(slice.9, slice.8)
+      ROOT subtract.5 = f32[1,1] subtract(multiply.11, multiply.10)
+    } // fused_computation
+
+    ENTRY main {
+      Arg_0.0 = f32[1,5] parameter(0)
+      ROOT fusion = f32[1,1] fusion(Arg_0.0), kind=kLoop,
+        calls=fused_computation
+    } // main
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto reference_module,
+                          ParseAndReturnVerifiedModule(reference_hlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto reference_result,
+                          Execute(std::move(reference_module), {&argument},
+                                  /*run_hlo_passes=*/false));
+
+  // Only compare the first element.
+  EXPECT_EQ(reference_result.data<float>()[0], test_result.data<float>()[0]);
 }
 
 }  // namespace

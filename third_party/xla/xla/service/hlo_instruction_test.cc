@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <limits>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -22,24 +27,32 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -2706,6 +2719,16 @@ TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
     }
   }
   EXPECT_EQ(num_while_body_comp, 1);
+
+  for (HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      HloComputation* while_body = instruction->while_body();
+      EXPECT_TRUE(while_body->IsWhileBodyComputation());
+      HloInstruction* while_back_ref = while_body->WhileCallInstruction();
+      EXPECT_EQ(while_back_ref->while_body(), while_body);
+    }
+  }
 }
 
 TEST_F(HloInstructionTest,
@@ -2752,7 +2775,7 @@ TEST_F(HloInstructionTest,
 
   module->AddEntryComputation(main_builder.Build());
   // Should find conditional branch computations in the graph and it should
-  // point to the conditonal instruction.
+  // point to the conditional instruction.
   int num_conditional_branch_comp = 0;
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     if (comp->IsConditionalBranchComputation()) {
@@ -2827,7 +2850,7 @@ TEST_F(HloInstructionTest,
 
   module->AddEntryComputation(main_builder.Build());
   // Should find conditional branch computations in the graph and it should
-  // point to the conditonal instruction.
+  // point to the conditional instruction.
   int num_conditional_branch_comp = 0;
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     if (comp->IsConditionalBranchComputation()) {

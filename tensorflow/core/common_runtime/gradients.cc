@@ -345,7 +345,7 @@ Status SymbolicGradientBuilder::Compute() {
   InitBackprop();
 
   // Backward propagation.
-  gtl::InlinedVector<NodeOut, 8> dy;
+  absl::InlinedVector<NodeOut, 8UL> dy;
   while (!ready_.empty()) {
     // n has collected all gradients.
     Node* n = ready_.front();

@@ -18,8 +18,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/status.h"
 
 namespace mlir {
 namespace TFL {

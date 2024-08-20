@@ -141,7 +141,7 @@ class CallGraphNode {
   CallGraphNode(const CallGraphNode&) = delete;
   CallGraphNode& operator=(const CallGraphNode&) = delete;
   CallGraphNode(CallGraphNode&&) = default;
-  CallGraphNode& operator=(CallGraphNode&&) = default;
+  CallGraphNode& operator=(CallGraphNode&&) noexcept = default;
 
  private:
   // Only CallGraph can modify CallGraphNode.

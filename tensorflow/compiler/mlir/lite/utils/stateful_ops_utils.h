@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {

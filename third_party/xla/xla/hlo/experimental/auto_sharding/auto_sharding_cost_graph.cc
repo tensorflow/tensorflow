@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdlib>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -33,6 +34,24 @@ limitations under the License.
 
 namespace xla {
 namespace spmd {
+
+EdgeReshardingCostMatrix Normalize(const EdgeReshardingCostMatrix& edge_cost) {
+  double min_communication_cost = std::numeric_limits<double>::max();
+  for (int i = 0; i < edge_cost.n_; ++i) {
+    for (int j = 0; j < edge_cost.m_; ++j) {
+      min_communication_cost =
+          std::min(min_communication_cost, edge_cost(i, j).communication_cost);
+    }
+  }
+  if (min_communication_cost >= 0) return edge_cost;
+  EdgeReshardingCostMatrix normalized_edge_cost = edge_cost;
+  for (int i = 0; i < edge_cost.n_; ++i) {
+    for (int j = 0; j < edge_cost.m_; ++j) {
+      normalized_edge_cost(i, j).communication_cost -= min_communication_cost;
+    }
+  }
+  return normalized_edge_cost;
+}
 
 CostGraph::CostGraph(const StrategyGroups& strategy_groups,
                      const AssociativeDotPairs& associative_dot_pairs) {

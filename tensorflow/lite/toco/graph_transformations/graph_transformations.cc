@@ -21,9 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/toco/toco_port.h"
-#include "tensorflow/lite/toco/tooling_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/lite/toco/format_port.h"
+#include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 

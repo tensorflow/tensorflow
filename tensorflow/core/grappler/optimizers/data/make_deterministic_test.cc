@@ -85,7 +85,7 @@ TEST_P(SplitMapTest, SplitMapFunction) {
   } else {
     orig_map_node_def = graph_tests_utils::MakeParallelMapV2Node(
         "map", "range", "num_parallel_calls", "MyFunction",
-        deterministic ? "true" : "false");
+        deterministic ? "true" : "false", /*use_unbounded_threadpool=*/false);
   }
   orig_map_node_def.add_input("^start");
   AttrValue* attr_val = &(*orig_map_node_def.mutable_attr())["Targuments"];
@@ -321,7 +321,8 @@ TEST_P(MakeDeterministicTest, NoRewriteMap) {
             {{"value", 1}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeParallelMapV2Node(
            "map", "range", "num_parallel_calls", func_name,
-           deterministic ? "true" : "false")},
+           deterministic ? "true" : "false",
+           /*use_unbounded_threadpool=*/false)},
       // FunctionLib
       {test::function::XTimesTwo(), OuterXTimesTwo()});
 
@@ -387,7 +388,8 @@ TEST_P(MakeDeterministicTest, NoRewritePrefetch) {
             {{"value", Tensor(int64_t{1})}, {"dtype", DT_INT64}}),
        graph_tests_utils::MakeParallelMapV2Node(
            "map", "range", "num_parallel_calls", func_name,
-           deterministic ? "true" : "false"),
+           deterministic ? "true" : "false",
+           /*use_unbounded_threadpool=*/false),
        graph_tests_utils::MakePrefetchNode("prefetch", "map", "buffer_size")},
       // FunctionLib
       {test::function::RandomUniform(), OuterRandomUniform()});
@@ -485,7 +487,7 @@ TEST_P(RewriteMapWithoutSplitTest, RewriteMapWithoutSplit) {
 
   NodeDef map_node_def = graph_tests_utils::MakeParallelMapV2Node(
       "map", "range", "num_parallel_calls", func_name,
-      deterministic ? "true" : "false");
+      deterministic ? "true" : "false", /*use_unbounded_threadpool=*/false);
   map_node_def.add_input("^start");
 
   // Rewrite occurs due to parallelism in map function
@@ -587,7 +589,8 @@ TEST_P(MakeDeterministicTest, RewritePrefetch) {
             {{"value", Tensor(int64_t{1})}, {"dtype", DT_INT64}}),
        graph_tests_utils::MakeParallelMapV2Node(
            "map", "range", "num_parallel_calls", func_name,
-           deterministic ? "true" : "false"),
+           deterministic ? "true" : "false",
+           /*use_unbounded_threadpool=*/false),
        graph_tests_utils::MakePrefetchNode("prefetch", "map", "buffer_size")},
       // FunctionLib
       {test::function::ReadResourceVariable(), OuterReadResourceVariable()});

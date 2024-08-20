@@ -2021,7 +2021,7 @@ add {
 }
 // CHECK-LABEL:  func private @test_topk
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> tuple<tensor<4x2xf32>, tensor<4x2xi32>>
-// CHECK:  mhlo.topk([[ARG]], k = 2, largest = true) : tensor<4x4xf32> -> (tensor<4x2xf32>, tensor<4x2xi32>)
+// CHECK:  mhlo.topk([[ARG]], k = 2) : tensor<4x4xf32> -> (tensor<4x2xf32>, tensor<4x2xi32>)
 
 // FLATTEN-CHECK-LABEL:  func private @test_topk
 // FLATTEN-CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>)

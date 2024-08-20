@@ -20,17 +20,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/backend_config.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
-#include "xla/util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -41,26 +43,161 @@ namespace gpu {
 using ::tsl::testing::IsOkAndHolds;
 
 using IrEmissionUtilsTest = HloTestBase;
+using InlinedVector = absl::InlinedVector<int64_t, 3>;
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
   const char* hlo = R"(
 HloModule module
 
 ENTRY entry {
-  p = f32[32,48,64]{2,1,0} parameter(0)
-  ROOT t = f32[64,32,48]{2,1,0} transpose(p), dimensions={2,0,1}
+  p = f32[1536,64]{1,0} parameter(0)
+  ROOT t = f32[64,1536]{1,0} transpose(p), dimensions={1,0}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, Vector3({1, 64, 1536}));
-  EXPECT_EQ(result->permutation, Vector3({0, 2, 1}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 1536}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogical102Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,2]{2,1,0} parameter(0)
+  ROOT t = f32[48,32,2]{2,1,0} transpose(p), dimensions={1,0,2}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({48, 32, 2}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0, 2}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogical102TransposeTooMuchMemoryRequired) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = s8[32,48,9]{2,1,0} parameter(0)
+  ROOT t = s8[48,32,9]{2,1,0} transpose(p), dimensions={1,0,2}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogical2103Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[33,48,32,2]{3,2,1,0} parameter(0)
+  ROOT t = f32[32,48,33,2]{3,2,1,0} transpose(p), dimensions={2,1,0,3}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({32, 48, 33, 2}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0, 3}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogical1320Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[33,48,32,34]{3,2,1,0} parameter(0)
+  ROOT t = f32[48,34,32,33]{3,2,1,0} transpose(p), dimensions={1,3,2,0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({48, 34, 32, 33}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 3, 2, 0}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiled102Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = s16[32,48,4]{2,1,0} parameter(0)
+  ROOT t = s16[32,48,4]{2,0,1} copy(p)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({48, 32, 4}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0, 2}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiled102TransposeTooMuchMemoryRequired) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = s8[32,48,9]{2,1,0} parameter(0)
+  ROOT t = s8[32,48,9]{2,0,1} copy(p)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTranspose) {
@@ -79,8 +216,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*r, *r);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r);
-  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOp) {
@@ -100,8 +237,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
-  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOpS8) {
@@ -124,11 +261,11 @@ ENTRY main {
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
-  // TODO(b/284431534): Update this test when the shared memory transpose
-  // emitter is fast for S8 output.
-  EXPECT_FALSE(
-      GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0)).has_value());
-  EXPECT_EQ(FindNonTrivialHero(*r).name(), "t");
+  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, r->operand(0));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusion) {
@@ -258,8 +395,8 @@ ENTRY entry {
   auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
-  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithTwoIntermediateBinaryOps) {
@@ -289,8 +426,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0)->operand(0));
-  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest,
@@ -302,8 +439,10 @@ fusion {
   p = f32[32,48,64]{2,1,0} parameter(0)
   p2 = f32[48,32,64]{2,1,0} parameter(1)
   t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
-  t2 = f32[64,48,32]{2,1,0} transpose(p2), dimensions={2,0,1}
-  ROOT add = f32[64,48,32]{2,1,0} add(t, t2)
+  bc = f32[1,1536,64]{2,1,0} bitcast(p2)
+  t2 = f32[1,64,1536]{2,1,0} transpose(bc), dimensions={0,2,1}
+  bc2 = f32[64,48,32]{2,1,0} bitcast(t2)
+  ROOT add = f32[64,48,32]{2,1,0} add(t, bc2)
 }
 
 ENTRY main {
@@ -475,8 +614,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, copy);
-  EXPECT_EQ(result->dimensions, Vector3({8, 12, 1100}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({8, 12, 1100}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
@@ -484,13 +623,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
 HloModule module
 
 fusion {
-  p = f32[100,11,12,8]{3,2,1,0} parameter(0)
-  ROOT t = f32[8,12,100,11]{3,2,1,0} transpose(p), dimensions={3,2,0,1}
+  p = f32[1100,12,8]{2,1,0} parameter(0)
+  ROOT t = f32[8,12,1100]{2,1,0} transpose(p), dimensions={2,1,0}
 }
 
 ENTRY main {
-  param = f32[100,11,12,8]{3,2,1,0} parameter(0)
-  ROOT fusion = f32[8,12,100,11]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
+  param = f32[1100,12,8]{2,1,0} parameter(0)
+  ROOT fusion = f32[8,12,1100]{2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -502,8 +641,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, Vector3({8, 12, 1100}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({8, 12, 1100}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledTransposeOtherSwapDimIsSmall) {
@@ -529,8 +668,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, copy);
-  EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
@@ -538,13 +677,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
 HloModule module
 
 fusion {
-  p = f32[8,12,100,11]{3,2,1,0} parameter(0)
-  ROOT t = f32[100,11,12,8]{3,2,1,0} transpose(p), dimensions={2,3,1,0}
+  p = f32[8,12,1100]{2,1,0} parameter(0)
+  ROOT t = f32[1100,12,8]{2,1,0} transpose(p), dimensions={2,1,0}
 }
 
 ENTRY main {
-  param = f32[8,12,100,11]{3,2,1,0} parameter(0)
-  ROOT fusion = f32[100,11,12,8]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
+  param = f32[8,12,1100]{2,1,0} parameter(0)
+  ROOT fusion = f32[1100,12,8]{2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -556,8 +695,8 @@ ENTRY main {
       GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));
-  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
+  EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, IsContiguousSlice) {
@@ -703,12 +842,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -742,12 +882,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(false));
 }
 
@@ -782,8 +923,9 @@ ENTRY main {
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
   BufferAllocation::Slice slice1(&alloc, 10, 20);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [fusion, &slice0, &slice1](const HloInstruction* instr,
                                              const ShapeIndex&) {
                     if (instr == fusion) {
@@ -791,7 +933,7 @@ ENTRY main {
                     }
                     return slice1;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(false));
 }
 
@@ -825,12 +967,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(false));
 }
 
@@ -868,12 +1011,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -913,12 +1057,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -954,12 +1099,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -995,12 +1141,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 
@@ -1038,12 +1185,13 @@ ENTRY main {
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
   EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  Cast<HloFusionInstruction>(fusion),
+                  *adaptor,
                   [&slice0](const HloInstruction*, const ShapeIndex&) {
                     return slice0;
                   },
-                  HloFusionAdaptor::ForInstruction(fusion)->GetRoots()),
+                  fusion),
               IsOkAndHolds(true));
 }
 

@@ -24,8 +24,7 @@ limitations under the License.
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/service/gpu/fusions/triton/prevent_mmav3_loop_unrolling.h"
-#include "xla/service/gpu/fusions/triton/sparse_extensions.h"
+#include "xla/service/gpu/fusions/triton/passes.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/hlo_module_config.h"
@@ -65,9 +64,9 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       absl::StrFormat("cuda:%u", ccAsInt), block_level_parameters.num_warps,
       threadsPerWarp, block_level_parameters.num_ctas));
-  pm.addPass(CreateAddSparseDotEncodingPass(block_level_parameters.num_warps,
-                                            threadsPerWarp,
-                                            block_level_parameters.num_ctas));
+  pm.addPass(CreateSparseAddEncodingPass(block_level_parameters.num_warps,
+                                         threadsPerWarp,
+                                         block_level_parameters.num_ctas));
   pm.addPass(mt::gpu::createTritonGPUCoalesce());
   if (ccCuda.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createTritonGPUF32DotTC());
@@ -93,6 +92,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm.addPass(CreateSparseRemoveLayoutConversionPass());
   pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
   pm.addPass(mt::gpu::createTritonGPUReorderInstructions());
   pm.addPass(mlir::createCSEPass());

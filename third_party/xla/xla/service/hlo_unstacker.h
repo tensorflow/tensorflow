@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <stdbool.h>
 
+#include <functional>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -79,13 +81,18 @@ class HloUnstacker : public HloModulePass {
  public:
   ~HloUnstacker() override = default;
 
-  explicit HloUnstacker() = default;
+  explicit HloUnstacker(std::function<bool(HloInstruction*)> unfuse_slice =
+                            [](HloInstruction* instr) { return true; })
+      : unfuse_slice_(unfuse_slice) {}
 
   absl::string_view name() const override { return "hlo_unstacker"; }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  std::function<bool(HloInstruction*)> unfuse_slice_;
 };
 
 }  // namespace xla

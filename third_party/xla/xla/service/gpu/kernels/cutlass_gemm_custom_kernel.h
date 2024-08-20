@@ -30,7 +30,8 @@ namespace xla::gpu::kernel::gemm_universal {
 
 // Returns pre-compiled custom kernels for a given data type and problem size.
 absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
-    std::string name, PrimitiveType dtype, int32_t m, int32_t n, int32_t k,
+    std::string name, PrimitiveType dot_type, PrimitiveType lhs_type,
+    PrimitiveType rhs_type, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device);
 

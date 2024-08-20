@@ -8,7 +8,6 @@ package(
         "//tensorflow/core/data:__pkg__",
         "//tensorflow/core/data/service:__pkg__",
         "//tensorflow/core/grappler/optimizers/data:__subpackages__",
-        "//tensorflow/core/kernels/data:__pkg__",
         "//tensorflow/core/kernels/data/experimental:__pkg__",
     ],
     licenses = ["notice"],
@@ -1022,7 +1021,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

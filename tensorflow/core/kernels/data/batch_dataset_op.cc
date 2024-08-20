@@ -288,17 +288,24 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
+
       if (ctx->restored_element_count().has_value()) {
         IteratorContext::Params params(ctx);
         params.restored_element_count =
             *ctx->restored_element_count() * dataset()->batch_size_;
         IteratorContext ctx_copy(params);
-        return RestoreInput(&ctx_copy, reader, input_impl_);
+        if (!static_cast<bool>(input_empty)) {
+          TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
+          ctx->MergeCheckpoint(ctx_copy.checkpoint());
+        } else {
+          input_impl_.reset();
+        }
+        return absl::OkStatus();
       }
 
-      int64_t input_empty;
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
       if (!static_cast<bool>(input_empty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       } else {

@@ -47,13 +47,22 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
       -
         name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # v3.3.0
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
       -
         name: Login to GCR
         if: contains(github.event.pull_request.labels.*.name, 'build and push to gcr.io for staging')
-        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446 # v3.2.0
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
           registry: gcr.io
+          username: _json_key
+          password: ${{ secrets.GCP_CREDS }}
+      -
+        name: Login to AR
+        # Once this is verified, change the label's name. For now, we will piggyback on gcr.io actions.
+        if: contains(github.event.pull_request.labels.*.name, 'build and push to gcr.io for staging')
+        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446 # v3.2.0
+        with:
+          registry: us-central1-docker.pkg.dev
           username: _json_key
           password: ${{ secrets.GCP_CREDS }}
       -
@@ -64,7 +73,7 @@ jobs:
       -
         name: Build containers, and push to GCR only if the 'build and push to gcr.io for staging' label is applied
         id: docker_build
-        uses: docker/build-push-action@15560696de535e4014efeff63c48f16952e52dd1 # v6.2.0
+        uses: docker/build-push-action@5176d81f87c23d6fc96624dfdbcd9f3830bbe445 # v6.5.0
         with:
           push: ${{ contains(github.event.pull_request.labels.*.name, 'build and push to gcr.io for staging') }}
           context: ./tensorflow/tools/tf_sig_build_dockerfiles
@@ -74,6 +83,7 @@ jobs:
             CACHEBUSTER=${{ steps.date.outputs.DATE }}
           tags: |
             gcr.io/tensorflow-sigs/build:${{ github.event.number }}-${{ matrix.python-version }}
+            us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build:${{ github.event.number }}-${{ matrix.python-version }}
           cache-from: |
             type=registry,ref=tensorflow/build:latest-${{ matrix.python-version }}
             type=registry,ref=gcr.io/tensorflow-sigs/build:${{ github.event.number }}-${{ matrix.python-version }}

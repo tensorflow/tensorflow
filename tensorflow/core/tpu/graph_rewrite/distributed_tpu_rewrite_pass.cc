@@ -573,7 +573,7 @@ Status FindHostComputeKeyPlaceholderNodes(
 
   for (Node* node : graph->op_nodes()) {
     if (node->type_string() == "Placeholder" &&
-        str_util::EndsWith(node->name(), "_key_placeholder")) {
+        absl::EndsWith(node->name(), "_key_placeholder")) {
       const AttrValue* call_node_attr =
           node->attrs().Find("_host_compute_call_node");
       if (call_node_attr != nullptr) {

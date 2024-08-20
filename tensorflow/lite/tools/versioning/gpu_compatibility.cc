@@ -1085,7 +1085,8 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
                                        /*required_const_inputs=*/0,
                                        /*required_outputs=*/1));
 
-    // Two arguments elemenetwise operations
+    // Two arguments elementwise operations
+    case kTfLiteBuiltinAtan2:
     case kTfLiteBuiltinDiv:
     case kTfLiteBuiltinEqual:
     case kTfLiteBuiltinFloorDiv:

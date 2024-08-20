@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/ffi/type_id_registry.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 

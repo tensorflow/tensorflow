@@ -175,6 +175,7 @@ add_mlir_library(ChloPasses
   MLIRhlo_opsIncGen
   MLIRChloLegalizeToHloIncGen
   MLIRMhloPassIncGen
+  PassesIncGen
 
   LINK_COMPONENTS
   Core

@@ -88,6 +88,13 @@ Attribute convertAttr(Attribute stablehloAttr) {
           mlir::dyn_cast<stablehlo::CustomCallApiVersionAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(CustomCallApiVersion);
   }
+  if (auto attr = mlir::dyn_cast<stablehlo::DotAlgorithmAttr>(stablehloAttr)) {
+    return mhlo::DotAlgorithmAttr::get(
+        attr.getContext(), attr.getLhsPrecisionType(),
+        attr.getRhsPrecisionType(), attr.getAccumulationType(),
+        attr.getLhsComponentCount(), attr.getRhsComponentCount(),
+        attr.getNumPrimitiveOperations(), attr.getAllowImpreciseAccumulation());
+  }
   if (auto attr =
           mlir::dyn_cast<stablehlo::DotDimensionNumbersAttr>(stablehloAttr)) {
     return mhlo::DotDimensionNumbersAttr::get(
