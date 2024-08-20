@@ -642,12 +642,6 @@ static std::optional<TransposeDescription> FindTiledLogicalTranspose(
 
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero) {
-  // TODO(b/284431534): Figure out how to make the shared memory transpose
-  // emitter faster for this case.
-  if (hero.shape().element_type() == F32 && root.shape().element_type() == S8) {
-    return std::nullopt;
-  }
-
   if (auto d1 = FindTiledTranspose(hero)) {
     return d1;
   }
