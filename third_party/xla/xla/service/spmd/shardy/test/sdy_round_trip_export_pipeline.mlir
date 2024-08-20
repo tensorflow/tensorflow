@@ -1,16 +1,16 @@
 // RUN: sdy_opt %s -xla-sdy-round-trip-export-pipeline 2>&1 | FileCheck %s
 
-sdy.mesh @mesh_0 = <"axis_0"=2, "axis_1"=4, "axis_2"=4>
-sdy.mesh @mesh_1 = <"axis_0"=16>
-sdy.mesh @mesh_2 = <"x"=8, "y"=4>
+sdy.mesh @mesh_0 = <["axis_0"=2, "axis_1"=4, "axis_2"=4]>
+sdy.mesh @mesh_1 = <["axis_0"=16]>
+sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 
 // CHECK-NOT: sdy.mesh @mesh
 
 // CHECK: module attributes {mhlo.frontend_attributes = {
 // CHECK-SAME: xla.sdy.meshes = "{
-// CHECK-SAME: mesh_0 = \22#sdy.mesh<\\22axis_0\\22=2, \\22axis_1\\22=4, \\22axis_2\\22=4>\22,
-// CHECK-SAME: mesh_1 = \22#sdy.mesh<\\22axis_0\\22=16>\22,
-// CHECK-SAME: mesh_2 = \22#sdy.mesh<\\22x\\22=8, \\22y\\22=4>\22}"}} {
+// CHECK-SAME: mesh_0 = \22#sdy.mesh<[\\22axis_0\\22=2, \\22axis_1\\22=4, \\22axis_2\\22=4]>\22,
+// CHECK-SAME: mesh_1 = \22#sdy.mesh<[\\22axis_0\\22=16]>\22,
+// CHECK-SAME: mesh_2 = \22#sdy.mesh<[\\22x\\22=8, \\22y\\22=4]>\22}"}} {
 
 // CHECK-LABEL: func @multiple_shardings(
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh_0, [{\22axis_2\22}, {\22axis_0\22, \22axis_1\22}]>"}, mhlo.sharding =

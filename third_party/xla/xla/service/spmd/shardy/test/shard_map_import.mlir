@@ -1,8 +1,8 @@
 // RUN: sdy_opt %s -xla-sdy-shard-map-import 2>&1 | FileCheck %s
 
-sdy.mesh @mesh_0 = <"a"=4>
-sdy.mesh @mesh_1 = <"a"=4, "b"=2>
-sdy.mesh @mesh_2 = <"a"=4, "b"=2, "c"=3>
+sdy.mesh @mesh_0 = <["a"=4]>
+sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+sdy.mesh @mesh_2 = <["a"=4, "b"=2, "c"=3]>
 
 // CHECK-LABEL: func.func public @call_op_with_no_operands_or_results()
 func.func public @call_op_with_no_operands_or_results() {
