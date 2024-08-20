@@ -1805,7 +1805,7 @@ ENTRY e {
   p0 = bf16[8192,512]{1,0} parameter(0)
   p1 = bf16[512,512]{1,0} parameter(1)
   p2 = bf16[8192,512]{1,0} parameter(2)
-  ROOT fusion = bf16[8192,512]{1,0} fusion(p0,p1,p2), kind=kCustom, calls=triton_computation, 
+  ROOT fusion = bf16[8192,512]{1,0} fusion(p0,p1,p2), kind=kCustom, calls=triton_computation,
   backend_config={"fusion_backend_config":
       {"kind":"__triton_gemm", "triton_gemm_config":{"block_m":"64","block_n":"256","block_k":"32","split_k":"1","num_stages":"4","num_warps":"4","num_ctas":"1"}}}
 })";
@@ -2892,9 +2892,9 @@ TEST_F(TritonGemmTestAny,
 HloModule t
 
 ENTRY e {
-  parameter_0 = f32[32,4000] parameter(0)
-  parameter_1 = f32[32,4000,6400] parameter(1)
-  ROOT dot = f32[32,6400] dot(parameter_0, parameter_1), lhs_batch_dims={0},
+  parameter_0 = f32[1,40] parameter(0)
+  parameter_1 = f32[1,40,250000] parameter(1)
+  ROOT dot = f32[1,250000] dot(parameter_0, parameter_1), lhs_batch_dims={0},
     lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
 
@@ -2914,9 +2914,9 @@ TEST_F(TritonGemmTestAny,
 HloModule t
 
 ENTRY e {
-  parameter_0 = f32[32,4000,6400] parameter(0)
-  parameter_1 = f32[32,4000] parameter(1)
-  ROOT dot = f32[32,6400] dot(parameter_0, parameter_1), lhs_batch_dims={0},
+  parameter_0 = f32[1,40,250000] parameter(0)
+  parameter_1 = f32[1,40] parameter(1)
+  ROOT dot = f32[1,250000] dot(parameter_0, parameter_1), lhs_batch_dims={0},
     lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
 
