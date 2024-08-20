@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
+#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -782,7 +783,6 @@ absl::StatusOr<bool> RunOnComputation(
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
-
 
 }  // namespace
 

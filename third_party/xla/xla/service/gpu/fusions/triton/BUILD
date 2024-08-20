@@ -407,8 +407,14 @@ xla_test(
 
 cc_library(
     name = "triton_support",
-    srcs = ["triton_support.cc"],
-    hdrs = ["triton_support.h"],
+    srcs = [
+        "triton_support.cc",
+        "triton_support_legacy.cc",
+    ],
+    hdrs = [
+        "triton_support.h",
+        "triton_support_legacy.h",
+    ],
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
