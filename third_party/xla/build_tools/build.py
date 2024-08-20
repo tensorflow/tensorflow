@@ -29,11 +29,9 @@ import logging
 import os
 import subprocess
 import sys
-import time
 from typing import Any, Dict, List, Tuple
 
 
-_CONTAINER_NAME = "xla_ci"
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
     test_output="errors",
@@ -46,13 +44,6 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     bes_upload_mode="fully_async",
 )
 
-_DEFAULT_DOCKER_OPTIONS = dict(
-    rm=True,
-    interactive=True,
-    detach=True,
-    tty=True,
-    volume="./github:/github",
-)
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 _XLA_DEFAULT_TARGET_PATTERNS = (
     "//xla/...",
@@ -103,6 +94,7 @@ class Build:
   action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  extra_setup_commands: Tuple[List[str], ...] = ()
 
   def bazel_test_command(self) -> List[str]:
     """Returns a bazel test command for this build.
@@ -122,48 +114,47 @@ class Build:
     all_options = tag_filters + configs + action_env + test_env + options
     return ["bazel", "test", *all_options, "--", *self.target_patterns]
 
-  def _pull_docker_image_with_retries(self, retries=3) -> None:
-    """Pulls docker image with retries to avoid transient rate limit errors."""
-    for _ in range(retries):
-      pull_proc = sh(["docker", "pull", self.image_url], check=False)
-      if pull_proc.returncode == 0:
-        break  # Don't keep pulling after successful pull.
-      else:
-        time.sleep(15)
+  def docker_run_command(self, *, command: str, **kwargs: Any) -> List[str]:
+    options = _dict_to_cli_options(kwargs)
 
-    # write SHA of image to the sponge config
-    _write_to_sponge_config("TF_INFO_DOCKER_IMAGE", self.image_url)
+    return ["docker", "run", *options, self.image_url, command]
 
-    _ = sh(["docker", "pull", self.image_url])
-    # TODO(ddunleavy): get sha
-    # _write_to_sponge_config("TF_INFO_DOCKER_SHA", sha)
+  def commands(self) -> List[List[str]]:
+    """Returns list of commands for a build."""
+    cmds = []
+    cmds.append(["./github/xla/.kokoro/generate_index_html.sh", "index.html"])
+    if self.repo != "openxla/xla":
+      _, repo_name = self.repo.split("/")
 
-  def pull_and_run_docker_image(
-      self,
-      name: str,
-      command: Tuple[str, ...] = ("bash",),
-      **kwargs: Any,
-  ):
-    """Context manager for the container that yields `docker exec` lambda.
+      # pyformat:disable
+      cmds.append(["git", "clone", "--depth=1",
+                   f"https://github.com/{self.repo}", f"./github/{repo_name}"])
+      # pyformat:enable
 
-    Args:
-      name: The name of the docker container.
-      command: Command given to `docker run`, e.g. `bash`
-      **kwargs: Extra options passed to `docker run`.
+    cmds.extend(self.extra_setup_commands)
 
-    Returns:
-      None.
-    """
-    self._pull_docker_image_with_retries()
+    # pyformat:disable
 
-    assert "workdir" not in kwargs
+    # This is a slightly odd use of parallel, we aren't doing anything besides
+    # retrying after 15 seconds up to 3 times if `docker pull` fails.
+    cmds.append(["parallel", "--ungroup", "--retries", "3", "--delay", "15",
+                 "docker", "pull", ":::", self.image_url])
+
+    container_name = "xla_ci"
     _, repo_name = self.repo.split("/")
-    workdir = f"/github/{repo_name}"
 
-    options = ["--name", name, "--workdir", workdir]
-    options += _dict_to_cli_options(kwargs)
+    cmds.append(
+        self.docker_run_command(command="bash", detach=True,
+                                name=container_name, rm=True, interactive=True,
+                                tty=True, volume="./github:/github",
+                                workdir=f"/github/{repo_name}"))
+    # pyformat:enable
+    docker_exec = lambda cmd: ["docker", "exec", container_name, *cmd]
+    cmds.append(docker_exec(self.bazel_test_command()))
+    cmds.append(docker_exec(["bazel", "analyze-profile", "profile.json.gz"]))
+    cmds.append(["docker", "stop", container_name])
 
-    sh(["docker", "run", *options, self.image_url, *command])
+    return cmds
 
 
 def _tag_filters_for_compute_capability(
@@ -204,6 +195,22 @@ def nvidia_gpu_build_with_compute_capability(
           repo_env=f"TF_CUDA_COMPUTE_CAPABILITIES={compute_capability/10}",
           **_DEFAULT_BAZEL_OPTIONS,
       ),
+      extra_setup_commands=(
+          ["nvidia-smi"],
+          # TODO(b/338885148): Remove this after TF was updated to cuDNN 9
+          [
+              "sed",
+              "-i",
+              r"s/@sigbuild-r2\.17-clang_/@sigbuild-r2.17-clang-cudnn9_/g",
+              "github/xla/.bazelrc",
+          ],
+          [
+              "sed",
+              "-i",
+              r"s/8\.9\.7\.29/9.1.1/g",
+              "github/xla/.bazelrc",
+          ],
+      ),
   )
 
 
@@ -240,6 +247,7 @@ _CPU_ARM64_BUILD = Build(
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
+    extra_setup_commands=(["sudo", "apt", "-y", "install", "parallel"],),
 )
 # TODO(ddunleavy): Setup additional build for a100 tests once L4 RBE is ready.
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
@@ -361,47 +369,8 @@ def main():
   kokoro_job_name = os.getenv("KOKORO_JOB_NAME")
   build = _KOKORO_JOB_NAME_TO_BUILD_MAP[kokoro_job_name]
 
-  sh(["./github/xla/.kokoro/generate_index_html.sh", "index.html"])
-
-  _, repo_name = build.repo.split("/")
-  if build.repo != "openxla/xla":
-    sh([
-        "git",
-        "clone",
-        "--depth=1",
-        f"https://github.com/{build.repo}",
-        f"./github/{repo_name}",
-    ])
-
-  # TODO(b/338885148): Remove this block after TF was updated to cuDNN 9
-  if build.type_ in (BuildType.GPU, BuildType.GPU_CONTINUOUS):
-    sh(
-        [
-            "sed",
-            "-i",
-            r"s/@sigbuild-r2\.17-clang_/@sigbuild-r2.17-clang-cudnn9_/g",
-            "github/xla/.bazelrc",
-        ],
-    )
-    sh(
-        [
-            "sed",
-            "-i",
-            r"s/8\.9\.7\.29/9.1.1/g",
-            "github/xla/.bazelrc",
-        ],
-    )
-    sh(["nvidia-smi"])
-
-  build.pull_and_run_docker_image(
-      _CONTAINER_NAME,
-      **_DEFAULT_DOCKER_OPTIONS,
-  )
-  docker_exec = lambda cmd: sh(["docker", "exec", _CONTAINER_NAME, *cmd])
-  docker_exec(build.bazel_test_command())
-  docker_exec(["bazel", "analyze-profile", "profile.json.gz"])
-  sh(["docker", "stop", _CONTAINER_NAME])
-
+  for cmd in build.commands():
+    sh(cmd)
 
 if __name__ == "__main__":
   main()
