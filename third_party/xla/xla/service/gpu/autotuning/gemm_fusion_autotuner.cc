@@ -1208,7 +1208,10 @@ absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
         std::string autotune_results_str,
         key_value_store.Get(
             absl::StrFormat("%s_%d_%d", kKeyPrefix, module_id, i),
-            absl::Hours(24)));  // Infinite duration causes issues with MPI.
+            // TODO(b/361009609): reset to infinite duration once solved.
+            // Using an infinite duration here leads to issues with MPI, see
+            // https://github.com/google/jax/issues/22995.
+            absl::Hours(24)));
     TF_RETURN_IF_ERROR(
         AutotunerUtil::LoadAutotuneResults(autotune_results_str, true));
   }
