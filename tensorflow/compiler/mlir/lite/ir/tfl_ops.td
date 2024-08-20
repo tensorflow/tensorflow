@@ -2905,6 +2905,8 @@ def TFL_ReluOp: TFL_Op<"relu", [
 
   let results = (outs TFL_TensorOf<[F32, QUI8, QI8, QI16]>:$y);
 
+  let hasFolder = 1;
+
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
