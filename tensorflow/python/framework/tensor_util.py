@@ -13,10 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities to create TensorProtos."""
-
 import typing
 from typing import Protocol
-
 import numpy as np
 
 from tensorflow.core.framework import tensor_pb2
@@ -29,9 +27,7 @@ from tensorflow.python.types import core
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
-
 
 # Fallback in case fast_tensor_util is not properly compiled.
 # pylint: disable=g-import-not-at-top
@@ -44,7 +40,7 @@ except ImportError:
 
 
 def ExtractBitsFromFloat16(x):
-  return np.asarray(x, dtype=np.float16).view(np.uint16).item()
+  return np.asarray(x, np.float16).view(np.uint16).item()
 
 
 def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
@@ -79,7 +75,8 @@ def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
 
 def SlowAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.float8_val += (
-      np.asarray(proto_values, dtype=dtypes.float8_e5m2.as_numpy_dtype)
+      np.asarray(
+          proto_values, dtype=dtypes.float8_e5m2.as_numpy_dtype)
       .view(np.uint8)
       .tobytes()
   )
@@ -88,13 +85,14 @@ def SlowAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
 def FastAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
   fast_tensor_util.AppendFloat8ArrayToTensorProto(
       tensor_proto,
-      np.asarray(proto_values,
-                 dtype=dtypes.float8_e5m2.as_numpy_dtype).view(np.uint8))
+      np.asarray(
+          proto_values, dtype=dtypes.float8_e5m2.as_numpy_dtype).view(np.uint8))
 
 
 def SlowAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.float8_val += (
-      np.asarray(proto_values, dtype=dtypes.float8_e4m3fn.as_numpy_dtype)
+      np.asarray(
+          proto_values, dtype=dtypes.float8_e4m3fn.as_numpy_dtype)
       .view(np.uint8)
       .tobytes()
   )
@@ -103,15 +101,17 @@ def SlowAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
 def FastAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
   fast_tensor_util.AppendFloat8ArrayToTensorProto(
       tensor_proto,
-      np.asarray(proto_values,
-                 dtype=dtypes.float8_e4m3fn.as_numpy_dtype).view(np.uint8))
+      np.asarray(
+          proto_values, dtype=dtypes.float8_e4m3fn.as_numpy_dtype).view(
+              np.uint8))
 
 
 def SlowAppendInt4ArrayToTensorProto(tensor_proto, proto_values):
   # The actual bit representation of int4 as a bit-field is
   # implementation-defined, so we need to explicitly cast each
   # value to an int for packing.
-  x = np.asarray(proto_values, dtype=dtypes.int4.as_numpy_dtype).astype(np.int8)
+  x = np.asarray(
+      proto_values, dtype=dtypes.int4.as_numpy_dtype).astype(np.int8)
   tensor_proto.int_val.extend(x.tolist())
 
 
@@ -119,9 +119,8 @@ def SlowAppendUInt4ArrayToTensorProto(tensor_proto, proto_values):
   # The actual bit representation of int4 as a bit-field is
   # implementation-defined, so we need to explicitly cast each
   # value to an int for packing.
-  x = np.asarray(proto_values, dtype=dtypes.uint4.as_numpy_dtype).astype(
-      np.int8
-  )
+  x = np.asarray(
+      proto_values, dtype=dtypes.uint4.as_numpy_dtype).astype(np.int8)
   tensor_proto.int_val.extend(x.tolist())
 
 
@@ -523,7 +522,10 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
       nparray = np.empty(shape, dtype=np_dt)
     else:
       _AssertCompatible(values, dtype)
-      nparray = numpy_compat.np_array(values, np_dt)
+      if np_dt is not None and np.issubdtype(np_dt, np.number):
+        nparray = np.array(values).astype(np_dt)
+      else:
+        nparray = np.array(values, dtype=np_dt)
       # check to them.
       # We need to pass in quantized values as tuples, so don't apply the shape
       if (list(nparray.shape) != _GetDenseDimensions(values) and

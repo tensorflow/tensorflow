@@ -18,7 +18,7 @@
 import numpy as np
 
 
-def np_array(values, dtype):
+def np_array(values, dtype=None, copy=True, order='K'):
   """Creates a NumPy array containing input values.
 
   It will make a copy of the object.
@@ -29,20 +29,27 @@ def np_array(values, dtype):
   intended overflows, aligning with the behavior of older NumPy versions.
 
   Args:
-    values: Array_like objects. E.g., a python list, tuple, or an object
-    whose __array__ method returns an array.
+    values: Array_like objects. E.g., a python list, tuple, or an object whose
+      __array__ method returns an array.
     dtype: The desired numpy data type for the array.
+    copy: Bool. If True (default), then the array data is copied. If None, a
+      copy will only be made if __array__ returns a copy, if obj is a nested
+      sequence, or if a copy is needed to satisfy any of the other requirements
+      (dtype, order, etc.). Note that any copy of the data is shallow, i.e., for
+      arrays with object dtype, the new array will point to the same objects.
+      For False it raises a ValueError if a copy cannot be avoided.
+    order: {‘K’, ‘A’, ‘C’, ‘F’}.
 
   Returns:
     A NumPy array with the specified data type.
   """
   if dtype is not None and np.issubdtype(dtype, np.number):
-    return np.array(values).astype(dtype)
+    return np.array(values, copy=copy, order=order).astype(dtype)
   else:
-    return np.array(values, dtype=dtype)
+    return np.array(values, dtype=dtype, copy=copy, order=order)
 
 
-def np_asarray(values, dtype):
+def np_asarray(values, dtype=None, order=None, copy=None):
   """Converts input values to a NumPy array.
 
   It will not make a copy.
@@ -53,14 +60,23 @@ def np_asarray(values, dtype):
   intended overflows, aligning with the behavior of older NumPy versions.
 
   Args:
-    values: Array_like objects. E.g., a python list, tuple, or an object
-    whose __array__ method returns an array.
+    values: Array_like objects. E.g., a python list, tuple, or an object whose
+      __array__ method returns an array.
     dtype: The desired numpy data type for the array.
+    order: {‘C’, ‘F’, ‘A’, ‘K’}.
+    copy: bool. If True, then the object is copied. If None then the object is
+      copied only if needed, i.e. if __array__ returns a copy, if obj is a
+      nested sequence, or if a copy is needed to satisfy any of the other
+      requirements (dtype, order, etc.). For False it raises a ValueError if a
+      copy cannot be avoided.
 
   Returns:
     A NumPy array with the specified data type.
   """
-  if dtype is not None and np.issubdtype(dtype, np.number):
-    return np.asarray(values).astype(dtype)
+  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+    if dtype is not None and np.issubdtype(dtype, np.number):
+      return np.asarray(values, order=order, copy=copy).astype(dtype)
+    else:
+      return np.asarray(values, dtype=dtype, order=order, copy=copy)
   else:
-    return np.asarray(values, dtype=dtype)
+    return np.asarray(values, dtype=dtype, order=order)
