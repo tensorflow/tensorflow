@@ -468,7 +468,8 @@ absl::Status ExecuteThunks(
         command_buffer_trace_stream,
         &collective_params,
         &collective_cliques,
-        run_options->run_options().ffi_execution_context()};
+        run_options->run_options().ffi_execution_context(),
+        run_options->local_device_count()};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
     TF_RETURN_IF_ERROR(thunk_sequence.Initialize(initialize_params));

@@ -202,7 +202,7 @@ class HloRunner : public HloRunnerInterface {
   // should pass the device_assignment parameter.
   ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
       int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
-      RunId run_id);
+      RunId run_id, int local_device_count);
 
   // Common implementation code for ExecuteReplicated() above.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
