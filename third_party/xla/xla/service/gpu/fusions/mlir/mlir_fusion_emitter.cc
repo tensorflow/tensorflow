@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -349,6 +351,8 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(CreateExpandFloatOpsPass(
       !device.cuda_compute_capability().IsAtLeastAmpere()));
+  pm.addPass(mlir::createLowerAffinePass());
+  pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(CreateLowerToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
@@ -381,6 +385,7 @@ MlirFusionEmitterBase::CreateMLIRModule(
                       mlir::vector::VectorDialect, mlir::NVVM::NVVMDialect,
                       xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
+  mlir::LLVM::registerInlinerInterface(registry);
   mlir::func::registerInlinerExtension(registry);
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);

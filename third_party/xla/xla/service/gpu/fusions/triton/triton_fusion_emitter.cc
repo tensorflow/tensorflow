@@ -61,6 +61,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
@@ -2775,9 +2776,11 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<
       mt::TritonDialect, mt::gpu::TritonGPUDialect, mlir::arith::ArithDialect,
-      mlir::affine::AffineDialect, xla::gpu::XlaGpuDialect>();
+      mlir::affine::AffineDialect, mlir::LLVM::LLVMDialect,
+      xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
+  mlir::LLVM::registerInlinerInterface(registry);
   mlir_context.appendDialectRegistry(registry);
 }
 

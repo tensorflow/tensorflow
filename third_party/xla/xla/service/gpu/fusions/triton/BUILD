@@ -101,6 +101,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:IndexToLLVM",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMIRTransforms",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:NVVMDialect",

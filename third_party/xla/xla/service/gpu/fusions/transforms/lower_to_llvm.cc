@@ -62,8 +62,6 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
 
     // Populate patterns.
     mlir::RewritePatternSet patterns(&getContext());
-    mlir::populateAffineToStdConversionPatterns(patterns);
-    mlir::populateSCFToControlFlowConversionPatterns(patterns);
     mlir::arith::populateArithExpandOpsPatterns(patterns);
     mlir::arith::populateArithToLLVMConversionPatterns(type_converter,
                                                        patterns);
