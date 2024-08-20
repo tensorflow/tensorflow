@@ -44,7 +44,7 @@ except ImportError:
 
 
 def ExtractBitsFromFloat16(x):
-  return np.asarray(x, dtype=np.float16).view(np.uint16).item()
+  return numpy_compat.np_asarray(x, np.float16).view(np.uint16).item()
 
 
 def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
@@ -57,11 +57,11 @@ def _MediumAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
   # TODO: Remove the conversion if cython supports np.float16_t
   fast_tensor_util.AppendFloat16ArrayToTensorProto(
       tensor_proto,
-      np.asarray(proto_values, dtype=np.float16).view(np.uint16))
+      numpy_compat.np_asarray(proto_values, dtype=np.float16).view(np.uint16))
 
 
 def ExtractBitsFromBFloat16(x):
-  return np.asarray(
+  return numpy_compat.np_asarray(
       x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16).item()
 
 
@@ -73,13 +73,14 @@ def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
 
 def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
   fast_tensor_util.AppendBFloat16ArrayToTensorProto(
-      tensor_proto, np.asarray(
+      tensor_proto, numpy_compat.np_asarray(
           proto_values, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
 
 
 def SlowAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.float8_val += (
-      np.asarray(proto_values, dtype=dtypes.float8_e5m2.as_numpy_dtype)
+      numpy_compat.np_asarray(
+          proto_values, dtype=dtypes.float8_e5m2.as_numpy_dtype)
       .view(np.uint8)
       .tobytes()
   )
@@ -88,13 +89,14 @@ def SlowAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
 def FastAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
   fast_tensor_util.AppendFloat8ArrayToTensorProto(
       tensor_proto,
-      np.asarray(proto_values,
-                 dtype=dtypes.float8_e5m2.as_numpy_dtype).view(np.uint8))
+      numpy_compat.np_asarray(
+          proto_values, dtype=dtypes.float8_e5m2.as_numpy_dtype).view(np.uint8))
 
 
 def SlowAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.float8_val += (
-      np.asarray(proto_values, dtype=dtypes.float8_e4m3fn.as_numpy_dtype)
+      numpy_compat.np_asarray(
+          proto_values, dtype=dtypes.float8_e4m3fn.as_numpy_dtype)
       .view(np.uint8)
       .tobytes()
   )
@@ -103,15 +105,17 @@ def SlowAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
 def FastAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
   fast_tensor_util.AppendFloat8ArrayToTensorProto(
       tensor_proto,
-      np.asarray(proto_values,
-                 dtype=dtypes.float8_e4m3fn.as_numpy_dtype).view(np.uint8))
+      numpy_compat.np_asarray(
+          proto_values, dtype=dtypes.float8_e4m3fn.as_numpy_dtype).view(
+              np.uint8))
 
 
 def SlowAppendInt4ArrayToTensorProto(tensor_proto, proto_values):
   # The actual bit representation of int4 as a bit-field is
   # implementation-defined, so we need to explicitly cast each
   # value to an int for packing.
-  x = np.asarray(proto_values, dtype=dtypes.int4.as_numpy_dtype).astype(np.int8)
+  x = numpy_compat.np_asarray(
+      proto_values, dtype=dtypes.int4.as_numpy_dtype).astype(np.int8)
   tensor_proto.int_val.extend(x.tolist())
 
 
@@ -119,9 +123,8 @@ def SlowAppendUInt4ArrayToTensorProto(tensor_proto, proto_values):
   # The actual bit representation of int4 as a bit-field is
   # implementation-defined, so we need to explicitly cast each
   # value to an int for packing.
-  x = np.asarray(proto_values, dtype=dtypes.uint4.as_numpy_dtype).astype(
-      np.int8
-  )
+  x = numpy_compat.np_asarray(
+      proto_values, dtype=dtypes.uint4.as_numpy_dtype).astype(np.int8)
   tensor_proto.int_val.extend(x.tolist())
 
 
@@ -500,7 +503,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
       ])
 
   if _is_array_like(values):
-    values = np.asarray(values)
+    values = numpy_compat.np_asarray(values)
 
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
