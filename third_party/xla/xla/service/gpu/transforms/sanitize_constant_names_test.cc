@@ -104,6 +104,14 @@ TEST_F(SanitizeConstantNamesTest, BufferSanitizedNameCollisionResolved) {
               GmockMatch(m::Constant()));
   EXPECT_THAT(FindInstruction(module.get(), "equal_to_2"),
               GmockMatch(m::Constant()));
+  for (const auto *comp : module->computations()) {
+    for (const auto *instruction : comp->instructions()) {
+      if (!instruction->metadata().scheduling_name().empty()) {
+        EXPECT_EQ(instruction->name(),
+                  instruction->metadata().scheduling_name());
+      }
+    }
+  }
 }
 
 }  // namespace

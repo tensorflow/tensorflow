@@ -64,6 +64,7 @@ absl::StatusOr<bool> SanitizeConstantNames::Run(
       // Register this new name with the module's instruction_name_uniquer to
       // avoid name collision that might happen in future.
       module->instruction_name_uniquer().GetUniqueName(instr->name());
+      instr->set_metadata_scheduling_name(instr->name());
       changed = true;
     }
   }

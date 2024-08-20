@@ -261,11 +261,11 @@ ENTRY main {
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
-  // TODO(b/284431534): Update this test when the shared memory transpose
-  // emitter is fast for S8 output.
-  EXPECT_FALSE(
-      GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0)).has_value());
-  EXPECT_EQ(FindNonTrivialHero(*r).name(), "t");
+  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, r->operand(0));
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusion) {
