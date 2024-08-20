@@ -111,6 +111,52 @@ ENTRY entry {
   EXPECT_FALSE(result.has_value());
 }
 
+TEST_F(IrEmissionUtilsTest, FindTiledLogical2103Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[33,48,32,2]{3,2,1,0} parameter(0)
+  ROOT t = f32[32,48,33,2]{3,2,1,0} transpose(p), dimensions={2,1,0,3}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({32, 48, 33, 2}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0, 3}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogical1320Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[33,48,32,34]{3,2,1,0} parameter(0)
+  ROOT t = f32[48,34,32,33]{3,2,1,0} transpose(p), dimensions={1,3,2,0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_mlir_emitter_level(3);
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({48, 34, 32, 33}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 3, 2, 0}));
+}
+
 TEST_F(IrEmissionUtilsTest, FindTiled102Transpose) {
   const char* hlo = R"(
 HloModule module

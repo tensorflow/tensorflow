@@ -432,6 +432,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

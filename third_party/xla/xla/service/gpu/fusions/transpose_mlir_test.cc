@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "mlir/IR/MLIRContext.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -141,6 +142,72 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201_SimplifiedTo021) {
 
         s0 in [0, 7]
         s1 in [0, 0]
+      )"));
+}
+
+TEST_F(MlirTransposeFusionTest, Transpose_ThreadIndexing1302) {
+  auto kHloString = R"(
+    HloModule Transpose
+
+    %fused_computation {
+      %param_0 = f32[19, 16, 16, 144] parameter(0)
+      ROOT %transpose= f32[16, 144, 19, 16] transpose( %param_0),
+        dimensions={1,3,0,2}
+    }
+    ENTRY main {
+      %param = f32[19, 16, 16, 144] parameter(0)
+      ROOT %fusion = f32[16, 144, 19, 16] fusion(%param), kind=kInput,
+        calls=%fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
+
+  MlirTransposeFusion fusion(analysis);
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1] -> (
+          d3 floordiv 80,
+          (d3 floordiv 5) mod 16,
+          d0 floordiv 32 + s0 * 4,
+          (d3 mod 5) * 32 + d0 mod 32
+        )
+        domain:
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 1519]
+        d4 in [0, 0]
+        d5 in [0, 0]
+
+        s0 in [0, 3]
+        s1 in [0, 0]
+        (d3 mod 5) * 32 + d0 mod 32 in [0, 143]
+      )"));
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1] -> (
+          (d3 floordiv 5) mod 16,
+          (d3 mod 5) * 32 + s0 * 4 + d0 floordiv 32,
+          d3 floordiv 80,
+          d0 mod 32
+        )
+        domain:
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 1519]
+        d4 in [0, 0]
+        d5 in [0, 0]
+
+        s0 in [0, 7]
+        s1 in [0, 0]
+        (d3 mod 5) * 8 + s0 in [0, 35]
+        d0 mod 32 in [0, 15]
       )"));
 }
 
@@ -461,6 +528,26 @@ TEST_F(MlirTransposeFusionTest, Transpose_2D) {
     ENTRY main {
       %param = f64[64,64] parameter(0)
       ROOT %fusion = f64[64,64] fusion(%param), kind=kInput,
+        calls=%fused_computation
+    }
+  )";
+
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, "// CHECK: xla_gpu.allocate_shared"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirTransposeFusionTest, Transpose_4D) {
+  auto kHloString = R"(
+    HloModule Transpose
+
+    %fused_computation {
+      %param_0 = f32[19, 16, 16, 144] parameter(0)
+      ROOT %transpose= f32[16, 144, 19, 16] transpose( %param_0),
+        dimensions={1,3,0,2}
+    }
+    ENTRY main {
+      %param = f32[19, 16, 16, 144] parameter(0)
+      ROOT %fusion = f32[16, 144, 19, 16] fusion(%param), kind=kInput,
         calls=%fused_computation
     }
   )";
