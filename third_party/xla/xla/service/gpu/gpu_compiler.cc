@@ -113,6 +113,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -1302,6 +1303,19 @@ absl::Status GpuCompiler::OptimizeHloModule(
         });
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+
+  {
+    HloPassPipeline pipeline("async-wrapper");
+    if (debug_options.xla_gpu_async_dot()) {
+      pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
+        // TODO(b/339654953): Use a better heuristic to determine whether a
+        // `dot` operation should be wrapped in an async computation.
+        return IsCublasGemm(*instruction);
+      });
+    }
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
 
@@ -1513,17 +1527,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
-
-  // Wrap `dot` operations into async computations in an effort to parallelize
-  // matrix operations. This pass needs to run after the GEMM rewriter so that
-  // we still use the native GEMM implementation.
-  if (debug_options.xla_gpu_async_dot()) {
-    pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
-      // TODO(b/339654953): Use a better heuristic to determine whether a
-      // `dot` operation should be wrapped in an async computation.
-      return instruction->opcode() == HloOpcode::kCustomCall;
-    });
-  }
 
   pipeline.AddPass<HostOffloadLegalize>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost),

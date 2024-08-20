@@ -1369,6 +1369,7 @@ cc_library(
         ":buffer_sharing",
         ":compile_module_to_llvm_ir",
         ":conv_layout_normalization",
+        ":cublas_cudnn",
         ":executable_proto_cc",
         ":execution_stream_assignment",
         ":fusion_pipeline",
