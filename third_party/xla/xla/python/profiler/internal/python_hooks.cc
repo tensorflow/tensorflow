@@ -75,8 +75,10 @@ std::string GetEventName(PyMethodDef* method, PyObject* module) {
   } else {
     filename = "<unknown>";
   }
-
-  return absl::StrCat("$", filename, " ", method->ml_name);
+  if (method && method->ml_name) {
+    return absl::StrCat("$", filename, " ", method->ml_name);
+  }
+  return "$<unknown>";
 }
 
 void AddEventToXLine(const PythonTraceEntry& event,
@@ -120,13 +122,10 @@ void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
 /*static*/ PythonHookContext* PythonHooks::e2e_context_ = nullptr;
 
 std::string PythonTraceEntry::Name() const {
-  std::string event_name;
   if (co_filename) {
     return GetEventName(co_filename, co_name, co_firstlineno);
-  } else {
-    return GetEventName(method_def, m_module);
   }
-  return "<unknown>";
+  return GetEventName(method_def, m_module);
 }
 
 PythonHooks* PythonHooks::GetSingleton() {
