@@ -126,13 +126,23 @@ GrpcClientSession::GrpcClientSession(
 
 Future<std::shared_ptr<IfrtResponse>> GrpcClientSession::Enqueue(
     std::unique_ptr<IfrtRequest> request) {
+  LOG(INFO) << "****** GRPC CLIENT ENQUEUE request: " << request->DebugString();
+  const int64_t op_id = request->request_metadata().op_id();
   auto promise = Future<std::shared_ptr<IfrtResponse>>::CreatePromise();
   absl::Status status = Enqueue(
       std::move(request),
-      [promise, queue = user_futures_work_queue_.get()](
-          absl::StatusOr<std::shared_ptr<IfrtResponse>> response) mutable {
+      [promise, queue = user_futures_work_queue_.get(),
+       op_id](absl::StatusOr<std::shared_ptr<IfrtResponse>> response) mutable {
         queue->Schedule([promise = std::move(promise),
-                         response = std::move(response)]() mutable -> void {
+                         response = std::move(response),
+                         op_id]() mutable -> void {
+          if (response.ok()) {
+            LOG(INFO) << "****** GRPC CLIENT ENQUEUE " << op_id
+                      << " response: " << response.value()->DebugString();
+          } else {
+            LOG(INFO) << "****** GRPC CLIENT ENQUEUE " << op_id
+                      << " error: " << response.status();
+          }
           promise.Set(std::move(response));
         });
       });
