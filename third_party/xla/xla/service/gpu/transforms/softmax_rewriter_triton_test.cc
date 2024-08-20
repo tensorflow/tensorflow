@@ -18,14 +18,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <variant>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -41,7 +39,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -67,32 +64,13 @@ bool HasBlockLevelFusionConfig(const HloInstruction* fusion) {
              .has_block_level_fusion_config();
 }
 
-// Wrapper around SoftmaxRewriterTriton(gpu_version).Run(module) that finds
-// and fuses as many diamond chains as possible without invoking any kind of
-// cost analysis.
-absl::StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
-    const se::DeviceDescription& device_info, HloModule* module) {
-  CHECK_NE(module, nullptr);
-  SoftmaxRewriterTriton softmax_rewriter_triton(device_info,
-                                                ShapeSizeBytesFunction());
-  TF_ASSIGN_OR_RETURN(std::vector<DiamondChainDescriptor> diamond_chains,
-                      softmax_rewriter_triton.FindAllFusibleDiamondChains(
-                          *module, /*execution_threads=*/{}));
-
-  for (auto diamond_chain = diamond_chains.rbegin();
-       diamond_chain != diamond_chains.rend(); ++diamond_chain) {
-    TF_RETURN_IF_ERROR(
-        softmax_rewriter_triton.FuseDiamondChain(*diamond_chain));
-  }
-
-  return !diamond_chains.empty();
-}
-
 class SoftmaxRewriterTritonTest
     : public HloTestBase,
       public ::testing::WithParamInterface<PrimitiveType> {
  protected:
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  SoftmaxRewriterTriton fusion_rewriter_{device_info_,
+                                         ShapeSizeBytesFunction()};
 };
 
 TEST_F(SoftmaxRewriterTritonTest, CanFuseExactSoftmaxF32) {
@@ -123,8 +101,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
 
@@ -167,8 +144,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -193,8 +169,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -224,8 +199,7 @@ ENTRY main {
       module->entry_computation()->root_instruction();
   EXPECT_FALSE(IsTritonSupportedInstruction(
       *bf16_divide, device_info_.gpu_compute_capability()));
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -252,8 +226,7 @@ ENTRY main {
                                                HloOpcode::kExp);
   EXPECT_FALSE(IsTritonSupportedInstruction(
       *bf16_exponential, device_info_.gpu_compute_capability()));
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -278,8 +251,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -300,8 +272,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -322,8 +293,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -345,8 +315,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -379,8 +348,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -416,8 +384,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -444,8 +411,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -471,8 +437,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -499,8 +464,7 @@ ENTRY main {
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -528,8 +492,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -553,8 +516,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -578,8 +540,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -608,8 +569,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -642,8 +602,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -683,15 +642,13 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-      EXPECT_THAT(
-          module->entry_computation()->root_instruction(),
-          GmockMatch(m::Tuple(
-              m::Fusion(m::Fusion()).WithPredicate(HasBlockLevelFusionConfig),
-              m::Fusion(m::Parameter())
-                  .WithPredicate(HasBlockLevelFusionConfig))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Fusion(m::Fusion()).WithPredicate(HasBlockLevelFusionConfig),
+          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig))));
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -724,8 +681,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 
   EXPECT_THAT(
@@ -756,8 +712,7 @@ ENTRY main {
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Exp(m::Parameter()))
@@ -786,8 +741,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
@@ -813,8 +767,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -896,8 +849,7 @@ ENTRY main {
   ROOT subtract = f32[127,125]{1,0} subtract(multiply, broadcast)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -925,8 +877,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -962,8 +913,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -995,8 +945,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1030,8 +979,7 @@ ENTRY main {
 )";
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1058,8 +1006,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   SoftmaxRewriterTriton fusion_rewriter(device_info_, ShapeSizeBytesFunction());
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest, CanFuseRMSNormDiamond) {
@@ -1087,13 +1034,12 @@ ENTRY main.30 {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-      EXPECT_TRUE(
-          SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get())
-              .value());
-      EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-      EXPECT_THAT(module->entry_computation()->root_instruction(),
-                  GmockMatch(m::Fusion(m::Parameter())
-                                 .WithPredicate(HasBlockLevelFusionConfig)));
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
 }
 
 TEST_F(
@@ -1122,8 +1068,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1157,8 +1102,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1188,8 +1132,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1217,8 +1160,7 @@ ENTRY main {
   ROOT multiply = f32[127,125]{1,0} multiply(broadcast_splat, subtract)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1248,8 +1190,7 @@ ENTRY main {
   ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(
@@ -1284,8 +1225,7 @@ ENTRY main {
   ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest, FusionDecisionIsCapturedExplicitly) {
@@ -1356,8 +1296,7 @@ ENTRY main {
   ROOT add1 = f32[32,16]{1,0} add(add0, b0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1384,8 +1323,7 @@ ENTRY main {
   ROOT add1 = f32[32,16]{1,0} add(add0, b0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1412,8 +1350,7 @@ ENTRY main {
   ROOT add1 = f32[64,32,16]{2,1,0} add(add0, b0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1440,8 +1377,7 @@ ENTRY main {
   ROOT add1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1468,8 +1404,7 @@ ENTRY main {
   ROOT add1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1496,8 +1431,7 @@ ENTRY main {
   ROOT add1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1524,8 +1458,7 @@ ENTRY main {
   ROOT add1 = f32[32,8,16]{2,1,0} add(add0, b0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1553,8 +1486,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
@@ -1581,8 +1513,29 @@ ENTRY main {
   ROOT add1 = f32[128,64,32,16]{3,2,1,0} add(add0, b0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+}
+
+// Triton has a requirement that any tile in the program should not have more
+// than 1048576 elements.
+TEST_F(SoftmaxRewriterTritonTest, DoesNotFuseIfResultingFusionCannotBeTiled) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[8,2097152] parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[8]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[8,2097152] broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[8,2097152] subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
 }  // anonymous namespace
