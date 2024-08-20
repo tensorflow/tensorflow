@@ -3044,6 +3044,17 @@ func.func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // -----
 
+// CHECK-LABEL: pow
+func.func @pow(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = mhlo.power %arg0, %arg0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: tfl.pow
+// CHECK-NOT: mhlo
+
+// -----
+
 // CHECK-LABEL: clamp
 func.func @clamp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   %0 = "mhlo.clamp"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
