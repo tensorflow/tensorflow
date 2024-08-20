@@ -151,6 +151,75 @@ func.func @mul_f16() -> (tensor<f16>, tensor<4xf16>, tensor<4xf16>, tensor<4xf16
   func.return %5, %6, %7, %8 : tensor<f16>, tensor<4xf16>, tensor<4xf16>, tensor<4xf16>
 }
 
+// CHECK-LABEL: @mul_zero
+func.func @mul_zero(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %zero_int = arith.constant dense<0> : tensor<4xi32>
+  %zero_float = arith.constant dense<0.0> : tensor<4xf32>
+
+  // CHECK-NOT: tfl.mul
+  // CHECK: return %cst, %cst_0
+
+  %0 = "tfl.mul"(%arg0, %zero_int) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.mul"(%arg1, %zero_float) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @mul_zero_lhs
+func.func @mul_zero_lhs(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %zero_int = arith.constant dense<0> : tensor<4xi32>
+  %zero_float = arith.constant dense<0.0> : tensor<4xf32>
+
+  // CHECK-NOT: tfl.mul
+  // CHECK: return %cst, %cst_0
+
+  %0 = "tfl.mul"(%zero_int, %arg0) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.mul"(%zero_float, %arg1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @mul_one
+func.func @mul_one(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %one_int = arith.constant dense<1> : tensor<4xi32>
+  %one_float = arith.constant dense<1.0> : tensor<4xf32>
+
+  // CHECK-NOT: tfl.mul
+  // CHECK: return %arg0, %arg1
+
+  %0 = "tfl.mul"(%arg0, %one_int) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.mul"(%arg1, %one_float) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @mul_one_lhs
+func.func @mul_one_lhs(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %one_int = arith.constant dense<1> : tensor<4xi32>
+  %one_float = arith.constant dense<1.0> : tensor<4xf32>
+
+  // CHECK-NOT: tfl.mul
+  // CHECK: return %arg0, %arg1
+
+  %0 = "tfl.mul"(%one_int, %arg0) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.mul"(%one_float, %arg1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @mul_one_quant
+func.func @mul_one_quant(%arg0: tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32x!quant.uniform<u8:f32, 1.0>> {
+  %one = "tfl.pseudo_qconst"() {qtype = tensor<32x!quant.uniform<u8:f32, 1.0>>, value = dense<1> : tensor<32xi8>} : () -> tensor<32x!quant.uniform<u8:f32, 1.0>>
+
+  // CHECK: %[[MUL:.*]] = tfl.mul
+  // CHECK: return %[[MUL]]
+
+  %0 = "tfl.mul"(%one, %arg0) {fused_activation_function = "NONE"} : (tensor<32x!quant.uniform<u8:f32, 1.0>>, tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32x!quant.uniform<u8:f32, 1.0>>
+
+  func.return %0 : tensor<32x!quant.uniform<u8:f32, 1.0>>
+}
+
+
 // CHECK-LABEL: @elementwise_unary_ops
 func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
   %0 = arith.constant dense<-1.0> : tensor<f32>
@@ -814,6 +883,15 @@ func.func @cast_i32_to_f32() -> tensor<5xf32> {
 }
 
 // CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 2.000000e+00, 2.14748365E+9, -2.14748365E+9]> : tensor<5xf32>
+
+// CHECK-LABEL: @cast_bool_to_f32
+func.func @cast_bool_to_f32() -> tensor<2xf32> {
+  %cst = arith.constant dense<[true, false]> : tensor<2xi1>
+  %0 = "tfl.cast"(%cst) : (tensor<2xi1>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[1.000000e+00, 0.000000e+00]> : tensor<2xf32>
 
 // CHECK-LABEL: @cast_f64_to_f32
 func.func @cast_f64_to_f32() -> tensor<4xf32> {

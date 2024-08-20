@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: custom_op
 func.func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-  %0 = "arith.constant" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32>
+  %0 = "arith.constant" () {value = dense<2.0> : tensor<4xf32>} : () -> tensor<4xf32>
   %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // will be preserved since it has uses.
   %2 = "tf.MyCustomOp"(%1, %0) {fused_activation_function = "RELU", int_attr = 2 : i32}  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
@@ -11,7 +11,7 @@ func.func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   "tf.MyCustomOp"(%1, %0) {fused_activation_function = "RELU", int_attr = 2 : i32}  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   func.return %2 : tensor<4xf32>
 
-// CHECK-NEXT: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<4xf32>
+// CHECK-NEXT: %[[CST:.*]] = arith.constant dense<2.000000e+00> : tensor<4xf32>
 // CHECK-NEXT: %[[MUL:.*]] = tfl.mul %arg0, %[[CST]] {fused_activation_function = "NONE"} : tensor<4xf32>
 // CHECK-NEXT: %[[CUSTOM_1:.*]] = "tfl.custom_tf"(%[[MUL]], %[[CST]]) ({
 // CHECK-NEXT: ^bb0(%arg1: tensor<4xf32>, %arg2: tensor<4xf32>):

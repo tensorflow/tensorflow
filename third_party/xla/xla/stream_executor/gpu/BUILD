@@ -396,6 +396,11 @@ gpu_only_cc_library(
 gpu_only_cc_library(
     name = "gpu_types_header",
     hdrs = ["gpu_types.h"],
+    defines = if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]) + if_sycl_is_configured([
+        "TENSORFLOW_USE_SYCL=1",
+    ]),
     deps = [
         "//xla/stream_executor/platform",
     ] + if_cuda_is_configured([

@@ -18,6 +18,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
 
 #define EIGEN_USE_GPU
+#define EIGEN_USE_HIP
 #include <assert.h>
 
 #include <complex>

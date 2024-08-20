@@ -47,6 +47,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -67,6 +68,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -1752,6 +1754,38 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
+
+  auto is_zero = [](Attribute a) {
+    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
+  };
+  auto is_one = [](Attribute a) {
+    return matchPattern(a, m_One()) || matchPattern(a, m_OneFloat());
+  };
+
+  // Quantized folding not supported.
+  const bool is_quantized =
+      llvm::isa<quant::QuantizedType>(getType().getElementType());
+
+  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
+  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+
+  if (lhs && !is_quantized) {
+    if (is_zero(lhs) && lhs.getType() == getType()) {
+      return lhs;
+    }
+    if (is_one(lhs) && getRhs().getType() == getType()) {
+      return getRhs();
+    }
+  }
+
+  if (rhs && !is_quantized) {
+    if (is_zero(rhs) && rhs.getType() == getType()) {
+      return rhs;
+    }
+    if (is_one(rhs) && getLhs().getType() == getType()) {
+      return getLhs();
+    }
+  }
 
   // This function is performance critical for op fusion patterns, e.g.
   // FuseBinaryOpToPrecedingAffine and FuseMulOrDivWithConv2dOrDepthwiseConv2d.
@@ -3504,14 +3538,21 @@ llvm::SmallVector<OutType> MapStaticCast(DenseElementsAttr data) {
 
 OpFoldResult CastIntToFloat(DenseIntElementsAttr data, IntegerType in_type,
                             FloatType out_type) {
-  const bool from_i32 = in_type.isSignlessInteger(32);
-  const bool to_f32 = out_type.isF32();
-  if (!from_i32 || !to_f32) {
+  auto result_type = data.getType().clone(out_type);
+  if (!out_type.isF32()) {
     return {};
   }
 
-  return DenseFPElementsAttr::get(data.getType().clone(out_type),
-                                  MapStaticCast<int32_t, float>(data));
+  if (in_type.isSignlessInteger(32)) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<int32_t, float>(data));
+  }
+  if (in_type.isSignlessInteger(1)) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<bool, float>(data));
+  }
+
+  return {};
 }
 
 OpFoldResult CastFloatToFloat(DenseFPElementsAttr data, FloatType in_type,
