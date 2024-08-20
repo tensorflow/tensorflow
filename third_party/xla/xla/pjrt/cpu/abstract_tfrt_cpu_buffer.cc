@@ -607,6 +607,24 @@ PjRtFuture<> AbstractTfrtCpuBuffer::GetReadyFuture() {
   }
 }
 
+namespace {
+
+void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
+                const tsl::AsyncValueRef<MaybeOwningCpuMemory>& b) {
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    const int bit_width = primitive_util::BitWidth(element_type);
+    absl::Span<const char> src_data_span(
+        static_cast<const char*>(literal.untyped_data()), literal.size_bytes());
+    absl::Span<char> dst_data_span(static_cast<char*>(b->data()), b->size());
+    PackIntN(bit_width, src_data_span, dst_data_span);
+  } else {
+    CHECK_EQ(literal.size_bytes(), b->size());
+    std::memcpy(b->data(), literal.untyped_data(), b->size());
+  }
+}
+
+}  // namespace
+
 // The buffer's memory should have been allocated before calling this function.
 void AbstractTfrtCpuBuffer::CopyFromLiteral(
     const LiteralSlice& literal, const Shape& shape,
@@ -624,8 +642,7 @@ void AbstractTfrtCpuBuffer::CopyFromLiteral(
           const tsl::AsyncValueRef<MaybeOwningCpuMemory>& b =
               device_buffer->Buffers()[0];
           CHECK(b.IsConcrete());
-          CHECK_EQ(literal.size_bytes(), b->size());
-          std::memcpy(b->data(), literal.untyped_data(), b->size());
+          PackOrCopy(shape.element_type(), literal, b);
           // Signal copy is complete.
           av->SetStateConcrete();
         });
@@ -641,8 +658,7 @@ void AbstractTfrtCpuBuffer::CopyFromLiteral(
         const tsl::AsyncValueRef<MaybeOwningCpuMemory>& b =
             device_buffer->Buffers()[i];
         CHECK(b.IsConcrete());
-        CHECK_EQ(slice.size_bytes(), b->size());
-        std::memcpy(b->data(), slice.untyped_data(), slice.size_bytes());
+        PackOrCopy(slice.shape().element_type(), slice, b);
         // Signal copy is complete.
         av->SetStateConcrete();
       });
@@ -882,6 +898,11 @@ absl::Status
 AbstractAsyncHostToHostMemoryTransferManager::TransferLiteralToBuffer(
     int buffer_index, const LiteralSlice& literal,
     absl::AnyInvocable<void() &&> on_done) {
+  if (primitive_util::IsSubByteNonPredType(literal.shape().element_type())) {
+    return absl::UnimplementedError(absl::StrCat(
+        "TransferLiteralToBuffer does not support sub-byte types (",
+        PrimitiveType_Name(literal.shape().element_type()), ")"));
+  }
   return TransferRawDataToSubBuffer(buffer_index, literal.untyped_data(),
                                     /*offset=*/0, literal.size_bytes(),
                                     /*is_last_transfer=*/true,

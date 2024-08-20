@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/cpu_client.h"
 
 #include "xla/service/hlo.pb.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 #ifndef _WIN32
@@ -245,6 +246,18 @@ TEST(TfrtCpuClientTest, AsyncTransferLiteral) {
   TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
   EXPECT_THAT(received_literal->data<float>(),
               ElementsAreArray(literal.data<float>()));
+}
+
+TEST(TfrtCpuClientTest, BufferFromLiteralInt4) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
+  xla::Shape shape = xla::ShapeUtil::MakeShape(S4, {128, 256});
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  EXPECT_THAT(received_literal->data<s4>(),
+              ElementsAreArray(literal.data<s4>()));
 }
 
 TEST(TfrtCpuClientTest, AsyncTransferCallsOnDone) {
