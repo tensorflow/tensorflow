@@ -686,9 +686,14 @@ XLA_TEST_F(ConvertTest, ConvertF32BF16) {
       floats[i] = absl::bit_cast<float>(val);
     }
   }
-  // Test NaN and -Nan.
+  // Test NaN and -NaN.
   floats.push_back(std::numeric_limits<float>::quiet_NaN());
   floats.push_back(-std::numeric_limits<float>::quiet_NaN());
+
+  // NaNs that have the LSB of the significand set.
+  // Just truncating the significand will result in an `inf` BF16 value.
+  floats.push_back(absl::bit_cast<float>(0x7F800001));
+  floats.push_back(absl::bit_cast<float>(0xFF800001));
 
   std::vector<bfloat16> expected(floats.size());
   for (int i = 0; i < expected.size(); ++i) {

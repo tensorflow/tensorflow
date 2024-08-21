@@ -743,12 +743,17 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           auto* rounding_bias = b_->CreateAdd(
               llvm::ConstantInt::get(b_->getInt32Ty(), 0x7fff), lsb);
 
-          // For nan values, we simply truncate the original value.
+          // For NaNs, we set all of them to quiet NaNs by masking the mantissa
+          // so that only the MSB is 1, then simply truncate the original value
+          // to retain the sign.
           auto* is_nan =
               b_->createIsFPClass(operand_value, llvm::FPClassTest::fcNan);
+          auto* nan_mask = llvm::ConstantInt::get(b_->getInt32Ty(), 0xFFC00000);
+          auto* msb = llvm::ConstantInt::get(b_->getInt32Ty(), 0x00400000);
+          auto* quiet_nan = b_->CreateOr(b_->CreateAnd(i32, nan_mask), msb);
           auto* i16 = b_->CreateTrunc(
               b_->CreateLShr(
-                  b_->CreateSelect(is_nan, i32,
+                  b_->CreateSelect(is_nan, quiet_nan,
                                    b_->CreateAdd(i32, rounding_bias)),
                   16),
               b_->getInt16Ty());
