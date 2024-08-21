@@ -4187,3 +4187,13 @@ func.func @depthwise_conv_external_same_padding(%arg0: tensor<1x8x8x64xf32>, %ar
 }
 
 // CHECK: %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x8x8x64xf32>, tensor<1x3x3x64xf32>, tensor<64xf32>) -> tensor<1x8x8x64xf32>
+
+// CHECK-LABEL: reorder_gather_cast
+func.func @reorder_gather_cast(%arg0: tensor<2x3x5xi8>, %arg1: tensor<2x7xi32>) -> tensor<2x7x5xf32> {
+  %0 = "tfl.cast"(%arg0) : (tensor<2x3x5xi8>) -> tensor<2x3x5xf32>
+  %1 = "tfl.gather"(%0, %arg1) {axis = 1 : i32, batch_dims = 1 : i32}: (tensor<2x3x5xf32>, tensor<2x7xi32>) -> tensor<2x7x5xf32>
+  func.return %1 : tensor<2x7x5xf32>
+}
+
+// CHECK: %0 = "tfl.gather"(%arg0, %arg1) <{axis = 1 : i32, batch_dims = 1 : i32}> : (tensor<2x3x5xi8>, tensor<2x7xi32>) -> tensor<2x7x5xi8>
+// CHECK: %1 = "tfl.cast"(%0) : (tensor<2x7x5xi8>) -> tensor<2x7x5xf32>
