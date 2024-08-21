@@ -22,10 +22,10 @@ tsl_pybind_extension(
     name = "stablehlo_extension",
     srcs = [
         "stablehlo.cc",
-        "@stablehlo//:stablehlo/integrations/python/StablehloApi.cpp",
+        "@stablehlo//:stablehlo/integrations/python/PortableApi.cpp",
     ],
     hdrs = [
-        "@stablehlo//:stablehlo/integrations/python/StablehloApi.h",
+        "@stablehlo//:stablehlo/integrations/python/PortableApi.h",
     ],
     copts = [
         "-fexceptions",
@@ -33,12 +33,8 @@ tsl_pybind_extension(
     ],
     features = ["-use_header_modules"],
     deps = [
-        "//third_party/python_runtime:headers",
-        "@llvm-project//mlir:CAPIIR",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
         "@pybind11",
-        "@stablehlo//:stablehlo_capi",
+        "@stablehlo//:stablehlo_portable_api",
     ],
 )
 
