@@ -902,7 +902,6 @@ absl::Status RunCollectiveOptimizationPasses(
   HloPassPipeline collectives_pipeline("collective-optimizations");
   collectives_pipeline.AddPass<AllReduceFolder>();
   collectives_pipeline.AddPass<AllReduceSplitter>();
-  collectives_pipeline.AddPass<ReduceScatterCreator>();
   collectives_pipeline.AddPass<AllGatherOptimizer>();
   collectives_pipeline.AddPass<AllReduceReassociate>(
       debug_options.xla_gpu_enable_reassociation_for_converted_ar());
@@ -916,6 +915,7 @@ absl::Status RunCollectiveOptimizationPasses(
     TF_RETURN_IF_ERROR(
         AddCollectivePipelinerPasses(debug_options, collectives_pipeline));
   }
+  collectives_pipeline.AddPass<ReduceScatterCreator>();
 
   collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
       hlo_module->config()
