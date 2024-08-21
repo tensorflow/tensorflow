@@ -28,7 +28,7 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include "tensorflow/compiler/mlir/lite/core/model_builder_base.h"
+#include "tensorflow/compiler/mlir/lite/core/model_builder_base.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
