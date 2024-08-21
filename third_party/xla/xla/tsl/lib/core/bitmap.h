@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_LIB_CORE_BITMAP_H_
-#define TENSORFLOW_TSL_LIB_CORE_BITMAP_H_
+#ifndef XLA_TSL_LIB_CORE_BITMAP_H_
+#define XLA_TSL_LIB_CORE_BITMAP_H_
 
 #include <string>
 
@@ -104,4 +104,4 @@ inline void Bitmap::clear(size_t i) {
 }  // namespace core
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_CORE_BITMAP_H_
+#endif  // XLA_TSL_LIB_CORE_BITMAP_H_

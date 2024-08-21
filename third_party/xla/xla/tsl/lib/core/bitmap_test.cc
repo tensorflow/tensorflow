@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/lib/core/bitmap.h"
+#include "xla/tsl/lib/core/bitmap.h"
 
 #include "tsl/lib/random/simple_philox.h"
 #include "tsl/platform/macros.h"
