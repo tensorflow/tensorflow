@@ -59,14 +59,17 @@ class LeagalizeDimensionSizeOp
         llvm::SmallVector<int64_t>({static_cast<int64_t>(op.getDimension())}),
         rewriter.getI64Type());
 
-    Value slice_op = rewriter.create<TFL::SliceOp>(
-        op.getLoc(), RankedTensorType::get({1}, rewriter.getI64Type()),
-        shape_op, begin, size);
+    auto slice_type = RankedTensorType::get({1}, rewriter.getI64Type());
+    Value slice = rewriter.create<TFL::SliceOp>(op.getLoc(), slice_type,
+                                                shape_op, begin, size);
 
-    // Value squeeze_op = rewriter.create<TFL::SqueezeOp>(
-    //     op.getLoc(), op.getType(), slice_op, rewriter.getI64ArrayAttr({0}));
+    auto op_el_type = llvm::cast<ShapedType>(op.getType()).getElementType();
+    if (op_el_type != slice_type.getElementType()) {
+      slice = rewriter.create<TFL::CastOp>(op->getLoc(),
+                                           slice_type.clone(op_el_type), slice);
+    }
 
-    rewriter.replaceOpWithNewOp<TFL::SqueezeOp>(op, op.getType(), slice_op,
+    rewriter.replaceOpWithNewOp<TFL::SqueezeOp>(op, op.getType(), slice,
                                                 rewriter.getI64ArrayAttr({0}));
 
     return success();
