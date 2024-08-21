@@ -41,19 +41,20 @@ class ExecutorCache {
   // executor, if already present, or creates it using 'factory', if it does
   // not. Factories may be executed concurrently for different device ordinals.
   absl::StatusOr<StreamExecutor*> GetOrCreate(int ordinal,
-                                              const ExecutorFactory& factory);
+                                              const ExecutorFactory& factory,
+                                              int stream_id = 0);
 
   // Returns a pointer to the described executor (if one with a matching ordinal
   // has been created), or a NOT_FOUND status.
-  absl::StatusOr<StreamExecutor*> Get(int ordinal);
+  absl::StatusOr<StreamExecutor*> Get(int ordinal, int stream_id = 0);
 
  private:
   // Protects cache_.
   absl::Mutex mutex_;
 
   // Maps ordinal number to a cached executor for that ordinal.
-  absl::flat_hash_map<int, std::unique_ptr<StreamExecutor>> cache_
-      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::pair<int, int>, std::unique_ptr<StreamExecutor>>
+      cache_ ABSL_GUARDED_BY(mutex_);
 
   ExecutorCache(const ExecutorCache&) = delete;
   void operator=(const ExecutorCache&) = delete;

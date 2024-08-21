@@ -52,6 +52,7 @@ XlaCompiler::Options GenerateCompilerOptions(
   options.client = static_cast<xla::LocalClient*>(xla_device_compiler.client());
   if (stream != nullptr) {
     options.device_ordinal = stream->parent()->device_ordinal();
+    options.stream_id = stream->parent()->stream_id();
   }
   options.device_type = xla_device_compiler.device_type();
   options.flib_def = function_library.GetFunctionLibraryDefinition();
@@ -112,6 +113,7 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
   } else {
     options.device_ordinal = device_base->parsed_name().id;
   }
+  options.stream_id = device_base->GetStreamId();
   options.flib_def = function_library_def;
   options.graph_def_version = graph_def_version;
   if (const auto* metadata = platform_info.xla_device_metadata();

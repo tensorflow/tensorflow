@@ -101,6 +101,13 @@ class Platform {
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
   virtual absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
+
+  // Returns the executor with the given ordinal and stream_id on this
+  // platform. Only for a CUDA device the stream_id is useful.
+  virtual absl::StatusOr<StreamExecutor*> ExecutorForDeviceAndStream(
+      int ordinal, int stream_id) {
+    return ExecutorForDevice(ordinal);
+  }
 };
 
 }  // namespace stream_executor

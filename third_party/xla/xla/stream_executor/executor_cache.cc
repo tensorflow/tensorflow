@@ -32,7 +32,7 @@ ExecutorCache::ExecutorCache() = default;
 ExecutorCache::~ExecutorCache() = default;
 
 absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
-    int ordinal, const ExecutorFactory& factory) {
+    int ordinal, const ExecutorFactory& factory, int stream_id) {
   // In the fast path case, the cache already has an entry and we can just
   // return after Get() which only takes a shared lock and not a unique lock.
   // If we need to create, we take a unique lock on cache_.
@@ -44,14 +44,14 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
   auto returned_executor = result.get();
   absl::MutexLock lock(&mutex_);
-  cache_.emplace(ordinal, std::move(result));
+  cache_.emplace(std::make_pair(ordinal, stream_id), std::move(result));
   return returned_executor;
 }
 
-absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int ordinal) {
+absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int ordinal, int stream_id) {
   absl::ReaderMutexLock lock{&mutex_};
 
-  if (auto it = cache_.find(ordinal); it != cache_.end()) {
+  if (auto it = cache_.find({ordinal, stream_id}); it != cache_.end()) {
     return it->second.get();
   }
 
