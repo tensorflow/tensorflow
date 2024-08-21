@@ -109,13 +109,13 @@ LINALG_DEPS = [
 tf_kernel_library(
     name = "matrix_band_part_op",
     prefix = "matrix_band_part_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
     name = "matrix_diag_op",
     prefix = "matrix_diag_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["@eigen_archive//:eigen3_test"],
 )
 
 tf_kernel_library(
@@ -342,8 +342,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
+        "@com_google_benchmark//:benchmark",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -370,14 +370,14 @@ tf_cuda_cc_test(
         ":matrix_triangular_solve_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:broadcast_to_op",
-        "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
+        "@com_google_benchmark//:benchmark",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 

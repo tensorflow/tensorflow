@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/linalg/matrix_triangular_solve_op_impl.h"
 
 #if GOOGLE_CUDA

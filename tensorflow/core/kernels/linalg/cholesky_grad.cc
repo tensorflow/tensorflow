@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "Eigen/Core"  // from @eigen_archive
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 

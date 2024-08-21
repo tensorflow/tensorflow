@@ -18,6 +18,7 @@ limitations under the License.
 
 // Generator definition for MatrixDiagOp, must be compilable by nvcc.
 
+#include "Eigen/src/Core/util/Macros.h"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
