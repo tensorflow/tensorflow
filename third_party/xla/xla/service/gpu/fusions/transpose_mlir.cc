@@ -92,8 +92,8 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
   int max_element_bytes = 0;
   for (auto [root, hero] :
        llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
-    if (auto transpose = GetDescriptionForTiledTransposeEmitter(
-            root.instruction(), hero.instruction())) {
+    if (auto transpose =
+            GetDescriptionForTiledTransposeEmitter(hero.instruction())) {
       transposes_to_tile.insert(&hero.instruction());
       shmem_transpose_roots_.push_back(&root.instruction());
       int size = primitive_util::ByteWidth(hero.shape().element_type());
@@ -164,8 +164,7 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  if (!GetDescriptionForTiledTransposeEmitter(
-          analysis_.fusion_root(root_index).instruction(), hero)) {
+  if (!GetDescriptionForTiledTransposeEmitter(hero)) {
     // The shape of non-transpose roots are bitcast compatible with the input
     // shape of transpose heroes.
     return GetIndexing(/*input=*/true,
@@ -178,8 +177,7 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  if (!GetDescriptionForTiledTransposeEmitter(
-          analysis_.fusion_root(root_index).instruction(), hero)) {
+  if (!GetDescriptionForTiledTransposeEmitter(hero)) {
     auto map = ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, mlir_context),
         *ComputeOutputToInputIndexing(

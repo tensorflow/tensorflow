@@ -61,7 +61,7 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({64, 1536}));
@@ -84,7 +84,7 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({48, 32, 2}));
@@ -107,7 +107,7 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
   EXPECT_FALSE(result.has_value());
 }
 
@@ -127,7 +127,7 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({32, 48, 33, 2}));
@@ -150,7 +150,7 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({48, 34, 32, 33}));
@@ -173,7 +173,7 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({48, 32, 4}));
@@ -196,7 +196,7 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
   EXPECT_FALSE(result.has_value());
 }
 
@@ -213,7 +213,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r);
+  auto result = GetDescriptionForTiledTransposeEmitter(*r);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r);
   EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
@@ -234,7 +234,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
+  auto result = GetDescriptionForTiledTransposeEmitter(*r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
   EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
@@ -261,7 +261,7 @@ ENTRY main {
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
-  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
+  auto result = GetDescriptionForTiledTransposeEmitter(*r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
   EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
@@ -392,7 +392,7 @@ ENTRY entry {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
 
-  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
+  auto result = GetDescriptionForTiledTransposeEmitter(*r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
   EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
@@ -422,8 +422,7 @@ ENTRY main {
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
-  auto result =
-      GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r));
+  auto result = GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*r));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0)->operand(0));
   EXPECT_EQ(result->dimensions, InlinedVector({64, 48, 32}));
@@ -456,9 +455,8 @@ ENTRY main {
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
-  EXPECT_FALSE(
-      GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r))
-          .has_value());
+  EXPECT_FALSE(GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*r))
+                   .has_value());
   EXPECT_EQ(&FindNonTrivialHero(*r), r);
 }
 
@@ -585,9 +583,8 @@ ENTRY main {
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
-  EXPECT_FALSE(
-      GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r))
-          .has_value());
+  EXPECT_FALSE(GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*r))
+                   .has_value());
   EXPECT_EQ(&FindNonTrivialHero(*r), r);
 }
 
@@ -611,7 +608,7 @@ ENTRY main {
   HloInstruction* copy =
       module->entry_computation()->root_instruction()->fused_expression_root();
   auto result =
-      GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
+      GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, copy);
   EXPECT_EQ(result->dimensions, InlinedVector({8, 12, 1100}));
@@ -637,8 +634,7 @@ ENTRY main {
 
   HloInstruction* tr =
       module->entry_computation()->root_instruction()->fused_expression_root();
-  auto result =
-      GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
+  auto result = GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({8, 12, 1100}));
@@ -665,7 +661,7 @@ ENTRY main {
   HloInstruction* copy =
       module->entry_computation()->root_instruction()->fused_expression_root();
   auto result =
-      GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
+      GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, copy);
   EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));
@@ -691,8 +687,7 @@ ENTRY main {
 
   HloInstruction* tr =
       module->entry_computation()->root_instruction()->fused_expression_root();
-  auto result =
-      GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
+  auto result = GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));

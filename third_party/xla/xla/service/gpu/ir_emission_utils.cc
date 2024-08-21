@@ -641,7 +641,7 @@ static std::optional<TransposeDescription> FindTiledLogicalTranspose(
 }
 
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
-    const HloInstruction& root, const HloInstruction& hero) {
+    const HloInstruction& hero) {
   if (auto d1 = FindTiledTranspose(hero)) {
     return d1;
   }

@@ -190,7 +190,7 @@ struct TransposeDescription {
 };
 
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
-    const HloInstruction& root, const HloInstruction& hero);
+    const HloInstruction& hero);
 
 // Checks if the instruction is elementwise.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
