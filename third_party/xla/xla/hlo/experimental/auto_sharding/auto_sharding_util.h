@@ -470,7 +470,7 @@ AliasSet BuildAliasSet(const HloModule* module,
 // Transpose an array of any number of dimensions given any axes order.
 // Similar to numpy.transpose(array, axes=()) function.
 template <typename T>
-Array<T> Transpose(const Array<T> array, std::vector<int64_t> axes) {
+Array<T> Transpose(const Array<T> array, std::vector<int> axes) {
   // Computes transposed array's size.
   std::vector<int64_t> transposed_array_dimensions(array.dimensions().begin(),
                                                    array.dimensions().end());
