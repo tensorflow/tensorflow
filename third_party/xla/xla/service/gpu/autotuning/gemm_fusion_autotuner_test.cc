@@ -177,7 +177,7 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options =
         StatelessAutotunerTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_gemm(true);
+    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(0);
     return debug_options;

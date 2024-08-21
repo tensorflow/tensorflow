@@ -42,7 +42,7 @@ class GemmBroadcastFoldingRewriteTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // These tests test the cuBLAS rewriter so we have to make sure that we use
     // cuBLAS for them.
-    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(false);
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }

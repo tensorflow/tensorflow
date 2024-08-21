@@ -109,6 +109,9 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
 
+  // Internal debug/testing flag to switch Triton GEMM fusions on or off.
+  bool xla_gpu_unsupported_enable_triton_gemm = 322;
+
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
@@ -640,7 +643,7 @@ message DebugOptions {
   // The partitioning algorithm to be used in the PartitionAssignment pass.
   PartitioningAlgorithm xla_partitioning_algorithm = 187;
 
-  bool xla_gpu_enable_triton_gemm = 188;
+  reserved 188;  // Was xla_gpu_enable_triton_gemm
 
   bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
@@ -934,7 +937,7 @@ message DebugOptions {
   // effort to parallelize matrix operations.
   bool xla_gpu_async_dot = 321;
 
-  // Next id: 322
+  // Next id: 323
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

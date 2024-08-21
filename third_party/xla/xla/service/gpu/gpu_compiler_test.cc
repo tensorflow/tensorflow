@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -455,7 +457,8 @@ ENTRY main {
   AutotunerUtil::ClearAutotuneResults();
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
   triton_disabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
-  triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
+  triton_disabled_debug_options.set_xla_gpu_unsupported_enable_triton_gemm(
+      false);
   config.set_debug_options(triton_disabled_debug_options);
   TF_ASSERT_OK_AND_ASSIGN(module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
@@ -513,7 +516,7 @@ ENTRY main {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(enable_blas_fallback);
-    debug_options.set_xla_gpu_enable_triton_gemm(enable_triton);
+    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(enable_triton);
     if (!enable_blas) {
       debug_options.add_xla_disable_hlo_passes("cublas-gemm-rewriter");
     }
@@ -695,7 +698,7 @@ CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
   debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
   debug_options.set_xla_gpu_collective_permute_decomposer_threshold(1);
   debug_options.set_xla_gpu_enable_pipelined_p2p(true);
-  debug_options.set_xla_gpu_enable_triton_gemm(false);
+  debug_options.set_xla_gpu_unsupported_enable_triton_gemm(false);
   config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -963,6 +966,40 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
       bool filecheck_matched,
       RunFileCheck(optimized_module->ToString(options), kExpected));
   EXPECT_TRUE(filecheck_matched);
+}
+
+using GpuCompilerPassTest = GpuCompilerTest;
+
+TEST_F(GpuCompilerPassTest,
+       GpuCompilerRunsTritonGemmRewriterByDefaultFromAmpere) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+
+  bool expect_triton_gemm_rewriter_has_run = cc.IsAtLeastAmpere();
+
+  constexpr absl::string_view constant_module = R"(
+HloModule noop
+
+ENTRY main {
+  ROOT constant = f32[] constant(0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(constant_module));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+  const HloModuleMetadataProto& module_metadata =
+      optimized_module->metadata()->proto();
+
+  bool triton_gemm_rewriter_has_run = false;
+  for (const HloPassMetadata& pass_metadata : module_metadata.pass_metadata()) {
+    triton_gemm_rewriter_has_run |=
+        pass_metadata.pass_name() == "triton-gemm-rewriter";
+  }
+
+  EXPECT_EQ(triton_gemm_rewriter_has_run, expect_triton_gemm_rewriter_has_run);
 }
 
 }  // namespace

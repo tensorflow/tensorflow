@@ -101,7 +101,7 @@ class GemmRewriteTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // These tests test the cuBLAS rewriter so we have to make sure that we use
     // cuBLAS for them.
-    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(false);
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
@@ -296,7 +296,7 @@ class ParameterizedGemmRewriteTest
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(GetParam());
-    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(false);
     return debug_options;
   }
   void MatchOptimizedHlo(absl::string_view hlo, const absl::string_view pattern,
@@ -1455,7 +1455,7 @@ class LegacyCublasGemmRewriteTest : public GemmRewriteTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(false);
     debug_options.set_xla_gpu_enable_cublaslt(false);
     return debug_options;
   }
@@ -2210,7 +2210,7 @@ class CublasLtGemmRewriteTest : public GemmRewriteTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
-    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(false);
     return debug_options;
   }
 

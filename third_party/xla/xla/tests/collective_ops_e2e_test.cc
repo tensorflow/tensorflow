@@ -725,7 +725,7 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
     opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
     opts.set_xla_gpu_graph_min_graph_size(200);
-    opts.set_xla_gpu_enable_triton_gemm(false);
+    opts.set_xla_gpu_unsupported_enable_triton_gemm(false);
     if (disable_dot_merger) {
       opts.add_xla_disable_hlo_passes("dot-merger");
     }
@@ -756,7 +756,7 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
         GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
     auto ref_opts = GetDebugOptionsForTest();
     ref_opts.set_xla_gpu_graph_min_graph_size(200);
-    ref_opts.set_xla_gpu_enable_triton_gemm(false);
+    ref_opts.set_xla_gpu_unsupported_enable_triton_gemm(false);
     if (disable_dot_merger) {
       ref_opts.add_xla_disable_hlo_passes("dot-merger");
     }
@@ -861,7 +861,7 @@ ENTRY main.12 {
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
   opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
   opts.set_xla_gpu_graph_min_graph_size(200);
-  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.set_xla_gpu_unsupported_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");
   CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
@@ -904,7 +904,7 @@ ENTRY main {
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
   opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
   opts.set_xla_gpu_graph_min_graph_size(200);
-  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.set_xla_gpu_unsupported_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");
   CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
@@ -1060,7 +1060,7 @@ ENTRY entry {
   auto opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
   opts.set_xla_gpu_enable_pipelined_collectives(true);
-  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.set_xla_gpu_unsupported_enable_triton_gemm(false);
   CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
@@ -1144,7 +1144,7 @@ ENTRY entry {
   opts.set_xla_gpu_enable_pipelined_all_gather(true);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(true);
 
-  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.set_xla_gpu_unsupported_enable_triton_gemm(false);
   config.set_debug_options(opts);
   config.set_use_spmd_partitioning(false);
 
