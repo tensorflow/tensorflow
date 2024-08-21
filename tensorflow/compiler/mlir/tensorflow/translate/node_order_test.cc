@@ -273,5 +273,21 @@ TEST(AlgorithmTest, TopologicalOrderingSameAsReversePostOrder) {
   EXPECT_EQ(desired_order, order);
 }
 
+TEST(AlgorithmTest, TopologicalOrderingWithEachDeviceUsedOnce) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  using namespace ::tensorflow::ops;  // NOLINT
+  SourceOp("TestParams", b.opts().WithName("n1").WithDevice("a"));
+  SourceOp("TestParams", b.opts().WithName("n2").WithDevice("b"));
+  SourceOp("TestParams", b.opts().WithName("n3").WithDevice("c"));
+  SourceOp("TestParams", b.opts().WithName("n4").WithDevice("d"));
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
+
+  int count = 0;
+  TopologicalOrdering(g, [&](Node* n) { count++; }, GroupByDevice());
+  EXPECT_EQ(count, 6);
+}
+
 }  // namespace
 }  // namespace tensorflow
