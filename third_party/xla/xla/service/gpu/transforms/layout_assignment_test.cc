@@ -611,6 +611,42 @@ ENTRY main {
             LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
 }
 
+TEST_F(LayoutAssignmentTest, VariadicReduceSameOperandLayout) {
+  const char* module_str = R"(
+HloModule variadic_reduce
+
+reducer {
+  %Arg_0.261 = s32[] parameter(0)
+  %Arg_2.263 = s32[] parameter(2)
+  mul = s32[] multiply(%Arg_0.261, %Arg_2.263)
+  %Arg_1.260 = f32[] parameter(1)
+  %Arg_3.262 = f32[] parameter(3)
+  add = f32[] add(%Arg_1.260, %Arg_3.262)
+  ROOT %tuple = (s32[], f32[]) tuple(mul, add)
+}
+
+ENTRY main {
+  param_0 = f32[512,16,1024,128]{3,2,1,0} parameter(0)
+  param_1 = s32[128,1024,16,512]{3,2,1,0} parameter(1)
+  transpose = s32[512,16,1024,128]{0,1,2,3} transpose(param_1), dimensions={3,2,1,0}
+  zero = f32[] constant(0.0)
+  one = s32[] constant(1)
+  ROOT reduce.2 = (s32[512,1024,128]{0,1,2}, f32[512,1024,128]{2,1,0}) reduce(transpose, param_0, one, zero), dimensions={1}, to_apply=reducer
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  auto reduce = m->entry_computation()->root_instruction();
+  EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
+            reduce->operand(1)->shape().layout().minor_to_major());
+}
+
 TEST_F(LayoutAssignmentTest, SendRcvLayout) {
   const char* hlo = R"(
 HloModule Module
