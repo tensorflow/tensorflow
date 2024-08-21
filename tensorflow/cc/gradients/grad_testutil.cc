@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/cc/gradients/grad_testutil.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace test {
