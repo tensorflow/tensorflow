@@ -16,7 +16,6 @@ limitations under the License.
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/IR/CommonAttrConstraints.td"
-include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/CommonTypeConstraints.td"
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
@@ -612,3 +611,4 @@ def : Pat<(MHLO_RoundOp
 
 def : Pat<(MHLO_ClampOp $min, $arg, $max),
           (TFL_MaximumOp (TFL_MinimumOp $arg, $max), $min)>;
+def : Pat<(MHLO_SelectOp $cond, $t, $e), (TFL_SelectOp $cond, $t, $e)>;
