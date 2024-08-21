@@ -25,12 +25,12 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -289,12 +289,14 @@ KernelThunk<num_arguments, num_results>::CheckInvariantBufferSlices() const {
 // TODO(abanas): Return absl::flat_hash_set. This requires implementing a hash
 // function for DeviceMemoryBase.
 template <typename Iterable>
-static absl::StatusOr<std::vector<se::DeviceMemoryBase>> ToDeviceMemorySet(
-    const Iterable& buffers, const BufferAllocations& allocations) {
-  std::vector<se::DeviceMemoryBase> result;
+static absl::StatusOr<absl::InlinedVector<se::DeviceMemoryBase, 8>>
+ToDeviceMemorySet(const Iterable& buffers,
+                  const BufferAllocations& allocations) {
+  absl::InlinedVector<se::DeviceMemoryBase, 8> result;
+  result.reserve(buffers.size());
   for (const BufferAllocation::Slice& slice : buffers) {
     TF_ASSIGN_OR_RETURN(auto memory, allocations.GetDeviceAddress(slice));
-    result.push_back(std::move(memory));
+    result.push_back(memory);
   }
   return result;
 }
@@ -306,7 +308,7 @@ absl::Status
 KernelThunk<num_arguments, num_results>::CheckInvariantBuffersMemory(
     const BufferAllocations& allocations) const {
   // We can use absl::c_contains here when we have C++20 support.
-  auto contains = [](const std::vector<se::DeviceMemoryBase>& container,
+  auto contains = [](absl::Span<const se::DeviceMemoryBase> container,
                      const se::DeviceMemoryBase& memory) {
     return absl::c_find(container, memory) != container.end();
   };
