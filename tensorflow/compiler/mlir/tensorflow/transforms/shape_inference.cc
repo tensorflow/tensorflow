@@ -2331,7 +2331,12 @@ bool ShapeInference::RefineWithInferTypeOpInterface(
   bool changed = false;
   for (auto [result, inferred_type] : zip(op->getResults(), inferred)) {
     auto result_type = result.getType();
-    auto new_type = TypeMeet(inferred_type, result_type);
+    auto new_type = inferred_type;
+    if (!llvm::isa<TF::ZerosLikeOp>(op)) {
+      // TODO: b/361179755 - Remove when folding issue is resolved or proper
+      // shape inference is confirmed for zeros like.
+      new_type = TypeMeet(inferred_type, result_type);
+    }
     if (new_type == result_type) {
       continue;
     }
