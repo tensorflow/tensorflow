@@ -28,7 +28,7 @@ DistributionSampler::DistributionSampler(
   DCHECK(!weights.empty());
   int n = weights.size();
   num_ = n;
-  data_.reset(new std::pair<float, int>[n]);
+  data_ = std::make_unique<std::pair<float, int>[]>(n);
 
   std::unique_ptr<double[]> pr(new double[n]);
 
