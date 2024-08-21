@@ -329,15 +329,6 @@ void SortTiledHloInstructionsInPostOrder(
   while (!worklist.empty()) {
     auto tiled_hlo_instruction = worklist.back();
     worklist.pop_back();
-    std::optional<HloInstructionIndexing> operands_indexing =
-        ComputeOutputToInputIndexing(tiled_hlo_instruction->hlo(),
-                                     /*output_id=*/0, ctx);
-
-    if (!operands_indexing.has_value()) {
-      return FusionDecision{} << "Failed to compute operands indexing for "
-                              << tiled_hlo_instruction->hlo()->ToString();
-    }
-
     HloInstructionAdaptor instruction_adaptor(*tiled_hlo_instruction->hlo(),
                                               &fusion);
 
@@ -345,9 +336,13 @@ void SortTiledHloInstructionsInPostOrder(
       continue;
     }
 
+    HloInstructionIndexing operands_indexing =
+        ComputeOutputToInputIndexing(tiled_hlo_instruction->hlo(),
+                                     /*output_id=*/0, ctx);
+
     for (auto [operand, operand_indexing_map_set] :
          llvm::zip(instruction_adaptor.GetOperands(),
-                   operands_indexing->indexing_maps)) {
+                   operands_indexing.indexing_maps)) {
       CHECK_EQ(operand_indexing_map_set.size(), 1);  // Crash OK
 
       IndexingMap operand_indexing_map =
