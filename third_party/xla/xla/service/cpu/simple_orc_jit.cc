@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -331,7 +332,9 @@ SimpleOrcJIT::SimpleOrcJIT(
     LLVMCompiler::ModuleHook post_optimization_hook,
     absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
     size_t num_jit_dylibs)
-    : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
+    : target_machine_builder_(
+          [=] { return InferTargetMachineForJIT(target_options, opt_level); }),
+      target_machine_(target_machine_builder_()),
       target_triple_(target_machine_->getTargetTriple()),
       data_layout_(target_machine_->createDataLayout()),
       target_process_control_(std::move(target_process_control)),
@@ -344,7 +347,7 @@ SimpleOrcJIT::SimpleOrcJIT(
       compile_layer_(
           *execution_session_, object_layer_,
           std::make_unique<CompilerFunctor>(
-              target_machine_.get(), static_cast<int>(opt_level),
+              target_machine_builder_, static_cast<int>(opt_level),
               optimize_for_size, disable_expensive_passes,
               disable_slp_vectorizer, fast_math_flags,
               std::move(pre_optimization_hook),
@@ -381,6 +384,8 @@ SimpleOrcJIT::SimpleOrcJIT(
     }
   };
 
+  // Always create at least one dylib.
+  num_jit_dylibs = std::max(size_t{1}, num_jit_dylibs);
   jit_dylibs_.resize(num_jit_dylibs);
   for (size_t i = 0; i < num_jit_dylibs; ++i) {
     jit_dylibs_[i] = &execution_session_->createBareJITDylib(
@@ -476,12 +481,14 @@ void SimpleOrcJIT::notifyFreeingObject(llvm::JITEventListener::ObjectKey key) {
 
 llvm::Error SimpleOrcJIT::AddObjFile(
     std::unique_ptr<llvm::MemoryBuffer> obj_file, size_t dylib_index) {
-  return object_layer_.add(*jit_dylibs_[dylib_index], std::move(obj_file));
+  return object_layer_.add(*jit_dylibs_[dylib_index % jit_dylibs_.size()],
+                           std::move(obj_file));
 }
 
 llvm::Error SimpleOrcJIT::AddModule(llvm::orc::ThreadSafeModule module,
                                     size_t dylib_index) {
-  return compile_layer_.add(*jit_dylibs_[dylib_index], std::move(module));
+  return compile_layer_.add(*jit_dylibs_[dylib_index % jit_dylibs_.size()],
+                            std::move(module));
 }
 
 void SimpleOrcJIT::DoneCompiling() {

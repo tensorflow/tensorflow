@@ -84,6 +84,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_thunk_runtime(true);
+  opts.set_xla_cpu_parallel_codegen_split_count(32);
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
   opts.set_xla_cpu_prefer_vector_width(256);
 
@@ -817,6 +818,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_thunk_runtime),
                 debug_options->xla_cpu_use_thunk_runtime(),
                 "Use Thunk-based runtime for the CPU backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_parallel_codegen_split_count",
+      int32_setter_for(&DebugOptions::set_xla_cpu_parallel_codegen_split_count),
+      debug_options->xla_cpu_parallel_codegen_split_count(),
+      "Split LLVM module into this many parts before codegen to enable "
+      "parallel compilation."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_enable_concurrency_optimized_scheduler",
       bool_setter_for(

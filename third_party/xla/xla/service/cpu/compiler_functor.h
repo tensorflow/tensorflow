@@ -16,29 +16,37 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 #define XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/service/llvm_compiler.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
 // Functor class for compiling an LLVM module down to an object file. For use by
 // Orc JIT compile layer.
 class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
  public:
+  // Creates a new llvm::TargetMachine for parallel compilation.
+  using TargetMachineBuilder =
+      std::function<std::unique_ptr<llvm::TargetMachine>()>;
+
   explicit CompilerFunctor(
-      llvm::TargetMachine* target_machine, int opt_level,
+      TargetMachineBuilder target_machine_builder, int opt_level,
       bool optimize_for_size, bool disable_expensive_passes,
       bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook = nullptr,
@@ -48,7 +56,7 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
       bool dfsan_enabled = false,
       const std::vector<std::string>& dfsan_abi_list_files = {})
       : IRCompiler(llvm::orc::IRSymbolMapper::ManglingOptions()),
-        target_machine_(target_machine),
+        target_machine_builder_(std::move(target_machine_builder)),
         opt_level_(opt_level),
         optimize_for_size_(optimize_for_size),
         disable_expensive_passes_(disable_expensive_passes),
@@ -65,20 +73,22 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
       llvm::Module& module) override;
 
  private:
-  llvm::TargetMachine* target_machine_;
+  absl::Mutex hook_mutex_;
+
+  TargetMachineBuilder target_machine_builder_;
   const unsigned opt_level_;
   const bool optimize_for_size_;
   const bool disable_expensive_passes_;
   const bool disable_slp_vectorizer_;
   const llvm::FastMathFlags fast_math_flags_;
-  LLVMCompiler::ModuleHook pre_optimization_hook_;
-  LLVMCompiler::ModuleHook post_optimization_hook_;
-  absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook_;
+  LLVMCompiler::ModuleHook pre_optimization_hook_ ABSL_GUARDED_BY(hook_mutex_);
+  LLVMCompiler::ModuleHook post_optimization_hook_ ABSL_GUARDED_BY(hook_mutex_);
+  absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook_
+      ABSL_GUARDED_BY(hook_mutex_);
   const bool dfsan_enabled_ = false;
   const std::vector<std::string> dfsan_abi_list_files_;
 };
 
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu
 
 #endif  // XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_

@@ -33,6 +33,7 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 
 #include "absl/base/call_once.h"
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
@@ -42,11 +43,16 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
@@ -55,6 +61,7 @@ limitations under the License.
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -196,10 +203,14 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 #ifdef TF_LLVM_X86_AVAILABLE
 #include "llvm/TargetParser/X86TargetParser.h"
@@ -214,12 +225,13 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
 
 // For each computation in the module, determines whether that computation
 // calls a custom-call function, either directly or indirectly (e.g. because it
 // calls another computation that does).
-absl::flat_hash_map<const HloComputation*, bool>
+static absl::flat_hash_map<const HloComputation*, bool>
 ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
   absl::flat_hash_map<const HloComputation*, bool> custom_call_map;
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
@@ -255,10 +267,15 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
   return custom_call_map;
 }
 
-}  // namespace
-
 namespace cpu {
 using BufferInfo = cpu_function_runtime::BufferInfo;
+
+// Returns a global (per-process) thread pool for XLA CPU compilation tasks.
+static tsl::thread::ThreadPool* GetCompilationThreadPool() {
+  static absl::NoDestructor<tsl::thread::ThreadPool> thread_pool(
+      tsl::Env::Default(), "xla-cpu-compiler", tsl::port::MaxParallelism());
+  return thread_pool.get();
+}
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     std::string triple, std::string cpu_name, std::string features,
@@ -1129,6 +1146,11 @@ CreateConstantAllocations(const BufferAssignment& assignment) {
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
+  TraceMe trace([&] {
+    return TraceMeEncode("CpuCompiler::CompileLegacyCpuExecutable",
+                         {{"name", module->name()}});
+  });
+
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
   std::tie(pre_optimization_ir_hook, post_optimization_ir_hook) =
@@ -1149,10 +1171,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // We split LLVM module and distribute it across separate DyLibs to enable
   // parallel compilation at run time.
-  //
-  // TODO(b/359659598): Increase the number of dylibs to 32 and make compilation
-  // truly parallel. For now we use 2 dylibs to do basic sanity check.
-  constexpr size_t num_jit_dylibs = 2;
+  size_t parallel_codegen_split_count =
+      debug_options.xla_cpu_parallel_codegen_split_count();
 
   auto jit = SimpleOrcJIT::Create(
       CompilerTargetOptions(module->config()),
@@ -1163,7 +1183,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
       post_optimization_ir_hook,
       CreateOrcJITPostCompilationHook(module.get(), &obj_files),
-      num_jit_dylibs);
+      parallel_codegen_split_count);
   if (!jit) {
     return Internal("Creating JIT failed: %s", llvm::toString(jit.takeError()));
   }
@@ -1279,10 +1299,12 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
     // We define the number of module parts based on the total number of
-    // external functions (kernels and comparators) that are called from thunks.
+    // external functions (kernels and comparators) that are called from thunks,
+    // and the maximum number of parts that we want to split the module into.
     size_t num_external_function =
         ir_emitter2.kernels().size() + ir_emitter2.comparators().size();
-    size_t num_parts = std::min(num_external_function, num_jit_dylibs);
+    size_t num_parts =
+        std::min(num_external_function, parallel_codegen_split_count);
 
     // JIT compile the LLVM IR module to in-memory machine code. We split the
     // module into `num_jit_dylibs` parts to allow parallel compilation. In
@@ -1290,27 +1312,72 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     // other, so we can compile each individual part in parallel. We split
     // module preserving locals, which should guarantee that all thread local
     // computations end up in the same module with the corresponding kernel.
-    llvm::orc::ThreadSafeContext thread_safe_context(std::move(llvm_context));
-
     if (num_parts > 1) {
-      VLOG(2) << "Splitting module into " << num_parts
-              << " parts before codegen to enable parallel compilation";
+      TraceMe trace([&] {
+        return TraceMeEncode("CpuCompiler::SplitModule",
+                             {{"num_parts", num_parts}});
+      });
+
+      VLOG(3) << "Splitting LLVM module into " << num_parts
+              << " parts before codegen to enable parallel compilation"
+              << " (max split count: " << parallel_codegen_split_count << ")";
+
       llvm::SplitModule(
           *llvm_module, num_parts,
-          [&, dylib_index = 0](auto llvm_module_part) mutable {
-            cantFail((*jit)->AddModule(
-                llvm::orc::ThreadSafeModule(std::move(llvm_module_part),
-                                            thread_safe_context),
-                dylib_index++ % num_jit_dylibs));
-          },
-          /*PreserveLocals=*/true);
-    } else {
-      cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
-          std::move(llvm_module), thread_safe_context)));
-    }
+          [&, idx = 0](std::unique_ptr<llvm::Module> llvm_module_part) mutable {
+            // To enable parallel compilation, we need to create a new context
+            // for each module part.
+            auto llvm_module_part_ctx = std::make_unique<llvm::LLVMContext>();
 
-    // Move ownership of the LLVM context to the JIT.
-    (*jit)->SetContext(std::move(thread_safe_context));
+            // After the split we might end up with a module with unused
+            // external globals and function declaration, however because we
+            // split preserving locals, we don't need to keep unused external
+            // globals and declarations in the module part.
+            llvm::SmallVector<llvm::GlobalVariable*> unused_globals;
+            llvm::SmallVector<llvm::Function*> unused_functions;
+
+            for (llvm::Function& f : llvm_module_part->functions()) {
+              if (f.isDeclaration() && f.use_empty())
+                unused_functions.push_back(&f);
+            }
+            for (llvm::GlobalVariable& gv : llvm_module_part->globals()) {
+              if (gv.use_empty()) unused_globals.push_back(&gv);
+            }
+
+            for (auto* gv : unused_globals) {
+              llvm_module_part->eraseGlobalVariable(gv);
+            }
+            for (auto* f : unused_functions) {
+              f->eraseFromParent();
+            }
+
+            // There is no way to copy a module from one context to another, so
+            // we need to serialize the module to bitcode and parse it back into
+            // the new context.
+            llvm::SmallString<0> bc;
+            llvm::raw_svector_ostream bcos(bc);
+            llvm::WriteBitcodeToFile(*llvm_module_part, bcos);
+
+            // Parse module back into its own LLVM context.
+            auto parsed_llvm_module_part = llvm::parseBitcodeFile(
+                llvm::MemoryBufferRef(
+                    llvm::StringRef(bc.data(), bc.size()),
+                    absl::StrCat("__compute_module_part_", idx)),
+                *llvm_module_part_ctx);
+
+            cantFail((*jit)->AddModule(
+                llvm::orc::ThreadSafeModule(std::move(*parsed_llvm_module_part),
+                                            std::move(llvm_module_part_ctx)),
+                idx++ % parallel_codegen_split_count));
+          },
+          /*PreserveLocals=*/true, /*RoundRobin=*/true);
+
+    } else {
+      VLOG(3) << "Compiled LLVM module without splitting (max split count: "
+              << parallel_codegen_split_count << ")";
+      cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
+          std::move(llvm_module), std::move(llvm_context))));
+    }
 
     auto mangle = [&](std::string_view name) {
       llvm::SmallVector<char, 40> mangled;
@@ -1327,22 +1394,64 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       (*jit)->AddKernelSymbol(mangle(comparator.name));
     }
 
+    // Schedule compilation of all external functions in parallel using thread
+    // pool. We rely on CompilerFunctor::TargetMachineBuilder to create a
+    // separate target machine instance for each compilation task, and
+    // everything else must be thread safe.
+    auto* thread_pool = GetCompilationThreadPool();
+    absl::BlockingCounter pending_tasks(num_external_function);
+
+    absl::Mutex parallel_compilation_error_mutex;
+    absl::Status parallel_compilation_error;
+
     // TODO(ezhulenev): We should be able to make it lazy on-demand, but today
     // we capture obj_files by reference and it leads to asan errors. Figure out
     // lifetime issues and move compilation to Thunk initialization stage.
     for (const auto& kernel : ir_emitter2.kernels()) {
-      if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
-        return Internal("Failed to find compiled symbol for kernel %s",
-                        kernel.name);
-      }
+      thread_pool->Schedule([&, kernel] {
+        TraceMe trace([&] {
+          return TraceMeEncode("CpuCompiler::Codegen",
+                               {{"kernel", kernel.name}});
+        });
+        if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
+          absl::MutexLock lock(&parallel_compilation_error_mutex);
+          parallel_compilation_error.Update(Internal(
+              "Failed to find compiled symbol for kernel %s", kernel.name));
+        }
+        pending_tasks.DecrementCount();
+      });
     }
 
     // Compile auxiliary comparator functions used by sort thunks.
     for (const auto& comparator : ir_emitter2.comparators()) {
-      if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
-        return Internal("Failed to find compiled symbol for comparator %s",
-                        comparator.name);
-      }
+      thread_pool->Schedule([&, comparator] {
+        TraceMe trace([&] {
+          return TraceMeEncode("CpuCompiler::Codegen",
+                               {{"comparator", comparator.name}});
+        });
+        if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
+          absl::MutexLock lock(&parallel_compilation_error_mutex);
+          parallel_compilation_error.Update(
+              Internal("Failed to find compiled symbol for comparator %s",
+                       comparator.name));
+        }
+        pending_tasks.DecrementCount();
+      });
+    }
+
+    {  // Wait for the completion of all compilation tasks.
+      TraceMe trace([&] {
+        return TraceMeEncode("CpuCompiler::CompileLegacyCpuExecutable (Wait)",
+                             {{"tasks", num_external_function}});
+      });
+      pending_tasks.Wait();
+    }
+
+    VLOG(3) << "Completed " << num_external_function << " compilation tasks";
+
+    {  // Return last compilation error if any.
+      absl::MutexLock lock(&parallel_compilation_error_mutex);
+      TF_RETURN_IF_ERROR(parallel_compilation_error);
     }
 
     // Create constant allocations from the buffer assignment.
@@ -1538,11 +1647,16 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       break;
   }
   llvm::CodeGenOptLevel opt_level = CodeGenOptLevel(modules[0]->config());
+
+  CompilerFunctor::TargetMachineBuilder target_machine_builder = [&] {
+    return absl::WrapUnique(target->createTargetMachine(
+        triple.getTriple(), options.cpu_name(), options.features(),
+        CompilerTargetOptions(modules[0]->config()), reloc_model, std::nullopt,
+        opt_level));
+  };
+
   std::unique_ptr<llvm::TargetMachine> target_machine =
-      absl::WrapUnique(target->createTargetMachine(
-          triple.getTriple(), options.cpu_name(), options.features(),
-          CompilerTargetOptions(modules[0]->config()), reloc_model,
-          std::nullopt, opt_level));
+      target_machine_builder();
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
@@ -1670,7 +1784,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       };
 
       CompilerFunctor compiler_functor(
-          target_machine.get(), static_cast<int>(opt_level),
+          target_machine_builder, static_cast<int>(opt_level),
           options::OptimizeForSizeRequested(module->config()),
           module->config().debug_options().xla_llvm_disable_expensive_passes(),
           options::SlpVectorizerDisabled(module->config()),

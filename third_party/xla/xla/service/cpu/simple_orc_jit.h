@@ -45,6 +45,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/service/cpu/compiler_functor.h"
 #include "xla/service/llvm_compiler.h"
 
 namespace xla {
@@ -143,7 +144,9 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   llvm::orc::ThreadSafeContext context_;
 
+  CompilerFunctor::TargetMachineBuilder target_machine_builder_;
   std::unique_ptr<llvm::TargetMachine> target_machine_;
+
   llvm::Triple target_triple_;
   const llvm::DataLayout data_layout_;
   std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control_;
