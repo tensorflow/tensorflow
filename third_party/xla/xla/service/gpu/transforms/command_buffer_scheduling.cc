@@ -151,14 +151,6 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  // A special case for jax-triton kernel while it is not ported to FFI.
-  if (hlo->custom_call_target() == "triton_kernel_call" &&
-      // TODO(b/327718087): This is an ugly hack to prevent capturing triton
-      // custom calls that might do autotuning at run time.
-      !absl::StrContains(hlo->metadata().op_name(), "Autotuner")) {
-    return true;
-  }
-
   // Check if FFI handler is compatible with command buffers.
   auto registration = ffi::FindHandler(hlo->custom_call_target(), "gpu");
   return registration.ok()
