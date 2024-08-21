@@ -113,7 +113,7 @@ bool IsTritonSupportedDataType(PrimitiveType type,
 absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     PrimitiveType element_type) {
   if (element_type == PrimitiveType::PRED) {
-    return {HloOpcode::kNot};
+    return {HloOpcode::kConvert, HloOpcode::kNot};
   }
 
   if (element_type == PrimitiveType::U16) {
@@ -167,10 +167,11 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
             HloOpcode::kMaximum, HloOpcode::kMinimum};
   }
 
-  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kCompare};
+  absl::flat_hash_set<HloOpcode> ret;
 
   if (element_type != PrimitiveType::U16) {
     ret.insert(HloOpcode::kAdd);
+    ret.insert(HloOpcode::kCompare);
     ret.insert(HloOpcode::kSubtract);
     ret.insert(HloOpcode::kMaximum);
     ret.insert(HloOpcode::kMinimum);
@@ -226,14 +227,6 @@ bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
 
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
-  // Special handling for the kCompare instruction, which codegens correctly
-  // with a U16 data type despite the fact that it is not supported by Triton
-  // itself.
-  if (instr.opcode() == HloOpcode::kCompare &&
-      instr.operand(0)->shape().element_type() == PrimitiveType::U16) {
-    return CodegenDecision{};
-  }
-
   auto type = instr.shape().element_type();
   bool output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
 
