@@ -180,6 +180,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass();
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 
+// Creates an instance of the TensorFlow Lite dialect IfOp outline pass.
+std::unique_ptr<OperationPass<ModuleOp>> CreateIfOutlinePass();
+
 // Creates a pass to remove operands of TFL WhileOp without changing outcomes.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateReduceWhileOperandsPass();
 
