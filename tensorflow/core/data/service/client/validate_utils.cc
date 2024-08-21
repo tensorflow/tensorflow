@@ -14,14 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/client/validate_utils.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace data {

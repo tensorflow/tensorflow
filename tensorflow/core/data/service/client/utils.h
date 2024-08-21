@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"

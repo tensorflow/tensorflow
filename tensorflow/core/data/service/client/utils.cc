@@ -18,16 +18,16 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/protobuf/error_codes.pb.h"
