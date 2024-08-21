@@ -66,6 +66,7 @@ filegroup(
 
 xla_test(
     name = "exhaustive_unary_f32_or_smaller_test",
+    timeout = "long",
     srcs = [
         "exhaustive_test_main.cc",
         ":exhaustive_unary_f32_or_smaller_test_srcs",
@@ -100,6 +101,7 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_f64_test",
+    timeout = "long",
     srcs = [
         "exhaustive_test_main.cc",
         "exhaustive_unary_f64_test.cc",
@@ -135,6 +137,7 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_complex_test",
+    timeout = "long",
     srcs = [
         "exhaustive_test_main.cc",
         "exhaustive_unary_complex_test.cc",
@@ -174,6 +177,7 @@ filegroup(
 
 xla_test(
     name = "exhaustive_binary_16_bit_test",
+    timeout = "long",
     srcs = [
         "exhaustive_test_main.cc",
         ":exhaustive_binary_16_bit_test_srcs",
@@ -207,6 +211,7 @@ xla_test(
 
 xla_test(
     name = "exhaustive_binary_f32_f64_test",
+    timeout = "long",
     srcs = [
         "exhaustive_binary_f32_f64_test.cc",
         "exhaustive_test_main.cc",
