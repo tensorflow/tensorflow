@@ -24,26 +24,8 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
-#include "absl/numeric/int128.h"
-#include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/event.h"
-#include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/gpu/gpu_diagnostics.h"
-#include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
-
-#if defined(PLATFORM_WINDOWS)
-#include <windows.h>
-#define PATH_MAX MAX_PATH
-#else
-#include <unistd.h>
-#endif
-
 #include "absl/log/check.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -54,14 +36,22 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/delay_kernel.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
@@ -71,6 +61,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -79,24 +71,17 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/numa.h"
 #include "tsl/platform/statusor.h"
 
 // LOG(ERROR) uses a const named ERROR, so a macro with the same name is
 // always unwanted. This happens on Windows that defines such a macro.
 #undef ERROR
 
-#ifdef PLATFORMS_GPUS_CUDA_DYNAMIC_LIBCUDA_DYNAMIC_LIBCUDA_H_
-#error \
-    "No driver calls in this file, wrap driver functionality in cuda_driver.cc."
-#endif
-
 #ifdef __CUDA_RUNTIME_H__
 #error \
     "CUDA runtime being included into CUDA GPU executor; should be driver only."
 #endif
-
-extern bool FLAGS_check_gpu_leaks;
-bool FLAGS_prefer_cubin_to_ptx = true;
 
 namespace stream_executor {
 namespace gpu {
@@ -113,10 +98,6 @@ bool ShouldLaunchDelayKernel() {
 }
 
 }  // namespace
-static GpuEvent* AsGpuEvent(Event* event) {
-  DCHECK(event != nullptr);
-  return static_cast<GpuEvent*>(event);
-}
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
 // for passing directly to libcuda APIs.
@@ -705,10 +686,10 @@ GpuContext* GpuExecutor::gpu_context() { return context_; }
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const std::string& pci_bus_id,
                              int device_ordinal) {
-#if defined(PLATFORM_WINDOWS)
-  // Windows support for NUMA is not currently implemented. Return node 0.
-  return 0;
-#else
+  if (!tsl::port::NUMAEnabled()) {
+    // NUMA is not currently enabled. Return node 0.
+    return 0;
+  }
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
 
@@ -759,7 +740,6 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
 
   fclose(file);
   return kUnknownNumaNode;
-#endif
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
