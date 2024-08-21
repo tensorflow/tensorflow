@@ -168,17 +168,16 @@ void CompileAndExecute(tfrt::RemainingArguments args,
                        tfrt::ArrayAttribute<int64_t> used_output_indices,
                        tfrt::KernelErrorHandler error_handler,
                        const tfrt::ExecutionContext& exec_ctx) {
-  // Construct the run inputs.
-  llvm::SmallVector<tfrt_stub::FallbackTensor> arg_tensors;
-  for (int i = 0; i < args.size(); ++i) {
-    arg_tensors.push_back(args[i]->get<tfrt_stub::FallbackTensor>());
-  }
-
   GpuRunInputs run_inputs;
-  run_inputs.args = &arg_tensors;
+  run_inputs.args.reserve(args.size());
+  for (int i = 0; i < args.size(); ++i) {
+    run_inputs.args.push_back(args[i]->get<tfrt_stub::FallbackTensor>());
+  }
   run_inputs.num_outputs = results.size();
-  run_inputs.resource_indices = resource_indices.data();
-  run_inputs.used_output_indices = used_output_indices.data();
+  run_inputs.resource_indices = {resource_indices.data().begin(),
+                                 resource_indices.data().end()};
+  run_inputs.used_output_indices = {used_output_indices.data().begin(),
+                                    used_output_indices.data().end()};
   run_inputs.func_name = func_name.str();
 
   Devices devices;
@@ -188,7 +187,7 @@ void CompileAndExecute(tfrt::RemainingArguments args,
     return;
   }
   run_inputs.cpu_device = devices.cpu_device;
-  run_inputs.gpu_devices = &devices.gpu_devices;
+  run_inputs.gpu_devices = std::move(devices.gpu_devices);
 
   tfrt::RequestContext* req_ctx = exec_ctx.request_ctx();
   const auto* fallback_request_state =
@@ -198,7 +197,7 @@ void CompileAndExecute(tfrt::RemainingArguments args,
     return;
   }
   run_inputs.fallback_request_state = fallback_request_state;
-  run_inputs.exec_ctx = &exec_ctx;
+  run_inputs.host_ctx = exec_ctx.host();
 
   // Get GpuRunner from the resource context.
   std::optional<GpuRunner*> gpu_runner =
@@ -209,7 +208,7 @@ void CompileAndExecute(tfrt::RemainingArguments args,
     return;
   }
 
-  auto fallback_tensor_results = (*gpu_runner)->Run(run_inputs);
+  auto fallback_tensor_results = (*gpu_runner)->Run(std::move(run_inputs));
   if (!fallback_tensor_results.ok()) {
     error_handler.ReportError(fallback_tensor_results.status().message());
     return;

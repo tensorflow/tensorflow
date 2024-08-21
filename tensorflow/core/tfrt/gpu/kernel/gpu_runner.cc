@@ -75,8 +75,8 @@ namespace {
 // TODO(b/298478068): Consider to integrate this into
 // tfd::TransferTensorToDevice().
 tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorToDevice(
-    const tfrt::ExecutionContext& exec_ctx,
-    const tfrt_stub::FallbackTensor& tensor, Device* gpu_device) {
+    const tfrt_stub::FallbackTensor& tensor, tfrt::HostContext* host_ctx,
+    Device* gpu_device) {
   const tensorflow::Tensor& src = tensor.tensor();
   tensorflow::AllocatorAttributes attr;
   attr.set_use_pjrt_allocator(true);
@@ -92,9 +92,8 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorToDevice(
   DeviceContext* pjrt_device_context =
       gpu_device->tensorflow_accelerator_device_info()->pjrt_context;
   bool enqueued = tfrt::EnqueueBlockingWork(
-      exec_ctx.host(),
-      [result = result.CopyRef(), gpu_device, pjrt_device_context, src,
-       dst = std::move(dst)]() mutable {
+      host_ctx, [result = result.CopyRef(), gpu_device, pjrt_device_context,
+                 src, dst = std::move(dst)]() mutable {
         tensorflow::Notification n;
         tensorflow::Status status;
         pjrt_device_context->CopyCPUTensorToDevice(
@@ -118,9 +117,8 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorToDevice(
 }
 
 tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorFromDevice(
-    const tfrt::ExecutionContext& exec_ctx,
-    const tfrt_stub::FallbackTensor& tensor, Device* cpu_device,
-    Device* gpu_device) {
+    const tfrt_stub::FallbackTensor& tensor, tfrt::HostContext* host_ctx,
+    Device* cpu_device, Device* gpu_device) {
   const tensorflow::Tensor& src = tensor.tensor();
 
   tensorflow::AllocatorAttributes attr;
@@ -135,9 +133,8 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorFromDevice(
   DeviceContext* pjrt_device_context =
       gpu_device->tensorflow_accelerator_device_info()->pjrt_context;
   bool enqueued = tfrt::EnqueueBlockingWork(
-      exec_ctx.host(),
-      [result = result.CopyRef(), gpu_device, pjrt_device_context, src,
-       dst = std::move(dst)]() mutable {
+      host_ctx, [result = result.CopyRef(), gpu_device, pjrt_device_context,
+                 src, dst = std::move(dst)]() mutable {
         tensorflow::Notification n;
         tensorflow::Status status;
         pjrt_device_context->CopyDeviceTensorToCPU(
@@ -210,14 +207,14 @@ absl::StatusOr<
     llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>>
 TransferOutputsToHostIfNeeded(
     llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>> outputs,
-    tfrt::ArrayRef<int64_t> used_output_indices, Device* cpu_device,
-    Device* gpu_device, const tfrt::ExecutionContext& exec_ctx) {
+    absl::Span<const int64_t> used_output_indices, Device* cpu_device,
+    Device* gpu_device, tfrt::HostContext* host_ctx) {
   llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>> results;
   for (int i = 0, j = 0; i < outputs.size(); ++i) {
     if (j < used_output_indices.size() && i == used_output_indices[j]) {
       CHECK(outputs[i].IsAvailable());  // Crash OK
       tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> output_on_cpu =
-          TransferTensorFromDevice(exec_ctx, outputs[i].get(), cpu_device,
+          TransferTensorFromDevice(outputs[i].get(), host_ctx, cpu_device,
                                    gpu_device);
       results.push_back(std::move(output_on_cpu));
       ++j;
@@ -230,12 +227,14 @@ TransferOutputsToHostIfNeeded(
 
 absl::StatusOr<
     llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>>
-TransferVariablesAndInputs(
-    int device_idx, const llvm::SmallVector<tfrt_stub::FallbackTensor>& args,
-    tfrt::ArrayRef<int64_t> resource_indices, Device* cpu_device,
-    absl::flat_hash_map<int, Device*> gpu_devices,
-    tfrt::gpu::GpuVariablesTable& vars_table, bool variables_are_shared,
-    const tfrt::ExecutionContext& exec_ctx) {
+TransferVariablesAndInputs(int device_idx,
+                           absl::Span<const tfrt_stub::FallbackTensor> args,
+                           absl::Span<const int64_t> resource_indices,
+                           Device* cpu_device,
+                           const absl::flat_hash_map<int, Device*>& gpu_devices,
+                           tfrt::gpu::GpuVariablesTable& vars_table,
+                           bool variables_are_shared,
+                           tfrt::HostContext* host_ctx) {
   llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>> results;
 
   // Find all devices that are on the same platform (physical GPU). Variables
@@ -280,7 +279,7 @@ TransferVariablesAndInputs(
 
         VLOG(2) << "Transfer the resource arg[" << i << "] to device "
                 << gpu_device_idx << ".";
-        device_tensor = TransferTensorToDevice(exec_ctx, args[i],
+        device_tensor = TransferTensorToDevice(args[i], host_ctx,
                                                gpu_devices.at(gpu_device_idx));
         vars_table.AddOrUpdateDeviceVariable(args[i], cache_copy_idx,
                                              std::move(device_tensor));
@@ -293,7 +292,7 @@ TransferVariablesAndInputs(
       // Transfer inputs.
       VLOG(2) << "Transfer input arg[" << i << "].";
       tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> device_tensor =
-          TransferTensorToDevice(exec_ctx, args[i], gpu_devices.at(device_idx));
+          TransferTensorToDevice(args[i], host_ctx, gpu_devices.at(device_idx));
       results.push_back(device_tensor);
     }
   }
@@ -318,7 +317,7 @@ absl::StatusOr<uint64_t> GenerateFingerprint(
 }
 
 std::vector<XlaCompiler::Argument> BuildXlaCompilerArguments(
-    const llvm::SmallVector<tfrt_stub::FallbackTensor>& inputs) {
+    absl::Span<const tfrt_stub::FallbackTensor> inputs) {
   std::vector<XlaCompiler::Argument> out;
   out.resize(inputs.size());
 
@@ -340,14 +339,14 @@ Status CompileProgram(const GpuRunInputs& run_inputs, int device_idx,
                       xla::PjRtClient** pjrt_client,
                       xla::PjRtLoadedExecutable** pjrt_executable) {
   std::vector<XlaCompiler::Argument> xla_compiler_args =
-      BuildXlaCompilerArguments(*run_inputs.args);
+      BuildXlaCompilerArguments(run_inputs.args);
 
-  DeviceBase* device = run_inputs.gpu_devices->at(device_idx);
+  DeviceBase* device = run_inputs.gpu_devices.at(device_idx);
   FunctionLibraryRuntime* flr =
       run_inputs.fallback_request_state->process_function_library_runtime()
-          .GetFLR(run_inputs.gpu_devices->at(device_idx)->name());
+          .GetFLR(run_inputs.gpu_devices.at(device_idx)->name());
   XlaPlatformInfo platform_info =
-      XlaPlatformInfoFromDevice(run_inputs.gpu_devices->at(device_idx));
+      XlaPlatformInfoFromDevice(run_inputs.gpu_devices.at(device_idx));
   NameAttrList function;
   function.set_name(run_inputs.func_name);
 
@@ -367,7 +366,7 @@ Status CompileProgram(const GpuRunInputs& run_inputs, int device_idx,
 
 absl::StatusOr<
     llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>>
-GpuRunner::Run(const GpuRunInputs& run_inputs) {
+GpuRunner::Run(GpuRunInputs run_inputs) {
   // Select a device to run this input.
   TF_ASSIGN_OR_RETURN(uint64_t fingerprint,
                       GenerateFingerprint(run_inputs.func_name,
@@ -389,9 +388,9 @@ GpuRunner::Run(const GpuRunInputs& run_inputs) {
       llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>
           transferred_args,
       TransferVariablesAndInputs(
-          device_idx, *run_inputs.args, run_inputs.resource_indices,
-          run_inputs.cpu_device, *run_inputs.gpu_devices, vars_table_,
-          /*variables_are_shared=*/false, *run_inputs.exec_ctx));
+          device_idx, run_inputs.args, run_inputs.resource_indices,
+          run_inputs.cpu_device, run_inputs.gpu_devices, vars_table_,
+          /*variables_are_shared=*/false, run_inputs.host_ctx));
 
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 4>
       transferred_args_to_wait;
@@ -400,7 +399,7 @@ GpuRunner::Run(const GpuRunInputs& run_inputs) {
       transferred_args_to_wait.push_back(arg.CopyRCRef());
     }
   }
-  run_inputs.exec_ctx->host()->Await(transferred_args_to_wait);
+  run_inputs.host_ctx->Await(transferred_args_to_wait);
 
   // Execute the program.
   std::vector<const Tensor*> inputs;
@@ -434,11 +433,11 @@ GpuRunner::Run(const GpuRunInputs& run_inputs) {
       llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>> results,
       PopulateResultsFromPjRtExecutableOutputs(
           *compilation_result, executable_outputs,
-          run_inputs.gpu_devices->at(device_idx), run_inputs.num_outputs));
+          run_inputs.gpu_devices.at(device_idx), run_inputs.num_outputs));
 
   return TransferOutputsToHostIfNeeded(
       results, run_inputs.used_output_indices, run_inputs.cpu_device,
-      run_inputs.gpu_devices->at(device_idx), *run_inputs.exec_ctx);
+      run_inputs.gpu_devices.at(device_idx), run_inputs.host_ctx);
 }
 
 }  // namespace gpu
