@@ -85,7 +85,7 @@ class ExecuteNodeArgs : public EagerKernelArgs {
   bool has_remote_inputs_ = false;
   bool has_packed_inputs_ = false;
   // Maps from the index of a packed arg to a list of sub-args.
-  absl::flat_hash_map<int, gtl::InlinedVector<TensorValue, 4>> packed_args_;
+  absl::flat_hash_map<int, absl::InlinedVector<TensorValue, 4UL>> packed_args_;
 #if !defined(IS_MOBILE_PLATFORM)
   std::function<Status(const FunctionArgIndex&, eager::RemoteTensorHandle*)>
       serialize_remote_handle_;
