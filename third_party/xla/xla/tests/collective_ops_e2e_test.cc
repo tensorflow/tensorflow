@@ -1187,5 +1187,60 @@ ENTRY entry {
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
 }
 
+TEST_F(CollectiveOpsTestE2E, NcclErrorPropagation) {
+  absl::string_view kModuleReplicatedStr = R"(
+ENTRY test_computation {
+    after-all.0 = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="1"
+      }
+
+    recv.1 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=2
+    recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
+
+    ROOT result = (u32[2], u32[2]) tuple(recv-data.0, recv-data.1)
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 2;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_nccl_termination_timeout_seconds(5);
+  config.set_debug_options(opts);
+  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  DeviceAssignment assn(/*replica_count=*/kNumReplicas,
+                        /*computation_count=*/kNumPartitions);
+  config.set_replica_count(kNumReplicas);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    assn(0, i) = i;
+  }
+
+  auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
+  std::vector<Literal*> fake_ptrs(fake_arguments.size());
+  for (int i = 0; i < fake_arguments.size(); i++) {
+    fake_ptrs[i] = &fake_arguments[i];
+  }
+
+  auto result = HloTestBase::ExecuteReplicated(
+      std::move(module), fake_ptrs, kNumPartitions, &assn,
+      false /*run_hlo_passes*/, true /*use-threads*/);
+  ASSERT_FALSE(result.status().ok());
+  ASSERT_EQ(result.status().code(), absl::StatusCode::kDeadlineExceeded);
+}
+
 }  // namespace
 }  // namespace xla
