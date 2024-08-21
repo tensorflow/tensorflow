@@ -884,6 +884,7 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([":delay_kernel_cuda"]),
     alwayslink = True,

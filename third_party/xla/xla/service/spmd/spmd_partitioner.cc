@@ -4863,17 +4863,15 @@ HloInstruction* SpmdPartitioner::AllGatherShards(
     const SPMDCollectiveOpsCreator& collectives_creator) {
   return AllGatherShardsInternal(b, operand, sharding, next_channel_id,
                                  selected_dims, collectives_creator,
-                                 /*per_dim_ag=*/true)
-      .first;
+                                 /*per_dim_ag=*/true);
 }
 
-std::pair<HloInstruction*, HloInstruction*>
-SpmdPartitioner::AllGatherShardsInternal(
+HloInstruction* SpmdPartitioner::AllGatherShardsInternal(
     SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
     int64_t* next_channel_id, absl::Span<const int64_t> selected_dims,
     const SPMDCollectiveOpsCreator& collectives_creator, bool per_dim_ag) {
   if (selected_dims.empty()) {
-    return std::make_pair(operand, nullptr);
+    return operand;
   }
   CHECK(!sharding.IsTileMaximal());
   if (per_dim_ag || selected_dims.size() == 1) {
@@ -4908,7 +4906,7 @@ SpmdPartitioner::AllGatherShardsInternal(
             /*all_gather_dimension=*/*it);
       }
     }
-    return std::make_pair(result, result);
+    return result;
   }
 
   std::vector<int64_t> shape;
@@ -4993,8 +4991,7 @@ SpmdPartitioner::AllGatherShardsInternal(
     ag_shape.set_dimensions(
         i, ag_shape.dimensions(i) * sharding.tile_assignment().dim(i));
   }
-  result = b->AddInstruction(HloInstruction::CreateReshape(ag_shape, result));
-  return std::make_pair(result, ag);
+  return b->AddInstruction(HloInstruction::CreateReshape(ag_shape, result));
 }
 
 HloInstruction* SpmdPartitioner::AllReduceAlongShardingDims(

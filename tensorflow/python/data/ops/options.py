@@ -387,8 +387,12 @@ class OptimizationOptions(options_lib.OptionsBase):
   map_fusion = options_lib.create_option(
       name="map_fusion",
       ty=bool,
-      docstring="Whether to fuse map transformations. If None, defaults to "
-      "False.")
+      docstring=(
+          "Whether to fuse map transformations with `num_parallel_calls` set to"
+          " `tf.data.AUTOTUNE`, no captured inputs and same `deterministic`"
+          " value. If None, defaults to False."
+      ),
+  )
 
   map_parallelization = options_lib.create_option(
       name="map_parallelization",

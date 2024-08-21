@@ -331,12 +331,10 @@ class SpmdPartitioner : public HloModulePass {
   }
 
  protected:
-  // This is the internal implementation for AllGatherShards(), returns a pair
-  // of hlo instructions whose first element is the result of the all-gather
-  // shard(which might not be the all-gather itself and it could go through
-  // some other formatting instructions), and the second element is the
-  // all-gather being generated or nullptr is no all-gather is generated.
-  std::pair<HloInstruction*, HloInstruction*> AllGatherShardsInternal(
+  // The internal implementation for AllGatherShards(). Since the all-gather may
+  // be followed by other formatting instructions, the result might not be the
+  // all-gather itself.
+  HloInstruction* AllGatherShardsInternal(
       SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
       int64_t* next_channel_id, absl::Span<const int64_t> selected_dims,
       const SPMDCollectiveOpsCreator& collectives_creator, bool per_dim_ag);
