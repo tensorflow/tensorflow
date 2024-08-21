@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_retry.h"
 #include "xla/tsl/framework/shared_counter.h"
-#include "tsl/lib/core/bits.h"
+#include "xla/tsl/lib/core/bits.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/numbers.h"

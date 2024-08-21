@@ -45,7 +45,7 @@ void BM_ScaleAndTranslateOp(benchmark::State& state) {
   test::Benchmark("cpu", g).Run(state);
 }
 
-BENCHMARK(BM_ScaleAndTranslateOp)->UseRealTime();
+BENCHMARK(BM_ScaleAndTranslateOp)->UseRealTime()->MeasureProcessCPUTime();
 
 }  // namespace
 }  // namespace tensorflow

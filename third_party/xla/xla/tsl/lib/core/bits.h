@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_LIB_CORE_BITS_H_
-#define TENSORFLOW_TSL_LIB_CORE_BITS_H_
+#ifndef XLA_TSL_LIB_CORE_BITS_H_
+#define XLA_TSL_LIB_CORE_BITS_H_
 
 #include <cstdint>
 
@@ -55,4 +55,4 @@ inline int64_t NextPowerOfTwoS64(int64_t value) {
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_CORE_BITS_H_
+#endif  // XLA_TSL_LIB_CORE_BITS_H_

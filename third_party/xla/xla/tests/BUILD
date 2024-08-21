@@ -279,11 +279,11 @@ cc_library(
         "//xla/service:interpreter_plugin",  # reference backend
         "//xla/service:platform_util",
         "//xla/stream_executor",
+        "//xla/tsl/lib/core:bitmap",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test",

@@ -1772,3 +1772,13 @@ def FuseSamePaddingConv3D : Pat<
     (IsBalancedPaddingArray<1, 4> $paddings),
     (IsValidPadding $padding),
     (IsSameStridedShape3D $conv_out, $input)]>;
+
+// Replace
+//   Gather(Cast(input), indices)
+// With
+//   Cast(Gather(input, indices))
+// This reduces the number of tensor elements that need to be converted.
+def ReorderGatherAndCast : Pat<
+  (TFL_GatherOp (TFL_CastOp:$cast $params), $indices, $axis, $batch_dims),
+  (TFL_CastOp (TFL_GatherOp $params, $indices, $axis, $batch_dims)),
+  [(HasOneUse $cast)]>;

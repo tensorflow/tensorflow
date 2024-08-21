@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/lib/core/bits.h"
+#include "xla/tsl/lib/core/bits.h"
 
 #include <cstdint>
 
