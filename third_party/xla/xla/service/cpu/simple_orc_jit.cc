@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <list>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <system_error>  // NOLINT
@@ -28,21 +29,32 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/ExecutionEngine/RuntimeDyld.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/Mangler.h"
-#include "llvm/IR/Operator.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/Memory.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
+#include "xla/service/cpu/compiler_functor.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/service/cpu/runtime_conv2d.h"
@@ -65,7 +77,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_topk.h"
 #include "xla/service/cpu/windows_compatibility.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/types.h"
+#include "xla/service/llvm_compiler.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
@@ -317,7 +329,8 @@ SimpleOrcJIT::SimpleOrcJIT(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook)
+    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
+    size_t num_jit_dylibs)
     : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
       target_triple_(target_machine_->getTargetTriple()),
       data_layout_(target_machine_->createDataLayout()),
@@ -336,7 +349,6 @@ SimpleOrcJIT::SimpleOrcJIT(
               disable_slp_vectorizer, fast_math_flags,
               std::move(pre_optimization_hook),
               std::move(post_optimization_hook), std::move(post_codegen_hook))),
-      main_jit_dylib_(&execution_session_->createBareJITDylib("<main>")),
       gdb_jit_event_listener_(
           llvm::JITEventListener::createGDBRegistrationListener()),
       perf_jit_event_listener_(
@@ -368,8 +380,15 @@ SimpleOrcJIT::SimpleOrcJIT(
       return llvm::Error::success();
     }
   };
-  main_jit_dylib_->addGenerator(
-      std::make_unique<RuntimeSymbolGenerator>(*this));
+
+  jit_dylibs_.resize(num_jit_dylibs);
+  for (size_t i = 0; i < num_jit_dylibs; ++i) {
+    jit_dylibs_[i] = &execution_session_->createBareJITDylib(
+        absl::StrCat("<xla_jit_dylib_", i, ">"));
+    jit_dylibs_[i]->addGenerator(
+        std::make_unique<RuntimeSymbolGenerator>(*this));
+  }
+
   object_layer_.registerJITEventListener(*this);
   if (perf_jit_event_listener_) {
     object_layer_.registerJITEventListener(*perf_jit_event_listener_);
@@ -394,8 +413,8 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
-        post_codegen_hook) {
+    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
+    size_t num_jit_dylibs) {
   auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
   auto target_process_control =
       llvm::orc::SelfExecutorProcessControl::Create(std::move(SSP));
@@ -409,7 +428,8 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
       std::move(*target_process_control), std::move(execution_session),
       target_options, opt_level, optimize_for_size, disable_expensive_passes,
       disable_slp_vectorizer, fast_math_flags, std::move(pre_optimization_hook),
-      std::move(post_optimization_hook), std::move(post_codegen_hook));
+      std::move(post_optimization_hook), std::move(post_codegen_hook),
+      num_jit_dylibs);
 }
 
 llvm::orc::ExecutorSymbolDef SimpleOrcJIT::ResolveRuntimeSymbol(
@@ -427,11 +447,15 @@ llvm::orc::ExecutorSymbolDef SimpleOrcJIT::ResolveRuntimeSymbol(
   }
 
   if (func_addr == nullptr) {
-    LOG(ERROR)
-        << "Unable to resolve runtime symbol: `" << name.str()
-        << "'. Hint: if the symbol a custom call target, make sure you've "
-           "registered it with the JIT using "
-           "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
+    // If symbol corresponds to a kernel function, then it must be defined in
+    // another LLVM module part (another dylib).
+    if (!kernel_symbols_.contains(name)) {
+      LOG(ERROR)
+          << "Unable to resolve runtime symbol: `" << name.str()
+          << "'. Hint: if the symbol a custom call target, make sure you've "
+             "registered it with the JIT using "
+             "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
+    }
     return {};
   }
   return {llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(func_addr)),
@@ -451,12 +475,13 @@ void SimpleOrcJIT::notifyFreeingObject(llvm::JITEventListener::ObjectKey key) {
 }
 
 llvm::Error SimpleOrcJIT::AddObjFile(
-    std::unique_ptr<llvm::MemoryBuffer> obj_file) {
-  return object_layer_.add(*main_jit_dylib_, std::move(obj_file));
+    std::unique_ptr<llvm::MemoryBuffer> obj_file, size_t dylib_index) {
+  return object_layer_.add(*jit_dylibs_[dylib_index], std::move(obj_file));
 }
 
-llvm::Error SimpleOrcJIT::AddModule(llvm::orc::ThreadSafeModule module) {
-  return compile_layer_.add(*main_jit_dylib_, std::move(module));
+llvm::Error SimpleOrcJIT::AddModule(llvm::orc::ThreadSafeModule module,
+                                    size_t dylib_index) {
+  return compile_layer_.add(*jit_dylibs_[dylib_index], std::move(module));
 }
 
 void SimpleOrcJIT::DoneCompiling() {
@@ -467,7 +492,7 @@ void SimpleOrcJIT::DoneCompiling() {
 
 llvm::Expected<llvm::orc::ExecutorSymbolDef> SimpleOrcJIT::FindCompiledSymbol(
     const std::string& name) {
-  return execution_session_->lookup({main_jit_dylib_}, name);
+  return execution_session_->lookup(jit_dylibs_, name);
 }
 
 #if defined(PLATFORM_WINDOWS)
