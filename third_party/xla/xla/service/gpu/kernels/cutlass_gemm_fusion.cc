@@ -16,13 +16,17 @@ limitations under the License.
 #include "xla/service/gpu/kernels/cutlass_gemm_fusion.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -50,7 +54,6 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 namespace {
-namespace m = match;
 
 // If custom fusion requires extra workspace at run time, ROOT instruction will
 // be a tuple with second operand being a result of workspace allocation custom
@@ -62,9 +65,9 @@ struct RootWithWorkspace {
 
 static RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
   RootWithWorkspace result;
-  if (Match(root,
-            m::Tuple(m::Op(&result.root),
-                     m::CustomCall(&result.workspace,
+  if (Match(root, match::Tuple(match::Op(&result.root),
+                               match::CustomCall(
+                                   &result.workspace,
                                    {CustomKernelFusionPattern::kWorkspace})))) {
     return result;
   }
@@ -148,21 +151,21 @@ static absl::StatusOr<GemmWithUpcast> MatchGemmWithUpcast(
 
   // C <- convert(A) * convert(B)
   if (Match(const_cast<HloInstruction*>(dot->operand(0)),
-            m::Convert(&match.lhs_upcast, m::Op())) &&
+            match::Convert(&match.lhs_upcast, match::Op())) &&
       Match(const_cast<HloInstruction*>(dot->operand(1)),
-            m::Convert(&match.rhs_upcast, m::Op()))) {
+            match::Convert(&match.rhs_upcast, match::Op()))) {
     return match;
   }
 
   // C <- convert(A) * B
   if (Match(const_cast<HloInstruction*>(dot->operand(0)),
-            m::Convert(&match.lhs_upcast, m::Op()))) {
+            match::Convert(&match.lhs_upcast, match::Op()))) {
     return match;
   }
 
   // C <- A * convert(B)
   if (Match(const_cast<HloInstruction*>(dot->operand(1)),
-            m::Convert(&match.rhs_upcast, m::Op()))) {
+            match::Convert(&match.rhs_upcast, match::Op()))) {
     return match;
   }
 
@@ -171,8 +174,8 @@ static absl::StatusOr<GemmWithUpcast> MatchGemmWithUpcast(
 
 template <typename Pattern>
 auto OptionalBitcast(HloInstruction** optional_bitcast, Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Bitcast(optional_bitcast, pattern),
-                                  std::move(pattern));
+  return match::AnyOf<HloInstruction>(match::Bitcast(optional_bitcast, pattern),
+                                      std::move(pattern));
 }
 
 // Returns matched GEMM with result used to update a slice.
@@ -181,8 +184,8 @@ static absl::StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
   GemmWithDynamicSlice match(update_slice);
 
   if (!Match(const_cast<HloInstruction*>(update_slice->update()),
-             OptionalBitcast(&match.bitcast,
-                             m::Dot(&match.dot, m::Op(), m::Op())))) {
+             OptionalBitcast(&match.bitcast, match::Dot(&match.dot, match::Op(),
+                                                        match::Op())))) {
     return absl::InternalError("failed to match update slice instr");
   }
 
@@ -257,22 +260,50 @@ CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
   return match;
 }
 
+namespace {
+bool IsSupportedKernel(PrimitiveType lhs, PrimitiveType rhs,
+                       PrimitiveType dot) {
+  // List of supported kernels using {lhs_type, rhs_type, dot_type}.
+  constexpr std::array<std::array<PrimitiveType, 3>, 4> kSupportedKernels = {
+      {{BF16, BF16, F32}, {BF16, F32, F32}, {F32, BF16, F32}, {BF16, S8, F32}}};
+  return absl::c_linear_search(kSupportedKernels,
+                               std::array<PrimitiveType, 3>{lhs, rhs, dot});
+}
+}  // namespace
+
 std::optional<CustomKernelFusionPattern::Match>
 CutlassGemmWithUpcastPattern::TryMatch(const se::DeviceDescription& device,
                                        HloInstruction* instr) const {
   auto* dot = DynCast<HloDotInstruction>(instr);
   if (!dot) return std::nullopt;
 
-  auto matched = MatchGemmWithUpcast(dot);
+  absl::StatusOr<GemmWithUpcast> matched = MatchGemmWithUpcast(dot);
 
   if (!matched.ok()) return std::nullopt;
 
   CustomFusionConfig config;
   config.set_name("cutlass_gemm_with_upcast");
 
-  if (matched->lhs_upcast != nullptr && matched->rhs_upcast == nullptr) {
+  HloInstruction* lhs = matched->lhs_upcast;
+  HloInstruction* rhs = matched->rhs_upcast;
+  PrimitiveType dot_type = dot->shape().element_type();
+  PrimitiveType lhs_type = lhs != nullptr
+                               ? lhs->operand(0)->shape().element_type()
+                               : dot->operand(0)->shape().element_type();
+  PrimitiveType rhs_type = rhs != nullptr
+                               ? rhs->operand(0)->shape().element_type()
+                               : dot->operand(1)->shape().element_type();
+  if (!IsSupportedKernel(lhs_type, rhs_type, dot_type)) {
+    VLOG(3) << "No match due to unsupported kernel input types: "
+            << PrimitiveType_Name(lhs_type) << "x"
+            << PrimitiveType_Name(rhs_type) << "To"
+            << PrimitiveType_Name(dot_type);
+    return std::nullopt;
+  }
+
+  if (lhs != nullptr && rhs == nullptr) {
     return Match{config, {matched->lhs_upcast, instr}};
-  } else if (matched->rhs_upcast != nullptr && matched->lhs_upcast == nullptr) {
+  } else if (lhs == nullptr && rhs != nullptr) {
     return Match{config, {matched->rhs_upcast, instr}};
   } else {
     return Match{config, {matched->lhs_upcast, matched->rhs_upcast, instr}};
