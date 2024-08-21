@@ -953,13 +953,37 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
 
-  if (fusion->IsUserOf(tiled_hlo.hlo())) {
+  if (fusion->IsUserOf(hlo)) {
     TF_ASSIGN_OR_RETURN(auto make_tensor,
                         ir_emitter_triton_internal::CreateMakeTensorPtrOp(
                             b, tile_multi_index, tiled_hlo,
                             fn.getArgument(fusion->operand_index(hlo))));
 
-    return EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
+    Value parameter =
+        EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
+
+    // Some types are stored using different types, e.g. i1 is stored in memory
+    // as i8. It's important to type checking that we perform a conversion
+    // after loading if the type of the loaded parameter does not match what
+    // is expected.
+    Type loaded_element_type =
+        mlir::cast<ShapedType>(parameter.getType()).getElementType();
+    TF_ASSIGN_OR_RETURN(Type expected_element_type,
+                        TritonType(b, hlo->shape().element_type()));
+
+    if (expected_element_type != loaded_element_type) {
+      // Ensure that we didn't mess up somewhere else by checking that we
+      // indeed loaded the expected storage type for the expected element type.
+      if (loaded_element_type != StorageType(b, expected_element_type)) {
+        return absl::InternalError(absl::StrCat(
+            "Parameters were loaded with an unexpected element type "
+            "while lowering ",
+            fusion->called_computation()->ToString()));
+      }
+      parameter = Cast(b, parameter, expected_element_type);
+    }
+
+    return parameter;
   }
 
   if (hlo->opcode() == HloOpcode::kConstant &&
@@ -2761,6 +2785,18 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
       Value result,
       EmitTiledScope(b, libdevice_path, device_info, fusion,
                      tiled_hlo_computation, fn, tile_multi_index));
+
+  // Some types are stored using different types, e.g. i1 is stored in memory
+  // as i8. It's important to type checking that we perform a conversion before
+  // storing if the type of the result does not match the type of the output
+  // pointer.
+  Type result_element_type =
+      mlir::cast<ShapedType>(result.getType()).getElementType();
+  Type result_storage_type = StorageType(b, result_element_type);
+
+  if (result_element_type != result_storage_type) {
+    result = Cast(b, result, result_storage_type);
+  }
 
   const auto& tiled_hlo = *tiled_hlo_computation.GetRoot();
   TF_ASSIGN_OR_RETURN(auto make_tensor,

@@ -54,7 +54,7 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
 // Outputs graph optimization result after all the graph optimization (up till
 // before graph partitioning); returns error if optimization fails. Note that
 // the `input_lib_def` will be used only if the lib_def in `options` is nullptr.
-absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
+StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
@@ -67,8 +67,7 @@ absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 // the file cache if existent. If cache loading fails, it goes ahead and runs
 // the graph optimization passes. Returns error if running the optimization
 // passes fails.
-absl::StatusOr<OptimizedFunctionGraphInfo>
-OptimizeFunctionGraphOrReadFromFileCache(
+StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
@@ -79,8 +78,7 @@ OptimizeFunctionGraphOrReadFromFileCache(
 // Pre-processes, partitions and post-optimizes the input graph; returns
 // subgraph result (maps from device name to the subgraph); returns error if any
 // optimization or partitioning step fails.
-absl::StatusOr<
-    std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
+StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
 PreprocessAndPartitionGraph(
     const std::string& function_name,
     OptimizedFunctionGraphInfo& input_optimized_graph,

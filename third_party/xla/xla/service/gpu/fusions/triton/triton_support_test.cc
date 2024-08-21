@@ -331,17 +331,11 @@ ENTRY triton_computation {
   ROOT binary = $0[11,63]{1,0} $1(parameter_0, parameter_1)
 })";
 
-  // TODO(b/345763510): Investigate why the convert below is needed. If removed
-  // the test fails because `pm.run(triton_module.get())` returns this error:
-  //
-  //    loc("compare"): error: 'tt.store' op failed to
-  //    verify that value type matches ptr type
   const std::string kHloCompareTestTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
-  compare = pred[11,63]{1,0} $1(parameter_0, parameter_1), direction=GE
-  ROOT convert = f32[11,63]{1,0} convert(compare)
+  ROOT compare = pred[11,63]{1,0} $1(parameter_0, parameter_1), direction=GE
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(

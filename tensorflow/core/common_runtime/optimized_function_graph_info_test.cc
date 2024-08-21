@@ -87,8 +87,7 @@ constexpr absl::string_view kLibraryPb =
          })pb";
 
 // Creates a simple graph with one trivial node.
-absl::StatusOr<OptimizedFunctionGraphInfo>
-CreateSimpleOptimizedFunctionGraphInfo() {
+StatusOr<OptimizedFunctionGraphInfo> CreateSimpleOptimizedFunctionGraphInfo() {
   NodeDef node_def;
   TF_RETURN_IF_ERROR(NodeDefBuilder("A", "OneOutput").Finalize(&node_def));
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
@@ -163,7 +162,7 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
           kLibraryPb),
       &proto);
 
-  const absl::StatusOr<OptimizedFunctionGraphInfo> test_result =
+  const StatusOr<OptimizedFunctionGraphInfo> test_result =
       OptimizedFunctionGraphInfo::FromProto(std::move(proto));
   TF_EXPECT_OK(test_result.status());
   // Compare graph.
