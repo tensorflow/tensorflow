@@ -27,12 +27,9 @@ Example Usage:
 import os
 import os.path
 import platform
+import shutil
 import subprocess
 import sys
-
-# pylint: disable=g-import-not-at-top,g-importing-member
-from shutil import which
-# pylint: enable=g-import-not-at-top,g-importing-member
 
 
 class ConfigError(Exception):
@@ -56,7 +53,7 @@ def check_cuda_lib(path, check_soname=True):
   """
   if not os.path.isfile(path):
     raise ConfigError("No library found under: " + path)
-  objdump = which("objdump")
+  objdump = shutil.which("objdump")
   if check_soname and objdump is not None and not _is_windows():
     # Decode is necessary as in py3 the return type changed from str to bytes
     output = subprocess.check_output([objdump, "-p", path]).decode("utf-8")

@@ -61,12 +61,9 @@ import os
 import glob
 import platform
 import re
+import shutil
 import subprocess
 import sys
-
-# pylint: disable=g-import-not-at-top
-from shutil import which
-# pylint: enable=g-import-not-at-top
 
 
 class ConfigError(Exception):
@@ -136,7 +133,7 @@ def _get_ld_config_paths():
   """Returns all directories from 'ldconfig -p'."""
   if not _is_linux():
     return []
-  ldconfig_path = which("ldconfig") or "/sbin/ldconfig"
+  ldconfig_path = shutil.which("ldconfig") or "/sbin/ldconfig"
   output = subprocess.check_output([ldconfig_path, "-p"])
   pattern = re.compile(".* => (.*)")
   result = set()

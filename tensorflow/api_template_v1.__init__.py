@@ -15,11 +15,11 @@
 """Bring in all of the public TensorFlow interface into this module."""
 
 import importlib
-import sysconfig
 import inspect as _inspect
 import os as _os
 import site as _site
 import sys as _sys
+import sysconfig
 
 # pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
