@@ -407,6 +407,17 @@ tf_cuda_cc_test(
     ] + IMAGE_TEST_DEPS,
 )
 
+tf_cc_test(
+    name = "scale_and_translate_op_benchmark_test",
+    srcs = ["scale_and_translate_op_benchmark_test.cc"],
+    deps = [
+        ":scale_and_translate_op",
+        "@com_google_benchmark//:benchmark",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ] + IMAGE_TEST_DEPS,
+)
+
 tf_cuda_cc_test(
     name = "non_max_suppression_op_gpu_test",
     srcs = ["non_max_suppression_op_gpu_test.cc"],

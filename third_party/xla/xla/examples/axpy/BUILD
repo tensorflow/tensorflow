@@ -18,7 +18,6 @@ xla_cc_test(
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/service:cpu_plugin",
         "//xla/service:platform_util",
-        "//xla/service:stream_pool",
         "//xla/service/cpu:cpu_compiler",
         "//xla/stream_executor:platform",
         "//xla/tests:literal_test_util",
