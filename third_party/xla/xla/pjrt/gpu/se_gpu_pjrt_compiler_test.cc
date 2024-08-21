@@ -65,9 +65,9 @@ std::shared_ptr<xla::GpuTopology> GetGpuTopology(
     std::vector<int> device_ids, absl::string_view platform_version,
     int num_slices, int num_hosts_per_slice, int num_devices_per_host,
     int core_count_per_chip) {
-  return std::make_shared<xla::GpuTopology>(
-      device_ids, platform_version, num_slices, num_hosts_per_slice,
-      num_devices_per_host, core_count_per_chip);
+  return std::make_shared<xla::GpuTopology>(device_ids, platform_version,
+                                            num_slices, num_hosts_per_slice,
+                                            num_devices_per_host);
 }
 
 TEST(StreamExecutorGpuCompilerTest, NoClientXla) {

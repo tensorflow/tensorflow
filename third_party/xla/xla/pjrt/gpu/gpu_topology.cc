@@ -28,8 +28,7 @@ std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
                        gpu_topology_proto.device_ids().end()},
       gpu_topology_proto.platform_version(), gpu_topology_proto.num_slices(),
       gpu_topology_proto.num_hosts_per_slice(),
-      gpu_topology_proto.num_devices_per_host(),
-      gpu_topology_proto.core_count_per_chip());
+      gpu_topology_proto.num_devices_per_host());
 }
 
 GpuTopologyProto GpuTopology::ToProto() const {
@@ -39,7 +38,6 @@ GpuTopologyProto GpuTopology::ToProto() const {
   proto.set_num_slices(num_slices());
   proto.set_num_hosts_per_slice(num_hosts_per_slice());
   proto.set_num_devices_per_host(num_devices_per_host());
-  proto.set_core_count_per_chip(core_count_per_chip());
   return proto;
 }
 
