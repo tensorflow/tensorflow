@@ -104,11 +104,6 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::triton::AMD::createDecomposeUnsupportedConversionsPass(
       ccRocm.gfx_version()));
   const int custom_lds_size = 0;
-<<<<<<< HEAD
-=======
-  pm.addPass(mlir::triton::AMD::createOptimizeLDSUsagePass(ccRocm.gfx_version(),
-                                                           custom_lds_size));
->>>>>>> upstream/master
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());

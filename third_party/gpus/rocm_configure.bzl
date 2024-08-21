@@ -214,27 +214,10 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_config.llvm_path + "/lib/clang/18/include")
     inc_dirs.append(rocm_config.llvm_path + "/lib/clang/19/include")
     rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
-<<<<<<< HEAD
     if int(rocm_config.rocm_version_number) >= 60200:
         inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/17/include")
         inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/18/include")
         inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/19/include")
-=======
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/8.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/9.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/11.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/12.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/13.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/14.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/15.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/16.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/18/include")
-    if int(rocm_config.rocm_version_number) >= 60200:
-        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/18/include")
->>>>>>> upstream/master
 
     # Support hcc based off clang 10.0.0 (for ROCm 3.3)
     inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")

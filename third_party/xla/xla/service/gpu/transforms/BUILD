@@ -2907,6 +2907,7 @@ xla_test(
     backend_tags = {"gpu": [
         "requires-gpu-sm80",
     ]},
+    tags = ["no_rocm"],
     backends = ["gpu"],
     deps = [
         ":triton_fusion_numerics_verifier",

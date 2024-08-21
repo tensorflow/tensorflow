@@ -40,20 +40,11 @@ std::string RocmRoot() {
 #endif
 }
 
-<<<<<<< HEAD
-string RocdlRoot() {
-  if (const char* device_lib_path_env = std::getenv("HIP_DEVICE_LIB_PATH")) {
-   return device_lib_path_env;
-  }
-  else{
-   return io::JoinPath(RocmRoot(), "amdgcn/bitcode");
-=======
 std::string RocdlRoot() {
   if (const char* device_lib_path_env = std::getenv("HIP_DEVICE_LIB_PATH")) {
     return device_lib_path_env;
   } else {
     return io::JoinPath(RocmRoot(), "amdgcn/bitcode");
->>>>>>> upstream/master
   }
 }
 

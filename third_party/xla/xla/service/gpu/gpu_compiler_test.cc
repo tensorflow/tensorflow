@@ -53,12 +53,9 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
-<<<<<<< HEAD
 #include "xla/tests/test_macros.h"
-=======
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
->>>>>>> upstream/master
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
@@ -409,14 +406,11 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
-<<<<<<< HEAD
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
   }
   GTEST_SKIP() << "TODO(b/344573710): this test is flaky, disable it "
                << " until flakiness is fixed.";
-=======
->>>>>>> upstream/master
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()

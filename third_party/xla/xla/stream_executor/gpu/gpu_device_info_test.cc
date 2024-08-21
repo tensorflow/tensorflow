@@ -32,13 +32,7 @@ namespace {
 
 TEST(DeviceInfoTest, DeviceInfoMatches) {
   absl::flat_hash_map<std::string, GpuDeviceInfoProto> gpu_specs;
-<<<<<<< HEAD
   for (const std::string file_name : GPU_SPEC_FILE_NAMES) {
-=======
-  for (const std::string file_name :
-       {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "h100_pcie",
-        "h100_sxm", "p100", "v100", "mi200"}) {
->>>>>>> upstream/master
     GpuTargetConfigProto proto;
     std::string spec_string;
     TF_ASSERT_OK(tsl::ReadFileToString(
@@ -54,11 +48,7 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-<<<<<<< HEAD
                           PlatformManager::PlatformWithName(PLATFORM_NAME));
-=======
-                          PlatformManager::PlatformWithName(name));
->>>>>>> upstream/master
   bool all_skipped = false;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
     TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
