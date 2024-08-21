@@ -2715,7 +2715,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCustomCallToDnnNorm(*instr)) {
         return EmitNormThunk(custom_call);
       }
-      if (IsCustomCallTofMHA(*instr)) {
+      if (IsCustomCallTofMHA(*instr) || IsCustomCallTofMHAF8(*instr)) {
         return EmitCuDnnThunk(custom_call);
       }
 #endif  // GOOGLE_CUDA

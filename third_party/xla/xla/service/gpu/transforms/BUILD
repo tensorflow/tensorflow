@@ -1153,7 +1153,7 @@ cc_library(
         "//xla/stream_executor/cuda:cudnn_plugin",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ]),
+    ]) + ["@com_google_absl//absl/container:flat_hash_map"],
 )
 
 cc_library(
