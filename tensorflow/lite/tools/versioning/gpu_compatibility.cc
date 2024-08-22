@@ -1127,6 +1127,26 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       return IsActivationSupported(activation);
     }
 
+    // Stable HLO ops
+    case kTfLiteBuiltinStablehloClamp:
+      if ((op_sig.inputs.at(0).type != op_sig.inputs.at(1).type) ||
+          (op_sig.inputs.at(1).type != op_sig.inputs.at(2).type)) {
+        return absl::InvalidArgumentError(
+            "Clamp tensors must all be the same type");
+      }
+      if ((op_sig.inputs.at(0).dims != op_sig.inputs.at(1).dims) &&
+          (NumElements(op_sig.inputs.at(0).dims) != 1)) {
+        return absl::InvalidArgumentError(
+            "Min tensor must be the same shape as the input, or a scalar");
+      }
+      if ((op_sig.inputs.at(2).dims != op_sig.inputs.at(1).dims) &&
+          (NumElements(op_sig.inputs.at(0).dims) != 1)) {
+        return absl::InvalidArgumentError(
+            "Max tensor must be the same shape as the input, or a scalar");
+      }
+      return CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/3,
+                                      /*required_const_inputs=*/0,
+                                      /*required_outputs=*/1);
     case kTfLiteBuiltinCustom:
       return CheckCustomOpsGpuDelegateCompatibility(op_sig);
 
