@@ -65,6 +65,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "ServiceOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SqlDataset"
     mtype: "<type \'type\'>"
   }

@@ -103,7 +103,8 @@ void DataServiceWorkerClient::TryCancel() { client_->TryCancel(); }
 class GrpcDataTransferClient : public DataTransferClient {
  public:
   GrpcDataTransferClient(std::shared_ptr<grpc::ChannelCredentials> credentials,
-                         std::string address) {
+                         std::string address, Allocator* allocator)
+      : allocator_(allocator) {
     VLOG(2) << "Create GrpcDataTransferClient for worker " << address << ".";
     grpc::ChannelArguments args;
     args.SetMaxReceiveMessageSize(-1);
@@ -152,7 +153,11 @@ class GrpcDataTransferClient : public DataTransferClient {
       case GetElementResponse::kUncompressed:
         for (const auto& component : resp.uncompressed().components()) {
           result.components.emplace_back();
-          if (!result.components.back().FromProto(component)) {
+          bool success =
+              allocator_ != nullptr
+                  ? result.components.back().FromProto(allocator_, component)
+                  : result.components.back().FromProto(component);
+          if (!success) {
             return errors::Internal("Failed to parse tensor.");
           }
         }
@@ -173,6 +178,7 @@ class GrpcDataTransferClient : public DataTransferClient {
   }
 
  private:
+  Allocator* const allocator_;
   mutex mu_;
   std::unique_ptr<WorkerService::Stub> stub_;
   // Set of all currently active clients contexts. Used to support
@@ -193,8 +199,8 @@ class GrpcTransferClientRegistrar {
           std::shared_ptr<grpc::ChannelCredentials> credentials;
           TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
               config.protocol, &credentials));
-          *out = std::make_unique<GrpcDataTransferClient>(credentials,
-                                                          config.address);
+          *out = std::make_unique<GrpcDataTransferClient>(
+              credentials, config.address, config.allocator);
           return absl::OkStatus();
         });
   }
