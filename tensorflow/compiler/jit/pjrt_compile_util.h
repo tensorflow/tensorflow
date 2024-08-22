@@ -47,7 +47,7 @@ Status CompileToPjRtLoadedExecutable(
 // computation.
 // - `flr`: the FunctionLibraryRuntime for the `function`.
 Status CompileToPjRtLoadedExecutable(
-    const DeviceBase* device, const XlaPlatformInfo& platform_info,
+    DeviceBase* device, const XlaPlatformInfo& platform_info,
     const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     DeviceCompileMode compile_mode, bool has_ref_vars,

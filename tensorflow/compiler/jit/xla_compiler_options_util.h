@@ -40,17 +40,17 @@ XlaCompiler::Options GenerateCompilerOptionsForTfrtTpu(
 
 // Returns created options for XLA compiler when PjRt (Device API) is used for
 // compilation and execution.
-XlaCompiler::Options GenerateCompilerOptionsForPjRt(
-    const FunctionLibraryRuntime& function_library,
-    const DeviceBase* device_base, const XlaPlatformInfo& platform_info,
+absl::StatusOr<XlaCompiler::Options> GenerateCompilerOptionsForPjRt(
+    const FunctionLibraryRuntime& function_library, DeviceBase* device_base,
+    const XlaPlatformInfo& platform_info,
     const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
         pjrt_device_compiler);
 
 // Returns created options for XLA compiler when PjRt (Device API) is used for
 // compilation and execution.
-XlaCompiler::Options GenerateCompilerOptionsForPjRt(
+absl::StatusOr<XlaCompiler::Options> GenerateCompilerOptionsForPjRt(
     const FunctionLibraryDefinition* function_library_def,
-    int graph_def_version, const DeviceBase* device_base,
+    int graph_def_version, DeviceBase* device_base,
     const XlaPlatformInfo& platform_info,
     const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
         pjrt_device_compiler);
