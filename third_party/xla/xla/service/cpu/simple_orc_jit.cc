@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -381,6 +382,8 @@ SimpleOrcJIT::SimpleOrcJIT(
     }
   };
 
+  // Always create at least one dylib.
+  num_jit_dylibs = std::max(size_t{1}, num_jit_dylibs);
   jit_dylibs_.resize(num_jit_dylibs);
   for (size_t i = 0; i < num_jit_dylibs; ++i) {
     jit_dylibs_[i] = &execution_session_->createBareJITDylib(
