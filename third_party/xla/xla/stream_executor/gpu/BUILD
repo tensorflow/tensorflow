@@ -295,7 +295,6 @@ gpu_only_cc_library(
         ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:logging",
     ],
