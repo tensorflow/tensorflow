@@ -987,8 +987,10 @@ cc_library(
         "//xla:util",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Instrumentation",
@@ -998,6 +1000,7 @@ cc_library(
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@local_tsl//tsl/platform:logging",
     ],
 )
