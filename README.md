@@ -26,10 +26,7 @@ for machine learning. It has a comprehensive, flexible ecosystem of
 researchers push the state-of-the-art in ML and developers easily build and
 deploy ML-powered applications.
 
-TensorFlow was originally developed by researchers and engineers working within
-the Machine Intelligence team at Google Brain to conduct research in machine
-learning and neural networks. However, the framework is versatile enough to be
-used in other areas as well.
+TensorFlow was developed by the Google Brain team for research in machine learning and neural networks. Its architecture, however, is versatile and applicable to a range of other domains as well.
 
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as a
