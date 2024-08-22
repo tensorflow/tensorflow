@@ -157,49 +157,6 @@ ENTRY entry {
   EXPECT_EQ(result->permutation, InlinedVector({1, 3, 2, 0}));
 }
 
-TEST_F(IrEmissionUtilsTest, FindTiled102Transpose) {
-  const char* hlo = R"(
-HloModule module
-
-ENTRY entry {
-  p = s16[32,48,4]{2,1,0} parameter(0)
-  ROOT t = s16[32,48,4]{2,0,1} copy(p)
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  auto& debug_options = module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_gpu_mlir_emitter_level(3);
-
-  HloInstruction* tr = module->entry_computation()->root_instruction();
-
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
-  EXPECT_TRUE(result.has_value());
-  EXPECT_EQ(result->instr, tr);
-  EXPECT_EQ(result->dimensions, InlinedVector({48, 32, 4}));
-  EXPECT_EQ(result->permutation, InlinedVector({1, 0, 2}));
-}
-
-TEST_F(IrEmissionUtilsTest, FindTiled102TransposeTooMuchMemoryRequired) {
-  const char* hlo = R"(
-HloModule module
-
-ENTRY entry {
-  p = s8[32,48,9]{2,1,0} parameter(0)
-  ROOT t = s8[32,48,9]{2,0,1} copy(p)
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  auto& debug_options = module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_gpu_mlir_emitter_level(3);
-
-  HloInstruction* tr = module->entry_computation()->root_instruction();
-
-  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
-  EXPECT_FALSE(result.has_value());
-}
-
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTranspose) {
   const char* hlo = R"(
 HloModule module
@@ -526,40 +483,6 @@ ENTRY entry {
             transpose);
 }
 
-TEST_F(IrEmissionUtilsTest, FindNonTrivialCopyHeroInsideFusion) {
-  const char* hlo = R"(
-HloModule module
-
-f {
-  p0 = f32[100,200,300]{2,1,0} parameter(0)
-  t = f32[100,200,300]{0,1,2} copy(p0)
-  ROOT add = f32[100,200,300]{0,1,2} add(t, t)
-}
-
-ENTRY entry {
-  p0 = f32[100,200,300]{2,1,0} parameter(0)
-  p1 = f32[100,200,300]{0,1,2} parameter(1)
-  fusion = f32[100,200,300]{0,1,2} fusion(p0), kind=kLoop, calls=f
-  ROOT add = f32[100,200,300]{0,1,2} add(p1, fusion)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-
-  HloInstruction* r = module->entry_computation()->root_instruction();
-  HloInstruction* copy = module->GetComputationWithName("f")
-                             ->parameter_instruction(0)
-                             ->users()
-                             .front();
-  HloInstruction* fusion =
-      module->entry_computation()->GetInstructionWithName("fusion");
-  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(fusion, r);
-  EXPECT_EQ(&FindNonTrivialHero(HloInstructionAdaptor(*r, fusion_adaptor.get()))
-                 .instruction(),
-            copy);
-}
-
 TEST_F(IrEmissionUtilsTest, TransposeReachableViaTrivialAndNontrivialOps) {
   const char* hlo = R"(
 HloModule module
@@ -588,33 +511,6 @@ ENTRY main {
   EXPECT_EQ(&FindNonTrivialHero(*r), r);
 }
 
-TEST_F(IrEmissionUtilsTest, FindTiledTransposeOneSwapDimIsSmall) {
-  const char* hlo = R"(
-HloModule module
-
-fusion {
-  p = f32[100,11,12,8]{3,2,1,0} parameter(0)
-  ROOT c = f32[100,11,12,8]{1,0,2,3} copy(p)
-}
-
-ENTRY main {
-  param = f32[100,11,12,8]{3,2,1,0} parameter(0)
-  ROOT fusion = f32[100,11,12,8]{1,0,2,3} fusion(param), kind=kInput, calls=fusion
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-
-  HloInstruction* copy =
-      module->entry_computation()->root_instruction()->fused_expression_root();
-  auto result =
-      GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*copy));
-  EXPECT_TRUE(result.has_value());
-  EXPECT_EQ(result->instr, copy);
-  EXPECT_EQ(result->dimensions, InlinedVector({8, 12, 1100}));
-  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
-}
-
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
   const char* hlo = R"(
 HloModule module
@@ -638,33 +534,6 @@ ENTRY main {
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({8, 12, 1100}));
-  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
-}
-
-TEST_F(IrEmissionUtilsTest, FindTiledTransposeOtherSwapDimIsSmall) {
-  const char* hlo = R"(
-HloModule module
-
-fusion {
-  p = f32[8,12,100,11]{3,2,1,0} parameter(0)
-  ROOT c = f32[8,12,100,11]{0,1,3,2} copy(p)
-}
-
-ENTRY main {
-  param = f32[8,12,100,11]{3,2,1,0} parameter(0)
-  ROOT fusion = f32[8,12,100,11]{0,1,3,2} fusion(param), kind=kInput, calls=fusion
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-
-  HloInstruction* copy =
-      module->entry_computation()->root_instruction()->fused_expression_root();
-  auto result =
-      GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*copy));
-  EXPECT_TRUE(result.has_value());
-  EXPECT_EQ(result->instr, copy);
-  EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));
   EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
 }
 

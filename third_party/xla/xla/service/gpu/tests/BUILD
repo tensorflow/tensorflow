@@ -486,6 +486,7 @@ xla_test(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu/transforms:instruction_fusion",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -621,7 +622,6 @@ lit_test_suite(
         [
             "add_preds.hlo",
             "calling_convention.hlo",
-            "copy.hlo",
             "dot_bf16.hlo",
             "dynamic_update_slice_inplace.hlo",
             "fused_scatter.hlo",
@@ -645,6 +645,7 @@ lit_test_suite(
             "sorting.hlo",
             "transpose_021.hlo",
             "transpose_021_extra_output.hlo",
+            "transpose_10.hlo",
             "transpose_210.hlo",
             "transpose_210_extra_output.hlo",
             "triton_naming.hlo",

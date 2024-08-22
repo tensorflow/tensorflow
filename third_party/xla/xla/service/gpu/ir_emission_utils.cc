@@ -540,72 +540,23 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   return true;
 }
 
-static std::optional<TransposeDescription> FindTiledTranspose(
-    const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kCopy) {
-    return std::nullopt;
-  }
-
-  absl::InlinedVector<int64_t, 3> permutation;
-  auto tr = ShapeUtil::GetNormalizedTransposeShape(instr.operand(0)->shape(),
-                                                   instr.shape(), permutation);
-  if (!tr.has_value()) {
-    return std::nullopt;
-  }
-  if (permutation == absl::InlinedVector<int64_t, 3>{0, 2, 1}) {
-    if ((tr->at(1) >= kMinDimensionToTransposeTiled &&
-         tr->at(2) >= kMinDimensionToTransposeTiled) ||
-        (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(2) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{
-          &instr, *tr,
-          /*permutation=*/absl::InlinedVector<int64_t, 3>{0, 2, 1}};
-    }
-  } else if (permutation == absl::InlinedVector<int64_t, 3>{2, 1, 0}) {
-    if ((tr->at(0) >= kMinDimensionToTransposeTiled &&
-         tr->at(2) >= kMinDimensionToTransposeTiled) ||
-        (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(2) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{
-          &instr, *tr,
-          /*permutation=*/absl::InlinedVector<int64_t, 3>{2, 1, 0}};
-    }
-  } else if (IsMlirTransposeEmitterEnabled(instr)) {
-    if (permutation == absl::InlinedVector<int64_t, 3>{1, 0, 2}) {
-      auto byte_width = primitive_util::ByteWidth(instr.shape().element_type());
-      if (byte_width * tr->at(2) <= kMaxBytesInMostMinorDimension &&
-          byte_width * tr->at(2) * std::min(tr->at(0), tr->at(1)) >=
-              kMinDimensionToTransposeTiled) {
-        return TransposeDescription{
-            &instr, *tr,
-            /*permutation=*/absl::InlinedVector<int64_t, 3>{1, 0, 2}};
-      }
-    }
-  }
-  return std::nullopt;
-}
-
-// Find 021, 210 or 102 transpose in logical + physical transposition.
-static std::optional<TransposeDescription> FindTiledLogicalTranspose(
-    const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kTranspose) {
+std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
+    const HloInstruction& hero) {
+  if (hero.opcode() != HloOpcode::kTranspose) {
     return std::nullopt;
   }
 
   // We can assume that TransposeDimensionGrouper pass has run, so no need to
   // call GetNormalizedLogicalTransposeShape here.
-  absl::InlinedVector<int64_t, 3> permutation(instr.dimensions().begin(),
-                                              instr.dimensions().end());
+  absl::InlinedVector<int64_t, 3> permutation(hero.dimensions().begin(),
+                                              hero.dimensions().end());
   // A real transpose needs at least 2 transpose dimensions.
   if (permutation.size() < 2) {
     return std::nullopt;
   }
-  absl::InlinedVector<int64_t, 3> dimensions(instr.shape().dimensions().begin(),
-                                             instr.shape().dimensions().end());
-  int64_t operand_most_minor_dim =
-      instr.operand(0)->shape().dimensions().back();
+  absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
+                                             hero.shape().dimensions().end());
+  int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
   if (permutation == absl::InlinedVector<int64_t, 3>{0, 2, 1} ||
       permutation == absl::InlinedVector<int64_t, 3>{2, 1, 0}) {
     if ((dimensions.back() >= kMinDimensionToTransposeTiled &&
@@ -614,19 +565,19 @@ static std::optional<TransposeDescription> FindTiledLogicalTranspose(
          operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
          dimensions.back() * operand_most_minor_dim >=
              kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, dimensions, permutation};
+      return TransposeDescription{&hero, dimensions, permutation};
     }
-  } else if (IsMlirTransposeEmitterEnabled(instr)) {
+  } else if (IsMlirTransposeEmitterEnabled(hero)) {
     if (permutation.back() == dimensions.size() - 1) {
       operand_most_minor_dim =
-          instr.operand(0)->shape().dimensions(dimensions.size() - 2);
-      auto byte_width = primitive_util::ByteWidth(instr.shape().element_type());
+          hero.operand(0)->shape().dimensions(dimensions.size() - 2);
+      auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
       if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
           byte_width * dimensions.back() *
                   std::min(operand_most_minor_dim,
                            dimensions[dimensions.size() - 2]) >=
               kMinDimensionToTransposeTiled) {
-        return TransposeDescription{&instr, dimensions, permutation};
+        return TransposeDescription{&hero, dimensions, permutation};
       }
     } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
                 dimensions.back() >= kMinDimensionToTransposeTiled) ||
@@ -634,19 +585,8 @@ static std::optional<TransposeDescription> FindTiledLogicalTranspose(
                 dimensions.back() >= kMinDimensionToTransposeTiled2 &&
                 operand_most_minor_dim * dimensions.back() >=
                     kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, dimensions, permutation};
+      return TransposeDescription{&hero, dimensions, permutation};
     }
-  }
-  return std::nullopt;
-}
-
-std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
-    const HloInstruction& hero) {
-  if (auto d1 = FindTiledTranspose(hero)) {
-    return d1;
-  }
-  if (auto d2 = FindTiledLogicalTranspose(hero)) {
-    return d2;
   }
   return std::nullopt;
 }
@@ -738,8 +678,7 @@ HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr) {
   // transpose and concat emitters also work if there are elementwise ops with
   // more than 1 operand on the path between root and the root op.
   auto is_transpose = [](const HloInstruction& node) {
-    return FindTiledLogicalTranspose(node).has_value() ||
-           FindTiledTranspose(node).has_value();
+    return GetDescriptionForTiledTransposeEmitter(node).has_value();
   };
   if (auto transpose = FindNonTrivialHero(hero, is_transpose)) {
     return *transpose;
