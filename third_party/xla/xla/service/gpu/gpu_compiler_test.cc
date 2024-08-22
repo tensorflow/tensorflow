@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -971,13 +972,20 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
 using GpuCompilerPassTest = GpuCompilerTest;
 
 TEST_F(GpuCompilerPassTest,
-       GpuCompilerRunsTritonGemmRewriterByDefaultFromAmpere) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
+       GpuCompilerRunsTritonGemmRewriterByDefaultOnSupportedGPUs) {
+  auto cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(
+      &backend()
+           .default_stream_executor()
+           ->GetDeviceDescription()
+           .gpu_compute_capability());
+  auto rocm_cc = std::get_if<stream_executor::RocmComputeCapability>(
+      &backend()
+           .default_stream_executor()
+           ->GetDeviceDescription()
+           .gpu_compute_capability());
 
-  bool expect_triton_gemm_rewriter_has_run = cc.IsAtLeastAmpere();
+  bool expect_triton_gemm_rewriter_has_run =
+      (cuda_cc && cuda_cc->IsAtLeastAmpere()) || (rocm_cc);
 
   constexpr absl::string_view constant_module = R"(
 HloModule noop
