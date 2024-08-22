@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/tsl/framework/allocator_retry.h"
 
+#include <cstddef>
+#include <functional>
+#include <optional>
+
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/framework/metrics.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
@@ -42,11 +46,17 @@ class ScopedTimeTracker {
 
  private:
   Env* env_;
-  absl::optional<uint64> start_us_;
+  std::optional<uint64> start_us_;
 };
 }  // namespace
 
 AllocatorRetry::AllocatorRetry() : env_(Env::Default()) {}
+
+AllocatorRetry::~AllocatorRetry() {
+  // Lock the mutex to make sure that all memory effects are safely published
+  // and available to a thread running the destructor.
+  absl::MutexLock l(&mu_);
+}
 
 void* AllocatorRetry::AllocateRaw(
     std::function<void*(size_t alignment, size_t num_bytes,
@@ -70,9 +80,9 @@ void* AllocatorRetry::AllocateRaw(
       }
       if (now < deadline_micros) {
         tracker.Enable();
-        mutex_lock l(mu_);
-        WaitForMilliseconds(&l, &memory_returned_,
-                            (deadline_micros - now) / 1000);
+        absl::MutexLock l(&mu_);
+        memory_returned_.WaitWithTimeout(
+            &mu_, absl::Milliseconds((deadline_micros - now) / 1000));
       } else {
         return alloc_func(alignment, num_bytes, true);
       }
