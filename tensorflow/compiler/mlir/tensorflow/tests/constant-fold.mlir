@@ -448,6 +448,18 @@ func.func @DontRemoveTrivialAdd2(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK: return %[[RESULT]] : tensor<?x?xf32>
 }
 
+// Note, the operand is larger than `kOperandsSizeThreshold`, but due to a bug in the policy detection it is.
+func.func @RemoveTrivialAdd2(%arg0: tensor<?x1025x1024x1024xi8>) -> tensor<?x1025x1024x1024xi8> {
+  %cst = arith.constant dense<0> : tensor<1x1025x1024x1024xi8>
+  %0 = "tf.AddV2"(%arg0, %cst) : (tensor<?x1025x1024x1024xi8>, tensor<1x1025x1024x1024xi8>) -> tensor<?x1025x1024x1024xi8>
+  func.return %0 :tensor<?x1025x1024x1024xi8>
+
+  // CHECK-LABEL: RemoveTrivialAdd2
+  // CHECK: %[[CONST:.*]] = arith.constant dense<0> : tensor<1x1025x1024x1024xi8>
+  // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%arg0, %[[CONST]]) : (tensor<?x1025x1024x1024xi8>, tensor<1x1025x1024x1024xi8>) -> tensor<?x1025x1024x1024xi8>
+  // CHECK: return %[[RESULT]] : tensor<?x1025x1024x1024xi8>
+}
+
 // Test no fold because of the broadcast.
 func.func @DontRemoveTrivialMul(%arg0: tensor<1x6x8x1xf32>) -> tensor<1x6x8x1xf32> {
   %0 = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>

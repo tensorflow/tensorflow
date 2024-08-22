@@ -1149,10 +1149,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // We split LLVM module and distribute it across separate DyLibs to enable
   // parallel compilation at run time.
-  //
-  // TODO(b/359659598): Increase the number of dylibs to 32 and make compilation
-  // truly parallel. For now we use 2 dylibs to do basic sanity check.
-  constexpr size_t num_jit_dylibs = 2;
+  size_t parallel_codegen_split_count =
+      debug_options.xla_cpu_parallel_codegen_split_count();
 
   auto jit = SimpleOrcJIT::Create(
       CompilerTargetOptions(module->config()),
@@ -1163,7 +1161,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
       post_optimization_ir_hook,
       CreateOrcJITPostCompilationHook(module.get(), &obj_files),
-      num_jit_dylibs);
+      parallel_codegen_split_count);
   if (!jit) {
     return Internal("Creating JIT failed: %s", llvm::toString(jit.takeError()));
   }
@@ -1279,10 +1277,12 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
     // We define the number of module parts based on the total number of
-    // external functions (kernels and comparators) that are called from thunks.
+    // external functions (kernels and comparators) that are called from thunks,
+    // and the maximum number of parts that we want to split the module into.
     size_t num_external_function =
         ir_emitter2.kernels().size() + ir_emitter2.comparators().size();
-    size_t num_parts = std::min(num_external_function, num_jit_dylibs);
+    size_t num_parts =
+        std::min(num_external_function, parallel_codegen_split_count);
 
     // JIT compile the LLVM IR module to in-memory machine code. We split the
     // module into `num_jit_dylibs` parts to allow parallel compilation. In
@@ -1293,18 +1293,21 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     llvm::orc::ThreadSafeContext thread_safe_context(std::move(llvm_context));
 
     if (num_parts > 1) {
-      VLOG(2) << "Splitting module into " << num_parts
-              << " parts before codegen to enable parallel compilation";
+      VLOG(3) << "Splitting LLVM module into " << num_parts
+              << " parts before codegen to enable parallel compilation"
+              << " (max split count: " << parallel_codegen_split_count << ")";
       llvm::SplitModule(
           *llvm_module, num_parts,
           [&, dylib_index = 0](auto llvm_module_part) mutable {
             cantFail((*jit)->AddModule(
                 llvm::orc::ThreadSafeModule(std::move(llvm_module_part),
                                             thread_safe_context),
-                dylib_index++ % num_jit_dylibs));
+                dylib_index++ % parallel_codegen_split_count));
           },
           /*PreserveLocals=*/true);
     } else {
+      VLOG(3) << "Compiled LLVM module without splitting (max split count: "
+              << parallel_codegen_split_count << ")";
       cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
           std::move(llvm_module), thread_safe_context)));
     }

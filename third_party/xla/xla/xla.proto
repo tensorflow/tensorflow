@@ -98,6 +98,11 @@ message DebugOptions {
   // When true, XLA:CPU uses the thunk runtime to execute compiled program.
   bool xla_cpu_use_thunk_runtime = 298;
 
+  // The number of parts to split the LLVM module into before codegen. This
+  // allows XLA to compile all parts in parallel, and resolve kernel symbols
+  // from different dynamic libraries.
+  int32 xla_cpu_parallel_codegen_split_count = 323;
+
   // A `prefer-vector-width` value that is passed to the LLVM backend. Default
   // value is `256` (AVX2 on x86 platforms).
   int32 xla_cpu_prefer_vector_width = 308;
@@ -937,7 +942,7 @@ message DebugOptions {
   // effort to parallelize matrix operations.
   bool xla_gpu_async_dot = 321;
 
-  // Next id: 323
+  // Next id: 324
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

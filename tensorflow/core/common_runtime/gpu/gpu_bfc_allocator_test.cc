@@ -435,7 +435,7 @@ class GPUBFCAllocatorPrivateMethodsTest
 
     std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins> bin_infos;
     {
-      mutex_lock l(a.lock_);
+      absl::MutexLock l(&a.mutex_);
       bin_infos = a.get_bin_debug_info();
     }
 
@@ -487,7 +487,7 @@ class GPUBFCAllocatorPrivateMethodsTest
       initial_ptrs[i] = nullptr;
     }
     {
-      mutex_lock l(a.lock_);
+      absl::MutexLock l(&a.mutex_);
       bin_infos = a.get_bin_debug_info();
     }
     for (int i = 0; i < BFCAllocator::kNumBins; i++) {
@@ -611,7 +611,7 @@ class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific
     }
 
     {
-      mutex_lock l(a.lock_);
+      absl::MutexLock l(&a.mutex_);
       // Make sure there are more than 1 regions in preparation for the test.
       EXPECT_LT(1, a.region_manager_.regions().size());
     }
@@ -624,7 +624,7 @@ class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific
     // Deallocate free regions and there shall be only one region left.
     EXPECT_EQ(true, a.DeallocateFreeRegions(/*rounded_bytes=*/0));
     {
-      mutex_lock l(a.lock_);
+      absl::MutexLock l(&a.mutex_);
       EXPECT_EQ(1, a.region_manager_.regions().size());
     }
 
