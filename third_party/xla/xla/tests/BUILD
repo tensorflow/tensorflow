@@ -738,6 +738,7 @@ xla_test(
         "//xla/client:global_data",
         "//xla/client:local_client",
         "//xla/client:xla_builder",
+        "//xla/client/lib:math",
         "@local_tsl//tsl/platform:test",
     ],
 )
