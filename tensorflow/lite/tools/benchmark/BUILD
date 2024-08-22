@@ -192,6 +192,9 @@ cc_test(
         "benchmark_tflite_model_test.cc",
     ],
     data = ["@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite"],
+    tags = [
+        "no_oss",  # TODO: b/361565588 - Re-enable.
+    ],
     deps = [
         ":benchmark_model_lib",
         ":benchmark_params",
