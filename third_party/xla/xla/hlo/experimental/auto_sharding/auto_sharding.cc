@@ -2018,6 +2018,7 @@ AutoShardingSolverResult CallSolver(
     request.add_instruction_names(
         absl::StrCat(instruction_name, " (id: ", node_idx, ")"));
     request.add_opcodes(std::string(opcode));
+    request.add_metadata_source_files(instruction->metadata().source_file());
     AutoShardingSolverRequest_Costs ci, di, mi, pi;
     AutoShardingSolverRequest_Names strategy_names;
     std::optional<HloSharding> default_strategy;

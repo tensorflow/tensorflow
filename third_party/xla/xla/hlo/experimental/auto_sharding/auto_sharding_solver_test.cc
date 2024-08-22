@@ -141,6 +141,11 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
                          1, 0, 1,
                          1, 1, 0}};
   const std::vector<std::string> instruction_names = {"A", "B", "C", "D", "E"};
+  const std::vector<std::string> metadata_source_files = {"attention.py",
+                                                          "convolution.py",
+                                                          "layers.py",
+                                                          "logits.py",
+                                                          "pipeline.py"};
 
   AutoShardingSolverRequest request;
   request.set_num_nodes(5);
@@ -159,6 +164,8 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   AddCosts(request.mutable_value_costs(), v);
   request.mutable_instruction_names()->Add(instruction_names.begin(),
                                            instruction_names.end());
+  request.mutable_metadata_source_files()->Add(metadata_source_files.begin(),
+                                               metadata_source_files.end());
   return request;
 }
 
