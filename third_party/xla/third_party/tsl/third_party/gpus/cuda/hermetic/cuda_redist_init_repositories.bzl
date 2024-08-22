@@ -96,19 +96,25 @@ def get_lib_name_to_version_dict(repository_ctx):
     lib_name_to_version_dict = {}
     for path in _get_libraries_by_redist_name_in_dir(repository_ctx):
         lib_name, lib_version = _get_lib_name_and_version(path)
-        key = "%%{%s_version}" % lib_name.lower()
+        major_version_key = "%%{%s_version}" % lib_name.lower()
+        minor_version_key = "%%{%s_minor_version}" % lib_name.lower()
 
         # We need to find either major or major.minor version if there is no
         # file with major version. E.g. if we have the following files:
         # libcudart.so
         # libcudart.so.12
         # libcudart.so.12.3.2,
-        # we will save save {"%{libcudart_version}": "12"}.
+        # we will save save {"%{libcudart_version}": "12",
+        # "%{libcudart_minor_version}": "12.3"}
         if len(lib_version.split(".")) == 1:
-            lib_name_to_version_dict[key] = lib_version
-        if (len(lib_version.split(".")) == 2 and
-            key not in lib_name_to_version_dict):
-            lib_name_to_version_dict[key] = lib_version
+            lib_name_to_version_dict[major_version_key] = lib_version
+        if len(lib_version.split(".")) == 2:
+            lib_name_to_version_dict[minor_version_key] = lib_version
+            if major_version_key not in lib_name_to_version_dict:
+                lib_name_to_version_dict[major_version_key] = lib_version
+        if (len(lib_version.split(".")) == 3 and
+            minor_version_key not in lib_name_to_version_dict):
+            lib_name_to_version_dict[minor_version_key] = lib_version
     return lib_name_to_version_dict
 
 def create_dummy_build_file(repository_ctx, use_comment_symbols = True):

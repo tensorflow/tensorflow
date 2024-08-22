@@ -1,5 +1,5 @@
 licenses(["restricted"])  # NVIDIA proprietary license
-
+load("@local_config_cuda//cuda:build_defs.bzl", "if_version_equal_or_greater_than")
 exports_files([
     "version.txt",
 ])
@@ -51,7 +51,11 @@ cc_library(
         %{comment}"include/nvperf_cuda_host.h",
         %{comment}"include/nvperf_host.h",
         %{comment}"include/nvperf_target.h",
-    %{comment}]),
+    %{comment}]) + if_version_equal_or_greater_than(
+        %{comment}"%{libcupti_minor_version}",
+        %{comment}"2024.0",
+        %{comment}["include/cupti_common.h"],
+    %{comment}),
     include_prefix = "third_party/gpus/cuda/extras/CUPTI/include",
     includes = ["include/"],
     strip_include_prefix = "include",
