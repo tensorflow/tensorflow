@@ -200,6 +200,8 @@ limitations under the License.
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 #ifdef TF_LLVM_X86_AVAILABLE
 #include "llvm/TargetParser/X86TargetParser.h"
@@ -213,8 +215,10 @@ limitations under the License.
 #endif
 
 namespace xla {
-
 namespace {
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
 
 // For each computation in the module, determines whether that computation
 // calls a custom-call function, either directly or indirectly (e.g. because it
@@ -1129,6 +1133,11 @@ CreateConstantAllocations(const BufferAssignment& assignment) {
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
+  TraceMe trace([&] {
+    return TraceMeEncode("CpuCompiler::CompileLegacyCpuExecutable",
+                         {{"name", module->name()}});
+  });
+
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
   std::tie(pre_optimization_ir_hook, post_optimization_ir_hook) =
@@ -1296,6 +1305,12 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       VLOG(3) << "Splitting LLVM module into " << num_parts
               << " parts before codegen to enable parallel compilation"
               << " (max split count: " << parallel_codegen_split_count << ")";
+
+      TraceMe trace([&] {
+        return TraceMeEncode("CpuCompiler::SplitModule",
+                             {{"num_parts", num_parts}});
+      });
+
       llvm::SplitModule(
           *llvm_module, num_parts,
           [&, dylib_index = 0](auto llvm_module_part) mutable {
@@ -1331,9 +1346,13 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     }
 
     // TODO(ezhulenev): We should be able to make it lazy on-demand, but today
-    // we capture obj_files by reference and it leads to asan errors. Figure out
-    // lifetime issues and move compilation to Thunk initialization stage.
+    // we capture obj_files by reference and it leads to asan errors. Figure
+    // out lifetime issues and move compilation to Thunk initialization stage.
     for (const auto& kernel : ir_emitter2.kernels()) {
+      TraceMe trace([&] {
+        return TraceMeEncode("CpuCompiler::Codegen", {{"kernel", kernel.name}});
+      });
+
       if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
         return Internal("Failed to find compiled symbol for kernel %s",
                         kernel.name);
@@ -1342,6 +1361,11 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
     // Compile auxiliary comparator functions used by sort thunks.
     for (const auto& comparator : ir_emitter2.comparators()) {
+      TraceMe trace([&] {
+        return TraceMeEncode("CpuCompiler::Codegen",
+                             {{"comparator", comparator.name}});
+      });
+
       if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
         return Internal("Failed to find compiled symbol for comparator %s",
                         comparator.name);
