@@ -212,8 +212,38 @@ def nvidia_gpu_build_with_compute_capability(
           [
               "sed",
               "-i",
-              r"s/8\.9\.7\.29/9.1.1/g",
+              r"s/8\.9\.7\.29/9.3.0/g",
               "github/xla/.bazelrc",
+          ],
+          [
+              "sed",
+              "-i",
+              r"s/12\.3\.2/12.5.1/g",
+              "github/xla/.bazelrc",
+          ],
+          [
+              "sed",
+              "-i",
+              r's/\: "9\.1\.1/: "9.3.0/g',
+              "github/xla/tools/toolchains/remote_config/configs.bzl",
+          ],
+          [
+              "sed",
+              "-i",
+              r's/\: "12\.3\.2/: "12.5.1/g',
+              "github/xla/tools/toolchains/remote_config/configs.bzl",
+          ],
+          [
+              "sed",
+              "-i",
+              r's/\: "9\.1\.1/: "9.3.0/g',
+              "github/xla/third_party/tsl/tools/toolchains/remote_config/configs.bzl",
+          ],
+          [
+              "sed",
+              "-i",
+              r's/\: "12\.3\.2/: "12.5.1/g',
+              "github/xla/third_party/tsl/tools/toolchains/remote_config/configs.bzl",
           ],
       ),
   )
