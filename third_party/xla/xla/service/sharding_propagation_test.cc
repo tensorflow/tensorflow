@@ -9748,8 +9748,8 @@ ENTRY %module {
   %parameter.1 = bf16[2,4819,4]{2,1,0} parameter(1)
   %iota = s32[2,1000,1]{1,0,2} iota(), iota_dimension=0
   %operand = bf16[2,4819,4]{2,1,0} copy(%parameter.1)
-  %index = s32[2,1000,2]{2,1,0} concatenate(s32[2,1000,1]{1,0,2} %parameter.0,
-    s32[2,1000,1]{2,1,0} %iota), dimensions={2},
+  %index = s32[2,1000,2]{2,1,0} concatenate(s32[2,1000,1]{1,0,2} %iota,
+    s32[2,1000,1]{2,1,0} %parameter.0), dimensions={2},
     sharding={devices=[1,4,1]0,1,2,3}
   ROOT %gather = bf16[2,1000,4]{2,1,0} gather(bf16[2,4819,4]{2,1,0} %operand,
     s32[2,1000,2]{2,1,0} %index), offset_dims={2},
