@@ -1,0 +1,46 @@
+--- a/lib/Analysis/AxisInfo.cpp
++++ b/lib/Analysis/AxisInfo.cpp
+@@ -195,9 +195,10 @@ public:
+       dataflow::Lattice<AxisInfo>>::getLatticeElement;
+   using FuncAxisInfoMapT = DenseMap<FunctionOpInterface, AxisInfo>;
+ 
+-  void visitOperation(Operation *op,
+-                      ArrayRef<const dataflow::Lattice<AxisInfo> *> operands,
+-                      ArrayRef<dataflow::Lattice<AxisInfo> *> results) override;
++  LogicalResult
++  visitOperation(Operation *op,
++                 ArrayRef<const dataflow::Lattice<AxisInfo> *> operands,
++                 ArrayRef<dataflow::Lattice<AxisInfo> *> results) override;
+   void
+   visitForOpInductionVar(scf::ForOp op,
+                          ArrayRef<dataflow::Lattice<AxisInfo> *> argLattices);
+@@ -1039,7 +1040,7 @@ AxisInfoAnalysis::AxisInfoAnalysis(DataF
+   visitors.append<LoadOpAxisInfoVisitor>();
+ }
+ 
+-void AxisInfoAnalysis::visitOperation(
++LogicalResult AxisInfoAnalysis::visitOperation(
+     Operation *op, ArrayRef<const dataflow::Lattice<AxisInfo> *> operands,
+     ArrayRef<dataflow::Lattice<AxisInfo> *> results) {
+   // TODO: For sure not the right way to do this
+@@ -1048,8 +1049,10 @@ void AxisInfoAnalysis::visitOperation(
+     if (op->getValue().getRank() == 0)
+       setToEntryState((dataflow::Lattice<AxisInfo> *)op);
+   AxisInfo curr = visitors.apply(op, operands);
+-  if (curr.getRank() == 0)
+-    return setAllToEntryStates(results);
++  if (curr.getRank() == 0) {
++    setAllToEntryStates(results);
++    return success();
++  }
+   // override with hint
+   auto newContiguity = curr.getContiguity();
+   auto newDivisibility = curr.getDivisibility();
+@@ -1071,6 +1074,7 @@ void AxisInfoAnalysis::visitOperation(
+   // join all lattice elements
+   for (auto *result : results)
+     propagateIfChanged(result, result->join(curr));
++  return success();
+ }
+ 
+ void AxisInfoAnalysis::visitForOpInductionVar(
