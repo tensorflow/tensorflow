@@ -1067,6 +1067,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
 
     // One argument elemenetwise operations
     case kTfLiteBuiltinAbs:
+    case kTfLiteBuiltinCeil:
     case kTfLiteBuiltinCos:
     case kTfLiteBuiltinElu:
     case kTfLiteBuiltinExp:
