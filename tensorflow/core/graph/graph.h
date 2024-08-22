@@ -42,14 +42,21 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/edgeset.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"

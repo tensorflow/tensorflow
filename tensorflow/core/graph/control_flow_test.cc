@@ -18,10 +18,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "absl/strings/match.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/while_loop.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

@@ -17,19 +17,27 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
+#include "absl/log/check.h"
+#include "absl/strings/match.h"
+#include "third_party/protobuf/text_format.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/subgraph.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {

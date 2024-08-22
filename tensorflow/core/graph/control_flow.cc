@@ -18,10 +18,15 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

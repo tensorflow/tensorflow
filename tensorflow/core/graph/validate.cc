@@ -16,14 +16,21 @@ limitations under the License.
 #include "tensorflow/core/graph/validate.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace graph {

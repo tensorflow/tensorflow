@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_WHILE_CONTEXT_H_
 
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
