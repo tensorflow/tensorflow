@@ -94,6 +94,7 @@ cc_library(
 
 xla_cc_test(
     name = "hlo_evaluator_slow_reduce_window_test",
+    timeout = "long",
     srcs = ["hlo_evaluator_slow_reduce_window_test.cc"],
     tags = [
         # Times out in asan/tsan/zapfhahn.
