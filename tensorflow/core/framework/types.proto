@@ -84,6 +84,10 @@ enum DataType {
   // DT_FLOAT8_E5M2FNUZ_REF = 128;
   DT_INT4_REF = 129;
   DT_UINT4_REF = 130;
+
+  // Used by ML Pathways for cross-devices synchornization purpose, it has no
+  // value and is not used in any computation.
+  DT_TOKEN = 131;
 }
 // LINT.ThenChange(
 //    https://www.tensorflow.org/code/tensorflow/c/tf_datatype.h,
