@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace pjrt {
 namespace gpu_plugin {
