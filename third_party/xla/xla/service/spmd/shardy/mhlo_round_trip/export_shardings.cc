@@ -236,16 +236,14 @@ HloSharding convertToHloSharding(
     ArrayRef<AxisRefAttr> manualAxes) {
   MeshAttr mesh = getMeshAttr(sdySharding);
 
-  // Convert to maximal sharding if the mesh only contains the device id.
+  // If there are no axes, convert to:
+  // - maximal sharding if the mesh has a device id
+  // - else replicated sharding
   if (mesh.getAxes().empty()) {
-    CHECK_EQ(mesh.getDeviceIds().size(), 1);
-    return HloSharding::AssignDevice(mesh.getDeviceIds().front());
+    return mesh.getDeviceIds().empty()
+               ? HloSharding::Replicate()
+               : HloSharding::AssignDevice(mesh.getDeviceIds().front());
   }
-
-  // TODO(b/326025166):
-  //   Handle empty mesh.
-  //   Handle arbitrary device id list.
-  CHECK(mesh.getDeviceIds().empty());
 
   SmallVector<int64_t> tileAssignmentDims(sdySharding.getRank(), 1);
   llvm::SmallDenseMap<AxisRefAttr, int64_t> axisRefToShardedPos;

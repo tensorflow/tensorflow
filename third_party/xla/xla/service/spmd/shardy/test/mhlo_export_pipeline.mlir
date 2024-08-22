@@ -6,6 +6,8 @@ sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 sdy.mesh @mesh_3 = <["a"=2, "b"=2, "c"=2, "d"=2]>
 sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
 sdy.mesh @maximal_mesh_1 = <device_ids=[1]>
+sdy.mesh @empty_mesh_0 = <>
+sdy.mesh @empty_mesh_1 = <>
 
 // CHECK-NOT: sdy.mesh
 
@@ -151,5 +153,14 @@ func.func @mesh_with_device_id_should_be_converted_to_maximal_sharding(%arg0: te
     %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
     // CHECK: %[[ADD_WITH_SHARDING:.*]] = mhlo.add %[[ADD]], %[[ADD]] {mhlo.sharding = "{maximal device=1}"}
     %1 = mhlo.add %0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_1, [{}, {}]>]>} : tensor<8x8xf32>
+    return %1 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func @mesh_empty_should_be_converted_to_replicated_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"}, %arg1: tensor<8x8xf32>)
+func.func @mesh_empty_should_be_converted_to_replicated_sharding(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@empty_mesh_0, [{}, {}]>}, %arg1: tensor<8x8xf32>) -> tensor<8x8xf32> {
+    // CHECK: %[[ADD:.*]] = mhlo.add %arg0, %arg1
+    %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
+    // CHECK: %[[ADD_WITH_SHARDING:.*]] = mhlo.add %[[ADD]], %[[ADD]] {mhlo.sharding = "{replicated}"}
+    %1 = mhlo.add %0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh_1, [{}, {}]>]>} : tensor<8x8xf32>
     return %1 : tensor<8x8xf32>
 }
