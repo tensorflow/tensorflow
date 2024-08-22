@@ -122,29 +122,32 @@ UNARY_TEST_COMPLEX_64(Log, {
     // FLT_MAX.
     if (std::abs(x) >= std::numeric_limits<float>::max()) {
       float inf = std::numeric_limits<float>::infinity();
-      return ErrorSpec{.abs_err = inf, .rel_err = inf};
+      return ErrorSpec::Builder().abs_err(inf).rel_err(inf).build();
     }
-    return ErrorSpec{.abs_err = std::numeric_limits<float>::epsilon(),
-                     .rel_err = 50 * std::numeric_limits<float>::epsilon()};
+    return ErrorSpec::Builder()
+        .abs_err(std::numeric_limits<float>::epsilon())
+        .rel_err(50 * std::numeric_limits<float>::epsilon())
+        .build();
   };
   Run(Log, [](complex64 x) { return std::log(x); }, error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_64(Sqrt, {
-  // The reference implementation overflows to infinity for arguments near
-  // FLT_MAX.
   ErrorSpecGen error_spec_gen = +[](complex64 x) {
+    // The reference implementation overflows to infinity for arguments near
+    // FLT_MAX.
     if (std::abs(x) >= std::numeric_limits<float>::max()) {
       float inf = std::numeric_limits<float>::infinity();
-      return ErrorSpec{.abs_err = inf, .rel_err = inf};
+      return ErrorSpec::Builder().abs_err(inf).rel_err(inf).build();
     }
     // The reference implementation appears to be very poor on inputs with
     // subnormal entries. Allowing an absolute error of ~sqrt(FLT_DENORM_MIN)
     // allows such cases to pass, effectively letting the relative error
     // increase gradually until it reaches 100% at abs(x) == FLT_DENORM_MIN.
-    return ErrorSpec{
-        .abs_err = std::sqrt(std::numeric_limits<float>::denorm_min()),
-        .rel_err = 50 * std::numeric_limits<float>::epsilon()};
+    return ErrorSpec::Builder()
+        .abs_err(std::sqrt(std::numeric_limits<float>::denorm_min()))
+        .rel_err(50 * std::numeric_limits<float>::epsilon())
+        .build();
   };
   Run(Sqrt, [](complex64 x) { return std::sqrt(x); }, error_spec_gen);
 })
@@ -162,11 +165,15 @@ UNARY_TEST_COMPLEX_64(Rsqrt, {
     if (std::abs(x) < norm_min) {
       // Gradually loosen the relative tolerance as abs(x) becomes smaller
       // than norm_min, letting it reach 100% when abs(x) = 10 * denorm_min.
-      return ErrorSpec{.abs_err = std::sqrt(std::numeric_limits<float>::min()),
-                       .rel_err = 10 * denorm_min / std::abs(x)};
+      return ErrorSpec::Builder()
+          .abs_err(std::sqrt(std::numeric_limits<float>::min()))
+          .rel_err(10 * denorm_min / std::abs(x))
+          .build();
     }
-    return ErrorSpec{.abs_err = std::sqrt(std::numeric_limits<float>::min()),
-                     .rel_err = 50 * std::numeric_limits<float>::epsilon()};
+    return ErrorSpec::Builder()
+        .abs_err(std::sqrt(std::numeric_limits<float>::min()))
+        .rel_err(50 * std::numeric_limits<float>::epsilon())
+        .build();
   };
   Run(
       Rsqrt, [](complex64 x) { return complex64(1, 0) / std::sqrt(x); },
@@ -183,7 +190,7 @@ UNARY_TEST_COMPLEX_64(Tanh, {
     // This implementation of Tanh becomes less accurate when the denominator
     // is small.
     if (std::cosh(2 * x.real()) + std::cos(2 * x.imag()) < 1e-4) {
-      return ErrorSpec{.abs_err = 5e-2, .rel_err = 5e-2};
+      return ErrorSpec::Builder().abs_err(5e-2).rel_err(5e-2).build();
     }
 
     return GetDefaultSpecGenerator()(x);
@@ -251,9 +258,10 @@ UNARY_TEST_COMPLEX_128(Sqrt, {
     // subnormal entries. Allowing an absolute error of ~sqrt(DBL_DENORM_MIN)
     // allows such cases to pass, effectively letting the relative error
     // increase gradually until it reaches 100% at abs(x) == DBL_DENORM_MIN.
-    return ErrorSpec{
-        .abs_err = std::sqrt(std::numeric_limits<double>::denorm_min()),
-        .rel_err = 50 * std::numeric_limits<double>::epsilon()};
+    return ErrorSpec::Builder()
+        .abs_err(std::sqrt(std::numeric_limits<double>::denorm_min()))
+        .rel_err(50 * std::numeric_limits<double>::epsilon())
+        .build();
   };
   // Similar to the Tanh bug.
   known_incorrect_fn_ = [&](int64_t v) {
@@ -272,11 +280,15 @@ UNARY_TEST_COMPLEX_128(Rsqrt, {
     if (std::abs(x) < norm_min) {
       // Gradually loosen the relative tolerance as abs(x) becomes smaller
       // than norm_min, letting it reach 100% when abs(x) = 10 * denorm_min.
-      return ErrorSpec{.abs_err = std::sqrt(std::numeric_limits<double>::min()),
-                       .rel_err = 10 * denorm_min / std::abs(x)};
+      return ErrorSpec::Builder()
+          .abs_err(std::sqrt(std::numeric_limits<double>::min()))
+          .rel_err(10 * denorm_min / std::abs(x))
+          .build();
     }
-    return ErrorSpec{.abs_err = std::sqrt(std::numeric_limits<double>::min()),
-                     .rel_err = 50 * std::numeric_limits<double>::epsilon()};
+    return ErrorSpec::Builder()
+        .abs_err(std::sqrt(std::numeric_limits<double>::min()))
+        .rel_err(50 * std::numeric_limits<double>::epsilon())
+        .build();
   };
   Run(
       Rsqrt, [](complex128 x) { return complex128(1, 0) / std::sqrt(x); },
@@ -287,8 +299,10 @@ UNARY_TEST_COMPLEX_128(Tanh, {
   ErrorSpecGen error_spec_gen = [](complex128 x) {
     // TODO(rmlarsen): Investigate why we only get slightly better than
     // float accuracy here.
-    return ErrorSpec{.abs_err = 2 * std::numeric_limits<double>::min(),
-                     .rel_err = 2e-8};
+    return ErrorSpec::Builder()
+        .abs_err(2 * std::numeric_limits<double>::min())
+        .rel_err(2e-8)
+        .build();
   };
 
   SetParamsForTanh();

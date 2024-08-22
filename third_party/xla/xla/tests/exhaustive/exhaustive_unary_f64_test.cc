@@ -113,7 +113,7 @@ UNARY_TEST_FLOAT_64(Tanh, {
   if (platform_ == "CUDA") {
     error_spec_gen = +[](NativeT x) {
       return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
-                 ? ErrorSpec{0, 0}
+                 ? ErrorSpec::Builder().abs_err(0).rel_err(0).build()
                  : GetDefaultSpecGenerator()(x);
     };
   }
@@ -129,11 +129,15 @@ UNARY_TEST_FLOAT_64(Tan, { Run(Tan, std::tan); })
 UNARY_TEST_FLOAT_64(Round, { Run(Round, std::round); })
 
 UNARY_TEST_FLOAT_64(Erf, {
-  Run(Erf, std::erf, [](NativeT x) { return ErrorSpec{1e-20, 1e-20}; });
+  Run(Erf, std::erf, [](NativeT x) {
+    return ErrorSpec::Builder().abs_err(1e-20).rel_err(1e-20).build();
+  });
 })
 
 UNARY_TEST_FLOAT_64(Erfc, {
-  Run(Erfc, std::erfc, [](NativeT x) { return ErrorSpec{1e-20, 1e-20}; });
+  Run(Erfc, std::erfc, [](NativeT x) {
+    return ErrorSpec::Builder().abs_err(1e-20).rel_err(1e-20).build();
+  });
 })
 
 INSTANTIATE_TEST_SUITE_P(
