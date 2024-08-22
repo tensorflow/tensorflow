@@ -234,8 +234,7 @@ class Exhaustive32BitOrLessUnaryTest
     absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();
     for (int64_t i = 0; i < input_size; i++) {
       IntegralT input_val = i + begin;
-      input_arr[i] =
-          this->ConvertAndReplaceKnownIncorrectValueWith(input_val, 0);
+      input_arr[i] = this->ConvertValue(input_val);
     }
   }
 };

@@ -112,21 +112,18 @@ class Exhaustive16BitBinaryTest
       // In either case, we only use 32 bits out of the 64 bits possible.
       if constexpr (kLeftToRightPacking) {
         // Left is stored at higher 16 bits.
-        input_arr_0[i] =
-            ConvertAndReplaceKnownIncorrectValueWith(input_val >> 16, 0);
-        input_arr_1[i] = ConvertAndReplaceKnownIncorrectValueWith(input_val, 0);
+        input_arr_0[i] = this->ConvertValue(input_val >> 16);
+        input_arr_1[i] = this->ConvertValue(input_val);
       } else {
         // Left is stored at lower 16 bits.
-        input_arr_0[i] = ConvertAndReplaceKnownIncorrectValueWith(input_val, 0);
-        input_arr_1[i] =
-            ConvertAndReplaceKnownIncorrectValueWith(input_val >> 16, 0);
+        input_arr_0[i] = this->ConvertValue(input_val);
+        input_arr_1[i] = this->ConvertValue(input_val >> 16);
       }
     }
   }
 
  protected:
   using typename ExhaustiveBinaryTest<T>::NativeT;
-  using ExhaustiveBinaryTest<T>::ConvertAndReplaceKnownIncorrectValueWith;
 };
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)

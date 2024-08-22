@@ -49,7 +49,6 @@ class Exhaustive32BitOrMoreBinaryTest
       public ::testing::WithParamInterface<std::tuple<FpValues, FpValues>> {
  protected:
   using typename ExhaustiveBinaryTest<T>::NativeT;
-  using ExhaustiveBinaryTest<T>::ConvertAndReplaceKnownIncorrectValueWith;
 
  private:
   int64_t GetInputSize() override {
@@ -79,8 +78,8 @@ class Exhaustive32BitOrMoreBinaryTest
     uint64_t i = 0;
     for (auto src0 : values_0) {
       for (auto src1 : values_1) {
-        input_arr_0[i] = ConvertAndReplaceKnownIncorrectValueWith(src0, 1);
-        input_arr_1[i] = ConvertAndReplaceKnownIncorrectValueWith(src1, 1);
+        input_arr_0[i] = this->ConvertValue(src0);
+        input_arr_1[i] = this->ConvertValue(src1);
         ++i;
       }
     }

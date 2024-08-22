@@ -69,9 +69,7 @@ class ExhaustiveComplexUnaryTestBase
     for (auto real : real_values) {
       for (auto imag : imag_values) {
         input_arr[i] =
-            NativeT(this->ConvertAndReplaceKnownIncorrectValueWith(real, 1),
-                    this->ConvertAndReplaceKnownIncorrectValueWith(imag, 1));
-
+            NativeT(this->ConvertValue(real), this->ConvertValue(imag));
         ++i;
       }
     }

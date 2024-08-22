@@ -705,14 +705,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return BitCast<ComponentNativeT>(used_bits);
   }
 
-  ComponentNativeT ConvertAndReplaceKnownIncorrectValueWith(
-      uint64_t bits, int replacement_value = 0) {
-    if (known_incorrect_fn_ && known_incorrect_fn_(bits)) {
-      return static_cast<ComponentNativeT>(replacement_value);
-    }
-    return ConvertValue(bits);
-  }
-
  protected:
   // The primitive type being tested.
   const PrimitiveType ty_;
@@ -722,14 +714,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
 
   // Version of the EUP for a TPU target. Only relevant for TPU platforms.
   const int eup_version_;
-
-  // Testing will ignore inputs for which known_incorrect_fn_ returns true.
-  // The argument to the function is the raw bits for the data being test,
-  // zero extended to 64 bits if the data type is less than 64 bits.
-  //
-  // DEPRECATED: Please see ErrorSpec::skip_comparison for an easier framework
-  // to skip nearness checks for certain unary or binary inputs.
-  std::function<bool(int64_t)> known_incorrect_fn_;
 
   // If true, allows denormals to be flushed to non-sign-preserving 0.
   //
