@@ -166,7 +166,7 @@ struct ComponentStringifyFormat {
 
 template <>
 constexpr absl::string_view ComponentStringifyFormat<double>::value =
-    "%0.17g (0x%16x)";
+    "%0.17g (0x%016x)";
 
 template <>
 constexpr absl::string_view ComponentStringifyFormat<float>::value =
