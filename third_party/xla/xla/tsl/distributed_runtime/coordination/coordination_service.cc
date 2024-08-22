@@ -547,7 +547,7 @@ void CoordinationServiceStandaloneImpl::CheckBarrierTimeout() {
                         "Total Number of tasks already at the barrier: ",
                         barrier->tasks_at_barrier.size() - pending_task_count,
                         "/", barrier->tasks_at_barrier.size(),
-                        ". Timed out task names:\n%s", pending_tasks);
+                        ". Timed out task names:\n", pending_tasks);
       }
       const absl::Status error =
           MakeCoordinationError(absl::DeadlineExceededError(error_message));
