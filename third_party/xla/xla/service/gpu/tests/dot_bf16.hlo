@@ -1,6 +1,6 @@
 // RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/v100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM70 %}
-// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/a100_pcie_80.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_disable_hlo_passes="triton-gemm-rewriter" | FileCheck %s --check-prefixes=CHECK-SM80 %}
-// RUN: %if IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/mi200.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_disable_hlo_passes="triton-gemm-rewriter" | FileCheck %s --check-prefixes=CHECK-SM80 %}
+// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/a100_pcie_80.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false | FileCheck %s --check-prefixes=CHECK-SM80 %}
+// RUN: %if IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/mi200.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false | FileCheck %s --check-prefixes=CHECK-SM80 %}
 
 
 // CHECK-SM70: custom-call(f32

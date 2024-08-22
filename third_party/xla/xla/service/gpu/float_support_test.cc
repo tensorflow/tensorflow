@@ -41,7 +41,7 @@ class FloatSupportTestWithCublas : public FloatSupportTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 };
@@ -50,7 +50,7 @@ class FloatSupportTestWithTriton : public FloatSupportTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(true);
+    debug_options.set_xla_gpu_enable_triton_gemm(true);
     debug_options.set_xla_gpu_triton_gemm_any(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;

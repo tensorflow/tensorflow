@@ -97,7 +97,7 @@ ENTRY e {
   if (!rocm.has_hipblaslt()) {
     GTEST_SKIP() << "No hipblas-lt support on this architecture!";
   }
-  debug_options_.set_xla_gpu_unsupported_enable_triton_gemm(false);
+  debug_options_.set_xla_gpu_enable_triton_gemm(false);
 #endif  // TENSORFLOW_USE_ROCM
 
   debug_options_.set_xla_gpu_triton_fusion_level(0);

@@ -49,7 +49,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(GetParam());
-    debug_options.set_xla_gpu_unsupported_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 

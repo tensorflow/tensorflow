@@ -643,7 +643,7 @@ message DebugOptions {
   // The partitioning algorithm to be used in the PartitionAssignment pass.
   PartitioningAlgorithm xla_partitioning_algorithm = 187;
 
-  reserved 188;  // Was xla_gpu_enable_triton_gemm
+  bool xla_gpu_enable_triton_gemm = 188;
 
   bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 

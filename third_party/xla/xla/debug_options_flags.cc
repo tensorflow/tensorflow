@@ -188,7 +188,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
-  opts.set_xla_gpu_unsupported_enable_triton_gemm(true);
+  opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
   opts.set_xla_gpu_enable_triton_softmax_fusion(false);
@@ -322,13 +322,6 @@ static void WarnIfFuelWasNeverConsumed() {
           pass);
     }
   }
-}
-
-// A util that does nothing. Used as a no-op flag setter in order to
-// soft-deprecate flags.
-template <typename T>
-static bool noop_flag_setter(T value) {
-  return true;
 }
 
 void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
@@ -1497,9 +1490,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::PartitioningAlgorithm_Name(
           debug_options->xla_partitioning_algorithm()),
       "The partitioning algorithm to be used in the PartitionAssignment pass"));
-  flag_list->push_back(tsl::Flag("xla_gpu_enable_triton_gemm",
-                                 noop_flag_setter<bool>, true,
-                                 "[Deprecated, do not use]"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_triton_gemm",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm),
+                debug_options->xla_gpu_enable_triton_gemm(),
+                "Use Triton-based matrix multiplication."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_triton_softmax_fusion",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_softmax_fusion),
