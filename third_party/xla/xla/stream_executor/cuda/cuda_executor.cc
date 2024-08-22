@@ -407,18 +407,18 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
   if (shared_constant == nullptr) {
     // Either the constant wasn't found in the cache, or it was but its
     // weak_ptr had expired.
-    DeviceMemoryBase* new_constant =
-        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
+    auto new_constant = std::make_unique<DeviceMemoryBase>(
+        Allocate(content.size(), /*memory_space=*/0));
     if (new_constant->opaque() == nullptr) {
       return absl::InternalError(absl::StrFormat(
           "Failed to allocate %d bytes for new constant", content.size()));
     }
 
     TF_RETURN_IF_ERROR(
-        stream->Memcpy(new_constant, content.data(), content.size()));
+        stream->Memcpy(new_constant.get(), content.data(), content.size()));
     absl::Status status = stream->BlockHostUntilDone();
     if (!status.ok()) {
-      Deallocate(new_constant);
+      Deallocate(new_constant.get());
       status.Update(absl::InternalError(absl::StrFormat(
           "Memcpy to device address %p failed", new_constant->opaque())));
       return status;
@@ -427,7 +427,7 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
     // Capturing 'this' in the custom deleter means this executor must
     // outlive all shared uses of this constant.
     shared_constant = std::shared_ptr<DeviceMemoryBase>(
-        new_constant, [this](DeviceMemoryBase* p) {
+        new_constant.release(), [this](DeviceMemoryBase* p) {
           Deallocate(p);
           delete p;
         });
