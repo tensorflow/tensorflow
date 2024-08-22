@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 
