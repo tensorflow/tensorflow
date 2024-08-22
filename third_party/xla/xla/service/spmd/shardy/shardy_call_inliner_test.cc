@@ -46,7 +46,11 @@ TEST_F(ShardyCallInlinerTest, MhloToHloShmapBodyNotInlined) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyCallInliner().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardyCallInliner(
+                              /*singleCallSite=*/false, /*updateDomain=*/false,
+                              /*useSpmd=*/true)
+                              .Run(module.get()));
   VLOG(1) << module->ToString();
   // The single call in the module is not inlined.
   EXPECT_FALSE(changed);

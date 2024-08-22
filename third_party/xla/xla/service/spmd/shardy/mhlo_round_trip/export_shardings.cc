@@ -245,6 +245,10 @@ HloSharding convertToHloSharding(
                : HloSharding::AssignDevice(mesh.getDeviceIds().front());
   }
 
+  if (mesh.getAxes().size() == manualAxes.size()) {
+    return HloSharding::Manual();
+  }
+
   SmallVector<int64_t> tileAssignmentDims(sdySharding.getRank(), 1);
   llvm::SmallDenseMap<AxisRefAttr, int64_t> axisRefToShardedPos;
   SmallVector<OpSharding::Type> types;
@@ -320,9 +324,8 @@ StringAttr convertToHloShardingAttr(
     ArrayRef<AxisRefAttr> manualAxes) {
   assert(shardings.size() == op->getNumResults());
   if (op->getNumResults() == 1) {
-    TensorShardingAttr sdySharding = shardings.front();
     return getStringAttr(
-        convertToHloSharding(sdySharding, getMeshAttr, manualAxes));
+        convertToHloSharding(shardings.front(), getMeshAttr, manualAxes));
   }
 
   SmallVector<HloSharding> newShardings;

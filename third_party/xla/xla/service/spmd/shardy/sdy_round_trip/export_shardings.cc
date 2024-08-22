@@ -128,6 +128,14 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
     }
   });
 
+  // In JAX the manual axes is saved as an ArrayAttr. Move to the frontend attrs
+  // to preserve it during HLO round-tripping.
+  funcOp.front().walk([&](mlir::func::CallOp callOp) {
+    if (auto manualAxes = callOp->getAttr(kXlaManualAxes)) {
+      addFrontendAttribute(callOp, kXlaManualAxes, manualAxes);
+    }
+  });
+
   return mlir::success();
 }
 

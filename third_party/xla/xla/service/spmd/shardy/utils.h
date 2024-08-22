@@ -58,6 +58,9 @@ void removeFrontendAttribute(mlir::func::FuncOp funcOp,
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
 
+// Returns whether this function is a body of a JAX shmap.
+bool isShmapBody(mlir::func::FuncOp funcOp);
+
 }  // namespace sdy
 }  // namespace xla
 

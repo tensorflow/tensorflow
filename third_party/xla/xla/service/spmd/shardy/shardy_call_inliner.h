@@ -49,9 +49,17 @@ namespace xla {
 class ShardyCallInliner : public CallInliner {
  public:
   using CallInliner::CallInliner;
+
+  ShardyCallInliner(bool singleCallSite = false, bool updateDomain = false,
+                    bool useSpmd = false)
+      : CallInliner(singleCallSite, updateDomain), useSpmd(useSpmd) {}
+
   absl::string_view name() const override { return "shardy-call-inliner"; }
 
   bool IsInlineableCallOp(HloInstruction* instruction) const override;
+
+ private:
+  bool useSpmd;
 };
 
 }  // namespace xla

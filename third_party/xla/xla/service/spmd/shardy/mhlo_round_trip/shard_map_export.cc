@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -88,11 +90,18 @@ using sdy::SdyDialect;
 using sdy::TensorShardingAttr;
 using sdy::TensorShardingPerValueAttr;
 
+// Mapping from ManualComputationOp to all manual axes it's nested in.
+using ManualComputationToAllManualAxes =
+    llvm::SmallDenseMap<ManualComputationOp, llvm::SmallDenseSet<StringRef>>;
+
 class ManualComputationPattern
     : public OpConversionPattern<ManualComputationOp> {
  public:
-  explicit ManualComputationPattern(MLIRContext* context)
-      : OpConversionPattern<ManualComputationOp>(context) {
+  explicit ManualComputationPattern(
+      MLIRContext* context,
+      const ManualComputationToAllManualAxes& manualCompAxes)
+      : OpConversionPattern<ManualComputationOp>(context),
+        manualCompAxes(manualCompAxes) {
     // We call this function so that MLIR applies the pattern to any
     // ManualComputationOp that uses another ManualComputationOp.
     setHasBoundedRewriteRecursion(true);
@@ -118,17 +127,26 @@ class ManualComputationPattern
     StringRef meshName = inOutShardings.begin()->getMeshName();
     MeshAttr mesh = mlir::sdy::getMeshAttr(op, meshName);
     CHECK(mesh);
-    // If `fullyManual` is true, all axes are manual. Otherwise, partial axes
-    // are manual and other axes are free (sharded or replicated) in the body of
-    // the manual computation.
-    bool fullyManual = mesh.getAxes().size() == op.getManualAxes().size();
 
     MLIRContext* context = rewriter.getContext();
-    SmallVector<AxisRefAttr> manualAxes;
-    llvm::transform(op.getManualAxes(), std::back_inserter(manualAxes),
+
+    // The axes that are manual inside `op`'s region.
+    SmallVector<AxisRefAttr> regionManualAxes;
+    llvm::transform(op.getManualAxes(), std::back_inserter(regionManualAxes),
                     [&](StringAttr manualAxis) {
                       return AxisRefAttr::get(context, manualAxis);
                     });
+
+    SmallVector<AxisRefAttr> parentManualAxes;
+    llvm::transform(
+        manualCompAxes.at(op), std::back_inserter(parentManualAxes),
+        [&](StringRef axis) { return AxisRefAttr::get(context, axis); });
+    regionManualAxes.append(parentManualAxes);
+
+    // If `fullyManual` is true, all axes are manual. Otherwise, partial axes
+    // are manual and other axes are free (sharded or replicated) in the body of
+    // the manual computation.
+    bool fullyManual = mesh.getAxes().size() == regionManualAxes.size();
 
     std::function<StringAttr(const HloSharding&)> getStringAttr =
         [&](const HloSharding& hloSharding) {
@@ -146,7 +164,7 @@ class ManualComputationPattern
       TensorShardingAttr fullyOpen =
           TensorShardingAttr::getFullyOpen(context, rank, meshName);
       HloSharding hloSharding =
-          convertToHloSharding(fullyOpen, getMeshAttr, manualAxes);
+          convertToHloSharding(fullyOpen, getMeshAttr, regionManualAxes);
       return getStringAttr(hloSharding);
     };
 
@@ -180,10 +198,10 @@ class ManualComputationPattern
           shardingPerValue = TensorShardingPerValueAttr::getFullyOpen(
               context, opInBody->getResultTypes(), meshName);
         }
-        opInBody->setAttr(
-            kXlaShardingAttr,
-            convertToHloShardingAttr(opInBody, shardingPerValue.getShardings(),
-                                     getMeshAttr, getStringAttr, manualAxes));
+        opInBody->setAttr(kXlaShardingAttr,
+                          convertToHloShardingAttr(
+                              opInBody, shardingPerValue.getShardings(),
+                              getMeshAttr, getStringAttr, regionManualAxes));
         opInBody->removeAttr(kShardingAttr);
       });
     }
@@ -197,9 +215,9 @@ class ManualComputationPattern
          llvm::zip_equal(adaptor.getOperands(), op.getBody().getArgumentTypes(),
                          adaptor.getInShardings().getShardings())) {
       auto copy = rewriter.create<CopyOp>(loc, globalOperand);
-      copy->setAttr(kShardingAttr,
-                    TensorShardingPerValueAttr::get(context, inSharding));
-
+      copy->setAttr(kXlaShardingAttr,
+                    getStringAttr(convertToHloSharding(inSharding, getMeshAttr,
+                                                       parentManualAxes)));
       if (!fullyManual) {
         fullToShardAttributes.back() = rewriter.getNamedAttr(
             kXlaShardingAttr, partialManualSharding(localArgumentType));
@@ -209,9 +227,8 @@ class ManualComputationPattern
       fullToShardResults.push_back(fullToShard.getResult(0));
     }
 
-    Operation* terminator = getBodyTerminator(op);
+    Operation* terminator = getBodyTerminator(adaptor);
     rewriter.inlineBlockBefore(&op.getBody().front(), op, fullToShardResults);
-
     // Add custom_call @SPMDShardToFullShape and copy for each operand of
     // terminator.
     for (auto [terminatorOperand, opResult, outSharding] :
@@ -222,18 +239,27 @@ class ManualComputationPattern
                     fullyManual
                         ? fullyManualSharding
                         : partialManualSharding(copy.getResult().getType()));
-
       shardToFullAttributes.back() = rewriter.getNamedAttr(
-          kShardingAttr, TensorShardingPerValueAttr::get(context, outSharding));
+          kXlaShardingAttr, getStringAttr(convertToHloSharding(
+                                outSharding, getMeshAttr, parentManualAxes)));
       auto shardToFull = rewriter.create<CustomCallOp>(
           loc, opResult.getType(), copy.getResult(), shardToFullAttributes);
       rewriter.replaceAllUsesWith(opResult, shardToFull.getResult(0));
     }
-
-    rewriter.eraseOp(terminator);
     rewriter.eraseOp(op);
+    // NOTE: we can't just `rewriter.eraseOp` the terminator, because in the
+    // next round of the conversion pattern running, operands of the terminator
+    // still have the terminator as a use. For whatever reason, maybe a bug in
+    // MLIR, we need to explicitly remove the operands from the terminator and
+    // then that makes sure the operands uses doesn't include the terminator.
+    rewriter.modifyOpInPlace(terminator,
+                             [&]() { terminator->setOperands({}); });
+    rewriter.eraseOp(terminator);
     return mlir::success();
   }
+
+ private:
+  const ManualComputationToAllManualAxes& manualCompAxes;
 };
 
 class ShardMapExportPass
@@ -243,7 +269,14 @@ class ShardMapExportPass
 
  private:
   void runOnOperation() final {
+    ManualComputationToAllManualAxes manualCompAxes;
+    ModuleOp module = getOperation();
     MLIRContext& context = getContext();
+    module->walk([&](ManualComputationOp op) {
+      llvm::SmallDenseSet<StringRef> manualAxes = sdy::getParentManualAxes(op);
+      manualCompAxes[op] = manualAxes;
+    });
+
     mlir::ConversionTarget target(context);
     target.addIllegalOp<ManualComputationOp>();
     // We need to explicitly mark FuncDialect as legal because when inlining
@@ -253,8 +286,8 @@ class ShardMapExportPass
     // be nested within an MHLO op, e.g., a while loop.
     target.addLegalDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
     mlir::RewritePatternSet patterns(&context);
-    patterns.add<ManualComputationPattern>(&context);
-    if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
+    patterns.add<ManualComputationPattern>(&context, manualCompAxes);
+    if (mlir::failed(mlir::applyPartialConversion(module, target,
                                                   std::move(patterns)))) {
       signalPassFailure();
     }
@@ -268,7 +301,7 @@ class ShardMapExportPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<SdyDialect>();
+    registry.insert<SdyDialect, mlir::mhlo::MhloDialect>();
   }
 };
 

@@ -322,6 +322,8 @@ absl::StatusOr<bool> ShardyXLA::Run(
 
   mlir::PassManager pm(mlirContext.get());
   pm.enableVerifier(enableVerifier);
+  pm.addPass(
+      mlir::sdy::createSaveModuleOpPass(shardyDir, "sdy_module_before_import"));
   bool useTupleArgs = false;
   mlir::DictionaryAttr moduleFrontendAttrs = getFrontendAttrs(*mlirModule);
   if (moduleFrontendAttrs && moduleFrontendAttrs.get(kUseTupleArgs)) {

@@ -72,6 +72,9 @@ inline constexpr llvm::StringRef kPythonIntegrationComplete =
 // XLA pipeline, so no HLO<->MLIR round-tripping.
 inline constexpr llvm::StringRef kUseTupleArgs = "xla.sdy.use_tuple_args";
 
+// Attribute name for the manual axes a JAX MHLO shmap pattern uses.
+inline constexpr llvm::StringRef kXlaManualAxes = "xla.sdy.manual_axes";
+
 // The name of the global mesh.
 inline constexpr llvm::StringRef kGlobalMeshName = "mesh";
 

@@ -22,6 +22,12 @@ limitations under the License.
 namespace xla {
 
 bool ShardyCallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
+  if (!useSpmd) {
+    // When the SPMD code path is not going to be executed, Shardy won't run and
+    // this ShardMapImport won't run so we need to make sure the shmap_body is
+    // inlined for the rest of XLA to work.
+    return CallInliner::IsInlineableCallOp(instruction);
+  }
   return CallInliner::IsInlineableCallOp(instruction) &&
          !instruction->has_backend_config() &&
          !(instruction->GetModule()->config().use_shardy_partitioner() &&
