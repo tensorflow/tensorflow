@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/service/host_offloader.h"
 
 #include <cstdint>
+#include <memory>
 #include <stack>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -48,8 +51,6 @@ namespace {
 
 class HostOffloaderTest : public HloTestBase {
  protected:
-  static constexpr int64_t kHostMemorySpaceColor{5};
-
   absl::StatusOr<bool> RunHostOffloader(HloModule* module,
                                         bool after_layout = false) {
     TF_EXPECT_OK(verifier().Run(module).status());
@@ -57,11 +58,11 @@ class HostOffloaderTest : public HloTestBase {
       return absl::InternalError("Expected a non-scheduled module");
     }
     bool changed = false;
-    HostOffloadLegalize host_offload_legalize(kHostMemorySpaceColor,
+    HostOffloadLegalize host_offload_legalize(Layout::kHostMemorySpace,
                                               after_layout);
     TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
     changed |= legal_changed;
-    HostOffloader host_offloader(kHostMemorySpaceColor);
+    HostOffloader host_offloader(Layout::kHostMemorySpace);
     TF_ASSIGN_OR_RETURN(bool offload_changed, host_offloader.Run(module));
     changed |= offload_changed;
     return changed;
@@ -129,8 +130,9 @@ ENTRY main {
                       m::Parameter(&param, 0), m::Op(), m::Op(), m::Op()),
                   m::Op(), m::Op(), m::Op())));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -212,11 +214,12 @@ ENTRY main {
                       m::Parameter(&param, 0), m::Op(), m::Op(), m::Op()),
                   m::Op(), m::Op(), m::Op())));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
-                          kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(gte->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -262,8 +265,9 @@ ENTRY main {
                      m::CustomCall(&allocate_buffer, {"AllocateBuffer"}),
                      m::Parameter(&param, 0), m::Op(), m::Op(), m::Op()))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -339,13 +343,14 @@ ENTRY main {
       GmockMatch(m::Tuple(&tuple_1, dynamic_slice_pattern, copy_pattern)));
   EXPECT_EQ(param_match_1, param_match_2);
   TestShapeHasMemorySpace(param_match_1->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_0->shape(), {0}),
-                          kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(gte->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {0}),
                           Layout::kDefaultMemorySpace);
@@ -376,7 +381,7 @@ ENTRY %main (a: f32[4096]) -> f32[4096] {
   EXPECT_TRUE(changed);
 
   HloInstruction* async_done = FindInstruction(module.get(), "async-done");
-  TestShapeHasMemorySpace(async_done->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(async_done->shape(), Layout::kHostMemorySpace);
 }
 
 TEST_F(HostOffloaderTest, ParameterStreamingWithXposeCopyFeedingIntoWhile) {
@@ -640,7 +645,7 @@ ENTRY main {
       GmockMatch(m::Copy(&copy_to_device,
                          m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -694,12 +699,12 @@ ENTRY main {
                        m::Op()),
               0))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
                           Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -763,22 +768,22 @@ ENTRY main {
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Copy(&copy_to_device, gte_of_gte_pattern)));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_0->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_0->shape(), {1}),
                           Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(gte_0->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(gte_0->shape(), {1}),
                           Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {0, 0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {0, 1}),
                           Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {1}),
                           Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -826,8 +831,8 @@ ENTRY main {
           &copy_to_device,
           m::Call(&call, m::Copy(&copy_to_host, m::Parameter(&param, 0))))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(call->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(call->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   ASSERT_THAT(call->called_computations(), ::testing::SizeIs(1));
@@ -836,7 +841,7 @@ ENTRY main {
   ASSERT_THAT(called_computation->root_instruction(),
               GmockMatch(m::Parameter(&called_computation_param, 0)));
   TestShapeHasMemorySpace(called_computation_param->shape(),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
@@ -894,12 +899,12 @@ ENTRY main {
               m::Call(&call, m::Copy(&copy_to_host, m::Parameter(&param, 0)),
                       m::Op())))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(call->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(call->shape(), {1}),
                           Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_THAT(call->called_computations(), ::testing::SizeIs(1));
@@ -912,11 +917,11 @@ ENTRY main {
       GmockMatch(m::Tuple(&tuple, m::Parameter(&called_computation_param_0, 0),
                           m::Parameter(&called_computation_param_1, 1))));
   TestShapeHasMemorySpace(called_computation_param_0->shape(),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(called_computation_param_1->shape(),
                           Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
                           Layout::kDefaultMemorySpace);
 
@@ -973,20 +978,20 @@ ENTRY main {
                   m::While(&while_instr,
                            m::Copy(&copy_to_host, m::Parameter(&param, 0))))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(while_instr->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(while_instr->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   HloComputation* while_condition = while_instr->while_condition();
   ASSERT_THAT(while_condition->parameter_instructions(), ::testing::SizeIs(1));
   TestShapeHasMemorySpace(while_condition->parameter_instruction(0)->shape(),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
 
   HloInstruction* while_body_param;
   HloComputation* while_body = while_instr->while_body();
   ASSERT_THAT(while_body->root_instruction(),
               GmockMatch(m::Parameter(&while_body_param, 0)));
-  TestShapeHasMemorySpace(while_body_param->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(while_body_param->shape(), Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
@@ -1040,12 +1045,12 @@ ENTRY main {
                         m::Tuple(&tuple, m::Copy(&copy_to_host,
                                                  m::Parameter(&param, 0))))))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {0}),
-                          kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(gte->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -1111,20 +1116,20 @@ ENTRY main {
                   m::Copy(&copy_to_device_2,
                           m::GetTupleElement(&gte_2, opt_barrier_pattern)))));
   TestShapeHasMemorySpace(constant->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host_1->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(copy_to_host_2->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host_1->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host_2->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {1}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {1}),
-                          kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device_1->shape(),
                           Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(gte_2->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_2->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device_2->shape(),
                           Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_2->shape(), {0}),
@@ -1273,28 +1278,28 @@ ENTRY main.24 {
   TestShapeHasMemorySpace(cosine_0->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(cosine_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(cosine_2->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host_0->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(copy_to_host_1->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(copy_to_host_2->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host_0->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host_1->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host_2->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {2}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {3}),
                           Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {0}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {1}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {2}),
-                          kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {3}),
                           Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(gte_2->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(gte_2->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(gte_3->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(broadcast->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(copy_to_device_0->shape(),
@@ -1350,7 +1355,7 @@ ENTRY main {
           m::Copy(&copy_to_device, m::Copy(&copy_to_host, param_pattern)))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(sine->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(add->shape(), Layout::kDefaultMemorySpace);
 
@@ -1400,8 +1405,9 @@ ENTRY main {
                       m::Parameter(&param, 0), m::Op(), m::Op(), m::Op()),
                   m::Op(), m::Op(), m::Op())));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -1470,8 +1476,9 @@ ENTRY main {
                   m::Op(), m::Op(), m::Op())));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(bitcast->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -1551,8 +1558,9 @@ ENTRY main {
                       m::Parameter(&param, 0), m::Op(), m::Op(), m::Op())),
           m::Op(), m::Op(), m::Op())));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
 
@@ -1694,24 +1702,24 @@ ENTRY main {
     ASSERT_EQ(producing_while_0, producing_while_1);
 
     // Check that the memory spaces were properly set.
-    TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+    TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(consuming_while->shape(), {1}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(consuming_while->shape(), {2}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(producing_while_0->shape(), {1}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(producing_while_0->shape(), {2}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {2}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
   }
 
   // Now, look for the AllocateBuffers leading into the producing while.
@@ -1726,10 +1734,10 @@ ENTRY main {
     // Check that the memory spaces were properly set.
     ASSERT_TRUE(allocate_buffer_0->shape().has_layout());
     EXPECT_EQ(allocate_buffer_0->shape().layout().memory_space(),
-              kHostMemorySpaceColor);
+              Layout::kHostMemorySpace);
     ASSERT_TRUE(allocate_buffer_1->shape().has_layout());
     EXPECT_EQ(allocate_buffer_1->shape().layout().memory_space(),
-              kHostMemorySpaceColor);
+              Layout::kHostMemorySpace);
   }
 
   // There are 4 computations to look at:
@@ -1744,12 +1752,12 @@ ENTRY main {
       ShapeUtil::GetSubshape(
           consuming_while->while_condition()->parameter_instruction(0)->shape(),
           {1}),
-      kHostMemorySpaceColor);
+      Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(
       ShapeUtil::GetSubshape(
           consuming_while->while_condition()->parameter_instruction(0)->shape(),
           {2}),
-      kHostMemorySpaceColor);
+      Layout::kHostMemorySpace);
 
   // Now, check the producing while for the following pattern:
   //    param      param
@@ -1806,19 +1814,19 @@ ENTRY main {
     //  dynamic_update_slice_second_param_1
 
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {2}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_0->shape(),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_1->shape(),
-                            kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(param_0->shape(), {1}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(param_0->shape(), {2}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_second_param_0->shape(),
                             Layout::kDefaultMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_second_param_1->shape(),
@@ -1873,11 +1881,11 @@ ENTRY main {
       // DEVICE:
       //  dynamic_slice
       TestShapeHasMemorySpace(ShapeUtil::GetSubshape(parameter->shape(), {1}),
-                              kHostMemorySpaceColor);
+                              Layout::kHostMemorySpace);
       TestShapeHasMemorySpace(ShapeUtil::GetSubshape(parameter->shape(), {2}),
-                              kHostMemorySpaceColor);
+                              Layout::kHostMemorySpace);
       TestShapeHasMemorySpace(get_tuple_element->shape(),
-                              kHostMemorySpaceColor);
+                              Layout::kHostMemorySpace);
       TestShapeHasMemorySpace(dynamic_slice->shape(),
                               Layout::kDefaultMemorySpace);
     }
@@ -2023,24 +2031,24 @@ ENTRY main {
     ASSERT_EQ(producing_while_0, producing_while_1);
 
     // Check that the memory spaces were properly set.
-    TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+    TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(consuming_while->shape(), {1}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(consuming_while->shape(), {2}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(producing_while_0->shape(), {1}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(producing_while_0->shape(), {2}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {2}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
   }
 
   // Now, look for the AllocateBuffers leading into the producing while.
@@ -2055,10 +2063,10 @@ ENTRY main {
     // Check that the memory spaces were properly set.
     ASSERT_TRUE(allocate_buffer_0->shape().has_layout());
     EXPECT_EQ(allocate_buffer_0->shape().layout().memory_space(),
-              kHostMemorySpaceColor);
+              Layout::kHostMemorySpace);
     ASSERT_TRUE(allocate_buffer_1->shape().has_layout());
     EXPECT_EQ(allocate_buffer_1->shape().layout().memory_space(),
-              kHostMemorySpaceColor);
+              Layout::kHostMemorySpace);
   }
 
   // There are 4 computations to look at:
@@ -2073,12 +2081,12 @@ ENTRY main {
       ShapeUtil::GetSubshape(
           consuming_while->while_condition()->parameter_instruction(0)->shape(),
           {1}),
-      kHostMemorySpaceColor);
+      Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(
       ShapeUtil::GetSubshape(
           consuming_while->while_condition()->parameter_instruction(0)->shape(),
           {2}),
-      kHostMemorySpaceColor);
+      Layout::kHostMemorySpace);
 
   // Now, check the producing while for the following pattern:
   //    param      param
@@ -2135,19 +2143,19 @@ ENTRY main {
     //  dynamic_update_slice_second_param_1
 
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {2}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_0->shape(),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_1->shape(),
-                            kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(param_0->shape(), {1}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(param_0->shape(), {2}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_second_param_0->shape(),
                             Layout::kDefaultMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_second_param_1->shape(),
@@ -2202,11 +2210,11 @@ ENTRY main {
       // DEVICE:
       //  dynamic_slice
       TestShapeHasMemorySpace(ShapeUtil::GetSubshape(parameter->shape(), {1}),
-                              kHostMemorySpaceColor);
+                              Layout::kHostMemorySpace);
       TestShapeHasMemorySpace(ShapeUtil::GetSubshape(parameter->shape(), {2}),
-                              kHostMemorySpaceColor);
+                              Layout::kHostMemorySpace);
       TestShapeHasMemorySpace(get_tuple_element->shape(),
-                              kHostMemorySpaceColor);
+                              Layout::kHostMemorySpace);
       TestShapeHasMemorySpace(dynamic_slice->shape(),
                               Layout::kDefaultMemorySpace);
     }
@@ -2357,16 +2365,17 @@ ENTRY main {
                                    m::Op(), m::Op()))));
 
     // Check that the memory spaces were properly set.
-    TestShapeHasMemorySpace(gte_between_whiles->shape(), kHostMemorySpaceColor);
+    TestShapeHasMemorySpace(gte_between_whiles->shape(),
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(consuming_while->shape(), {1}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(
         ShapeUtil::GetSubshape(producing_while->shape(), {1}),
-        kHostMemorySpaceColor);
+        Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
-                            kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(final_gte->shape(), kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(final_gte->shape(), Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_slice_0->shape(),
                             Layout::kDefaultMemorySpace);
     TestShapeHasMemorySpace(dynalic_slice_1->shape(),
@@ -2384,7 +2393,7 @@ ENTRY main {
     // Check that the memory spaces were properly set.
     ASSERT_TRUE(allocate_buffer->shape().has_layout());
     EXPECT_EQ(allocate_buffer->shape().layout().memory_space(),
-              kHostMemorySpaceColor);
+              Layout::kHostMemorySpace);
   }
 
   // There are 4 computations to look at:
@@ -2399,7 +2408,7 @@ ENTRY main {
       ShapeUtil::GetSubshape(
           consuming_while->while_condition()->parameter_instruction(0)->shape(),
           {1}),
-      kHostMemorySpaceColor);
+      Layout::kHostMemorySpace);
 
   // Now, check the producing while for the following pattern:
   //    param
@@ -2427,12 +2436,12 @@ ENTRY main {
 
     // Check that the memory spaces were properly set.
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice->shape(),
-                            kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte->shape(), Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(param->shape(), {1}),
-                            kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_update_slice_second_param->shape(),
                             Layout::kDefaultMemorySpace);
   }
@@ -2479,8 +2488,9 @@ ENTRY main {
 
     // Check that the memory spaces were properly set.
     TestShapeHasMemorySpace(ShapeUtil::GetSubshape(parameter->shape(), {1}),
-                            kHostMemorySpaceColor);
-    TestShapeHasMemorySpace(get_tuple_element->shape(), kHostMemorySpaceColor);
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(get_tuple_element->shape(),
+                            Layout::kHostMemorySpace);
     TestShapeHasMemorySpace(dynamic_slice->shape(),
                             Layout::kDefaultMemorySpace);
   }
@@ -2668,7 +2678,7 @@ ENTRY main {
   TestShapeHasMemorySpace(param_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(broadcast_0->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(multiply_0->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(param_0->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(param_0->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
@@ -2725,8 +2735,8 @@ ENTRY main {
   TestShapeHasMemorySpace(add->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(param->shape().tuple_shapes(1),
-                          kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(gte_y->shape(), kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(gte_y->shape(), Layout::kHostMemorySpace);
 }
 
 TEST_F(HostOffloaderTest, ParameterStreamingNoOpToHost) {
@@ -2756,7 +2766,7 @@ ENTRY main {
   HloInstruction* copy;
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Copy(&copy, m::Parameter(&param, 0))));
-  TestShapeHasMemorySpace(param->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(param->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -2834,9 +2844,9 @@ TEST_F(HostOffloaderTest, OutputStreaming) {
   TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
-                          Layout::kHostMemorySpace);
+                          Layout::Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
                           Layout::kDefaultMemorySpace);
 
@@ -2935,7 +2945,7 @@ TEST_F(HostOffloaderTest, OutputStreamingWithoutTuple) {
   TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
@@ -3005,7 +3015,7 @@ TEST_F(HostOffloaderTest, OutputStreamingCustomCallRoot) {
   TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
@@ -3081,9 +3091,9 @@ ENTRY entry {
                   m::ConstantScalar(0))));
 
   TestShapeHasMemorySpace(bitcast->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(gte_1->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(dus->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dus->shape(), Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
@@ -3116,7 +3126,7 @@ ENTRY main {
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Copy(&copy, m::Parameter(&param, 0))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
@@ -3139,7 +3149,7 @@ ENTRY main {
   HloInstruction* param;
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(&param, 0)));
-  TestShapeHasMemorySpace(param->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(param->shape(), Layout::kHostMemorySpace);
 }
 
 TEST_F(HostOffloaderTest, ParameterAndOutputStreamingPassThroughTuple) {
@@ -3172,10 +3182,10 @@ ENTRY main {
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::GetTupleElement(
                   &gte, m::Tuple(&tuple, m::Parameter(&param, 0)))));
-  TestShapeHasMemorySpace(param->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(param->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
-                          kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(gte->shape(), Layout::kHostMemorySpace);
 }
 
 TEST_F(HostOffloaderTest, LoneMoveToDevice) {
@@ -3237,7 +3247,7 @@ ENTRY main {
       GmockMatch(m::Copy(&copy_to_device,
                          m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -3277,7 +3287,7 @@ ENTRY main {
       GmockMatch(m::Copy(&copy_to_device,
                          m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -3317,7 +3327,7 @@ ENTRY main {
       GmockMatch(m::Copy(&copy_to_device,
                          m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -3358,10 +3368,316 @@ ENTRY main {
       GmockMatch(m::Copy(&copy_to_device,
                          m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, BasicAsyncHostOffloadedCall_RemoveRedundantCopies) {
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[4096]{0:S(5)})->(f32[4096]{0:S(5)}, f32[4096]{0:S(5)})}
+
+%async_computation {
+  %param_0 = f32[4096] parameter(0)
+  ROOT %offloaded-custom-call = (f32[4096], f32[4096]) custom-call(%param_0), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+ENTRY %main {
+  %a = f32[4096] parameter(0)
+  %async-start = ((f32[4096]), (f32[4096], f32[4096]), u32[]) async-start(%a), async_execution_thread="host", calls=%async_computation
+  %async-done = (f32[4096], f32[4096]) custom-call-done(%async-start)
+  %gte_0 = f32[4096] get-tuple-element(%async-done), index=0
+  %gte_1 = f32[4096] get-tuple-element(%async-done), index=1
+  %gte_0_host = f32[4096] custom-call(%gte_0), custom_call_target="MoveToHost"
+  %gte_1_host = f32[4096] custom-call(%gte_1), custom_call_target="MoveToHost"
+  ROOT %tuple = (f32[4096], f32[4096]) tuple(%gte_0_host, %gte_1_host)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  ASSERT_NE(async_start, nullptr);
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  ASSERT_NE(async_done, nullptr);
+
+  HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
+  ASSERT_NE(gte_0, nullptr);
+  TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+  HloInstruction* gte_1 = FindInstruction(module.get(), "gte_1");
+  ASSERT_NE(gte_1, nullptr);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* gte_0_host = FindInstruction(module.get(), "gte_0_host");
+  ASSERT_EQ(gte_0_host, nullptr);
+  HloInstruction* gte_1_host = FindInstruction(module.get(), "gte_1_host");
+  ASSERT_EQ(gte_1_host, nullptr);
+
+  // Check all set of successors.
+  HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  ASSERT_NE(tuple, nullptr);
+  std::vector<HloInstruction*> expected = {gte_0, gte_1};
+  EXPECT_THAT(tuple->operands(),
+              ::testing::UnorderedElementsAreArray(expected));
+}
+
+TEST_F(HostOffloaderTest,
+       BasicAsyncHostOffloadedCall_NoChangesWhenEntryLayoutExpectsHBM) {
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[4096]{0:S(5)})->(f32[4096]{0:S(0)}, f32[4096]{0:S(0)})}
+
+%async_computation {
+  %param_0 = f32[4096] parameter(0)
+  ROOT %offloaded-custom-call = (f32[4096], f32[4096]) custom-call(%param_0), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+ENTRY %main {
+  %a = f32[4096] parameter(0)
+  %async-start = ((f32[4096]), (f32[4096], f32[4096]), u32[]) async-start(%a), async_execution_thread="host", calls=%async_computation
+  %async-done = (f32[4096], f32[4096]) custom-call-done(%async-start)
+  %gte_0 = f32[4096] get-tuple-element(%async-done), index=0
+  %gte_1 = f32[4096] get-tuple-element(%async-done), index=1
+  ROOT %tuple = (f32[4096], f32[4096]) tuple(%gte_0, %gte_1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK(RunHostOffloader(module.get()));
+
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  ASSERT_NE(async_start, nullptr);
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  ASSERT_NE(async_done, nullptr);
+
+  HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
+  ASSERT_NE(gte_0, nullptr);
+  TestShapeHasMemorySpace(gte_0->shape(), Layout::kDefaultMemorySpace);
+  HloInstruction* gte_1 = FindInstruction(module.get(), "gte_1");
+  ASSERT_NE(gte_1, nullptr);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kDefaultMemorySpace);
+}
+
+TEST_F(HostOffloaderTest,
+       BasicAsyncHostOffloadedCall_RemoveOnlyRedundantCopies) {
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[4096]{0:S(5)})->(f32[4096]{0:S(5)}, f32[4096]{0:S(5)})}
+
+%add {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add_res = f32[] add(%lhs, %rhs)
+}
+
+%async_computation {
+  %param_0 = f32[4096] parameter(0)
+  ROOT %offloaded-custom-call = (f32[4096], f32[4096]) custom-call(%param_0), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+ENTRY %main {
+  %a = f32[4096] parameter(0)
+  %async-start = ((f32[4096]), (f32[4096], f32[4096]), u32[]) async-start(%a), async_execution_thread="host", calls=%async_computation
+  %async-done = (f32[4096], f32[4096]) custom-call-done(%async-start)
+  %gte_0 = f32[4096] get-tuple-element(%async-done), index=0
+  %gte_1 = f32[4096] get-tuple-element(%async-done), index=1
+  %sum = f32[4096] add(%gte_0, %gte_0)
+  %gte_0_host = f32[4096] custom-call(%gte_0), custom_call_target="MoveToHost"
+  %gte_1_host = f32[4096] custom-call(%gte_1), custom_call_target="MoveToHost"
+  ROOT %tuple = (f32[4096]{0:S(5)}, f32[4096]) tuple(%gte_0_host, %gte_1_host)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  ASSERT_NE(async_start, nullptr);
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  ASSERT_NE(async_done, nullptr);
+
+  HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
+  ASSERT_NE(gte_0, nullptr);
+  TestShapeHasMemorySpace(gte_0->shape(), Layout::kDefaultMemorySpace);
+  HloInstruction* gte_1 = FindInstruction(module.get(), "gte_1");
+  ASSERT_NE(gte_1, nullptr);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
+
+  // Since gte_0 is used on device (we do not take dead code into account here
+  // ..) gte_0 will be copied to device and be moved to host.
+  HloInstruction* gte_0_host = FindInstruction(module.get(), "gte_0_host");
+  ASSERT_EQ(gte_0_host, nullptr);  // replaced with copy
+  HloInstruction* copy = FindInstruction(module.get(), "copy");
+  ASSERT_NE(copy, nullptr);
+  EXPECT_EQ(copy->operands()[0], gte_0);
+
+  HloInstruction* gte_1_host = FindInstruction(module.get(), "gte_1_host");
+  ASSERT_EQ(gte_1_host, nullptr);
+}
+
+TEST_F(HostOffloaderTest,
+       AsyncHostOffloadedCall_nonEntryPoint_RemoveRedundantCopies) {
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[4096]{0:S(5)})->(f32[4096]{0:S(5)}, f32[4096]{0:S(5)})}
+
+%async_computation {
+  %param_0 = f32[4096] parameter(0)
+  ROOT %offloaded-custom-call = (f32[4096], f32[4096]) custom-call(%param_0), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+%non_async_computation {
+  %param_0 = f32[4096] parameter(0)
+  %async-start = ((f32[4096]), (f32[4096], f32[4096]), u32[]) async-start(%param_0), async_execution_thread="host", calls=%async_computation
+  %async-done = (f32[4096], f32[4096]) custom-call-done(%async-start)
+  %gte_0 = f32[4096] get-tuple-element(%async-done), index=0
+  %gte_1 = f32[4096] get-tuple-element(%async-done), index=1
+  %gte_0_host = f32[4096] custom-call(%gte_0), custom_call_target="MoveToHost"
+  %gte_1_host = f32[4096] custom-call(%gte_1), custom_call_target="MoveToHost"
+  ROOT %tuple_non_async = (f32[4096]{0:S(5)}, f32[4096]) tuple(%gte_0_host, %gte_1_host)
+}
+
+ENTRY %main {
+  %a = f32[4096] parameter(0)
+  %call = (f32[4096], f32[4096]) call(%a), to_apply=%non_async_computation
+  %call_0 = f32[4096] get-tuple-element(%call), index=0
+  %call_1 = f32[4096] get-tuple-element(%call), index=1
+  ROOT %tuple = (f32[4096], f32[4096]) tuple(%call_0, %call_1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  ASSERT_NE(async_start, nullptr);
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  ASSERT_NE(async_done, nullptr);
+
+  HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
+  ASSERT_NE(gte_0, nullptr);
+  TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+  HloInstruction* gte_1 = FindInstruction(module.get(), "gte_1");
+  ASSERT_NE(gte_1, nullptr);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* gte_0_host = FindInstruction(module.get(), "gte_0_host");
+  ASSERT_EQ(gte_0_host, nullptr);
+  HloInstruction* gte_1_host = FindInstruction(module.get(), "gte_1_host");
+  ASSERT_EQ(gte_1_host, nullptr);
+
+  HloInstruction* tuple_non_async =
+      FindInstruction(module.get(), "tuple_non_async");
+  ASSERT_NE(tuple_non_async, nullptr);
+  std::vector<HloInstruction*> expected = {gte_0, gte_1};
+  EXPECT_THAT(tuple_non_async->operands(),
+              ::testing::UnorderedElementsAreArray(expected));
+
+  // Check the main output is on host.
+  HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  ASSERT_NE(tuple, nullptr);
+  TestShapeHasMemorySpace(tuple->shape().tuple_shapes(0),
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(tuple->shape().tuple_shapes(1),
+                          Layout::kHostMemorySpace);
+}
+
+TEST_F(HostOffloaderTest,
+       AsyncHostOffloadedCall_passedToCall_RemoveRedundantCopies) {
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[4096]{0:S(5)})->(f32[4096]{0:S(5)}, f32[4096]{0:S(5)})}
+
+%async_computation {
+  %param_0 = f32[4096] parameter(0)
+  ROOT %offloaded-custom-call = (f32[4096], f32[4096]) custom-call(%param_0), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+%non_async_computation {
+  %param_0_non_async = f32[4096] parameter(0)
+  %param_1_non_async = f32[4096] parameter(1)
+  ROOT %tuple_non_async = (f32[4096], f32[4096]) tuple(%param_0_non_async, %param_1_non_async)
+}
+
+ENTRY %main {
+  %a = f32[4096] parameter(0)
+  %async-start = ((f32[4096]), (f32[4096], f32[4096]), u32[]) async-start(%a), async_execution_thread="host", calls=%async_computation
+  %async-done = (f32[4096], f32[4096]) custom-call-done(%async-start)
+  %gte_0 = f32[4096] get-tuple-element(%async-done), index=0
+  %gte_1 = f32[4096] get-tuple-element(%async-done), index=1
+  %call = (f32[4096], f32[4096]) call(%gte_0, %gte_1), to_apply=%non_async_computation
+  %call_0 = f32[4096] get-tuple-element(%call), index=0
+  %call_1 = f32[4096] get-tuple-element(%call), index=1
+  %call_0_host = f32[4096] custom-call(%call_0), custom_call_target="MoveToHost"
+  %call_1_host = f32[4096] custom-call(%call_1), custom_call_target="MoveToHost"
+  ROOT %tuple = (f32[4096], f32[4096]) tuple(%call_0_host, %call_1_host)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  ASSERT_NE(async_start, nullptr);
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  ASSERT_NE(async_done, nullptr);
+
+  HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
+  ASSERT_NE(gte_0, nullptr);
+  TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+  HloInstruction* gte_1 = FindInstruction(module.get(), "gte_1");
+  ASSERT_NE(gte_1, nullptr);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* call_0 = FindInstruction(module.get(), "call_0");
+  ASSERT_NE(call_0, nullptr);
+  HloInstruction* call_1 = FindInstruction(module.get(), "call_1");
+  ASSERT_NE(call_1, nullptr);
+
+  HloInstruction* call_0_host = FindInstruction(module.get(), "call_0_host");
+  ASSERT_EQ(call_0_host, nullptr);
+  HloInstruction* call_1_host = FindInstruction(module.get(), "call_1_host");
+  ASSERT_EQ(call_1_host, nullptr);
+
+  HloInstruction* param_0_non_async =
+      FindInstruction(module.get(), "param_0_non_async");
+  ASSERT_NE(param_0_non_async, nullptr);
+  TestShapeHasMemorySpace(param_0_non_async->shape(), Layout::kHostMemorySpace);
+  HloInstruction* param_1_non_async =
+      FindInstruction(module.get(), "param_1_non_async");
+  ASSERT_NE(param_1_non_async, nullptr);
+  TestShapeHasMemorySpace(param_1_non_async->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* tuple_non_async =
+      FindInstruction(module.get(), "tuple_non_async");
+  ASSERT_NE(tuple_non_async, nullptr);
+  std::vector<HloInstruction*> expected_operands = {param_0_non_async,
+                                                    param_1_non_async};
+  EXPECT_THAT(tuple_non_async->operands(),
+              ::testing::UnorderedElementsAreArray(expected_operands));
+
+  HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  ASSERT_NE(tuple, nullptr);
+  TestShapeHasMemorySpace(tuple->shape().tuple_shapes(0),
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(tuple->shape().tuple_shapes(1),
+                          Layout::kHostMemorySpace);
+
+  std::vector<HloInstruction*> expected = {call_0, call_1};
+  EXPECT_THAT(tuple->operands(),
+              ::testing::UnorderedElementsAreArray(expected));
 }
 
 }  // namespace
