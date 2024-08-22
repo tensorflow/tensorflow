@@ -19,11 +19,9 @@ limitations under the License.
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/function/runtime_client/runtime_client.h"
-#include "tensorflow/python/lib/core/pybind11_status.h"
 
 PYBIND11_MAKE_OPAQUE(tensorflow::EagerContext);
 
