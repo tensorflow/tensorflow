@@ -300,13 +300,11 @@ BINARY_TEST_FLOAT_BOTH(AbsComplex, {
     }
   }
 
-  EnableDebugLoggingForScope([this, error_spec_gen]() {
-    Run([](XlaOp x, XlaOp y) { return Abs(Complex(x, y)); },
-        [](NativeRefT x, NativeRefT y) {
-          return std::abs(std::complex<NativeRefT>(x, y));
-        },
-        error_spec_gen);
-  });
+  Run([](XlaOp x, XlaOp y) { return Abs(Complex(x, y)); },
+      [](NativeRefT x, NativeRefT y) {
+        return std::abs(std::complex<NativeRefT>(x, y));
+      },
+      error_spec_gen);
 })
 
 }  // namespace
