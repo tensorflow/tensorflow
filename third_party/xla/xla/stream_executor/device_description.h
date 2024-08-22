@@ -449,6 +449,40 @@ class DeviceDescription {
         gpu_compute_capability_);
   }
 
+  // TODO(tsilytskyi): use "= default" from C++20
+  friend bool operator==(const DeviceDescription &a,
+                         const DeviceDescription &b) {
+    if (&a == &b) {
+      return true;
+    }
+    return a.device_vendor_ == b.device_vendor_ &&
+           a.platform_version_ == b.platform_version_ &&
+           a.driver_version_ == b.driver_version_ &&
+           a.runtime_version_ == b.runtime_version_ &&
+           a.pci_bus_id_ == b.pci_bus_id_ && a.name_ == b.name_ &&
+           a.model_str_ == b.model_str_ &&
+           a.thread_dim_limit_ == b.thread_dim_limit_ &&
+           a.block_dim_limit_ == b.block_dim_limit_ &&
+           a.threads_per_core_limit_ == b.threads_per_core_limit_ &&
+           a.threads_per_block_limit_ == b.threads_per_block_limit_ &&
+           a.threads_per_warp_ == b.threads_per_warp_ &&
+           a.registers_per_core_limit_ == b.registers_per_core_limit_ &&
+           a.registers_per_block_limit_ == b.registers_per_block_limit_ &&
+           a.device_address_bits_ == b.device_address_bits_ &&
+           a.device_memory_size_ == b.device_memory_size_ &&
+           a.l2_cache_size_ == b.l2_cache_size_ &&
+           a.memory_bandwidth_ == b.memory_bandwidth_ &&
+           a.shared_memory_per_core_ == b.shared_memory_per_core_ &&
+           a.shared_memory_per_block_ == b.shared_memory_per_block_ &&
+           a.shared_memory_per_block_optin_ ==
+               b.shared_memory_per_block_optin_ &&
+           a.clock_rate_ghz_ == b.clock_rate_ghz_ &&
+           a.gpu_compute_capability_ == b.gpu_compute_capability_ &&
+           a.numa_node_ == b.numa_node_ && a.core_count_ == b.core_count_ &&
+           a.fpus_per_core_ == b.fpus_per_core_ &&
+           a.ecc_enabled_ == b.ecc_enabled_;
+  }
+
   GpuDeviceInfoProto ToGpuProto() const;
 
   std::string ToString() const;
