@@ -241,6 +241,7 @@ xla_cc_binary(
         "nomsan",
         "notsan",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_cpu",
         ":pjrt_c_api_cpu_version_script.lds",
