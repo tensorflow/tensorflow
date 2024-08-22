@@ -297,6 +297,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addIllegalOp<
       // go/keep-sorted start
       // clang-format off
+      mhlo::Atan2Op,
       mhlo::ClampOp,
       mhlo::DivOp,
       mhlo::DotGeneralOp,
@@ -308,6 +309,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::PowOp,
       mhlo::RemOp,
       mhlo::ReshapeOp,
+      mhlo::ReverseOp,
       mhlo::SelectOp,
       mhlo::ShiftRightArithmeticOp,
       mhlo::ShiftRightLogicalOp,

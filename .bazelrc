@@ -220,7 +220,7 @@ build:cuda --repo_env TF_NEED_CUDA=1
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
 # Default CUDA and CUDNN versions.
-build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
+build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
 build:cuda --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 # This flag is needed to include CUDA libraries.
 build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
@@ -249,10 +249,10 @@ build:cuda_clang --linkopt="-lm"
 
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 build:cuda_clang_official --config=cuda_clang
-build:cuda_clang_official --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
+build:cuda_clang_official --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
 build:cuda_clang_official --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
-build:cuda_clang_official --crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
+build:cuda_clang_official --crosstool_top="@sigbuild-r2.17-clang-cudnn9_config_cuda//crosstool:toolchain"
 
 # Build with nvcc for CUDA and clang for host
 build:nvcc_clang --config=cuda
@@ -516,12 +516,12 @@ build:rbe_linux --host_linkopt=-lm
 
 build:rbe_linux_cpu --config=rbe_linux
 # Linux cpu and cuda builds share the same toolchain now.
-build:rbe_linux_cpu --host_crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --extra_toolchains="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cpu --extra_execution_platforms="@sigbuild-r2.17-clang_config_platform//:platform"
-build:rbe_linux_cpu --host_platform="@sigbuild-r2.17-clang_config_platform//:platform"
-build:rbe_linux_cpu --platforms="@sigbuild-r2.17-clang_config_platform//:platform"
+build:rbe_linux_cpu --host_crosstool_top="@sigbuild-r2.17-clang-cudnn9_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu --crosstool_top="@sigbuild-r2.17-clang-cudnn9_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu --extra_toolchains="@sigbuild-r2.17-clang-cudnn9_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cpu --extra_execution_platforms="@sigbuild-r2.17-clang-cudnn9_config_platform//:platform"
+build:rbe_linux_cpu --host_platform="@sigbuild-r2.17-clang-cudnn9_config_platform//:platform"
+build:rbe_linux_cpu --platforms="@sigbuild-r2.17-clang-cudnn9_config_platform//:platform"
 # This is needed for all Clang17 builds but must not be present in GCC builds.
 build:rbe_linux_cpu --copt=-Wno-error=unused-command-line-argument
 # This was added in clang-16 by https://reviews.llvm.org/D133574.
@@ -530,7 +530,7 @@ build:rbe_linux_cpu --copt=-Wno-error=unused-command-line-argument
 # See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
 build:rbe_linux_cpu --copt=-Wno-gnu-offsetof-extensions
 # Python config is the same across all containers because the binary is the same
-build:rbe_linux_cpu --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.17-clang_config_python"
+build:rbe_linux_cpu --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.17-clang-cudnn9_config_python"
 build:rbe_linux_cpu --python_path="/usr/bin/python3"
 # These you may need to change for your own GCP project.
 common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instances/default_instance
@@ -640,7 +640,7 @@ test:release_linux_base --test_summary=short
 
 # Use the Clang toolchain to compile
 build:release_cpu_linux --config=release_linux_base
-build:release_cpu_linux --crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
+build:release_cpu_linux --crosstool_top="@sigbuild-r2.17-clang-cudnn9_config_cuda//crosstool:toolchain"
 # Target the AVX instruction set
 build:release_cpu_linux --config=avx_linux
 

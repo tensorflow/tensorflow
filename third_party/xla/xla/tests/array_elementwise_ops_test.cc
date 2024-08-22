@@ -2889,11 +2889,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF64s) {
                               {-kInf, -2.5, 3.14, -0.0, 0.0, 2.25, kInf, kNaN});
 
   Tanh(a);
-
-  // The error spec is unusually high here to account for the fact that we
-  // use a rational interpolant to approximate tanh.
-  ErrorSpec error_spec{165 * kEpsF64, 165 * kEpsF64};
-  ComputeAndCompare(&builder, {}, error_spec);
+  ComputeAndCompare(&builder, {}, strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
@@ -2917,6 +2913,25 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
   // use a rational interpolant to approximate tanh.
   ErrorSpec error_spec{440 * kEpsF32, 440 * kEpsF32};
   ComputeAndCompare(&builder, {}, error_spec);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, TanhF64sVector) {
+  // This is like the test ArrayElementwiseOpTest.TanhF64s above, except that
+  // the input tensor is large enough to exercise the vectorized tanh
+  // implementation on XLA CPU.
+  XlaBuilder builder(TestName());
+  auto input_literal = ConstantR1<double>(
+      &builder,
+      {1.02,  -0.32, 0.85,  0.90,  1.23,  -0.91, -0.49, 0.80,  -0.67, 0.16,
+       -0.07, 0.39,  -0.41, 0.04,  1.36,  1.25,  0.41,  0.65,  -1.08, 0.32,
+       -1.45, -0.77, -1.09, 0.91,  -1.03, -0.30, -1.11, -1.17, 1.50,  -0.85,
+       0.04,  1.02,  0.34,  -0.61, 0.41,  0.07,  -0.02, 1.42,  -0.62, 0.81,
+       0.08,  0.81,  -0.30, 1.17,  -0.65, -0.44, 0.92,  1.26,  -1.29, 1.35,
+       0.08,  -1.24, -0.92, 0.49,  1.17,  -0.45, -1.31, -1.44, -0.13, -1.31,
+       -0.79, 1.41,  1.21,  1.05});
+
+  Tanh(input_literal);
+  ComputeAndCompare(&builder, {}, strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
