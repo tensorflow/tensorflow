@@ -17,6 +17,7 @@ cc_library(
     ],
     deps = [
         ":mlir_roundtrip_flags",
+        ":node_order",
         ":upgrade_graph",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",

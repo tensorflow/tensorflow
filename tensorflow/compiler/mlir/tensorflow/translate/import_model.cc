@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/node_order.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -112,7 +113,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -717,9 +717,10 @@ Status ImporterBase::RemoveBackedges() {
   }
 
   // Obtains a RPO ordering, using node names as a tiebreak for stable sorting.
-  GetReversePostOrder(
-      *graph_, &ordered_nodes_,
-      [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
+
+  ordered_nodes_.clear();
+  TopologicalOrdering(
+      *graph_, [&](Node* n) { ordered_nodes_.push_back(n); }, GroupByDevice());
   return absl::OkStatus();
 }
 
@@ -1004,9 +1005,9 @@ Status ImporterBase::AddNodesToShapeRefiner(
   }
 
   // Re-initialize ordered_nodes_ since we might have modified the graph.
-  GetReversePostOrder(
-      *graph_, &ordered_nodes_,
-      [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
+  ordered_nodes_.clear();
+  TopologicalOrdering(
+      *graph_, [&](Node* n) { ordered_nodes_.push_back(n); }, GroupByDevice());
 
   VLOG(1) << "Inferring graph shapes to fixpoint";
 
@@ -1565,9 +1566,10 @@ Status ImporterBase::PrepareConvert(const Graph& graph,
 
   if (!specs_.enable_shape_inference) {
     // Re-initialize ordered_nodes_ since we might have modified the graph.
-    GetReversePostOrder(
-        *graph_, &ordered_nodes_,
-        [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
+    ordered_nodes_.clear();
+    TopologicalOrdering(
+        *graph_, [&](Node* n) { ordered_nodes_.push_back(n); },
+        GroupByDevice());
   }
 
   return absl::OkStatus();
