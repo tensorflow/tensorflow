@@ -16,15 +16,21 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold.h"
 
 #include <algorithm>
+#include <cstdint>
 
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold_utils.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace mlir {
 namespace TF {
@@ -69,9 +75,9 @@ static bool IsFoldedByDefaultPolicy(Operation* inst) {
 #ifdef TF_DISABLE_CONSTANT_FOLDING
   constexpr int64_t kResultsSizeThreshold = 0;
 #else
-  constexpr int64_t kResultsSizeThreshold = (1 << 23);  // 1 MB
+  constexpr int64_t kResultsSizeThreshold = (1 << 23);  // 1 MiB
 #endif
-  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 128 MB
+  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 128 MiB
 
   return (operands_size <= kOperandsSizeThreshold) &&
          (has_unknown_shape || (results_size <= kResultsSizeThreshold) ||
