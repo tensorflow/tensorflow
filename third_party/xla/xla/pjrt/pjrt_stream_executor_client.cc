@@ -91,6 +91,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -2764,9 +2765,16 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     auto* handle =
         tensorflow::down_cast<PjRtStreamExecutorBuffer*>(argument_handles[i]);
     if (handle->device() != device) {
-      return InvalidArgument(
-          "Buffer passed to Execute() as argument %d to replica %d is on "
-          "device %s, but replica is assigned to device %s.",
+      if (!options.allow_accessing_buffers_from_other_devices) {
+        return InvalidArgument(
+            "Buffer passed to Execute() as argument %d to replica %d is on "
+            "device %s, but replica is assigned to device %s.",
+            i, replica, handle->device()->DebugString(), device->DebugString());
+      }
+      LOG(WARNING) << absl::Substitute(
+          "[clin-warn] Buffer passed to Execute() as argument "
+          "$0 to replica $1 is on "
+          "device $2, but replica is assigned to device $3.",
           i, replica, handle->device()->DebugString(), device->DebugString());
     }
     bool donation_denied_at_runtime =

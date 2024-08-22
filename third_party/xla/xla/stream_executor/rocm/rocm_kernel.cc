@@ -18,26 +18,10 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-hipFuncCache_t GpuKernel::GetGpuCacheConfig() const {
-  switch (cache_config()) {
-    case KernelCacheConfig::kNoPreference:
-      return hipFuncCachePreferNone;
-    case KernelCacheConfig::kPreferShared:
-      return hipFuncCachePreferShared;
-    case KernelCacheConfig::kPreferL1:
-      return hipFuncCachePreferL1;
-    case KernelCacheConfig::kPreferEqual:
-      return hipFuncCachePreferEqual;
-    default:
-      LOG(FATAL) << "Unknown KernelCacheConfig"
-                 << static_cast<int32>(cache_config());
-  }
-}
-
 absl::StatusOr<int32_t> GpuKernel::GetMaxOccupiedBlocksPerCore(
     ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
   int32_t threads_per_block = threads.x * threads.y * threads.z;
-  VLOG(0) << "Get kernel block occupancy: " << name_
+  VLOG(0) << "Get kernel block occupancy: " << name()
           << "; threads_per_block: " << threads_per_block
           << "; dynamic_shared_memory_bytes: " << dynamic_shared_memory_bytes;
 

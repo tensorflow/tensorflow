@@ -1203,7 +1203,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // Select an order for emitting the HLO instructions for each
   // computation. Using this sequence enables tighter buffer liveness analysis
-  // and reduced memory usage (as compared to using DependencyHloOrdering).
+  // and reduced memory usage (as compared to using `DependencyHloOrdering`).
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
       ScheduleModule(module.get(), BufferSizeBytesFunction(),
@@ -1565,7 +1565,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       break;
   }
   llvm::CodeGenOptLevel opt_level = CodeGenOptLevel(modules[0]->config());
-  std::unique_ptr<llvm::TargetMachine> target_machine =
+  std::shared_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
           triple.getTriple(), options.cpu_name(), options.features(),
           CompilerTargetOptions(modules[0]->config()), reloc_model,
@@ -1697,7 +1697,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       };
 
       CompilerFunctor compiler_functor(
-          target_machine.get(), static_cast<int>(opt_level),
+          [&] { return target_machine; }, static_cast<int>(opt_level),
           options::OptimizeForSizeRequested(module->config()),
           module->config().debug_options().xla_llvm_disable_expensive_passes(),
           options::SlpVectorizerDisabled(module->config()),

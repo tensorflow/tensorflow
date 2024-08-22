@@ -221,11 +221,6 @@ absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
   GpuFunctionHandle function = gpu_kernel->gpu_function();
 
-  if (gpu_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
-    TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
-        function, gpu_kernel->GetGpuCacheConfig()));
-  }
-
   // Launch kernels with packed arguments.
   auto launch = [this, &kernel, &cluster_dims, &thread_dims, &block_dims,
                  &function](const KernelArgsPackedArrayBase& packed) {

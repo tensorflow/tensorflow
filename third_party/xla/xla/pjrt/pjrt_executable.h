@@ -266,6 +266,8 @@ struct ExecuteOptions {
   // specific input buffers.
   absl::flat_hash_set<int> non_donatable_input_indices;
 
+  bool allow_accessing_buffers_from_other_devices = false;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);

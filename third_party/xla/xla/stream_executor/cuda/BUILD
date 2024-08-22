@@ -509,17 +509,12 @@ cuda_only_cc_library(
 cuda_only_cc_library(
     name = "cuda_kernel",
     srcs = ["cuda_kernel.cc"],
-    hdrs = ["cuda_kernel.h"],
     deps = [
-        ":cuda_driver",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
-        "//xla/stream_executor/platform",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

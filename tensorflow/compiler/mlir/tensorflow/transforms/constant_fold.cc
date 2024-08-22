@@ -38,16 +38,17 @@ namespace TF {
 // Implements a TF specific policy on when constant folding is allowed.
 // Policy:
 //
-// Disable constant folding if operands size is greater than a certain
-// threshold (`kOperandsSizeThreshold`).
+// Find the total size of the operands and results, ignoring types with
+// undefined bit widths and unknown shapes.
+// Disable constant folding if operands size is greater than a certain threshold
+// (`kOperandsSizeThreshold`).
 //
-// Otherwise, allow folding if we do not know the shape of an operand or
-// result i.e., one of these values has non-static shape. If we know all the
-// shapes, find the total size of the operands and results. Folding of the op is
-// allowed if one of the following conditions are met:
-// 1. size of results is less than a certain threshold
-// (`kResultsSizeThreshold`), or
-// 2. size of results is within a factor (`kSizeFactor`) of size of operands, or
+// Otherwise, allow folding if:
+// 1. we do not know the shape of an operand or result i.e., one of these values
+//    has non-static shape, or
+// 2. size of results is less than a certain threshold
+//    (`kResultsSizeThreshold`), or
+// 3. size of results is within a factor (`kSizeFactor`) of size of operands.
 // TODO(b/157226221): Look into other heuristics for constant fold policy.
 static bool IsFoldedByDefaultPolicy(Operation* inst) {
   bool has_unknown_shape = false;
@@ -57,9 +58,10 @@ static bool IsFoldedByDefaultPolicy(Operation* inst) {
       auto tensor_type = mlir::cast<TensorType>(t);
       // Ignore types with undefined bit widths.
       if (!tensor_type.getElementType().isIntOrFloat()) continue;
+      // Ignore types with dynamic shapes.
       if (!tensor_type.hasStaticShape()) {
         has_unknown_shape = true;
-        return size;
+        continue;
       }
       size += tensor_type.getNumElements() *
               tensor_type.getElementType().getIntOrFloatBitWidth();

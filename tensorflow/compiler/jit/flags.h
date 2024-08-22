@@ -232,6 +232,18 @@ struct XlaOpsCommonFlags {
     // Once the rollout to GPU is complete, this flag can be deprecated.
     bool enabled_for_gpu_;
 
+    bool allow_accessing_buffers_from_other_devices_;
+
+    bool AllowAccessingBuffersFromOtherDevices(
+        const DeviceType& device_type) const {
+      LOG(INFO) << "[clin-flag] device_type.type_string() = "
+                << device_type.type_string()
+                << "; allow_access_buffers_from_other_devices_ = "
+                << allow_accessing_buffers_from_other_devices_;
+      if (device_type.type_string() != "GPU") return false;
+      return allow_accessing_buffers_from_other_devices_;
+    }
+
    private:
     // Devices for which using Device API (PjRt) is allowed in the XlaLaunch op.
     // This can only be modified programmatically.

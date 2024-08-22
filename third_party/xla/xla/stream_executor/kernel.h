@@ -241,11 +241,6 @@ class Kernel {
   virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
-  KernelCacheConfig cache_config() const { return cache_config_; }
-  void set_cache_config(KernelCacheConfig cache_config) {
-    cache_config_ = std::move(cache_config);
-  }
-
   const KernelMetadata &metadata() const { return metadata_; }
   void set_metadata(KernelMetadata metadata) {
     metadata_ = std::move(metadata);
@@ -259,13 +254,9 @@ class Kernel {
   std::string_view name() const { return name_; }
   void set_name(absl::string_view name);
 
-  std::string_view demangled_name() const { return demangled_name_; }
-
  private:
   std::string name_;
-  std::string demangled_name_;
 
-  KernelCacheConfig cache_config_ = KernelCacheConfig::kNoPreference;
   KernelMetadata metadata_;
   KernelArgsPacking args_packing_;
 };

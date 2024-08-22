@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/jit/variable_info.h"
@@ -797,6 +798,10 @@ xla::ExecuteOptions GetPjRtExecuteOptions(
     const DeviceType& device_type,
     absl::flat_hash_set<int> non_donatable_input_indices) {
   xla::ExecuteOptions options;
+  options.allow_accessing_buffers_from_other_devices =
+      GetXlaOpsCommonFlags()
+          ->tf_xla_use_device_api.AllowAccessingBuffersFromOtherDevices(
+              device_type);
   options.arguments_are_tupled = false;
   options.untuple_result = true;
   // Hardcode run id to always be one: TF distributed strategy
