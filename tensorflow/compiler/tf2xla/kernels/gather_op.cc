@@ -274,7 +274,7 @@ class GatherOp : public XlaOpKernel {
   int32 batch_dims_ = 0;
 };
 
-REGISTER_XLA_OP(Name("Gather"), MlirXlaOpKernel);
+REGISTER_XLA_OP(Name("Gather"), GatherOp);
 REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {

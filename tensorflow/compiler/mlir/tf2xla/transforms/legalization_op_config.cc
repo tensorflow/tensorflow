@@ -206,6 +206,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
         TypeID::get<TF::FakeQuantWithMinMaxVarsPerChannelGradientOp>(),
         TypeID::get<TF::FloorDivOp>(),
         TypeID::get<TF::FloorModOp>(),
+        TypeID::get<TF::GatherV2Op>(),
         TypeID::get<TF::GetMinibatchesInCsrWithPhysicalReplicaOp>(),
         TypeID::get<TF::GetMinibatchSplitsWithPhysicalReplicaOp>(),
         TypeID::get<TF::GreaterOp>(),

@@ -343,20 +343,6 @@ def : Pat<(TF_IFFTOp:$res $input),
           [(CheckInnerDimStatic $input)]>;
 
 //===----------------------------------------------------------------------===//
-// GatherV2 op patterns.
-//===----------------------------------------------------------------------===//
-
-// Here, $params and $indices needs to be ranked so that $axis and $batch_dims
-// attributes can be converted from TensorFlow axis format supporting negative
-// indexing to the HLO format.
-def LegalizeGatherV2 :
-  Pat<(TF_GatherV2Op AnyRankedTensor:$params, AnyRankedTensor:$indices,
-        (ConstantLikeMatcher ElementsAttr:$axis), $batch_dims),
-      (MHLO_TorchIndexSelectOp $params, $indices,
-        (GetHLOAxisFromTFAxis $axis, $params),
-        (GetHLOAxisFromTFAxis $batch_dims, $indices))>;
-
-//===----------------------------------------------------------------------===//
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
