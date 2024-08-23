@@ -40,6 +40,7 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
     case HloOpcode::kSlice:
+    case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
       break;
