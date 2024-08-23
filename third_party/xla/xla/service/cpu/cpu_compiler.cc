@@ -195,15 +195,21 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
+#include "tsl/platform/threadpool_async_executor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -221,8 +227,30 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using tsl::AsyncValue;
+using tsl::AsyncValueRef;
+using tsl::Chain;
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
+
+// Returns a global (per-process) thread pool for XLA CPU compilation tasks.
+static tsl::thread::ThreadPool* GetCompilationThreadPool() {
+  // LLVM compilation has a lot of memory-bound pointer chasing and not
+  // so much CPU-bound work. Based on profiling a few examples, 32 threads seems
+  // to be enough to achieve maximum parallel compilation speedup.
+  static constexpr int kMaxCompilationThreads = 32;
+  static auto* thread_pool = new tsl::thread::ThreadPool(
+      tsl::Env::Default(), "xla-cpu-llvm-codegen",
+      std::min(kMaxCompilationThreads, tsl::port::MaxParallelism()));
+  return thread_pool;
+}
+
+// Returns a global (per-process) async executor for XLA CPU compilation tasks.
+static AsyncValue::Executor* GetCompilationAsyncExecutor() {
+  static auto* executor =
+      new tsl::thread::ThreadPoolAsyncExecutor(GetCompilationThreadPool());
+  return executor;
+}
 
 // For each computation in the module, determines whether that computation
 // calls a custom-call function, either directly or indirectly (e.g. because it
@@ -1388,12 +1416,12 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
     // We define the number of module parts based on the total number of
-    // external functions (kernels and comparators) that are called from thunks,
+    // compiled functions (kernels and comparators) that are called from thunks,
     // and the maximum number of parts that we want to split the module into.
-    size_t num_external_function =
+    size_t num_compiled_functions =
         ir_emitter2.kernels().size() + ir_emitter2.comparators().size();
     size_t num_parts =
-        std::min(num_external_function, parallel_codegen_split_count);
+        std::min(num_compiled_functions, parallel_codegen_split_count);
 
     // JIT compile the LLVM IR module to in-memory machine code. We split the
     // module into `num_jit_dylibs` parts to allow parallel compilation. In
@@ -1401,6 +1429,9 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     // other, so we can compile each individual part in parallel. We split
     // module preserving locals, which should guarantee that all thread local
     // computations end up in the same module with the corresponding kernel.
+
+    // We rely on async executor to run compilation-related tasks in parallel.
+    auto* async = GetCompilationAsyncExecutor();
 
     // Collect all compiled symbols grouped by LLVM module part, so that we can
     // issue compile tasks in parallel without any interference.
@@ -1478,10 +1509,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     };
 
     // Mark kernel and comparator symbols as "kernel symbols" to suppress
-    // run time error logging when symbol is not found in module part.
-    //
-    // TODO(ezhulenev): This should not be needed if we correctly remove unused
-    // symbols from the module part before codegen. Fix it!
+    // SimpleOrcJIT error logging when symbol is not found in module part.
     for (const auto& kernel : ir_emitter2.kernels()) {
       (*jit)->AddKernelSymbol(mangle(kernel.name));
     }
@@ -1489,9 +1517,26 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       (*jit)->AddKernelSymbol(mangle(comparator.name));
     }
 
-    // Compile all symbols in the LLVM module parts.
+    // Schedule compilation of LLVM module parts in parallel.
+    std::vector<AsyncValueRef<Chain>> compile_tasks(compiled_parts.size());
     for (size_t part = 0; part < compiled_parts.size(); ++part) {
-      TF_RETURN_IF_ERROR(compile_part(part));
+      compile_tasks[part] = tsl::TryMakeAsyncValueRef(
+          *async, [&, part]() -> absl::StatusOr<Chain> {
+            TF_RETURN_IF_ERROR(compile_part(part));
+            return Chain{};
+          });
+    }
+
+    {  // Wait for all compilation tasks to finish.
+      TraceMe trace_codegen([&] {
+        return TraceMeEncode("Codegen (Wait)", {{"num_parts", num_parts},
+                                                {"num_compiled_functions",
+                                                 num_compiled_functions}});
+      });
+      for (auto& task : compile_tasks) {
+        tsl::BlockUntilReady(task);
+        if (task.IsError()) return task.GetError();
+      }
     }
 
     // Create constant allocations from the buffer assignment.

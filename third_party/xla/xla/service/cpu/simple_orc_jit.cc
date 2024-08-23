@@ -354,7 +354,7 @@ SimpleOrcJIT::SimpleOrcJIT(
       compile_layer_(
           *execution_session_, object_layer_,
           std::make_unique<CompilerFunctor>(
-              [&] { return target_machine_; }, static_cast<int>(opt_level),
+              target_machine_builder_, static_cast<int>(opt_level),
               optimize_for_size, disable_expensive_passes,
               disable_slp_vectorizer, fast_math_flags,
               std::move(pre_optimization_hook),
