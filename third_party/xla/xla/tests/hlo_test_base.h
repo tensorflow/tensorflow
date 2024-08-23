@@ -446,6 +446,8 @@ class HloTestBase : public ManifestCheckingTest {
 
   // Returns the backend owned by the test runner.
   Backend& backend();
+  const Backend& backend() const;
+
   int64_t num_devices() { return backend().device_count(); }
 
   HloRunner test_runner_;

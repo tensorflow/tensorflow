@@ -1073,6 +1073,7 @@ se::DeviceMemoryAllocator* HloTestBase::GetAllocator() {
 }
 
 Backend& HloTestBase::backend() { return test_runner_.backend(); }
+const Backend& HloTestBase::backend() const { return test_runner_.backend(); }
 
 /* static */
 std::string HloTestBase::TestName() {

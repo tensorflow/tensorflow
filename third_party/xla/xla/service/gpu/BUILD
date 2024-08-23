@@ -2841,32 +2841,26 @@ xla_cc_test(
 
 xla_test(
     name = "determinism_test",
-    srcs = if_gpu_is_configured(["determinism_test.cc"]),
+    srcs = ["determinism_test.cc"],
     backends = [
         "gpu_a100",
         "gpu_amd_any",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    deps = if_gpu_is_configured(
-        [
-            "//xla/service/gpu/autotuning:autotuner_util",
-            "@com_google_googletest//:gtest_main",
-            "@com_google_absl//absl/strings",
-            "//xla:literal",
-            "//xla:xla_proto_cc",
-            "//xla/hlo/ir:hlo",
-            "//xla/service/gpu/tests:gpu_codegen_test",
-            "//xla/stream_executor:device_description",
-            "//xla/tests:hlo_test_base",
-            "//xla/tests:literal_test_util",
-            "//xla/stream_executor/gpu:gpu_timer",
-            "//xla/tests:test_utils",
-            "@local_tsl//tsl/platform:statusor",
-        ],
-        ["@local_tsl//tsl/platform:test_main"],  # b/317293391
-    ),
+    deps = [
+        "//xla:literal",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:gpu_timer",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:test_utils",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
 )
 
 cc_library(
