@@ -65,7 +65,7 @@ class ExecutionStreamAssignment {
     ExecutionStreamId destination_stream_id;
   };
   absl::StatusOr<AsyncExecutionStreamIds> GetAsyncExecutionStreamIds(
-      const HloAsyncInstruction* instruction) const;
+      const HloInstruction* instruction) const;
 
  private:
   // Maps from `HloInstructions` to `ExecutionStreamIds` for synchronous and

@@ -171,6 +171,20 @@ TEST_F(GpuOffloadingTest, FusedComputationOffloadingTest) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-3}));
 }
 
+TEST_F(GpuOffloadingTest, WeightOffloadingD2HWithWaitTest) {
+  const char* hlo_offloading_d2h = R"(
+  HloModule jit__lambda_, is_scheduled=true,
+      entry_computation_layout={(s32[4,1]{1,0})->s32[4,1]{1,0:S(5)}}
+
+  ENTRY main.5_spmd {
+    param.1 = s32[4,1]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+    copy-start.1 = (s32[4,1]{1,0:S(5)}, s32[4,1]{1,0}, u32[]) copy-start(param.1)
+    ROOT copy-done.1 = s32[4,1]{1,0:S(5)} copy-done(copy-start.1)
+  }
+)";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_offloading_d2h, ErrorSpec{1e-3}));
+}
+
 TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
   const char* hlo_text = R"(
   HloModule test
