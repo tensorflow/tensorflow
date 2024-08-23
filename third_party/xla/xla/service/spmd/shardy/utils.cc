@@ -37,19 +37,23 @@ limitations under the License.
 
 namespace xla {
 namespace sdy {
+
 using ::mlir::ArrayRef;
 using ::mlir::Attribute;
 using ::mlir::DictionaryAttr;
 using ::mlir::NamedAttribute;
 using ::mlir::Operation;
 using ::mlir::SmallVector;
+using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using xla::sdy::kFrontendAttributesAttr;
 
 using ::mlir::func::FuncOp;
 
-mlir::StringAttr getStringAttribute(mlir::Attribute attr,
-                                    mlir::OpBuilder& builder) {
+StringAttr getStringAttribute(mlir::Attribute attr, mlir::OpBuilder& builder) {
+  if (auto stringAttr = mlir::dyn_cast<StringAttr>(attr)) {
+    return stringAttr;
+  }
   return builder.getStringAttr(mlir::sdy::attributeToString(attr));
 }
 
