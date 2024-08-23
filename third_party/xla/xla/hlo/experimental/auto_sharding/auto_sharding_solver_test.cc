@@ -342,6 +342,33 @@ TEST(CallORToolsSolverTest, HandlesFollowedEdges) {
   EXPECT_EQ(result, expected_result);
 }
 
+TEST(CallORToolsSolverTest, HandlesCollapsedEdge) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  AutoShardingSolverRequest_Pair edge;
+  edge.set_first(2);
+  edge.set_second(3);
+  // Both members of this edge will be collapsed into a single node.
+  *request.mutable_edges()->Add() = edge;
+  const CostMatrix r = {{9000, 5100, 5200, 5300,
+                         6000, 6100, 6200, 6300,
+                         7000, 7100, 7200, 7300,
+                         8000, 8100, 8200, 8300}};
+  AddCosts(request.mutable_resharding_costs(), r);
+  const CostMatrix t = {{50000, 51000, 52000, 53000,
+                         60000, 61000, 62000, 63000,
+                         70000, 71000, 72000, 73000,
+                         80000, 81000, 82000, 83000}};
+  AddCosts(request.mutable_duration_costs(), t);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
+  const double objective_value = 13972.0;
+  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
+}
+
 TEST(CallORToolsSolverTest, UsesHint) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const auto s_hint = {1, 0, 0, 0, 0};  // Not optimal, but close.

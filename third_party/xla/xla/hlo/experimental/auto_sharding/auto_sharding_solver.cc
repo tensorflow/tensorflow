@@ -649,8 +649,12 @@ AutoShardingSolverResult CallORToolsSolver(
         MPConstraint* constraint = solver->MakeRowConstraint(
             -1.0, MPSolver::infinity(),
             absl::StrCat("edge[", edge_idx, "][", j, "]"));
-        constraint->SetCoefficient(s[edge.first()][p], -1.0);
-        constraint->SetCoefficient(s[edge.second()][q], -1.0);
+        // In the special case where the source and destination are both
+        // represented by the same node variable, its coefficient in this
+        // constraint must be doubled.
+        double coeff = (s[edge.first()][p] == s[edge.second()][q]) ? 2.0 : 1.0;
+        constraint->SetCoefficient(s[edge.first()][p], -coeff);
+        constraint->SetCoefficient(s[edge.second()][q], -coeff);
         constraint->SetCoefficient(e[edge_idx][j], 1.0);
       }
     }
