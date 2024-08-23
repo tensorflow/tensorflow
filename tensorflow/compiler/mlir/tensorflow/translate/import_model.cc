@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cassert>
+#include <cctype>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <tuple>
@@ -33,24 +39,23 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/strings/escaping.h"
-#include "absl/strings/numbers.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -63,18 +68,25 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -97,37 +109,39 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "xla/status_macros.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/crash_analysis.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stack_frame.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -137,6 +151,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -1860,7 +1876,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
         mlir::StringAttr::get(context_, node.type_string() + ":")));
     // Retrieve the names from the experimental_debug_info.
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
-      auto node_name = original_nodes[i];
+      const auto& node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
       node_locations.push_back(create_location(node_name, func_name));
     }
@@ -2842,7 +2858,7 @@ class ObjectNames {
   llvm::SmallVector<std::string, 8> path_segments_;
   // The set of node IDs that are on the current DFS stack.
   // For cyclic object graphs, this prevents infinite recursion.
-  std::unordered_set<int> on_stack_nodes_;
+  absl::flat_hash_set<int> on_stack_nodes_;
 
   // Key: node_id.
   // Value: all object names that node_id appears as.
@@ -3806,7 +3822,7 @@ class SavedModelSignatureDefImporterLite {
       const std::string& name,
       const std::vector<std::pair<std::string, TensorInfo>>& inputs,
       const std::vector<std::pair<std::string, TensorInfo>>& outputs,
-      const std::vector<std::string> control_outputs,
+      std::vector<std::string> control_outputs,
       std::unordered_map<std::string, std::string>& tf_name_to_mlir_name);
 
   // Moves the functions in `sub_module` to `module_` and skips the duplicate
@@ -4280,7 +4296,7 @@ Status SavedModelSignatureDefImporter::LiftVariables(
 
 }  // namespace
 
-SavedModelMLIRImportInput::~SavedModelMLIRImportInput() {}
+SavedModelMLIRImportInput::~SavedModelMLIRImportInput() = default;
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
