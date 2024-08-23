@@ -290,7 +290,6 @@ constexpr std::array kTestedOpsUnaryElementwise = {HloOpcode::kAbs,
                                                    HloOpcode::kCbrt,
                                                    HloOpcode::kCeil,
                                                    HloOpcode::kClz,
-                                                   HloOpcode::kConvert,
                                                    HloOpcode::kCos,
                                                    HloOpcode::kErf,
                                                    HloOpcode::kExp,
@@ -319,6 +318,80 @@ INSTANTIATE_TEST_SUITE_P(
     UnaryElementwiseTestSuite, UnaryElementwiseTest,
     AllTestCombinationsForOpcodes(kTestedOpsUnaryElementwise),
     TritonSupportTestTypeOpcodeAndDeviceToString);
+
+class ConvertTest
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, PrimitiveType, se::GpuComputeCapability>> {
+};
+
+TEST_P(ConvertTest, Convert) {
+  auto [data_type_in, data_type_out, cc] = GetParam();
+
+  const std::string hlo_text = absl::Substitute(
+      R"(
+ENTRY triton_computation {
+  parameter_0 = $0[33,68]{1,0} parameter(0)
+  ROOT convert = $1[33,68]{1,0} convert(parameter_0)
+})",
+      primitive_util::LowercasePrimitiveTypeName(data_type_in),
+      primitive_util::LowercasePrimitiveTypeName(data_type_out));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(
+          hlo_text, data_type_in,  // The type provided here is irrelevant.
+          HloOpcode::kConvert));
+
+  bool skip_failure_branch_to_avoid_crash = false;
+
+  // The two variables below are only needed prior to C++20 as capturing
+  // structured bindings is not supported.
+  // TODO(b/328238952): remove this indirection after XLA moves to C++20.
+  PrimitiveType captured_in = data_type_in;
+  PrimitiveType captured_out = data_type_out;
+
+  auto any_is = [=](PrimitiveType compare) {
+    return captured_in == compare || captured_out == compare;
+  };
+
+  if (data_type_in != data_type_out && any_is(PrimitiveType::F8E4M3FN) &&
+      std::holds_alternative<se::CudaComputeCapability>(cc) &&
+      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper()) {
+    skip_failure_branch_to_avoid_crash |=
+        any_is(F16) || any_is(BF16) || any_is(F32);
+
+    // Crashes due to unsupported/unspecified rounding mode.
+    skip_failure_branch_to_avoid_crash |=
+        (data_type_in == PrimitiveType::F8E4M3FN &&
+         data_type_out == PrimitiveType::F64);
+  }
+
+  // Crashes due to unsupported/unspecified rounding mode.
+  skip_failure_branch_to_avoid_crash |=
+      (any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2)) ||
+      (data_type_in == PrimitiveType::F64 &&
+       (data_type_out == PrimitiveType::F8E4M3FN ||
+        data_type_out == PrimitiveType::F8E5M2));
+
+  // Crashes due to unsupported conversion.
+  skip_failure_branch_to_avoid_crash |=
+      (data_type_out == PrimitiveType::F64 &&
+       (data_type_in == PrimitiveType::F8E4M3FN ||
+        data_type_in == PrimitiveType::F8E5M2));
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
+                 skip_failure_branch_to_avoid_crash);
+}
+
+constexpr std::array kTestedOpsConvert = {HloOpcode::kConvert};
+
+INSTANTIATE_TEST_SUITE_P(
+    ConvertTestSuite, ConvertTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTwoTypesAndDeviceToString);
 
 using BinaryElementwiseTest = TritonSupportTestWithParam;
 
@@ -676,6 +749,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsBitcastReshape.begin(), kTestedOpsBitcastReshape.end());
   ret.insert(kTestedOpsUnaryElementwise.begin(),
              kTestedOpsUnaryElementwise.end());
+  ret.insert(kTestedOpsConvert.begin(), kTestedOpsConvert.end());
   ret.insert(kTestedOpsBinaryElementwise.begin(),
              kTestedOpsBinaryElementwise.end());
   ret.insert(kTestedOpsTernaryElementwise.begin(),

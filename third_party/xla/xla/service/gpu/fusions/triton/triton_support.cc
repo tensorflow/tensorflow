@@ -151,6 +151,42 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
   return ret;
 }
 
+CodegenDecision IsTritonSupportedConversion(
+    PrimitiveType output, PrimitiveType input,
+    const se::GpuComputeCapability& gpu_version) {
+  auto any_is = [=](PrimitiveType compare) {
+    return input == compare || output == compare;
+  };
+
+  auto error_message = [&]() {
+    return CodegenDecision(
+        absl::StrCat("Unsupported conversion in Triton: ",
+                     primitive_util::LowercasePrimitiveTypeName(input), " to ",
+                     primitive_util::LowercasePrimitiveTypeName(output)));
+  };
+
+  if (input != output && any_is(PrimitiveType::F8E4M3FN) &&
+      std::holds_alternative<se::CudaComputeCapability>(gpu_version) &&
+      !std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastHopper()) {
+    return error_message();
+  }
+
+  if (input != output &&
+      (any_is(PrimitiveType::F8E4M3FN) || any_is(PrimitiveType::F8E5M2)) &&
+      !(any_is(PrimitiveType::F16) || any_is(PrimitiveType::BF16) ||
+        any_is(PrimitiveType::F32))) {
+    return error_message();
+  }
+
+  if (IsTritonSupportedDataType(input, gpu_version) &&
+      (IsTritonSupportedDataType(output, gpu_version) ||
+       output == PrimitiveType::S4)) {
+    return CodegenDecision{};
+  }
+
+  return error_message();
+}
+
 // Set of binary elementwise ops that are genuinely supported by Triton.
 // TODO(b/345763510): make sure that this is accurate. At the moment, this is
 // mostly a fork of the same code in legacy_triton::.
@@ -227,6 +263,14 @@ bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
 
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  // Special handling for the kConvert instruction, which has a non-standard
+  // set of supported types.
+  if (instr.opcode() == HloOpcode::kConvert) {
+    return IsTritonSupportedConversion(instr.shape().element_type(),
+                                       instr.operand(0)->shape().element_type(),
+                                       gpu_version);
+  }
+
   auto type = instr.shape().element_type();
   bool output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
 
