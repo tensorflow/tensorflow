@@ -4840,8 +4840,11 @@ ENTRY main {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
+  if (!IsCuda()) {
+    GTEST_SKIP() << "FP8 Rewrite pattern is different on ROCM-6.2 ";
+  }
   if (HasFp8Support()) {
-    GTEST_SKIP() << "Test requires a pre-Ada GPU or an AMD GPU prior to MI300.";
+    GTEST_SKIP() << "Test requires a pre-Ada GPU";
   }
   const char* hlo_text = R"(
     HloModule test
@@ -8325,8 +8328,13 @@ ENTRY test {
 }
 )";
   // Large lhs is fine for cuBLASlt.
-  MatchOptimizedHlo(hlo_text,
-                    R"(; CHECK: custom_call_target="__cublas$lt$matmul")");
+  if (IsCuda()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(; CHECK: custom_call_target="__cublas$lt$matmul")");
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(; CHECK: custom_call_target="__cublas$gemm")");
+  }
 }
 
 TEST_F(CublasLtGemmRewriteTest, CublasLtOnlyMatchesLargeC64RhsPostAmpere) {
