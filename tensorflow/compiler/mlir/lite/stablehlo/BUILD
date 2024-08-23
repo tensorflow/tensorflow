@@ -641,6 +641,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:dot_general",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:gather",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:get_dimension_size",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:if",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:iota",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:pad",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:reduce",
