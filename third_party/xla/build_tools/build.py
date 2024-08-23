@@ -177,9 +177,6 @@ def _tag_filters_for_compute_capability(
 
 _DEFAULT_IMAGE = "gcr.io/tensorflow-sigs/build:latest-python3.11"
 
-# TODO(b/338885148): Remove this once the TF containers have cuDNN 9
-_CUDNN_9_IMAGE = "gcr.io/tensorflow-sigs/build@sha256:0a9728e258d7e0e5830d1960a65968ffdc1d138af5441e30948918e0d50ab2c7"
-
 _ARM64_JAX_MULTI_PYTHON_IMAGE = "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python"
 
 
@@ -190,7 +187,7 @@ def nvidia_gpu_build_with_compute_capability(
   return Build(
       type_=type_,
       repo="openxla/xla",
-      image_url=_CUDNN_9_IMAGE,
+      image_url=_DEFAULT_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
       test_tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
@@ -202,19 +199,6 @@ def nvidia_gpu_build_with_compute_capability(
       ),
       extra_setup_commands=(
           ["nvidia-smi"],
-          # TODO(b/338885148): Remove this after TF was updated to cuDNN 9
-          [
-              "sed",
-              "-i",
-              r"s/@sigbuild-r2\.17-clang_/@sigbuild-r2.17-clang-cudnn9_/g",
-              "github/xla/.bazelrc",
-          ],
-          [
-              "sed",
-              "-i",
-              r"s/8\.9\.7\.29/9.1.1/g",
-              "github/xla/.bazelrc",
-          ],
       ),
   )
 
