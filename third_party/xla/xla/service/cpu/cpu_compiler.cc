@@ -1190,6 +1190,49 @@ static llvm::orc::ThreadSafeModule CloneAsThreadSafeModule(
                                      std::move(clone_context));
 }
 
+namespace {
+// Compiled symbols (kernels and comparators) from a single LLVM module part.
+struct CompiledSymbolsPart {
+  std::vector<IrEmitter2::KernelInfo> kernels;
+  std::vector<IrEmitter2::ComparatorInfo> comparators;
+};
+}  // namespace
+
+// Collect IrEmitter2 symbols that got into the LLVM module part. We issue
+// compilation tasks in parallel, and to maximize concurrency we don't issue
+// separate compilation tasks that compile symbols from the same module.
+static CompiledSymbolsPart CollectCompiledSymbolsPart(
+    const IrEmitter2& ir_emitter, const llvm::Module& module) {
+  CompiledSymbolsPart syms;
+
+  auto find_kernel =
+      [&](llvm::StringRef name) -> std::optional<IrEmitter2::KernelInfo> {
+    for (auto& k : ir_emitter.kernels()) {
+      if (k.name == name) return k;
+    }
+    return std::nullopt;
+  };
+
+  auto find_comparator =
+      [&](llvm::StringRef name) -> std::optional<IrEmitter2::ComparatorInfo> {
+    for (auto& c : ir_emitter.comparators()) {
+      if (c.name == name) return c;
+    }
+    return std::nullopt;
+  };
+
+  for (auto& f : module.functions()) {
+    if (auto kernel = find_kernel(f.getName())) {
+      syms.kernels.push_back(*kernel);
+    }
+    if (auto comparator = find_comparator(f.getName())) {
+      syms.comparators.push_back(*comparator);
+    }
+  }
+
+  return syms;
+}
+
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   TraceMe trace([&] {
@@ -1359,6 +1402,10 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     // module preserving locals, which should guarantee that all thread local
     // computations end up in the same module with the corresponding kernel.
 
+    // Collect all compiled symbols grouped by LLVM module part, so that we can
+    // issue compile tasks in parallel without any interference.
+    std::vector<CompiledSymbolsPart> compiled_parts;
+
     if (num_parts > 1) {
       VLOG(3) << "Splitting LLVM module into " << num_parts
               << " parts before codegen to enable parallel compilation"
@@ -1371,8 +1418,10 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       llvm::SplitModule(
           *llvm_module, num_parts,
           [&, n = 0](std::unique_ptr<llvm::Module> llvm_module_part) mutable {
-            // Remove unused symbols left in the module after splitting.
+            // Collect symbols that are compiled in this LLVM module part.
             RemoveUnusedSymbols(*llvm_module_part);
+            compiled_parts.push_back(
+                CollectCompiledSymbolsPart(ir_emitter2, *llvm_module_part));
 
             // Clone LLVM module part into its own thread safe context.
             auto tsm = CloneAsThreadSafeModule(n, std::move(llvm_module_part));
@@ -1383,6 +1432,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     } else {
       VLOG(3) << "Compiled LLVM module without splitting (max split count: "
               << parallel_codegen_split_count << ")";
+      compiled_parts.push_back(
+          CollectCompiledSymbolsPart(ir_emitter2, *llvm_module));
       cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
           std::move(llvm_module), std::move(llvm_context))));
     }
@@ -1393,8 +1444,44 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       return std::string(mangled.begin(), mangled.end());
     };
 
-    // Mark kernel and comparator symbols as "kernel symbols" to suppress run
-    // time error logging when symbol is not found in module part.
+    // Compile all symbols in the given LLVM module part.
+    auto compile_part = [&](size_t part) -> absl::Status {
+      CompiledSymbolsPart& symbols = compiled_parts[part];
+
+      TraceMe trace([&] {
+        return TraceMeEncode("CpuCompiler::Codegen",
+                             {{"part", part},
+                              {"num_kernels", symbols.kernels.size()},
+                              {"num_comparators", symbols.comparators.size()}});
+      });
+
+      for (const auto& kernel : symbols.kernels) {
+        TraceMe trace(
+            [&] { return TraceMeEncode("Kernel", {{"name", kernel.name}}); });
+        if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
+          return Internal("Failed to find compiled symbol for kernel %s",
+                          kernel.name);
+        }
+      }
+
+      for (const auto& comparator : symbols.comparators) {
+        TraceMe trace([&] {
+          return TraceMeEncode("Comparator", {{"name", comparator.name}});
+        });
+        if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
+          return Internal("Failed to find compiled symbol for comparator %s",
+                          comparator.name);
+        }
+      }
+
+      return absl::OkStatus();
+    };
+
+    // Mark kernel and comparator symbols as "kernel symbols" to suppress
+    // run time error logging when symbol is not found in module part.
+    //
+    // TODO(ezhulenev): This should not be needed if we correctly remove unused
+    // symbols from the module part before codegen. Fix it!
     for (const auto& kernel : ir_emitter2.kernels()) {
       (*jit)->AddKernelSymbol(mangle(kernel.name));
     }
@@ -1402,31 +1489,9 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       (*jit)->AddKernelSymbol(mangle(comparator.name));
     }
 
-    // TODO(ezhulenev): We should be able to make it lazy on-demand, but today
-    // we capture obj_files by reference and it leads to asan errors. Figure
-    // out lifetime issues and move compilation to Thunk initialization stage.
-    for (const auto& kernel : ir_emitter2.kernels()) {
-      TraceMe trace([&] {
-        return TraceMeEncode("CpuCompiler::Codegen", {{"kernel", kernel.name}});
-      });
-
-      if (auto s = (*jit)->FindCompiledSymbol(mangle(kernel.name)); !s) {
-        return Internal("Failed to find compiled symbol for kernel %s",
-                        kernel.name);
-      }
-    }
-
-    // Compile auxiliary comparator functions used by sort thunks.
-    for (const auto& comparator : ir_emitter2.comparators()) {
-      TraceMe trace([&] {
-        return TraceMeEncode("CpuCompiler::Codegen",
-                             {{"comparator", comparator.name}});
-      });
-
-      if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
-        return Internal("Failed to find compiled symbol for comparator %s",
-                        comparator.name);
-      }
+    // Compile all symbols in the LLVM module parts.
+    for (size_t part = 0; part < compiled_parts.size(); ++part) {
+      TF_RETURN_IF_ERROR(compile_part(part));
     }
 
     // Create constant allocations from the buffer assignment.
@@ -1442,7 +1507,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                               std::move(hlo_profile_printer_data),
                               std::move(hlo_profile_index_map)));
 
-    // Save object files to be able to export them to AOT compilation result.
+    // Save object files to be able to export them to AOT compilation
+    // result.
     cpu_executable->set_obj_files(std::move(obj_files));
 
     if (embed_ir_in_executable) {
@@ -1560,8 +1626,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                        "xla_cpu_fast_math_honor_infs"),
         std::make_pair(&DebugOptions::xla_cpu_fast_math_honor_nans,
                        "xla_cpu_fast_math_honor_nans")}) {
-    // This only works because each of the method pointers above returns a bool.
-    // Otherwise we'd have to do some template magic.
+    // This only works because each of the method pointers above returns a
+    // bool. Otherwise we'd have to do some template magic.
     const auto& field_method_ptr = fn_and_name.first;
     const auto& field_name = fn_and_name.second;
     bool first_module_val =
