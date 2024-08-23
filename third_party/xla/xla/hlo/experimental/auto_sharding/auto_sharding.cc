@@ -89,9 +89,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -3975,32 +3972,26 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   CHECK_OK(module->entry_computation()->Accept(&hlo_cost_analysis));
   for (size_t mesh_idx = 0; mesh_idx < partial_mesh_shapes.size(); ++mesh_idx) {
     // Adjust existing shardings with current partial mesh shapes.
-    std::vector<int64_t> mesh_shape = partial_mesh_shapes[mesh_idx];
+    const std::vector<int64_t>& mesh_shape = partial_mesh_shapes[mesh_idx];
     LOG(INFO) << "Processing partial mesh shape: "
               << spmd::ToString(mesh_shape);
-    spmd::DeviceMesh device_mesh(mesh_shape);
 
-    int64_t total_devices = 1;
-    for (int64_t i : mesh_shape) {
-      total_devices *= i;
-    }
+    spmd::DeviceMesh device_mesh(mesh_shape);
     if (mesh_idx != partial_mesh_shapes.size() - 1) {
+      device_mesh.FillIota(0);
       TF_ASSIGN_OR_RETURN(
           bool changed,
           spmd::AdjustShardingsWithPartialMeshShape(
               sequence.instructions(), instructions_to_shard, mesh_shape,
-              total_devices,
+              original_device_mesh,
               /* crash_on_error */ !option_.try_multiple_mesh_shapes));
       LOG(INFO)
           << "Shardings are adjusted based on current partial mesh shape: "
           << changed;
-    }
-    if (option_.device_mesh_ids.size() == total_devices) {
+    } else {
       // It is unclear what device order to use for partial meshes. So we only
       // use the actual device order only for the final full mesh.
       device_mesh.SetValues(option_.device_mesh_ids);
-    } else {
-      device_mesh.FillIota(0);
     }
 
     // TODO (zhuohan): Include the prof result as an option.
@@ -4285,18 +4276,6 @@ bool IsSmallTensor(const HloInstruction* ins,
   return spmd::ByteSizeOfShape(ins->shape()) <= option.small_tensor_byte_size;
 }
 
-bool ShardedOnTooManyMeshAxes(const HloModule& module) {
-  for (const auto* computation : module.computations()) {
-    for (const auto* instruction : computation->instructions()) {
-      if (instruction->has_sharding() && instruction->sharding().IsTiled() &&
-          spmd::NumTileDimensions(instruction->sharding()) >= 3) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 bool HasUnsupportedNestedTuples(const HloModule& module) {
   for (const auto* computation : module.computations()) {
     for (const auto* instruction : computation->instructions()) {
@@ -4329,13 +4308,6 @@ absl::StatusOr<bool> AutoSharding::Run(
     return false;
   }
   LOG(INFO) << "Starting the auto sharding pass";
-
-  if (ShardedOnTooManyMeshAxes(*module)) {
-    LOG(FATAL) << "The input module contains sharding annotations "  // Crash OK
-                  "over a mesh with too many axes (>2). This case is currently "
-                  "not well supported.";
-    return false;
-  }
 
   // TODO(b/332951306): Remove this check once nested tuples are supported
   // everywhere

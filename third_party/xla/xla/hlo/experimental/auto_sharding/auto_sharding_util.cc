@@ -2008,90 +2008,73 @@ HloInstruction* FindInstruction(
 
 absl::StatusOr<std::optional<HloSharding>>
 AdjustShardingWithPartialMeshShapePerElement(
-    const HloSharding& sharding,
-    const absl::flat_hash_set<int64_t>& valid_shards, int64_t total_num_devices,
+    int64_t tensor_shape_rank, const HloSharding& sharding,
+    const absl::flat_hash_set<int64_t>& valid_shards_idx,
+    const DeviceMesh& original_device_mesh, int64_t total_num_devices,
     bool crash_on_error) {
-  if (sharding.TotalNumTiles() > total_num_devices &&
-      VectorGreaterThanOneElementCount(
-          sharding.tile_assignment().dimensions()) > valid_shards.size()) {
-    for (auto shard : valid_shards) {
-      bool contains_shard = false;
-      for (auto dim : sharding.tile_assignment().dimensions()) {
-        if (dim == shard) {
-          contains_shard = true;
-          break;
-        }
-      }
+  // TODO: Do not modify the sharding if it is already a partial sharding.
+  // Partial shardings come from previous iterations with mesh shapes and are
+  // handled appropriately in TrimOrGenerateStrategiesBasedOnExistingSharding.
+  if (!ShardingIsComplete(sharding, original_device_mesh.num_elements()) ||
+      sharding.IsReplicated() || sharding.IsManual()) {
+    return std::nullopt;
+  }
 
-      if (!contains_shard && !sharding.IsReplicated()) {
-        auto err_msg = absl::StrCat(
-            "There is a mismatch between the user provided sharding ",
-            sharding.ToString(),
-            " and the device mesh. This case is currently unsupported.");
-        if (crash_on_error) {
-          LOG(FATAL) << err_msg;
-        } else {
-          LOG(WARNING) << err_msg;
-          return absl::InternalError(err_msg);
-        }
-      }
+  std::vector<int64_t> reshape_dims(original_device_mesh.num_dimensions(), 1);
+  std::vector<int> transpose_perm;
+  transpose_perm.reserve(original_device_mesh.num_dimensions());
+  absl::flat_hash_set<int64_t> valid_shards;
+  for (int i = 0; i < original_device_mesh.num_dimensions(); ++i) {
+    if (valid_shards_idx.contains(i)) {
+      valid_shards.insert(original_device_mesh.dim(i));
+      reshape_dims[i] = original_device_mesh.dim(i);
+    }
+  }
+
+  std::vector<int64_t> new_tile_assignment_dimensions;
+  bool replicate_on_last_dim = false;
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
+                      GetMeshDimPermutationOrderInShardingSpec(
+                          sharding, original_device_mesh,
+                          /*consider_reverse_device_meshes=*/true));
+
+  int mesh_axis_idx = 0;
+  int end = sharding.ReplicateOnLastTileDim()
+                ? sharding.tile_assignment().num_dimensions() - 1
+                : sharding.tile_assignment().num_dimensions();
+  for (int i = 0; i < end; ++i) {
+    if (sharding.tile_assignment().dim(i) == 1) {
+      new_tile_assignment_dimensions.push_back(1);
+      continue;
     }
 
-    std::vector<int64_t> new_tile_assignment_dimensions;
-    if (sharding.ReplicateOnLastTileDim()) {
-      // If replicate on valid_shards dimensions, turns this instruction
-      // into replicate.
-      // If two mesh dimensions are the same size, it becomes replicated too.
-      if (valid_shards.find(sharding.tile_assignment().dim(
-              sharding.tile_assignment().num_dimensions() - 1)) !=
-          valid_shards.end()) {
-        return HloSharding::Replicate();
+    int product = 1;
+    int partial_product = 1;
+    do {
+      if (valid_shards_idx.contains(axes[mesh_axis_idx])) {
+        partial_product *= original_device_mesh.dim(axes[mesh_axis_idx]);
       }
-      // If replicate on other dimensions, remove the
-      // replicate_on_last_tile
-      new_tile_assignment_dimensions.assign(
-          sharding.tile_assignment().dimensions().begin(),
-          sharding.tile_assignment().dimensions().end());
-      new_tile_assignment_dimensions.erase(
-          new_tile_assignment_dimensions.end() - 1);
-    } else {
-      new_tile_assignment_dimensions.assign(
-          sharding.tile_assignment().dimensions().begin(),
-          sharding.tile_assignment().dimensions().end());
-      absl::flat_hash_set<int64_t> current_shards;
-      for (const auto dim : new_tile_assignment_dimensions) {
-        if (dim > 1) {
-          current_shards.insert(dim);
-        }
-      }
-      if (current_shards.size() == 1) {
-        // Two mesh dimensions are the same size. Keep the first sharded
-        // dimension.
-        for (int32_t i = new_tile_assignment_dimensions.size() - 1; i >= 0;
-             i--) {
-          if (new_tile_assignment_dimensions[i] > 1 &&
-              valid_shards.find(new_tile_assignment_dimensions[i]) !=
-                  valid_shards.end()) {
-            new_tile_assignment_dimensions[i] = 1;
-            break;
-          }
-        }
-      } else {
-        for (size_t i = 0; i < new_tile_assignment_dimensions.size(); i++) {
-          if (new_tile_assignment_dimensions[i] > 1 &&
-              valid_shards.find(new_tile_assignment_dimensions[i]) ==
-                  valid_shards.end()) {
-            new_tile_assignment_dimensions[i] = 1;
-          }
-        }
-      }
-    }
-    Array<int64_t> tile_assignment(new_tile_assignment_dimensions);
-    std::vector<int64_t> device_ids = std::vector<int64_t>(total_num_devices);
-    // Set arbitrary values because it will not be used.
-    std::iota(device_ids.begin(), device_ids.end(), 0);
-    tile_assignment.SetValues(device_ids);
-    return HloSharding::Tile(std::move(tile_assignment));
+      product *= original_device_mesh.dim(axes[mesh_axis_idx]);
+      mesh_axis_idx++;
+    } while (product < sharding.tile_assignment().dim(i));
+    new_tile_assignment_dimensions.push_back(partial_product);
+  }
+  int64_t total_devices_considered = Product(new_tile_assignment_dimensions);
+  if (total_devices_considered < total_num_devices) {
+    new_tile_assignment_dimensions.push_back(total_num_devices /
+                                             total_devices_considered);
+    replicate_on_last_dim = true;
+  }
+
+  // Make HloSharding
+  TileAssignment tile_assignment(new_tile_assignment_dimensions, reshape_dims,
+                                 std::vector<int>(axes.begin(), axes.end()));
+  HloSharding result =
+      replicate_on_last_dim
+          ? HloSharding::PartialTile(std::move(tile_assignment))
+          : HloSharding::Tile(std::move(tile_assignment));
+  if (result != sharding) {
+    return result;
   }
   return std::nullopt;
 }
@@ -2099,15 +2082,24 @@ AdjustShardingWithPartialMeshShapePerElement(
 absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
-    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
-    bool crash_on_error) {
+    const std::vector<int64_t>& mesh_shape,
+    const DeviceMesh& original_device_mesh, bool crash_on_error) {
   bool changed = false;
-  absl::flat_hash_set<int64_t> valid_shards;
-  for (const auto shape : mesh_shape) {
-    if (shape > 1) {
-      valid_shards.insert(shape);
+  int64_t total_num_devices = Product(mesh_shape);
+  absl::flat_hash_set<int64_t> valid_shards_idx;
+  for (int i = 0; i < mesh_shape.size(); ++i) {
+    if (mesh_shape[i] == original_device_mesh.dim(i)) {
+      valid_shards_idx.insert(i);
     }
   }
+
+  auto adjust_sharding = [&](int64_t tensor_shape_rank,
+                             const HloSharding& sharding) {
+    return AdjustShardingWithPartialMeshShapePerElement(
+        tensor_shape_rank, sharding, valid_shards_idx, original_device_mesh,
+        total_num_devices, crash_on_error);
+  };
+
   for (HloInstruction* inst : instructions) {
     if (!inst->has_sharding() || !instructions_to_shard.contains(inst)) {
       continue;
@@ -2116,43 +2108,32 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
       ShapeTree<HloSharding> output_tuple_sharding(inst->shape(), Undefined());
       std::vector<HloSharding> output_flattened_shardings;
       for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
-        auto shape = inst->shape().tuple_shapes(i);
-        auto sharding = inst->sharding().tuple_elements()[i];
+        const Shape& shape = inst->shape().tuple_shapes(i);
+        const HloSharding& sharding = inst->sharding().tuple_elements()[i];
         if (sharding.IsUnknown()) {
           output_flattened_shardings.push_back(sharding);
           continue;
         }
-        absl::StatusOr<std::optional<HloSharding>> new_sharding_result =
-            AdjustShardingWithPartialMeshShapePerElement(
-                sharding, valid_shards, total_num_devices, crash_on_error);
-        if (new_sharding_result.ok()) {
-          if (new_sharding_result.value().has_value()) {
-            output_flattened_shardings.push_back(*new_sharding_result.value());
-          } else {
-            output_flattened_shardings.push_back(sharding);
-          }
-        } else {
-          return new_sharding_result.status();
-        }
+        TF_ASSIGN_OR_RETURN(std::optional<HloSharding> new_sharding,
+                            adjust_sharding(shape.rank(), sharding));
+        output_flattened_shardings.push_back(
+            new_sharding.has_value() ? *new_sharding : sharding);
+        changed |= new_sharding.has_value();
       }
       size_t i = 0;
-      for (auto& leaf : output_tuple_sharding.leaves()) {
+      for (std::pair<ShapeIndex, HloSharding>& leaf :
+           output_tuple_sharding.leaves()) {
         leaf.second = output_flattened_shardings[i++];
       }
       inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
-    } else {
-      absl::StatusOr<std::optional<HloSharding>> sharding_result =
-          AdjustShardingWithPartialMeshShapePerElement(
-              inst->sharding(), valid_shards, total_num_devices,
-              crash_on_error);
-      if (sharding_result.ok()) {
-        if (sharding_result.value().has_value()) {
-          inst->set_sharding(*sharding_result.value());
-          changed = true;
-        }
-      } else {
-        return sharding_result.status();
-      }
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::optional<HloSharding> new_sharding,
+        adjust_sharding(inst->shape().rank(), inst->sharding()));
+    if (new_sharding.has_value()) {
+      inst->set_sharding(*new_sharding);
+      changed = true;
     }
   }
   return changed;
