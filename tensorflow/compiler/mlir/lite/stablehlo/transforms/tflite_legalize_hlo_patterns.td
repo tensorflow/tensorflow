@@ -72,6 +72,9 @@ def IsNotTFLStyleBroadcast :
 def ExpandedShape :
   NativeCodeCall<"ExpandedShape($_builder, $0, $1, $2)">;
 
+def ExpandedDynamicShape :
+  NativeCodeCall<"ExpandedDynamicShape($_builder, $0, $1, $2)">;
+
 def : Pat<
   (MHLO_BroadcastInDimOp:$output
     $input,
@@ -93,6 +96,33 @@ def : Pat<
           $broadcast_dimensions,
           $output)),
     (ShapeToConst $output)),
+  [(IsNotTFLStyleBroadcast $broadcast_dimensions, $output)]>;
+
+def : Pat<
+  (MHLO_DynamicBroadcastInDimOp:$output
+    $input,
+    $output_dimensions,
+    $broadcast_dimensions,
+    $expanding_dimensions_unused,
+    $nonexpanding_dimensions_unused),
+  (TFL_BroadcastToOp
+    $input,
+    $output_dimensions),
+  [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>;
+
+def : Pat<
+  (MHLO_DynamicBroadcastInDimOp:$output
+    $input,
+    $output_dimensions,
+    $broadcast_dimensions,
+    $expanding_dimensions_unused,
+    $nonexpanding_dimensions_unused),
+  (TFL_BroadcastToOp
+    (ExpandedDynamicShape
+      $input,
+      $broadcast_dimensions,
+      $output),
+    $output_dimensions),
   [(IsNotTFLStyleBroadcast $broadcast_dimensions, $output)]>;
 
 

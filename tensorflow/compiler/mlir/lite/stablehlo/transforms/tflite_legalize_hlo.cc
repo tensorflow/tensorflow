@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -103,6 +104,48 @@ arith::ConstantOp ExpandedShape(OpBuilder& b, Value input,
       {static_cast<int64_t>(expanded_shape.size())}, b.getIntegerType(32));
   auto attr = DenseElementsAttr::get(attr_type, expanded_shape);
   return b.create<arith::ConstantOp>(output.getLoc(), attr_type, attr);
+}
+
+Value ExpandedDynamicShape(OpBuilder& b, Value input,
+                           DenseIntElementsAttr broadcast_dimensions,
+                           Value output) {
+  int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
+  llvm::SmallVector<int64_t, 4> expanded_dimensions;
+  llvm::SmallSet<int64_t, 4> broadcast_dimensions_values;
+
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    broadcast_dimensions_values.insert(x.value().getSExtValue());
+  }
+
+  for (int64_t i = 0; i < output_rank; i++) {
+    if (!broadcast_dimensions_values.contains(i)) {
+      expanded_dimensions.push_back(i);
+    }
+  }
+
+  Value expanded_input = input;
+
+  for (int64_t i : expanded_dimensions) {
+    auto index_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({}, b.getI64Type()), {i});
+    Value index = b.create<arith::ConstantOp>(output.getLoc(), index_attr);
+
+    auto cur_type = llvm::cast<ShapedType>(expanded_input.getType());
+    auto cur_shape = cur_type.getShape();
+    llvm::SmallVector<int64_t> new_shape;
+
+    auto begin = cur_shape.begin();
+    new_shape.append(begin, begin + i);
+    new_shape.push_back(1);
+    new_shape.append(begin + i, cur_shape.end());
+
+    auto new_type = RankedTensorType::get(new_shape, cur_type.getElementType());
+
+    expanded_input = b.create<TFL::ExpandDimsOp>(output.getLoc(), new_type,
+                                                 expanded_input, index);
+  }
+
+  return expanded_input;
 }
 
 bool IsSign(APInt a, APInt sign) {
@@ -341,6 +384,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::DivOp,
       mhlo::DotGeneralOp,
       mhlo::DotOp,
+      mhlo::DynamicBroadcastInDimOp,
       mhlo::DynamicReshapeOp,
       mhlo::MaxOp,
       mhlo::MinOp,
