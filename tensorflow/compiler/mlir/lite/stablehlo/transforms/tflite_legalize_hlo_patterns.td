@@ -357,6 +357,9 @@ def TensorIsSign :
 def ValueGreaterThanZero :
   Constraint<CPred<"ValueGreaterThanZero($0)">>;
 
+def : Pat<
+  (MHLO_RoundNearestEvenOp $input),
+  (TFL_RoundOp $input)>;
 
 // Converts a dag of HLOs representing banker rounding (round x.5 to nearest
 // even) to tfl.round. This only supports float types because mhlo.floor only

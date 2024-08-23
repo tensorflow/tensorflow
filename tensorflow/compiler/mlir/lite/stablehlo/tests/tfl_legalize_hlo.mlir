@@ -2304,7 +2304,17 @@ func.func @dynamic_update_slice_operand_has_dynamic_dim(%arg0: tensor<1x?x256xf3
 // rounding
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: round
+// CHECK-LABEL: @nearest_even
+func.func @nearest_even(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.round_nearest_even"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// CHECK: %0 = "tfl.round"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+
+// -----
+
+// CHECK-LABEL: @round
 func.func @round(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {
   %0 = mhlo.constant dense<2.000000e+00> : tensor<8x128xf32>
   %1 = mhlo.constant dense<5.000000e-01> : tensor<8x128xf32>
