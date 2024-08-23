@@ -48,6 +48,7 @@ limitations under the License.
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBufferRef.h"
@@ -1271,6 +1273,29 @@ static CompiledSymbolsPart CollectCompiledSymbolsPart(
   return syms;
 }
 
+// If LLVM module has large constants constructed from literals, we don't want
+// to split it, because it will cause us to copy large constants across module
+// parts. We should not be storing large constants in LLVM IR in a first place,
+// but while we do that, we have to be extra-careful, or it leads to extremely
+// long compilation times, OOMs and timeouts.
+//
+// TODO(b/361800465): Figure out how to avoid putting large constants into
+// LLVM IR in the first place.
+static bool HasLargeConstants(llvm::Module& module) {
+  static constexpr int kMaxConstantSize = 10000;
+  for (auto& g : module.globals()) {
+    if (!g.hasInitializer()) {
+      continue;
+    }
+
+    llvm::Constant* initializer = g.getInitializer();
+    if (auto* arr = llvm::dyn_cast<llvm::ArrayType>(initializer->getType())) {
+      if (arr->getNumElements() > kMaxConstantSize) return true;
+    }
+  }
+  return false;
+}
+
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   TraceMe trace([&] {
@@ -1451,6 +1476,11 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
             << " kernels and " << ir_emitter2.comparators().size()
             << " comparators";
 
+    if (HasLargeConstants(*llvm_module)) {
+      VLOG(3) << "Skip parallel compilation due to large constants";
+      num_parts = 1;
+    }
+
     if (num_parts > 1) {
       VLOG(3) << "Split LLVM module into " << num_parts
               << " parts before codegen to enable parallel compilation"
@@ -1473,6 +1503,10 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
             cantFail((*jit)->AddModule(std::move(tsm), /*dylib_index=*/n++));
           },
           /*PreserveLocals=*/true, /*RoundRobin=*/true);
+
+      // Free resources used by the original LLVM module.
+      llvm_module.reset();
+      llvm_context.reset();
 
     } else {
       VLOG(3) << "Compile LLVM module without splitting (max split count: "
