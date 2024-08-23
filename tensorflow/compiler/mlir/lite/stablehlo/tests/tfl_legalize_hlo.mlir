@@ -3255,6 +3255,16 @@ func.func @reverse(%arg0: tensor<3x2xi32>) -> tensor<3x2xi32> {
 
 // -----
 
+// CHECK-LABEL: concat
+func.func @concat(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<6x3xf32> {
+  %0 = "mhlo.concatenate"(%arg0, %arg1) <{dimension = 0 : i64}> : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+  func.return %0 : tensor<6x3xf32>
+}
+
+// CHECK: %0 = "tfl.concatenation"(%arg0, %arg1) <{axis = 0 : i32, fused_activation_function = "NONE"}> : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+
+// -----
+
 // CHECK-LABEL: broadcast_in_dim_tfl_style
 func.func @broadcast_in_dim_tfl_style(%arg0: tensor<8x1x16xf32>) -> tensor<3x8x8x16xf32> {
   %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>, name = "broadcast.0"}> : (tensor<8x1x16xf32>) -> tensor<3x8x8x16xf32>

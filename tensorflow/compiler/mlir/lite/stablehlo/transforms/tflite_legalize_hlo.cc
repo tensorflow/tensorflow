@@ -381,6 +381,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::Atan2Op,
       mhlo::BroadcastInDimOp,
       mhlo::ClampOp,
+      mhlo::ConcatenateOp,
       mhlo::DivOp,
       mhlo::DotGeneralOp,
       mhlo::DotOp,

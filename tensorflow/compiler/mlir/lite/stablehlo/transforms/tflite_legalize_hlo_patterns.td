@@ -44,6 +44,18 @@ def : Pat<
     (CreateTFLCastToInt32Op
       (Arith_ConstantOp $dims)))>;
 
+def I64AttrToI32Attr:
+  NativeCodeCall<
+    "$_builder.getI32IntegerAttr("
+      "static_cast<int32_t>($0.cast<IntegerAttr>().getInt()))">;
+
+def : Pat<
+  (MHLO_ConcatenateOp $inputs, $dim),
+  (TFL_ConcatenationOp
+    $inputs,
+    (I64AttrToI32Attr $dim),
+    TFL_AF_None)>;
+
 //
 // Reshapes
 //
