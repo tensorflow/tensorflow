@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "xla/service/cpu/conv_canonicalization.h"
 
-#include <vector>
+#include <cstdint>
 
+#include "xla/array4d.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
+#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/target_machine_features_fake.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 

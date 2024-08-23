@@ -966,7 +966,9 @@ xla_test(
     srcs = ["nop_custom_call_test.cc"],
     backends = ["gpu"],
     deps = [
+        "//xla:literal_util",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

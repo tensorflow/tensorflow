@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TESTS_HLO_TEST_BASE_H_
 #define XLA_TESTS_HLO_TEST_BASE_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,24 +24,33 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/service/backend.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/platform_util.h"
 #include "xla/shape_layout.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/manifest_checking_test.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 

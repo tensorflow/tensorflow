@@ -18,29 +18,39 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "third_party/protobuf/util/message_differencer.h"
+#include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_memory_scheduler.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/test_compilation_environment.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

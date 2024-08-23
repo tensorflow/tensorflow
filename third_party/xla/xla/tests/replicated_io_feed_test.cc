@@ -13,12 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/hlo_runner.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
 
 namespace xla {
 namespace gpu {

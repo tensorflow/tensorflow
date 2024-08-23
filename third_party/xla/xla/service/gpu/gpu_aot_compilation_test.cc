@@ -20,10 +20,18 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
@@ -32,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

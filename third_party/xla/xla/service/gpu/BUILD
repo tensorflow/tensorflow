@@ -1917,6 +1917,8 @@ xla_cc_test(
         ":amdgpu_compiler_impl",
     ]) + [
         ":gpu_transfer_manager",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/service:compiler",
@@ -1928,9 +1930,12 @@ xla_cc_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
     ],
