@@ -45,6 +45,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -1158,6 +1161,35 @@ static void RemoveUnusedSymbols(llvm::Module& module) {
   }
 }
 
+// Clones a ThreadSafeModule from the given LLVM module in a new LLVM context.
+//
+// To enable parallel compilation, each LLVM module has to be owned by a
+// separate LLVM context. We take each part of the original module after a
+// split, and clone it into a new LLVM context.
+static llvm::orc::ThreadSafeModule CloneAsThreadSafeModule(
+    int64_t part, std::unique_ptr<llvm::Module> module) {
+  TraceMe trace([&] {
+    return TraceMeEncode("CpuCompiler::CloneAsThreadSafeModule",
+                         {{"part", part}});
+  });
+
+  // There is no way to clone a module from one context to another, so we need
+  // to serialize the module to bitcode and parse it back into the new context.
+  llvm::SmallString<0> bc;
+  llvm::raw_svector_ostream bcos(bc);
+  llvm::WriteBitcodeToFile(*module, bcos);
+
+  // Parse module back into its own LLVM context.
+  auto clone_context = std::make_unique<llvm::LLVMContext>();
+  auto clone_module = llvm::parseBitcodeFile(
+      llvm::MemoryBufferRef(llvm::StringRef(bc.data(), bc.size()),
+                            absl::StrCat("__compute_module_part_", part)),
+      *clone_context);
+
+  return llvm::orc::ThreadSafeModule(std::move(*clone_module),
+                                     std::move(clone_context));
+}
+
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   TraceMe trace([&] {
@@ -1326,7 +1358,6 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     // other, so we can compile each individual part in parallel. We split
     // module preserving locals, which should guarantee that all thread local
     // computations end up in the same module with the corresponding kernel.
-    llvm::orc::ThreadSafeContext thread_safe_context(std::move(llvm_context));
 
     if (num_parts > 1) {
       VLOG(3) << "Splitting LLVM module into " << num_parts
@@ -1334,8 +1365,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
               << " (max split count: " << parallel_codegen_split_count << ")";
 
       TraceMe trace([&] {
-        return TraceMeEncode("CpuCompiler::SplitModule",
-                             {{"num_parts", num_parts}});
+        return TraceMeEncode("SplitModule", {{"num_parts", num_parts}});
       });
 
       llvm::SplitModule(
@@ -1343,21 +1373,19 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
           [&, n = 0](std::unique_ptr<llvm::Module> llvm_module_part) mutable {
             // Remove unused symbols left in the module after splitting.
             RemoveUnusedSymbols(*llvm_module_part);
-            cantFail((*jit)->AddModule(
-                llvm::orc::ThreadSafeModule(std::move(llvm_module_part),
-                                            thread_safe_context),
-                n++ % parallel_codegen_split_count));
+
+            // Clone LLVM module part into its own thread safe context.
+            auto tsm = CloneAsThreadSafeModule(n, std::move(llvm_module_part));
+            cantFail((*jit)->AddModule(std::move(tsm), /*dylib_index=*/n++));
           },
-          /*PreserveLocals=*/true);
+          /*PreserveLocals=*/true, /*RoundRobin=*/true);
+
     } else {
       VLOG(3) << "Compiled LLVM module without splitting (max split count: "
               << parallel_codegen_split_count << ")";
       cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
-          std::move(llvm_module), thread_safe_context)));
+          std::move(llvm_module), std::move(llvm_context))));
     }
-
-    // Move ownership of the LLVM context to the JIT.
-    (*jit)->SetContext(std::move(thread_safe_context));
 
     auto mangle = [&](std::string_view name) {
       llvm::SmallVector<char, 40> mangled;
