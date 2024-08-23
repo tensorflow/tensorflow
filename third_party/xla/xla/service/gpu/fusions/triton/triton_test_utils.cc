@@ -198,6 +198,14 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
 
 }  // namespace
 
+DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() {
+  auto options = HloTestBase::GetDebugOptionsForTest();
+  // It's necessary to set this manually, because it's disabled in optimized
+  // builds and there are some ASAN builds that run on TAP with -c opt.
+  options.set_xla_gpu_llvm_verification_level(1);
+  return options;
+}
+
 absl::StatusOr<TritonSupportTestBase::TestedInstruction>
 TritonSupportTestBase::ParseTemplateAndGetInstruction(
     absl::string_view hlo_template, xla::PrimitiveType data_type,
