@@ -1023,18 +1023,25 @@ class ShapeUtil {
   // normalized shapes. The original input/output shapes are called unnormalized
   // shapes.
   //
-  // 'permutation' specifies the kind of transpose. For a 0-2-1 transpose, it
-  // should be set to {0, 2, 1}.
-  // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
-  // normalized shape of `b` or the 0-2-1 shape. In general, the
-  // permutation[0]-permutation[1]-...-permutation[permutation.size()-1] shape
-  // is returned.
-  static std::optional<absl::InlinedVector<int64_t, 3>>
-  GetNormalizedTransposeShape(const Shape& input_shape,
-                              const Shape& output_shape,
-                              absl::InlinedVector<int64_t, 3>& permutation);
-
-  // Entry point for physical + logical transposition.
+  // 'output_shape' should have the default layout (descending minor to major),
+  // otherwise std::nullopt is returned.
+  //
+  // 'dimensions' specifies the kind of the unnormalized transpose and defines
+  // the permutation of the input shape that will result in the provided output
+  // shape. So to compute the input shape, we need to apply the inverse
+  // permutation of 'dimensions'.
+  //
+  // 'permutation' is an output parameter and specifies the kind of the
+  // normalized transpose. If the derived permutation is the identity
+  // permutation, std::nullopt is returned.
+  //
+  // The method returns the dimensions for the normalized transpose shape, or
+  // std::nullopt in the cases mentioned above.
+  //
+  // Example: Suppose the unnormalized output shape is [32, 1, 10, 11], and
+  // 'dimensions' is set to {3, 1, 0, 2}. This means the corresponding input
+  // shape is [10, 1, 11, 32]. The normalized output shape is [32, 110] with
+  // 'permutation' set to {1,0}.
   static std::optional<absl::InlinedVector<int64_t, 3>>
   GetNormalizedLogicalTransposeShape(
       const Shape& output_shape, absl::Span<int64_t const> dimensions,

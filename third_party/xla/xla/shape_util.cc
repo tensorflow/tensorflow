@@ -2010,12 +2010,6 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
                                                   dimensions);
 }
 
-static absl::InlinedVector<int64_t, 3> MajorToMinorLayout(const Shape& s) {
-  absl::Span<const int64_t> minor_to_major = LayoutUtil::MinorToMajor(s);
-  return absl::InlinedVector<int64_t, 3>{minor_to_major.rbegin(),
-                                         minor_to_major.rend()};
-}
-
 static std::optional<absl::InlinedVector<int64_t, 3>>
 GetNormalizedTransposeShapeHelper(
     const Shape& output_shape, absl::Span<int64_t const> output_to_input,
@@ -2086,28 +2080,6 @@ ShapeUtil::GetNormalizedLogicalTransposeShape(
 
   return GetNormalizedTransposeShapeHelper(
       DropDegenerateDimensions(output_shape), new_dimensions, permutation);
-}
-
-/* static */ std::optional<absl::InlinedVector<int64_t, 3>>
-ShapeUtil::GetNormalizedTransposeShape(
-    const Shape& input_shape, const Shape& output_shape,
-    absl::InlinedVector<int64_t, 3>& permutation) {
-  permutation.clear();
-  if (!ShapeUtil::CompatibleIgnoringElementType(input_shape, output_shape)) {
-    return std::nullopt;
-  }
-
-  absl::InlinedVector<int64_t, 3> major_to_minor_input =
-      MajorToMinorLayout(input_shape);
-  absl::InlinedVector<int64_t, 3> major_to_minor_output =
-      MajorToMinorLayout(output_shape);
-  std::vector<int64_t> output_to_input = ComposePermutations(
-      InversePermutation(major_to_minor_input), major_to_minor_output);
-
-  return GetNormalizedTransposeShapeHelper(
-      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          output_shape),
-      output_to_input, permutation);
 }
 
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
