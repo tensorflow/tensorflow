@@ -16,7 +16,7 @@ limitations under the License.
 // This transformation pass takes operations in TensorFlowLite dialect and
 // optimizes them to resulting operations in TensorFlowLite dialect.
 
-#include "tensorflow/compiler/mlir/lite/transforms/optimize.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 
 #include <algorithm>
 #include <array>
@@ -51,11 +51,11 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -2639,10 +2639,10 @@ void OptimizePass::runOnOperation() {
            FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
            FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
            FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
-  if (!this->disable_fuse_mul_and_fc_) {
+  if (!GetOptions().disable_fuse_mul_and_fc) {
     patterns.add<FuseMulAndFullyConnected>(ctx);
   }
-  if (this->enable_canonicalization_)
+  if (GetOptions().enable_canonicalization)
     AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
@@ -2664,10 +2664,10 @@ void OptimizePass::runOnOperation() {
       OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
       FuseTransposeReshapeIntoBatchMatmul>(ctx);
-  if (!this->disable_fuse_mul_and_fc_) {
+  if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
-  if (this->enable_canonicalization_)
+  if (GetOptions().enable_canonicalization)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
