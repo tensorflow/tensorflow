@@ -252,8 +252,8 @@ Status OpRegistry::RegisterAlreadyLocked(
 
 // static
 OpRegistry* OpRegistry::Global() {
-  static OpRegistry* global_op_registry = new OpRegistry;
-  return global_op_registry;
+  static std::unique_ptr<OpRegistry> global_op_registry(new OpRegistry);
+  return global_op_registry.get();
 }
 
 // OpListOpRegistry -----------------------------------------------------------
