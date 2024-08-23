@@ -1417,11 +1417,12 @@ absl::StatusOr<bool> HloUnstacker::Run(
   // Go over the loops in reverse order to unroll the inner loops first.
   for (int64_t i = loops_to_unroll.size() - 1; i >= 0; --i) {
     HloInstruction* loop = loops_to_unroll[i];
-    TF_ASSIGN_OR_RETURN(
-        bool unrolled,
-        WhileLoopUnroller::Unroll(loop, /*unroll_factor=*/-1,
-                                  /*wrap_in_trivial_loop=*/false,
-                                  /*force_unroll=*/true, /*prepare=*/false));
+    TF_ASSIGN_OR_RETURN(UnrollResult unroll_result,
+                        WhileLoopUnroller::UnrollAndReturnReplacement(
+                            loop, /*unroll_factor=*/-1,
+                            /*wrap_in_trivial_loop=*/false,
+                            /*force_unroll=*/true, /*prepare=*/false));
+    bool unrolled = unroll_result.unrolled;
     CHECK(unrolled);
   }
   VLOG(3) << "after unstacking \n" << module->ToString();

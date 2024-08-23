@@ -303,12 +303,11 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
   return true;
 }
 
-absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
-                                           WhileLoopConfig config) {
+absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
+    HloInstruction* while_op, WhileLoopConfig config) {
   VLOG(3) << "Unrolling (wrapped) while instruction "
           << while_op->ToShortString() << " with body instruction count "
           << while_op->while_body()->instruction_count();
-
   HloModule* module = while_op->GetModule();
 
   HloComputation* computation = while_op->parent();
@@ -347,13 +346,24 @@ absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
   HloInstruction* new_while_op =
       computation->AddInstruction(HloInstruction::CreateWhile(
           while_op->shape(), new_cond, new_body, while_op->mutable_operand(0)));
-
+  while_op->SetupDerivedInstruction(new_while_op);
   CHECK_OK(computation->ReplaceInstruction(while_op, new_while_op));
 
   // Needed for the nested while loops in which the outer loop has been
   // unrolled which leaves the call graph non-flat.
   TF_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
-  return true;
+  UnrollResult result;
+  result.unrolled = true;
+  result.new_while_op = new_while_op;
+  return result;
+}
+
+absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
+                                           WhileLoopConfig config) {
+  TF_ASSIGN_OR_RETURN(
+      UnrollResult result,
+      UnrollInternalWrappedAndReturnReplacement(while_op, config));
+  return result.unrolled;
 }
 
 };  // namespace
@@ -593,6 +603,8 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   std::optional<int64_t> indvar_tuple_idx =
       GetLoopInductionVarTupleIdx(while_op);
   if (!indvar_tuple_idx.has_value()) {
+    VLOG(2) << "Not attempting to unroll because induction variable could not "
+               "be found.";
     return std::nullopt;
   }
 
@@ -684,10 +696,13 @@ WhileLoopUnroller::GetUnrollableLoops(
   return while_loop_configs;
 }
 
-/*static*/ absl::StatusOr<bool> WhileLoopUnroller::Unroll(
-    HloInstruction* while_op, int64_t unroll_factor, bool wrap_in_trivial_loop,
-    bool force_unroll, bool prepare) {
-  bool changed = false;
+/*static*/ absl::StatusOr<UnrollResult>
+WhileLoopUnroller::UnrollAndReturnReplacement(HloInstruction* while_op,
+                                              int64_t unroll_factor,
+                                              bool wrap_in_trivial_loop,
+                                              bool force_unroll, bool prepare) {
+  UnrollResult result;
+
   HloModule* module = while_op->GetModule();
   // TODO(b/288130138): For now, we only support full unrolling. Will add
   // partial unrolling if needed.
@@ -695,14 +710,14 @@ WhileLoopUnroller::GetUnrollableLoops(
     VLOG(5) << absl::StrCat(
         "Currently, only full unrolling is supported, unroll factor: ",
         unroll_factor);
-    return false;
+    return result;
   }
 
   if (prepare) {
     // Make sure all the necessary passes are executed before unrolling in order
     // to unroll every possible loop.
-    TF_ASSIGN_OR_RETURN(
-        changed, PrepareModuleForUnrolling(module, /*execution_threads=*/{}));
+    TF_RETURN_IF_ERROR(
+        PrepareModuleForUnrolling(module, /*execution_threads=*/{}).status());
   }
 
   // Construct the loop config
@@ -710,27 +725,27 @@ WhileLoopUnroller::GetUnrollableLoops(
   if (!config.has_value()) {
     VLOG(5) << "Not attempting to unroll " << while_op->name()
             << " because it is not unrollable.";
-    return false;
+    return result;
   }
 
   if (!force_unroll && !InitialFeasibilityCheck(while_op, config.value())) {
-    return false;
+    return result;
   }
-
-  bool unrolled = false;
   if (wrap_in_trivial_loop) {
-    TF_ASSIGN_OR_RETURN(unrolled,
-                        UnrollInternalWrapped(while_op, config.value()));
+    TF_ASSIGN_OR_RETURN(result, UnrollInternalWrappedAndReturnReplacement(
+                                    while_op, config.value()));
   } else {
-    TF_ASSIGN_OR_RETURN(unrolled, UnrollInternal(while_op, config.value()));
+    TF_ASSIGN_OR_RETURN(result.unrolled,
+                        UnrollInternal(while_op, config.value()));
   }
 
   // We need to inline the calls created for unrolling since later passes rely
   // on the calls to be inlined.
-  if (unrolled) {
+  if (result.unrolled) {
     TF_RETURN_IF_ERROR(CallInliner().Run(module).status());
   }
-  return unrolled;
+
+  return result;
 }
 
 absl::StatusOr<bool> WhileLoopUnroller::Run(

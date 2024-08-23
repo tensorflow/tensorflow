@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -52,10 +55,10 @@ HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,512
 windowed_dot_general_body_ag.1 {
   param = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) parameter(0)
   get-tuple-element = bf16[512,24576]{1,0} get-tuple-element(param), index=0
-  collective-permute = bf16[512,24576]{1,0} collective-permute(get-tuple-element), channel_id=2, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
-  get-tuple-element.1 = bf16[24576,24576]{1,0} get-tuple-element(param), index=1
-  get-tuple-element.2 = bf16[2048,24576]{1,0} get-tuple-element(param), index=2
-  dot.2 = bf16[512,24576]{1,0} dot(get-tuple-element, get-tuple-element.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
+  collective-permute.send_first_lhs_shard = bf16[512,24576]{1,0} collective-permute(get-tuple-element), channel_id=2, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
+  get-tuple-element.lhs = bf16[24576,24576]{1,0} get-tuple-element(param), index=1
+  get-tuple-element.rhs = bf16[2048,24576]{1,0} get-tuple-element(param), index=2
+  dot.2 = bf16[512,24576]{1,0} dot(get-tuple-element, get-tuple-element.lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
   constant.1 = s32[4]{0} constant({0, 512, 1024, 1536})
   get-tuple-element.4 = u32[] get-tuple-element(param), index=4
   partition-id = u32[] partition-id()
@@ -65,8 +68,8 @@ windowed_dot_general_body_ag.1 {
   dynamic-slice = s32[1]{0} dynamic-slice(constant.1, remainder), dynamic_slice_sizes={1}
   reshape.4 = s32[] reshape(dynamic-slice)
   constant.2 = s32[] constant(0)
-  dynamic-update-slice = bf16[2048,24576]{1,0} dynamic-update-slice(get-tuple-element.2, dot.2, reshape.4, constant.2), backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
-  dot.3 = bf16[512,24576]{1,0} dot(collective-permute, get-tuple-element.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dynamic-update-slice = bf16[2048,24576]{1,0} dynamic-update-slice(get-tuple-element.rhs, dot.2, reshape.4, constant.2), backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
+  dot.3 = bf16[512,24576]{1,0} dot(collective-permute.send_first_lhs_shard, get-tuple-element.lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   constant.3 = u32[] constant(1)
   add.1 = u32[] add(get-tuple-element.4, constant.3)
   add.2 = u32[] add(add.1, partition-id)
@@ -76,7 +79,7 @@ windowed_dot_general_body_ag.1 {
   dynamic-update-slice.1 = bf16[2048,24576]{1,0} dynamic-update-slice(dynamic-update-slice, dot.3, reshape.5, constant.2)
   get-tuple-element.3 = bf16[2048,24576]{1,0} get-tuple-element(param), index=3
   add.3 = u32[] add(add.1, constant.3)
-  ROOT tuple = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(collective-permute, get-tuple-element.1, dynamic-update-slice.1, get-tuple-element.3, add.3)
+  ROOT tuple = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(collective-permute.send_first_lhs_shard, get-tuple-element.lhs, dynamic-update-slice.1, get-tuple-element.3, add.3)
 } // windowed_dot_general_body_ag.1
 
 windowed_dot_general_cond_ag {
@@ -110,13 +113,18 @@ ENTRY test_main {
   HloInstruction* ag_loop =
       module->entry_computation()->root_instruction()->mutable_operand(0);
   HloComputation* ag_loop_body = ag_loop->while_body();
-  HloInstruction* inst = FindInstructionByName(ag_loop_body, "dot.2");
-  EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(), 0);
-  EXPECT_TRUE(
-      inst->backend_config<GpuBackendConfig>()->force_earliest_schedule());
+  int64_t dot_count = 0;
+  for (HloInstruction* inst : ag_loop_body->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kDot) {
+      dot_count++;
+      EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(),
+                0);
+    }
+  }
+  EXPECT_EQ(dot_count, 4);
 
-  HloInstruction* cp1 =
-      FindInstructionByName(ag_loop_body, "collective-permute");
+  HloInstruction* cp1 = FindInstructionByName(
+      ag_loop_body, "collective-permute.send_first_lhs_shard.3");
   EXPECT_TRUE(
       cp1->backend_config<GpuBackendConfig>()->force_earliest_schedule());
 }
@@ -130,7 +138,7 @@ windowed_dot_general_body_rs_clone.1 {
   get-tuple-element.6 = bf16[2048,24576]{1,0} get-tuple-element(param.2), index=0
   get-tuple-element.7 = bf16[24576,24576]{1,0} get-tuple-element(param.2), index=1
   get-tuple-element.9 = bf16[512,24576]{1,0} get-tuple-element(param.2), index=2
-  collective-permute.1 = bf16[512,24576]{1,0} collective-permute(get-tuple-element.9), channel_id=4, source_target_pairs={{0,2},{1,3},{2,0},{3,1}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
+  collective-permute.send_second_lhs_shard = bf16[512,24576]{1,0} collective-permute(get-tuple-element.9), channel_id=4, source_target_pairs={{0,2},{1,3},{2,0},{3,1}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
   constant.10 = s32[4]{0} constant({0, 512, 1024, 1536})
   get-tuple-element.11 = u32[] get-tuple-element(param.2), index=4
   constant.12 = u32[] constant(2)
@@ -146,7 +154,7 @@ windowed_dot_general_body_rs_clone.1 {
   constant.11 = s32[] constant(0)
   dynamic-slice.5 = bf16[512,24576]{1,0} dynamic-slice(get-tuple-element.6, reshape.7, constant.11), dynamic_slice_sizes={512,24576}
   dot.7 = bf16[512,24576]{1,0} dot(dynamic-slice.5, get-tuple-element.7), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
-  add.11 = bf16[512,24576]{1,0} add(collective-permute.1, dot.7), backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
+  add.11 = bf16[512,24576]{1,0} add(collective-permute.send_second_lhs_shard, dot.7), backend_config={"operation_queue_id":"0","wait_on_operation_queues":[]}
   get-tuple-element.10 = bf16[512,24576]{1,0} get-tuple-element(param.2), index=3
   add.6 = u32[] add(get-tuple-element.11, partition-id.3)
   remainder.2 = u32[] remainder(add.6, constant.9)
@@ -188,14 +196,15 @@ ENTRY main.9_spmd {
   HloInstruction* rs_loop =
       module->entry_computation()->root_instruction()->mutable_operand(0);
   HloComputation* rs_loop_body = rs_loop->while_body();
-  HloInstruction* inst = FindInstructionByName(rs_loop_body, "dot.7");
-  EXPECT_TRUE(inst->backend_config<GpuBackendConfig>()->operation_queue_id() >
-              0);
-
-  HloInstruction* cp1 =
-      FindInstructionByName(rs_loop_body, "collective-permute.1");
-  EXPECT_TRUE(
-      cp1->backend_config<GpuBackendConfig>()->force_earliest_schedule());
+  int64_t dot_count = 0;
+  for (HloInstruction* inst : rs_loop_body->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kDot) {
+      dot_count++;
+      EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(),
+                0);
+    }
+  }
+  EXPECT_EQ(dot_count, 4);
 }
 
 TEST_F(WindowedEinsumHandlerTest, AgLoopsMultipleConsumersAreChained) {
@@ -204,12 +213,12 @@ HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,512
 
 windowed_dot_general_body_ag {
   param.1 = (bf16[2,512,24576]{2,1,0}, bf16[24576,24576]{1,0}, bf16[2,2048,24576]{2,1,0}, bf16[2,2048,24576]{2,1,0}, u32[]) parameter(0)
-  get-tuple-element.1 = bf16[2,512,24576]{2,1,0} get-tuple-element(param.1), index=0
-  collective-permute = bf16[2,512,24576]{2,1,0} collective-permute(get-tuple-element.1), channel_id=2, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.1 = bf16[2,512,24576]{2,1,0} collective-permute(collective-permute), channel_id=3, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  get-tuple-element.2 = bf16[24576,24576]{1,0} get-tuple-element(param.1), index=1
+  get-tuple-element.lhs = bf16[2,512,24576]{2,1,0} get-tuple-element(param.1), index=0
+  collective-permute.send_first_lhs_shard = bf16[2,512,24576]{2,1,0} collective-permute(get-tuple-element.lhs), channel_id=2, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  collective-permute.send_second_lhs_shard = bf16[2,512,24576]{2,1,0} collective-permute(collective-permute.send_first_lhs_shard), channel_id=3, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  get-tuple-element.rhs = bf16[24576,24576]{1,0} get-tuple-element(param.1), index=1
   get-tuple-element.3 = bf16[2,2048,24576]{2,1,0} get-tuple-element(param.1), index=2
-  dot = bf16[2,512,24576]{2,1,0} dot(get-tuple-element.1, get-tuple-element.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot = bf16[2,512,24576]{2,1,0} dot(get-tuple-element.lhs, get-tuple-element.rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
   constant.2 = s32[] constant(0)
   constant.3 = s32[4]{0} constant({0, 512, 1024, 1536})
   get-tuple-element.5 = u32[] get-tuple-element(param.1), index=4
@@ -220,7 +229,7 @@ windowed_dot_general_body_ag {
   dynamic-slice = s32[1]{0} dynamic-slice(constant.3, remainder), dynamic_slice_sizes={1}
   reshape = s32[] reshape(dynamic-slice)
   dynamic-update-slice = bf16[2,2048,24576]{2,1,0} dynamic-update-slice(get-tuple-element.3, dot, constant.2, reshape, constant.2)
-  dot.1 = bf16[2,512,24576]{2,1,0} dot(collective-permute, get-tuple-element.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot.1 = bf16[2,512,24576]{2,1,0} dot(collective-permute.send_first_lhs_shard, get-tuple-element.rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
   constant.5 = u32[] constant(1)
   add.1 = u32[] add(get-tuple-element.5, constant.5)
   add.2 = u32[] add(add.1, partition-id)
@@ -230,7 +239,7 @@ windowed_dot_general_body_ag {
   dynamic-update-slice.1 = bf16[2,2048,24576]{2,1,0} dynamic-update-slice(dynamic-update-slice, dot.1, constant.2, reshape.1, constant.2)
   get-tuple-element.4 = bf16[2,2048,24576]{2,1,0} get-tuple-element(param.1), index=3
   add.3 = u32[] add(add.1, constant.5)
-  ROOT tuple = (bf16[2,512,24576]{2,1,0}, bf16[24576,24576]{1,0}, bf16[2,2048,24576]{2,1,0}, bf16[2,2048,24576]{2,1,0}, u32[]) tuple(collective-permute.1, get-tuple-element.2, dynamic-update-slice.1, get-tuple-element.4, add.3)
+  ROOT tuple = (bf16[2,512,24576]{2,1,0}, bf16[24576,24576]{1,0}, bf16[2,2048,24576]{2,1,0}, bf16[2,2048,24576]{2,1,0}, u32[]) tuple(collective-permute.send_second_lhs_shard, get-tuple-element.rhs, dynamic-update-slice.1, get-tuple-element.4, add.3)
 } // windowed_dot_general_body_ag
 
 windowed_dot_general_cond_ag {
@@ -263,29 +272,55 @@ ENTRY main.12_spmd {
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
-  HloInstruction* ag_loop =
-      FindInstructionByName(module->entry_computation(), "while");
   HloInstruction* inst =
       FindInstructionByName(module->entry_computation(), "dot.7");
   // dot.7 should now consume output of the windowed einsum while loop.
   EXPECT_EQ(inst->operand(0)->opcode(), HloOpcode::kGetTupleElement);
   EXPECT_EQ(inst->operand(0)->tuple_index(), 5);
-  EXPECT_EQ(inst->operand(0)->operand(0), ag_loop);
+  const HloInstruction* while_loop = inst->operand(0)->operand(0);
+  EXPECT_EQ(while_loop->opcode(), HloOpcode::kWhile);
+  HloComputation* while_body = while_loop->while_body();
+  int64_t dot_count = 0;
+  for (HloInstruction* ins : while_body->MakeInstructionPostOrder()) {
+    if (ins->opcode() == HloOpcode::kDot) {
+      dot_count++;
+      EXPECT_GT(ins->backend_config<GpuBackendConfig>()->operation_queue_id(),
+                0);
+    }
+  }
+  EXPECT_EQ(dot_count, 4);
 
-  // while loop's root should now have a chain of DUS.
+  HloInstruction* ag_loop =
+      FindInstructionByName(module->entry_computation(), "while");
+  // while loop's root should now have a chain of 4 DUSes.
   HloInstruction* ag_while_root = ag_loop->while_body()->root_instruction();
-  EXPECT_THAT(ag_while_root,
-              GmockMatch(m::Tuple(
-                  m::Op(), m::Op(), m::Op(), m::Op(), m::Op(),
-                  m::DynamicUpdateSlice(
-                      m::DynamicUpdateSlice(
-                          m::GetTupleElement(m::Parameter())
-                              .WithPredicate([](const HloInstruction* instr) {
-                                return instr->tuple_index() == 5;
-                              }),
-                          m::Op(), m::Op(), m::Op(), m::Op()),
-                      m::Op(), m::Op(), m::Op(), m::Op()))));
+  EXPECT_THAT(
+      ag_while_root,
+      GmockMatch(m::Tuple(
+          m::Op(), m::Op(), m::Op(), m::Op(), m::Op(),
+          m::DynamicUpdateSlice(
+              m::DynamicUpdateSlice(
+                  m::GetTupleElement(
+                      m::Tuple(m::Op(), m::Op(), m::Op(), m::Op(), m::Op(),
+                               m::DynamicUpdateSlice(
+                                   m::DynamicUpdateSlice(
+                                       m::GetTupleElement(m::Parameter())
+                                           .WithPredicate(
+                                               [](const HloInstruction* instr) {
+                                                 return instr->tuple_index() ==
+                                                        5;
+                                               }),
+                                       m::Op(), m::Op(), m::Op(), m::Op()),
+                                   m::Op(), m::Op(), m::Op(), m::Op())))
+                      .WithPredicate([](const HloInstruction* instr) {
+                        return instr->tuple_index() == 5;
+                      }),
+                  m::Op(), m::Op(), m::Op(), m::Op()),
+              m::Op(), m::Op(), m::Op(), m::Op()))));
+  EXPECT_EQ(FindInstructionByName(module->entry_computation(), "all-gather"),
+            nullptr);
 }
+
 TEST_F(WindowedEinsumHandlerTest, A2aGemmHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,8192,32768]{2,1,0}, bf16[1,4,2048,8192]{3,2,1,0})->bf16[1,4,2048,32768]{3,2,1,0}}, num_partitions=8
@@ -603,12 +638,12 @@ HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2
 
 windowed_dot_general_body_ag {
   param.1 = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) parameter(0)
-  get-tuple-element.1 = f32[2,512,24576]{2,1,0} get-tuple-element(param.1), index=0
-  collective-permute = f32[2,512,24576]{2,1,0} collective-permute(get-tuple-element.1), channel_id=4, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.1 = f32[2,512,24576]{2,1,0} collective-permute(collective-permute), channel_id=5, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  get-tuple-element.2 = f32[24576,24576]{1,0} get-tuple-element(param.1), index=1
+  get-tuple-element.lhs = f32[2,512,24576]{2,1,0} get-tuple-element(param.1), index=0
+  collective-permute.send_first_lhs_shard = f32[2,512,24576]{2,1,0} collective-permute(get-tuple-element.lhs), channel_id=4, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  collective-permute.send_second_lhs_shard = f32[2,512,24576]{2,1,0} collective-permute(collective-permute.send_first_lhs_shard), channel_id=5, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  get-tuple-element.rhs = f32[24576,24576]{1,0} get-tuple-element(param.1), index=1
   get-tuple-element.3 = f32[2,2048,24576]{2,1,0} get-tuple-element(param.1), index=2
-  dot = f32[2,512,24576]{2,1,0} dot(get-tuple-element.1, get-tuple-element.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot.first_shard_dot = f32[2,512,24576]{2,1,0} dot(get-tuple-element.lhs, get-tuple-element.rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
   constant.12 = s32[] constant(0)
   constant.13 = s32[4]{0} constant({0, 512, 1024, 1536})
   get-tuple-element.5 = u32[] get-tuple-element(param.1), index=4
@@ -618,18 +653,18 @@ windowed_dot_general_body_ag {
   remainder = u32[] remainder(add, constant.11)
   dynamic-slice = s32[1]{0} dynamic-slice(constant.13, remainder), dynamic_slice_sizes={1}
   reshape = s32[] reshape(dynamic-slice)
-  dynamic-update-slice = f32[2,2048,24576]{2,1,0} dynamic-update-slice(get-tuple-element.3, dot, constant.12, reshape, constant.12)
-  dot.1 = f32[2,512,24576]{2,1,0} dot(collective-permute, get-tuple-element.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dynamic-update-slice.update_first_shard_result = f32[2,2048,24576]{2,1,0} dynamic-update-slice(get-tuple-element.3, dot.first_shard_dot, constant.12, reshape, constant.12)
+  dot.second_shard_dot = f32[2,512,24576]{2,1,0} dot(collective-permute.send_first_lhs_shard, get-tuple-element.rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
   constant.15 = u32[] constant(1)
   add.1 = u32[] add(get-tuple-element.5, constant.15)
   add.2 = u32[] add(add.1, partition-id)
   remainder.1 = u32[] remainder(add.2, constant.11)
   dynamic-slice.1 = s32[1]{0} dynamic-slice(constant.13, remainder.1), dynamic_slice_sizes={1}
   reshape.1 = s32[] reshape(dynamic-slice.1)
-  dynamic-update-slice.1 = f32[2,2048,24576]{2,1,0} dynamic-update-slice(dynamic-update-slice, dot.1, constant.12, reshape.1, constant.12)
+  dynamic-update-slice.update_second_shard_result = f32[2,2048,24576]{2,1,0} dynamic-update-slice(dynamic-update-slice.update_first_shard_result, dot.second_shard_dot, constant.12, reshape.1, constant.12)
   get-tuple-element.4 = f32[2,2048,24576]{2,1,0} get-tuple-element(param.1), index=3
   add.3 = u32[] add(add.1, constant.15)
-  ROOT tuple = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) tuple(collective-permute.1, get-tuple-element.2, dynamic-update-slice.1, get-tuple-element.4, add.3)
+  ROOT tuple = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) tuple(collective-permute.send_second_lhs_shard, get-tuple-element.rhs, dynamic-update-slice.update_second_shard_result, get-tuple-element.4, add.3)
 } // windowed_dot_general_body_ag
 
 windowed_dot_general_cond_ag {
@@ -662,11 +697,11 @@ ENTRY test_main {
 
   RunAndFilecheckHloRewrite(kHloString, WindowedEinsumHandler(),
                             R"(
-; CHECK-LABEL: windowed_dot_general_body_ag
+; CHECK-LABEL: unrolled_windowed_dot_general_body_ag
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) parameter(0)
 ; CHECK-NEXT:    [[GTE0:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} get-tuple-element([[P0]]), index=0
-; CHECK-NEXT:    [[CP0:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} collective-permute([[GTE0]]), channel_id=4
-; CHECK-NEXT:    [[CP1:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} collective-permute([[CP0]]), channel_id=5
+; CHECK-NEXT:    [[CP0:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} collective-permute([[GTE0]]), channel_id=6
+; CHECK-NEXT:    [[CP1:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} collective-permute([[CP0]]), channel_id=7
 ; CHECK-NEXT:    [[GTE1:%[^ ]+]] = f8e4m3fn[24576,24576]{1,0} get-tuple-element([[P0]]), index=1
 ; CHECK-NEXT:    [[GTE2:%[^ ]+]] = f32[2,2048,24576]{2,1,0} get-tuple-element([[P0]]), index=2
 ; CHECK-NEXT:    [[CONVERT0:%[^ ]+]] = f32[2,512,24576]{2,1,0} convert([[GTE0]])
@@ -683,16 +718,19 @@ ENTRY test_main {
 ; CHECK-DAG:       backend_config={
 ; CHECK-DAG:         "operation_queue_id":"[[OPQUEUEID:[0-9]+]]",
 ; CHECK-DAG:         "wait_on_operation_queues":[],
-; CHECK-DAG:         "force_earliest_schedule":true}
+; CHECK-DAG:         "force_earliest_schedule":false}
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = s32[] constant(0)
-; CHECK-NEXT:    [[C1:%[^ ]+]] = s32[4]{0} constant({0, 512, 1024, 1536})
-; CHECK-NEXT:    [[GTE5:%[^ ]+]] = u32[] get-tuple-element([[P0]]), index=4
+; CHECK-NEXT:    [[C4:%[^ ]+]] = u32[] constant(0)
+; CHECK-NEXT:    [[C5:%[^ ]+]] = u32[] constant(0)
 ; CHECK-NEXT:    [[PID:%[^ ]+]] = u32[] partition-id()
-; CHECK-NEXT:    [[ADD0:%[^ ]+]] = u32[] add([[GTE5]], [[PID]])
-; CHECK-NEXT:    [[C2:%[^ ]+]] = u32[] constant(4)
-; CHECK-NEXT:    [[REM0:%[^ ]+]] = u32[] remainder([[ADD0]], [[C2]])
-; CHECK-NEXT:    [[DSLICE0:%[^ ]+]] = s32[1]{0} dynamic-slice([[C1]], [[REM0]]), dynamic_slice_sizes={1}
-; CHECK-NEXT:    [[RESHAPE0:%[^ ]+]] = s32[] reshape([[DSLICE0]])
+; CHECK-NEXT:    [[ADD0:%[^ ]+]] = u32[] add([[C5]], [[PID]])
+; CHECK-NEXT:    [[C2:%[^ ]+]] = u32[] constant(3)
+; CHECK-NEXT:    [[AND0:%[^ ]+]] = u32[] and([[ADD0]], [[C2]])
+; CHECK-NEXT:    [[CLAMP0:%[^ ]+]] = u32[] clamp([[C4]], [[AND0]], [[C2]])
+; CHECK-NEXT:    [[CONVERT3:%[^ ]+]] = s32[] convert([[CLAMP0]])
+; CHECK-NEXT:    [[C6:%[^ ]+]] = s32[] constant(512)
+; CHECK-NEXT:    [[MUL3:%[^ ]+]] = s32[] multiply([[CONVERT3]], [[C6]])
+; CHECK-NEXT:    [[RESHAPE0:%[^ ]+]] = s32[] reshape([[MUL3]])
 ; CHECK-NEXT:    [[DUPDATESLICE0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} dynamic-update-slice([[GTE2]], [[DOT0]], [[C0]], [[RESHAPE0]], [[C0]]),
 ; CHECK-DAG:       backend_config={
 ; CHECK-DAG:         "operation_queue_id":"0",
@@ -703,16 +741,20 @@ ENTRY test_main {
 ; CHECK-NEXT:    [[DOT1:%[^ ]+]] = f32[2,512,24576]{2,1,0} dot([[MUL2]], [[MUL1]]),
 ; CHECK-DAG:       lhs_contracting_dims={2},
 ; CHECK-DAG:       rhs_contracting_dims={0}
+; CHECK-NEXT:    [[GTE7:%[^ ]+]] = u32[] get-tuple-element([[P0]]), index=4
 ; CHECK-NEXT:    [[C3:%[^ ]+]] = u32[] constant(1)
-; CHECK-NEXT:    [[ADD1:%[^ ]+]] = u32[] add([[GTE5]], [[C3]])
+; CHECK-NEXT:    [[ADD1:%[^ ]+]] = u32[] add([[GTE7]], [[C3]])
 ; CHECK-NEXT:    [[ADD2:%[^ ]+]] = u32[] add([[ADD1]], [[PID]])
-; CHECK-NEXT:    [[REM1:%[^ ]+]] = u32[] remainder([[ADD2]], [[C2]])
-; CHECK-NEXT:    [[DSLICE1:%[^ ]+]] = s32[1]{0} dynamic-slice([[C1]], [[REM1]]), dynamic_slice_sizes={1}
-; CHECK-NEXT:    [[RESHAPE1:%[^ ]+]] = s32[] reshape([[DSLICE1]])
+; CHECK-NEXT:    [[AND1:%[^ ]+]] = u32[] and([[ADD2]], [[C2]])
+; CHECK-NEXT:    [[CLAMP1:%[^ ]+]] = u32[] clamp([[C4]], [[AND1]], [[C2]])
+; CHECK-NEXT:    [[CONVERT4:%[^ ]+]] = s32[] convert([[CLAMP1]])
+; CHECK-NEXT:    [[MUL4:%[^ ]+]] = s32[] multiply([[CONVERT4]], [[C6]])
+; CHECK-NEXT:    [[RESHAPE1:%[^ ]+]] = s32[] reshape([[MUL4]])
 ; CHECK-NEXT:    [[DUPDATESLICE1:%[^ ]+]] = f32[2,2048,24576]{2,1,0} dynamic-update-slice([[DUPDATESLICE0]], [[DOT1]], [[C0]], [[RESHAPE1]], [[C0]])
 ; CHECK-NEXT:    [[GTE6:%[^ ]+]] = f32[2,2048,24576]{2,1,0} get-tuple-element([[P0]]), index=3
-; CHECK-NEXT:    [[ADD3:%[^ ]+]] = u32[] add([[ADD1]], [[C3]])
-; CHECK-NEXT: ROOT [[OUT:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) tuple([[CP1]], [[GTE1]], [[DUPDATESLICE1]], [[GTE6]], [[ADD3]], /*index=5*/[[GTE3]], [[GTE4]])
+; CHECK-NEXT:    [[C7:%[^ ]+]] = u32[] constant(2)
+; CHECK-NEXT:    [[ADD3:%[^ ]+]] = u32[] add([[GTE7]], [[C7]])
+; CHECK-NEXT:    [[TUPLE0:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) tuple([[CP1]], [[GTE1]], [[DUPDATESLICE1]], [[GTE6]], [[ADD3]], /*index=5*/[[GTE3]], [[GTE4]])
 )");
 }
 
@@ -722,36 +764,36 @@ HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2
 
 windowed_dot_general_body_rs {
   param.3 = (f32[2,2048,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[]) parameter(0)
-  get-tuple-element.7 = f32[2,2048,24576]{2,1,0} get-tuple-element(param.3), index=0
-  get-tuple-element.8 = f32[24576,24576]{1,0} get-tuple-element(param.3), index=1
-  get-tuple-element.9 = f32[2,512,24576]{2,1,0} get-tuple-element(param.3), index=2
-  collective-permute.2 = f32[2,512,24576]{2,1,0} collective-permute(get-tuple-element.9), channel_id=9, source_target_pairs={{0,2},{1,3},{2,0},{3,1}}
-  constant.23 = s32[] constant(0)
-  constant.24 = s32[4]{0} constant({0, 512, 1024, 1536})
-  get-tuple-element.11 = u32[] get-tuple-element(param.3), index=4
-  constant.26 = u32[] constant(2)
-  add.8 = u32[] add(get-tuple-element.11, constant.26)
+  get-tuple-element.lhs = f32[2,2048,24576]{2,1,0} get-tuple-element(param.3), index=0
+  get-tuple-element.rhs = f32[24576,24576]{1,0} get-tuple-element(param.3), index=1
+  get-tuple-element.output = f32[2,512,24576]{2,1,0} get-tuple-element(param.3), index=2
+  collective-permute.send_shard = f32[2,512,24576]{2,1,0} collective-permute(get-tuple-element.output), channel_id=9, source_target_pairs={{0,2},{1,3},{2,0},{3,1}}
+  constant.zero = s32[] constant(0)
+  constant.loop_index = s32[4]{0} constant({0, 512, 1024, 1536})
+  get-tuple-element.loop_iter = u32[] get-tuple-element(param.3), index=4
+  constant.iter_increment = u32[] constant(2)
+  add.8 = u32[] add(get-tuple-element.loop_iter, constant.iter_increment)
   constant.27 = u32[] constant(1)
   add.9 = u32[] add(add.8, constant.27)
   partition-id.3 = u32[] partition-id()
-  add.10 = u32[] add(add.9, partition-id.3)
+  add.shard_index = u32[] add(add.9, partition-id.3)
   constant.22 = u32[] constant(4)
-  remainder.3 = u32[] remainder(add.10, constant.22)
-  dynamic-slice.4 = s32[1]{0} dynamic-slice(constant.24, remainder.3), dynamic_slice_sizes={1}
-  reshape.3 = s32[] reshape(dynamic-slice.4)
-  dynamic-slice.5 = f32[2,512,24576]{2,1,0} dynamic-slice(get-tuple-element.7, constant.23, reshape.3, constant.23), dynamic_slice_sizes={2,512,24576}
-  dot.3 = f32[2,512,24576]{2,1,0} dot(dynamic-slice.5, get-tuple-element.8), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  add.11 = f32[2,512,24576]{2,1,0} add(collective-permute.2, dot.3)
+  remainder.shard_index = u32[] remainder(add.shard_index, constant.22)
+  dynamic-slice.shard_start_index = s32[1]{0} dynamic-slice(constant.loop_index, remainder.shard_index), dynamic_slice_sizes={1}
+  reshape.3 = s32[] reshape(dynamic-slice.shard_start_index)
+  dynamic-slice.shard_to_compute = f32[2,512,24576]{2,1,0} dynamic-slice(get-tuple-element.lhs, constant.zero, reshape.3, constant.zero), dynamic_slice_sizes={2,512,24576}
+  dot.first_shard_dot = f32[2,512,24576]{2,1,0} dot(dynamic-slice.shard_to_compute, get-tuple-element.rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  add.shard_partial_result = f32[2,512,24576]{2,1,0} add(collective-permute.send_shard, dot.first_shard_dot)
   get-tuple-element.10 = f32[2,512,24576]{2,1,0} get-tuple-element(param.3), index=3
-  add.6 = u32[] add(get-tuple-element.11, partition-id.3)
+  add.6 = u32[] add(get-tuple-element.loop_iter, partition-id.3)
   remainder.2 = u32[] remainder(add.6, constant.22)
-  dynamic-slice.2 = s32[1]{0} dynamic-slice(constant.24, remainder.2), dynamic_slice_sizes={1}
+  dynamic-slice.2 = s32[1]{0} dynamic-slice(constant.loop_index, remainder.2), dynamic_slice_sizes={1}
   reshape.2 = s32[] reshape(dynamic-slice.2)
-  dynamic-slice.3 = f32[2,512,24576]{2,1,0} dynamic-slice(get-tuple-element.7, constant.23, reshape.2, constant.23), dynamic_slice_sizes={2,512,24576}
-  dot.2 = f32[2,512,24576]{2,1,0} dot(dynamic-slice.3, get-tuple-element.8), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  add.7 = f32[2,512,24576]{2,1,0} add(get-tuple-element.10, dot.2)
-  collective-permute.3 = f32[2,512,24576]{2,1,0} collective-permute(add.7), channel_id=10, source_target_pairs={{0,2},{1,3},{2,0},{3,1}}
-  ROOT tuple.1 = (f32[2,2048,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[]) tuple(get-tuple-element.7, get-tuple-element.8, add.11, collective-permute.3, add.8)
+  dynamic-slice.3 = f32[2,512,24576]{2,1,0} dynamic-slice(get-tuple-element.lhs, constant.zero, reshape.2, constant.zero), dynamic_slice_sizes={2,512,24576}
+  dot.second_shard_dot = f32[2,512,24576]{2,1,0} dot(dynamic-slice.3, get-tuple-element.rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  add.7 = f32[2,512,24576]{2,1,0} add(get-tuple-element.10, dot.second_shard_dot)
+  collective-permute.send_second_shard = f32[2,512,24576]{2,1,0} collective-permute(add.7), channel_id=10, source_target_pairs={{0,2},{1,3},{2,0},{3,1}}
+  ROOT tuple.1 = (f32[2,2048,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[]) tuple(get-tuple-element.lhs, get-tuple-element.rhs, add.shard_partial_result, collective-permute.send_second_shard, add.8)
 } // windowed_dot_general_body_rs
 
 windowed_dot_general_cond_rs {
@@ -782,29 +824,29 @@ ENTRY main.9_spmd {
 
   RunAndFilecheckHloRewrite(kHloString, WindowedEinsumHandler(),
                             R"(
-; CHECK-LABEL: windowed_dot_general_body_rs
+; CHECK-LABEL: unrolled_windowed_dot_general_body_rs
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = (f8e4m3fn[2,2048,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) parameter(0)
 ; CHECK-NEXT:    [[GTE0:%[^ ]+]] = f8e4m3fn[2,2048,24576]{2,1,0} get-tuple-element([[P0]]), index=0
 ; CHECK-NEXT:    [[GTE1:%[^ ]+]] = f8e4m3fn[24576,24576]{1,0} get-tuple-element([[P0]]), index=1
 ; CHECK-NEXT:    [[GTE2:%[^ ]+]] = f32[2,512,24576]{2,1,0} get-tuple-element([[P0]]), index=2
-; CHECK-NEXT:    [[CP0:%[^ ]+]] = f32[2,512,24576]{2,1,0} collective-permute([[GTE2]]), channel_id=9
+; CHECK-NEXT:    [[CP0:%[^ ]+]] = f32[2,512,24576]{2,1,0} collective-permute([[GTE2]]), channel_id=11
 ; CHECK-NEXT:    [[CONVERT0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} convert([[GTE0]])
 ; CHECK-NEXT:    [[GTE3:%[^ ]+]] = f32[] get-tuple-element([[P0]]), index=5
 ; CHECK-NEXT:    [[BCAST0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} broadcast([[GTE3]]), dimensions={}
 ; CHECK-NEXT:    [[MUL0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} multiply([[CONVERT0]], [[BCAST0]])
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = s32[] constant(0)
-; CHECK-NEXT:    [[C1:%[^ ]+]] = s32[4]{0} constant({0, 512, 1024, 1536})
+; CHECK-NEXT:    [[C1:%[^ ]+]] = u32[] constant(0)
 ; CHECK-NEXT:    [[GTE4:%[^ ]+]] = u32[] get-tuple-element([[P0]]), index=4
-; CHECK-NEXT:    [[C2:%[^ ]+]] = u32[] constant(2)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = u32[] constant(3)
 ; CHECK-NEXT:    [[ADD0:%[^ ]+]] = u32[] add([[GTE4]], [[C2]])
-; CHECK-NEXT:    [[C3:%[^ ]+]] = u32[] constant(1)
-; CHECK-NEXT:    [[ADD1:%[^ ]+]] = u32[] add([[ADD0]], [[C3]])
 ; CHECK-NEXT:    [[PID:%[^ ]+]] = u32[] partition-id()
-; CHECK-NEXT:    [[ADD2:%[^ ]+]] = u32[] add([[ADD1]], [[PID]])
-; CHECK-NEXT:    [[C4:%[^ ]+]] = u32[] constant(4)
-; CHECK-NEXT:    [[REM0:%[^ ]+]] = u32[] remainder([[ADD2]], [[C4]])
-; CHECK-NEXT:    [[DSLICE0:%[^ ]+]] = s32[1]{0} dynamic-slice([[C1]], [[REM0]]), dynamic_slice_sizes={1}
-; CHECK-NEXT:    [[RESHAPE0:%[^ ]+]] = s32[] reshape([[DSLICE0]])
+; CHECK-NEXT:    [[ADD2:%[^ ]+]] = u32[] add([[ADD0]], [[PID]])
+; CHECK-NEXT:    [[AND0:%[^ ]+]] = u32[] and([[ADD2]], [[C2]])
+; CHECK-NEXT:    [[CLAMP0:%[^ ]+]] = u32[] clamp([[C1]], [[AND0]], [[C2]])
+; CHECK-NEXT:    [[CONVERT10:%[^ ]+]] = s32[] convert([[CLAMP0]])
+; CHECK-NEXT:    [[C10:%[^ ]+]] = s32[] constant(512)
+; CHECK-NEXT:    [[MUL10:%[^ ]+]] = s32[] multiply([[CONVERT10]], [[C10]])
+; CHECK-NEXT:    [[RESHAPE0:%[^ ]+]] = s32[] reshape([[MUL10]])
 ; CHECK-NEXT:    [[DSLICE1:%[^ ]+]] = f32[2,512,24576]{2,1,0} dynamic-slice([[MUL0]], [[C0]], [[RESHAPE0]], [[C0]]), dynamic_slice_sizes={2,512,24576}
 ; CHECK-NEXT:    [[CONVERT1:%[^ ]+]] = f32[24576,24576]{1,0} convert([[GTE1]])
 ; CHECK-NEXT:    [[GTE5:%[^ ]+]] = f32[] get-tuple-element([[P0]]), index=6
@@ -823,25 +865,84 @@ ENTRY main.9_spmd {
 ; CHECK-DAG:         "wait_on_operation_queues":["[[OPQUEUEID0]]"],
 ; CHECK-DAG:         "force_earliest_schedule":false}
 ; CHECK-NEXT:    [[GTE6:[^ ]+]] = f32[2,512,24576]{2,1,0} get-tuple-element([[P0]]), index=3
-; CHECK-NEXT:    [[ADD4:%[^ ]+]] = u32[] add([[GTE4]], [[PID]])
-; CHECK-NEXT:    [[REM1:%[^ ]+]] = u32[] remainder([[ADD4]], [[C4]])
-; CHECK-NEXT:    [[DSLICE2:%[^ ]+]] = s32[1]{0} dynamic-slice([[C1]], [[REM1]]), dynamic_slice_sizes={1}
-; CHECK-NEXT:    [[RESHAPE1:%[^ ]+]] = s32[] reshape([[DSLICE2]])
-; CHECK-NEXT:    [[DSLICE3:%[^ ]+]] = f32[2,512,24576]{2,1,0} dynamic-slice([[MUL0]], [[C0]], [[RESHAPE1]], [[C0]]), dynamic_slice_sizes={2,512,24576}
+; CHECK-NEXT:    [[C11:%[^ ]+]] = u32[] constant(0)
+; CHECK-NEXT:    [[ADD6:%[^ ]+]] = u32[] add([[C11]], [[PID]])
+; CHECK-NEXT:    [[AND1:%[^ ]+]] = u32[] and([[ADD6]], [[C2]])
+; CHECK-NEXT:    [[CLAMP1:%[^ ]+]] = u32[] clamp([[C1]], [[AND1]], [[C2]])
+; CHECK-NEXT:    [[CONVERT11:%[^ ]+]] = s32[] convert([[CLAMP1]])
+; CHECK-NEXT:    [[MUL11:%[^ ]+]] = s32[] multiply([[CONVERT11]], [[C10]])
+; CHECK-NEXT:    [[RESHAPE2:%[^ ]+]] = s32[] reshape([[MUL11]])
+; CHECK-NEXT:    [[DSLICE3:%[^ ]+]] = f32[2,512,24576]{2,1,0} dynamic-slice([[MUL0]], [[C0]], [[RESHAPE2]], [[C0]]), dynamic_slice_sizes={2,512,24576}
 ; CHECK-NEXT:    [[DOT1:%[^ ]+]] = f32[2,512,24576]{2,1,0} dot([[DSLICE3]], [[MUL1]]),
 ; CHECK-DAG:       lhs_contracting_dims={2},
-; CHECK-DAG:       rhs_contracting_dims={0},
+; CHECK-DAG:       rhs_contracting_dims={0}
 ; CHECK-DAG:       backend_config={
-; CHECK-DAG:         "operation_queue_id":"[[OPQUEUEID1:[1-9][0-9]*]]",
+; CHECK-DAG:         "operation_queue_id":"[[OPQUEUEID:[0-9]+]]",
 ; CHECK-DAG:         "wait_on_operation_queues":[],
 ; CHECK-DAG:         "force_earliest_schedule":false}
 ; CHECK-NEXT:    [[ADD5:%[^ ]+]] = f32[2,512,24576]{2,1,0} add([[GTE6]], [[DOT1]])
+; CHECK-NEXT:    [[CP1:[^ ]+]] = f32[2,512,24576]{2,1,0} collective-permute([[ADD5]]), channel_id=12
+; CHECK-NEXT:    [[C3:%[^ ]+]] = u32[] constant(2)
+; CHECK-NEXT:    [[ADD7:%[^ ]+]] = u32[] add([[GTE4]], [[C3]])
+; CHECK-NEXT:    [[TUPLE0:[^ ]+]] = (f8e4m3fn[2,2048,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) tuple([[GTE0]], [[GTE1]], [[ADD3]], [[CP1]], [[ADD7]], /*index=5*/[[GTE3]], [[GTE5]])
+; CHECK-NEXT:    [[GTE0:%[^ ]+]] = f8e4m3fn[2,2048,24576]{2,1,0} get-tuple-element([[TUPLE0]]), index=0
+; CHECK-NEXT:    [[GTE1:%[^ ]+]] = f8e4m3fn[24576,24576]{1,0} get-tuple-element([[TUPLE0]]), index=1
+; CHECK-NEXT:    [[GTE2:%[^ ]+]] = f32[2,512,24576]{2,1,0} get-tuple-element([[TUPLE0]]), index=2
+; CHECK-NEXT:    [[CP0:%[^ ]+]] = f32[2,512,24576]{2,1,0} collective-permute([[GTE2]]), channel_id=13
+; CHECK-NEXT:    [[CONVERT0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} convert([[GTE0]])
+; CHECK-NEXT:    [[GTE3:%[^ ]+]] = f32[] get-tuple-element([[TUPLE0]]), index=5
+; CHECK-NEXT:    [[BCAST0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} broadcast([[GTE3]]), dimensions={}
+; CHECK-NEXT:    [[MUL0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} multiply([[CONVERT0]], [[BCAST0]])
+; CHECK-NEXT:    [[C0:%[^ ]+]] = s32[] constant(0)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = u32[] constant(0)
+; CHECK-NEXT:    [[GTE4:%[^ ]+]] = u32[] get-tuple-element([[TUPLE0]]), index=4
+; CHECK-NEXT:    [[C2:%[^ ]+]] = u32[] constant(3)
+; CHECK-NEXT:    [[ADD0:%[^ ]+]] = u32[] add([[GTE4]], [[C2]])
+; CHECK-NEXT:    [[PID:%[^ ]+]] = u32[] partition-id()
+; CHECK-NEXT:    [[ADD2:%[^ ]+]] = u32[] add([[ADD0]], [[PID]])
+; CHECK-NEXT:    [[AND0:%[^ ]+]] = u32[] and([[ADD2]], [[C2]])
+; CHECK-NEXT:    [[CLAMP0:%[^ ]+]] = u32[] clamp([[C1]], [[AND0]], [[C2]])
+; CHECK-NEXT:    [[CONVERT10:%[^ ]+]] = s32[] convert([[CLAMP0]])
+; CHECK-NEXT:    [[C10:%[^ ]+]] = s32[] constant(512)
+; CHECK-NEXT:    [[MUL10:%[^ ]+]] = s32[] multiply([[CONVERT10]], [[C10]])
+; CHECK-NEXT:    [[RESHAPE0:%[^ ]+]] = s32[] reshape([[MUL10]])
+; CHECK-NEXT:    [[DSLICE1:%[^ ]+]] = f32[2,512,24576]{2,1,0} dynamic-slice([[MUL0]], [[C0]], [[RESHAPE0]], [[C0]]), dynamic_slice_sizes={2,512,24576}
+; CHECK-NEXT:    [[CONVERT1:%[^ ]+]] = f32[24576,24576]{1,0} convert([[GTE1]])
+; CHECK-NEXT:    [[GTE5:%[^ ]+]] = f32[] get-tuple-element([[TUPLE0]]), index=6
+; CHECK-NEXT:    [[BCAST1:%[^ ]+]] = f32[24576,24576]{1,0} broadcast([[GTE5]]), dimensions={}
+; CHECK-NEXT:    [[MUL1:%[^ ]+]] = f32[24576,24576]{1,0} multiply([[CONVERT1]], [[BCAST1]])
+; CHECK-NEXT:    [[DOT0:%[^ ]+]] = f32[2,512,24576]{2,1,0} dot([[DSLICE1]], [[MUL1]]),
+; CHECK-DAG:       lhs_contracting_dims={2},
+; CHECK-DAG:       rhs_contracting_dims={0},
+; CHECK-DAG:       backend_config={
+; CHECK-DAG:         "operation_queue_id":"[[OPQUEUEID:[0-9]+]]",
+; CHECK-DAG:         "wait_on_operation_queues":[],
+; CHECK-DAG:         "force_earliest_schedule":false}
+; CHECK-NEXT:    [[ADD3:%[^ ]+]] = f32[2,512,24576]{2,1,0} add([[CP0]], [[DOT0]]),
 ; CHECK-DAG:       backend_config={"
 ; CHECK-DAG:         operation_queue_id":"0",
-; CHECK-DAG:         "wait_on_operation_queues":["[[OPQUEUEID1]]"],
+; CHECK-DAG:         "wait_on_operation_queues":["[[OPQUEUEID]]"],
 ; CHECK-DAG:         "force_earliest_schedule":false}
-; CHECK-NEXT:    [[CP1:[^ ]+]] = f32[2,512,24576]{2,1,0} collective-permute([[ADD5]]), channel_id=10
-; CHECK-NEXT:  ROOT [[OUT:[^ ]+]] = (f8e4m3fn[2,2048,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) tuple([[GTE0]], [[GTE1]], [[ADD3]], [[CP1]], [[ADD0]], /*index=5*/[[GTE3]], [[GTE5]])
+; CHECK-NEXT:    [[GTE6:[^ ]+]] = f32[2,512,24576]{2,1,0} get-tuple-element([[TUPLE0]]), index=3
+; CHECK-NEXT:    [[C11:%[^ ]+]] = u32[] constant(1)
+; CHECK-NEXT:    [[ADD6:%[^ ]+]] = u32[] add([[C11]], [[PID]])
+; CHECK-NEXT:    [[AND1:%[^ ]+]] = u32[] and([[ADD6]], [[C2]])
+; CHECK-NEXT:    [[CLAMP1:%[^ ]+]] = u32[] clamp([[C1]], [[AND1]], [[C2]])
+; CHECK-NEXT:    [[CONVERT11:%[^ ]+]] = s32[] convert([[CLAMP1]])
+; CHECK-NEXT:    [[MUL11:%[^ ]+]] = s32[] multiply([[CONVERT11]], [[C10]])
+; CHECK-NEXT:    [[RESHAPE2:%[^ ]+]] = s32[] reshape([[MUL11]])
+; CHECK-NEXT:    [[DSLICE3:%[^ ]+]] = f32[2,512,24576]{2,1,0} dynamic-slice([[MUL0]], [[C0]], [[RESHAPE2]], [[C0]]), dynamic_slice_sizes={2,512,24576}
+; CHECK-NEXT:    [[DOT1:%[^ ]+]] = f32[2,512,24576]{2,1,0} dot([[DSLICE3]], [[MUL1]]),
+; CHECK-DAG:       lhs_contracting_dims={2},
+; CHECK-DAG:       rhs_contracting_dims={0}
+; CHECK-DAG:       backend_config={
+; CHECK-DAG:         "operation_queue_id":"[[OPQUEUEID:[0-9]+]]",
+; CHECK-DAG:         "wait_on_operation_queues":[],
+; CHECK-DAG:         "force_earliest_schedule":false}
+; CHECK-NEXT:    [[ADD5:%[^ ]+]] = f32[2,512,24576]{2,1,0} add([[GTE6]], [[DOT1]])
+; CHECK-NEXT:    [[CP1:[^ ]+]] = f32[2,512,24576]{2,1,0} collective-permute([[ADD5]]), channel_id=14
+; CHECK-NEXT:    [[C3:%[^ ]+]] = u32[] constant(2)
+; CHECK-NEXT:    [[ADD7:%[^ ]+]] = u32[] add([[GTE4]], [[C3]])
 )");
 }
 
@@ -931,8 +1032,8 @@ ENTRY main {
                             R"(
 ; CHECK-LABEL: %main
 ; CHECK:         [[WHILE0:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[], f8e4m3fn[2,2048,24576]{2,1,0}) while([[TUPLE0:%[^ ]+]]),
-; CHECK-DAG:       condition=%windowed_dot_general_cond_ag,
-; CHECK-DAG:       body=%windowed_dot_general_body_ag
+; CHECK-DAG:       condition=%unrolled_windowed_dot_general_cond_ag,
+; CHECK-DAG:       body=%unrolled_windowed_dot_general_body_ag
 ; CHECK:         [[LHS1:%[^ ]+]] = f8e4m3fn[2,2048,24576]{2,1,0} get-tuple-element([[WHILE0]]), index=7
 ; CHECK-NEXT:    [[LHS1_F32:%[^ ]+]] = f32[2,2048,24576]{2,1,0} convert([[LHS1]])
 ; CHECK-NEXT:    [[SCALE_LHS1_BCAST:%[^ ]+]] = f32[2,2048,24576]{2,1,0} broadcast([[SCALE_LHS1:%[^ ]+]]), dimensions={}

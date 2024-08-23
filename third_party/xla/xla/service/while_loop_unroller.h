@@ -42,6 +42,16 @@ struct WhileLoopConfig {
   int64_t induction_var_idx;
 };
 
+// Config for unrollable while loops.
+struct UnrollResult {
+  // Whether it's unrolled.
+  bool unrolled = false;
+  // If the while-loop has been unrolled and replaced with a new unrolled
+  // while-loop with a trip count of 1, this is the new while-loop.
+  // Otherwise this is nullptr.
+  HloInstruction* new_while_op = nullptr;
+};
+
 // Check if `instr` is a dynamic index instruction, i.e., dynamic-slice or
 // dynamic-update-slice with the given input that operates on the entire
 // shape of the instruction. To satisfy this:
@@ -111,12 +121,12 @@ class WhileLoopUnroller : public HloModulePass {
   // If wrap_in_trivial_loop is set, the unrolled body of the loop will be
   // wrapped in a loop with trip count of one. Forcing unroll will not perform
   // soft checking of the conditions. If prepare is set, it will run the
-  // necessary passes to prepare the module for unrolling.
-  static absl::StatusOr<bool> Unroll(HloInstruction* while_op,
-                                     int64_t unroll_factor = -1,
-                                     bool wrap_in_trivial_loop = false,
-                                     bool force_unroll = false,
-                                     bool prepare = true);
+  // necessary passes to prepare the module for unrolling. Returns the unrolled
+  // flag and the new unrolled while instruction.
+  static absl::StatusOr<UnrollResult> UnrollAndReturnReplacement(
+      HloInstruction* while_op, int64_t unroll_factor = -1,
+      bool wrap_in_trivial_loop = false, bool force_unroll = false,
+      bool prepare = true);
 
  private:
   int64_t unroll_factor_;
