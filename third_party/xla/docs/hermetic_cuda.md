@@ -532,12 +532,12 @@ projects:
    build:cuda --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,compute_90"
    ```
 
-3. To enable Hermetic CUDA during test execution, or when running a binary via
-   bazel, make sure to add `--@local_config_cuda//cuda:include_hermetic_cuda_libs=true`
+3. To enable hermetic CUDA during test execution, or when running a binary via
+   bazel, make sure to add `--@local_config_cuda//cuda:include_cuda_libs=true`
    flag to your bazel command. You can provide it either directly in a shell or
    in `.bazelrc`:
    ```
-   test:cuda --@local_config_cuda//cuda:include_hermetic_cuda_libs=true
+   build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
    ```
    The flag is needed to make sure that CUDA dependencies are properly provided
    to test executables. The flag is false by default to avoid unwanted coupling

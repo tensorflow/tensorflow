@@ -6,7 +6,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 # Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_hermetic_cuda_tools",
+    "if_cuda_tools",
     "if_not_windows",
     "if_oss",
     "if_xla_available",
@@ -1048,7 +1048,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
     # This data is needed to add hermetic CUDA tools in python runfiles.
-    data = if_hermetic_cuda_tools(
+    data = if_cuda_tools(
         [
             "@cuda_nvcc//:ptxas",
             "@cuda_nvcc//:nvvm",

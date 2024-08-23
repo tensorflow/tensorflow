@@ -31,8 +31,8 @@ load(
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
+    "if_cuda_tools",
     "if_google",
-    "if_hermetic_cuda_tools",
     "if_nccl",
     "internal_visibility",
     "tsl_copts",
@@ -143,7 +143,7 @@ cuda_only_cc_library(
 # an intermediate target.
 cc_library(
     name = "ptxas_wrapper",
-    data = if_hermetic_cuda_tools(
+    data = if_cuda_tools(
         ["@cuda_nvcc//:ptxas"],
         [],
     ),
@@ -151,7 +151,7 @@ cc_library(
 
 cc_library(
     name = "nvlink_wrapper",
-    data = if_hermetic_cuda_tools(
+    data = if_cuda_tools(
         ["@cuda_nvcc//:nvlink"],
         [],
     ),
@@ -778,7 +778,7 @@ cuda_only_cc_library(
     # ],
     # copybara:uncomment_end
     # copybara:comment_begin
-    data = if_hermetic_cuda_tools([
+    data = if_cuda_tools([
         "@cuda_nvcc//:fatbinary",
         "@cuda_nvcc//:nvlink",
         "@cuda_nvcc//:ptxas",
