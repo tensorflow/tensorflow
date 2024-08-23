@@ -13351,6 +13351,31 @@ ENTRY entry {
                                    "belong to different manual subgroups"));
 }
 
+TEST_P(SpmdPartitioningTest, AllReduceNoSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[2,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT all-reduce = f32[2,2]{1,0} all-reduce(param), to_apply=sum,
+    replica_groups={{0,1,2,3}}, use_global_device_ids=true, channel_id=1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::AllReduce(), op::Shape("f32[2,2]")));
+  EXPECT_EQ(root->replica_groups().size(), 1);
+}
+
 TEST_P(SpmdPartitioningTest, SubgroupManualReduce) {
   absl::string_view hlo_string = R"(
 HloModule module

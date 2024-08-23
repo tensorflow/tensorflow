@@ -3354,7 +3354,7 @@ absl::Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
     TF_RET_CHECK(hlo->operand_count() == 1)
         << "SPMD partitioner supports only single-operand allreduce in manual "
            "partitioning mode.";
-    if (hlo->sharding().IsManual()) {
+    if (hlo->sharding().IsManual() || hlo->sharding().IsReplicated()) {
       return HandleElementwise(hlo);
     }
     TF_RET_CHECK(hlo->sharding().IsManualSubgroup())
