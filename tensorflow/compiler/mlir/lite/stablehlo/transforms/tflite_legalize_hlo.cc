@@ -67,6 +67,44 @@ arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
   return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
 }
 
+// Returns true if broadcast_dimensions obey Tensorflow convention, as in new
+// dimensions are added as prefix.
+bool IsTFLStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
+                         Value output) {
+  // broadcast_dimensions is an increasing list by definition, thus it suffices
+  // to check the first element.
+  int64_t input_rank = broadcast_dimensions.getNumElements();
+  int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
+  return input_rank == 0 ||
+         (broadcast_dimensions.getValues<APInt>()[0].getSExtValue() ==
+          output_rank - input_rank);
+}
+
+// Returns the intermediate shape that input tensor should be reshaped to during
+// legalization of BroadcastInDimOp.
+arith::ConstantOp ExpandedShape(OpBuilder& b, Value input,
+                                DenseIntElementsAttr broadcast_dimensions,
+                                Value output) {
+  // Initialize expanded shape with output rank and dimensions of 1.
+  llvm::SmallVector<Attribute> expanded_shape(
+      llvm::cast<ShapedType>(output.getType()).getRank(),
+      /*Value=*/b.getI32IntegerAttr(1));
+
+  // Set dimension sizes specified by broadcast_dimensions.
+  auto input_shape = llvm::cast<ShapedType>(input.getType()).getShape();
+
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    expanded_shape[x.value().getSExtValue()] =
+        b.getI32IntegerAttr(static_cast<int32_t>(input_shape[x.index()]));
+  }
+
+  // Create the expanded type wrapped in a arith::ConstantOp.
+  auto attr_type = RankedTensorType::get(
+      {static_cast<int64_t>(expanded_shape.size())}, b.getIntegerType(32));
+  auto attr = DenseElementsAttr::get(attr_type, expanded_shape);
+  return b.create<arith::ConstantOp>(output.getLoc(), attr_type, attr);
+}
+
 bool IsSign(APInt a, APInt sign) {
   if (a.isZero()) return a == sign;
   if (a.isNegative()) return sign == -1;
@@ -214,7 +252,6 @@ void AddRoundingOpsAsUnknown(ConversionTarget& target) {
       // go/keep-sorted start
       // clang-format off
       mhlo::AddOp,
-      mhlo::BroadcastInDimOp,
       mhlo::ConstantOp,
       mhlo::FloorOp,
       mhlo::MulOp,
@@ -299,6 +336,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       // go/keep-sorted start
       // clang-format off
       mhlo::Atan2Op,
+      mhlo::BroadcastInDimOp,
       mhlo::ClampOp,
       mhlo::DivOp,
       mhlo::DotGeneralOp,

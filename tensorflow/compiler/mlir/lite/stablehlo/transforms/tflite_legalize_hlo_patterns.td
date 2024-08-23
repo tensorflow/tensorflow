@@ -39,6 +39,16 @@ def : Pat<
       (TFL_ConstOp $perm)))>;
 
 def : Pat<
+  (MHLO_ReverseOp $input, $dims),
+  (TFL_ReverseV2Op $input,
+    (CreateTFLCastToInt32Op
+      (Arith_ConstantOp $dims)))>;
+
+//
+// Reshapes
+//
+
+def : Pat<
   (MHLO_ReshapeOp:$output $input),
   (TFL_ReshapeOp $input,
     (CreateTFLCastToInt32Op
@@ -49,11 +59,43 @@ def : Pat<
   (TFL_ReshapeOp $input,
     (CreateTFLCastToInt32Op $shape))>;
 
+//
+// Broadcasts
+//
+
+def IsTFLStyleBroadcast :
+  Constraint<CPred<"IsTFLStyleBroadcast($0, $1)">>;
+
+def IsNotTFLStyleBroadcast :
+  Constraint<Neg<IsTFLStyleBroadcast.predicate>>;
+
+def ExpandedShape :
+  NativeCodeCall<"ExpandedShape($_builder, $0, $1, $2)">;
+
 def : Pat<
-  (MHLO_ReverseOp $input, $dims),
-  (TFL_ReverseV2Op $input,
-    (CreateTFLCastToInt32Op
-      (Arith_ConstantOp $dims)))>;
+  (MHLO_BroadcastInDimOp:$output
+    $input,
+    $broadcast_dimensions),
+  (TFL_BroadcastToOp
+    $input,
+    (ShapeToConst $output)),
+  [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>;
+
+def : Pat<
+  (MHLO_BroadcastInDimOp:$output
+    $input,
+    $broadcast_dimensions),
+  (TFL_BroadcastToOp
+    (TFL_ReshapeOp
+        $input,
+        (ExpandedShape
+          $input,
+          $broadcast_dimensions,
+          $output)),
+    (ShapeToConst $output)),
+  [(IsNotTFLStyleBroadcast $broadcast_dimensions, $output)]>;
+
+
 
 //===----------------------------------------------------------------------===//
 // logical and bitwise ops
