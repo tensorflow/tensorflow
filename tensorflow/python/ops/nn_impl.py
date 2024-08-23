@@ -450,8 +450,8 @@ def swish(features, beta=1.0):
   tf.Tensor([ 0.11920292 -1.9640275   0.00741787], shape=(3,), dtype=float32)
   
   Args:
-    features: A `Tensor` representing preactivation values. Must be the following data types:
-                bfloat16, half, complex64, complex128
+    features: A `Tensor` representing preactivation values. Must be the
+    following data types: bfloat16, half, complex64, complex128
     beta: A 'Tensor' representing value of beta hyperparameter.
 
   Returns:
