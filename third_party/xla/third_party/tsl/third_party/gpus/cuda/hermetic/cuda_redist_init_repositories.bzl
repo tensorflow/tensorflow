@@ -105,14 +105,15 @@ def get_lib_name_to_version_dict(repository_ctx):
         # libcudart.so.12
         # libcudart.so.12.3.2,
         # we will save save {"%{libcudart_version}": "12",
-        # "%{libcudart_minor_version}": "12.3"}
+        # "%{libcudart_minor_version}": "12.3.2"}
         if len(lib_version.split(".")) == 1:
             lib_name_to_version_dict[major_version_key] = lib_version
         if len(lib_version.split(".")) == 2:
             lib_name_to_version_dict[minor_version_key] = lib_version
-            if major_version_key not in lib_name_to_version_dict:
+            if (major_version_key not in lib_name_to_version_dict or
+                len(lib_name_to_version_dict[major_version_key].split(".")) > 2):
                 lib_name_to_version_dict[major_version_key] = lib_version
-        if (len(lib_version.split(".")) == 3 and
+        if (len(lib_version.split(".")) >= 3 and
             minor_version_key not in lib_name_to_version_dict):
             lib_name_to_version_dict[minor_version_key] = lib_version
     return lib_name_to_version_dict
