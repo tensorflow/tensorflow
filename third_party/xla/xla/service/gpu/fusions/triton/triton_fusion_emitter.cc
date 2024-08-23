@@ -1532,6 +1532,46 @@ class MatMulEmitterHelper {
     }
   }
 
+  // Return the batch stride of the HLO passed as a parameter. If the
+  // parameter HLO has no batch dimension, a zero stride is returned.
+  // Also sets offset_batch and updates has_batch_offset as a side effect.
+  absl::StatusOr<Value> GetBatchStride(const Side& side,
+                                       const HloInstruction* hlo_param,
+                                       int64_t& offset_batch,
+                                       bool& has_batch_offset) {
+    int64_t stride_batch = 0;
+    if (side.scope != TritonFusionAnalysis::Scope::RHS &&
+        dims_.lhs_noncontracting_split) {
+      const TensorIterationSpec::DimIterationSpec* spec =
+          analysis_.IterSpec(side.scope, hlo_param, side.tiled_dims[0].index);
+      if (spec != nullptr) {
+        if (spec->size() > 1) {
+          // Support one specific kind of output transpose that splits the
+          // dimension originating from the split LHS non-contracting one.
+          stride_batch = spec->at(1).stride;
+        } else {
+          // Because the major part of the split is implemented using the
+          // batch logic stride_batch is populated here as the stride of
+          // the minor part times its size.
+          stride_batch = spec->at(0).stride *
+                         (spec->at(0).count / *dims_.lhs_noncontracting_split);
+        }
+        TF_RET_CHECK(stride_batch != 0);
+      }
+    } else if (side.batch_dim_idx.has_value()) {
+      const TensorIterationSpec::DimIterationSpec* spec =
+          analysis_.IterSpec(side.scope, hlo_param, *side.batch_dim_idx);
+      if (spec != nullptr) {
+        stride_batch = spec->at(0).stride;
+        offset_batch = spec->at(0).slice_start;
+        TF_RET_CHECK(stride_batch != 0);
+      }
+    }
+
+    has_batch_offset |= stride_batch != 0;
+    return Cst(stride_batch);
+  }
+
   // bases: The base pointers of each argument.
   absl::StatusOr<Value> EmitTensorPointer(
       const HloInstruction* hlo, const Side& side, ValueRange bases,
@@ -1750,58 +1790,21 @@ class MatMulEmitterHelper {
     bool has_batch_offset = false;
     Value batch_stride;
 
-    // Return the batch stride of the HLO passed as a parameter. If the
-    // parameter HLO has no batch dimension, a zero stride is returned.
-    // Also sets offset_batch and updates has_batch_offset as a side effect.
-    auto get_batch_stride =
-        [this, &side, &offset_batch, &has_batch_offset](
-            const HloInstruction* hlo_param) -> absl::StatusOr<Value> {
-      int64_t stride_batch = 0;
-      if (side.scope != TritonFusionAnalysis::Scope::RHS &&
-          dims_.lhs_noncontracting_split) {
-        const TensorIterationSpec::DimIterationSpec* spec =
-            analysis_.IterSpec(side.scope, hlo_param, side.tiled_dims[0].index);
-        if (spec != nullptr) {
-          if (spec->size() > 1) {
-            // Support one specific kind of output transpose that splits the
-            // dimension originating from the split LHS non-contracting one.
-            stride_batch = spec->at(1).stride;
-          } else {
-            // Because the major part of the split is implemented using the
-            // batch logic stride_batch is populated here as the stride of
-            // the minor part times its size.
-            stride_batch =
-                spec->at(0).stride *
-                (spec->at(0).count / *dims_.lhs_noncontracting_split);
-          }
-          TF_RET_CHECK(stride_batch != 0);
-        }
-      } else if (side.batch_dim_idx.has_value()) {
-        const TensorIterationSpec::DimIterationSpec* spec =
-            analysis_.IterSpec(side.scope, hlo_param, *side.batch_dim_idx);
-        if (spec != nullptr) {
-          stride_batch = spec->at(0).stride;
-          offset_batch = spec->at(0).slice_start;
-          TF_RET_CHECK(stride_batch != 0);
-        }
-      }
-
-      has_batch_offset |= stride_batch != 0;
-      return Cst(stride_batch);
-    };
-
     if (hlo->opcode() == HloOpcode::kConcatenate) {
       std::vector<Value> batch_strides;
       batch_strides.reserve(hlo->operands().size());
       for (const HloInstruction* operand : hlo->operands()) {
-        TF_ASSIGN_OR_RETURN(Value op_stride, get_batch_stride(operand));
+        TF_ASSIGN_OR_RETURN(
+            Value op_stride,
+            GetBatchStride(side, operand, offset_batch, has_batch_offset));
         batch_strides.push_back(op_stride);
       }
       TF_ASSIGN_OR_RETURN(batch_stride,
                           EmitMultiSelect(b_, concat_dim_pid_offset,
                                           concat_boundaries, batch_strides));
     } else {
-      TF_ASSIGN_OR_RETURN(batch_stride, get_batch_stride(hlo));
+      TF_ASSIGN_OR_RETURN(batch_stride, GetBatchStride(side, hlo, offset_batch,
+                                                       has_batch_offset));
     }
 
     // Avoid generating logic to compute batch offset if unnecessary.
@@ -2810,10 +2813,10 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 }
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
-  mlir_context.loadDialect<
-      mt::TritonDialect, mt::gpu::TritonGPUDialect, mlir::arith::ArithDialect,
-      mlir::affine::AffineDialect, mlir::LLVM::LLVMDialect,
-      xla::gpu::XlaGpuDialect>();
+  mlir_context
+      .loadDialect<mt::TritonDialect, mt::gpu::TritonGPUDialect,
+                   mlir::arith::ArithDialect, mlir::affine::AffineDialect,
+                   mlir::LLVM::LLVMDialect, xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);
