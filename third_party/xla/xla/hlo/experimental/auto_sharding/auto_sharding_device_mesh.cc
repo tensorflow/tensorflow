@@ -23,17 +23,6 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
-namespace {
-bool AreValuesIota(const absl::Span<const int64_t> values) {
-  for (int i = 1; i < values.size(); ++i) {
-    if (values[i] - values[i - 1] != 1) {
-      return false;
-    }
-  }
-  return true;
-}
-}  // namespace
-
 void DeviceMesh::SetValues(absl::Span<const int64_t> values) {
   device_array.SetValues(values);
   is_iota = AreValuesIota(values);
