@@ -189,10 +189,7 @@ tf_kernel_library(
     name = "calibration_statistics_saver_op",
     srcs = ["calibration_statistics_saver_op.cc"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow:__pkg__",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__",
-    ],
+    visibility = ["//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__"],
     deps = [
         ":calibration_statistics_collector_average_min_max",
         ":calibration_statistics_collector_base",
