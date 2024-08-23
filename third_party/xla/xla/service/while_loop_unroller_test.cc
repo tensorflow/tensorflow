@@ -556,9 +556,10 @@ TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {
 
   // Unroll the first loop
   TF_ASSERT_OK_AND_ASSIGN(
-      bool unrolled1,
-      WhileLoopUnroller::Unroll(
+      UnrollResult unrolled_result,
+      WhileLoopUnroller::UnrollAndReturnReplacement(
           module->entry_computation()->GetInstructionWithName("while1")));
+  bool unrolled1 = unrolled_result.unrolled;
   EXPECT_TRUE(unrolled1);
 
   // There should be no call instructions after unrolling either loops since we
@@ -572,9 +573,10 @@ TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {
 
   // Unroll the second loop
   TF_ASSERT_OK_AND_ASSIGN(
-      bool unrolled2,
-      WhileLoopUnroller::Unroll(
+      UnrollResult unrolled_result2,
+      WhileLoopUnroller::UnrollAndReturnReplacement(
           module->entry_computation()->GetInstructionWithName("while2")));
+  bool unrolled2 = unrolled_result2.unrolled;
   EXPECT_TRUE(unrolled2);
   std::vector<HloInstruction*> call_instrs_2;
   for (auto* comp : module->MakeComputationPostOrder()) {
@@ -1091,8 +1093,10 @@ TEST_F(WhileLoopUnrollerTest, UnrollLoopWithDynamicGte) {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloInstruction* loop =
       module->entry_computation()->root_instruction()->mutable_operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool unrolled, WhileLoopUnroller::Unroll(loop, -1, false, true, true));
+  TF_ASSERT_OK_AND_ASSIGN(UnrollResult unrolled_result,
+                          WhileLoopUnroller::UnrollAndReturnReplacement(
+                              loop, -1, false, true, true));
+  bool unrolled = unrolled_result.unrolled;
   EXPECT_TRUE(unrolled);
   // Below method is successful only if all the DynamicGte and DynamicTuple
   // custom-calls are removed.

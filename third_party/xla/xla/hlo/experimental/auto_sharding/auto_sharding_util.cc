@@ -58,7 +58,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -827,47 +829,48 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
     for (auto& child : strategy_group->childs) {
       RemoveDuplicatedStrategy(child);
     }
-  } else if (!strategy_group->following) {
-    if (strategy_group->strategies.empty()) return;
-    std::vector<ShardingStrategy> new_vector;
-    std::vector<ShardingStrategy> deduped_replicated_strategies;
-    absl::flat_hash_set<std::string> added;
-    size_t num_skipped_due_to_infinity_costs = 0;
-    for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
-      if (AllInfinityCosts(
-              strategy_group->strategies[i].communication_resharding_costs)) {
-        num_skipped_due_to_infinity_costs++;
-        continue;
-      }
-      std::string key =
-          strategy_group->strategies[i].output_sharding.ToString();
-      if (!strategy_group->strategies[i].input_shardings.empty()) {
-        for (const auto& sharding :
-             strategy_group->strategies[i].input_shardings) {
-          key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
-        }
-      }
-      if (!added.contains(key)) {
-        added.insert(key);
-        if (!strategy_group->strategies[i].output_sharding.IsReplicated()) {
-          new_vector.push_back(std::move(strategy_group->strategies[i]));
-        } else {
-          deduped_replicated_strategies.push_back(
-              std::move(strategy_group->strategies[i]));
-        }
-      }
-    }
-    CHECK_LT(num_skipped_due_to_infinity_costs,
-             strategy_group->strategies.size())
-        << "All strategies removed due to infinite resharding costs";
-    // Keeps replicated strategies as the last ones.
-    if (!deduped_replicated_strategies.empty()) {
-      for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
-        new_vector.push_back(std::move(deduped_replicated_strategies[i]));
-      }
-    }
-    strategy_group->strategies = std::move(new_vector);
+    return;
   }
+  if (strategy_group->following || strategy_group->strategies.empty()) {
+    return;
+  }
+  std::vector<ShardingStrategy> new_vector;
+  std::vector<ShardingStrategy> deduped_replicated_strategies;
+  absl::flat_hash_set<std::string> added;
+  size_t num_skipped_due_to_infinity_costs = 0;
+  for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
+    if (AllInfinityCosts(
+            strategy_group->strategies[i].communication_resharding_costs)) {
+      num_skipped_due_to_infinity_costs++;
+      continue;
+    }
+    std::string key = strategy_group->strategies[i].output_sharding.ToString();
+    if (!strategy_group->strategies[i].input_shardings.empty()) {
+      for (const auto& sharding :
+           strategy_group->strategies[i].input_shardings) {
+        key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
+      }
+    }
+    if (added.contains(key)) {
+      continue;
+    }
+    added.insert(key);
+    if (!strategy_group->strategies[i].output_sharding.IsReplicated()) {
+      new_vector.push_back(std::move(strategy_group->strategies[i]));
+    } else {
+      deduped_replicated_strategies.push_back(
+          std::move(strategy_group->strategies[i]));
+    }
+  }
+  CHECK_LT(num_skipped_due_to_infinity_costs, strategy_group->strategies.size())
+      << "All strategies removed due to infinite resharding costs";
+  // Keeps replicated strategies as the last ones.
+  if (!deduped_replicated_strategies.empty()) {
+    for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
+      new_vector.push_back(std::move(deduped_replicated_strategies[i]));
+    }
+  }
+  strategy_group->strategies = std::move(new_vector);
 }
 
 bool IsDivisible(const HloInstruction* ins, const DeviceMesh& device_mesh,

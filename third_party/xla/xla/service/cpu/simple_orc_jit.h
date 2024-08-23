@@ -103,11 +103,6 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   llvm::Error AddModule(llvm::orc::ThreadSafeModule module,
                         size_t dylib_index = 0);
 
-  // Moves context ownership to the JIT.
-  void SetContext(llvm::orc::ThreadSafeContext context) {
-    context_ = std::move(context);
-  }
-
   // Discards objects we no longer need once we are done compiling.
   void DoneCompiling();
 
@@ -140,8 +135,6 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       const llvm::object::ObjectFile& object,
       const llvm::RuntimeDyld::LoadedObjectInfo& object_info) override;
   void notifyFreeingObject(llvm::JITEventListener::ObjectKey key) override;
-
-  llvm::orc::ThreadSafeContext context_;
 
   // Target machine builder that is used to construct target machines for this
   // instance of SimpleOrcJIT, and to construct `target_machine_`.

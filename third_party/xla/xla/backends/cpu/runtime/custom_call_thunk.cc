@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -209,9 +211,11 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   absl::InlinedVector<se::DeviceMemoryBase, 8> arguments;
   arguments.reserve(op_buffers_.arguments_buffers.size());
   for (int i = 0; i < op_buffers_.arguments_buffers.size(); ++i) {
-    auto& slice = op_buffers_.arguments_buffers[i];
+    BufferAllocation::Slice& slice = op_buffers_.arguments_buffers[i];
     TF_ASSIGN_OR_RETURN(arguments.emplace_back(),
                         params.buffer_allocations->GetDeviceAddress(slice));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(arguments[i].opaque(),
+                                        arguments[i].size());
     VLOG(3) << absl::StreamFormat(
         "  arg: %s in slice %s (%p)",
         op_buffers_.arguments_shapes[i].ToString(true), slice.ToString(),
@@ -222,9 +226,10 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   absl::InlinedVector<se::DeviceMemoryBase, 4> results;
   results.reserve(op_buffers_.results_buffers.size());
   for (int i = 0; i < op_buffers_.results_buffers.size(); ++i) {
-    auto& slice = op_buffers_.results_buffers[i];
+    BufferAllocation::Slice& slice = op_buffers_.results_buffers[i];
     TF_ASSIGN_OR_RETURN(results.emplace_back(),
                         params.buffer_allocations->GetDeviceAddress(slice));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(results[i].opaque(), results[i].size());
     VLOG(3) << absl::StreamFormat("  res: %s in slice %s (%p)",
                                   op_buffers_.results_shapes[i].ToString(true),
                                   slice.ToString(), results[i].opaque());

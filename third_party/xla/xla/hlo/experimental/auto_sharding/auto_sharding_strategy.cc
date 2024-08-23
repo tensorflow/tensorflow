@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -693,15 +694,13 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kReduce: {
-        auto strategies_status = FollowReduceStrategy(
-            ins, ins->shape(), ins->operand(0), ins->operand(1), instruction_id,
-            strategy_map, strategy_groups, cluster_env,
-            option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes);
-        if (strategies_status.ok()) {
-          strategy_group = std::move(strategies_status.value());
-        } else {
-          return strategies_status.status();
-        }
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<StrategyGroup> new_strategy_group,
+            FollowReduceStrategy(
+                ins, ins->shape(), ins->operand(0), ins->operand(1),
+                instruction_id, strategy_map, strategy_groups, cluster_env,
+                option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes));
+        strategy_group = std::move(new_strategy_group);
         break;
       }
       case HloOpcode::kDot: {
@@ -813,16 +812,16 @@ BuildStrategyAndCost(
                                         strategy_map, strategy_group,
                                         replicated_penalty);
                 }
-              } else {
-                strategy_group =
-                    CreateAllStrategiesGroup(
-                        ins, ins->shape(), instruction_id, strategy_groups,
-                        cluster_env, strategy_map, option, replicated_penalty,
-                        batch_dim_map, call_graph, only_allow_divisible,
-                        /* create_replicated_strategies */ true,
-                        /* create_partially_replicated_strategies */ true)
-                        .value();
+                return;
               }
+              strategy_group =
+                  CreateAllStrategiesGroup(
+                      ins, ins->shape(), instruction_id, strategy_groups,
+                      cluster_env, strategy_map, option, replicated_penalty,
+                      batch_dim_map, call_graph, only_allow_divisible,
+                      /* create_replicated_strategies */ true,
+                      /* create_partially_replicated_strategies */ true)
+                      .value();
             };
 
         if (IsSPMDFullToShardShapeCustomCall(ins)) {

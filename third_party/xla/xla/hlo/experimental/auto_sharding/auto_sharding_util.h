@@ -347,6 +347,15 @@ inline bool IsFullyTiled(const HloSharding& sharding) {
   return sharding.NumTiles() == sharding.tile_assignment().num_elements();
 }
 
+// The sharding is replicated or the total number of tiles is over or equal to
+// the total number of devices. If returns true, this sharding is likely
+// provided by users.
+inline bool ShardingIsComplete(const HloSharding& sharding,
+                               size_t total_num_devices) {
+  return sharding.TotalNumTiles() >= total_num_devices ||
+         sharding.IsReplicated();
+}
+
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
 // independently on each dimension.
 // The sharding can successfully propagate if the operation only happens on
