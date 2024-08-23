@@ -541,3 +541,15 @@ cc_library(
     }),
 )
 # copybara:comment_end
+
+cc_library(
+    name = "empty",
+    visibility = ["//visibility:public"],
+)
+
+# Needed to workaround https://github.com/bazelbuild/bazel/issues/21519
+alias(
+    name = "bazel_issue_21519",
+    actual = ":empty",
+    visibility = ["//visibility:public"],
+)

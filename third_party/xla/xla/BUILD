@@ -1316,11 +1316,6 @@ cc_library(
 # copybara:uncomment_end
 
 cc_library(
-    name = "empty",
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "sort_json",
     srcs = ["sort_json.cc"],
     hdrs = ["sort_json.h"],
@@ -1345,13 +1340,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
-)
-
-# Needed to workaround https://github.com/bazelbuild/bazel/issues/21519
-alias(
-    name = "bazel_issue_21519",
-    actual = ":empty",
-    visibility = ["//visibility:public"],
 )
 
 bzl_library(
