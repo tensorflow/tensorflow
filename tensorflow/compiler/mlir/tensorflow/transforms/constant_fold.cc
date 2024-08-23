@@ -44,14 +44,11 @@ namespace TF {
 // (`kOperandsSizeThreshold`).
 //
 // Otherwise, allow folding if:
-// 1. we do not know the shape of an operand or result i.e., one of these values
-//    has non-static shape, or
-// 2. size of results is less than a certain threshold
+// 1. size of results is less than a certain threshold
 //    (`kResultsSizeThreshold`), or
-// 3. size of results is within a factor (`kSizeFactor`) of size of operands.
+// 2. size of results is within a factor (`kSizeFactor`) of size of operands.
 // TODO(b/157226221): Look into other heuristics for constant fold policy.
 static bool IsFoldedByDefaultPolicy(Operation* inst) {
-  bool has_unknown_shape = false;
   auto get_size = [&](TypeRange types) {
     int64_t size = 0;
     for (auto t : types) {
@@ -59,10 +56,7 @@ static bool IsFoldedByDefaultPolicy(Operation* inst) {
       // Ignore types with undefined bit widths.
       if (!tensor_type.getElementType().isIntOrFloat()) continue;
       // Ignore types with dynamic shapes.
-      if (!tensor_type.hasStaticShape()) {
-        has_unknown_shape = true;
-        continue;
-      }
+      if (!tensor_type.hasStaticShape()) continue;
       size += tensor_type.getNumElements() *
               tensor_type.getElementType().getIntOrFloatBitWidth();
     }
@@ -82,7 +76,7 @@ static bool IsFoldedByDefaultPolicy(Operation* inst) {
   constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 128 MiB
 
   return (operands_size <= kOperandsSizeThreshold) &&
-         (has_unknown_shape || (results_size <= kResultsSizeThreshold) ||
+         ((results_size <= kResultsSizeThreshold) ||
           (results_size <= kSizeFactor * operands_size));
 }
 
