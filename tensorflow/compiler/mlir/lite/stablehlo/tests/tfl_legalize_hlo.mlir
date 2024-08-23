@@ -3103,6 +3103,17 @@ func.func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // -----
 
+// CHECK-LABEL: atan2
+func.func @atan2(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = mhlo.atan2 %arg0, %arg0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: "tfl.atan2"(%arg0, %arg0)
+// CHECK-NOT: mhlo
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // mhlo ternary ops
 //===----------------------------------------------------------------------===//

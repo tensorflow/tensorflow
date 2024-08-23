@@ -122,6 +122,7 @@ foreach pair = [
   [MHLO_MaxOp, TFL_MaximumOp],
   [MHLO_MinOp, TFL_MinimumOp],
   [MHLO_PowOp, TFL_PowOp],
+  [MHLO_Atan2Op, TFL_Atan2Op],
 ] in {
   def : Pat<
     (pair[0] $l, $r),
