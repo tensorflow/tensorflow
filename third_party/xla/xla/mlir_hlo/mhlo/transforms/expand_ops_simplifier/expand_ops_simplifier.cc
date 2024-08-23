@@ -222,7 +222,7 @@ struct MhloExpandOpsSimplifierPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+static std::unique_ptr<OperationPass<func::FuncOp>>
 createMhloExpandOpsSimplifierPass() {
   return std::make_unique<MhloExpandOpsSimplifierPass>();
 }
