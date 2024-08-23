@@ -1099,7 +1099,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
     std::optional<uint64_t> min_alignment) {
   return ThunkSequence::Of<KernelThunk>(
       ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, kernel.invariant_buffers, min_alignment);
+      kernel.thread_dims, kernel.invariant_arguments, min_alignment);
 }
 
 }  // namespace xla::cpu

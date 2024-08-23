@@ -278,6 +278,26 @@ TEST_F(IrEmitter2InvariantBuffersTest, AllInvariantBuffers) {
     HloModule m
     ENTRY main {
       p0 = f32[2,2] parameter(0)
+      p1 = f32[2,2] parameter(1)
+      ROOT add.0 = f32[2,2] add(p0, p1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+
+  ASSERT_EQ(kernel.invariant_arguments.size(), 2);
+}
+
+TEST_F(IrEmitter2InvariantBuffersTest, InvariantBufferPassedTwice) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
       ROOT add.0 = f32[2,2] add(p0, p0)
     })";
 
@@ -286,7 +306,9 @@ TEST_F(IrEmitter2InvariantBuffersTest, AllInvariantBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
 
-  ASSERT_EQ(kernel.invariant_buffers.size(), 1);
+  // Invariant buffers contains indices of both arguments, even though it is the
+  // same buffer slice.
+  ASSERT_EQ(kernel.invariant_arguments.size(), 2);
 }
 
 TEST_F(IrEmitter2InvariantBuffersTest, NoInvariantBuffers) {
@@ -305,7 +327,7 @@ TEST_F(IrEmitter2InvariantBuffersTest, NoInvariantBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
 
-  ASSERT_EQ(kernel.invariant_buffers.size(), 0);
+  ASSERT_EQ(kernel.invariant_arguments.size(), 0);
 }
 
 TEST_F(IrEmitter2InvariantBuffersTest, MixedBuffers) {
@@ -325,8 +347,10 @@ TEST_F(IrEmitter2InvariantBuffersTest, MixedBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
 
-  // TODO(abanas): Verify also which buffer is read-only, not only the count.
-  ASSERT_EQ(kernel.invariant_buffers.size(), 1);
+  // The first argument is invariant, the second is not because it's aliased to
+  // the output.
+  EXPECT_EQ(kernel.invariant_arguments.size(), 1);
+  EXPECT_TRUE(kernel.invariant_arguments.contains(0));
 }
 
 }  // namespace
