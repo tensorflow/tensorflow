@@ -221,7 +221,7 @@ build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
 # Default CUDA and CUDNN versions.
 build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
-build:cuda --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29"
+build:cuda --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 # This flag is needed to include hermetic CUDA libraries for bazel tests.
 test:cuda --@local_config_cuda//cuda:include_hermetic_cuda_libs=true
 
@@ -247,7 +247,7 @@ build:cuda_clang --linkopt="-lm"
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 build:cuda_clang_official --config=cuda_clang
 build:cuda_clang_official --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
-build:cuda_clang_official --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29"
+build:cuda_clang_official --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 build:cuda_clang_official --crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
 
