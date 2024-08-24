@@ -10,7 +10,10 @@ load("//tools/build_defs/testing:bzl_library.bzl", "bzl_library")
 #         "llvm_integration/**",
 #         "temporary/**",
 #     ]),
-#     visibility = ["//third_party/triton:__subpackages__"],
+#     visibility = [
+#         "//platforms/xla/experimental/tools/triton:__subpackages__",
+#         "//third_party/triton:__subpackages__",
+#     ],
 # )
 # copybara:uncomment_end
 
