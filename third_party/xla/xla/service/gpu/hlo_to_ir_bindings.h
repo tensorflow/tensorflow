@@ -72,8 +72,6 @@ class HloToIrBindings {
                               const HloInstruction& consumer,
                               const ShapeIndex& shape_index = {});
 
-  std::string ToString() const;
-
  private:
   const bool is_nested_;
 
