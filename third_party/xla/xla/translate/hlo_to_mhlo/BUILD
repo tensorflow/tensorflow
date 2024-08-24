@@ -26,6 +26,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
     ],
 )
 
@@ -37,6 +38,7 @@ cc_library(
         ":attribute_importer",
         ":hlo_utils",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "@com_google_absl//absl/status",
@@ -56,7 +58,6 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -75,6 +76,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -114,9 +116,11 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithBaseIncGen",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncIncGen",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffectInterfaces",
@@ -133,7 +137,6 @@ cc_library(
     hdrs = ["hlo_to_mlir_hlo.h"],
     deps = [
         ":hlo_module_importer",
-        "//xla:status_macros",
         "//xla/mlir/utils:error_util",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/status",
@@ -158,7 +161,9 @@ cc_library(
         "//xla/mlir_hlo",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:SparseTensorEnums",
         "@local_tsl//tsl/platform:statusor",
@@ -170,14 +175,13 @@ xla_cc_test(
     srcs = ["hlo_utils_test.cc"],
     deps = [
         ":hlo_utils",
-        "//xla:literal",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test",
-        "//xla:types",
-        "//xla/tsl/lib/core:status_test_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/mlir_hlo",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -190,6 +194,7 @@ cc_library(
         "stack_location_utils",
         "//xla/hlo/ir:hlo",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -209,11 +214,11 @@ cc_library(
     hdrs = ["translate.h"],
     deps = [
         ":hlo_to_mlir_hlo",
-        "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -228,6 +233,7 @@ cc_library(
     srcs = ["translate_registration.cc"],
     deps = [
         ":translate",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TranslateLib",
     ],

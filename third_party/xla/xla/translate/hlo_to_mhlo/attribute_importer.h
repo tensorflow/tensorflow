@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"

@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

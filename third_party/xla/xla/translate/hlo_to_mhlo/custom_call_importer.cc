@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/AsmParser/AsmParser.h"

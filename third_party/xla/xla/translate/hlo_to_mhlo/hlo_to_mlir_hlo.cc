@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/status_macros.h"
 #include "xla/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "tsl/platform/errors.h"
 
