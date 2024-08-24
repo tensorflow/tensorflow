@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_type.h"
 #include "tsl/platform/status.h"

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 
 namespace tsl {
