@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
