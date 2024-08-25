@@ -275,7 +275,7 @@ TYPED_TEST(IntTypeTest, TestMove) {
     static NotCopyable Make(int i) {
       NotCopyable f;
       f.inttype = TypeParam(i);
-      f.ptr.reset(new int(i));
+      f.ptr = std::make_unique<int>(i);
       return f;
     }
   };
