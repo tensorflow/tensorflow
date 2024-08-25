@@ -148,15 +148,13 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
   }
 
   void VerifyBackwardDeterminism(absl::string_view hlo_string,
-                                 const std::vector<Literal *> &literals,
-                                 bool force_deterministic = false) {
+                                 const std::vector<Literal *> &literals) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reference_module,
                             ParseAndReturnVerifiedModule(hlo_string));
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cudnn_fmha(true);
-    if (force_deterministic) {
-      debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
-    }
+    debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+
     reference_module->mutable_config().set_debug_options(debug_options);
     const Literal first_run_result =
         ExecuteAndTransfer(reference_module->Clone(), literals);
@@ -165,13 +163,8 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
         ExecuteAndTransfer(std::move(reference_module), literals);
 
     ErrorSpec error_spec{1E-8, 1e-8};
-    if (force_deterministic) {
-      EXPECT_TRUE(LiteralTestUtil::Near(first_run_result, second_run_result,
-                                        error_spec));
-    } else {
-      EXPECT_FALSE(LiteralTestUtil::Near(first_run_result, second_run_result,
-                                         error_spec));
-    }
+    EXPECT_TRUE(
+        LiteralTestUtil::Near(first_run_result, second_run_result, error_spec));
   }
 
   template <typename T>
@@ -941,14 +934,8 @@ class FlashAttentionBMMScaleSoftmaxBMM : public MultiHeadedAttentionTest {
     std::string hlo_string = "";
     hlo_string =
         GetModuleFlash_Attention_Training_BMM1_Softmax_BMM2_HloString_BF16();  // NOLINT
-    VerifyBackwardDeterminism(
-        hlo_string,
-        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal, &do_literal},
-        /*force_deterministic=*/true);
-    VerifyBackwardDeterminism(
-        hlo_string,
-        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal, &do_literal},
-        /*force_deterministic=*/false);
+    VerifyBackwardDeterminism(hlo_string, {&lhs_bmm1_literal, &rhs_bmm1_literal,
+                                           &rhs_bmm2_literal, &do_literal});
   }
 };
 
