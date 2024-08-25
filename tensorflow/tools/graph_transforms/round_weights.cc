@@ -62,7 +62,7 @@ Status RoundWeights(const GraphDef& input_graph_def,
         // and the benefit of shrinking them is very marginal.
         if ((old_dtype != DT_FLOAT) || (num_elements < 16)) {
           new_nodes->push_back(old_const_node);
-          return OkStatus();
+          return absl::OkStatus();
         }
         const float* old_values = old_tensor.flat<float>().data();
         float min = std::numeric_limits<float>::max();
@@ -103,11 +103,11 @@ Status RoundWeights(const GraphDef& input_graph_def,
         SetNodeTensorAttr<float>("value", rounded_tensor, &rounded_const_node);
         new_nodes->push_back(rounded_const_node);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("round_weights", RoundWeights);

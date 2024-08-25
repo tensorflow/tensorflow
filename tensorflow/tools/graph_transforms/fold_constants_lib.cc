@@ -113,7 +113,7 @@ Status ReplaceSendRecvs(const GraphDef& original_graph_def,
     output_graph_def->add_node()->MergeFrom(removed_node);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RewriteInputsAsPlaceholders(const TransformFuncContext& context,
@@ -138,7 +138,7 @@ Status RewriteInputsAsPlaceholders(const TransformFuncContext& context,
           node.op());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoveUnusedNodes(const GraphDef& input_graph_def,
@@ -191,7 +191,7 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
       output_graph_def);
   TF_RETURN_IF_ERROR(RewriteInputsAsPlaceholders(context, output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts a shape inference handle to a PartialTensorShape.
@@ -199,7 +199,7 @@ Status ShapeHandleToTensorShape(const shape_inference::ShapeHandle& handle,
                                 shape_inference::InferenceContext* context,
                                 PartialTensorShape* shape) {
   // The default is already unknown.
-  if (!context->RankKnown(handle)) return OkStatus();
+  if (!context->RankKnown(handle)) return absl::OkStatus();
 
   std::vector<int64_t> dims(context->Rank(handle));
   for (int32_t i = 0; i < dims.size(); ++i) {
@@ -330,7 +330,7 @@ Status FoldConstants(const GraphDef& input_graph_def,
                                       &send_recvs_replaced));
   TF_RETURN_IF_ERROR(
       RemoveUnusedNodes(send_recvs_replaced, context, output_graph_def));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("fold_constants", FoldConstants);
