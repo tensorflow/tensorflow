@@ -157,7 +157,7 @@ static Status SetMemoryTypeForNode(
 
 // This helper function takes a list of nodes.
 static Status SetMemoryTypeHelper(
-    const gtl::InlinedVector<Node*, 4>& nodes, const DataTypeVector& dtypes,
+    const absl::InlinedVector<Node*, 4UL>& nodes, const DataTypeVector& dtypes,
     bool is_arg, bool weak_flag, MemoryTypeVector* memory_types,
     std::vector<AllocatorAttributes>* alloc_attrs) {
   DCHECK_EQ(nodes.size(), dtypes.size());
@@ -217,7 +217,7 @@ static Status SetMemoryTypeHelper(
   return absl::OkStatus();
 }
 
-Status SetMemoryTypeForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
+Status SetMemoryTypeForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                             const DataTypeVector& dtypes,
                             MemoryTypeVector& memory_types) {
   return SetMemoryTypeHelper(nodes, dtypes, /*is_arg=*/true,
@@ -227,28 +227,28 @@ Status SetMemoryTypeForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
 // TODO(b/258849883) Delete the `Weak...` versions of these functions once
 // everything is working with the version without `Weak`.
 
-Status WeakSetMemoryTypeForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
+Status WeakSetMemoryTypeForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                                 const DataTypeVector& dtypes,
                                 MemoryTypeVector& memory_types) {
   return SetMemoryTypeHelper(nodes, dtypes, /*is_arg=*/true,
                              /*weak_flag=*/true, &memory_types, nullptr);
 }
 
-Status SetMemoryTypeForRets(const gtl::InlinedVector<Node*, 4>& nodes,
+Status SetMemoryTypeForRets(const absl::InlinedVector<Node*, 4UL>& nodes,
                             const DataTypeVector& dtypes,
                             MemoryTypeVector& memory_types) {
   return SetMemoryTypeHelper(nodes, dtypes, /*is_arg=*/false,
                              /*weak_flag=*/false, &memory_types, nullptr);
 }
 
-Status WeakSetMemoryTypeForRets(const gtl::InlinedVector<Node*, 4>& nodes,
+Status WeakSetMemoryTypeForRets(const absl::InlinedVector<Node*, 4UL>& nodes,
                                 const DataTypeVector& dtypes,
                                 MemoryTypeVector& memory_types) {
   return SetMemoryTypeHelper(nodes, dtypes, /*is_arg=*/false,
                              /*weak_flag=*/true, &memory_types, nullptr);
 }
 
-Status SetAllocAttrsForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
+Status SetAllocAttrsForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                             const DataTypeVector& dtypes,
                             std::vector<AllocatorAttributes>& alloc_attrs) {
   return SetMemoryTypeHelper(nodes, dtypes, /*is_arg=*/true,
@@ -262,14 +262,14 @@ Status WeakSetAllocAttrsForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                              /*weak_flag=*/true, nullptr, &alloc_attrs);
 }
 
-Status SetAllocAttrsForRets(const gtl::InlinedVector<Node*, 4>& nodes,
+Status SetAllocAttrsForRets(const absl::InlinedVector<Node*, 4UL>& nodes,
                             const DataTypeVector& dtypes,
                             std::vector<AllocatorAttributes>& alloc_attrs) {
   return SetMemoryTypeHelper(nodes, dtypes, /*is_arg=*/false,
                              /*weak_flag=*/false, nullptr, &alloc_attrs);
 }
 
-Status WeakSetAllocAttrsForRets(const gtl::InlinedVector<Node*, 4>& nodes,
+Status WeakSetAllocAttrsForRets(const absl::InlinedVector<Node*, 4UL>& nodes,
                                 const DataTypeVector& dtypes,
                                 std::vector<AllocatorAttributes>& alloc_attrs) {
   return SetMemoryTypeHelper(nodes, dtypes, /*is_arg=*/false,

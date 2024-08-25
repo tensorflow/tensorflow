@@ -150,7 +150,7 @@ class SparseToDense : public OpKernel {
     }
 
     // Assume SparseTensor is lexicographically sorted.
-    gtl::InlinedVector<int64_t, 8> order(output->shape().dims());
+    absl::InlinedVector<int64_t, 8UL> order(output->shape().dims());
     std::iota(order.begin(), order.end(), 0);
     sparse::SparseTensor st;
     OP_REQUIRES_OK(
