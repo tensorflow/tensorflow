@@ -251,7 +251,7 @@ XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
                                           XLA_FFI_Handler_Traits traits) {
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
   args.platform = XLA_FFI_ByteSpan{platform.data(), platform.size()};
   args.bundle = bundle;
@@ -273,7 +273,7 @@ inline XLA_FFI_Error* Ffi::MakeError(const XLA_FFI_Api* api,
                                      std::string message) {
   XLA_FFI_Error_Create_Args args;
   args.struct_size = XLA_FFI_Error_Create_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.errc = errc;
   args.message = message.c_str();
   return api->XLA_FFI_Error_Create(&args);

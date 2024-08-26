@@ -647,11 +647,11 @@ static XLA_FFI_InternalApi internal_api = {
 
 static XLA_FFI_Api api = {
     XLA_FFI_Api_STRUCT_SIZE,
-    /*priv=*/nullptr,
+    /*extension_start=*/nullptr,
 
     XLA_FFI_Api_Version{
         XLA_FFI_Api_Version_STRUCT_SIZE,
-        /*priv=*/nullptr,
+        /*extension_start=*/nullptr,
         XLA_FFI_API_MAJOR,
         XLA_FFI_API_MINOR,
     },
