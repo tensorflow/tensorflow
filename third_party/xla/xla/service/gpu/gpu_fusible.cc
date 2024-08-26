@@ -985,32 +985,6 @@ bool IsGenericTritonFusion(const HloInstruction& instr) {
                  .kind() == kTritonFusionKind;
 }
 
-bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
-  // An empirically chosen constant: unrolling concat with a large amount of
-  // arguments causes excessive register spilling.
-  static constexpr int kMaxConcatArgumentsForUnrolling = 10;
-  return HloAnyOf(fusion, [&](auto node) {
-    switch (node.opcode()) {
-      case HloOpcode::kReduceWindow:
-      case HloOpcode::kSort:
-      case HloOpcode::kDot:
-      case HloOpcode::kSin:
-      case HloOpcode::kCos:
-      case HloOpcode::kTan:
-      case HloOpcode::kPower:
-      case HloOpcode::kAtan2:
-        return true;
-      case HloOpcode::kConcatenate:
-        return node.instruction().operand_count() >
-               kMaxConcatArgumentsForUnrolling;
-      case HloOpcode::kReduce:
-        return node.instruction().shape().tuple_shapes_size() > 1;
-      default:
-        return false;
-    }
-  });
-}
-
 std::vector<HloComputation*> GetFusibleComputations(
     const HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1058,8 +1032,7 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   int64_t num_elements = ShapeUtil::ElementsIn(element_shape);
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
-  if (num_elements >= n_threads_max &&
-      !MayPreventVectorization(analysis.fusion())) {
+  if (num_elements >= n_threads_max) {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
@@ -1068,10 +1041,7 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   // setting unroll_factor to an appropriate number. Setting unroll_factor is
   // safe even if the new unroll_factor doesn't divide the number of elements,
   // as the parallel loop emitter will insert a bounds check in this case to
-  // ensure the out-of-bounds element is not computed and written. Setting
-  // unroll_factor is safe even if MayPreventVectorization returns false, as
-  // the MayPreventVectorization check is an optimization, not a correctness
-  // requirement.
+  // ensure the out-of-bounds element is not computed and written.
   unroll_factor = std::max(
       unroll_factor,
       CeilOfRatio(8, analysis.input_output_info().smallest_output_dtype_bits));
