@@ -88,6 +88,67 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
       )"));
 }
 
+TEST_F(MlirTransposeFusionTest, ThreadIndexing102) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule Transpose
+
+    %fused_computation {
+      %p0 = s8[160,170,3] parameter(0)
+      ROOT %transpose = s8[170,160,3] transpose(%p0), dimensions={1,0,2}
+    }
+    ENTRY main {
+      %param = s8[160,170,3] parameter(0)
+      ROOT %fusion = s8[170,160,3] fusion(%param), kind=kInput,
+        calls=%fused_computation
+    }
+  )"));
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
+
+  MlirTransposeFusion fusion(analysis);
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1] -> (
+          (d3 floordiv 6) * 32 + s0 * 4 + d0 floordiv 32,
+          (d3 mod 6) * 32 + d0 mod 32,
+          s1
+        )
+        domain:
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 29]
+        d4 in [0, 0]
+        d5 in [0, 0]
+
+        s0 in [0, 7]
+        s1 in [0, 2]
+        (d3 mod 6) * 32 + d0 mod 32 in [0, 169]
+      )"));
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1] -> (
+          (d3 mod 6) * 32 + s0 * 4 + d0 floordiv 32,
+          (d3 floordiv 6) * 32 + d0 mod 32,
+          s1
+        )
+        domain:
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 29]
+        d4 in [0, 0]
+        d5 in [0, 0]
+
+        s0 in [0, 7]
+        s1 in [0, 2]
+        (d3 mod 6) * 32 + s0 * 4 + d0 floordiv 32 in [0, 169]
+      )"));
+}
+
 TEST_F(MlirTransposeFusionTest, ThreadIndexing201_SimplifiedTo021) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule module
