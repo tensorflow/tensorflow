@@ -237,6 +237,7 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
     std::vector<std::pair<int64_t, int64_t>>& reduced_intervals,
     std::vector<MPVariable*>& group_vars,
     absl::flat_hash_set<int64_t>& reduced_times) {
+  const absl::Time term_reduction_start_time = absl::Now();
   std::optional<std::pair<int64_t, int64_t>> num_terms = std::nullopt;
   std::vector<absl::btree_set<int64_t>> reduced_groups;
   if (groups.empty()) {
@@ -286,6 +287,15 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
   const absl::flat_hash_set<int64_t> times = MemoryTermReducer::GetReducedTimes(
       num_primitives, reduced_intervals, reduced_groups);
   reduced_times.insert(times.begin(), times.end());
+  const absl::Time term_reduction_end_time = absl::Now();
+  if (num_terms) {
+    const auto term_reduction_duration =
+        term_reduction_end_time - term_reduction_start_time;
+    LOG(INFO) << "Memory Term Reducer for " << prim_type << "s took "
+              << absl::ToInt64Milliseconds(term_reduction_duration)
+              << " ms and reduced the number of terms from " << num_terms->first
+              << " to " << num_terms->second;
+  }
   return num_terms;
 }
 
@@ -595,26 +605,18 @@ AutoShardingSolverResult CallORToolsSolver(
         reduced_intervals_edges;
     absl::flat_hash_set<int64_t> reduced_times;
     std::vector<MPVariable*> group_node_vars, group_edge_vars;
-    const absl::Time term_reduction_start_time = absl::Now();
-    auto num_node_terms = ReduceMemoryTerms(
+    std::optional<std::pair<int64_t, int64_t>> num_node_terms, num_edge_terms;
+    num_node_terms = ReduceMemoryTerms(
         request, *solver, request.live_size(), request.num_nodes(),
         std::move(LiveNodes), request.node_intervals(), request.node_groups(),
         request.memory_costs(), "node", s, reduced_intervals_nodes,
         group_node_vars, reduced_times);
-    auto num_edge_terms = ReduceMemoryTerms(
-        request, *solver, request.live_edges_size(), request.edges_size(),
-        std::move(LiveEdges), request.edge_intervals(), request.edge_groups(),
-        request.memory_edge_costs(), "edge", e, reduced_intervals_edges,
-        group_edge_vars, reduced_times);
-    const absl::Time term_reduction_end_time = absl::Now();
-    if (num_node_terms && num_edge_terms) {
-      const auto term_reduction_duration =
-          term_reduction_end_time - term_reduction_start_time;
-      LOG(INFO) << "Memory Term Reducer took "
-                << absl::ToInt64Milliseconds(term_reduction_duration)
-                << " ms and reduced the number of terms from "
-                << num_node_terms->first + num_edge_terms->first << " to "
-                << num_node_terms->second + num_edge_terms->second;
+    if (request.enable_memory_edge_costs()) {
+      num_edge_terms = ReduceMemoryTerms(
+          request, *solver, request.live_edges_size(), request.edges_size(),
+          std::move(LiveEdges), request.edge_intervals(), request.edge_groups(),
+          request.memory_edge_costs(), "edge", e, reduced_intervals_edges,
+          group_edge_vars, reduced_times);
     }
     absl::flat_hash_map<LivenessIdx, MPConstraint*> constraints;
     AddMemoryTerms(request, *solver, request.num_nodes(),

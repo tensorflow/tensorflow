@@ -475,6 +475,25 @@ TEST(CallORToolsSolverTest, HandlesReducedIntervalsAndGroups) {
   EXPECT_EQ(result, expected_result);
 }
 
+TEST(CallORToolsSolverTest, HandlesReducedIntervalsAndGroupsNoMemoryEdgeCosts) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
+      {{5, -1}, {5, -1}, {2, 3}, {3, 4}, {100, -1}, {0, 4}};
+  const std::vector<std::vector<int64_t>> node_groups = {{0, 1}};
+  request.clear_live();
+  AddIntervals(request.mutable_node_intervals(), node_intervals);
+  AddGroups(request.mutable_node_groups(), node_groups);
+  request.set_enable_memory_edge_costs(false);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const double objective_value = 7650.0;
+  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
+}
+
 TEST(CallORToolsSolverTest, HandlesGroupsWithTinyMemoryCosts) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
