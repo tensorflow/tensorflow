@@ -22,6 +22,7 @@ cc_library(
     srcs = ["export_shardings.cc"],
     hdrs = ["export_shardings.h"],
     deps = [
+        "//xla:array",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",

@@ -4,6 +4,7 @@ sdy.mesh @mesh_0 = <["axis_0"=2, "axis_1"=4, "axis_2"=4]>
 sdy.mesh @mesh_1 = <["axis_0"=16]>
 sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 sdy.mesh @mesh_3 = <["a"=2, "b"=2, "c"=2, "d"=2]>
+sdy.mesh @mesh_4 = <["axis_0"=2, "axis_1"=2, "axis_2"=2] device_ids=[0,2,4,6,1,3,5,7]>
 sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
 sdy.mesh @maximal_mesh_1 = <device_ids=[1]>
 sdy.mesh @empty_mesh_0 = <>
@@ -164,3 +165,19 @@ func.func @mesh_empty_should_be_converted_to_replicated_sharding(%arg0: tensor<8
     %1 = mhlo.add %0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh_1, [{}, {}]>]>} : tensor<8x8xf32>
     return %1 : tensor<8x8xf32>
 }
+
+// CHECK-LABEL: func @multiple_shardings_with_device_list(
+// CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[2,4]0,4,1,5,2,6,3,7}"},
+// CHECK-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{devices=[1,4,2]0,4,2,6,1,5,3,7 last_tile_dim_replicate}"},
+// CHECK-SAME:      %arg2: tensor<8x16xf32> {mhlo.sharding = "{devices=[1,2,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"})
+// CHECK-SAME:  -> tensor<8x16xf32> {
+func.func @multiple_shardings_with_device_list(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4, [{"axis_2"}, {"axis_0", "axis_1"}]>},
+                              %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4, [{}, {"axis_0", "axis_2"}]>},
+                              %arg2: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_4, [{}, {"axis_1"}]>}) -> tensor<8x16xf32> {
+// CHECK-NEXT: mhlo.add
+// CHECK-SAME{LITERAL}: {mhlo.sharding = "{devices=[4,1,2]0,2,1,3,4,6,5,7 last_tile_dim_replicate}"}
+  %0 = mhlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4, [{"axis_1","axis_0"}, {}]>]>} : tensor<8x8xf32>
+  %1 = "mhlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %1 : tensor<8x16xf32>
+}
+

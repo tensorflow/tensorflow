@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
@@ -57,6 +56,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -295,6 +295,19 @@ HloSharding convertToHloSharding(
     tileAssignmentDims.push_back(totalReplicatedSize);
     types.push_back(OpSharding::REPLICATED);
   }
+
+  // Handle arbitrary device ID list.
+  if (!mesh.getDeviceIds().empty()) {
+    Array<int64_t> deviceIdsArray(reshapeDims);
+    deviceIdsArray.SetValues(mesh.getDeviceIds());
+    deviceIdsArray.TransposeDimensions(transposePerm);
+    deviceIdsArray.Reshape(tileAssignmentDims);
+    return HloSharding::Subgroup(
+        TileAssignment(
+            std::make_shared<const Array<int64_t>>(std::move(deviceIdsArray))),
+        types);
+  }
+
   return HloSharding::Subgroup(
       xla::TileAssignment(tileAssignmentDims, reshapeDims, transposePerm),
       types);
