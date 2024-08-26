@@ -999,7 +999,7 @@ absl::Status GpuCommandBuffer::Finalize() {
             "CUDA driver ran out of memory trying to instantiate CUDA graph "
             "with %d nodes and %d conditionals (total of %d alive CUDA graphs "
             "in the process). You can try to (a) Give more memory to CUDA "
-            "driver by reducing XLA_PYTHON_CLIENT_MEM_FRACTION (b) Disable "
+            "driver by reducing XLA_CLIENT_MEM_FRACTION (b) Disable "
             "CUDA graph with 'XLA_FLAGS=--xla_gpu_enable_command_buffer=' "
             "(empty set). Original error: %s",
             num_nodes, num_cond_cmd_buffers, AliveExecs(), retry.message()));
