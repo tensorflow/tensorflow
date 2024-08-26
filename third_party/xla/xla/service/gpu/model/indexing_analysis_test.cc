@@ -2656,6 +2656,44 @@ TEST_F(IndexingAnalysisTest, BroadcastingElementwise) {
               )"));
 }
 
+TEST_F(IndexingAnalysisTest, FusionOpWithDUS) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
+      HloModule m
+      fused_computation {
+        bitcast = s32[1,4096]{1,0} parameter(0)
+        constant = s32[] constant(0)
+        pad = s32[1,8192]{1,0} pad(bitcast, constant), padding=0_0x4096_0
+        slice = s32[1]{0} parameter(1)
+        bitcast.4 = s32[] bitcast(slice)
+        ROOT dynamic-slice = s32[1,4096]{1,0}
+          dynamic-slice(pad, constant, bitcast.4), dynamic_slice_sizes={1,4096}
+      }
+      ENTRY main {
+        param_0 = s32[1,4096]{1,0} parameter(0)
+        param_1 = s32[1]{0} parameter(1)
+        ROOT fusion = s32[1,4096]{1,0} fusion(param_0, param_1), kind=kInput,
+          calls=fused_computation
+      }
+    )hlo"));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1)[s0] -> (0, d1 + s0 - 4096)
+                            domain:
+                            d0 in [0, 0]
+                            d1 in [0, 4095]
+                            s0 in [0, 4096]
+                              hlo: %slice = s32[1]{0} parameter(1)
+                              (d0, d1) -> (0)
+                            d1 + s0 in [4096, 8191]
+                          )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1) -> (0)
+                            domain:
+                            d0 in [0, 0]
+                            d1 in [0, 4095]
+                          )"))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

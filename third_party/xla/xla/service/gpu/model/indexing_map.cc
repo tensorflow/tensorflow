@@ -2014,7 +2014,6 @@ bool IndexingMap::ReplaceConstantRTVars() {
   if (rt_vars_.empty()) return false;
 
   bool did_simplify = false;
-  std::vector<size_t> to_delete;
 
   for (auto index = 0; index < rt_vars_.size(); ++index) {
     auto& rt_var = rt_vars_[index];
@@ -2029,8 +2028,9 @@ bool IndexingMap::ReplaceConstantRTVars() {
 
     if (result.remapped_symbol != rt_var_symbol) {
       did_simplify = true;
-      affine_map_ =
-          affine_map_.replace({{rt_var_symbol, result.remapped_symbol}});
+      affine_map_ = affine_map_.replace(
+          {{rt_var_symbol, result.remapped_symbol}}, affine_map_.getNumDims(),
+          affine_map_.getNumSymbols());
 
       llvm::DenseMap<AffineExpr, AffineExpr> replacements;
 
@@ -2056,16 +2056,9 @@ bool IndexingMap::ReplaceConstantRTVars() {
         did_simplify = true;
       }
     } else {
-      // Otherwise we schedule the rt_var for removal.
-      to_delete.emplace_back(index);
       did_simplify = true;
     }
   }
-
-  for (auto index : llvm::reverse(to_delete)) {
-    rt_vars_.erase(rt_vars_.begin() + index);
-  }
-
   return did_simplify;
 }
 
