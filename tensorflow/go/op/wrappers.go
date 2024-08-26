@@ -5601,6 +5601,25 @@ func CheckNumericsV2(scope *Scope, tensor tf.Output, message string) (output tf.
 	return op.Output(0)
 }
 
+// Checks whether a tensor is located in host memory pinned for GPU.
+//
+// When run:
+// - Reports an `InvalidArgument` error if `tensor` is not in pinned memory.
+// - Reports a `FailedPrecondition` error if not built with CUDA.
+func CheckPinned(scope *Scope, tensor tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CheckPinned",
+		Input: []tf.Input{
+			tensor,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the Cholesky decomposition of one or more square matrices.
 //
 // The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
