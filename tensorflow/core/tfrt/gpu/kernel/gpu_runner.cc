@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/gpu/kernel/gpu_runner.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -362,6 +363,54 @@ Status CompileProgram(const GpuRunInputs& run_inputs, int device_idx,
       pjrt_client, pjrt_executable);
 }
 
+// Execute the program and transfer the results to the host.
+absl::StatusOr<
+    llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>>
+ExecuteProgram(
+    const GpuRunInputs& run_inputs,
+    const llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>&
+        transferred_args,
+    const XlaCompiler::CompilationResult* compilation_result,
+    xla::PjRtClient* pjrt_client, xla::PjRtLoadedExecutable* pjrt_executable,
+    int device_idx) {
+  // Execute the program.
+  std::vector<const Tensor*> inputs;
+  for (const auto& arg : transferred_args) {
+    if (arg.IsError()) {
+      return absl::InternalError(
+          absl::StrCat("Data transfer failed: ", arg.GetError().message()));
+    }
+    inputs.push_back(&arg->tensor());
+  }
+
+  if (compilation_result->collective_info.has_value()) {
+    return absl::UnimplementedError(
+        "Execution with collectives is not supported.");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * pjrt_device,
+      pjrt_client->LookupAddressableDevice(xla::PjRtLocalDeviceId(device_idx)));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<xla::PjRtBuffer>> executable_outputs,
+      RunPjRtExecutable(/*num_missing_prefix_ctx_inputs=*/0, inputs,
+                        /*variable_snapshots=*/{}, /*updated_variables=*/{},
+                        DeviceType(DEVICE_GPU),
+                        /*use_pjrt_tensor_buffer=*/true, *compilation_result,
+                        pjrt_device, pjrt_client, pjrt_executable));
+
+  // Populate the results and transfer the results to host.
+  TF_ASSIGN_OR_RETURN(
+      llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>> results,
+      PopulateResultsFromPjRtExecutableOutputs(
+          *compilation_result, executable_outputs,
+          run_inputs.gpu_devices.at(device_idx), run_inputs.num_outputs));
+
+  return TransferOutputsToHostIfNeeded(
+      results, run_inputs.used_output_indices, run_inputs.cpu_device,
+      run_inputs.gpu_devices.at(device_idx), run_inputs.host_ctx);
+}
+
 }  // namespace
 
 absl::StatusOr<
@@ -399,45 +448,42 @@ GpuRunner::Run(GpuRunInputs run_inputs) {
       transferred_args_to_wait.push_back(arg.CopyRCRef());
     }
   }
-  run_inputs.host_ctx->Await(transferred_args_to_wait);
 
-  // Execute the program.
-  std::vector<const Tensor*> inputs;
-  for (const auto& arg : transferred_args) {
-    if (arg.IsError()) {
-      return absl::InternalError(
-          absl::StrCat("Data transfer failed: ", arg.GetError().message()));
-    }
-    inputs.push_back(&arg->tensor());
+  llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>> results;
+  results.reserve(run_inputs.num_outputs);
+  for (size_t i = 0; i < run_inputs.num_outputs; ++i) {
+    results.emplace_back(
+        tfrt::MakeUnconstructedAsyncValueRef<tfrt_stub::FallbackTensor>());
   }
 
-  // TODO(b/297948279): Add support for execution with collectives.
-  if (compilation_result->collective_info.has_value()) {
-    return absl::UnimplementedError(
-        "Execution with collectives is not supported yet.");
-  }
+  tfrt::RunWhenReady(
+      transferred_args_to_wait,
+      [run_inputs = std::move(run_inputs),
+       transferred_args = std::move(transferred_args), results = results,
+       compilation_result, pjrt_client, pjrt_executable, device_idx]() mutable {
+        auto execution_outputs =
+            ExecuteProgram(run_inputs, transferred_args, compilation_result,
+                           pjrt_client, pjrt_executable, device_idx);
+        CHECK_EQ(results.size(), execution_outputs->size());  // Crash OK.
 
-  TF_ASSIGN_OR_RETURN(
-      xla::PjRtDevice * pjrt_device,
-      pjrt_client->LookupAddressableDevice(xla::PjRtLocalDeviceId(device_idx)));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<xla::PjRtBuffer>> executable_outputs,
-      RunPjRtExecutable(/*num_missing_prefix_ctx_inputs=*/0, inputs,
-                        /*variable_snapshots=*/{}, /*updated_variables=*/{},
-                        DeviceType(DEVICE_GPU),
-                        /*use_pjrt_tensor_buffer=*/true, *compilation_result,
-                        pjrt_device, pjrt_client, pjrt_executable));
-
-  // Populate the results and transfer the results to host.
-  TF_ASSIGN_OR_RETURN(
-      llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>> results,
-      PopulateResultsFromPjRtExecutableOutputs(
-          *compilation_result, executable_outputs,
-          run_inputs.gpu_devices.at(device_idx), run_inputs.num_outputs));
-
-  return TransferOutputsToHostIfNeeded(
-      results, run_inputs.used_output_indices, run_inputs.cpu_device,
-      run_inputs.gpu_devices.at(device_idx), run_inputs.host_ctx);
+        if (!execution_outputs.ok()) {
+          // Set all outputs as the error returned by the execution.
+          for (size_t i = 0; i < results.size(); ++i) {
+            results[i].SetError(
+                absl::InternalError(execution_outputs.status().message()));
+          }
+          return;
+        }
+        // Populate each output once it is available.
+        for (int i = 0; i < results.size(); ++i) {
+          auto& result = results[i];
+          auto& output_av = (*execution_outputs)[i];
+          output_av.AndThen([result = result, output_av = output_av] {
+            result.emplace(std::move(output_av.get().tensor()));
+          });
+        }
+      });
+  return results;
 }
 
 }  // namespace gpu
