@@ -291,6 +291,32 @@ cc_library(
 )
 
 cc_library(
+    name = "concurrency",
+    hdrs = ["concurrency.h"],
+    copts = runtime_copts(),
+    deps = [
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "concurrency_test",
+    srcs = ["concurrency_test.cc"],
+    deps = [
+        ":concurrency",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "convolution_thunk",
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
