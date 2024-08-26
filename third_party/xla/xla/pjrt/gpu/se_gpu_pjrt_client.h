@@ -171,8 +171,6 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
 
   absl::Span<int const> coords() const;
 
-  int core_on_chip() const;
-
   absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
  private:

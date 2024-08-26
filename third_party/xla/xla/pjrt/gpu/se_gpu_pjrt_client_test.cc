@@ -869,8 +869,7 @@ TEST(GpuTopology, ToProto) {
                            /*platform_version=*/"platform_version",
                            /*num_slices=*/2,
                            /*num_hosts_per_slice=*/1,
-                           /*num_devices_per_host=*/3,
-                           /*core_count_per_chip=*/10);
+                           /*num_devices_per_host=*/3);
   GpuTopologyProto msg = gpu_topology.ToProto();
   EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
   EXPECT_THAT(msg.platform_version(), "platform_version");
@@ -927,10 +926,6 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
             .coords();
     EXPECT_EQ(coords[0], device_index);
   }
-  EXPECT_EQ(static_cast<PjRtStreamExecutorDevice*>(client->devices()[0])
-                ->description()
-                .core_on_chip(),
-            0);
 }
 
 TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
