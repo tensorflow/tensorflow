@@ -19,16 +19,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/layout.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_utils.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
