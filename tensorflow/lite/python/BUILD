@@ -25,7 +25,7 @@ flatbuffer_py_library(
 
 flatbuffer_py_library(
     name = "conversion_metadata_schema_py",
-    srcs = ["//tensorflow/lite/schema:conversion_metadata.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:conversion_metadata.fbs"],
 )
 
 py_strict_library(
