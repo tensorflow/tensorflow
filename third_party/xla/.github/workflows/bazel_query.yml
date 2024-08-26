@@ -38,3 +38,6 @@ jobs:
         run: bazelisk query //xla/... > /dev/null
       - name: "Run bazel query deps(//xla/...)"
         run: bazelisk query "deps(//xla/...)" > /dev/null
+      - name: "Check that TSL doesn't depend on XLA"
+        run: |
+          bazelisk query "somepath(//xla/tsl/..., //xla/... -//xla/tsl/...)" |& tee /dev/fd/2 | grep -q "INFO: Empty results"
