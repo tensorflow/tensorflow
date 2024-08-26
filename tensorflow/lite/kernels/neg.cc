@@ -67,6 +67,26 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorShape(output),
                             GetTensorData<float>(output));
       break;
+    case kTfLiteInt8:
+      reference_ops::Negate(GetTensorShape(input), GetTensorData<int8_t>(input),
+                            GetTensorShape(output),
+                            GetTensorData<int8_t>(output));
+      break;
+    case kTfLiteInt16:
+      reference_ops::Negate(
+          GetTensorShape(input), GetTensorData<int16_t>(input),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+      break;
+    case kTfLiteFloat16:
+      reference_ops::Negate(
+          GetTensorShape(input), GetTensorData<Eigen::half>(input),
+          GetTensorShape(output), GetTensorData<Eigen::half>(output));
+      break;
+    case kTfLiteBFloat16:
+      reference_ops::Negate(
+          GetTensorShape(input), GetTensorData<Eigen::half>(input),
+          GetTensorShape(output), GetTensorData<Eigen::half>(output));
+      break;
     default:
       TF_LITE_KERNEL_LOG(
           context,
