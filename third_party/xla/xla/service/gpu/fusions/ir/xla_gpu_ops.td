@@ -129,7 +129,13 @@ def XLAGPU_PureCallOp : XLAGPU_Op<"pure_call",
       $_state.addOperands(operands);
       $_state.addAttribute("callee", mlir::SymbolRefAttr::get(callee));
       $_state.addTypes(callee.getFunctionType().getResults());
-    }]>];
+    }]>,
+    OpBuilder<(ins "mlir::FlatSymbolRefAttr":$callee, CArg<"mlir::ValueRange", "{}">:$operands, CArg<"llvm::ArrayRef<mlir::Type>", "{}">:$result_types), [{
+      $_state.addOperands(operands);
+      $_state.addAttribute("callee", callee);
+      $_state.addTypes(result_types);
+    }]>,
+    ];
   let assemblyFormat = [{
     $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
   }];

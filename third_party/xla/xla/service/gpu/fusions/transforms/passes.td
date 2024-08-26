@@ -167,7 +167,7 @@ def LowerXlaGpuToScfPass :
 
   let dependentDialects = [
     "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect", "mlir::vector::VectorDialect",
   ];
 
   let constructor = "CreateLowerXlaGpuToScfPass()";
