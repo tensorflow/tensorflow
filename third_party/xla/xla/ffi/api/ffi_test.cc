@@ -63,6 +63,31 @@ XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int64BasedEnum);
 
 namespace xla::ffi {
 
+struct PairOfI32AndF32 {
+  int32_t i32;
+  float f32;
+};
+
+struct TupleOfI32 {
+  int32_t i32_0;
+  int32_t i32_1;
+  int32_t i32_2;
+  int32_t i32_3;
+};
+
+}  // namespace xla::ffi
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::ffi::PairOfI32AndF32,
+                                      ::xla::ffi::StructMember<int32_t>("i32"),
+                                      ::xla::ffi::StructMember<float>("f32"));
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
+    ::xla::ffi::TupleOfI32, ::xla::ffi::StructMember<int32_t>("i32_0"),
+    ::xla::ffi::StructMember<int32_t>("i32_1"),
+    ::xla::ffi::StructMember<int32_t>("i32_2"),
+    ::xla::ffi::StructMember<int32_t>("i32_3"));
+
+namespace xla::ffi {
+
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
@@ -542,16 +567,8 @@ TEST(FfiTest, AutoBindingResult) {
   TF_ASSERT_OK(status);
 }
 
-struct I32AndF32 {
-  int32_t i32;
-  float f32;
-};
-
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(I32AndF32, StructMember<int32_t>("i32"),
-                                      StructMember<float>("f32"));
-
 TEST(FfiTest, AutoBindingStructs) {
-  auto handler = Ffi::BindTo(+[](I32AndF32 attrs) {
+  auto handler = Ffi::BindTo(+[](PairOfI32AndF32 attrs) {
     EXPECT_EQ(attrs.i32, 42);
     EXPECT_EQ(attrs.f32, 42.0f);
     return Error::Success();
@@ -735,15 +752,6 @@ TEST(FfiTest, DictionaryAttr) {
 
   TF_ASSERT_OK(status);
 }
-
-struct PairOfI32AndF32 {
-  int32_t i32;
-  float f32;
-};
-
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(PairOfI32AndF32,
-                                      StructMember<int32_t>("i32"),
-                                      StructMember<float>("f32"));
 
 TEST(FfiTest, StructAttr) {
   CallFrameBuilder::FlatAttributesMap dict;
@@ -1188,19 +1196,6 @@ BENCHMARK(BM_BufferArgX8);
 //===----------------------------------------------------------------------===//
 // BM_TupleOfI32Attrs
 //===----------------------------------------------------------------------===//
-
-struct TupleOfI32 {
-  int64_t i32_0;
-  int64_t i32_1;
-  int64_t i32_2;
-  int64_t i32_3;
-};
-
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(TupleOfI32,
-                                      StructMember<int32_t>("i32_0"),
-                                      StructMember<int32_t>("i32_1"),
-                                      StructMember<int32_t>("i32_2"),
-                                      StructMember<int32_t>("i32_3"));
 
 void BM_TupleOfI32Attrs(benchmark::State& state) {
   CallFrameBuilder::AttributesBuilder attrs;
