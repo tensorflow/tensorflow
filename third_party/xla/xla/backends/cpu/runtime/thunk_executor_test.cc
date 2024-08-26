@@ -515,6 +515,7 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks,
       /*expected_shared_resource_value=*/0,
   });
 
+  g->sequence.reserve(num_thunks);
   g->expected_buffers = AddI32Thunk::AsDeviceMemory({&g->src, &g->expected});
   g->buffers = AddI32Thunk::AsDeviceMemory({&g->src, &g->dst});
 
@@ -743,6 +744,17 @@ BENCHMARK_READY_QUEUE(BM_FifoReadyQueuePushPopHalf);
 BENCHMARK_READY_QUEUE(BM_PriorityReadyQueuePushPop);
 BENCHMARK_READY_QUEUE(BM_PriorityReadyQueuePushPopHalf);
 
+static void BM_CreateThunkExecutor(benchmark::State& state) {
+  const size_t num_thunks = state.range(0);
+
+  for (auto _ : state) {
+    auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks,
+                                   SharedResourceUse::kNo, false);
+    CHECK_OK(ThunkExecutor::Create(std::move((*g)->sequence), OptionsForTest())
+                 .status());
+  }
+}
+
 static void BM_SequentialThunkExecutor(benchmark::State& state) {
   const size_t num_thunks = state.range(0);
 
@@ -828,6 +840,7 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
       ->Arg(256)                       \
       ->Arg(512)
 
+BENCHMARK_THUNK_EXECUTOR(BM_CreateThunkExecutor);
 BENCHMARK_THUNK_EXECUTOR(BM_SequentialThunkExecutor);
 BENCHMARK_THUNK_EXECUTOR(BM_SyncThunkExecutor);
 BENCHMARK_THUNK_EXECUTOR(BM_AsyncThunkExecutor);
