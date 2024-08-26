@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_TO_ALL_DECOMPOSER_H_
 #define XLA_SERVICE_ALL_TO_ALL_DECOMPOSER_H_
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/op_expander_pass.h"
 
