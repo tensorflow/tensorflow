@@ -279,6 +279,8 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
 
 def LoopOp : XLAGPU_Op<"loop", [
     AttrSizedOperandSegments, Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface,
+      ["getAsmBlockArgumentNames", "getAsmResultNames"]>,
     SingleBlockImplicitTerminator<"xla::gpu::YieldOp">
   ]> {
   let summary = "Loop nest that iterates over all feasible values of RangeVars.";

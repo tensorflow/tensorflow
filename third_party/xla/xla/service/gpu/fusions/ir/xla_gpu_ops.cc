@@ -593,6 +593,38 @@ void SyncThreadsOp::getAsmResultNames(
 // LoopOp
 //===----------------------------------------------------------------------===//
 
+void LoopOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
+  for (auto result : getResults()) {
+    setNameFn(result, "xla_loop");
+  }
+}
+
+void LoopOp::getAsmBlockArgumentNames(mlir::Region& region,
+                                      mlir::OpAsmSetValueNameFn setFn) {
+  // i, j, k, l, m, n, n_0, n_1, ...
+  char iv_name = 'i';
+  for (auto iv : getInductionVars()) {
+    setFn(iv, std::string{iv_name});
+    if (iv_name <= 'n') {
+      ++iv_name;
+    }
+  }
+  // ra, rb, rc, rd, ..., rz, rz_0, ...
+  std::string map_result_name = "ra";
+  char map_result_char = 'a';
+  for (auto map_result : getIndexingMapResults()) {
+    setFn(map_result, map_result_name);
+    if (map_result_char <= 'z') {
+      ++map_result_char;
+      map_result_name[1] = map_result_char;
+    }
+  }
+  for (auto iv : getRegionIterArgs()) {
+    setFn(iv, "iter");
+  }
+}
+
 void LoopOp::build(OpBuilder& builder, OperationState& result,
                    IndexingMapAttr indexing_map_attr, ValueRange dims,
                    ValueRange inits, BodyBuilderFn bodyBuilder) {

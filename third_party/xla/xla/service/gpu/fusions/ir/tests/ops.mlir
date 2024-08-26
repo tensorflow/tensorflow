@@ -140,7 +140,7 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32,
   func.return %sum : f32
 }
 // CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map
-// CHECK:      %0 = xla_gpu.loop (%{{.*}})[%[[I:.*]], %[[J:.*]]] ->
+// CHECK:       xla_gpu.loop (%{{.*}})[%[[I:.*]], %[[J:.*]]] ->
 // CHECK-SAME:     (%[[R0:.*]], %[[R1:.*]]) in #[[$MAP]]
 // CHECK-SAME:     iter_args(%[[SUM_ITER:.*]] = %{{.*}}) -> (f32) {
 // CHECK:        %[[EXTRACTED:.*]] = tensor.extract %{{.*}}[%[[I]], %[[J]]]
