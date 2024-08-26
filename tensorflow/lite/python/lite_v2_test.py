@@ -5519,5 +5519,41 @@ class BufferOffsetTest(lite_v2_test_util.ModelTest):
     self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
 
 
+class BoundaryValueTest(lite_v2_test_util.ModelTest):
+
+  @parameterized.named_parameters(
+      ('EnableCanonicalizeInfAsMaxMinFloatFromSavedModel', True, True),
+      ('DisableCanonicalizeInfAsMaxMinFloatFromSavedModel', False, True),
+      ('EnableCanonicalizeInfAsMaxMinFloatFromConcreteFunc', True, False),
+      ('DisableCanonicalizeInfAsMaxMinFloatFromConcreteFunc', False, False),
+  )
+  @test_util.run_v2_only
+  def testFloatBoundaryValue(self, is_canonicalized, is_from_saved_model):
+    root = self._getInfFloatModel()
+    input_data = None
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    mdl = tf.Module()
+    mdl.f = concrete_func
+
+    def _get_converter() -> lite.TFLiteConverterV2:
+      if is_from_saved_model:
+        save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+        tf.saved_model.save(mdl, save_dir)
+        return lite.TFLiteConverterV2.from_saved_model(save_dir)
+      return lite.TFLiteConverterV2.from_concrete_functions(
+          [concrete_func], root
+      )
+
+    converter = _get_converter()
+    converter.canonicalizing_inf_as_min_max_float = is_canonicalized
+    tflite_model = converter.convert()
+
+    # Check output value from converted model.
+    expected_value = [np.finfo(np.float32).max if is_canonicalized else np.inf]
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value, actual_value)
+
+
 if __name__ == '__main__':
   test.main()

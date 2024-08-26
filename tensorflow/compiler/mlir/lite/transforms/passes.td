@@ -471,3 +471,9 @@ def UnfreezeMutableGlobalTensorsPass : Pass<"unfreeze-mutable-global-tensors", "
   let summary = "Pass to unfreeze mutable global tensor ops";
   let constructor = "CreateUnfreezeMutableGlobalTensorsPass()";
 }
+
+def CanonicalizeBoundaryValuePass : Pass<"canonicalize-boundary-value", "mlir::ModuleOp"> {
+  let summary = "Canonicalize the IR representations of boundary values";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect", "TF::TensorFlowDialect", "mlir::arith::ArithDialect"];
+  let constructor = "CreateCanonicalizeBoundaryValuePass()";
+}

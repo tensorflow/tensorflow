@@ -757,6 +757,32 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "canonicalize_boundary_value",
+    srcs = [
+        "transforms/canonicalize_boundary_value_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        ":tensorflow_lite_passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/analyze_variables.cc",
@@ -1501,6 +1527,7 @@ cc_library(
         "tf_tfl_passes.h",
     ],
     deps = [
+        ":canonicalize_boundary_value",
         ":common",
         ":fake_quant_utils",
         ":optimize_pass_options",

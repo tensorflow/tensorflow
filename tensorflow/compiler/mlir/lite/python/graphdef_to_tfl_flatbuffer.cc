@@ -107,6 +107,8 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
   pass_config.guarantee_all_funcs_one_use =
       toco_flags.guarantee_all_funcs_one_use();
   pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
+  pass_config.canonicalizing_inf_as_min_max_float =
+      toco_flags.canonicalizing_inf_as_min_max_float();
 
   // StableHLO Quantizer is not supported for GraphDef inputs, so
   // quantization_py_function_lib is set to nullptr.
