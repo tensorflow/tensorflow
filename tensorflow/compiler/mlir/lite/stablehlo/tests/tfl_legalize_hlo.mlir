@@ -301,6 +301,17 @@ func.func @dot_general_dynamic_contracting_dim(%arg0: tensor<4x4x?xf32>, %arg1: 
 // mhlo.reduce
 //===----------------------------------------------------------------------===//
 
+// CHECK-LABEL:   convert_reduce_maximum_to_reduce_any
+func.func @convert_reduce_maximum_to_reduce_any(%arg0: tensor<128x1x1024xi1>) -> tensor<128x1xi1> {
+    %0 = mhlo.constant dense<false> : tensor<i1>
+    %1271 = mhlo.reduce(%arg0 init: %0) applies mhlo.maximum across dimensions = [2] : (tensor<128x1x1024xi1>, tensor<i1>) -> tensor<128x1xi1>
+    func.return %1271 : tensor<128x1xi1>
+    // CHECK:%0 = mhlo.constant dense<false> : tensor<i1>
+    // CHECK:%cst = arith.constant dense<2> : tensor<1xi32>
+    // CHECK:%1 = "tfl.reduce_any"(%arg0, %cst) <{keep_dims = false}> : (tensor<128x1x1024xi1>, tensor<1xi32>) -> tensor<128x1xi1>
+    // CHECK:return %1 : tensor<128x1xi1>
+}
+
 // CHECK-LABEL: argmax
 func.func @argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32xi32>) {
   %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
