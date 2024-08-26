@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/platform/types.h"
 
 using tensorflow::string;
 
