@@ -71,7 +71,7 @@ diff -ruN --strip-trailing-cr a/lldb/bindings/python/python-wrapper.swig b/lldb/
 -  bool ret_val = result ? PyObject_IsTrue(result) : false;
 -  Py_XDECREF(result);
 -
--  return result;
+-  return ret_val;
 -}
 -
  void *lldb_private::python::SWIGBridge::LLDBSWIGPython_GetDynamicSetting(
@@ -1450,26 +1450,80 @@ diff -ruN --strip-trailing-cr a/llvm/test/Transforms/Coroutines/coro-debug-O2.ll
  ; CHECK: ![[PROMISEVAR_RESUME]] = !DILocalVariable(name: "__promise"
  %promise_type = type { i32, i32, double }
  
-diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/GraphWriterTest.cpp b/llvm/unittests/Analysis/GraphWriterTest.cpp
---- a/llvm/unittests/Analysis/GraphWriterTest.cpp
-+++ b/llvm/unittests/Analysis/GraphWriterTest.cpp
-@@ -12,6 +12,7 @@
- #include "llvm/IR/Function.h"
- #include "llvm/IR/LLVMContext.h"
- #include "llvm/IR/Module.h"
-+#include "llvm/Testing/Support/SupportHelpers.h"
- #include "llvm/Support/SourceMgr.h"
- #include "llvm/Support/raw_ostream.h"
- #include "gtest/gtest.h"
-@@ -56,7 +57,10 @@
- static void writeCFGToDotFile(Function &F, std::string Name,
-                               bool CFGOnly = false) {
-   std::error_code EC;
--  raw_fd_ostream File(Name + ".dot", EC, sys::fs::OpenFlags::OF_Text);
-+  llvm::unittest::TempDir Tmp("tmpdir", /*Unique=*/true);
-+  SmallString<128> FileName(Tmp.path().begin(), Tmp.path().end());
-+  sys::path::append(FileName, Name + ".dot");
-+  raw_fd_ostream File(FileName, EC, sys::fs::OpenFlags::OF_Text);
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -3338,25 +3338,6 @@
+ )
  
-   DOTFuncInfo CFGInfo(&F);
+ cc_library(
+-    name = "TensorShardingInterfaceImpl",
+-    srcs = ["lib/Dialect/Mesh/Interfaces/TensorShardingInterfaceImpl.cpp"],
+-    hdrs = [
+-        "include/mlir/Dialect/Mesh/IR/TensorShardingInterfaceImpl.h",
+-    ],
+-    includes = ["include"],
+-    deps = [
+-        ":DialectUtils",
+-        ":IR",
+-        ":MeshDialect",
+-        ":MeshShardingInterface",
+-        ":MeshShardingInterfaceIncGen",
+-        ":Support",
+-        ":TensorDialect",
+-        "//llvm:Support",
+-    ],
+-)
+-
+-cc_library(
+     name = "MeshDialect",
+     srcs = ["lib/Dialect/Mesh/IR/MeshOps.cpp"],
+     hdrs = [
+@@ -4890,6 +4871,7 @@
+         ":ROCDLToLLVMIRTranslation",
+         ":SCFTransformOps",
+         ":SparseTensorTransformOps",
++        ":TensorExtensions",
+         ":TensorTransformOps",
+         ":TransformDebugExtension",
+         ":TransformIRDLExtension",
+@@ -7600,6 +7582,7 @@
+         "lib/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.cpp",
+     ],
+     hdrs = [
++        "include/mlir/Dialect/Tensor/IR/ShardingInterfaceImpl.h",
+         "include/mlir/Dialect/Tensor/IR/Tensor.h",
+         "include/mlir/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.h",
+     ],
+@@ -7670,6 +7653,23 @@
+ )
  
+ cc_library(
++    name = "TensorExtensions",
++    srcs = glob(["lib/Dialect/Tensor/Extensions/*.cpp"]),
++    hdrs = glob(["include/mlir/Dialect/Tensor/Extensions/*.h"]),
++    includes = ["include"],
++    deps = [
++        ":DialectUtils",
++        ":IR",
++        ":MeshDialect",
++        ":MeshShardingInterface",
++        ":MeshShardingInterfaceIncGen",
++        ":Support",
++        ":TensorDialect",
++        "//llvm:Support",
++    ],
++)
++
++cc_library(
+     name = "TensorUtils",
+     srcs = ["lib/Dialect/Tensor/Utils/Utils.cpp"],
+     hdrs = ["include/mlir/Dialect/Tensor/Utils/Utils.h"],
+@@ -9603,7 +9603,6 @@
+         ":SparseTensorTransforms",
+         ":TensorDialect",
+         ":TensorInferTypeOpInterfaceImpl",
+-        ":TensorShardingInterfaceImpl",
+         ":TensorTilingInterfaceImpl",
+         ":TensorTransformOps",
+         ":TensorTransforms",
