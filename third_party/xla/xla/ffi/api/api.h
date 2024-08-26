@@ -242,6 +242,11 @@ class Ffi {
   static XLA_FFI_Error* CheckStructSize(const XLA_FFI_Api* api,
                                         std::string_view struct_name,
                                         size_t expected, size_t actual);
+
+  static XLA_FFI_Error* StructSizeIsGreaterOrEqual(const XLA_FFI_Api* api,
+                                                   std::string_view struct_name,
+                                                   size_t expected,
+                                                   size_t actual);
 };
 
 XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
@@ -292,6 +297,18 @@ inline XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
     return InvalidArgument(
         api, StrCat("Unexpected ", struct_name, " size: expected ", expected,
                     " got ", actual, ". Check installed software versions."));
+  }
+  return nullptr;
+}
+
+inline XLA_FFI_Error* Ffi::StructSizeIsGreaterOrEqual(
+    const XLA_FFI_Api* api, std::string_view struct_name, size_t expected,
+    size_t actual) {
+  if (actual < expected) {
+    return InvalidArgument(
+        api, StrCat("Unexpected ", struct_name, " size: expected at least ",
+                    expected, " got ", actual,
+                    ". Check installed software versions."));
   }
   return nullptr;
 }
@@ -1301,16 +1318,13 @@ class Handler : public Ffi {
       return err;
     }
 
-    // Check the API versions.
-    const XLA_FFI_Api_Version& api_version = call_frame->api->api_version;
-    if (api_version.major_version != XLA_FFI_API_MAJOR ||
-        api_version.minor_version != XLA_FFI_API_MINOR) {
-      return InvalidArgument(
-          call_frame->api,
-          StrCat("FFI handler's API version (", XLA_FFI_API_MAJOR, ".",
-                 XLA_FFI_API_MINOR, ") does not match the framework's API ",
-                 "version (", api_version.major_version, ".",
-                 api_version.minor_version, ")"));
+    // If passed a call frame with the metadata extension, just return the
+    // metadata.
+    if (call_frame->extension_start != nullptr &&
+        call_frame->extension_start->type == XLA_FFI_Extension_Metadata) {
+      return PopulateMetadata(call_frame->api,
+                              reinterpret_cast<XLA_FFI_Metadata_Extension*>(
+                                  call_frame->extension_start));
     }
 
     // Check that handler is called during correct execution stage.
@@ -1396,6 +1410,28 @@ class Handler : public Ffi {
   }
 
  private:
+  XLA_FFI_Error* PopulateMetadata(const XLA_FFI_Api* api,
+                                  XLA_FFI_Metadata_Extension* extension) const {
+    if (XLA_FFI_Error* err = StructSizeIsGreaterOrEqual(
+            api, "XLA_FFI_Metadata_Extension",
+            XLA_FFI_Metadata_Extension_STRUCT_SIZE, extension->struct_size)) {
+      return err;
+    }
+    if (XLA_FFI_Error* err = StructSizeIsGreaterOrEqual(
+            api, "XLA_FFI_Metadata", XLA_FFI_Metadata_STRUCT_SIZE,
+            extension->metadata->struct_size)) {
+      return err;
+    }
+    extension->metadata->api_version = XLA_FFI_Api_Version{
+        XLA_FFI_Api_Version_STRUCT_SIZE,
+        /*extension_start=*/nullptr,
+        XLA_FFI_API_MAJOR,
+        XLA_FFI_API_MINOR,
+    };
+    extension->metadata->traits = 0;  // Placeholder
+    return Sucess();
+  }
+
   template <size_t... Is>
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE XLA_FFI_Error* Call(
       const XLA_FFI_CallFrame* call_frame, std::index_sequence<Is...>) const {

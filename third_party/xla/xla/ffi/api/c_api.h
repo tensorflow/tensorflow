@@ -45,7 +45,9 @@ typedef struct XLA_FFI_InternalApi XLA_FFI_InternalApi;  // Forward declare
 // Extensions
 //===----------------------------------------------------------------------===//
 
-typedef enum {} XLA_FFI_Extension_Type;
+typedef enum {
+  XLA_FFI_Extension_Metadata = 1,
+} XLA_FFI_Extension_Type;
 
 typedef struct XLA_FFI_Extension_Base {
   size_t struct_size;
@@ -531,6 +533,25 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_DeviceMemory_Free_Args, data);
 // Frees previously allocated device memory.
 typedef XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
     XLA_FFI_DeviceMemory_Free_Args* args);
+
+//===----------------------------------------------------------------------===//
+// Metadata extension
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_Metadata {
+  size_t struct_size;
+  XLA_FFI_Api_Version api_version;
+  XLA_FFI_Handler_Traits traits;
+};
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata, traits);
+
+struct XLA_FFI_Metadata_Extension {
+  size_t struct_size;
+  XLA_FFI_Extension_Type type;
+  XLA_FFI_Extension_Base* next;
+  XLA_FFI_Metadata* metadata;
+};
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata_Extension, metadata);
 
 //===----------------------------------------------------------------------===//
 // API access

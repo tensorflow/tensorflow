@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/ffi/ffi_api.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -126,12 +125,11 @@ absl::Status TakeStatus(XLA_FFI_Error* error) {
   return status;
 }
 
-absl::Status CallWithApi(const XLA_FFI_Api* api, Ffi& handler,
-                         CallFrame& call_frame, const CallOptions& options,
-                         ExecutionStage stage) {
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options, ExecutionStage stage) {
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
-  XLA_FFI_CallFrame ffi_call_frame =
-      call_frame.Build(api, &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
+  XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(
+      GetXlaFfiApi(), &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
   XLA_FFI_Error* status = nullptr;
   try {
     status = handler.Call(&ffi_call_frame);
@@ -139,11 +137,6 @@ absl::Status CallWithApi(const XLA_FFI_Api* api, Ffi& handler,
     return Unknown("XLA FFI call failed: %s", e.what());
   }
   return TakeStatus(status);
-}
-
-absl::Status Call(Ffi& handler, CallFrame& call_frame,
-                  const CallOptions& options, ExecutionStage stage) {
-  return CallWithApi(GetXlaFfiApi(), handler, call_frame, options, stage);
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
@@ -158,6 +151,68 @@ absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
     return Unknown("XLA FFI call failed: %s", e.what());
   }
   return TakeStatus(status);
+}
+
+absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler) {
+  auto metadata = BuildMetadata();
+  auto extension = BuildMetadataExtension(&metadata);
+  auto call_frame = BuildMetadataCallFrame(&extension);
+  XLA_FFI_Error* status = nullptr;
+  try {
+    status = handler.Call(&call_frame);
+  } catch (std::exception& e) {
+    return Unknown("Fetching XLA FFI metadata failed: %s", e.what());
+  }
+  if (status != nullptr) {
+    return TakeStatus(status);
+  }
+  return metadata;
+}
+
+absl::StatusOr<XLA_FFI_Metadata> GetMetadata(XLA_FFI_Handler* handler) {
+  auto metadata = BuildMetadata();
+  auto extension = BuildMetadataExtension(&metadata);
+  auto call_frame = BuildMetadataCallFrame(&extension);
+  XLA_FFI_Error* status = nullptr;
+  try {
+    status = (*handler)(&call_frame);
+  } catch (std::exception& e) {
+    return Unknown("Fetching XLA FFI metadata failed: %s", e.what());
+  }
+  if (status != nullptr) {
+    return TakeStatus(status);
+  }
+  return metadata;
+}
+
+XLA_FFI_Metadata BuildMetadata() {
+  return XLA_FFI_Metadata{
+      XLA_FFI_Metadata_STRUCT_SIZE,
+      XLA_FFI_Api_Version{XLA_FFI_Api_Version_STRUCT_SIZE, nullptr, 0, 0}, 0};
+}
+
+XLA_FFI_Metadata_Extension BuildMetadataExtension(XLA_FFI_Metadata* metadata) {
+  return XLA_FFI_Metadata_Extension{XLA_FFI_Metadata_Extension_STRUCT_SIZE,
+                                    XLA_FFI_Extension_Metadata,
+                                    /*next=*/nullptr, metadata};
+}
+
+XLA_FFI_CallFrame BuildMetadataCallFrame(
+    XLA_FFI_Metadata_Extension* extension) {
+  XLA_FFI_CallFrame call_frame = {
+      XLA_FFI_CallFrame_STRUCT_SIZE,
+      reinterpret_cast<XLA_FFI_Extension_Base*>(extension),
+      /*api=*/nullptr,
+      /*context=*/nullptr,
+      /*stage=*/XLA_FFI_ExecutionStage_EXECUTE,
+  };
+  call_frame.args =
+      XLA_FFI_Args{XLA_FFI_Args_STRUCT_SIZE, nullptr, 0, nullptr, nullptr};
+  call_frame.rets =
+      XLA_FFI_Rets{XLA_FFI_Rets_STRUCT_SIZE, nullptr, 0, nullptr, nullptr};
+  call_frame.attrs = XLA_FFI_Attrs{
+      XLA_FFI_Attrs_STRUCT_SIZE, nullptr, 0, nullptr, nullptr, nullptr};
+  return call_frame;
 }
 
 namespace internal {
@@ -215,19 +270,35 @@ static absl::Status RegisterHandler(std::string_view name,
   TF_ASSIGN_OR_RETURN(std::string canonical_platform,
                       PlatformUtil::CanonicalPlatformName(platform));
 
-  VLOG(2) << absl::StreamFormat(
-      "Register XLA FFI handler for '%s'; platform=%s (canonical=%s), "
-      "stages=[%s], command_buffer_compatible=%v",
-      name, platform, canonical_platform,
-      absl::StrJoin(GetHandlerStages(bundle), ", "),
-      IsCommandBufferCompatible(traits));
-
   if (bundle.execute == nullptr) {
     return InvalidArgument(
         "FFI handler for %s on a platform %s must provide an execute "
         "implementation",
         name, platform);
   }
+
+  // Check the API versions.
+  TF_ASSIGN_OR_RETURN(auto metadata, GetMetadata(bundle.execute));
+  const XLA_FFI_Api_Version& api_version = metadata.api_version;
+  if (api_version.major_version != XLA_FFI_API_MAJOR ||
+      api_version.minor_version != XLA_FFI_API_MINOR) {
+    return InvalidArgument(
+        "FFI handler registration for %s on platform %s (canonical %s) failed "
+        "because the hander's API version (%d.%d) is incompatible with the "
+        "framework's API version (%d.%d)",
+        name, platform, canonical_platform, api_version.major_version,
+        api_version.minor_version, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR);
+  }
+
+  // Incorporate handler traits.
+  traits |= metadata.traits;
+
+  VLOG(2) << absl::StreamFormat(
+      "Register XLA FFI handler for '%s'; platform=%s (canonical=%s), "
+      "stages=[%s], command_buffer_compatible=%v",
+      name, platform, canonical_platform,
+      absl::StrJoin(GetHandlerStages(bundle), ", "),
+      IsCommandBufferCompatible(traits));
 
   auto emplaced =
       GetHandlerRegistry().try_emplace(MakeHandlerKey(name, canonical_platform),
@@ -236,7 +307,7 @@ static absl::Status RegisterHandler(std::string_view name,
     auto existing = emplaced.first->second;
     if (existing.traits != traits) {
       return InvalidArgument(
-          "Duplicate FFI handler registration for %s on a platform %s "
+          "Duplicate FFI handler registration for %s on platform %s "
           "(canonical %s) with different traits",
           name, platform, canonical_platform);
     }
@@ -244,7 +315,7 @@ static absl::Status RegisterHandler(std::string_view name,
         existing.bundle.initialize != bundle.initialize ||
         existing.bundle.execute != bundle.execute) {
       return InvalidArgument(
-          "Duplicate FFI handler registration for %s on a platform %s "
+          "Duplicate FFI handler registration for %s on platform %s "
           "(canonical %s) with different bundle addresses",
           name, platform, canonical_platform);
     }

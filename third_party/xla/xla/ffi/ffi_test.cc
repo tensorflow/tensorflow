@@ -978,17 +978,15 @@ TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
   TF_ASSERT_OK(status);
 }
 
-TEST(FfiTest, ApiVersion) {
-  auto handler = Ffi::Bind().To([]() { return absl::OkStatus(); });
-  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
-  auto call_frame = builder.Build();
-  auto api = GetXlaFfiApi();
-  XLA_FFI_Api api_copy = *api;
-  api_copy.api_version.major_version += 1;
-  auto status = CallWithApi(&api_copy, *handler, call_frame);
-  EXPECT_TRUE(absl::StrContains(status.message(), "FFI handler's API version"))
-      << "status.message():\n"
-      << status.message() << "\n";
+TEST(FfiTest, Metadata) {
+  static constexpr auto* noop = +[] { return absl::OkStatus(); };
+  XLA_FFI_DEFINE_HANDLER(handler, noop, Ffi::Bind());
+  auto maybe_metadata = GetMetadata(handler);
+  EXPECT_TRUE(maybe_metadata.ok());
+  auto metadata = maybe_metadata.value();
+  EXPECT_EQ(metadata.traits, 0);
+  EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
+  EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
 }
 
 //===----------------------------------------------------------------------===//

@@ -1019,6 +1019,17 @@ TEST(FfiTest, ScratchAllocatorUnimplemented) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, Metadata) {
+  auto api = GetXlaFfiApi();
+  auto handler = Ffi::BindTo([]() { return Error::Success(); });
+  auto maybe_metadata = GetMetadata(*handler);
+  EXPECT_TRUE(maybe_metadata.ok());
+  auto metadata = maybe_metadata.value();
+  EXPECT_EQ(metadata.api_version.major_version, api->api_version.major_version);
+  EXPECT_EQ(metadata.api_version.minor_version, api->api_version.minor_version);
+  EXPECT_EQ(metadata.traits, 0);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
