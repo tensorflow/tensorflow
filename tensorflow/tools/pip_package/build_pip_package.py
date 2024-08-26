@@ -336,8 +336,11 @@ def rename_libtensorflow(srcs_dir: str, version: str):
 
 def create_local_config_python(dst_dir: str) -> None:
   """Copy python and numpy header files to the destination directory."""
+  numpy_include_dir = "external/pypi_numpy/site-packages/numpy/_core/include"
+  if not os.path.exists(numpy_include_dir):
+    numpy_include_dir = "external/pypi_numpy/site-packages/numpy/core/include"
   shutil.copytree(
-      "external/pypi_numpy/site-packages/numpy/core/include",
+      numpy_include_dir,
       os.path.join(dst_dir, "numpy_include"),
   )
   if is_windows():
