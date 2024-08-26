@@ -31,6 +31,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+
+// TODO(b/356626728): Remove when migration complete.
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
+
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -361,11 +367,20 @@ class GpuCommandBuffer : public CommandBuffer {
 // various kernels that update Gpu conditionals based on the device memory
 // values, and allow implementing on-device control flow via conditional command
 // buffers.
+#if GOOGLE_CUDA && CUDA_VERSION < 12040
+// TODO(b/356626728): Remove when migration complete.
 std::string_view GetSetIfConditionKernel();
 std::string_view GetSetIfElseConditionKernel();
 std::string_view GetSetCaseConditionKernel();
 std::string_view GetSetForConditionKernel();
 std::string_view GetSetWhileConditionKernel();
+#else
+void* GetSetIfConditionKernel();
+void* GetSetIfElseConditionKernel();
+void* GetSetCaseConditionKernel();
+void* GetSetForConditionKernel();
+void* GetSetWhileConditionKernel();
+#endif
 
 }  // namespace stream_executor::gpu
 

@@ -15,7 +15,11 @@ limitations under the License.
 
 #include <string_view>
 
+#include "third_party/gpus/cuda/include/cuda.h"
+
 namespace stream_executor::gpu {
+
+#if CUDA_VERSION <= 12030
 
 // Collection of helper kernels required by command buffers on CUDA backends. We
 // use pre-compiled PTX instead of a CUDA C++ because conditional nodes require
@@ -740,5 +744,7 @@ $L__BB0_3:
 
 })";
 }
+
+#endif
 
 }  // namespace stream_executor::gpu

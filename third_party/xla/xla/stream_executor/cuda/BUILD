@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
@@ -523,9 +524,14 @@ cuda_only_cc_library(
     ],
 )
 
-cc_library(
+cuda_library(
     name = "cuda_conditional_kernels",
-    srcs = ["cuda_conditional_kernels.cc"],
+    srcs = [
+        "cuda_conditional_kernels.cu.cc",
+        # TODO(b/356626728): Remove when migration complete.
+        "cuda_conditional_kernels.cc",
+    ],
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
 # TODO(leary) we likely need to canonicalize/eliminate this.

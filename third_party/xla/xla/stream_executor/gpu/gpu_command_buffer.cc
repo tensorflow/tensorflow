@@ -25,9 +25,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// TODO(b/356626728): Remove when migration complete.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
+
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -216,7 +218,11 @@ absl::StatusOr<GpuCommandBuffer::SetIfConditionKernel*>
 GpuCommandBuffer::GetSetIfConditionKernel() {
   if (!set_if_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/2);
+#if GOOGLE_CUDA && CUDA_VERSION < 12040
     spec.AddCudaPtxInMemory(gpu::GetSetIfConditionKernel(), "set_if_condition");
+#else
+    spec.AddInProcessSymbol(gpu::GetSetIfConditionKernel(), "set_if_condition");
+#endif
     TF_ASSIGN_OR_RETURN(
         set_if_condition_kernel_,
         SetIfConditionKernel::FactoryType::Create(parent_, spec));
@@ -228,8 +234,13 @@ absl::StatusOr<GpuCommandBuffer::SetIfElseConditionKernel*>
 GpuCommandBuffer::GetSetIfElseConditionKernel() {
   if (!set_if_else_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/3);
+#if GOOGLE_CUDA && CUDA_VERSION < 12040
     spec.AddCudaPtxInMemory(gpu::GetSetIfElseConditionKernel(),
                             "set_if_else_condition");
+#else
+    spec.AddInProcessSymbol(gpu::GetSetIfElseConditionKernel(),
+                            "set_if_else_condition");
+#endif
     TF_ASSIGN_OR_RETURN(
         set_if_else_condition_kernel_,
         SetIfElseConditionKernel::FactoryType::Create(parent_, spec));
@@ -241,8 +252,13 @@ absl::StatusOr<GpuCommandBuffer::SetCaseConditionKernel*>
 GpuCommandBuffer::GetSetCaseConditionKernel() {
   if (!set_case_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/10);
+#if GOOGLE_CUDA && CUDA_VERSION < 12040
     spec.AddCudaPtxInMemory(gpu::GetSetCaseConditionKernel(),
                             "set_case_condition");
+#else
+    spec.AddInProcessSymbol(gpu::GetSetCaseConditionKernel(),
+                            "set_case_condition");
+#endif
     TF_ASSIGN_OR_RETURN(
         set_case_condition_kernel_,
         SetCaseConditionKernel::FactoryType::Create(parent_, spec));
@@ -254,8 +270,13 @@ absl::StatusOr<GpuCommandBuffer::SetForConditionKernel*>
 GpuCommandBuffer::GetSetForConditionKernel() {
   if (!set_for_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/3);
+#if GOOGLE_CUDA && CUDA_VERSION < 12040
     spec.AddCudaPtxInMemory(gpu::GetSetForConditionKernel(),
                             "set_for_condition");
+#else
+    spec.AddInProcessSymbol(gpu::GetSetForConditionKernel(),
+                            "set_for_condition");
+#endif
     TF_ASSIGN_OR_RETURN(
         set_for_condition_kernel_,
         SetForConditionKernel::FactoryType::Create(parent_, spec));
@@ -267,8 +288,13 @@ absl::StatusOr<GpuCommandBuffer::SetWhileConditionKernel*>
 GpuCommandBuffer::GetSetWhileConditionKernel() {
   if (!set_while_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/2);
+#if GOOGLE_CUDA && CUDA_VERSION < 12040
     spec.AddCudaPtxInMemory(gpu::GetSetWhileConditionKernel(),
                             "set_while_condition");
+#else
+    spec.AddInProcessSymbol(gpu::GetSetWhileConditionKernel(),
+                            "set_while_condition");
+#endif
     TF_ASSIGN_OR_RETURN(
         set_while_condition_kernel_,
         SetWhileConditionKernel::FactoryType::Create(parent_, spec));
