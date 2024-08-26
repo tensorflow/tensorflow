@@ -163,6 +163,15 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "check_pinned_op",
+    srcs = ["check_pinned_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_kernel_library(
     name = "choose_fastest_dataset_op",
     srcs = ["choose_fastest_dataset_op.cc"],
     deps = [
@@ -1004,6 +1013,7 @@ tf_kernel_library(
         ":assert_cardinality_dataset_op",
         ":assert_next_dataset_op",
         ":assert_prev_dataset_op",
+        ":check_pinned_op",
         ":choose_fastest_branch_dataset_op",
         ":choose_fastest_dataset_op",
         ":compression_ops",
