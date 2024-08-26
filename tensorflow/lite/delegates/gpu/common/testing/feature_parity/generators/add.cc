@@ -21,8 +21,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/string.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/utils.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
