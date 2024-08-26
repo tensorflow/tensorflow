@@ -31,7 +31,7 @@ namespace tensorflow::full_type {
 // expected full_type information. If an error raised about bad full
 // time information causes a breakage, changing `SetMemoryTypeForArgs` to
 // `WeakSetMemoryTypeForArgs` is a possible work around.
-Status SetMemoryTypeForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
+Status SetMemoryTypeForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                             const DataTypeVector& dtypes,
                             MemoryTypeVector& memory_types);
 
@@ -41,7 +41,7 @@ Status SetMemoryTypeForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
 // Set the contents of memory_types for args (inputs to functions, "_Arg" ops)
 // based on dtype. Logging of warnings if an int32 arg does not have
 // expected full_type information can be enabled.
-Status WeakSetMemoryTypeForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
+Status WeakSetMemoryTypeForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                                 const DataTypeVector& dtypes,
                                 MemoryTypeVector& memory_types);
 
@@ -51,7 +51,7 @@ Status WeakSetMemoryTypeForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
 // does not have expected full type information). If an error raised about bad
 // full time information causes a breakage, changing `SetMemoryTypeForRets` to
 // `WeakSetMemoryTypeForRets` is a possible work around.
-Status SetMemoryTypeForRets(const gtl::InlinedVector<Node*, 4>& nodes,
+Status SetMemoryTypeForRets(const absl::InlinedVector<Node*, 4UL>& nodes,
                             const DataTypeVector& dtypes,
                             MemoryTypeVector& memory_types);
 
@@ -59,7 +59,7 @@ Status SetMemoryTypeForRets(const gtl::InlinedVector<Node*, 4>& nodes,
 // ops) based on dtype. Logging of warnings if an int32 ret does not have
 // expected full_type information (i.e. if the source of the input to the ret
 // does not have expected full type information) can be enabled.
-Status WeakSetMemoryTypeForRets(const gtl::InlinedVector<Node*, 4>& nodes,
+Status WeakSetMemoryTypeForRets(const absl::InlinedVector<Node*, 4UL>& nodes,
                                 const DataTypeVector& dtypes,
                                 MemoryTypeVector& memory_types);
 
@@ -68,14 +68,14 @@ Status WeakSetMemoryTypeForRets(const gtl::InlinedVector<Node*, 4>& nodes,
 // expected full_type information. If an error raised about bad full
 // time information causes a breakage, changing `SetAllocAttrsForArgs` to
 // `WeakSetAllocAttrsForArgs` is a possible work around.
-Status SetAllocAttrsForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
+Status SetAllocAttrsForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                             const DataTypeVector& dtypes,
                             std::vector<AllocatorAttributes>& alloc_attrs);
 
 // Set the contents of alloc_attrs for args (inputs to functions, "_Arg" ops)
 // based on dtype. Logging of warnings if an int32 arg does not have
 // expected full_type information can be enabled.
-Status WeakSetAllocAttrsForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
+Status WeakSetAllocAttrsForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                                 const DataTypeVector& dtypes,
                                 std::vector<AllocatorAttributes>& alloc_attrs);
 
@@ -85,7 +85,7 @@ Status WeakSetAllocAttrsForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
 // does not have expected full type information). If an error raised about bad
 // full time information causes a breakage, changing `SetAllocAttrsForRets` to
 // `WeakSetAllocAttrsForRets` is a possible work around.
-Status SetAllocAttrsForRets(const gtl::InlinedVector<Node*, 4>& nodes,
+Status SetAllocAttrsForRets(const absl::InlinedVector<Node*, 4UL>& nodes,
                             const DataTypeVector& dtypes,
                             std::vector<AllocatorAttributes>& alloc_attrs);
 

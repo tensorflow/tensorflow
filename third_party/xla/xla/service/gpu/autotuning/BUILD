@@ -389,6 +389,7 @@ xla_test(
         "gpu_v100",
         "gpu_amd_any",
     ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
         "noasan",
         "nomsan",
