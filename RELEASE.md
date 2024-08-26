@@ -2,32 +2,22 @@
 
 ## TensorFlow
 
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+In this release, the focus is on improving API consistency, expanding support for TensorFlow Lite, and enhancing CUDA integration. Potential changes to the toolchain include improvements in hermetic CUDA support and changes to TensorRT integration, aimed at enhancing the overall stability and reproducibility of TensorFlow builds.
 
 ### Breaking Changes
 
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* **`tf.lite`:**
+    * **C API:**
+        * An optional fourth parameter has been added to `TfLiteOperatorCreate` to move towards a cleaner API for `TfLiteOperator`. This function was recently introduced in TensorFlow Lite version 2.17.0, released on 7/11/2024, so it is unlikely to be widely used yet. Any code breakages can be easily resolved by passing `nullptr` as the new fourth parameter.
+    * **SignatureRunner:** Now supports models without signatures.
 
-* `tf.lite`
-    * C API:
-      * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step
-        forward towards a cleaner API for `TfLiteOperator`. Function
-        `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0,
-        released on 7/11/2024, and we do not expect there will be much code using this
-        function yet. Any code breakages can be easily resolved by passing nullptr as
-        the new, 4th parameter.
-    * SignatureRunner is now supported for models with no signatures.
+* TensorRT support has been disabled in CUDA builds to improve code health.
 
-* TensorRT support is disabled in CUDA builds for code health improvement.
+* **Hermetic CUDA Support:**
+  
+    Hermetic CUDA now uses a specific downloadable version of CUDA instead of relying on the user's locally installed CUDA. Bazel will download CUDA, CUDNN, and NCCL distributions and use these CUDA libraries and tools as dependencies in various Bazel targets. This change enables more reproducible builds for Google ML projects and supports specific CUDA versions.
 
-* Hermetic CUDA support is added.
 
-  Hermetic CUDA uses a specific downloadable version of CUDA instead of the
-  user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL
-  distributions, and then use CUDA libraries and tools as dependencies in
-  various Bazel targets. This enables more reproducible builds for Google ML
-  projects and supported CUDA versions.
 
 ### Known Caveats
 
