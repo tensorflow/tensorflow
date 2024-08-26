@@ -195,10 +195,7 @@ absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
     case F8E5M2:
       return b.getFloat8E5M2Type();
     case F8E4M3FN:
-      // TODO(b/345700241) Note that we return UZ type as Triton mistakenly uses
-      // this type for F8E4M3FN. The mapping must be changed when it's fixed in
-      // Triton.
-      return b.getFloat8E4M3FNUZType();
+      return b.getFloat8E4M3FNType();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
