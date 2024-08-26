@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/statusor.h"

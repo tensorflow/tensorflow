@@ -43,7 +43,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace profiler {
