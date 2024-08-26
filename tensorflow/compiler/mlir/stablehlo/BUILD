@@ -34,6 +34,7 @@ tsl_pybind_extension(
     features = ["-use_header_modules"],
     deps = [
         "//third_party/python_runtime:headers",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CAPIIR",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
