@@ -20,8 +20,6 @@ limitations under the License.
 #include <optional>
 
 #include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

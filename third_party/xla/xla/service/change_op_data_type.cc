@@ -17,7 +17,19 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3

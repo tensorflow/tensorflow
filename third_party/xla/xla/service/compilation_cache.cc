@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/types.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/executable.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/strcat.h"
 
 namespace xla {
 

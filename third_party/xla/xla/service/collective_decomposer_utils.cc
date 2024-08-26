@@ -18,14 +18,19 @@ limitations under the License.
 #include <functional>
 #include <limits>
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

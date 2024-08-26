@@ -21,7 +21,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "third_party/protobuf/message.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/service/metrics_hook_interface.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 

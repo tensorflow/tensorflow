@@ -24,17 +24,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/blocking_counter.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

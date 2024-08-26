@@ -37,12 +37,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/service/host_memory_offload_annotations.h"
+#include "xla/test_helpers.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
