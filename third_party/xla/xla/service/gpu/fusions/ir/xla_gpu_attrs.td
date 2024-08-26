@@ -58,6 +58,9 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
     xla::gpu::IndexingMap getIndexingMap();
+
+    // Returns the number of indexing map results.
+    int64_t getNumResults();
   }];
 }
 

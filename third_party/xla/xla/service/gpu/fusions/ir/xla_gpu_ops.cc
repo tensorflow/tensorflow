@@ -599,19 +599,21 @@ void LoopOp::build(OpBuilder& builder, OperationState& result,
   OpBuilder::InsertionGuard guard(builder);
 
   int64_t num_ivs = indexing_map_attr.getRangeVars().size();
+  int64_t num_indexing_map_results =
+      indexing_map_attr.getIndexingMap().GetNumResults();
+  int64_t num_inits = inits.size();
   result.addOperands(dims);
   result.addOperands(inits);
   result.addTypes(TypeRange(inits));
   Block* body_block = builder.createBlock(result.addRegion());
-  // Add induction variables block args.
-  for (int i = 0; i < num_ivs; ++i) {
+  // Add induction variables and indexing map results block args.
+  for (int i = 0, e = num_ivs + num_indexing_map_results; i < e; ++i) {
     body_block->addArgument(builder.getIndexType(), result.location);
   }
   // Add iteration arguments block args.
   for (auto init_type : TypeRange(inits)) {
     body_block->addArguments(init_type, result.location);
   }
-
   mlir::OperationName opname(LoopOp::getOperationName(), builder.getContext());
   result.addAttribute(LoopOp::getIndexingMapAttrAttrName(opname),
                       indexing_map_attr);
@@ -622,9 +624,11 @@ void LoopOp::build(OpBuilder& builder, OperationState& result,
   if (bodyBuilder) {
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(body_block);
-    bodyBuilder(builder, result.location,
-                body_block->getArguments().take_front(num_ivs),
-                body_block->getArguments().drop_front(num_ivs));
+    bodyBuilder(
+        builder, result.location,
+        body_block->getArguments().take_front(num_ivs),
+        body_block->getArguments().drop_front(num_ivs).drop_back(num_inits),
+        body_block->getArguments().take_back(num_inits));
   }
 }
 
@@ -637,11 +641,13 @@ void LoopOp::build(OpBuilder& builder, OperationState& result,
 }
 
 mlir::ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
-  SmallVector<OpAsmParser::Argument, 4> region_args, ivs, iter_args;
+  SmallVector<OpAsmParser::Argument, 4> region_args, ivs, map_results,
+      iter_args;
   SmallVector<OpAsmParser::UnresolvedOperand, 4> dim_operands;
 
   // Parse the dimension values.
-  OpBuilder b(parser.getContext());
+  auto* ctx = parser.getContext();
+  OpBuilder b(ctx);
   Type index_type = b.getIndexType();
   if (parser.parseOperandList(dim_operands, OpAsmParser::Delimiter::Paren) ||
       parser.resolveOperands(dim_operands, index_type, result.operands))
@@ -651,6 +657,15 @@ mlir::ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
     return failure();
   for (auto iv : ivs) {
     region_args.push_back(iv);
+    region_args.back().type = index_type;
+  }
+
+  // Parse the indexing map results variables.
+  if (parser.parseArrow() ||
+      parser.parseArgumentList(map_results, OpAsmParser::Delimiter::Paren))
+    return failure();
+  for (auto map_result : map_results) {
+    region_args.push_back(map_result);
     region_args.back().type = index_type;
   }
 
@@ -676,10 +691,12 @@ mlir::ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
     region_args.back().type = result.types[index];
   }
 
-  if (region_args.size() != result.types.size() + ivs.size()) {
-    return parser.emitError(parser.getNameLoc(),
-                            "mismatch in number of induction variables + "
-                            "loop-carried values and the number of results");
+  if (region_args.size() !=
+      result.types.size() + ivs.size() + map_results.size()) {
+    return parser.emitError(
+        parser.getNameLoc(),
+        "mismatch in number of induction variables + loop-carried values  + "
+        "number of indexing map results variables and the number of results");
   }
 
   // Parse the body region.
@@ -687,19 +704,22 @@ mlir::ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
   if (parser.parseRegion(*body, region_args)) return failure();
   LoopOp::ensureTerminator(*body, b, result.location);
 
-  // Parse the optional attribute list
+  // Add the necessary attributes.
   result.addAttribute(
       LoopOp::getOperandSegmentSizeAttr(),
       b.getDenseI32ArrayAttr({static_cast<int32_t>(dim_operands.size()),
                               static_cast<int32_t>(iter_args.size())}));
+
+  // Parse the optional attribute list
   if (parser.parseOptionalAttrDict(result.attributes)) return failure();
 
   return success();
 }
 
 void LoopOp::print(OpAsmPrinter& p) {
-  p << " (" << getDims() << ")[" << getInductionVars() << "] in "
-    << getIndexingMapAttr() << " iter_args(";
+  p << " (" << getDims() << ")[" << getInductionVars() << "] -> ("
+    << getIndexingMapResults() << ") in " << getIndexingMapAttr()
+    << " iter_args(";
   llvm::interleaveComma(
       llvm::zip(getRegionIterArgs(), getInits()), p,
       [&](auto it) { p << std::get<0>(it) << " = " << std::get<1>(it); });

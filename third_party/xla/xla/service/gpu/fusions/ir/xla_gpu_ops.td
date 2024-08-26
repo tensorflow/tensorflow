@@ -289,12 +289,13 @@ def LoopOp : XLAGPU_Op<"loop", [
       %sum_0 = arith.constant 0.0 : f32
       %dim = arith.constant 1 : index
       // iter_args binds initial values to the loop's region arguments.
-      %sum = xla_gpu.loop (%dim)[%i, %j] in #map iter_args(%sum_iter = %sum_0) -> (f32) {
+      %sum = xla_gpu.loop (%dim)[%i, %j] -> (%r0, %r1)
+          in #map iter_args(%sum_iter = %sum_0) -> (f32) {
         %t = tensor.extract %buffer[%i, %j] : tensor<1024x32xf32>
         %sum_next = arith.addf %sum_iter, %t : f32
         // Yield current iteration sum to next iteration %sum_iter or to %sum
         // if final iteration.
-        scf.yield %sum_next : f32
+        xla_gpu.yield %sum_next : f32
       }
     ```
   }];
@@ -307,23 +308,26 @@ def LoopOp : XLAGPU_Op<"loop", [
   let builders = [
     OpBuilder<(ins "IndexingMapAttr":$indexing_map_attr,
       "mlir::ValueRange":$dims, "mlir::ValueRange":$inits,
-      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, mlir::ValueRange, mlir::ValueRange)>",
-           "nullptr">)>,
+      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, "
+           "/*ivs=*/mlir::ValueRange, /*map_results=*/mlir::ValueRange, "
+           "/*init=*/mlir::ValueRange)>", "nullptr">)>,
     OpBuilder<(ins "const IndexingMap&":$indexing_map,
       "mlir::ValueRange":$dims, "mlir::ValueRange":$inits,
-      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, mlir::ValueRange, mlir::ValueRange)>",
-           "nullptr">)>
+      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, "
+           "/*ivs=*/mlir::ValueRange, /*map_results=*/mlir::ValueRange, "
+           "/*init=*/mlir::ValueRange)>", "nullptr">)>
   ];
 
   let extraClassDeclaration = [{
-    using BodyBuilderFn =
-        llvm::function_ref<void(mlir::OpBuilder&, mlir::Location,
-                                mlir::ValueRange, mlir::ValueRange)>;
+    using BodyBuilderFn = llvm::function_ref<
+        void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange,
+             mlir::ValueRange, mlir::ValueRange)>;
 
     // Returns the indexing map constructed from IndexingMapAttr.
     xla::gpu::IndexingMap getIndexingMap();
     int64_t getNumInductionVars() {
-      return getBody()->getNumArguments() - getNumResults();
+      return getBody()->getNumArguments() - getIndexingMapAttr().getNumResults()
+        - getNumResults();
     }
     mlir::BlockArgument getInductionVar(int64_t index) {
       return getBody()->getArgument(index);
@@ -331,8 +335,12 @@ def LoopOp : XLAGPU_Op<"loop", [
     mlir::Block::BlockArgListType getInductionVars() {
       return getBody()->getArguments().take_front(getNumInductionVars());
     }
+    mlir::Block::BlockArgListType getIndexingMapResults() {
+      return getBody()->getArguments().drop_front(getNumInductionVars())
+        .drop_back(getNumResults());
+    }
     mlir::Block::BlockArgListType getRegionIterArgs() {
-      return getBody()->getArguments().drop_front(getNumInductionVars());
+      return getBody()->getArguments().take_back(getNumResults());
     }
   }];
   let hasCustomAssemblyFormat = 1;

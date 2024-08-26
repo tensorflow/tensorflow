@@ -212,7 +212,10 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
           auto if_op = nested_b.create<mlir::scf::IfOp>(
               is_in_bounds,
               [&](OpBuilder& then_builder, Location then_loc) -> void {
+                ImplicitLocOpBuilder then_b(then_loc, then_builder);
                 SmallVector<Value, 4> bb_args(symbol_values);
+                bb_args.append(mlir_converter::ApplyIndexing(
+                    indexing_map, op.getDims(), symbol_values, then_b));
                 bb_args.append(iter_args.begin(), iter_args.end());
 
                 mlir::Block* then_block = then_builder.getInsertionBlock();
@@ -221,8 +224,8 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
                 rewriter.mergeBlocks(op.getBody(), then_block, bb_args);
 
                 auto old_terminator = then_block->getTerminator();
-                then_builder.create<mlir::scf::YieldOp>(
-                    then_loc, old_terminator->getOperands());
+                then_b.create<mlir::scf::YieldOp>(
+                    old_terminator->getOperands());
                 old_terminator->erase();
               },
               [&](OpBuilder& else_b, Location else_loc) {

@@ -40,7 +40,7 @@ func.func @loop_result_num_mismatch(%input: tensor<1024x32xf32>,
       indexing_map_attr = #map,
       operandSegmentSizes = array<i32: 0, 1>
     }> ({
-    ^bb0(%i: index, %j: index, %iter: f32):
+    ^bb0(%i: index, %j: index, %r0: index, %r1: index, %iter: f32):
       %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
       %add = arith.addf %iter, %t : f32
       xla_gpu.yield %add : f32
@@ -58,7 +58,7 @@ func.func @loop_iv_num_mismatch(%input: tensor<1024x32xf32>,
       indexing_map_attr = #map,
       operandSegmentSizes = array<i32: 0, 1>
     }> ({
-    ^bb0(%i: index, %j: index, %iter: f32):
+    ^bb0(%i: index, %j: index, %r0: index, %r1: index, %iter: f32):
       %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
       %add = arith.addf %iter, %t : f32
       xla_gpu.yield %add : f32
@@ -75,7 +75,7 @@ func.func @loop_types_mismatch(%input: tensor<1024x32xf32>, %init: f32) -> (i32)
       indexing_map_attr = #map,
       operandSegmentSizes = array<i32: 0, 1>
     }> ({
-    ^bb0(%i: index, %j: index, %iter: f32):
+    ^bb0(%i: index, %j: index, %r0: index, %r1: index, %iter: f32):
       %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
       %add = arith.addf %iter, %t : f32
       xla_gpu.yield %add : f32
@@ -88,7 +88,8 @@ func.func @loop_types_mismatch(%input: tensor<1024x32xf32>, %init: f32) -> (i32)
 #map = #xla_gpu.indexing_map<(d0)[s0, s1] -> (s0, s1), domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32]>
 func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32) {
   // expected-error @+1 {{mismatch in number of dims operands 0 and DimVars in the indexing map}}
-  %sum = xla_gpu.loop ()[%i, %j] in #map iter_args(%sum_ = %init) -> (f32) {
+  %sum = xla_gpu.loop ()[%i, %j] -> (%r0, %r1)
+     in #map iter_args(%sum_ = %init) -> (f32) {
     %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
     %add = arith.addf %sum_, %t : f32
     xla_gpu.yield %add : f32

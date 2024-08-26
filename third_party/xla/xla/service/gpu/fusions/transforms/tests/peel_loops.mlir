@@ -12,7 +12,8 @@
 >
 func.func @peel_both_loops(%input: tensor<16x32xf32>,
     %init: f32, %dim: index) -> (f32) {
-  %sum = xla_gpu.loop (%dim)[%i, %j] in #map iter_args(%sum_ = %init) -> (f32) {
+  %sum = xla_gpu.loop (%dim)[%i, %j] -> (%r0, %r1)
+      in #map iter_args(%sum_ = %init) -> (f32) {
     %t = tensor.extract %input[%i, %j] : tensor<16x32xf32>
     %add = arith.addf %sum_, %t : f32
     xla_gpu.yield %add : f32
@@ -27,7 +28,7 @@ func.func @peel_both_loops(%input: tensor<16x32xf32>,
 // CHECK-SAME:      %[[INPUT:.*]]: tensor<16x32xf32>,
 // CHECK-SAME:      %[[INIT:.*]]: f32, %[[DIM:.*]]: index)
 
-// CHECK:      %[[PEELED:.*]] = xla_gpu.loop (%[[DIM]])[%[[I:.*]], %[[J:.*]]]
+// CHECK:      %[[PEELED:.*]] = xla_gpu.loop (%[[DIM]])[%[[I:.*]], %[[J:.*]]] ->
 // CHECK-SAME:     in #[[$PEELED_MAP]] iter_args(%[[INIT_:.*]] = %[[INIT]])
 // CHECK:        tensor.extract %[[INPUT]][%[[I]], %[[J]]] : tensor<16x32xf32>
 // CHECK:        arith.addf %[[INIT_]]
@@ -54,7 +55,8 @@ func.func @peel_both_loops(%input: tensor<16x32xf32>,
 >
 func.func @not_constrained_symbol(%input: tensor<16xf32>, %init: f32,
     %dim: index) -> (f32) {
-  %sum = xla_gpu.loop (%dim)[%i] in #map iter_args(%sum_ = %init) -> (f32) {
+  %sum = xla_gpu.loop (%dim)[%i] -> (%r0)
+      in #map iter_args(%sum_ = %init) -> (f32) {
     %t = tensor.extract %input[%i] : tensor<16xf32>
     %add = arith.addf %sum_, %t : f32
     xla_gpu.yield %add : f32
@@ -76,7 +78,8 @@ func.func @not_constrained_symbol(%input: tensor<16xf32>, %init: f32,
 >
 func.func @constraint_exists_after_peeling(%input: tensor<16xf32>, %init: f32,
     %dim: index) -> (f32) {
-  %sum = xla_gpu.loop (%dim)[%i] in #map iter_args(%sum_ = %init) -> (f32) {
+  %sum = xla_gpu.loop (%dim)[%i] -> (%r0)
+      in #map iter_args(%sum_ = %init) -> (f32) {
     %t = tensor.extract %input[%i] : tensor<16xf32>
     %add = arith.addf %sum_, %t : f32
     xla_gpu.yield %add : f32
