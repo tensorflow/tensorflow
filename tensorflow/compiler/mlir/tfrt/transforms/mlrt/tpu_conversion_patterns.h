@@ -24,9 +24,6 @@ limitations under the License.
 namespace tensorflow {
 namespace mlrt_compiler {
 
-inline constexpr char kTfMlrtCustomDevice[] = "tf_mlrt.custom_device";
-inline constexpr char kTpuHostDevice[] = "tpu_host_device";
-
 void RegisterTpuDialect(mlir::DialectRegistry& registry);
 
 void PopulateTpuPreParallelizationConversionPatterns(
