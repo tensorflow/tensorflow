@@ -1111,7 +1111,7 @@ def wrap(tensor, is_stacked=True, is_sparse_stacked=False):
   """Helper to create a WrappedTensor object."""
   assert isinstance(is_stacked, bool)
   assert isinstance(is_sparse_stacked, bool)
-  assert isinstance(tensor, tensor_lib.Tensor)
+  assert isinstance(tensor, tensor_lib.Tensor), type(tensor)
   assert not is_sparse_stacked or is_stacked, ("If the wrapped tensor is "
                                                "stacked via a sparse "
                                                "conversion, it must also be "
@@ -2255,6 +2255,17 @@ def _convert_reshape(pfor_input: _PforInput):
   n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
   new_shape = array_ops.concat([n, shape], axis=0)
   return wrap(array_ops.reshape(t, new_shape), True)
+
+
+@RegisterPFor("TopK")
+@RegisterPFor("TopKV2")
+def _convert_top_k(pfor_input: _PforInput):
+  outputs = _create_op(
+      op_type=pfor_input.op_type,
+      inputs=[x.t for x in pfor_input.inputs],
+      op_dtypes=[x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
+  return [wrap(x, True) for x in outputs]
 
 
 @RegisterPFor("Fill")
